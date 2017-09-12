@@ -88,14 +88,14 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs, num_outputs,
 
   Args:
     op_name: the name of the op to be differentiated.
-    attr_tuple: the attrs, as a tuple
-    num_inputs: the number of inputs to the op
-    num_outputs: the number of outputs of the op
+    attr_tuple: the attrs, as a tuple.
+    num_inputs: the number of inputs to the op.
+    num_outputs: the number of outputs of the op.
     *tensors: a list of tensors, composed of, in order, the inputs, the outputs,
       and the gradients with respect to the outputs.
 
   Returns:
-    the gradients with respect to the inputs of the function, as a list.
+    The gradients with respect to the inputs of the function, as a list.
   """
   inputs = tensors[:num_inputs]
   outputs = tensors[num_inputs:num_inputs + num_outputs]
@@ -232,9 +232,9 @@ def implicit_val_and_grad(f):
     ag_core.active_progenitors.remove(start_node)
     if not ag_core.isnode(end_node):
       raise ValueError(
-          "Target not part of a computation being traced. %s" % end_node)
+          "Target not part of a computation being traced. %s." % end_node)
     if start_node not in end_node.progenitors:
-      raise ValueError("Target not derived from source. %s %s" %
+      raise ValueError("Target not derived from source. %s %s." %
                        (end_node.progenitors, repr(start_node)))
     output_gradients = kwds.get("output_gradients", None)
     if output_gradients is None:
@@ -282,7 +282,7 @@ def _get_arg_spec(f, params):
     return params
   else:
     raise ValueError(
-        "params must be all strings or all integers; got %s" % params)
+        "params must be all strings or all integers; got %s." % params)
 
 
 def gradients_function(f, params=None):
