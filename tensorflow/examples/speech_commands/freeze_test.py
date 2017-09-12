@@ -26,8 +26,8 @@ class FreezeTest(test.TestCase):
 
   def testCreateInferenceGraph(self):
     with self.test_session() as sess:
-      freeze.create_inference_graph('a,b,c,d', 16000, 1000.0, 20.0, 10.0, 40,
-                                    'conv')
+      freeze.create_inference_graph('a,b,c,d', 16000, 1000.0, 30.0, 30.0, 10.0,
+                                    40, 'conv')
       self.assertIsNotNone(sess.graph.get_tensor_by_name('wav_data:0'))
       self.assertIsNotNone(
           sess.graph.get_tensor_by_name('decoded_sample_data:0'))

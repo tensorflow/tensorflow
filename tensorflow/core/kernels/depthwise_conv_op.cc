@@ -54,9 +54,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device, typename T>
-struct LaunchDepthwiseConvOp;
-
 // Computes the vectorized product of 'input_buffer' and 'filter' and stores
 // result in 'output' at location specified by 'out_r' and 'out_c'.
 //
@@ -156,9 +153,9 @@ template <typename T>
 struct LaunchDepthwiseConvOp<CPUDevice, T> {
   typedef typename Eigen::internal::packet_traits<T>::type Packet;
 
-  static void launch(OpKernelContext* ctx, const DepthwiseArgs& args,
-                     const T* input, const T* depthwise_filter, T* output,
-                     TensorFormat data_format) {
+  void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
+                  const T* input, const T* depthwise_filter, T* output,
+                  TensorFormat data_format) {
     OP_REQUIRES(
         ctx, data_format == FORMAT_NHWC,
         errors::Unimplemented(
@@ -248,27 +245,9 @@ extern template class LaunchConv2DOp<CPUDevice, float>;
 
 #if GOOGLE_CUDA
 
-template <typename T>
-struct DepthwiseConv2dGPULaunch {
-  static void Run(const GPUDevice& d, const DepthwiseArgs args, const T* input,
-                  const T* filter, T* output, TensorFormat data_format);
-};
-
-template <typename T>
-struct LaunchDepthwiseConvOp<GPUDevice, T> {
-  static void launch(OpKernelContext* ctx, const DepthwiseArgs args,
-                     const T* input, const T* filter, T* output,
-                     TensorFormat data_format) {
-    const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-    DepthwiseConv2dGPULaunch<T>().Run(d, args, input, filter, output,
-                                      data_format);
-    auto stream = ctx->op_device_context()->stream();
-    OP_REQUIRES(
-        ctx, stream->ok(),
-        errors::Internal(
-            "Launch of gpu kernel for DepthwiseConv2dGPULaunch failed"));
-  }
-};
+// Extern template instantiated in depthwise_conv_op_gpu.cc.
+extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
+extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
 // Extern template instantiated in conv_ops.cc.
 extern template class LaunchConv2DOp<GPUDevice, float>;
@@ -368,10 +347,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     TensorShape out_shape =
         ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
     OP_REQUIRES(
-        context, out_shape.num_elements() <= 2147483647,
-        errors::InvalidArgument("total number of outputs should be within the "
-                                "range of int which is used in the GPU kernel",
-                                in_depth, " vs ", filter.dim_size(2)));
+        context,
+        (!std::is_same<Device, GPUDevice>::value ||
+         FastBoundsCheck(out_shape.num_elements(),
+                         std::numeric_limits<int32>::max())),
+        errors::InvalidArgument("Output elements too large for GPU kernel"));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
@@ -392,9 +372,8 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // If in_depth==1, this operation is just a standard convolution, so
     // invoke that op.
     if (std::is_same<T, float>::value && in_depth == 1) {
-      launcher_.launch(context, use_cudnn_, cudnn_use_autotune_, input, filter,
-                       stride_, stride_, BrainPadding2EigenPadding(padding_),
-                       output, data_format_);
+      launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
+                stride_, stride_, padding_, output, data_format_);
       return;
     }
 
@@ -416,8 +395,8 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     auto input_ptr = input.template flat<T>().data();
     auto filter_ptr = filter.template flat<T>().data();
     auto output_ptr = output->template flat<T>().data();
-    LaunchDepthwiseConvOp<Device, T>::launch(
-        context, args, input_ptr, filter_ptr, output_ptr, data_format_);
+    LaunchDepthwiseConvOp<Device, T>()(context, args, input_ptr, filter_ptr,
+                                       output_ptr, data_format_);
   }
 
  private:

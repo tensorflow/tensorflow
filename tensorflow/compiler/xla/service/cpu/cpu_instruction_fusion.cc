@@ -14,17 +14,30 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
-
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
 namespace cpu {
 
 namespace {
+
 int64 BytesInDimension(const Shape& shape, int64 dimension) {
   return ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) *
          shape.dimensions(dimension);
 }
+
+bool IsFusile(const HloInstruction& hlo) {
+  // These are the only ones we fuse since we rely on effective elemental IR
+  // generation.
+  return (hlo.opcode() == HloOpcode::kBroadcast ||
+          hlo.opcode() == HloOpcode::kReshape ||
+          hlo.opcode() == HloOpcode::kBitcast ||
+          hlo.opcode() == HloOpcode::kReverse ||
+          hlo.opcode() == HloOpcode::kSlice ||
+          hlo.opcode() == HloOpcode::kDynamicSlice ||
+          hlo.opcode() == HloOpcode::kTranspose || hlo.IsElementwise());
+}
+
 }  // namespace
 
 bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
@@ -33,11 +46,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   constexpr int kFusionThresholdBytes = 16 * 1024;
 
-  // These are the only ones we fuse since we rely on effective elemental IR
-  // generation.
-  if (producer->opcode() != HloOpcode::kBroadcast &&
-      producer->opcode() != HloOpcode::kReshape &&
-      producer->opcode() != HloOpcode::kBitcast && !producer->IsElementwise()) {
+  if (!IsFusile(*producer)) {
     return false;
   }
 
@@ -49,7 +58,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // TODO(sanjoy): see if the "producer->operand_count() == 0" check is
+  // TODO(b/28644064): see if the "producer->operand_count() == 0" check is
   // necessary.
   if (producer->operand_count() == 0 ||
       !InstructionFusion::ShouldFuse(consumer, operand_index)) {

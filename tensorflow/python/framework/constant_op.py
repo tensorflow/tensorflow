@@ -41,6 +41,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from autograd import core as ag_core
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -59,18 +60,41 @@ def _eager_reshape(tensor, shape):
   attr_tshape = attr_tshape.as_datatype_enum
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
-  result, = execute.execute("Reshape", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(b"Reshape", 1, inputs=inputs_flat, attrs=attrs)
   return result
 
 
 def _eager_fill(dims, value):
   """Eager-only version of Fill op; requires value is an eager Tensor."""
   attr_t = value.dtype.as_datatype_enum
-  dims = ops.convert_to_eager_tensor(dims, dtypes.int32)
+  dims = convert_to_eager_tensor(dims, dtypes.int32)
   inputs_flat = [dims, value]
   attrs = ("T", attr_t)
-  result, = execute.execute("Fill", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(b"Fill", 1, inputs=inputs_flat, attrs=attrs)
   return result
+
+
+def convert_to_eager_tensor(t, dtype=None):
+  """Converts the given `value` to an `EagerTensor`."""
+  if isinstance(ag_core.getval(t), ops.EagerTensor):
+    if dtype is not None and t.dtype != dtype:
+      raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
+    return t
+  if isinstance(t, (int, float)):
+    # Use a scalar cache. This will put each scalar of each type only once on
+    # each device. Scalars don't use much device memory but copying scalars can
+    # trigger memcpys which are slow.
+    ctx = context.context()
+    device = ctx.device_name
+    cache_key = device, t, dtype, type(t)
+    scalar_cache = ctx.scalar_cache()
+    tensor = scalar_cache.get(cache_key, None)
+    if tensor is not None:
+      return tensor
+    value = ops.EagerTensor(t, dtype=dtype)
+    scalar_cache[cache_key] = value
+    return value
+  return ops.EagerTensor(t, dtype=dtype)
 
 
 def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
@@ -123,8 +147,8 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   """
   if not context.in_graph_mode():
     if shape is None:
-      return ops.convert_to_eager_tensor(value, dtype)
-    t = ops.convert_to_eager_tensor(value, dtype)
+      return convert_to_eager_tensor(value, dtype)
+    t = convert_to_eager_tensor(value, dtype)
     shape = tensor_shape.as_shape(shape)
     if shape == t.shape:
       return t

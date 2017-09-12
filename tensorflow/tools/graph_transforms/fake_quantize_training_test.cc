@@ -36,7 +36,7 @@ class FakeQuantizeTrainingTest : public ::testing::Test {};
 // TODO(suharshs): Once we implement the fake_quantize_training transform
 // using the GTT, write proper tests of the transform here.
 TEST_F(FakeQuantizeTrainingTest, TransformOccurred) {
-  auto root = tensorflow::Scope::NewRootScope();
+  auto root = tensorflow::Scope::DisabledShapeInferenceScope();
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   Tensor a_data(DT_FLOAT, TensorShape());

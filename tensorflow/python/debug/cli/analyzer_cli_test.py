@@ -165,7 +165,7 @@ def assert_listed_tensors(tst,
   idx0 = line.index("Size")
   attr_seg = attr_segs[1]
   tst.assertEqual(idx0, attr_seg[0])
-  tst.assertEqual(idx0 + len("Size"), attr_seg[1])
+  tst.assertEqual(idx0 + len("Size (B)"), attr_seg[1])
   command = attr_seg[2][0].content
   tst.assertIn("-s dump_size", command)
   assert_column_header_command_shortcut(tst, command, reverse, node_name_regex,
@@ -595,6 +595,28 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
   def tearDownClass(cls):
     # Tear down temporary dump directory.
     shutil.rmtree(cls._dump_root)
+
+  def testMeasureTensorListColumnWidthsGivesRightAnswerForEmptyData(self):
+    timestamp_col_width, dump_size_col_width, op_type_col_width = (
+        self._analyzer._measure_tensor_list_column_widths([]))
+    self.assertEqual(len("t (ms)") + 1, timestamp_col_width)
+    self.assertEqual(len("Size (B)") + 1, dump_size_col_width)
+    self.assertEqual(len("Op type") + 1, op_type_col_width)
+
+  def testMeasureTensorListColumnWidthsGivesRightAnswerForData(self):
+    dump = self._debug_dump.dumped_tensor_data[0]
+    self.assertLess(dump.dump_size_bytes, 1000)
+    self.assertEqual(
+        "VariableV2", self._debug_dump.node_op_type(dump.node_name))
+    _, dump_size_col_width, op_type_col_width = (
+        self._analyzer._measure_tensor_list_column_widths([dump]))
+    # The length of str(dump.dump_size_bytes) is less than the length of
+    # "Size (B)" (8). So the column width should be determined by the length of
+    # "Size (B)".
+    self.assertEqual(len("Size (B)") + 1, dump_size_col_width)
+    # The length of "VariableV2" is greater than the length of "Op type". So the
+    # column should be determined by the length of "VariableV2".
+    self.assertEqual(len("VariableV2") + 1, op_type_col_width)
 
   def testListTensors(self):
     # Use shorthand alias for the command prefix.

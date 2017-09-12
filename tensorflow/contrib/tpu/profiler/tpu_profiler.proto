@@ -2,6 +2,8 @@ syntax = "proto3";
 package tensorflow;
 
 import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/contrib/tpu/profiler/op_profile.proto";
 
 // The TPUProfiler service retrieves performance information about
 // the programs running on connected TPUs over a period of time.
@@ -30,8 +32,18 @@ message ProfileResponse {
   // Graphs of programs executed on TPUs during the profiling period.
   repeated GraphDef computation_graph = 2;
 
+  // Performance profile that can be used to annotate HLO operations in the
+  // computation graph.
+  RunMetadata hlo_metadata = 5;
+
   // Encoded Trace proto message that contains metadata about the trace captured
   // during the profiling period. Describes the devices and resources that
   // 'trace_events' refers to.
   bytes encoded_trace = 3;
+
+  // Assembles a hierarchical performance profile based on HLOs in trace events.
+  // If the trace covers multiple programs, the longest-running one is analyzed.
+  // See op_profile.proto for the detailed semantics of the returned profile.
+  tpu.op_profile.Profile op_profile = 4;
+  // next-field: 6
 }

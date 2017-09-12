@@ -55,8 +55,8 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     with tf.variable_scope('scope1'):
       with tf.variable_scope('scope2'):
         var = tf.get_variable('foo')
-        assign_moving_average(var, 0.0, 1.0, debias_naming_v2=?)
-        assign_moving_average(var, 0.0, 0.9, debias_naming_v2=?)
+        assign_moving_average(var, 0.0, 1.0)
+        assign_moving_average(var, 0.0, 0.9)
 
     var.name: 'scope1/scope2/foo'
     shadow var names: 'scope1/scope2/scope1/scope2/foo/biased'

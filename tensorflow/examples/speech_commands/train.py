@@ -15,9 +15,10 @@
 r"""Simple speech recognition to spot a limited number of keywords.
 
 This is a self-contained example script that will train a very basic audio
-recognition model in TensorFlow. It can download the necessary training data,
-and runs with reasonable defaults to train within a few hours even only using a
-CPU. For more information see http://tensorflow.org/tutorials/audio_recognition.
+recognition model in TensorFlow. It downloads the necessary training data and
+runs with reasonable defaults to train within a few hours even only using a CPU.
+For more information, please see
+https://www.tensorflow.org/tutorials/audio_recognition.
 
 It is intended as an introduction to using neural networks for audio
 recognition, and is not a full speech recognition system. For more advanced
@@ -355,7 +356,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--window_size_ms',
       type=float,
-      default=20.0,
+      default=30.0,
       help='How long each spectrogram timeslice is',)
   parser.add_argument(
       '--window_stride_ms',

@@ -5,7 +5,6 @@ mnist/pros.md
 mnist/mechanics.md
 estimator.md
 input_fn.md
-monitors.md
 summaries_and_tensorboard.md
 graph_viz.md
 tensorboard_histograms.md

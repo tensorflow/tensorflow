@@ -26,14 +26,13 @@ import threading
 from autograd import core as ag_core
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import tensor
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradients_impl
@@ -59,10 +58,8 @@ def capture_tensors(captures):
     _scoped_captures.tensors = old
 
 
-def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
-  """Captures a tfe Tensor while building a graph mode function.
-
-  Creates a placeholder to pass the tensor as an argument.
+def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
+  """Captures a Tensor while building a graph mode function.
 
   Arguments:
     value: A tfe.Tensor object
@@ -71,24 +68,24 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
     as_ref: Ignored (required by register_tensor_conversion_function).
 
   Returns:
-    A placeholder which will, at runtime, have the value of this tensor.
-
-  Raises:
-    ValueError: if called outside a defun context.
+    Returns a constant (the current value of the tensor) if capturing
+    is not enabled. A placeholder which will have the value of the
+    tensor at runtime otherwise.
   """
+  if context.in_eager_mode():
+    return value
   _ = as_ref
   tensor_map = _scoped_captures.tensors
   if tensor_map is None:
-    raise ValueError(
-        "Trying to use tfe.Tensor objects in a graph outside graph mode. "
-        "To build a graph use tfe.defun or tfe.func_to_object.")
-  captured_value = tensor_map.get(tape.tensor_id(value), None)
+    # Capturing is not enabled.
+    return constant_op.constant(value.numpy())
+  captured_value = tensor_map.get(ops.tensor_id(value), None)
   if captured_value is None:
     captured_value = graph_placeholder(
         dtype=dtype or value.dtype, shape=value.shape, name=name)
     if captured_value.dtype == dtypes.resource:
       captured_value._handle_data = value._handle_data  # pylint: disable=protected-access
-    tensor_map[tape.tensor_id(value)] = (value, captured_value)
+    tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
     captured_value = captured_value[1]
   return captured_value
@@ -98,7 +95,7 @@ def _convert_to_graph_constant(value, dtype=None, name=None, as_ref=False):
 # Note that we register this at a higher priority than ops.Tensor since we want
 # to handle subclass specific conversion before a superclass conversion.
 ops.register_tensor_conversion_function(
-    tensor.Tensor, _convert_to_graph_constant, priority=-1)
+    tensor.Tensor, _convert_to_graph_tensor, priority=-1)
 
 
 class _CapturingContext(object):
@@ -259,14 +256,14 @@ class _GraphModeFunction(object):
         outputs[i].set_shape(s)
     else:
       outputs = execute.execute(
-          signature.name,
+          str(signature.name),
           num_outputs=len(signature.output_arg),
           inputs=all_args)
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
     watched_extra_inputs = []
     for t in self._extra_inputs:
-      tid = tape.tensor_id(t)
+      tid = ops.tensor_id(t)
       for t in tape._tape_stack.stack:  # pylint: disable=protected-access
         w = t.value.tensors.get(tid, None)
         if w is not None:
@@ -274,9 +271,15 @@ class _GraphModeFunction(object):
           break
       else:  # Note: for-else here done on purpose
         watched_extra_inputs.append(t)
-    real_outputs = tape.record_operation(real_outputs,
-                                         (args + watched_extra_inputs),
-                                         side_outputs, self._backward_function)
+
+    def backward_function_wrapper(*outputs):
+      outputs = outputs[len(real_outputs):]
+      return self._backward_function(*outputs)
+    real_outputs = tape.record_operation(
+        real_outputs,
+        (args + watched_extra_inputs),
+        side_outputs,
+        backward_function_wrapper)
 
     return self._build_call_outputs(self._returns, real_outputs)
 
@@ -313,7 +316,7 @@ class _GraphModeFunction(object):
           for x in tensor_inputs
       ]
       result = execute.execute(
-          self._func_name,
+          str(self._func_name),
           num_outputs=self._num_outputs,
           inputs=tensor_inputs + self._extra_inputs)
 
@@ -365,6 +368,13 @@ def _defun_internal(name, func, args, kwds):
   """Defines and returns graph-mode version of func."""
   with context.graph_mode():
     tmp_graph = ops.Graph()
+    # Copy the graph collections to ensure summaries and other things work. This
+    # lets the function access (but not mutate) collections of the containing
+    # graph, such as the global step and the summary writer collections.
+    curr_graph = ops.get_default_graph()
+    for collection in curr_graph.collections:
+      tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
+          collection)
     with tmp_graph.as_default():
       func_inputs = _get_defun_inputs(args)
 
@@ -423,20 +433,10 @@ def _cache_key(x):
   return x
 
 
-def register_function_def(fdef):
-  fdef_string = fdef.SerializeToString()
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.TFE_ContextAddFunctionDef(
-        context.get_default_context()._handle,  # pylint: disable=protected-access
-        fdef_string,
-        len(fdef_string),
-        status)
-
-
 def _register_with_name(name, fdef):
   """Registers the function `fdef` with the name `name`."""
   fdef.signature.name = name
-  register_function_def(fdef)
+  context.context().add_function_def(fdef)
 
 
 # TODO(apassos): better error messages for non-hashable arguments.

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/contrib/gdr/gdr_rendezvous_mgr.h"
 #include "tensorflow/contrib/gdr/gdr_worker.h"
 
+#include "grpc/support/alloc.h"
 
 namespace tensorflow {
 

@@ -232,7 +232,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteOnStream(
       TF_RETURN_IF_ERROR(GetRootPointsToSet().ForEachElementWithStatus(
           [&referred_by_output, &buffer_allocations, this](
               const ShapeIndex& /*index*/,
-              const std::vector<const LogicalBuffer*>& buffers) {
+              const PointsToSet::BufferList& buffers) {
             // The points to set is unambiguous so the set should be a
             // singleton. That is, we know exactly which instruction produced
             // the array at this element.
@@ -311,7 +311,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
               [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
                 if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
-                  const std::vector<const LogicalBuffer*>& sources =
+                  const auto& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
                   // singleton. That is, we know exactly which instruction

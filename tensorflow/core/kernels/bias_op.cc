@@ -51,7 +51,7 @@ class BiasOp : public BinaryOp<T> {
       data_format_ = FORMAT_NHWC;
     }
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(context->device()->attributes().name() +
+                errors::InvalidArgument(context->device()->name() +
                                         " BiasOp only supports NHWC."));
   }
 
@@ -191,7 +191,7 @@ class BiasGradOp : public OpKernel {
       data_format_ = FORMAT_NHWC;
     }
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(context->device()->attributes().name() +
+                errors::InvalidArgument(context->device()->name() +
                                         " BiasGradOp only supports NHWC."));
   }
 

@@ -1,4 +1,4 @@
-# How to Train a Simple Audio Recognition Network
+# Simple Audio Recognition
 
 This tutorial will show you how to build a basic speech recognition network that
 recognizes ten different words. It's important to know that real speech and
@@ -214,6 +214,41 @@ of the other .wav files in that same folder to see how well it does.
 The scores are between zero and one, and higher values mean the model is more
 confident in its prediction.
 
+## Running the Model in an Android App
+
+The easiest way to see how this model works in a real application is to download
+[the prebuilt Android demo
+applications](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#prebuilt-components)
+and install them on your phone. You'll see 'TF Speech' appear in your app list,
+and opening it will show you the same list of action words we've just trained
+our model on, starting with "Yes" and "No". Once you've given the app permission
+to use the microphone, you should be able to try saying those words and see them
+highlighted in the UI when the model recognizes one of them.
+
+You can also build this application yourself, since it's open source and
+[available as part of the TensorFlow repository on
+github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#building-in-android-studio-using-the-tensorflow-aar-from-jcenter).
+By default it downloads [a pretrained model from
+tensorflow.org](http://download.tensorflow.org/models/speech_commands_v0.01.zip),
+but you can easily [replace it with a model you've trained
+yourself](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#install-model-files-optional).
+If you do this, you'll need to make sure that the constants in [the main
+SpeechActivity Java source
+file](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android/src/org/tensorflow/demo/SpeechActivity.java)
+like `SAMPLE_RATE` and `SAMPLE_DURATION` match any changes you've made to the
+defaults while training. You'll also see that there's a [Java version of the
+RecognizeCommands
+module](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android/src/org/tensorflow/demo/RecognizeCommands.java)
+that's very similar to the C++ version in this tutorial. If you've tweaked
+parameters for that, you can also update them in SpeechActivity to get the same
+results as in your server testing.
+
+The demo app updates its UI list of results automatically based on the labels
+text file you copy into assets alongside your frozen graph, which means you can
+easily try out different models without needing to make any code changes. You
+will need to updaye `LABEL_FILENAME` and `MODEL_FILENAME` to point to the files
+you've added if you change the paths though.
+
 ## How does this Model Work?
 
 The architecture used in this tutorial is based on some described in the paper
@@ -341,13 +376,14 @@ aren't detected (high precision). The numbers from the tool give you an idea of
 how your model will perform in an application, and you can try tweaking the
 signal averaging parameters to tune it to give the kind of performance you want.
 To understand what the right parameters are for your application, you can look
-at generating an [ROC curve](https://en.wikipedia.org/wiki/Receiver_operating_characteristic)
-to help you understand the tradeoffs.
+at generating an [ROC
+curve](https://en.wikipedia.org/wiki/Receiver_operating_characteristic) to help
+you understand the tradeoffs.
 
 ## RecognizeCommands
 
-The streaming accuracy tool uses a simple decoder contained in a small
-C++ class called
+The streaming accuracy tool uses a simple decoder contained in a small C++ class
+called
 [RecognizeCommands](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/speech_commands/recognize_commands.h).
 This class is fed the output of running the TensorFlow model over time, it
 averages the signals, and returns information about a label when it has enough
@@ -480,7 +516,8 @@ variations in starting time in the training data, and is controlled with the
 `--time_shift_ms` flag, which defaults to 100ms. Increasing this value will
 provide more variation, but at the risk of cutting off important parts of the
 audio. A related way of augmenting the data with realistic distortions is by
-using [time stretching and pitch scaling](https://en.wikipedia.org/wiki/Audio_time_stretching_and_pitch_scaling),
+using [time stretching and pitch
+scaling](https://en.wikipedia.org/wiki/Audio_time_stretching_and_pitch_scaling),
 but that's outside the scope of this tutorial.
 
 ## Customizing the Model
@@ -489,14 +526,19 @@ The default model used for this script is pretty large, taking over 800 million
 FLOPs for each inference and using 940,000 weight parameters. This runs at
 usable speeds on desktop machines or modern phones, but it involves too many
 calculations to run at interactive speeds on devices with more limited
-resources. To support these use cases, there's an alternative model available,
-based on the 'cnn-one-fstride4' architecture described in the [Convolutional
+resources. To support these use cases, there's a couple of alternatives
+available:
+
+
+**low_latency_conv**
+Based on the 'cnn-one-fstride4' topology described in the [Convolutional
 Neural Networks for Small-footprint Keyword Spotting
 paper](http://www.isca-speech.org/archive/interspeech_2015/papers/i15_1478.pdf).
-The number of weight parameters is about the same, but it only needs 11 million
-FLOPs to run one prediction, making it much faster.
+The accuracy is slightly lower than 'conv' but the number of weight parameters
+is about the same, and it only needs 11 million FLOPs to run one prediction,
+making it much faster.
 
-To use this model, you can specify `--model_architecture=low_latency_conv` on
+To use this model, you specify `--model_architecture=low_latency_conv` on
 the command line. You'll also need to update the training rates and the number
 of steps, so the full command will look like:
 
@@ -510,6 +552,42 @@ python tensorflow/examples/speech_commands/train \
 This asks the script to train with a learning rate of 0.01 for 20,000 steps, and
 then do a fine-tuning pass of 6,000 steps with a 10x smaller rate.
 
+**low_latency_svdf**
+Based on the topology presented in the [Compressing Deep Neural Networks using a
+Rank-Constrained Topology paper](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/43813.pdf).
+The accuracy is also lower than 'conv' but it only uses about 750 thousand
+parameters, and most significantly, it allows for an optimized execution at
+test time (i.e. when you will actually use it in your application), resulting
+in 750 thousand FLOPs.
+
+To use this model, you specify `--model_architecture=low_latency_svdf` on
+the command line, and update the training rates and the number
+of steps, so the full command will look like:
+
+```
+python tensorflow/examples/speech_commands/train \
+--model_architecture=low_latency_svdf \
+--how_many_training_steps=100000,35000 \
+--learning_rate=0.01,0.005
+```
+
+Note that despite requiring a larger number of steps than the previous two
+topologies, the reduced number of computations means that training should take
+about the same time, and at the end reach an accuracy of around 85%.
+You can also further tune the topology fairly easily for computation and
+accuracy by changing these parameters in the SVDF layer:
+
+* rank - The rank of the approximation (higher typically better, but results in
+         more computation).
+* num_units - Similar to other layer types, specifies the number of nodes in
+              the layer (more nodes better quality, and more computation).
+
+Regarding runtime, since the layer allows optimizations by caching some of the
+internal neural network activations, you need to make sure to use a consistent
+stride (e.g. 'clip_stride_ms' flag) both when you freeze the graph, and when
+executing the model in streaming mode (e.g. test_streaming_accuracy.cc).
+
+**Other parameters to customize**
 If you want to experiment with customizing models, a good place to start is by
 tweaking the spectrogram creation parameters. This has the effect of altering
 the size of the input image to the model, and the creation code in

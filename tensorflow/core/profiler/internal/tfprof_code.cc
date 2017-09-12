@@ -32,6 +32,9 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 namespace {
+
+const char* const kGradientSuffix = " (gradient)";
+
 // Convert to Trace proto into a short readable string.
 string GetTraceString(const CodeDef::Trace& trace) {
   string ntrace = io::Basename(trace.file()).ToString();
@@ -41,12 +44,25 @@ string GetTraceString(const CodeDef::Trace& trace) {
   } else {
     ntrace += ":" + trace.function().substr(0, 17) + "...";
   }
-  if (trace.line().length() < 20) {
-    ntrace += ":" + trace.line();
-  } else {
-    ntrace += ":" + trace.line().substr(0, 17) + "...";
-  }
   return ntrace;
+}
+
+bool IsGradNode(const string& name, string* forward_name) {
+  // Given a forward operation with name op, its gradient op has the following
+  // name: ...gradients/op_grad/...
+  // TODO(xpan): This is hacky.
+  auto grad_prefix = name.find("gradients/");
+  auto grad_suffix = name.find("_grad/");
+  if (grad_prefix == name.npos || grad_suffix == name.npos) {
+    return false;
+  }
+  auto start = grad_prefix + string("gradients/").length();
+  auto len = grad_suffix - start;
+  if (len <= 0) {
+    return false;
+  }
+  *forward_name = name.substr(start, len);
+  return true;
 }
 
 // StringTable maps each string to an id.
@@ -170,12 +186,17 @@ class Samples {
     for (const CodeNode* cn : all_leaf) {
       for (auto gn_it : cn->node->graph_nodes()) {
         const TFGraphNode* gn = gn_it.second;
-        pprof::Sample* sample_pb = &sample_table_[gn->name()];
+        string name = gn->name();
+        // Generate a new trace name, in case the name is taken.
+        while (sample_table_.find(name) != sample_table_.end()) {
+          name += '@';
+        }
+        pprof::Sample* sample_pb = &sample_table_[name];
         for (uint64 id : location_ids) {
           sample_pb->mutable_location_id()->Add(id);
         }
         pprof::Label* label_pb = sample_pb->mutable_label()->Add();
-        label_pb->set_key(string_table_->GetIndex("node_name"));
+        label_pb->set_key(string_table_->GetIndex("graph node:"));
         label_pb->set_str(string_table_->GetIndex(gn->name()));
 
         sample_pb->mutable_value()->Add(1);
@@ -240,11 +261,11 @@ class PprofProfileImpl : public PprofProfile {
         samples_(new Samples(&string_table_, opts)) {}
 
   uint64 AddLocation(const CodeNode* callee, const CodeNode* caller) override {
-    const string& file_path = caller->trace->file();
-    uint64 lineno = caller->trace->lineno();
-    const string& callee_file_path = callee->trace->file();
-    const string& callee_function = callee->trace->function();
-    uint64 callee_func_start_line = callee->trace->func_start_line();
+    const string& file_path = caller->file();
+    uint64 lineno = caller->lineno();
+    const string& callee_file_path = callee->file();
+    const string& callee_function = callee->function();
+    uint64 callee_func_start_line = callee->func_start_line();
 
     return loc_table_->GetIndex(file_path, lineno, callee_function,
                                 callee_file_path, callee_func_start_line);
@@ -274,7 +295,7 @@ class PprofProfileImpl : public PprofProfile {
     if (!s.ok()) return s;
     s = zlib_output_buffer->Close();
     if (!s.ok()) return s;
-    fprintf(stdout, "\nRun pprof -png --nodecount=20 --sample_index=1 <%s>\n",
+    fprintf(stdout, "\nRun pprof -png --nodecount=100 --sample_index=1 <%s>\n",
             filename.c_str());
     return s;
   }
@@ -303,19 +324,20 @@ class PprofProfileImpl : public PprofProfile {
             string_table_.GetIndex("CPU execution time."));
       }
     } else if (type == kShown[0]) {
-      sample_type->set_unit(string_table_.GetIndex("requested bytes"));
+      sample_type->set_unit(string_table_.GetIndex("bytes"));
       profile_pb->mutable_comment()->Add(
-          string_table_.GetIndex("Sum of operation total requested memory."));
+          string_table_.GetIndex("Sum of operation total memory requests, "
+                                 "excluding deallocations."));
     } else if (type == kShown[11]) {
-      sample_type->set_unit(string_table_.GetIndex("peak bytes"));
+      sample_type->set_unit(string_table_.GetIndex("bytes"));
       profile_pb->mutable_comment()->Add(
           string_table_.GetIndex("Sum of operation peak memory usage."));
     } else if (type == kShown[12]) {
-      sample_type->set_unit(string_table_.GetIndex("residual bytes"));
+      sample_type->set_unit(string_table_.GetIndex("bytes"));
       profile_pb->mutable_comment()->Add(string_table_.GetIndex(
           "Sum of operation allocated memory after finish."));
     } else if (type == kShown[13]) {
-      sample_type->set_unit(string_table_.GetIndex("output bytes"));
+      sample_type->set_unit(string_table_.GetIndex("bytes"));
       profile_pb->mutable_comment()->Add(
           string_table_.GetIndex("Sum of operation output size."));
     } else if (type == kShown[2]) {
@@ -357,26 +379,101 @@ void TFCode::AddNode(TFGraphNode* node) {
   if (node->code().traces_size() == 0) {
     return;
   }
+
+  // We infer the forward operation name from gradient op name. So, we can
+  // map gradient op traces to forward op traces.
+  // E.g. gradient node of 'inp_1/Conv2D' would be 'gradients/inp_1/Conv2D_grad.
+  string forward_name;
+  if (IsGradNode(node->name(), &forward_name)) {
+    auto grad_nodes_it = grad_nodes_.find(forward_name);
+    if (grad_nodes_it != grad_nodes_.end()) {
+      grad_nodes_it->second.push_back(node);
+    } else {
+      grad_nodes_.insert(
+          std::pair<string, std::vector<TFGraphNode*>>(forward_name, {node}));
+    }
+    return;
+  } else {
+    forward_nodes_[node->name()] = node;
+  }
+
+  // Track if this is the first trace (first node). If true, add all
+  // traces to common_traces_. Otherwise, remove uncommon traces from
+  // common traces_.
+  bool first_trace = false;
   if (!root_) {
     graph_root_.reset(new TFMultiGraphNode(kTFProfRoot));
-    root_.reset(new CodeNode(graph_root_.get(), nullptr));
+    root_.reset(new CodeNode(graph_root_.get(), nullptr, ""));
+    first_trace = true;
   }
 
   CodeNode* pre_code_node = root_.get();
   // TODO(xpan): Consider to release CodeDef after TFCode is built. It
   // takes a lot of memory.
+  std::set<string> traces;
   for (int i = 0; i < node->code().traces_size(); ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
     const string& trace = GetTraceString(node->code().traces(i));
-    pre_code_node = pre_code_node->AddChildren(trace, &node->code().traces(i));
+    traces.insert(trace);
+    pre_code_node =
+        pre_code_node->AddChildren(trace, &node->code().traces(i), "");
     if (i == node->code().traces_size() - 1) {
       pre_code_node->node->AddGraphNode(node);
+    }
+  }
+  if (first_trace) {
+    common_traces_.insert(traces.begin(), traces.end());
+  } else {
+    for (auto it = common_traces_.begin(); it != common_traces_.end();) {
+      if (traces.find(*it) == traces.end()) {
+        common_traces_.erase(it++);
+      } else {
+        ++it;
+      }
     }
   }
 }
 
 void TFCode::Build() {
+  int64 unaccounted_nodes = 0;
+  for (auto it : grad_nodes_) {
+    const string& forward_name = it.first;
+    auto forward_it = forward_nodes_.find(forward_name);
+    if (forward_it == forward_nodes_.end()) {
+      unaccounted_nodes += 1;
+      continue;
+    }
+    TFGraphNode* fn = forward_it->second;
+    CodeNode* leaf = nullptr;
+    CodeNode* pre_code_node = root_.get();
+    for (int i = 0; i < fn->code().traces_size(); ++i) {
+      const string& trace =
+          GetTraceString(fn->code().traces(i)) + kGradientSuffix;
+      pre_code_node = pre_code_node->AddChildren(trace, &fn->code().traces(i),
+                                                 kGradientSuffix);
+      if (i == fn->code().traces_size() - 1) {
+        leaf = pre_code_node;
+      }
+    }
+    for (TFGraphNode* gn : it.second) {
+      leaf->node->AddGraphNode(gn);
+    }
+  }
+  if (unaccounted_nodes > 0) {
+    fprintf(stderr, "%lld gradient nodes not accounted\n", unaccounted_nodes);
+  }
+
+  // For trace that all traces share, such as "main", "apply_op", people
+  // are unlikely inerested. We track them and hide them from display.
+  if (forward_nodes_.size() > 100) {
+    std::set<string> tmp = common_traces_;
+    for (const string& t : tmp) {
+      common_traces_.insert(t + kGradientSuffix);
+    }
+  } else {
+    common_traces_.clear();
+  }
 }
 
 const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
@@ -439,12 +536,12 @@ const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
 void TFCode::Format(const CodeNode* root, const std::vector<CodeNode*>& nodes,
                     const Options& opts, string* display_str,
                     MultiGraphNodeProto* proto, std::vector<uint64>* call_ids) {
-  if (nodes.empty() && root->trace && opts.output_type == kOutput[3]) {
+  if (nodes.empty() && root->has_trace() && opts.output_type == kOutput[3]) {
     pprof_profile_->AddSample(root, call_ids);
   }
 
   for (CodeNode* node : nodes) {
-    if (root->trace && opts.output_type == kOutput[3]) {
+    if (root->has_trace() && opts.output_type == kOutput[3]) {
       uint64 loc_id = pprof_profile_->AddLocation(node, root);
       call_ids->push_back(loc_id);
     }
@@ -452,7 +549,7 @@ void TFCode::Format(const CodeNode* root, const std::vector<CodeNode*>& nodes,
     MultiGraphNodeProto* child = proto->add_children();
     child->MergeFrom(node->proto());
     Format(node, node->show_children, opts, display_str, child, call_ids);
-    if (root->trace && opts.output_type == kOutput[3]) {
+    if (root->has_trace() && opts.output_type == kOutput[3]) {
       call_ids->pop_back();
     }
   }
@@ -493,7 +590,8 @@ std::vector<CodeNode*> TFCode::PrintScope(const std::vector<CodeNode*> roots,
       continue;
     }
     int ident = last_ident;
-    bool show = ShouldShow(node, opts, depth);
+    bool show = ShouldShow(node, opts, depth) &&
+                common_traces_.find(node->name()) == common_traces_.end();
     if (show) ident += 2;
 
     std::vector<CodeNode*> show_cnodes =

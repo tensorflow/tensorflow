@@ -92,8 +92,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator() const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(this));
+    std::unique_ptr<IteratorBase> MakeIterator(
+        const string& prefix) const override {
+      return std::unique_ptr<IteratorBase>(new Iterator(
+          {this, strings::StrCat(prefix, "::DenseToSparseBatch")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -114,12 +116,13 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset<T>> {
      public:
-      explicit Iterator(const Dataset<T>* dataset)
-          : DatasetIterator<Dataset<T>>(dataset),
-            input_impl_(dataset->input_->MakeIterator()) {}
+      explicit Iterator(const typename Iterator::Params& params)
+          : DatasetIterator<Dataset<T>>(params),
+            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
 
-      Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                     bool* end_of_sequence) override {
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
         // Each row of the output SparseTensor is an individual tensor
         // from the input iterator.
         std::vector<Tensor> batch_elements;

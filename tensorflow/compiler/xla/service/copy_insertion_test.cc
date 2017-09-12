@@ -53,7 +53,7 @@ class CopyInsertionTest : public HloTestBase {
     EXPECT_TRUE(points_to.IsDistinct());
     EXPECT_TRUE(!points_to.IsAmbiguous());
 
-    tensorflow::gtl::FlatSet<const LogicalBuffer*> maybe_live_out_buffers =
+    auto maybe_live_out_buffers =
         points_to_analysis
             ->GetPointsToSet(module->entry_computation()->root_instruction())
             .CreateFlattenedSet();

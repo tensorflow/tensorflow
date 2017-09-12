@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
@@ -76,6 +77,8 @@ class DummyReadResourceCC {
     scope.UpdateBuilder(&builder);
     scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
     if (!scope.ok()) return;
+    scope.UpdateStatus(scope.DoShapeInference(ret));
+    if (!scope.ok()) return;
     this->output_ = Output(ret, 0);
   }
   Node* node() const { return output_.node(); }
@@ -86,6 +89,7 @@ class DummyReadResourceCC {
 REGISTER_OP("DummyReadResource")
     .Input("input: int32")
     .Output("output: int32")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 A dummy Op.
 

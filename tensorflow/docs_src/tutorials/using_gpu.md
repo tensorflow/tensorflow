@@ -83,7 +83,7 @@ MatMul: /job:localhost/replica:0/task:0/device:GPU:0
 ## Allowing GPU memory growth
 
 By default, TensorFlow maps nearly all of the GPU memory of all GPUs (subject to
-[`CUDA_VISIBLE_DEVICES`](http://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars))
+[`CUDA_VISIBLE_DEVICES`](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars))
 visible to the process. This is done to more efficiently use the relatively
 precious GPU memory resources on the devices by reducing [memory
 fragmentation](https://en.wikipedia.org/wiki/Fragmentation_\(computing\)).

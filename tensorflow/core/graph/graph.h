@@ -41,10 +41,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/versions.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -259,6 +257,19 @@ class Node {
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
 };
 
+// Represents an output of a node, i.e., the `index`-th output of `node`. Note
+// that a single `OutputTensor` can correspond to multiple `Edge`s if the output
+// is consumed by multiple destination nodes.
+struct OutputTensor {
+  const Node* node;
+  int index;
+
+  OutputTensor(const Node* n, int i) : node(n), index(i) {}
+  OutputTensor() : node(nullptr), index(0) {}
+};
+
+// TODO(skyewm): add InputTensor if/when necessary
+
 class Edge {
  public:
   Node* src() const { return src_; }
@@ -278,6 +289,8 @@ class Edge {
   // Return true iff this is an edge that indicates a control-flow
   // (as opposed to a data-flow) dependency.
   bool IsControlEdge() const;
+
+  string DebugString() const;
 
  private:
   Edge() {}
@@ -503,10 +516,16 @@ class Graph {
     node->assigned_device_name_index_ = InternDeviceName(device_name);
   }
 
+  // Returns OK if `node` is non-null and belongs to this graph
+  Status IsValidNode(const Node* node) const;
+
+  // Returns OK if IsValidNode(`node`) and `idx` is less than
+  // node->num_outputs()
+  Status IsValidOutputTensor(const Node* node, int idx) const;
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
-  bool IsValidNode(Node* node) const;
   // If cost_node is non-null, then cost accounting (in CostModel)
   // will be associated with that node rather than the new one being
   // created.

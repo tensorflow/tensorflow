@@ -75,8 +75,8 @@ Status SpectrogramShapeFn(InferenceContext* c) {
   int32 stride;
   TF_RETURN_IF_ERROR(c->GetAttr("stride", &stride));
 
-  DimensionHandle input_channels = c->Dim(input, 0);
-  DimensionHandle input_length = c->Dim(input, 1);
+  DimensionHandle input_length = c->Dim(input, 0);
+  DimensionHandle input_channels = c->Dim(input, 1);
 
   DimensionHandle output_length;
   if (!c->ValueKnown(input_length)) {

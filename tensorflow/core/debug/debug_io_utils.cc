@@ -26,12 +26,13 @@ limitations under the License.
 #include "grpc++/create_channel.h"
 #else
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
-#pragma comment(lib,"Ws2_32.lib")
+#pragma comment(lib, "Ws2_32.lib")
 #endif  // #ifndef PLATFORM_WINDOWS
 
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -927,8 +928,11 @@ DebugGrpcIO::GetEnabledDebugOpStates() {
 // static
 DebugGrpcIO::DebugNodeName2State* DebugGrpcIO::GetEnabledDebugOpStatesAtUrl(
     const string& grpc_debug_url) {
+  static mutex* debug_ops_state_mu = new mutex();
   std::unordered_map<string, DebugNodeName2State>* states =
       GetEnabledDebugOpStates();
+
+  mutex_lock l(*debug_ops_state_mu);
   if (states->find(grpc_debug_url) == states->end()) {
     DebugNodeName2State url_enabled_debug_op_states;
     (*states)[grpc_debug_url] = url_enabled_debug_op_states;

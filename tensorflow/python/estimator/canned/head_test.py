@@ -139,7 +139,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     features = {'x': np.array(((42.,),))}
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features=features,
           mode=model_fn.ModeKeys.EVAL,
@@ -432,6 +432,26 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
           rtol=tol,
           atol=tol)
 
+  def test_eval_metric_ops_with_head_name(self):
+    n_classes = 3
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes, head_name='some_multiclass_head')
+    logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
+    labels = np.array(((1,), (1,)), dtype=np.int64)
+    features = {'x': np.array(((42,),), dtype=np.int32)}
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels)
+
+    expected_metric_keys = [
+        '{}/some_multiclass_head'.format(metric_keys.MetricKeys.LOSS_MEAN),
+        '{}/some_multiclass_head'.format(metric_keys.MetricKeys.ACCURACY)
+    ]
+    self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
+
   def test_eval_with_label_vocabulary_create_loss(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
@@ -598,6 +618,41 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
       _assert_simple_summaries(self, {
           metric_keys.MetricKeys.LOSS: expected_loss,
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
+      }, summary_str, tol)
+
+  def test_train_summaries_with_head_name(self):
+    n_classes = 3
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes, head_name='some_multiclass_head')
+
+    logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
+    labels = np.array(((1,), (1,)), dtype=np.int64)
+    # loss = sum(cross_entropy(labels, logits)) = sum(10, 0) = 10.
+    expected_loss = 10.
+    features = {'x': np.array(((42,),), dtype=np.int32)}
+
+    def _train_op_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    # Assert summaries.
+    tol = 1e-2
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      summary_str = sess.run(spec.scaffold.summary_op)
+      _assert_simple_summaries(self, {
+          '{}/some_multiclass_head'.format(metric_keys.MetricKeys.LOSS):
+              expected_loss,
+          '{}/some_multiclass_head'.format(metric_keys.MetricKeys.LOSS_MEAN):
+              expected_loss / 2,
       }, summary_str, tol)
 
   def test_train_with_one_dim_label_and_weights_create_loss(self):
@@ -834,7 +889,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     logits_2x1 = np.array(((45.,), (41.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': np.array(((42.,),))},
           mode=model_fn.ModeKeys.EVAL,
@@ -1033,6 +1088,30 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       self.assertAllClose(
           expected_metrics, {k: value_ops[k].eval() for k in value_ops})
 
+  def test_eval_metric_ops_with_head_name(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        head_name='some_binary_head')
+    logits = np.array(((45,), (-41,),), dtype=np.float32)
+    labels = np.array(((1,), (1,),), dtype=np.int32)
+    features = {'x': np.array(((42,),), dtype=np.int32)}
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels)
+
+    expected_metric_keys = [
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.LOSS_MEAN),
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.ACCURACY),
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.PREDICTION_MEAN),
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.LABEL_MEAN),
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.ACCURACY_BASELINE),
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.AUC),
+        '{}/some_binary_head'.format(metric_keys.MetricKeys.AUC_PR)
+    ]
+    self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
+
   def test_eval_with_vocabulary_list_create_loss(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
         label_vocabulary=['aang', 'iroh'])
@@ -1210,6 +1289,43 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
           # loss_mean = loss/2 = 41/2 = 20.5
           metric_keys.MetricKeys.LOSS_MEAN: 20.5,
       }, summary_str)
+
+  def test_train_summaries_with_head_name(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        head_name='some_binary_head')
+
+    logits = np.array(((45,), (-41,),), dtype=np.float32)
+    labels = np.array(((1,), (1,),), dtype=np.float64)
+    features = {'x': np.array(((42,),), dtype=np.float32)}
+    # loss = sum(cross_entropy(labels, logits)) = sum(0, 41) = 41
+    expected_loss = 41.
+
+    def _train_op_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+    # Assert summaries.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      summary_str = sess.run(spec.scaffold.summary_op)
+      _assert_simple_summaries(
+          self,
+          {
+              '{}/some_binary_head'.format(metric_keys.MetricKeys.LOSS):
+                  expected_loss,
+              # loss_mean = loss/2 = 41/2 = 20.5
+              '{}/some_binary_head'.format(metric_keys.MetricKeys.LOSS_MEAN):
+                  20.5,
+          },
+          summary_str)
 
   def test_float_labels_train_create_loss(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
@@ -1576,7 +1692,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     values_1d = np.array(((43.,), (44.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': values_1d},
           mode=model_fn.ModeKeys.EVAL,
@@ -1621,7 +1737,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     values_1d = np.array(((43.,), (44.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': values_1d},
           mode=model_fn.ModeKeys.TRAIN,
@@ -1814,6 +1930,46 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
           # loss_mean = loss/2 = 13/2 = 6.5
           metric_keys.MetricKeys.LOSS_MEAN: 6.5,
       }, summary_str)
+
+  def test_train_summaries_with_head_name(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        head_name='some_regression_head')
+    self.assertEqual(1, head.logits_dimension)
+
+    # Create estimator spec.
+    logits = np.array(((45,), (41,),), dtype=np.float32)
+    labels = np.array(((43.,), (44.,),), dtype=np.float64)
+    features = {'x': np.array(((42.,),), dtype=np.float32)}
+    # loss = (43-45)^2 + (44-41)^2 = 4 + 9 = 13
+    expected_loss = 13
+
+    def _train_op_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    # Assert summaries.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      summary_str = sess.run(spec.scaffold.summary_op)
+      _assert_simple_summaries(
+          self,
+          {
+              '{}/some_regression_head'.format(metric_keys.MetricKeys.LOSS):
+                  expected_loss,
+              # loss_mean = loss/2 = 13/2 = 6.5
+              '{}/some_regression_head'
+              .format(metric_keys.MetricKeys.LOSS_MEAN):
+                  6.5,
+          },
+          summary_str)
 
   def test_weighted_multi_example_eval(self):
     """1d label, 3 examples, 1 batch."""

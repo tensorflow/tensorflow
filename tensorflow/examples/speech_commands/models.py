@@ -62,7 +62,7 @@ def prepare_model_settings(label_count, sample_rate, clip_duration_ms,
 
 
 def create_model(fingerprint_input, model_settings, model_architecture,
-                 is_training):
+                 is_training, runtime_settings=None):
   """Builds a model of the requested architecture compatible with the settings.
 
   There are many possible ways of deriving predictions from a spectrogram
@@ -86,6 +86,7 @@ def create_model(fingerprint_input, model_settings, model_architecture,
     model_settings: Dictionary of information about the model.
     model_architecture: String specifying which kind of model to create.
     is_training: Whether the model is going to be used for training.
+    runtime_settings: Dictionary of information about the runtime.
 
   Returns:
     TensorFlow node outputting logits results, and optionally a dropout
@@ -102,10 +103,13 @@ def create_model(fingerprint_input, model_settings, model_architecture,
   elif model_architecture == 'low_latency_conv':
     return create_low_latency_conv_model(fingerprint_input, model_settings,
                                          is_training)
+  elif model_architecture == 'low_latency_svdf':
+    return create_low_latency_svdf_model(fingerprint_input, model_settings,
+                                         is_training, runtime_settings)
   else:
     raise Exception('model_architecture argument "' + model_architecture +
                     '" not recognized, should be one of "single_fc", "conv",' +
-                    ' or "low_latency_conv"')
+                    ' "low_latency_conv, or "low_latency_svdf"')
 
 
 def load_variables_from_checkpoint(sess, start_checkpoint):
@@ -357,6 +361,190 @@ def create_low_latency_conv_model(fingerprint_input, model_settings,
   else:
     second_fc_input = first_fc
   second_fc_output_channels = 128
+  second_fc_weights = tf.Variable(
+      tf.truncated_normal(
+          [first_fc_output_channels, second_fc_output_channels], stddev=0.01))
+  second_fc_bias = tf.Variable(tf.zeros([second_fc_output_channels]))
+  second_fc = tf.matmul(second_fc_input, second_fc_weights) + second_fc_bias
+  if is_training:
+    final_fc_input = tf.nn.dropout(second_fc, dropout_prob)
+  else:
+    final_fc_input = second_fc
+  label_count = model_settings['label_count']
+  final_fc_weights = tf.Variable(
+      tf.truncated_normal(
+          [second_fc_output_channels, label_count], stddev=0.01))
+  final_fc_bias = tf.Variable(tf.zeros([label_count]))
+  final_fc = tf.matmul(final_fc_input, final_fc_weights) + final_fc_bias
+  if is_training:
+    return final_fc, dropout_prob
+  else:
+    return final_fc
+
+
+def create_low_latency_svdf_model(fingerprint_input, model_settings,
+                                  is_training, runtime_settings):
+  """Builds an SVDF model with low compute requirements.
+
+  This is based in the topology presented in the 'Compressing Deep Neural
+  Networks using a Rank-Constrained Topology' paper:
+  https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/43813.pdf
+
+  Here's the layout of the graph:
+
+  (fingerprint_input)
+          v
+        [SVDF]<-(weights)
+          v
+      [BiasAdd]<-(bias)
+          v
+        [Relu]
+          v
+      [MatMul]<-(weights)
+          v
+      [BiasAdd]<-(bias)
+          v
+      [MatMul]<-(weights)
+          v
+      [BiasAdd]<-(bias)
+          v
+      [MatMul]<-(weights)
+          v
+      [BiasAdd]<-(bias)
+          v
+
+  This model produces lower recognition accuracy than the 'conv' model above,
+  but requires fewer weight parameters and, significantly fewer computations.
+
+  During training, dropout nodes are introduced after the relu, controlled by a
+  placeholder.
+
+  Args:
+    fingerprint_input: TensorFlow node that will output audio feature vectors.
+    The node is expected to produce a 2D Tensor of shape:
+      [batch, model_settings['dct_coefficient_count'] *
+              model_settings['spectrogram_length']]
+    with the features corresponding to the same time slot arranged contiguously,
+    and the oldest slot at index [:, 0], and newest at [:, -1].
+    model_settings: Dictionary of information about the model.
+    is_training: Whether the model is going to be used for training.
+    runtime_settings: Dictionary of information about the runtime.
+
+  Returns:
+    TensorFlow node outputting logits results, and optionally a dropout
+    placeholder.
+
+  Raises:
+      ValueError: If the inputs tensor is incorrectly shaped.
+  """
+  if is_training:
+    dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
+
+  input_frequency_size = model_settings['dct_coefficient_count']
+  input_time_size = model_settings['spectrogram_length']
+
+  # Validation.
+  input_shape = fingerprint_input.get_shape()
+  if len(input_shape) != 2:
+    raise ValueError('Inputs to `SVDF` should have rank == 2.')
+  if input_shape[-1].value is None:
+    raise ValueError('The last dimension of the inputs to `SVDF` '
+                     'should be defined. Found `None`.')
+  if input_shape[-1].value % input_frequency_size != 0:
+    raise ValueError('Inputs feature dimension %d must be a multiple of '
+                     'frame size %d', fingerprint_input.shape[-1].value,
+                     input_frequency_size)
+
+  # Set number of units (i.e. nodes) and rank.
+  rank = 2
+  num_units = 1280
+  # Number of filters: pairs of feature and time filters.
+  num_filters = rank * num_units
+  # Create the runtime memory: [num_filters, batch, input_time_size]
+  batch = 1
+  memory = tf.Variable(tf.zeros([num_filters, batch, input_time_size]),
+                       trainable=False, name='runtime-memory')
+  # Determine the number of new frames in the input, such that we only operate
+  # on those. For training we do not use the memory, and thus use all frames
+  # provided in the input.
+  # new_fingerprint_input: [batch, num_new_frames*input_frequency_size]
+  if is_training:
+    num_new_frames = input_time_size
+  else:
+    window_stride_ms = int(model_settings['window_stride_samples'] * 1000 /
+                           model_settings['sample_rate'])
+    num_new_frames = tf.cond(
+        tf.equal(tf.count_nonzero(memory), 0),
+        lambda: input_time_size,
+        lambda: int(runtime_settings['clip_stride_ms'] / window_stride_ms))
+  new_fingerprint_input = fingerprint_input[
+      :, -num_new_frames*input_frequency_size:]
+  # Expand to add input channels dimension.
+  new_fingerprint_input = tf.expand_dims(new_fingerprint_input, 2)
+
+  # Create the frequency filters.
+  weights_frequency = tf.Variable(
+      tf.truncated_normal([input_frequency_size, num_filters], stddev=0.01))
+  # Expand to add input channels dimensions.
+  # weights_frequency: [input_frequency_size, 1, num_filters]
+  weights_frequency = tf.expand_dims(weights_frequency, 1)
+  # Convolve the 1D feature filters sliding over the time dimension.
+  # activations_time: [batch, num_new_frames, num_filters]
+  activations_time = tf.nn.conv1d(
+      new_fingerprint_input, weights_frequency, input_frequency_size, 'VALID')
+  # Rearrange such that we can perform the batched matmul.
+  # activations_time: [num_filters, batch, num_new_frames]
+  activations_time = tf.transpose(activations_time, perm=[2, 0, 1])
+
+  # Runtime memory optimization.
+  if not is_training:
+    # We need to drop the activations corresponding to the oldest frames, and
+    # then add those corresponding to the new frames.
+    new_memory = memory[:, :, num_new_frames:]
+    new_memory = tf.concat([new_memory, activations_time], 2)
+    tf.assign(memory, new_memory)
+    activations_time = new_memory
+
+  # Create the time filters.
+  weights_time = tf.Variable(
+      tf.truncated_normal([num_filters, input_time_size], stddev=0.01))
+  # Apply the time filter on the outputs of the feature filters.
+  # weights_time: [num_filters, input_time_size, 1]
+  # outputs: [num_filters, batch, 1]
+  weights_time = tf.expand_dims(weights_time, 2)
+  outputs = tf.matmul(activations_time, weights_time)
+  # Split num_units and rank into separate dimensions (the remaining
+  # dimension is the input_shape[0] -i.e. batch size). This also squeezes
+  # the last dimension, since it's not used.
+  # [num_filters, batch, 1] => [num_units, rank, batch]
+  outputs = tf.reshape(outputs, [num_units, rank, -1])
+  # Sum the rank outputs per unit => [num_units, batch].
+  units_output = tf.reduce_sum(outputs, axis=1)
+  # Transpose to shape [batch, num_units]
+  units_output = tf.transpose(units_output)
+
+  # Appy bias.
+  bias = tf.Variable(tf.zeros([num_units]))
+  first_bias = tf.nn.bias_add(units_output, bias)
+
+  # Relu.
+  first_relu = tf.nn.relu(first_bias)
+
+  if is_training:
+    first_dropout = tf.nn.dropout(first_relu, dropout_prob)
+  else:
+    first_dropout = first_relu
+
+  first_fc_output_channels = 256
+  first_fc_weights = tf.Variable(
+      tf.truncated_normal([num_units, first_fc_output_channels], stddev=0.01))
+  first_fc_bias = tf.Variable(tf.zeros([first_fc_output_channels]))
+  first_fc = tf.matmul(first_dropout, first_fc_weights) + first_fc_bias
+  if is_training:
+    second_fc_input = tf.nn.dropout(first_fc, dropout_prob)
+  else:
+    second_fc_input = first_fc
+  second_fc_output_channels = 256
   second_fc_weights = tf.Variable(
       tf.truncated_normal(
           [first_fc_output_channels, second_fc_output_channels], stddev=0.01))

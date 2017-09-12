@@ -70,7 +70,7 @@ StatusOr<bool> ParallelizationPreparation::Run(HloModule* module) {
     while (CanOutlineWithUser(outline_candidate)) {
       HloInstruction* prior_candidate = outline_candidate;
       outline_candidate = *outline_candidate->users().begin();
-      all_bitcasts |= outline_candidate->opcode() == HloOpcode::kBitcast;
+      all_bitcasts &= outline_candidate->opcode() == HloOpcode::kBitcast;
       if (std::any_of(outline_candidate->operands().begin(),
                       outline_candidate->operands().end(),
                       [&](const HloInstruction* operand) {

@@ -24,14 +24,9 @@ from autograd import container_types
 from autograd import core as ag_core
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
-
-
-def tensor_id(t):
-  """Returns a unique identifier for this Tensor."""
-  t = ag_core.getval(t)
-  return t._id  # pylint: disable=protected-access
 
 
 class ImplicitTape(object):
@@ -58,7 +53,7 @@ def _watch_with_tape(tape, tensor):
   """Wraps a watched Tensor and keeps track of it in the implicit tape."""
   w = _watch_with_tape_internal(tape, tensor)
   if ag_core.isnode(tape):
-    tape.value.tensors[tensor_id(tensor)] = w
+    tape.value.tensors[ops.tensor_id(tensor)] = w
   return w
 
 
@@ -105,6 +100,9 @@ class NoneVSpace(ag_core.VSpace):
 
   def __init__(self, _):
     self.size = 0
+
+  def zeros(self):
+    return 0
 
 
 ag_core.register_vspace(NoneVSpace, type(None))
@@ -153,6 +151,15 @@ def watch(tensor):
   return tensor
 
 
+def watch_variable(resource_variable):
+  """Marks this ResourceVariable to be watched by all tapes in the stack.
+
+  Args:
+    resource_variable: A ResourceVariable to be watched.
+  """
+  watch(resource_variable.handle)  # py-lint: disable=protected-access
+
+
 def pop_tape():
   """Pops the top tape in the stack, if any."""
   if _tape_stack.stack:
@@ -162,7 +169,7 @@ def pop_tape():
 
 def any_tape_has(tensor):
   for t in _tape_stack.stack:
-    if tensor_id(tensor) in t.value.tensors:
+    if ops.tensor_id(tensor) in t.value.tensors:
       return True
   return False
 
@@ -202,39 +209,43 @@ class _EagerSequenceVSpace(container_types.SequenceVSpace):
     return True
 
 
-class _EagerList(list):
-  """Type used to bypass SequenceVSpace."""
+class EagerList(list):
+  """Type used to bypass SequenceVSpace.
+
+  SequenceVSpace has a very strict equality check which does not match
+  tensorflow semantics.
+  """
 
   def __init__(self, value):
-    super(_EagerList, self).__init__(value)
+    super(EagerList, self).__init__(value)
     for v in value:
       assert not ag_core.isnode(v)
 
-ag_core.register_vspace(_EagerSequenceVSpace, _EagerList)
-ag_core.register_node(_EagerSequenceNode, _EagerList)
+ag_core.register_vspace(_EagerSequenceVSpace, EagerList)
+ag_core.register_node(_EagerSequenceNode, EagerList)
 
 
 @ag_core.primitive
 def _record_operation(output_tensors, input_tensors, side_outputs,
                       backward_function):
   del input_tensors, side_outputs, backward_function
-  return _EagerList(output_tensors)
+  return EagerList(output_tensors)
 
 
 def record_operation(o, i, s, b):
   """Primitive to trigger autograd tracing on outputs from inputs."""
-  inputs = container_types.make_sequence(_EagerList, *i)
+  inputs = container_types.make_sequence(EagerList, *i)
   return _record_operation(o, inputs, s, b)
 
 
 def _record_operation_vjp(g, ans, vs, gvs, output_tensors, input_tensors,
                           side_outputs, backward_function):
   """Gradient for _record_operation."""
-  del ans, vs, gvs, output_tensors, input_tensors
+  del vs, gvs, input_tensors, output_tensors
   backward_args = tuple(g) + tuple(side_outputs)
-  if ag_core.isnode(backward_args):
-    backward_args = list(backward_args)
+  backward_args = container_types.make_sequence(
+      EagerList, *(tuple(ans) + backward_args))
   tensors = nest.flatten(backward_function(*backward_args))
-  return _EagerList([ag_core.getval(t) for t in tensors])
+  return container_types.make_sequence(EagerList, *tensors)
 
 _record_operation.defvjp(_record_operation_vjp, argnum=1)

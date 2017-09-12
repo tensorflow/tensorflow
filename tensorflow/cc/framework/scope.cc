@@ -37,13 +37,14 @@ Scope& Scope::operator=(const Scope& other) {
 }
 
 Scope::Impl::Impl(Graph* graph, Status* status, NameMap* name_map,
-                  ShapeRefiner* refiner)
+                  ShapeRefiner* refiner, bool disable_shape_inference)
     : graph_(graph),
       status_(status),
       name_map_(name_map),
       refiner_(refiner),
       scope_used_(nullptr),
-      colocation_constraints_() {}
+      colocation_constraints_(),
+      disable_shape_inference_(disable_shape_inference) {}
 
 Scope::Impl::Impl(const std::shared_ptr<Graph>& graph,
                   const std::shared_ptr<Status>& status,
@@ -54,13 +55,23 @@ Scope::Impl::Impl(const std::shared_ptr<Graph>& graph,
       name_map_(name_map),
       refiner_(refiner),
       scope_used_(nullptr),
-      colocation_constraints_() {}
+      colocation_constraints_(),
+      disable_shape_inference_(false) {}
 
 Scope Scope::NewRootScope() {
   Graph* graph = new Graph(OpRegistry::Global());
   ShapeRefiner* refiner =
       new ShapeRefiner(graph->versions(), graph->op_registry());
-  return Scope(new Impl(graph, new Status, new Impl::NameMap, refiner));
+  return Scope(new Impl(graph, new Status, new Impl::NameMap, refiner,
+                        /* disable_shape_inference */ false));
+}
+
+Scope Scope::DisabledShapeInferenceScope() {
+  Graph* graph = new Graph(OpRegistry::Global());
+  ShapeRefiner* refiner =
+      new ShapeRefiner(graph->versions(), graph->op_registry());
+  return Scope(new Impl(graph, new Status, new Impl::NameMap, refiner,
+                        /* disable_shape_inference */ true));
 }
 
 Scope::Impl::Impl(const Scope& other, Tags::ScopeName, const string& name,
@@ -77,7 +88,8 @@ Scope::Impl::Impl(const Scope& other, Tags::ScopeName, const string& name,
       exit_on_error_(other.impl()->exit_on_error_),
       kernel_label_(other.impl()->kernel_label_),
       device_(other.impl()->device_),
-      colocation_constraints_(other.impl()->colocation_constraints_) {}
+      colocation_constraints_(other.impl()->colocation_constraints_),
+      disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
 Scope::Impl::Impl(const Scope& other, Tags::OpName, const string& name,
                   const string& op_name)
@@ -92,7 +104,8 @@ Scope::Impl::Impl(const Scope& other, Tags::OpName, const string& name,
       exit_on_error_(other.impl()->exit_on_error_),
       kernel_label_(other.impl()->kernel_label_),
       device_(other.impl()->device_),
-      colocation_constraints_(other.impl()->colocation_constraints_) {}
+      colocation_constraints_(other.impl()->colocation_constraints_),
+      disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
 Scope::Impl::Impl(const Scope& other, Tags::ControlDeps,
                   std::vector<Operation> control_deps, bool clear_control_deps)
@@ -113,7 +126,8 @@ Scope::Impl::Impl(const Scope& other, Tags::ControlDeps,
       exit_on_error_(other.impl()->exit_on_error_),
       kernel_label_(other.impl()->kernel_label_),
       device_(other.impl()->device_),
-      colocation_constraints_(other.impl()->colocation_constraints_) {}
+      colocation_constraints_(other.impl()->colocation_constraints_),
+      disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
 Scope::Impl::Impl(const Scope& other, Tags::Device, const string& device)
     : graph_(other.impl()->graph_),
@@ -127,7 +141,8 @@ Scope::Impl::Impl(const Scope& other, Tags::Device, const string& device)
       exit_on_error_(other.impl()->exit_on_error_),
       kernel_label_(other.impl()->kernel_label_),
       device_(device),
-      colocation_constraints_(other.impl()->colocation_constraints_) {}
+      colocation_constraints_(other.impl()->colocation_constraints_),
+      disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
 Scope::Impl::Impl(const Scope& other, Tags::SingleUseScope,
                   const string& op_name)
@@ -142,7 +157,8 @@ Scope::Impl::Impl(const Scope& other, Tags::SingleUseScope,
       exit_on_error_(other.impl()->exit_on_error_),
       kernel_label_(other.impl()->kernel_label_),
       device_(other.impl()->device_),
-      colocation_constraints_(other.impl()->colocation_constraints_) {}
+      colocation_constraints_(other.impl()->colocation_constraints_),
+      disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
 Scope::Impl::Impl(const Scope& other, Tags::ExitOnError)
     : graph_(other.impl()->graph_),
@@ -156,7 +172,8 @@ Scope::Impl::Impl(const Scope& other, Tags::ExitOnError)
       exit_on_error_(true),
       kernel_label_(other.impl()->kernel_label_),
       device_(other.impl()->device_),
-      colocation_constraints_(other.impl()->colocation_constraints_) {}
+      colocation_constraints_(other.impl()->colocation_constraints_),
+      disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
 Scope::Impl::Impl(const Scope& other, Tags::KernelLabel,
                   const string& kernel_label)
@@ -171,7 +188,8 @@ Scope::Impl::Impl(const Scope& other, Tags::KernelLabel,
       exit_on_error_(other.impl()->exit_on_error_),
       kernel_label_(kernel_label),
       device_(other.impl()->device_),
-      colocation_constraints_(other.impl()->colocation_constraints_) {}
+      colocation_constraints_(other.impl()->colocation_constraints_),
+      disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
 Scope::Impl::Impl(const Scope& other, Tags::Colocate,
                   const Operation& colocate_with_op, bool clear_colocations)
@@ -189,7 +207,8 @@ Scope::Impl::Impl(const Scope& other, Tags::Colocate,
       colocation_constraints_(
           clear_colocations
               ? std::unordered_set<string>()
-              : other.impl()->GetColocationConstraints(colocate_with_op)) {}
+              : other.impl()->GetColocationConstraints(colocate_with_op)),
+      disable_shape_inference_(other.impl()->disable_shape_inference_) {}
 
 std::unordered_set<string> Scope::Impl::GetColocationConstraints(
     const Operation& colocate_with_op) const {
@@ -402,6 +421,11 @@ CompositeOpScopes Scope::GetCompositeOpScopes(
                            true /* copy_names */)),
             *this};
   }
+}
+
+Status Scope::DoShapeInference(Node* node) const {
+  if (impl_->disable_shape_inference_) return Status::OK();
+  return impl_->refiner_->AddNode(node);
 }
 
 class InternalScope {

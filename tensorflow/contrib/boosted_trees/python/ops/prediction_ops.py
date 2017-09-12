@@ -17,16 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=unused-import
+from tensorflow.contrib.boosted_trees.python.ops import boosted_trees_ops_loader
+# pylint: enable=unused-import
 # pylint: disable=wildcard-import
 from tensorflow.contrib.boosted_trees.python.ops.gen_prediction_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import errors
-from tensorflow.python.platform import resource_loader
-
-# Conditionally load ops, they might already be statically linked in.
-try:
-  _prediction_ops = loader.load_op_library(
-      resource_loader.get_path_to_datafile('_prediction_ops.so'))
-except (errors.NotFoundError, IOError):
-  print('Error loading _prediction_ops.so')

@@ -69,6 +69,14 @@ class TFProfStatsTest : public ::testing::Test {
     tf_stats_->BuildAllViews();
   }
 
+  string TestToFromProto(const string& cmd, const Options& opts) {
+    string profile_file = io::JoinPath(testing::TmpDir(), "profile");
+    tf_stats_->WriteProfile(profile_file);
+    TFStats new_stats(profile_file, nullptr);
+    new_stats.BuildAllViews();
+    return new_stats.ShowGraphNode(cmd, opts).DebugString();
+  }
+
   std::unique_ptr<TFStats> tf_stats_;
 };
 
@@ -98,6 +106,8 @@ TEST_F(TFProfStatsTest, CustomOpType) {
       "2\ntotal_definition_count: 3\ntotal_output_bytes: 2560\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfStatsTest, CheckPointOpType) {
@@ -126,6 +136,8 @@ TEST_F(TFProfStatsTest, CheckPointOpType) {
       "2\ntotal_definition_count: 3\ntotal_output_bytes: 2560\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfStatsTest, TestGraph) {
@@ -137,7 +149,7 @@ TEST_F(TFProfStatsTest, TestGraph) {
 
   GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
-      "name: \"_TFProfRoot\"\ntotal_exec_micros: 4904\ntotal_requested_bytes: "
+      "name: \"_TFProfRoot\"\ntotal_exec_micros: 4945\ntotal_requested_bytes: "
       "14592\ntotal_parameters: 451\nchildren {\n  name: "
       "\"DW/Initializer/random_normal/mul\"\n  children {\n    name: "
       "\"DW/Initializer/random_normal/RandomStandardNormal\"\n    children {\n "
@@ -152,11 +164,13 @@ TEST_F(TFProfStatsTest, TestGraph) {
       "}\n  input_shapes {\n    key: 1\n    value {\n      dim {\n        "
       "size: 1\n      }\n    }\n  }\n  total_definition_count: "
       "4\n}\ntotal_float_ops: 10440\ntotal_accelerator_exec_micros: "
-      "404\ntotal_cpu_exec_micros: 4500\ntotal_run_count: "
-      "5\ntotal_definition_count: 31\ntotal_peak_bytes: "
+      "404\ntotal_cpu_exec_micros: 4541\ntotal_run_count: "
+      "6\ntotal_definition_count: 32\ntotal_peak_bytes: "
       "9984\ntotal_residual_bytes: 1280\ntotal_output_bytes: 4864\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("graph", opts));
 }
 
 TEST_F(TFProfStatsTest, TestFloatOps) {
@@ -166,7 +180,7 @@ TEST_F(TFProfStatsTest, TestFloatOps) {
 
   GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
-      "name: \"_TFProfRoot\"\ntotal_exec_micros: 4904\ntotal_requested_bytes: "
+      "name: \"_TFProfRoot\"\ntotal_exec_micros: 4945\ntotal_requested_bytes: "
       "14592\ntotal_parameters: 451\nchildren {\n  name: \"Conv2D\"\n  "
       "exec_micros: 4292\n  requested_bytes: 9472\n  total_exec_micros: 4292\n "
       " total_requested_bytes: 9472\n  devices: "
@@ -199,10 +213,12 @@ TEST_F(TFProfStatsTest, TestFloatOps) {
       "output_bytes: 512\n  total_peak_bytes: 4096\n  total_residual_bytes: "
       "512\n  total_output_bytes: 512\n}\ntotal_float_ops: "
       "10440\ntotal_accelerator_exec_micros: 404\ntotal_cpu_exec_micros: "
-      "4500\ntotal_run_count: 5\ntotal_definition_count: 34\ntotal_peak_bytes: "
+      "4541\ntotal_run_count: 6\ntotal_definition_count: 35\ntotal_peak_bytes: "
       "9984\ntotal_residual_bytes: 1280\ntotal_output_bytes: 4864\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
@@ -236,6 +252,8 @@ TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
       "4096\ntotal_residual_bytes: 512\ntotal_output_bytes: 512\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfStatsTest, TestShowTensorValue) {
@@ -246,7 +264,7 @@ TEST_F(TFProfStatsTest, TestShowTensorValue) {
   const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
   GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
-      "name: \"_TFProfRoot\"\ntotal_exec_micros: 4904\ntotal_requested_bytes: "
+      "name: \"_TFProfRoot\"\ntotal_exec_micros: 4945\ntotal_requested_bytes: "
       "14592\ntotal_parameters: 451\nchildren {\n  name: \"DW\"\n  "
       "exec_micros: 2\n  parameters: 162\n  total_exec_micros: 2\n  "
       "total_parameters: 162\n  devices: "
@@ -336,7 +354,7 @@ TEST_F(TFProfStatsTest, TestShowTensorValue) {
       "total_run_count: 1\n  total_definition_count: 10\n  output_bytes: "
       "1280\n  total_output_bytes: 1280\n}\ntotal_float_ops: "
       "10440\ntotal_accelerator_exec_micros: 404\ntotal_cpu_exec_micros: "
-      "4500\ntotal_run_count: 5\ntotal_definition_count: 34\ntotal_peak_bytes: "
+      "4541\ntotal_run_count: 6\ntotal_definition_count: 35\ntotal_peak_bytes: "
       "9984\ntotal_residual_bytes: 1280\ntotal_output_bytes: 4864\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
