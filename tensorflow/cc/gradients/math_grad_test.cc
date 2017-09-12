@@ -737,10 +737,14 @@ TEST_F(CWiseUnaryComplexGradTest, Angle) {
   Tensor x = test::AsTensor<complex64>(
       {{1, -1}, {-2, 2}, {3, -3}, {-4, 4}, {8, -8}, {-9, 9}}, {2, 3});
   Tensor dy = test::AsTensor<float>({11, -12, 13, -14, 15, -16}, {2, 3});
-  Tensor dx_expected = test::AsTensor<complex64>(
-      {{5.5, 5.5}, {3, 3},
-       {2.1666666666666665, 2.1666666666666665}, {1.75, 1.75},
-       {0.9375, 0.9375}, {0.8888888888888888, 0.8888888888888888}}, {2, 3});
+  Tensor dx_expected =
+      test::AsTensor<complex64>({{5.5, 5.5},
+                                 {3, 3},
+                                 {2.1666666666666665, 2.1666666666666665},
+                                 {1.75, 1.75},
+                                 {0.9375, 0.9375},
+                                 {0.8888888888888888, 0.8888888888888888}},
+                                {2, 3});
   TestCWiseGradComplex(ANGLE, x, dy, dx_expected);
 }
 
@@ -920,8 +924,8 @@ class NaryGradTest : public ::testing::Test {
                const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
     TF_ASSERT_OK(scope_.status());
     float max_error;
-    TF_ASSERT_OK(
-        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
+    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+        scope_, xs, x_shapes, ys, y_shapes, &max_error)));
     EXPECT_LT(max_error, 1e-3);
   }
 
@@ -929,8 +933,8 @@ class NaryGradTest : public ::testing::Test {
                const TensorShape& y_shape) {
     TF_ASSERT_OK(scope_.status());
     float max_error;
-    TF_ASSERT_OK(
-        ComputeGradientError(scope_, x, x_init_value, y, y_shape, &max_error));
+    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+        scope_, x, x_init_value, y, y_shape, &max_error)));
     EXPECT_LT(max_error, 1e-3);
   }
 
