@@ -401,7 +401,7 @@ class StepperTest(test_util.TensorFlowTestCase):
       elif i == 5:
         fetches = {"e": "e:0", "fz": {"f": "f:0", "z": "z:0"}}
 
-      with  NodeStepper(self.sess, fetches) as stepper:
+      with NodeStepper(self.sess, fetches) as stepper:
         sorted_nodes = stepper.sorted_nodes()
         self.assertEqual(13, len(sorted_nodes))
 

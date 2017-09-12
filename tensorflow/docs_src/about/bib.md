@@ -37,7 +37,7 @@ system, we suggest you cite this whitepaper.
 <pre>
 @misc{tensorflow2015-whitepaper,
 title={ {TensorFlow}: Large-Scale Machine Learning on Heterogeneous Systems},
-url={http://tensorflow.org/},
+url={https://www.tensorflow.org/},
 note={Software available from tensorflow.org},
 author={
     Mart\'{\i}n~Abadi and

@@ -19,7 +19,9 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_io_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
 
 
@@ -34,6 +36,25 @@ class ShardedFileOpsTest(test.TestCase):
       self.assertEqual(
           gen_io_ops._sharded_filespec("foo", 100).eval(),
           b"foo-?????-of-00100")
+
+
+class ShapeInferenceTest(test.TestCase):
+
+  def testRestoreV2WithSliceInput(self):
+    op = io_ops.restore_v2("model", ["var1", "var2"], ["", "3 4 0,1:-"],
+                           [dtypes.float32, dtypes.float32])
+    self.assertEqual(2, len(op))
+    self.assertFalse(op[0].get_shape().is_fully_defined())
+    self.assertEqual([1, 4], op[1].get_shape())
+
+  def testRestoreV2NumSlicesNotMatch(self):
+    with self.assertRaises(ValueError):
+      io_ops.restore_v2("model", ["var1", "var2", "var3"], ["", "3 4 0,1:-"],
+                        [dtypes.float32, dtypes.float32])
+
+  def testRestoreSlice(self):
+    op = gen_io_ops._restore_slice("model", "var", "3 4 0,1:-", dtypes.float32)
+    self.assertEqual([1, 4], op.get_shape())
 
 
 if __name__ == "__main__":

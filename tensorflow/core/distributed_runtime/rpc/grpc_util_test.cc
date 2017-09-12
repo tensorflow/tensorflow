@@ -38,12 +38,11 @@ grpc::ByteBuffer MakeBuffer(const string& str, int num_slices) {
   const size_t per_slice = (str.size() + num_slices - 1) / num_slices;
   for (size_t pos = 0; pos < str.size();) {
     const size_t n = std::min(str.size() - pos, per_slice);
-    auto slice = grpc_slice_from_copied_buffer(&str[pos], n);
-    slices.push_back(::grpc::Slice(slice, ::grpc::Slice::STEAL_REF));
+    slices.emplace_back(&str[pos], n);
     pos += n;
   }
   if (slices.empty()) {
-    slices.push_back(::grpc::Slice());
+    slices.emplace_back();
   }
   return ::grpc::ByteBuffer(&slices[0], slices.size());
 }

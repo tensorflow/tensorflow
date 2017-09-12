@@ -133,7 +133,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   } else {
     // Array shape.
     if (!shape.has_layout()) {
-      return InvalidArgument("shape does not have a layout");
+      return InvalidArgument("shape %s does not have a layout",
+                             ShapeUtil::HumanString(shape).c_str());
     }
     return ValidateLayoutForShape(shape.layout(), shape);
   }

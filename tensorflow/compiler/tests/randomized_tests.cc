@@ -352,10 +352,10 @@ OpTest::OpTest() {
   } else {
     seed = static_cast<unsigned int>(s);
   }
-  LOG(INFO) << "Random seed for test case: " << seed
-            << ". To reproduce the "
-               "results of this test, pass flag --tf_xla_random_seed="
-            << seed;
+  LOG(ERROR) << "Random seed for test case: " << seed
+             << ". To reproduce the "
+                "results of this test, pass flag --tf_xla_random_seed="
+             << seed;
   generator_.reset(new std::mt19937(seed));
 
   // Create a session with an empty graph.
@@ -702,11 +702,8 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
   input_tensors.reserve(inputs.size());
   for (const OpTestBuilder::InputDescription& input : inputs) {
     if (input.type == DT_INVALID) {
-      VLOG(1) << "Input: " << input.tensor.DebugString();
       input_tensors.push_back(input.tensor);
     } else {
-      VLOG(1) << "Input: " << input.type << " "
-              << TensorShape(input.dims).DebugString();
       std::vector<int64> dims;
       if (input.has_dims) {
         dims = input.dims;
@@ -714,11 +711,14 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
         dims = RandomDims();
       }
       if (!TensorSizeIsOk(dims)) {
+        VLOG(1) << "Input: " << input.type << " "
+                << TensorShape(input.dims).DebugString();
         VLOG(1) << "Ignoring oversize dims.";
         return kInvalid;
       }
       input_tensors.push_back(RandomTensor(input.type, dims));
     }
+    VLOG(1) << "Input: " << input_tensors.back().DebugString();
   }
 
   string cpu_device =
@@ -829,6 +829,13 @@ TEST_F(OpTest, Abs) {
   });
 }
 
+TEST_F(OpTest, Acosh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Acosh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Add) {
   Repeatedly([this]() {
     DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
@@ -878,6 +885,30 @@ TEST_F(OpTest, Any) {
                                              .RandomInput(DT_BOOL, data_dims)
                                              .Input(indices)
                                              .Attr("keep_dims", keep_dims));
+  });
+}
+
+TEST_F(OpTest, ApproximateEqual) {
+  Repeatedly([this]() {
+    auto dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ApproximateEqual")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Asinh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Asinh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Atanh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Atanh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 
@@ -950,7 +981,7 @@ TEST_F(OpTest, AvgPoolGrad) {
             .Attr("ksize", ImageDims(FORMAT_NHWC, 1, 1, d.kernel_dims))
             .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
-            .Attr("data_format", "NDHWC"));
+            .Attr("data_format", "NHWC"));
   });
 }
 
@@ -1007,7 +1038,7 @@ TEST_F(OpTest, BatchToSpace) {
     const int num_block_dims = 2;
     std::vector<int64> block_dims =
         RandomDims(num_block_dims, num_block_dims, 0, 5);
-    int64 block_size = RandomDim(0, 4);
+    int64 block_size = RandomDim(2, 5);
 
     std::vector<int64> input_dims(1 + num_block_dims + 1);
     input_dims[0] = RandomDim();
@@ -1372,6 +1403,20 @@ TEST_F(OpTest, DepthwiseConv2DBackpropFilter) {
   });
 }
 
+TEST_F(OpTest, Cos) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Cos").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Cosh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Cosh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, DepthwiseConv2DBackpropInput) {
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
@@ -1459,11 +1504,11 @@ TEST_F(OpTest, DynamicStitch) {
     } while (size == 0);
 
     // Shuffle the range of indices that cover the output.
-    // TODO(phawkins): The documentation for DynamicStitch doesn't require that
-    // the indices cover all positions of the output. The XLA implementation
-    // does so require. However, the native TF implementation leaves undefined
-    // values if we don't cover everything, so we can't really test that case
-    // anyway.
+    // TODO(phawkins): The documentation for DynamicStitch doesn't require
+    // that the indices cover all positions of the output. The XLA
+    // implementation does so require. However, the native TF implementation
+    // leaves undefined values if we don't cover everything, so we can't
+    // really test that case anyway.
     std::vector<int32> indices(size);
     std::iota(indices.begin(), indices.end(), 0);
     std::shuffle(indices.begin(), indices.end(), generator());
@@ -1537,6 +1582,13 @@ TEST_F(OpTest, Exp) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Exp").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Expm1) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Expm1").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 
@@ -1620,11 +1672,9 @@ TEST_F(OpTest, GreaterEqual) {
 
 TEST_F(OpTest, L2Loss) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
-    // TODO(b/31644876): scalars currently crash.
-    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("L2Loss")
-                                             .RandomInput(type, RandomDims(1))
-                                             .Attr("T", type));
+    DataType type = DT_FLOAT;
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("L2Loss").RandomInput(type).Attr("T", type));
   });
 }
 
@@ -1672,6 +1722,13 @@ TEST_F(OpTest, Log) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Log").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Log1p) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Log1p").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 
@@ -2116,6 +2173,15 @@ TEST_F(OpTest, Reciprocal) {
   });
 }
 
+TEST_F(OpTest, ReciprocalGrad) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ReciprocalGrad")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
 TEST_F(OpTest, Relu) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
@@ -2201,6 +2267,13 @@ TEST_F(OpTest, ReverseV2) {
   });
 }
 
+TEST_F(OpTest, Rint) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Rint").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Round) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
@@ -2272,6 +2345,20 @@ TEST_F(OpTest, Sign) {
   });
 }
 
+TEST_F(OpTest, Sin) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Sin").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Sinh) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Sinh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Size) {
   Repeatedly([this]() {
     DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
@@ -2339,11 +2426,28 @@ TEST_F(OpTest, SoftplusGrad) {
   });
 }
 
+TEST_F(OpTest, Softsign) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Softsign").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, SoftsignGrad) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SoftsignGrad")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, SpaceToBatch) {
   Repeatedly([this]() {
     std::vector<int64> block_dims = RandomDims(4, 4, 0, 5);
     const int num_block_dims = 2;
-    int64 block_size = RandomDim(0, 4);
+    int64 block_size = RandomDim(2, 5);
 
     std::vector<int64> input_dims(1 + num_block_dims + 1);
     input_dims[0] = RandomDim();
@@ -2493,6 +2597,16 @@ TEST_F(OpTest, Sqrt) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Sqrt").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, SqrtGrad) {
+  Repeatedly([this]() {
+    auto dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SqrtGrad")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
   });
 }
 
@@ -2652,6 +2766,13 @@ TEST_F(OpTest, StridedSliceGrad) {
             .Attr("ellipsis_mask", ellipsis_mask)
             .Attr("new_axis_mask", new_axis_mask)
             .Attr("shrink_axis_mask", shrink_axis_mask));
+  });
+}
+
+TEST_F(OpTest, Tan) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Tan").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
   });
 }
 

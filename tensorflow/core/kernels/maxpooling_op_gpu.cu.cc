@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
@@ -86,6 +87,42 @@ __global__ void MaxPoolForwardNCHW(const int nthreads, const dtype* bottom_data,
     if (mask != nullptr) {
       mask[index] = maxidx;
     }
+  }
+}
+
+// The parameters for MaxPoolForwardNoMaskKernel_NCHW_VECT_C are the same as for
+// MaxPoolForwardNCHW above, except that mask is not supported, and each
+// element of the input and output contains 4 adjacent channel values for
+// the same X, y coordinate.
+// (so channels = outer_channels, output_size = real output size / 4).
+__global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
+    const int nthreads, const int32* bottom_data, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    int32* top_data) {
+  // TODO(pauldonnelly): Implement a better optimized version of this kernel.
+  const int32 kMinINT8X4 = 0x80808080;
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    int pw = index % pooled_width;
+    int ph = (index / pooled_width) % pooled_height;
+    int c = (index / pooled_width / pooled_height) % channels;
+    int n = index / pooled_width / pooled_height / channels;
+    int hstart = ph * stride_h - pad_t;
+    int wstart = pw * stride_w - pad_l;
+    int hend = min(hstart + kernel_h, height);
+    int wend = min(wstart + kernel_w, width);
+    hstart = max(hstart, 0);
+    wstart = max(wstart, 0);
+    int32 maxval = kMinINT8X4;
+    const int32* bottom_data_n = bottom_data + n * channels * height * width;
+    for (int h = hstart; h < hend; ++h) {
+      for (int w = wstart; w < wend; ++w) {
+        int idx = (c * height + h) * width + w;
+        maxval = __vmaxs4(maxval, bottom_data_n[idx]);
+      }
+    }
+    top_data[index] = maxval;
   }
 }
 
@@ -327,6 +364,25 @@ __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
 }  // namespace
 
 namespace functor {
+
+// Note: channels is the outer channels (dim 1) which has already been
+// divided by 4.
+bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
+    const int32* bottom_data, const int batch, const int height,
+    const int width, int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    int32* top_data, const Eigen::GpuDevice& d) {
+  const int kThreadsPerBlock = 1024;
+  const int output_size = batch * channels * pooled_height * pooled_width;
+  MaxPoolForwardNoMaskKernel_NCHW_VECT_C<<<
+      (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
+      0, d.stream()>>>(output_size, bottom_data, height, width, channels,
+                       pooled_height, pooled_width, kernel_h, kernel_w,
+                       stride_h, stride_w, pad_t, pad_l, top_data);
+  d.synchronize();
+  return d.ok();
+}
 
 template <typename T>
 bool MaxPoolForwardWithOptionalArgmax<T>::operator()(

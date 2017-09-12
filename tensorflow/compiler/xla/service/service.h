@@ -71,9 +71,9 @@ class ServiceOptions {
   int intra_op_parallelism_threads_ = -1;
 };
 
-// The XLA service object, which is the same across all
-// platforms. It maintains the service state of computations and allocations,
-// and delegates target-specific requests to the target-specific infrastructure
+// The XLA service object, which is the same across all platforms. It maintains
+// the service state of computations and allocations, and delegates
+// target-specific requests to the target-specific infrastructure
 // (target-specific compiler, StreamExecutor).
 class Service : public ServiceInterface {
  public:
@@ -258,8 +258,8 @@ class Service : public ServiceInterface {
 
   // The constructor is private. Use the NewService factory to create new
   // service objects.
-  Service(const ServiceOptions& options, std::unique_ptr<Backend> backend,
-          std::unique_ptr<Backend> compute_constant_backend);
+  Service(const ServiceOptions& options,
+          std::unique_ptr<Backend> execute_backend);
 
   static StatusOr<std::unique_ptr<Backend>> CreateComputeConstantBackend();
 
@@ -280,16 +280,10 @@ class Service : public ServiceInterface {
       const ExecutionOptions* execution_options,
       bool has_hybrid_result = false);
 
-  // Builds an Executable for the given parameters. If
-  // executable_for_compute_constant is true, then the executable is intended to
-  // be used for ComputeConstant which means dead parameter instructions are not
-  // included in the executable.The parameter "profile" can optionally point to
-  // an ExecutionProfile object which will be filled in with profile data
-  // relevant to compilation.
+  // Builds an Executable for the given parameters.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const VersionedComputationHandle& versioned_handle,
       std::unique_ptr<HloModuleConfig> module_config,
-      bool executable_for_compute_constant,
       const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       Backend* backend, perftools::gputools::StreamExecutor* executor);
@@ -380,9 +374,6 @@ class Service : public ServiceInterface {
   //
   // TODO(b/28616830): Support multiple backends for execution.
   std::unique_ptr<Backend> execute_backend_;
-
-  // Backend to use when executing ComputeConstant.
-  std::unique_ptr<Backend> compute_constant_backend_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Service);
 };

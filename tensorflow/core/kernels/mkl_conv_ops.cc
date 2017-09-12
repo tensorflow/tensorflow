@@ -265,6 +265,28 @@ class MklConv2DOp : public OpKernel {
         sizeof(T));
     AllocateOutputSetMklShape(context, 0, &output, mkl_output_tf_shape,
                               mkl_output_mkl_shape);
+    // Filter output to be used in the backprop_input
+    TensorShape mkl_filter_output_tf_shape;
+    MklShape mkl_filter_output_mkl_shape;
+    mkl_filter_output_mkl_shape.SetMklTensor(true);
+    mkl_filter_output_mkl_shape.SetMklLayout(mkl_context.prim_fwd,
+                                             dnnResourceFilter);
+
+    size_t filter_sizes[4] = {filter.dim_size(0), filter.dim_size(1),
+                              filter.dim_size(2), filter.dim_size(3)};
+    mkl_filter_output_mkl_shape.SetTfLayout(filter.dims(), filter_sizes,
+                                            mkl_context.filter_strides);
+
+    mkl_filter_output_mkl_shape.SetTfDimOrder(mkl_context.filter_dims,
+                                              data_format_);
+    mkl_filter_output_tf_shape.AddDim(
+        dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
+            mkl_filter_output_mkl_shape.GetMklLayout())) /
+        sizeof(T));
+    AllocateOutputSetMklShape(context, 1, &mkl_context.output_filter,
+                              mkl_filter_output_tf_shape,
+                              mkl_filter_output_mkl_shape);
+
     mkl_context.conv_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
 
@@ -272,13 +294,11 @@ class MklConv2DOp : public OpKernel {
 
     // Temp tensor used to allocate tmp buffers
     Tensor mkl_tmp_input_buf_tensor, mkl_tmp_filter_buf_tensor,
-        mkl_tmp_bias_buf_tensor, mkl_tmp_buf_trans_input;
-    mkl_context.MklPrepareConvolutionInputs(context, data_format_,
-                                            input_in_mkl_format,
+        mkl_tmp_bias_buf_tensor;
+    mkl_context.MklPrepareConvolutionInputs(context,
                                             &mkl_tmp_input_buf_tensor,
                                             &mkl_tmp_filter_buf_tensor,
-                                            &mkl_tmp_bias_buf_tensor,
-                                            &mkl_tmp_buf_trans_input);
+                                            &mkl_tmp_bias_buf_tensor);
 
     // Execute convolution
     CHECK_EQ(dnnExecute_F32(mkl_context.prim_fwd, mkl_context.conv_res),
@@ -305,6 +325,7 @@ class MklConv2DOp : public OpKernel {
     dnnPrimitive_t prim_fwd;
     void* conv_res[dnnResourceNumber];
     dnnLayout_t lt_filter, lt_bias, lt_input;
+    Tensor* output_filter = nullptr;
 
     // Create MKL dnnLayout_t objects for tensors coming into the layer
     void MklCreateInputLayouts(OpKernelContext* context) {
@@ -329,59 +350,38 @@ class MklConv2DOp : public OpKernel {
     // Compare incoming tensor layouts with MKL preferred layouts and convert
     // data to the preferred layout if necessary
     void MklPrepareConvolutionInputs(OpKernelContext* context,
-                                     TensorFormat format,
-                                     bool input_in_mkl_format,
                                      Tensor* mkl_tmp_input_buf_tensor,
                                      Tensor* mkl_tmp_filter_buf_tensor,
-                                     Tensor* mkl_tmp_bias_buf_tensor,
-                                     Tensor* mkl_tmp_buf_trans_input) {
+                                     Tensor* mkl_tmp_bias_buf_tensor) {
       bool mkl_convert_input, mkl_convert_filter, mkl_convert_bias;
       dnnPrimitive_t mkl_prim_convert_filter, mkl_prim_convert_bias,
           mkl_prim_convert_input;
       dnnLayout_t mkl_lt_internal_filter, mkl_lt_internal_bias,
-          mkl_lt_internal_input, mkl_lt_trans_input;
+          mkl_lt_internal_input;
       void *mkl_buf_convert_input, *mkl_buf_convert_filter,
-          *mkl_buf_convert_bias, *mkl_buf_input;
+          *mkl_buf_convert_bias;
       mkl_prim_convert_filter = nullptr;
       mkl_prim_convert_bias = nullptr;
       mkl_prim_convert_input = nullptr;
       mkl_lt_internal_filter = nullptr;
       mkl_lt_internal_bias = nullptr;
       mkl_lt_internal_input = nullptr;
-      mkl_lt_trans_input = nullptr;
       mkl_buf_convert_input = nullptr;
       mkl_buf_convert_filter = nullptr;
       mkl_buf_convert_bias = nullptr;
-      mkl_buf_input = nullptr;
 
       // Compare with internal layouts and convert if needed
       const Tensor& input = MklGetInput(context, 0);
-      if (!input_in_mkl_format && format == FORMAT_NHWC) {
-        TensorShape nchw_shape = ShapeFromFormat(FORMAT_NCHW,
-            in_sizes[MklDims::N], in_sizes[MklDims::H],
-            in_sizes[MklDims::W], in_sizes[MklDims::C]);
-        OP_REQUIRES_OK(context, context->allocate_temp(
-            DataTypeToEnum<float>::value, nchw_shape, mkl_tmp_buf_trans_input));
-        MklNHWCToNCHW(input, &mkl_tmp_buf_trans_input);
-        mkl_buf_input = const_cast<void*>(static_cast<const void*>(
-            mkl_tmp_buf_trans_input->flat<float>().data()));
-        size_t strides[4];
-        GetStridesFromSizes(FORMAT_NCHW, strides, in_sizes);
-        CHECK_EQ(dnnLayoutCreate_F32(&mkl_lt_trans_input, in_dims, in_sizes,
-            strides), E_SUCCESS);
-      } else {
-          mkl_buf_input = const_cast<void*>(
-                              static_cast<const void*>(input.flat<T>().data()));
-          mkl_lt_trans_input = lt_input;
-      }
+      void* mkl_buf_input =
+          const_cast<void*>(static_cast<const void*>(input.flat<T>().data()));
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_input,
                                                 prim_fwd, dnnResourceSrc),
                E_SUCCESS);
       mkl_convert_input =
-          !dnnLayoutCompare_F32(mkl_lt_internal_input, mkl_lt_trans_input);
+          !dnnLayoutCompare_F32(mkl_lt_internal_input, lt_input);
       if (mkl_convert_input) {
         CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_input,
-                 mkl_lt_trans_input, mkl_lt_internal_input), E_SUCCESS);
+                 lt_input, mkl_lt_internal_input), E_SUCCESS);
         AllocTmpBuffer(context, mkl_tmp_input_buf_tensor, mkl_lt_internal_input,
                        &mkl_buf_convert_input);
         CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_input, mkl_buf_input,
@@ -390,8 +390,6 @@ class MklConv2DOp : public OpKernel {
         dnnDelete_F32(mkl_prim_convert_input);
       }
       dnnLayoutDelete_F32(mkl_lt_internal_input);
-      if (!input_in_mkl_format && format == FORMAT_NHWC)
-        dnnLayoutDelete_F32(mkl_lt_trans_input);
 
       conv_res[dnnResourceSrc] =
           (mkl_convert_input) ? mkl_buf_convert_input : mkl_buf_input;
@@ -408,8 +406,10 @@ class MklConv2DOp : public OpKernel {
         CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_filter, lt_filter,
                                          mkl_lt_internal_filter),
                  E_SUCCESS);
-        AllocTmpBuffer(context, mkl_tmp_filter_buf_tensor,
-                       mkl_lt_internal_filter, &mkl_buf_convert_filter);
+
+        mkl_buf_convert_filter = const_cast<void*>(
+            static_cast<const void*>(output_filter->flat<T>().data()));
+
         CHECK_EQ(
             dnnConversionExecute_F32(mkl_prim_convert_filter, mkl_buf_filter,
                                      mkl_buf_convert_filter),

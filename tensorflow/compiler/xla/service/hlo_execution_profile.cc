@@ -45,8 +45,7 @@ string HloExecutionProfile::ToString(
     const HloComputation& computation,
     const DeviceDescription& device_description,
     HloCostAnalysis* cost_analysis) const {
-  tensorflow::Status analysis_status =
-      computation.root_instruction()->Accept(cost_analysis);
+  tensorflow::Status analysis_status = computation.Accept(cost_analysis);
   if (!analysis_status.ok()) {
     return "";
   }
@@ -61,6 +60,7 @@ string HloExecutionProfile::ToString(
     builder.AddOp(/*op_name=*/hlo->ToString(),
                   /*short_name=*/hlo->ToString(/*compact_operands=*/true),
                   hlo->ToCategory(), cycles, cost_analysis->flop_count(*hlo),
+                  cost_analysis->transcendental_count(*hlo),
                   cost_analysis->bytes_accessed(*hlo),
                   cost_analysis->seconds(*hlo));
   }

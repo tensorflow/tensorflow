@@ -158,10 +158,9 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
     auto sizes = allocator_pair.second->GetSizesAndUnRef();
     memory->set_allocator_name(allocator_pair.first->Name());
     memory->set_total_bytes(std::get<0>(sizes));
-    if (allocator_pair.first->TracksAllocationSizes()) {
-      memory->set_peak_bytes(std::get<1>(sizes));
-      memory->set_live_bytes(std::get<2>(sizes));
-    }
+    memory->set_peak_bytes(std::get<1>(sizes));
+    memory->set_live_bytes(std::get<2>(sizes));
+
     AllocatorStats stats;
     allocator_pair.first->GetStats(&stats);
     memory->set_allocator_bytes_in_use(stats.bytes_in_use);

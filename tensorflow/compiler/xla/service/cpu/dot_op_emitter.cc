@@ -283,6 +283,10 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   //
   //   (A x B)^T = B^T x A^T
   //
+  // The connection between this identity and memory layout is that the
+  // transpose operation can also be considered as an operation that changes the
+  // memory layout of a matrix from row-major to column-major or vice versa.
+  //
   // Effectively this involves swapping the 'lhs' with 'rhs' and 'm' with 'n'.
 
   const Shape& lhs_shape = lhs_array_.GetShape();

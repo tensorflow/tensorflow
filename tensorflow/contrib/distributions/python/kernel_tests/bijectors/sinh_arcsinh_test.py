@@ -104,18 +104,66 @@ class SinhArcsinhBijectorTest(test.TestCase):
   def testBijectiveAndFiniteSkewnessNeg1Tailweight0p5(self):
     with self.test_session():
       bijector = SinhArcsinh(skewness=-1., tailweight=0.5, validate_args=True)
-      # Increasing upper logspace limit to 10 results in Inf due to y**2 being
-      # Inf.
-      x = np.concatenate((-np.logspace(-2, 9, 1000), [0], np.logspace(
-          -2, 9, 1000))).astype(np.float32)
+      x = np.concatenate((-np.logspace(-2, 10, 1000), [0], np.logspace(
+          -2, 10, 1000))).astype(np.float32)
       assert_bijective_and_finite(bijector, x, x, rtol=1e-3)
 
-  def testBijectiveAndFiniteSkewness2Tailweight3(self):
+  def testBijectiveAndFiniteSkewness1Tailweight3(self):
     with self.test_session():
       bijector = SinhArcsinh(skewness=1., tailweight=3., validate_args=True)
       x = np.concatenate((-np.logspace(-2, 5, 1000), [0], np.logspace(
           -2, 5, 1000))).astype(np.float32)
       assert_bijective_and_finite(bijector, x, x, rtol=1e-3)
+
+  def testBijectorEndpoints(self):
+    with self.test_session():
+      for dtype in (np.float32, np.float64):
+        bijector = SinhArcsinh(
+            skewness=dtype(0.), tailweight=dtype(1.), validate_args=True)
+        bounds = np.array(
+            [np.finfo(dtype).min, np.finfo(dtype).max], dtype=dtype)
+        # Note that the above bijector is the identity bijector. Hence, the
+        # log_det_jacobian will be 0. Because of this we use atol.
+        assert_bijective_and_finite(bijector, bounds, bounds, atol=2e-6)
+
+  def testBijectorOverRange(self):
+    with self.test_session():
+      for dtype in (np.float32, np.float64):
+        skewness = np.array([1.2, 5.], dtype=dtype)
+        tailweight = np.array([2., 10.], dtype=dtype)
+        # The inverse will be defined up to where sinh is valid, which is
+        # arcsinh(np.finfo(dtype).max).
+        log_boundary = np.log(
+            np.sinh(np.arcsinh(np.finfo(dtype).max) / tailweight - skewness))
+        x = np.array([
+            np.logspace(-2, log_boundary[0], base=np.e, num=1000),
+            np.logspace(-2, log_boundary[1], base=np.e, num=1000)
+        ], dtype=dtype)
+        # Ensure broadcasting works.
+        x = np.swapaxes(x, 0, 1)
+
+        y = np.sinh((np.arcsinh(x) + skewness) * tailweight)
+        bijector = SinhArcsinh(
+            skewness=skewness, tailweight=tailweight, validate_args=True)
+
+        self.assertAllClose(y, bijector.forward(x).eval(), rtol=1e-4, atol=0.)
+        self.assertAllClose(x, bijector.inverse(y).eval(), rtol=1e-4, atol=0.)
+
+        # Do the numpy calculation in float128 to avoid inf/nan.
+        y_float128 = np.float128(y)
+        self.assertAllClose(
+            np.log(np.cosh(
+                np.arcsinh(y_float128) / tailweight - skewness) / np.sqrt(
+                    y_float128**2 + 1)) -
+            np.log(tailweight),
+            bijector.inverse_log_det_jacobian(y).eval(),
+            rtol=1e-4,
+            atol=0.)
+        self.assertAllClose(
+            -bijector.inverse_log_det_jacobian(y).eval(),
+            bijector.forward_log_det_jacobian(x).eval(),
+            rtol=1e-4,
+            atol=0.)
 
   def testZeroTailweightRaises(self):
     with self.test_session():

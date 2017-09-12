@@ -514,7 +514,8 @@ class RandomForestGraphs(object):
         expected_squares = math_ops.div(
             math_ops.reduce_sum(all_predict * all_predict, 1),
             self.params.num_trees)
-        regression_variance = expected_squares - average_values * average_values
+        regression_variance = math_ops.maximum(
+            0., expected_squares - average_values * average_values)
       return average_values, tree_paths, regression_variance
 
   def average_size(self):

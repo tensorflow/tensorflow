@@ -238,7 +238,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
     n_iterations = 500
     with session as s:
       data = variables.Variable(1.0)
-      with ops.device('/gpu:0'):
+      with ops.device('/device:GPU:0'):
         random_seed.set_random_seed(1)
         matrix1 = variables.Variable(
             random_ops.truncated_normal([1024, 1]), name='matrix1')

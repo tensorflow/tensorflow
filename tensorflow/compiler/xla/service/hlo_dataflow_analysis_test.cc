@@ -70,8 +70,8 @@ class HloDataflowAnalysisTest : public HloTestBase,
                                 const HloInstruction* b) {
     EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
     EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
-    return analysis_->MayInterfere(analysis_->GetValueDefinedAt(a),
-                                   analysis_->GetValueDefinedAt(b), ordering);
+    return ordering.MayInterfere(analysis_->GetValueDefinedAt(a),
+                                 analysis_->GetValueDefinedAt(b));
   }
 
   std::unique_ptr<HloModule> module_;
@@ -952,17 +952,17 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select));
 
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant4)));
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(inner_tuple1),
-                                     analysis.GetValueDefinedAt(inner_tuple2)));
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant2),
-                                     analysis.GetValueDefinedAt(constant5)));
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant3)));
+  EXPECT_THAT(HloValuesAt(select, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
+                                   analysis.GetValueDefinedAt(constant4)));
+  EXPECT_THAT(HloValuesAt(select, /*index=*/{1}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(inner_tuple1),
+                                   analysis.GetValueDefinedAt(inner_tuple2)));
+  EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant2),
+                                   analysis.GetValueDefinedAt(constant5)));
+  EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 1}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant3)));
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {

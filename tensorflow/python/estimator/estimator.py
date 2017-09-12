@@ -33,6 +33,7 @@ from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export.export import build_all_signature_defs
+from tensorflow.python.estimator.export.export import get_temp_export_dir
 from tensorflow.python.estimator.export.export import get_timestamped_export_dir
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -186,6 +187,20 @@ class Estimator(object):
   def params(self):
     return copy.deepcopy(self._params)
 
+  @property
+  def model_fn(self):
+    """Returns the model_fn which is bound to self.params.
+
+    Returns:
+      The model_fn with following signature:
+        `def model_fn(features, labels, mode, config)`
+    """
+
+    def public_model_fn(features, labels, mode, config):
+      return self._call_model_fn(features, labels, mode, config)
+
+    return public_model_fn
+
   def train(self, input_fn, hooks=None, steps=None, max_steps=None):
     """Trains a model given training data input_fn.
 
@@ -196,17 +211,17 @@ class Estimator(object):
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the training loop.
       steps: Number of steps for which to train model. If `None`, train forever
-        or train until input_fn generates the `OutOfRange` or `StopIteration`
-        error. 'steps' works incrementally. If you call two times
-        train(steps=10) then training occurs in total 20 steps. If `OutOfRange`
-        or `StopIteration` error occurs in the middle, training stops before 20
-        steps. If you don't want to have incremental behavior please set
-        `max_steps` instead. If set, `max_steps` must be `None`.
+        or train until input_fn generates the `OutOfRange` error or
+        `StopIteration` exception. 'steps' works incrementally. If you call two
+        times train(steps=10) then training occurs in total 20 steps. If
+        `OutOfRange` or `StopIteration` occurs in the middle, training stops
+        before 20 steps. If you don't want to have incremental behavior please
+        set `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
-        train forever or train until input_fn generates the `OutOfRange` or
-        `StopIteration` error. If set, `steps` must be `None`. If `OutOfRange`
-        or `StopIteration` error occurs in the middle, training stops before
-        `max_steps` steps.
+        train forever or train until input_fn generates the `OutOfRange` error
+        or `StopIteration` exception. If set, `steps` must be `None`. If
+        `OutOfRange` or `StopIteration` occurs in the middle, training stops
+        before `max_steps` steps.
 
         Two calls to `train(steps=100)` means 200 training
         iterations. On the other hand, two calls to `train(max_steps=100)` means
@@ -336,8 +351,8 @@ class Estimator(object):
       self._create_and_assert_global_step(g)
       features = self._get_features_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.PREDICT)
-      estimator_spec = self._call_model_fn(features, None,
-                                           model_fn_lib.ModeKeys.PREDICT)
+      estimator_spec = self._call_model_fn(
+          features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
       predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
       with training.MonitoredSession(
           session_creator=training.ChiefSessionCreator(
@@ -433,7 +448,8 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features=serving_input_receiver.features,
           labels=None,
-          mode=model_fn_lib.ModeKeys.PREDICT)
+          mode=model_fn_lib.ModeKeys.PREDICT,
+          config=self.config)
 
       # Build the SignatureDefs from receivers and all outputs
       signature_def_map = build_all_signature_defs(
@@ -447,6 +463,7 @@ class Estimator(object):
         raise ValueError("Couldn't find trained model at %s." % self._model_dir)
 
       export_dir = get_timestamped_export_dir(export_dir_base)
+      temp_export_dir = get_temp_export_dir(export_dir)
 
       # TODO(soergel): Consider whether MonitoredSession makes sense here
       with tf_session.Session() as session:
@@ -463,7 +480,7 @@ class Estimator(object):
         # pylint: enable=protected-access
 
         # Perform the export
-        builder = saved_model_builder.SavedModelBuilder(export_dir)
+        builder = saved_model_builder.SavedModelBuilder(temp_export_dir)
         builder.add_meta_graph_and_variables(
             session, [tag_constants.SERVING],
             signature_def_map=signature_def_map,
@@ -474,7 +491,7 @@ class Estimator(object):
 
       # Add the extra assets
       if assets_extra:
-        assets_extra_path = os.path.join(compat.as_bytes(export_dir),
+        assets_extra_path = os.path.join(compat.as_bytes(temp_export_dir),
                                          compat.as_bytes('assets.extra'))
         for dest_relative, source in assets_extra.items():
           dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
@@ -483,6 +500,7 @@ class Estimator(object):
           gfile.MakeDirs(dest_path)
           gfile.Copy(source, dest_absolute)
 
+      gfile.Rename(temp_export_dir, export_dir)
       return export_dir
 
   def _get_features_from_input_fn(self, input_fn, mode):
@@ -584,13 +602,14 @@ class Estimator(object):
     with ops.device('/cpu:0'):
       return input_fn(**kwargs)
 
-  def _call_model_fn(self, features, labels, mode):
+  def _call_model_fn(self, features, labels, mode, config):
     """Calls model function.
 
     Args:
       features: features dict.
       labels: labels dict.
       mode: ModeKeys
+      config: RunConfig
 
     Returns:
       An `EstimatorSpec` object.
@@ -611,7 +630,7 @@ class Estimator(object):
     if 'params' in model_fn_args:
       kwargs['params'] = self.params
     if 'config' in model_fn_args:
-      kwargs['config'] = self.config
+      kwargs['config'] = config
     model_fn_results = self._model_fn(features=features, **kwargs)
 
     if not isinstance(model_fn_results, model_fn_lib.EstimatorSpec):
@@ -626,8 +645,8 @@ class Estimator(object):
       global_step_tensor = self._create_and_assert_global_step(g)
       features, labels = self._get_features_and_labels_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.TRAIN)
-      estimator_spec = self._call_model_fn(features, labels,
-                                           model_fn_lib.ModeKeys.TRAIN)
+      estimator_spec = self._call_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
       all_hooks.extend(hooks)
       all_hooks.extend([
@@ -710,7 +729,7 @@ class Estimator(object):
       features, labels = self._get_features_and_labels_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.EVAL)
       estimator_spec = self._call_model_fn(
-          features, labels, model_fn_lib.ModeKeys.EVAL)
+          features, labels, model_fn_lib.ModeKeys.EVAL, self.config)
 
       if model_fn_lib.LOSS_METRIC_KEY in estimator_spec.eval_metric_ops:
         raise ValueError(

@@ -63,7 +63,51 @@ TEST_F(BatchNormRewriterTest, BatchNormTraining) {
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBatchNormTraining);
-  BatchNormRewriter rewriter(/*rewrite_training_op=*/true);
+  BatchNormRewriter rewriter(/*rewrite_training_op=*/true,
+                             /*rewrite_inference_op=*/true,
+                             /*rewrite_grad_op=*/true);
+  ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  // Make sure this operation is expanded.
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+}
+
+// Test that we expand BatchNormGrad.
+TEST_F(BatchNormRewriterTest, BatchNormGrad) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
+  Shape scale_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape mean_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape var_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape grad_output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape, "activation"));
+
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scale_shape, "scale"));
+
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, mean_shape, "mean"));
+
+  HloInstruction* param3 = builder.AddInstruction(
+      HloInstruction::CreateParameter(3, var_shape, "var"));
+
+  HloInstruction* param4 = builder.AddInstruction(
+      HloInstruction::CreateParameter(4, grad_output_shape, "grad_output"));
+
+  builder.AddInstruction(HloInstruction::CreateBatchNormGrad(
+      ShapeUtil::MakeTupleShape({input_shape, scale_shape, mean_shape}), param0,
+      param1, param2, param3, param4,
+      /*epsilon=*/0.001, /*feature_index=*/3));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBatchNormGrad);
+  BatchNormRewriter rewriter(/*rewrite_training_op=*/true,
+                             /*rewrite_inference_op=*/true,
+                             /*rewrite_grad_op=*/true);
   ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
   // Make sure this operation is expanded.

@@ -22,12 +22,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
@@ -35,6 +34,8 @@ from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _safe_div(numerator, denominator, name):
@@ -334,7 +335,7 @@ def streaming_mean(values, weights=None, metrics_collections=None,
   returned as `mean` which is an idempotent operation that simply divides
   `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `mean`.
   `update_op` increments `total` with the reduced sum of the product of `values`
   and `weights`, and it increments `count` with the reduced sum of `weights`.
@@ -381,7 +382,7 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
   `values`. This average is ultimately returned as `mean` which is an idempotent
   operation that simply divides `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `mean`.
   `update_op` increments `total` with the reduced sum of the product of `values`
   and `weights`, and it increments `count` with the reduced sum of `weights`.
@@ -425,7 +426,7 @@ def streaming_accuracy(predictions, labels, weights=None,
   matches `labels`. This frequency is ultimately returned as `accuracy`: an
   idempotent operation that simply divides `total` by `count`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `accuracy`.
   Internally, an `is_correct` operation computes a `Tensor` with elements 1.0
   where the corresponding elements of `predictions` and `labels` match and 0.0
@@ -477,7 +478,7 @@ def streaming_precision(predictions, labels, weights=None,
   operation that simply divides `true_positives` by the sum of `true_positives`
   and `false_positives`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the
   `precision`. `update_op` weights each prediction by the corresponding value in
   `weights`.
@@ -526,7 +527,7 @@ def streaming_recall(predictions, labels, weights=None,
   ultimately returned as `recall`, an idempotent operation that simply divides
   `true_positives` by the sum of `true_positives`  and `false_negatives`.
 
-  For estimation of the metric  over a stream of data, the function creates an
+  For estimation of the metric over a stream of data, the function creates an
   `update_op` that updates these variables and returns the `recall`. `update_op`
   weights each prediction by the corresponding value in `weights`.
 
@@ -651,7 +652,7 @@ def _streaming_confusion_matrix_at_thresholds(
     label_is_neg = math_ops.logical_not(label_is_pos)
 
   if weights is not None:
-    broadcast_weights = _broadcast_weights(
+    broadcast_weights = weights_broadcast_ops.broadcast_weights(
         math_ops.to_float(weights), predictions)
     weights_tiled = array_ops.tile(array_ops.reshape(
         broadcast_weights, [1, -1]), [num_thresholds, 1])
@@ -955,7 +956,7 @@ def streaming_specificity_at_sensitivity(
 def streaming_sensitivity_at_specificity(
     predictions, labels, specificity, weights=None, num_thresholds=200,
     metrics_collections=None, updates_collections=None, name=None):
-  """Computes the specificity at a given sensitivity.
+  """Computes the sensitivity at a given specificity.
 
   The `streaming_sensitivity_at_specificity` function creates four local
   variables, `true_positives`, `true_negatives`, `false_positives` and
@@ -1038,8 +1039,8 @@ def streaming_precision_at_thresholds(predictions, labels, thresholds,
     weights: `Tensor` whose rank is either 0, or the same rank as `labels`, and
       must be broadcastable to `labels` (i.e., all dimensions must be either
       `1`, or the same as the corresponding `labels` dimension).
-    metrics_collections: An optional list of collections that `auc` should be
-      added to.
+    metrics_collections: An optional list of collections that `precision` should
+      be added to.
     updates_collections: An optional list of collections that `update_op` should
       be added to.
     name: An optional variable_scope name.
@@ -1571,7 +1572,7 @@ def streaming_sparse_average_precision_at_k(predictions,
   Returns:
     mean_average_precision: Scalar `float64` `Tensor` with the mean average
       precision values.
-    update: `Operation` that increments  variables appropriately, and whose
+    update: `Operation` that increments variables appropriately, and whose
       value matches `metric`.
   """
   return metrics.sparse_average_precision_at_k(
@@ -1628,7 +1629,7 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
   Returns:
     mean_average_precision: Scalar `float64` `Tensor` with the mean average
       precision values.
-    update: `Operation` that increments  variables appropriately, and whose
+    update: `Operation` that increments variables appropriately, and whose
       value matches `metric`.
 
   Raises:
@@ -1924,7 +1925,7 @@ def streaming_covariance(predictions,
       weighted_predictions = predictions
       weighted_labels = labels
     else:
-      weights = _broadcast_weights(weights, labels)
+      weights = weights_broadcast_ops.broadcast_weights(weights, labels)
       batch_count = math_ops.reduce_sum(weights)  # n_B in eqn
       weighted_predictions = math_ops.multiply(predictions, weights)
       weighted_labels = math_ops.multiply(labels, weights)
@@ -2051,7 +2052,7 @@ def streaming_pearson_correlation(predictions,
     # Broadcast weights here to avoid duplicate broadcasting in each call to
     # `streaming_covariance`.
     if weights is not None:
-      weights = _broadcast_weights(weights, labels)
+      weights = weights_broadcast_ops.broadcast_weights(weights, labels)
     cov, update_cov = streaming_covariance(
         predictions, labels, weights=weights, name='covariance')
     var_predictions, update_var_predictions = streaming_covariance(
@@ -2445,8 +2446,8 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
     Tuple of `predictions`, `labels` and `weights`, possibly with the last
     dimension squeezed.
   """
-  predictions, labels = tensor_util.remove_squeezable_dimensions(
-      predictions, labels)
+  labels, predictions = confusion_matrix.remove_squeezable_dimensions(
+      labels, predictions)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
   if weights is not None:

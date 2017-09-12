@@ -177,8 +177,8 @@ def get_eval_metric_ops(problem_type, prediction_type, sequence_length,
 def select_last_activations(activations, sequence_lengths):
   """Selects the nth set of activations for each n in `sequence_length`.
 
-  Reuturns a `Tensor` of shape `[batch_size, k]`. If `sequence_length` is not
-  `None`, then `output[i, :] = activations[i, sequence_length[i], :]`. If
+  Returns a `Tensor` of shape `[batch_size, k]`. If `sequence_length` is not
+  `None`, then `output[i, :] = activations[i, sequence_length[i] - 1, :]`. If
   `sequence_length` is `None`, then `output[i, :] = activations[i, -1, :]`.
 
   Args:

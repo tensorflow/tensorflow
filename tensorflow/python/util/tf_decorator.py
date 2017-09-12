@@ -88,6 +88,7 @@ def make_decorator(target,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)
   decorator_func.__name__ = target.__name__
+  decorator_func.__module__ = target.__module__
   decorator_func.__doc__ = decorator.__doc__
   decorator_func.__wrapped__ = target
   return decorator_func

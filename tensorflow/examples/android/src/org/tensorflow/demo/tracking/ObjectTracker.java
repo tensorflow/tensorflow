@@ -481,7 +481,7 @@ public class ObjectTracker {
   /**
    * A TrackedObject represents a native TrackedObject, and provides access to the
    * relevant native tracking information available after every frame update. They may
-   * be safely passed around and acessed externally, but will become invalid after
+   * be safely passed around and accessed externally, but will become invalid after
    * stopTracking() is called or the related creating ObjectTracker is deactivated.
    *
    * @author andrewharp@google.com (Andrew Harp)

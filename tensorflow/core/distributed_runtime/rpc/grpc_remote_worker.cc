@@ -129,28 +129,14 @@ class GrpcRemoteWorker : public WorkerInterface {
                        TensorResponse* response, StatusCallback done) override {
     VLOG(1) << "RecvTensorAsync req: " << request->DebugString();
     int64 start_usec = Env::Default()->NowMicros();
-    // Don't propagate dma_ok over gRPC.
-    RecvTensorRequest* req_copy = nullptr;
-    if (request->dma_ok()) {
-      req_copy = new RecvTensorRequest;
-      *req_copy = *request;
-      req_copy->set_dma_ok(false);
-    }
     // Type-specialized logging for this method.
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
     StatusCallback wrapper_done;
     const StatusCallback* cb_to_use;
-    if (!logging_active && req_copy == nullptr) {
+    if (!logging_active) {
       cb_to_use = &done;  // No additional work to do, so just use done directly
-    } else if (!logging_active) {
-      wrapper_done = [req_copy, done](Status s) {
-        delete req_copy;
-        done(s);
-      };
-      cb_to_use = &wrapper_done;
     } else {
-      wrapper_done = [this, request, req_copy, response, done,
-                      start_usec](Status s) {
+      wrapper_done = [this, request, response, done, start_usec](Status s) {
         if (logger_->LoggingActive()) {
           int64 end_usec = Env::Default()->NowMicros();
           int64 step_id = request->step_id();
@@ -189,14 +175,12 @@ class GrpcRemoteWorker : public WorkerInterface {
         }
         VLOG(2) << "done callback, req: " << request->DebugString()
                 << " response " << response->metadata().DebugString();
-        delete req_copy;
         done(s);
       };
       cb_to_use = &wrapper_done;
     }
 
-    IssueRequest(req_copy ? req_copy : request, response, recvtensor_,
-                 *cb_to_use, call_opts);
+    IssueRequest(request, response, recvtensor_, *cb_to_use, call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,

@@ -114,8 +114,7 @@ class FeatureImportanceSummarySaver(session_run_hook.SessionRunHook):
       summary_writer = SummaryWriterCache.get(output_dir)
       usage_count_summary = Summary(value=[
           Summary.Value(
-              tag="feature_importance/usage_counts",
-              simple_value=usage_count)
+              tag="feature_importance/usage_counts", simple_value=usage_count)
       ])
       usage_fraction_summary = Summary(value=[
           Summary.Value(
@@ -124,14 +123,14 @@ class FeatureImportanceSummarySaver(session_run_hook.SessionRunHook):
       ])
       summary_writer.add_summary(usage_count_summary, global_step)
       summary_writer.add_summary(usage_fraction_summary, global_step)
-      gains_summary = Summary(
-          value=[Summary.Value(
-              tag="feature_importance/gains",
-              simple_value=gain)])
-      gains_fraction_summary = Summary(
-          value=[Summary.Value(
+      gains_summary = Summary(value=[
+          Summary.Value(tag="feature_importance/gains", simple_value=gain)
+      ])
+      gains_fraction_summary = Summary(value=[
+          Summary.Value(
               tag="feature_importance/gains_fraction",
-              simple_value=gain * gain_norm)])
+              simple_value=gain * gain_norm)
+      ])
       summary_writer.add_summary(gains_summary, global_step)
       summary_writer.add_summary(gains_fraction_summary, global_step)
 
@@ -144,8 +143,7 @@ class FeedFnHook(session_run_hook.SessionRunHook):
 
   def before_run(self, run_context):
     del run_context  # unused by FeedFnHook.
-    return session_run_hook.SessionRunArgs(
-        fetches=None, feed_dict=self.feed_fn)
+    return session_run_hook.SessionRunArgs(fetches=None, feed_dict=self.feed_fn)
 
 
 class StopAfterNTrees(session_run_hook.SessionRunHook):
@@ -170,8 +168,10 @@ class StopAfterNTrees(session_run_hook.SessionRunHook):
     num_finalized_trees = run_values.results["num_finalized_trees"]
     assert num_attempted_trees is not None
     assert num_finalized_trees is not None
+    # Stop when the required number of finalized trees is reached, or when we
+    # try enough times to build a tree but keep failing.
     if (num_finalized_trees >= self._num_trees or
-        num_attempted_trees > self._num_trees):
+        num_attempted_trees > 2 * self._num_trees):
       logging.info("Requesting stop since we have reached %d trees.",
                    num_finalized_trees)
       run_context.request_stop()

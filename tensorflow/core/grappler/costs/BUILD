@@ -23,6 +23,7 @@ filegroup(
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
+    "tf_additional_all_protos",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -33,9 +34,7 @@ tf_proto_library(
     name = "op_performance_data",
     srcs = ["op_performance_data.proto"],
     cc_api_version = 2,
-    protodeps = [
-        "//tensorflow/core:protos_all",
-    ],
+    protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )
 
@@ -137,8 +136,27 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
         "//third_party/eigen3",
+    ],
+)
+
+cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -171,7 +189,7 @@ cc_test(
     srcs = ["virtual_placer_test.cc"],
     deps = [
         ":virtual_placer",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -189,6 +207,7 @@ cc_library(
         ":utils",
         ":virtual_placer",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",

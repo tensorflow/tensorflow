@@ -242,7 +242,7 @@ class SpectralOpsTest(test.TestCase):
         inverse_stft_error = test.compute_gradient_error(
             stft, stft_shape, inverse_stft, inverse_stft_shape)
         self.assertLess(stft_error, 2e-3)
-        self.assertLess(inverse_stft_error, 4e-4)
+        self.assertLess(inverse_stft_error, 5e-4)
 
 
 if __name__ == "__main__":

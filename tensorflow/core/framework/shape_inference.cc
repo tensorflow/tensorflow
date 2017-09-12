@@ -867,8 +867,11 @@ Status InferenceContext::Add(DimensionHandle first, DimensionOrConstant second,
   } else if (first_value == kUnknownDim || second_value == kUnknownDim) {
     *out = UnknownDim();
   } else {
-    // Invariant: Both values are known and positive.
-    const int64 sum = first_value + second_value;
+    // Invariant: Both values are known and positive. Still in run-time we can
+    // get pair of values which cannot be store in output. Check below will
+    // report error. We still need to avoid undefined behavior of signed
+    // overflow and use unsigned addition.
+    const int64 sum = static_cast<uint64>(first_value) + second_value;
     if (sum < 0) {
       return errors::InvalidArgument("Dimension size overflow from adding ",
                                      first_value, " and ", second_value);

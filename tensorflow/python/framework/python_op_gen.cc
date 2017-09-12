@@ -326,6 +326,9 @@ string DataTypeToPython(DataType dtype, const string& dtype_module) {
 }
 
 string ShapeToPython(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) {
+    return "None";
+  }
   string python = "[";
   for (const auto& dim : shape.dim()) {
     if (python.size() > 1) strings::StrAppend(&python, ", ");
@@ -392,6 +395,9 @@ string AttrListToPython(const AttrValue& value,
   return ret;
 }
 
+// NOTE: The return value may contain spaces (for example, it could be
+// a string "foo bar" with an embedded space) and is not safe to pass
+// to WordWrap().
 string AttrValueToPython(const string& type, const AttrValue& value,
                          const string& dtype_module) {
   if (type == "string") {
@@ -399,7 +405,11 @@ string AttrValueToPython(const string& type, const AttrValue& value,
   } else if (type == "int") {
     return strings::StrCat(value.i());
   } else if (type == "float") {
-    return strings::StrCat(value.f());
+    if (std::isnan(value.f()) || std::isinf(value.f())) {
+      return strings::StrCat("float('", value.f(), "')");
+    } else {
+      return strings::StrCat(value.f());
+    }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
   } else if (type == "type") {
@@ -521,9 +531,7 @@ string GenPythonOp::Code() {
 }
 
 void GenPythonOp::AddDefLine(const string& parameters) {
-  const string def_prefix = strings::StrCat("def ", function_name_, "(");
-  strings::StrAppend(
-      &result_, WordWrap(def_prefix, parameters + "):", kRightMargin), "\n");
+  strings::StrAppend(&result_, "def ", function_name_, "(", parameters, "):\n");
 }
 
 void GenPythonOp::AddDocStringDescription() {

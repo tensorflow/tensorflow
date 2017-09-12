@@ -463,7 +463,9 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["grpc_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["no_oss"],  # b/62956105: port conflicts.
+    tags = tf_cuda_tests_tags() + [
+        "no_oss",  # b/62956105: port conflicts.
+    ],
     deps = [
         ":grpc_channel",
         ":grpc_server_lib",

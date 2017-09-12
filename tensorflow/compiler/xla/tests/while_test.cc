@@ -255,6 +255,70 @@ TEST_F(WhileTest, WhileWithVectorResult) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
+// Tests a while node when the result type is a vector which is part
+// of the result tuple.
+//
+// All constants are chosen to produce exact results.
+// vector<float> result(8, 0.0f);
+// while (result.sum() < 15.5f) {
+//   result = result + vector<float>(8, 0.125f);
+// }
+// tuple = tuple { while }
+TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
+  Shape result_shape = ShapeUtil::MakeShape(F32, {8});
+
+  // Create a computation for the reduction.
+  Computation add;
+  {
+    ComputationBuilder builder(client_, "add");
+    auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
+    builder.Add(x, y);
+    add = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the condition.
+  // Repeat until the sum of the result vector is less than 5.5f.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto sum = builder.Reduce(prev, builder.ConstantR0<float>(0.0f), add,
+                              /*dimensions_to_reduce=*/{0});
+    auto test = builder.Gt(builder.ConstantR0<float>(15.5f), sum);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add a constant vector of 1.f to the result vector.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto input = builder.ConstantR1<float>(8, 0.125f);
+    auto result = builder.Add(input, prev);
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, "while");
+  auto init = builder.ConstantR1<float>(8, 0.f);
+  auto result = builder.While(condition, body, init);
+  VLOG(2) << "while = "
+          << ShapeUtil::HumanString(
+                 *builder.GetShape(result).ConsumeValueOrDie());
+  builder.Tuple({result});
+
+  // Individual elements with increase by 1/8 each time through the loop, so
+  // the sum will increase by 1.0.  It will first be >15.5 when the elements
+  // have all reached 2.0.
+  auto expected_data =
+      Literal::CreateR1<float>({2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f});
+  auto expected = Literal::MakeTuple({expected_data.get()});
+  VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+}
+
 // Tests a while node when the result type T is a Tuple.
 //
 // tuple<int32, vector<float>> result(0, vector<float>(10, 0.0f));

@@ -1488,7 +1488,7 @@ class _GeneratedFile(object):
 def _get_defined_in(py_object, parser_config):
   """Returns a description of where the passed in python object was defined.
 
-  Arguments:
+  Args:
     py_object: The Python object.
     parser_config: A ParserConfig object.
 

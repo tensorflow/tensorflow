@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/env.h"
@@ -56,14 +57,18 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
 RecordReader::RecordReader(RandomAccessFile* file,
                            const RecordReaderOptions& options)
     : src_(file), options_(options) {
+  if (options.buffer_size > 0) {
+    input_stream_.reset(new BufferedInputStream(file, options.buffer_size));
+  } else {
+    input_stream_.reset(new RandomAccessInputStream(file));
+  }
   if (options.compression_type == RecordReaderOptions::ZLIB_COMPRESSION) {
 // We don't have zlib available on all embedded platforms, so fail.
 #if defined(IS_SLIM_BUILD)
     LOG(FATAL) << "Zlib compression is unsupported on mobile platforms.";
 #else   // IS_SLIM_BUILD
-    random_input_stream_.reset(new RandomAccessInputStream(file));
     zlib_input_stream_.reset(new ZlibInputStream(
-        random_input_stream_.get(), options.zlib_options.input_buffer_size,
+        input_stream_.get(), options.zlib_options.input_buffer_size,
         options.zlib_options.output_buffer_size, options.zlib_options));
 #endif  // IS_SLIM_BUILD
   } else if (options.compression_type == RecordReaderOptions::NONE) {
@@ -71,11 +76,6 @@ RecordReader::RecordReader(RandomAccessFile* file,
   } else {
     LOG(FATAL) << "Unspecified compression type :" << options.compression_type;
   }
-}
-
-RecordReader::~RecordReader() {
-  zlib_input_stream_.reset(nullptr);
-  random_input_stream_.reset(nullptr);
 }
 
 // Read n+4 bytes from file, verify that checksum of first n bytes is
@@ -116,22 +116,46 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
     *result = StringPiece(storage->data(), n);
   } else {
 #endif  // IS_SLIM_BUILD
-    // This version supports reading from arbitrary offsets
-    // since we are accessing the random access file directly.
-    StringPiece data;
-    TF_RETURN_IF_ERROR(src_->Read(offset, expected, &data, &(*storage)[0]));
-    if (data.size() != expected) {
-      if (data.empty()) {
-        return errors::OutOfRange("eof");
-      } else {
-        return errors::DataLoss("truncated record at ", offset);
+    if (options_.buffer_size > 0) {
+      // If we have a buffer, we assume that the file is being read
+      // sequentially, and we use the underlying implementation to read the
+      // data.
+      //
+      // No checks are done to validate that the file is being read
+      // sequentially.
+      TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(expected, storage));
+
+      if (storage->size() != expected) {
+        if (storage->empty()) {
+          return errors::OutOfRange("eof");
+        } else {
+          return errors::DataLoss("truncated record at ", offset);
+        }
       }
+
+      const uint32 masked_crc = core::DecodeFixed32(storage->data() + n);
+      if (crc32c::Unmask(masked_crc) != crc32c::Value(storage->data(), n)) {
+        return errors::DataLoss("corrupted record at ", offset);
+      }
+      *result = StringPiece(storage->data(), n);
+    } else {
+      // This version supports reading from arbitrary offsets
+      // since we are accessing the random access file directly.
+      StringPiece data;
+      TF_RETURN_IF_ERROR(src_->Read(offset, expected, &data, &(*storage)[0]));
+      if (data.size() != expected) {
+        if (data.empty()) {
+          return errors::OutOfRange("eof");
+        } else {
+          return errors::DataLoss("truncated record at ", offset);
+        }
+      }
+      const uint32 masked_crc = core::DecodeFixed32(data.data() + n);
+      if (crc32c::Unmask(masked_crc) != crc32c::Value(data.data(), n)) {
+        return errors::DataLoss("corrupted record at ", offset);
+      }
+      *result = StringPiece(data.data(), n);
     }
-    uint32 masked_crc = core::DecodeFixed32(data.data() + n);
-    if (crc32c::Unmask(masked_crc) != crc32c::Value(data.data(), n)) {
-      return errors::DataLoss("corrupted record at ", offset);
-    }
-    *result = StringPiece(data.data(), n);
 #if !defined(IS_SLIM_BUILD)
   }
 #endif  // IS_SLIM_BUILD
@@ -171,6 +195,10 @@ Status RecordReader::ReadRecord(uint64* offset, string* record) {
   *offset += kHeaderSize + length + kFooterSize;
   return Status::OK();
 }
+
+SequentialRecordReader::SequentialRecordReader(
+    RandomAccessFile* file, const RecordReaderOptions& options)
+    : underlying_(file, options), offset_(0) {}
 
 }  // namespace io
 }  // namespace tensorflow
