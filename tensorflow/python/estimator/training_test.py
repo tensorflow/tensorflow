@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import training
 from tensorflow.python.platform import test
 from tensorflow.python.training import session_run_hook
@@ -33,6 +34,9 @@ _INVALID_STEPS_MSG = 'Must specify steps > 0'
 _INVALID_NAME_MSG = '`name` must be string'
 _INVALID_EVAL_DELAY_SECS_MSG = 'Must specify delay_secs >= 0'
 _INVALID_EVAL_THROTTLE_SECS_MSG = 'Must specify throttle_secs >= 0'
+_INVALID_ESTIMATOR_MSG = '`estimator` must have type `tf.estimator.Estimator`'
+_INVALID_TRAIN_SPEC_MSG = '`train_spec` must have type `tf.estimator.TrainSpec`'
+_INVALID_EVAL_SPEC_MSG = '`eval_spec` must have type `tf.estimator.EvalSpec`'
 
 
 class _FakeHook(session_run_hook.SessionRunHook):
@@ -128,6 +132,41 @@ class EvalSpecTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, _INVALID_EVAL_THROTTLE_SECS_MSG):
       training.EvalSpec(input_fn=lambda: 1, throttle_secs=-1)
 
+
+class TrainingExecutorTest(test.TestCase):
+  """Tests _TrainingExecutor."""
+
+  def testRequiredArgumentsSet(self):
+    estimator = estimator_lib.Estimator(model_fn=lambda features: features)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=lambda: 1)
+
+    executor = training._TrainingExecutor(estimator, train_spec, eval_spec)
+    self.assertEqual(estimator, executor.estimator)
+
+  def test_invalid_estimator(self):
+    invalid_estimator = object()
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=lambda: 1)
+
+    with self.assertRaisesRegexp(TypeError, _INVALID_ESTIMATOR_MSG):
+      training._TrainingExecutor(invalid_estimator, train_spec, eval_spec)
+
+  def test_invalid_train_spec(self):
+    estimator = estimator_lib.Estimator(model_fn=lambda features: features)
+    invalid_train_spec = object()
+    eval_spec = training.EvalSpec(input_fn=lambda: 1)
+
+    with self.assertRaisesRegexp(TypeError, _INVALID_TRAIN_SPEC_MSG):
+      training._TrainingExecutor(estimator, invalid_train_spec, eval_spec)
+
+  def test_invalid_eval_spec(self):
+    estimator = estimator_lib.Estimator(model_fn=lambda features: features)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    invalid_eval_spec = object()
+
+    with self.assertRaisesRegexp(TypeError, _INVALID_EVAL_SPEC_MSG):
+      training._TrainingExecutor(estimator, train_spec, invalid_eval_spec)
 
 if __name__ == '__main__':
   test.main()

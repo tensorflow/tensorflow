@@ -76,6 +76,7 @@ py_library(
     srcs = ["training.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":estimator",
         "//tensorflow/python:training",
         "@six_archive//:six",
     ],

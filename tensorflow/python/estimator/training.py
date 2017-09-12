@@ -23,6 +23,7 @@ import collections
 
 import six
 
+from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.training import session_run_hook
 
 
@@ -177,3 +178,51 @@ class EvalSpec(
         delay_secs=delay_secs,
         throttle_secs=throttle_secs)
 
+
+class UnimplementedError(Exception):
+  pass
+
+
+class _TrainingExecutor(object):
+  """The executor to run `Estimator` training and evaluation.
+
+  This implementation supports both distributed and non-distributed (aka local)
+  training and evaluation based on the setting in `tf.estimator.RunConfig`.
+  """
+
+  def __init__(self, estimator, train_spec, eval_spec):
+    if not isinstance(estimator, estimator_lib.Estimator):
+      raise TypeError('`estimator` must have type `tf.estimator.Estimator`.')
+    self._estimator = estimator
+
+    if not isinstance(train_spec, TrainSpec):
+      raise TypeError('`train_spec` must have type `tf.estimator.TrainSpec`.')
+    self._train_spec = train_spec
+
+    if not isinstance(eval_spec, EvalSpec):
+      raise TypeError('`eval_spec` must have type `tf.estimator.EvalSpec`.')
+    self._eval_spec = eval_spec
+
+  @property
+  def estimator(self):
+    return self._estimator
+
+  def run_chief(self):
+    """Runs task chief."""
+    raise UnimplementedError('Method run_chief has not been implemented.')
+
+  def run_worker(self):
+    """Runs task (training) worker."""
+    raise UnimplementedError('Method run_worker has not been implemented.')
+
+  def run_evaluator(self):
+    """Runs task evaluator."""
+    raise UnimplementedError('Method run_evaluator has not been implemented.')
+
+  def run_ps(self):
+    """Runs task parameter server (in training cluster spec)."""
+    raise UnimplementedError('Method run_ps has not been implemented.')
+
+  def run_local(self):
+    """Runs training and evaluation locally (non-distributed)."""
+    raise UnimplementedError('Method run_local has not been implemented.')

@@ -417,6 +417,7 @@ cc_library(
     hdrs = ["training_op_helpers.h"],
     visibility = [":friends"],
     deps = [
+        ":dense_update_functor",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1759,6 +1760,7 @@ tf_kernel_library(
         ":gather_functor",
         ":scatter_functor",
         ":state",
+        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -1361,6 +1361,27 @@ def relu6(features, name=None):
     return gen_nn_ops._relu6(features, name=name)
 
 
+def leaky_relu(features, alpha=0.2, name=None):
+  """Compute the Leaky ReLU activation function.
+
+  "Rectifier Nonlinearities Improve Neural Network Acoustic Models"
+  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013
+  http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
+
+  Args:
+    features: A `Tensor` representing preactivation values.
+    alpha: Slope of the activation function at x < 0.
+    name: A name for the operation (optional).
+
+  Returns:
+    The activation value.
+  """
+  with ops.name_scope(name, "LeakyRelu", [features, alpha]):
+    features = ops.convert_to_tensor(features, name="features")
+    alpha = ops.convert_to_tensor(alpha, name="alpha")
+    return math_ops.maximum(alpha * features, features)
+
+
 def _flatten_outer_dims(logits):
   """Flattens logits' outer dimensions and keep its last dimension."""
   rank = array_ops.rank(logits)
