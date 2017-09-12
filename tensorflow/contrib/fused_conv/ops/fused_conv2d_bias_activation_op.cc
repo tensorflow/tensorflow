@@ -42,11 +42,11 @@ REGISTER_OP("FusedConv2DBiasActivation")
     .Input("filter: T")
     .Input("bias: Tbias")
     .Input("side_input: T")
+    .Input("conv_input_scale: float")
+    .Input("side_input_scale: float")
     .Output("output: T")
     .Attr("T: {float, half, qint8}")
     .Attr("Tbias: {float, half}")
-    .Attr("conv_input_scale: float = 1.0")
-    .Attr("side_input_scale: float = 0.0")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
@@ -97,6 +97,11 @@ REGISTER_OP("FusedConv2DBiasActivation")
         TF_RETURN_IF_ERROR(c->Merge(side_input_shape, c->output(0), &unused));
       }
 
+      // Check that conv_input_scale and side_input_scale are scalar tensors.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+
       return Status::OK();
     })
     .Doc(R"doc(
@@ -117,15 +122,15 @@ REGISTER_OP("FusedConv2DBiasActivation")
     side_input: A tensor with format as specified by `data_format` (see below).
         This tensor will be ignored and can be [] if side_input_scale == 0.
         Otherwise, the size of each dimension must match the `output` tensor.
+    conv_input_scale: scalar float value to be multiplied by `conv_input`.
+        (conceptually.. in reality it is applied after convolution).
+    side_input_scale: scalar float value to be multiplied by `side_input`.
     output: A tensor with format as specified by `data_format` (see below).
         The dimension sizes are determined automatically based on other inputs
         and attributes.
     T: The element data type of `conv_input`, `side_input` and `output` tensors.
         Note: must match with the `data_format`.
     Tbias: The element data type of `bias`.
-    conv_input_scale: scalar float value to be multiplied by `conv_input`.
-        (conceptually.. in reality it is applied after convolution).
-    side_input_scale: scalar float value to be multiplied by `side_input`.
     strides: 1-D tensor of length 4.  The stride of the sliding window for each
         dimension of `input`. The dimension order is determined by the value of
         `data_format`, see below for details.
