@@ -763,7 +763,3 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

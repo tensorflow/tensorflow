@@ -153,9 +153,10 @@ def make_shape(v, arg_name):
   try:
     shape = tensor_shape.as_shape(v)
   except TypeError as e:
-    raise TypeError("Error converting %s to a TensorShape: %s" % (arg_name, e))
+    raise TypeError("Error converting %s to a TensorShape: %s." % (arg_name, e))
   except ValueError as e:
-    raise ValueError("Error converting %s to a TensorShape: %s" % (arg_name, e))
+    raise ValueError("Error converting %s to a TensorShape: %s." % (arg_name,
+                                                                    e))
   if shape.ndims is None:
     return None
   else:
@@ -171,7 +172,7 @@ def make_tensor(v, arg_name):
     text_format.Merge(v, pb)
     return pb
   raise TypeError(
-      "Don't know how to convert %s to a TensorProto for argument '%s'" %
+      "Don't know how to convert %s to a TensorProto for argument '%s'." %
       (repr(v), arg_name))
 
 
@@ -217,7 +218,7 @@ def args_to_mixed_eager_tensors(lists):
   for l in lists[1:]:
     if len(l) != len(lists[0]):
       raise ValueError(
-          "Expected list arguments to be the same length: %d != %d (%r vs. %r)"
+          "Expected list arguments to be the same length: %d != %d (%r vs. %r)."
           % (len(lists[0]), len(l), lists[0], l))
     lists_ret.append([])
 

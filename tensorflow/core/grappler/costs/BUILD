@@ -190,6 +190,7 @@ cc_test(
     deps = [
         ":virtual_placer",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

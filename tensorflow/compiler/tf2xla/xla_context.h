@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
@@ -37,34 +38,6 @@ class XlaOpKernelContext;
 // subgraph of Ops using XLA.
 class XlaContext : public ResourceBase {
  public:
-  // A struct that represents either a compile-time constant, or an XLA
-  // computation handle. Used to represent arguments and return values.
-  struct HandleOrConstant {
-    // Is this a compile-time constant? If so, what is its value?
-    bool is_constant;
-    Tensor constant_value;  // Must be in host memory.
-
-    // If this is not a constant, a computation handle. Since the mapping from
-    // Tensorflow types to XLA types is not necessarily injective (one-to-one),
-    // we also require the Tensorflow type.
-    DataType type;
-    xla::ComputationDataHandle handle;
-  };
-
-  struct Argument {
-    XlaCompiler::Argument::Kind kind;
-
-    // Descriptive name for the resource, for use in error messages.
-    string name;
-
-    // Is this a resource?
-    bool is_resource = false;
-
-    HandleOrConstant value;
-
-    int64 tensor_array_size = -1;
-  };
-
   // Retrieves the XlaContext of the current compilation.
   static XlaContext& Get(const OpKernelContext* ctx);
   static XlaContext& Get(const XlaOpKernelContext* ctx);
@@ -85,14 +58,14 @@ class XlaContext : public ResourceBase {
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
   bool has_context_parameter() const { return has_context_parameter_; }
 
-  const std::vector<Argument>& args() const { return args_; }
-  void set_args(std::vector<Argument> args);
+  const std::vector<XlaExpression>& args() const { return args_; }
+  void set_args(std::vector<XlaExpression> args);
 
   // Get the runtime context parameter, adding one if it does not already exist.
   // Dies if not compiling a local executable.
   const xla::ComputationDataHandle& GetOrCreateRuntimeContextParameter();
 
-  const std::vector<HandleOrConstant>& retvals() { return retvals_; }
+  const std::vector<XlaExpression>& retvals() { return retvals_; }
 
   // This is called by the Retval Op to associate a computed value
   // with a specific return value of the subgraph.
@@ -155,10 +128,10 @@ class XlaContext : public ResourceBase {
 
   // Arguments to the Tensorflow graph, indexed by _Arg index.
   // Includes both compile-time constant arguments and runtime parameters.
-  std::vector<Argument> args_;
+  std::vector<XlaExpression> args_;
 
   // Return values of the Tensorflow graph, indexed by _Retval index.
-  std::vector<HandleOrConstant> retvals_;
+  std::vector<XlaExpression> retvals_;
 
   // Does the computation have side effects, i.e., Send() calls?
   bool has_side_effects_ = false;

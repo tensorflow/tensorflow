@@ -220,7 +220,3 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
 }
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}
