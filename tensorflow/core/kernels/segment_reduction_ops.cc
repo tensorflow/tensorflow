@@ -384,6 +384,34 @@ struct UnsortedSegmentSumFunctor<CPUDevice, T, Index>
     }
   }
 };
+// UnsortedSegmentSumWithDropNegativesFunctor implementation for CPUDevice.
+template <typename T, typename Index>
+struct UnsortedSegmentSumWithDropNegativesFunctor<CPUDevice, T, Index>
+    : UnsortedSegmentBaseFunctor<CPUDevice, T, Index> {
+  void operator()(OpKernelContext* ctx, const CPUDevice& d,
+                  const Index output_rows, const TensorShape& segment_ids_shape,
+                  typename TTypes<Index>::ConstFlat segment_ids,
+                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::Tensor output) override {
+    output.setZero();
+    if (data_size == 0) {
+      return;
+    }
+    const int64 N = segment_ids.dimension(0);
+    auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
+    for (int64 i = 0; i < N; ++i) {
+      Index j = internal::SubtleMustCopy(segment_ids(i));
+      if (j < 0) {
+        continue;
+      }
+      OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
+                  errors::InvalidArgument(
+                      "segment_ids", SliceDebugString(segment_ids_shape, i),
+                      " = ", j, " is out of range [0, ", output_rows, ")"));
+      output.template chip<0>(j) += data_flat.template chip<0>(i);
+    }
+  }
+};
 // UnsortedSegmentMaxFunctor implementation for CPUDevice.
 template <typename T, typename Index>
 struct UnsortedSegmentMaxFunctor<CPUDevice, T, Index>
@@ -420,7 +448,7 @@ class UnsortedSegmentBaseOp : public OpKernel {
  public:
   explicit UnsortedSegmentBaseOp(
       OpKernelConstruction* context,
-      functor::UnsortedSegmentBaseFunctor<Device, T, Index>& functor)
+      functor::UnsortedSegmentBaseFunctor<Device, T, Index> *functor)
       : OpKernel(context), reduction_functor_(functor) {}
 
   void Compute(OpKernelContext* context) override {
@@ -457,12 +485,12 @@ class UnsortedSegmentBaseOp : public OpKernel {
     auto output_flat = output->flat_outer_dims<T>();
 
     auto data_ptr = data.template flat<T>().data();
-    reduction_functor_(context, context->template eigen_device<Device>(),
+    (*reduction_functor_)(context, context->template eigen_device<Device>(),
                      output_rows, segment_ids.shape(), segment_flat,
                      data.NumElements(), data_ptr, output_flat);
   }
- private:
-  functor::UnsortedSegmentBaseFunctor<Device, T, Index>& reduction_functor_;
+ protected:
+  functor::UnsortedSegmentBaseFunctor<Device, T, Index>* reduction_functor_;
 };
 
 template <typename Device, class T, class Index>
@@ -471,9 +499,18 @@ class UnsortedSegmentSumOp : public UnsortedSegmentBaseOp<Device, T, Index> {
   explicit UnsortedSegmentSumOp(OpKernelConstruction* context)
       : UnsortedSegmentBaseOp<Device, T, Index>(
             context,
-            sum_functor_) {}
+            &sum_functor_) {
+    bool drop_negatives = false;
+    OP_REQUIRES_OK(context, context->GetAttr("drop_negatives", &drop_negatives));
+    if (drop_negatives) {
+      this->reduction_functor_ = &sum_with_drop_negatives_functor_;
+    }
+  }
+
  private:
     functor::UnsortedSegmentSumFunctor<Device, T, Index> sum_functor_;
+    functor::UnsortedSegmentSumWithDropNegativesFunctor<Device, T, Index>
+        sum_with_drop_negatives_functor_;
 };
 
 template <typename Device, class T, class Index>
@@ -482,7 +519,7 @@ class UnsortedSegmentMaxOp : public UnsortedSegmentBaseOp<Device, T, Index> {
   explicit UnsortedSegmentMaxOp(OpKernelConstruction* context)
       : UnsortedSegmentBaseOp<Device, T, Index>(
             context,
-            max_functor_) {}
+            &max_functor_) {}
  private:
     functor::UnsortedSegmentMaxFunctor<Device, T, Index> max_functor_;
 };
