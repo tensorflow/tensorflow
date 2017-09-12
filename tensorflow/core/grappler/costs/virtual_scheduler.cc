@@ -229,8 +229,9 @@ Status VirtualScheduler::Init() {
     return Status(error::UNAVAILABLE, "No ready nodes in the graph.");
   }
 
-  CHECK(feed_nodes.empty()) << "Some feed nodes were not found in the graph: "
-                            << str_util::Join(feed_nodes, ",");
+  if (!feed_nodes.empty())
+    LOG(ERROR) << "Some feed nodes were not found in the graph: "
+               << str_util::Join(feed_nodes, ",");
 
   initialized_ = true;
   return Status::OK();
