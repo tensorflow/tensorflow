@@ -847,3 +847,7 @@ TEST_F(LazyBestFitHeapTest, Alignment) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}
