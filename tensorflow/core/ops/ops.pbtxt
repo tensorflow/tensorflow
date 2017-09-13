@@ -6004,6 +6004,74 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DecodeAndCropJpeg"
+  input_arg {
+    name: "contents"
+    description: "0-D.  The JPEG-encoded image."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "crop_window"
+    description: "1-D.  The crop window: [crop_y, crop_x, crop_height, crop_width]."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "image"
+    description: "3-D with shape `[height, width, channels]`.."
+    type: DT_UINT8
+  }
+  attr {
+    name: "channels"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Number of color channels for the decoded image."
+  }
+  attr {
+    name: "ratio"
+    type: "int"
+    default_value {
+      i: 1
+    }
+    description: "Downscaling ratio."
+  }
+  attr {
+    name: "fancy_upscaling"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true use a slower but nicer upscaling of the\nchroma planes (yuv420/422 only)."
+  }
+  attr {
+    name: "try_recover_truncated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true try to recover an image from truncated input."
+  }
+  attr {
+    name: "acceptable_fraction"
+    type: "float"
+    default_value {
+      f: 1
+    }
+    description: "The minimum required fraction of lines before a truncated\ninput is accepted."
+  }
+  attr {
+    name: "dct_method"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "string specifying a hint about the algorithm used for\ndecompression.  Defaults to \"\" which maps to a system-specific\ndefault.  Currently valid values are [\"INTEGER_FAST\",\n\"INTEGER_ACCURATE\"].  The hint may be ignored (e.g., the internal\njpeg library changes to a version that does not have that specific\noption.)"
+  }
+  summary: "Decode and Crop a JPEG-encoded image to a uint8 tensor."
+  description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later.\n\n\nIt is equivalent to a combination of decode and crop, but much faster by only\ndecoding partial jpeg image."
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
@@ -6181,7 +6249,7 @@ op {
     description: "string specifying a hint about the algorithm used for\ndecompression.  Defaults to \"\" which maps to a system-specific\ndefault.  Currently valid values are [\"INTEGER_FAST\",\n\"INTEGER_ACCURATE\"].  The hint may be ignored (e.g., the internal\njpeg library changes to a version that does not have that specific\noption.)"
   }
   summary: "Decode a JPEG-encoded image to a uint8 tensor."
-  description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later.\n\nThis op also supports decoding PNGs and non-animated GIFs since the interface is\nthe same, though it is cleaner to use `tf.image.decode_image`."
+  description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later.\n\n\nThis op also supports decoding PNGs and non-animated GIFs since the interface is\nthe same, though it is cleaner to use `tf.image.decode_image`."
 }
 op {
   name: "DecodePng"
