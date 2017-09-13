@@ -98,6 +98,7 @@ function main() {
       "${TMPDIR}/external"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
   else
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
       cp -R \
@@ -108,12 +109,12 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
-      if [ -d ${so_lib_dir} ]; then
-        mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
-        if [ $? -eq 0 ]; then
-          mkdir "${TMPDIR}/_solib_k8"
-          cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
+      so_lib_dir=$(ls $RUNFILES | grep solib) || true
+      if [ -n "${so_lib_dir}" ]; then
+        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+        if [ -n "${mkl_so_dir}" ]; then
+          mkdir "${TMPDIR}/${so_lib_dir}"
+          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
       fi
     else
@@ -127,16 +128,15 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
-      if [ -d ${so_lib_dir} ]; then
-        mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
-        if [ $? -eq 0 ]; then
-          mkdir "${TMPDIR}/_solib_k8"
-          cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
+      so_lib_dir=$(ls $RUNFILES | grep solib) || true
+      if [ -n "${so_lib_dir}" ]; then
+        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+        if [ -n "${mkl_so_dir}" ]; then
+          mkdir "${TMPDIR}/${so_lib_dir}"
+          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
       fi
     fi
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers

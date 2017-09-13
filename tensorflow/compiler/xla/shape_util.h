@@ -296,6 +296,8 @@ class ShapeUtil {
 
   // Shorthand for testing whether a shape is of a given element type and
   // sequence of dimensions.
+  //
+  // DEPRECATED: Use Equal() instead.
   static bool ShapeIs(const Shape& shape, PrimitiveType element_type,
                       std::initializer_list<int64> dimensions);
 

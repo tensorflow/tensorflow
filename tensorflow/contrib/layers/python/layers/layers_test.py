@@ -1399,7 +1399,7 @@ class FlattenTest(test.TestCase):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
       inputs.set_shape(tensor_shape.TensorShape((5,)))
       with self.assertRaisesRegexp(ValueError,
-                                   'must have a least 2 dimensions'):
+                                   'incompatible with the layer'):
         _layers.flatten(inputs)
 
   def testUnknownLastDim(self):

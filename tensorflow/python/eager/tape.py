@@ -34,6 +34,7 @@ class ImplicitTape(object):
 
   def __init__(self):
     self.tensors = {}
+    self.variables = {}
     self.gradients = []
 
   def __eq__(self, other):
@@ -49,21 +50,22 @@ def _watch_with_tape_internal(_, tensor):
   return tensor
 
 
-def _watch_with_tape(tape, tensor):
+def _watch_with_tape(tape, resource_variable):
   """Wraps a watched Tensor and keeps track of it in the implicit tape."""
+  tensor = resource_variable.handle
   w = _watch_with_tape_internal(tape, tensor)
   if ag_core.isnode(tape):
+    tape.value.variables[ops.tensor_id(tensor)] = resource_variable
     tape.value.tensors[ops.tensor_id(tensor)] = w
-  return w
 
 
 def _watch_with_tape_vjp(g, ans, vs, gvs, tape, tensor):
   """Gradient for _watch_with_tape_internal."""
-  del ans, gvs, tape
+  del ans, gvs
 
   def mut_add(implicit_tape):
-    t = ag_core.getval(tensor)
-    implicit_tape.gradients.append((t, g))
+    resource_variable = tape.value.variables[ops.tensor_id(tensor)]
+    implicit_tape.gradients.append((g, resource_variable))
     return implicit_tape
 
   return ag_core.SparseObject(vs, mut_add)
@@ -137,27 +139,14 @@ def push_new_tape():
   ag_core.active_progenitors.add(progenitor)
 
 
-def watch(tensor):
-  """Marks this tensor to be watched by all tapes in the stack.
-
-  Args:
-    tensor: tensor to be watched.
-
-  Returns:
-    The tensor, potentially wrapped by all tapes in the stack.
-  """
-  for t in _tape_stack.stack:
-    tensor = _watch_with_tape(t, tensor)
-  return tensor
-
-
 def watch_variable(resource_variable):
   """Marks this ResourceVariable to be watched by all tapes in the stack.
 
   Args:
     resource_variable: A ResourceVariable to be watched.
   """
-  watch(resource_variable.handle)  # py-lint: disable=protected-access
+  for t in _tape_stack.stack:
+    _watch_with_tape(t, resource_variable)
 
 
 def pop_tape():
@@ -175,7 +164,7 @@ def any_tape_has(tensor):
 
 
 def should_record(tensors):
-  """Returns true if any tape in the stach watches any of these tensors."""
+  """Returns true if any tape in the stack watches any of these tensors."""
   return any(ag_core.isnode(x) for x in tensors)
 
 

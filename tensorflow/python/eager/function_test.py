@@ -59,10 +59,10 @@ class FunctionTest(test.TestCase):
     @function.defun
     def step():
       def inner():
-        tape.watch(v.handle)
+        tape.watch_variable(v)
         return v * v
 
-      return backprop.implicit_grad(inner)()[0][1]
+      return backprop.implicit_grad(inner)()[0][0]
 
     self.assertAllEqual(step().numpy(), 2.0)
 
@@ -113,17 +113,17 @@ class FunctionTest(test.TestCase):
     g(tensor.Tensor(1.0))
 
   def testGradientTensorConversionWithDefun(self):
-    three = tensor.Tensor(3.0)
+    three = resource_variable_ops.ResourceVariable(3.0)
 
     @function.defun
     def f(x):
       return math_ops.add(x, three)
 
     def g(x):
-      tape.watch(three)
+      tape.watch_variable(three)
       return f(x)
 
-    g = backprop.implicit_grad(g)(tensor.Tensor(1.0))[0][1]
+    g = backprop.implicit_grad(g)(tensor.Tensor(1.0))[0][0]
     self.assertEqual(g.numpy(), 1.0)
 
   def testGradient(self):

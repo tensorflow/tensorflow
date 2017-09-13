@@ -22,16 +22,23 @@ namespace tensorflow {
 // --------------------------------------------------------------------------
 
 // The ops in this section can be composed to define an input
-// pipeline. Each op produces a (step-local) resource that represents
+// pipeline. Each op produces a DT_VARIANT tensor that represents
 // a DAG of "dataset" objects. An "dataset" object can be converted
 // to a stateful "iterator" by passing the "dataset" to the
 // "MakeIterator" op.
+//
+// TODO(b/65524810): DT_VARIANT tensors that represent "dataset" objects are
+// not presently serializable. To avoid issues with constant folding, ensure
+// that any "source dataset" ops (i.e. ops that output a dataset and do not
+// take one as input) are marked "stateful".
 
 REGISTER_OP("TensorDataset")
     .Input("components: Toutput_types")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): Validate that
                                                // `components` have shapes
                                                // compatible with
@@ -42,9 +49,11 @@ Creates a dataset that emits `components` as a tuple of tensors once.
 
 REGISTER_OP("TensorSliceDataset")
     .Input("components: Toutput_types")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): Validate that the
                                                // dim-0 slices of `components`
                                                // have shapes compatible with
@@ -57,16 +66,18 @@ REGISTER_OP("SparseTensorSliceDataset")
     .Input("indices: int64")
     .Input("values: Tvalues")
     .Input("dense_shape: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("Tvalues: type")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Creates a dataset that splits a SparseTensor into elements row-wise.
 )doc");
 
 REGISTER_OP("ZipDataset")
-    .Input("input_datasets: N * resource")
-    .Output("handle: resource")
+    .Input("input_datasets: N * variant")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
@@ -76,9 +87,9 @@ Creates a dataset that zips together `input_datasets`.
 )doc");
 
 REGISTER_OP("ConcatenateDataset")
-    .Input("input_dataset: resource")
-    .Input("another_dataset: resource")
-    .Output("handle: resource")
+    .Input("input_dataset: variant")
+    .Input("another_dataset: variant")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -87,9 +98,9 @@ Creates a dataset that concatenates `input_dataset` with `another_dataset`.
 )doc");
 
 REGISTER_OP("RepeatDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("count: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): Validate the shape
@@ -102,9 +113,9 @@ count: A scalar representing the number of times that `input_dataset` should
 )doc");
 
 REGISTER_OP("TakeDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("count: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -117,9 +128,9 @@ count: A scalar representing the number of elements from the `input_dataset`
 )doc");
 
 REGISTER_OP("SkipDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("count: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -131,8 +142,8 @@ count: A scalar representing the number of elements from the `input_dataset`
 )doc");
 
 REGISTER_OP("IgnoreErrorsDataset")
-    .Input("input_dataset: resource")
-    .Output("handle: resource")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -141,9 +152,9 @@ Creates a dataset that contains the elements of `input_dataset` ignoring errors.
 )doc");
 
 REGISTER_OP("MapDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
@@ -154,10 +165,10 @@ Creates a dataset that applies `f` to the outputs of `input_dataset`.
 )doc");
 
 REGISTER_OP("ParallelMapDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
     .Input("num_parallel_calls: int32")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
@@ -174,9 +185,9 @@ num_parallel_calls: The number of concurrent invocations of `f` that process
 )doc");
 
 REGISTER_OP("PrefetchDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("buffer_size: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -188,9 +199,9 @@ buffer_size: The maximum number of elements to buffer in an iterator over
 )doc");
 
 REGISTER_OP("FlatMapDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
@@ -200,20 +211,20 @@ REGISTER_OP("FlatMapDataset")
 Creates a dataset that applies `f` to the outputs of `input_dataset`.
 
 Unlike MapDataset, the `f` in FlatMapDataset is expected to return a
-Dataset resource, and FlatMapDataset will flatten successive results
+Dataset variant, and FlatMapDataset will flatten successive results
 into a single Dataset.
 
 f: A function mapping elements of `input_dataset`, concatenated with
-  `other_arguments`, to a Dataset resource that contains elements matching
+  `other_arguments`, to a Dataset variant that contains elements matching
   `output_types` and `output_shapes`.
 )doc");
 
 REGISTER_OP("InterleaveDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
     .Input("cycle_length: int64")
     .Input("block_length: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
@@ -223,22 +234,22 @@ REGISTER_OP("InterleaveDataset")
 Creates a dataset that applies `f` to the outputs of `input_dataset`.
 
 Unlike MapDataset, the `f` in InterleaveDataset is expected to return
-a Dataset resource, and InterleaveDataset will flatten successive
+a Dataset variant, and InterleaveDataset will flatten successive
 results into a single Dataset. Unlike FlatMapDataset,
 InterleaveDataset will interleave sequences of up to `block_length`
 consecutive elements from `cycle_length` input elements.
 
 f: A function mapping elements of `input_dataset`, concatenated with
-  `other_arguments`, to a Dataset resource that contains elements matching
+  `other_arguments`, to a Dataset variant that contains elements matching
   `output_types` and `output_shapes`.
 )doc");
 
 REGISTER_OP("SloppyInterleaveDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
     .Input("cycle_length: int64")
     .Input("block_length: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
@@ -256,17 +267,17 @@ allows the training step to proceed so long as some data is available.
 !! WARNING !! This dataset is not deterministic!
 
 f: A function mapping elements of `input_dataset`, concatenated with
-   `other_arguments`, to a Dataset resource that contains elements matching
+   `other_arguments`, to a Dataset variant that contains elements matching
    `output_types` and `output_shapes`.
 )doc");
 
 REGISTER_OP("GroupByWindowDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("key_func_other_arguments: Tkey_func_other_arguments")
     .Input("reduce_func_other_arguments: Treduce_func_other_arguments")
     .Input(
         "window_size_func_other_arguments: Twindow_size_func_other_arguments")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("key_func: func")
     .Attr("reduce_func: func")
     .Attr("window_size_func: func")
@@ -286,9 +297,9 @@ key_func: A function mapping an element of `input_dataset`, concatenated
 )doc");
 
 REGISTER_OP("FilterDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("predicate: func")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
@@ -309,9 +320,9 @@ other_arguments: A list of tensors, typically values that were captured when
 )doc");
 
 REGISTER_OP("BatchDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("batch_size: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -323,11 +334,11 @@ batch_size: A scalar representing the number of elements to accumulate in a
 )doc");
 
 REGISTER_OP("PaddedBatchDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("batch_size: int64")
     .Input("padded_shapes: N * int64")
     .Input("padding_values: Toutput_types")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
@@ -356,10 +367,10 @@ padding_values: A list of scalars containing the padding value to use for
 )doc");
 
 REGISTER_OP("DenseToSparseBatchDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("batch_size: int64")
     .Input("row_shape: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     // NOTE(mrry): the 0th and 2nd elements will be DT_INT64.
     .Attr("output_types: list(type) >= 1")
     // NOTE(mrry): the 1st and 2nd elements will be vectors.
@@ -379,9 +390,11 @@ REGISTER_OP("RangeDataset")
     .Input("start: int64")
     .Input("stop: int64")
     .Input("step: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Creates a dataset with a range of values. Corresponds to python's xrange.
@@ -392,11 +405,11 @@ step: corresponds to step in python's xrange().
 )doc");
 
 REGISTER_OP("ShuffleDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("buffer_size: int64")
     .Input("seed: int64")
     .Input("seed2: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -413,9 +426,9 @@ seed2: A second scalar seed to avoid seed collision.
 )doc");
 
 REGISTER_OP("CacheDataset")
-    .Input("input_dataset: resource")
+    .Input("input_dataset: variant")
     .Input("filename: string")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -435,7 +448,9 @@ REGISTER_OP("TextLineDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
     .Input("buffer_size: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): validate
                                                // that `filenames` is
                                                // a scalar or a
@@ -454,9 +469,11 @@ REGISTER_OP("SqlDataset")
     .Input("driver_name: string")
     .Input("data_source_name: string")
     .Input("query: string")
-    .Output("handle: resource")
+    .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Creates a dataset that executes a SQL query and emits rows of the result set.
@@ -472,7 +489,9 @@ REGISTER_OP("FixedLengthRecordDataset")
     .Input("record_bytes: int64")
     .Input("footer_bytes: int64")
     .Input("buffer_size: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Creates a dataset that emits the records from one or more binary files.
@@ -491,7 +510,9 @@ REGISTER_OP("TFRecordDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
     .Input("buffer_size: int64")
-    .Output("handle: resource")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Creates a dataset that emits the records from one or more TFRecord files.
@@ -519,7 +540,7 @@ handle: A handle to the iterator that can be passed to a "MakeIterator"
 )doc");
 
 REGISTER_OP("MakeIterator")
-    .Input("dataset: resource")
+    .Input("dataset: variant")
     .Input("iterator: resource")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
@@ -579,8 +600,8 @@ times by rerunning "MakeIterator".
 
 handle: A handle to the iterator that can be passed to an "IteratorGetNext"
   op.
-dataset_factory: A function of type `() -> DT_RESOURCE`, where the returned
-  DT_RESOURCE is a handle to a dataset.
+dataset_factory: A function of type `() -> DT_VARIANT`, where the returned
+  DT_VARIANT is a dataset.
 )doc");
 
 REGISTER_OP("IteratorGetNext")

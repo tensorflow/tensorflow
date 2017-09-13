@@ -34,16 +34,16 @@ class NNGradTest : public ::testing::Test {
   void RunTest(const Output& x, const TensorShape& x_shape, const Output& y,
                const TensorShape& y_shape) {
     float max_error;
-    TF_ASSERT_OK(ComputeGradientError(scope_, {x}, {x_shape}, {y}, {y_shape},
-                                      &max_error));
+    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+        scope_, {x}, {x_shape}, {y}, {y_shape}, &max_error)));
     EXPECT_LT(max_error, 2e-4);
   }
 
   void RunTest(const Output& x, const Tensor& x_init_value, const Output& y,
                const TensorShape& y_shape) {
     float max_error;
-    TF_ASSERT_OK(
-        ComputeGradientError(scope_, x, x_init_value, y, y_shape, &max_error));
+    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+        scope_, x, x_init_value, y, y_shape, &max_error)));
     EXPECT_LT(max_error, 2e-4);
   }
 
@@ -51,8 +51,8 @@ class NNGradTest : public ::testing::Test {
                const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
     TF_ASSERT_OK(scope_.status());
     float max_error;
-    TF_ASSERT_OK(
-        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
+    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+        scope_, xs, x_shapes, ys, y_shapes, &max_error)));
     EXPECT_LT(max_error, 2e-4);
   }
 
@@ -71,11 +71,10 @@ TEST_F(NNGradTest, LogSoftmaxGrad) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto y = LogSoftmax(scope_, x);
   // Avoid numerical instability when computing finite differences.
-  Tensor x_init_value = test::AsTensor<float>(
-          {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f,
-           0.1f, 0.3f, 0.5f, 0.7f, 0.8f,
-           -0.1f, 0.1f, 0.1f, 0.1f, 1.2f},
-          {5, 3});
+  Tensor x_init_value =
+      test::AsTensor<float>({-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f,
+                             0.5f, 0.7f, 0.8f, -0.1f, 0.1f, 0.1f, 0.1f, 1.2f},
+                            {5, 3});
   RunTest(x, x_init_value, y, shape);
 }
 
@@ -136,7 +135,7 @@ TEST_F(NNGradTest, BiasAddGradHelper) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto bias = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(bias_shape));
   auto y = BiasAdd(scope_, x, bias);
-  RunTest({x,bias}, {shape, bias_shape}, {y}, {shape});
+  RunTest({x, bias}, {shape, bias_shape}, {y}, {shape});
 }
 
 TEST_F(NNGradTest, Conv2DGrad) {

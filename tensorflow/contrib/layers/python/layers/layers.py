@@ -22,13 +22,13 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import six
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -100,8 +100,6 @@ DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
 DATA_FORMAT_NCDHW = 'NCDHW'
 DATA_FORMAT_NDHWC = 'NDHWC'
-_FUSED_DEFAULT = os.getenv('TF_DEFAULT_USES_FUSED_BATCH_NORM',
-                           '').lower() in ('true', 't', '1')
 
 
 @add_arg_scope
@@ -551,10 +549,8 @@ def batch_norm(inputs,
     ValueError: If the rank of `inputs` is undefined.
     ValueError: If rank or channels dimension of `inputs` is undefined.
   """
-  # This environment variable is only used during the testing period of fused
-  # batch norm and will be removed after that.
   if fused is None:
-    fused = _FUSED_DEFAULT
+    fused = True
 
   # Only use _fused_batch_norm if all of the following three
   # conditions are true:
@@ -1438,30 +1434,7 @@ def flatten(inputs,
   """
   with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    inputs_rank = inputs.get_shape().ndims
-    if (inputs_rank is None) or (inputs_rank < 2):
-      raise ValueError('Inputs must have a least 2 dimensions.')
-
-    inputs_shape = array_ops.shape(inputs)
-
-    batch_dim = array_ops.slice(inputs_shape, [0], [1])
-    spatial_dims = array_ops.slice(inputs_shape, [1], [inputs_rank - 1])
-
-    flat_spatial_dim = math_ops.reduce_prod(spatial_dims)
-    flat_spatial_dim = array_ops.expand_dims(flat_spatial_dim, 0)
-    flat_shape = array_ops.concat([batch_dim, flat_spatial_dim], 0)
-
-    outputs = array_ops.reshape(inputs, flat_shape)
-
-    # Attempt to propagate shape information, if it is defined.
-    input_shape = inputs.get_shape().as_list()
-    batch_dim, spatial_dims = input_shape[0], input_shape[1:]
-    if all(spatial_dims):
-      outputs.set_shape([batch_dim,
-                         functools.reduce(lambda x, y: x * y, spatial_dims)])
-    else:
-      outputs.set_shape([batch_dim, None])
-
+    outputs = core_layers.flatten(inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
@@ -2614,7 +2587,8 @@ def softmax(logits, scope=None):
     logits_2d = array_ops.reshape(logits, [-1, num_logits])
     predictions = nn.softmax(logits_2d)
     predictions = array_ops.reshape(predictions, array_ops.shape(logits))
-    predictions.set_shape(logits.get_shape())
+    if context.in_graph_mode():
+      predictions.set_shape(logits.get_shape())
     return predictions
 
 

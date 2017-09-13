@@ -315,27 +315,17 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       // We only do this if cfg.placeholder_unknown_output_shape_dim has
       // been set to avoid crashing non-BNMT graphs.
       if ((cfg.placeholder_unknown_output_shape_dim >= 0) &&
-          (shape.dims() == 0) && (node.attr().count("_output_shapes") == 1) &&
-          (node.attr().at("_output_shapes").list().shape(0).dim_size() != 0)) {
-        shape.Clear();
-        shape_proto.clear_dim();
-        for (int dim_i = 0;
-             dim_i <
-             node.attr().at("_output_shapes").list().shape(0).dim_size();
-             dim_i++) {
-          const ::tensorflow::TensorShapeProto_Dim dim =
-              node.attr().at("_output_shapes").list().shape(0).dim(dim_i);
-          if (dim.size() == -1) {
-            shape.AddDim(cfg.placeholder_unknown_output_shape_dim);
-            shape_proto.add_dim()->set_size(
-                cfg.placeholder_unknown_output_shape_dim);
-          } else {
-            int size = node.attr()
-                           .at("_output_shapes")
-                           .list()
-                           .shape(0)
-                           .dim(dim_i)
-                           .size();
+          (shape.dims() == 0) && (node.attr().count("_output_shapes") == 1)) {
+        const auto& output_shapes =
+            node.attr().at("_output_shapes").list().shape(0);
+
+        if (output_shapes.dim_size() != 0) {
+          shape.Clear();
+          shape_proto.clear_dim();
+
+          for (const auto& dim : output_shapes.dim()) {
+            auto size = dim.size();
+            if (size == -1) size = cfg.placeholder_unknown_output_shape_dim;
             shape.AddDim(size);
             shape_proto.add_dim()->set_size(size);
           }
