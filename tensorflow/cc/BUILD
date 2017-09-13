@@ -258,6 +258,7 @@ tf_cc_test(
         ":client_session",
         ":testutil",
         ":while_loop",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
