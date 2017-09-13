@@ -4,6 +4,18 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_cc")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 tf_proto_library_cc(
     name = "tpu_profiler_proto",
     srcs = ["tpu_profiler.proto"],
@@ -18,6 +30,7 @@ cc_library(
     name = "dump_tpu_profile",
     srcs = ["dump_tpu_profile.cc"],
     hdrs = ["dump_tpu_profile.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":op_profile_proto_cc",
         ":tpu_profiler_proto_cc",

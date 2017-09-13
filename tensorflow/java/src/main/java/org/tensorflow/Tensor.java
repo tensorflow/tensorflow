@@ -25,17 +25,18 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.Arrays;
-import org.tensorflow.types.Types;
-import org.tensorflow.types.TFType;
-import org.tensorflow.types.TFInt32;
-import org.tensorflow.types.TFFloat;
+import java.util.HashMap;
 import org.tensorflow.types.TFDouble;
+import org.tensorflow.types.TFFloat;
+import org.tensorflow.types.TFInt32;
 import org.tensorflow.types.TFInt64;
+import org.tensorflow.types.TFType;
+import org.tensorflow.types.Types;
 
 /**
  * A statically typed multi-dimensional array whose elements are of a type described by T.
- * Appropriate types T are declared in the package {@link org.tensorflow.types} and are
- * subtypes of {@link org.tensorflow.types.TFType}.
+ * Appropriate types T are declared in the package {@link org.tensorflow.types} and are subtypes of
+ * {@link org.tensorflow.types.TFType}.
  *
  * <p>Instances of a Tensor are <b>not</b> thread-safe.
  *
@@ -56,9 +57,9 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>A {@code Tensor} is a multi-dimensional array of elements of a limited set of types ({@link
    * types}), so not all Java objects can be converted to a {@code Tensor}. In particular, the
-   * argument {@code obj} must be either a primitive (float, double, int, long, boolean, byte) or
-   * a multi-dimensional array of one of those primitives. The argument {@code type} specifies how
-   * to interpret the first argument as a TensorFlow type. For example:
+   * argument {@code obj} must be either a primitive (float, double, int, long, boolean, byte) or a
+   * multi-dimensional array of one of those primitives. The argument {@code type} specifies how to
+   * interpret the first argument as a TensorFlow type. For example:
    *
    * <pre>{@code
    * // Valid: A 64-bit integer scalar.
@@ -80,9 +81,8 @@ public final class Tensor<T> implements AutoCloseable {
    * Tensor<TFInt32> x = Tensor.create(twoD, TFInt32.class);
    * }</pre>
    *
-   * {@link types.TFString} typed Tensors are multi-dimensional arrays of
-   * arbitrary byte sequences, so can be initialized from arrays of
-   * {@code byte[]} elements. For example:
+   * {@link types.TFString} typed Tensors are multi-dimensional arrays of arbitrary byte sequences,
+   * so can be initialized from arrays of {@code byte[]} elements. For example:
    *
    * <pre>{@code
    * // Valid: A TFString tensor.
@@ -102,69 +102,56 @@ public final class Tensor<T> implements AutoCloseable {
    * Tensor<TFString> m = Tensor.create(matrix, TFString.class);
    * }</pre>
    *
-   * @param obj The object to convert to a Tensor<T>. Note that whether the it
-   *     is compatible with the type T is not checked by the type system. For
-   *     type-safe creation of tensors, use {@link op.Tensors}.
-   *
+   * @param obj The object to convert to a Tensor<T>. Note that whether the it is compatible with
+   *     the type T is not checked by the type system. For type-safe creation of tensors, use {@link
+   *     op.Tensors}.
    * @param type The class object representing the type T.
-   *
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system.
-   *
    * @see org.tensorflow.op.Tensors
    */
   public static <T extends TFType> Tensor<T> create(Object obj, Class<T> type) {
     DataType dt2 = Types.dataType(type);
     if (!objectCompatWithType(obj, dt2)) {
-      throw new IllegalArgumentException("Data type of object does not match T (expected " + dt2 + ", got " + dataTypeOf(obj) + ")");
+      throw new IllegalArgumentException(
+          "Data type of object does not match T (expected "
+              + dt2
+              + ", got "
+              + dataTypeOf(obj)
+              + ")");
     }
     return create(obj, dt2);
   }
 
-  /** Returns whether the object {@code obj} can represent a tensor with
-   *  data type {@code dtype}.
-   */
-  private static boolean objectCompatWithType(Object obj, DataType dtype) {
-   /*  TODO(andrewmyers): Probably should not be built using dataTypeOf,
-    *  which is somewhat questionable once we allow a give Java type
-    *  to represent multiple tensor types.
-    */
-    DataType dto = dataTypeOf(obj);
-    if (dto.equals(dtype)) {
-      return true;
-    }
-    if (dto == DataType.STRING && dtype == DataType.UINT8) {
-      return true;
-    }
-    return false;
-  }
-  
   /**
    * Creates a tensor from an object whose class is inspected to figure out what the underlying data
-   * type should be. The parameter {@code T} must match the data type of the object, but this is <em>not</em> checked.
-   * Not all types {@code T} can be distinguished based on the run-time class of {@code obj}. For example,
-   * a {@code byte[]} array could be either a 1-D tensor of uint8 or a scalar string.
-   * Use the class {@link org.tensorflow.Tensors} for methods that create Tensors in a fully type-safe
-   * way.
+   * type should be. The parameter {@code T} must match the data type of the object, but this is
+   * <em>not</em> checked. Not all types {@code T} can be distinguished based on the run-time class
+   * of {@code obj}. For example, a {@code byte[]} array could be either a 1-D tensor of uint8 or a
+   * scalar string. Use the class {@link org.tensorflow.Tensors} for methods that create Tensors in
+   * a fully type-safe way.
+   *
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system.
    */
   public static <T extends TFType> Tensor<T> create(Object obj) {
     return create(obj, dataTypeOf(obj));
   }
-  
+
   /**
-   * Creates a tensor from an object.
-   * Requires the parameter {@code T} to match {@code type}, but this condition is not
-   * checked statically. Use class {@link org.tensorflow.Tensors} to
-   * create Tensors in a fully type-safe way.
+   * Create a Tensor of data type {@code dtype} from a Java object. Requires the parameter {@code T}
+   * to match {@code type}, but this condition is not checked statically. Use class {@link
+   * org.tensorflow.Tensors} to create Tensors in a fully type-safe way.
+   *
    * @param obj the object supplying the tensor data. It type must be compatible with T.
-   * @param dtype the DataType representation of the type T
+   * @param dtype the DataType representation of the type T. It must match the the run-time type of
+   *     the object.
    * @return the new tensor
    */
   static <T extends TFType> Tensor<T> create(Object obj, DataType dtype) {
     Tensor<T> t = new Tensor<T>(dtype);
     t.shapeCopy = new long[numDimensions(obj, dtype)];
+    assert objectCompatWithType(obj, dtype);
     fillShape(obj, 0, t.shapeCopy);
     if (t.dtype != DataType.STRING) {
       int byteSize = elemByteSize(t.dtype) * numElements(t.shapeCopy);
@@ -255,8 +242,7 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
-   * API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
    *
    * @param <T> the tensor element type
    * @param type the tensor element type, represented as a class object.
@@ -277,8 +263,7 @@ public final class Tensor<T> implements AutoCloseable {
    * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
    *
    * @param <T> The tensor element type
-   * @param type the tensor element type, specified as a DataType. This must
-   *     agree with T.
+   * @param type the tensor element type, specified as a DataType. This must agree with T.
    * @param shape the tensor shape.
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
@@ -304,19 +289,23 @@ public final class Tensor<T> implements AutoCloseable {
     t.buffer().put(data);
     return t;
   }
-  
-  /** Returns this Tensor object with the type {@code Tensor<U>}. An exception is
-   * thrown if the actual data type of this object does not match the type {@code U}.
-   * This method is useful when given a value of type {@code Tensor<?>}.
+
+  /**
+   * Returns this Tensor object with the type {@code Tensor<U>}. An exception is thrown if the
+   * actual data type of this object does not match the type {@code U}. This method is useful when
+   * given a value of type {@code Tensor<?>}.
+   *
    * @param type any (non-null) array of the correct type.
    * @return this
    */
- @SuppressWarnings("unchecked") public <U extends TFType> Tensor<U> expect(Class<U> type) {
+  @SuppressWarnings("unchecked")
+  public <U extends TFType> Tensor<U> expect(Class<U> type) {
     DataType dt = Types.dataType(type);
     if (!dt.equals(dtype)) {
-      throw new IllegalArgumentException("Cannot cast from tensor of " + dtype + " to tensor of " + dt);
+      throw new IllegalArgumentException(
+          "Cannot cast from tensor of " + dtype + " to tensor of " + dt);
     }
-    return ((Tensor<U>) this); 
+    return ((Tensor<U>) this);
   }
 
   // Helper function to allocate a Tensor for the create() methods that create a Tensor from
@@ -569,7 +558,7 @@ public final class Tensor<T> implements AutoCloseable {
   /**
    * Create a Tensor object from a handle to the C TF_Tensor object.
    *
-   * <p>Takes ownership of the handle.</p>
+   * <p>Takes ownership of the handle.
    */
   static Tensor<?> fromHandle(long handle) {
     @SuppressWarnings("rawtypes")
@@ -582,9 +571,8 @@ public final class Tensor<T> implements AutoCloseable {
   /**
    * Create a Tensor object from a handle to the C TF_Tensor object.
    *
-   * <p>Takes ownership of the handle. Requires the type of
-   *   the created tensor to be {@code type}, i.e., the same as
-   *   {@code T}.</p>
+   * <p>Takes ownership of the handle. Requires the type of the created tensor to be {@code type},
+   * i.e., the same as {@code T}.
    */
   static <T extends TFType> Tensor<T> fromHandle(long handle, Class<T> type) {
     Tensor<T> t = new Tensor<T>(DataType.fromC(dtype(handle)));
@@ -604,7 +592,7 @@ public final class Tensor<T> implements AutoCloseable {
   private Tensor(DataType t) {
     dtype = t;
   }
-  
+
   private ByteBuffer buffer() {
     return buffer(nativeHandle).order(ByteOrder.nativeOrder());
   }
@@ -654,49 +642,47 @@ public final class Tensor<T> implements AutoCloseable {
     }
   }
 
-  /**
-   * The default TensorFlow data type that Java object o corresponds to. Some Java objects
-   * represent more than one TensorFlow data type; for example, 'byte' can represent
-   * both {@code uint8} and {@code string}, with the latter being the default interpretation.
-   */
-  private static DataType dataTypeOf(Object o) {
-    if (o.getClass().isArray()) {
-      if (Array.getLength(o) == 0) {
-        throw new IllegalArgumentException("cannot create Tensors with a 0 dimension");
-      }
-      // byte[] is a DataType.STRING scalar.
-      Object e = Array.get(o, 0);
-      if (e == null) {
-        throwExceptionIfNotByteOfByteArrays(o);
-        return DataType.STRING;
-      }
-      if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
-        return DataType.STRING;
-      }
-      return dataTypeOf(e);
-    }
-    if (Float.class.isInstance(o) || float.class.isInstance(o)) {
-      return DataType.FLOAT;
-    } else if (Double.class.isInstance(o) || double.class.isInstance(o)) {
-      return DataType.DOUBLE;
-    } else if (Integer.class.isInstance(o) || int.class.isInstance(o)) {
-      return DataType.INT32;
-    } else if (Long.class.isInstance(o) || long.class.isInstance(o)) {
-      return DataType.INT64;
-    } else if (Boolean.class.isInstance(o) || boolean.class.isInstance(o)) {
-      return DataType.BOOL;
-    } else {
-      throw new IllegalArgumentException("cannot create Tensors of " + o.getClass().getName());
-    }
+  private static HashMap<Class<?>, DataType> classDataTypes = new HashMap<>();
+
+  static {
+    classDataTypes.put(int.class, DataType.INT32);
+    classDataTypes.put(Integer.class, DataType.INT32);
+    classDataTypes.put(long.class, DataType.INT64);
+    classDataTypes.put(Long.class, DataType.INT64);
+    classDataTypes.put(float.class, DataType.FLOAT);
+    classDataTypes.put(Float.class, DataType.FLOAT);
+    classDataTypes.put(double.class, DataType.DOUBLE);
+    classDataTypes.put(Double.class, DataType.DOUBLE);
+    classDataTypes.put(byte.class, DataType.STRING);
+    classDataTypes.put(Byte.class, DataType.STRING);
+    classDataTypes.put(boolean.class, DataType.BOOL);
+    classDataTypes.put(Boolean.class, DataType.BOOL);
   }
 
-  /** Return the number of dimensions of the tensor that object {@code o}
-   *  represents as a tensor whose datatype is {@code dtype}. Normally
-   *  this is the same as the number of dimensions of o itself, but
-   *  is one smaller for tensors of strings.
-   *  @param o The object to inspect. It must be a valid representation
-   *           of the given data type.
-   *  @param dtype The expected data type of the tensor.
+  /**
+   * The default TensorFlow data type to which Java object o corresponds. Some Java objects
+   * represent more than one TensorFlow data type; for example, 'byte' can represent both {@code
+   * uint8} and {@code string}, with the latter being the default interpretation.
+   */
+  private static DataType dataTypeOf(Object o) {
+    Class<?> c = o.getClass();
+    while (c.isArray()) {
+      c = c.getComponentType();
+    }
+    DataType ret = classDataTypes.get(c);
+    if (ret != null) {
+      return ret;
+    }
+    throw new IllegalArgumentException("cannot create Tensors of type " + c.getName());
+  }
+
+  /**
+   * Return the number of dimensions of the tensor that object {@code o} represents as a tensor
+   * whose datatype is {@code dtype}. Normally this is the same as the number of dimensions of o
+   * itself, but is one smaller for tensors of strings.
+   *
+   * @param o The object to inspect. It must be a valid representation of the given data type.
+   * @param dtype The expected data type of the tensor.
    */
   private static int numDimensions(Object o, DataType dtype) {
     int ret = numArrayDimensions(o);
@@ -705,26 +691,31 @@ public final class Tensor<T> implements AutoCloseable {
     }
     return ret;
   }
-  
-  /** Returns the number of dimensions of the array object o.
-   *  Returns 0 if o is not an array.
-   */
+
+  /** Returns the number of dimensions of the array object o. Returns 0 if o is not an array. */
   private static int numArrayDimensions(Object o) {
     Class<?> c = o.getClass();
-    if (!c.isArray()) return 0;
-    String s = c.getName();
     int i = 0;
-    while (s.charAt(i) == '[') {
+    while (c.isArray()) {
+      c = c.getComponentType();
       i++;
     }
     return i;
   }
 
+  /**
+   * Fills in the remaining entries in the shape array starting from position {@code dim} with the
+   * dimension sizes of the multidimensional array o. Checks that all arrays reachable from o have
+   * sizes consistent with the filled-in shape, throwing IllegalArgumentException otherwise.
+   */
   private static void fillShape(Object o, int dim, long[] shape) {
     if (shape == null || dim == shape.length) {
       return;
     }
     final int len = Array.getLength(o);
+    if (len == 0) {
+      throw new IllegalArgumentException("cannot create Tensors with a 0 dimension");
+    }
     if (shape[dim] == 0) {
       shape[dim] = len;
     } else if (shape[dim] != len) {
@@ -734,6 +725,22 @@ public final class Tensor<T> implements AutoCloseable {
     for (int i = 0; i < len; ++i) {
       fillShape(Array.get(o, i), dim + 1, shape);
     }
+  }
+
+  /** Returns whether the object {@code obj} can represent a tensor with data type {@code dtype}. */
+  private static boolean objectCompatWithType(Object obj, DataType dtype) {
+    /*  TODO(andrewmyers): Probably should not be built using dataTypeOf,
+     *  which is somewhat questionable once we allow a given Java type
+     *  to represent multiple tensor types.
+     */
+    DataType dto = dataTypeOf(obj);
+    if (dto.equals(dtype)) {
+      return true;
+    }
+    if (dto == DataType.STRING && dtype == DataType.UINT8) {
+      return true;
+    }
+    return false;
   }
 
   private void throwExceptionIfTypeIsIncompatible(Object o) {

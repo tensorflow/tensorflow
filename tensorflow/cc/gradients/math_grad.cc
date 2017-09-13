@@ -526,6 +526,15 @@ Status ImagGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Imag", ImagGrad);
 
+Status ComplexGrad(const Scope& scope, const Operation& op,
+                   const std::vector<Output>& grad_inputs,
+                   std::vector<Output>* grad_outputs) {
+  auto gx_1 = Real(scope, grad_inputs[0]);
+  auto gx_2 = Imag(scope, grad_inputs[0]);
+  return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
+}
+REGISTER_GRADIENT_OP("Complex", ComplexGrad);
+
 Status AngleGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
                  std::vector<Output>* grad_outputs) {

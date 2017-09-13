@@ -59,9 +59,9 @@ cc_test(
     deps = [
         ":llvm_gpu_backend",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@llvm//:core",
         "@llvm//:support",
     ],

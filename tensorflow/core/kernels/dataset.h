@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -239,7 +241,7 @@ class IteratorBase {
 
 // Represents a (potentially infinite) range of outputs, where each
 // output is a tuple of tensors.
-class DatasetBase : public ResourceBase {
+class DatasetBase : public core::RefCounted {
  public:
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
@@ -265,6 +267,9 @@ class DatasetBase : public ResourceBase {
   // (and possibly partially defined) shapes of each tuple component
   // in the outputs of this dataset.
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
+
+  // A human-readable debug string for this dataset.
+  virtual string DebugString() = 0;
 };
 
 // Represents an iterator that is associated with a particular parent dataset.
@@ -372,6 +377,22 @@ class BinaryDatasetOpKernel : public DatasetOpKernel {
                            DatasetBase* another_input,
                            DatasetBase** output) = 0;
 };
+
+// Validates and extracts a `DatasetBase` object from `tensor`.
+//
+// `tensor` must have been written by a call to SetVariantTensorToDataset().
+//
+// The retrieved pointer is a borrowed reference to the dataset, which is owned
+// by the tensor. The consumer must either acquire its own reference to the
+// dataset by calling `(*out_dataset)->Ref()`, or ensure that `tensor` is not
+// destroyed or mutated while the retrieved pointer is in use.
+Status GetDatasetFromVariantTensor(const Tensor& tensor,
+                                   DatasetBase** out_dataset);
+
+// Stores a `DatasetBase` object in `tensor`.
+//
+// The ownership of `dataset` is transferred to `tensor`.
+Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
 
 }  // namespace tensorflow
 

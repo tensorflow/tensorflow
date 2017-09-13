@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
@@ -44,6 +45,7 @@ class HloAliasAnalysisTest : public HloTestBase {
   // Run alias analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
   HloAliasAnalysis& RunAnalysis() {
+    hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before alias analysis");
     analysis_ = HloAliasAnalysis::Run(module_.get()).ConsumeValueOrDie();
     return *analysis_;
   }

@@ -175,8 +175,7 @@ class MakeIteratorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     DatasetBase* dataset;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &dataset));
-    core::ScopedUnref unref_dataset(dataset);
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
@@ -345,26 +344,19 @@ class OneShotIteratorOp : public AsyncOpKernel {
                                  });
     n.WaitForNotification();
     TF_RETURN_IF_ERROR(factory_status);
-    if (return_values.size() != 1 || return_values[0].dtype() != DT_RESOURCE ||
+    if (return_values.size() != 1 || return_values[0].dtype() != DT_VARIANT ||
         !TensorShapeUtils::IsScalar(return_values[0].shape())) {
       return errors::InvalidArgument(
           "The `dataset_factory` function must return "
-          "a single scalar of dtype DT_RESOURCE.");
+          "a single scalar of dtype DT_VARIANT.");
     }
 
-    // Retrieve the dataset that was created in the factory function.
-    DatasetBase* dataset;
-    const ResourceHandle& dataset_resource =
-        return_values[0].flat<ResourceHandle>()(0);
-    TF_RETURN_IF_ERROR(LookupResource(ctx, dataset_resource, &dataset));
-    core::ScopedUnref unref_dataset(dataset);
-
     // Create an iterator for the dataset that was created in the
-    // factory function. This transfers ownership of the dataset to
-    // the iterator, so we can delete it from the resource manager.
+    // factory function.
+    DatasetBase* dataset;
+    TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
     TF_RETURN_IF_ERROR(
         (*iterator)->set_iterator(dataset->MakeIterator("Iterator")));
-    TF_RETURN_IF_ERROR(DeleteResource<DatasetBase>(ctx, dataset_resource));
 
     (*iterator)->Ref();
     return Status::OK();

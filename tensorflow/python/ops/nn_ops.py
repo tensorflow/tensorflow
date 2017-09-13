@@ -37,6 +37,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 
+
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
 
@@ -1360,6 +1361,27 @@ def relu6(features, name=None):
     return gen_nn_ops._relu6(features, name=name)
 
 
+def leaky_relu(features, alpha=0.2, name=None):
+  """Compute the Leaky ReLU activation function.
+
+  "Rectifier Nonlinearities Improve Neural Network Acoustic Models"
+  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013
+  http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
+
+  Args:
+    features: A `Tensor` representing preactivation values.
+    alpha: Slope of the activation function at x < 0.
+    name: A name for the operation (optional).
+
+  Returns:
+    The activation value.
+  """
+  with ops.name_scope(name, "LeakyRelu", [features, alpha]):
+    features = ops.convert_to_tensor(features, name="features")
+    alpha = ops.convert_to_tensor(alpha, name="alpha")
+    return math_ops.maximum(alpha * features, features)
+
+
 def _flatten_outer_dims(logits):
   """Flattens logits' outer dimensions and keep its last dimension."""
   rank = array_ops.rank(logits)
@@ -1750,19 +1772,19 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the max pooling on the input.
 
   Args:
-    value: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
-      type `tf.float32`.
+    value: A 4-D `Tensor` of the format specified by `data_format`.
     ksize: A 1-D int Tensor of 4 elements.  The size of the window for
       each dimension of the input tensor.
     strides: A 1-D int Tensor of 4 elements.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
-    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
 
   Returns:
-    A `Tensor` with type `tf.float32`.  The max pooled output tensor.
+    A `Tensor` of format specified by `data_format`.
+    The max pooled output tensor.
   """
   with ops.name_scope(name, "MaxPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")

@@ -304,7 +304,3 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

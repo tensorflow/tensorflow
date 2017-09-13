@@ -53,6 +53,7 @@ class _EagerContext(threading.local):
     self.mode = _default_mode
     self.scope_name = ""
     self.recording_summaries = False
+    self.scalar_cache = {}
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -157,6 +158,10 @@ class Context(object):
     """Returns True if current thread is in EAGER mode."""
     return self._eager_context.mode == EAGER_MODE
 
+  def scalar_cache(self):
+    """Per-device cache for scalars."""
+    return self._eager_context.scalar_cache
+
   @property
   def scope_name(self):
     """Returns scope name for the current thread."""
@@ -245,6 +250,23 @@ class Context(object):
     # TODO(ashankar): Use TF_DeviceListType to count GPU devices.
     return len(self._devices) - 1
 
+  def add_function_def(self, fdef):
+    """Add a function definition to the context.
+
+    Once added, the function (identified by its name) can be executed like any
+    other operation.
+
+    Args:
+      fdef: A FunctionDef protocol buffer message.
+    """
+    fdef_string = fdef.SerializeToString()
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextAddFunctionDef(
+          self._handle,  # pylint: disable=protected-access
+          fdef_string,
+          len(fdef_string),
+          status)
+
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
 
@@ -264,8 +286,8 @@ class Context(object):
         it is unset.
       `attrs` contains the attributes of the operation as a `tuple` of
         alternating attribute names and attribute values.
-      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
-      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
+      `inputs` is the `list` of input `Tensor`(s) to the op.
+      `outputs` is the `list` of output `Tensor`(s) from the op.
        Return value(s) from the callback are ignored.
     """
     # TODO(cais): (b/64674139) Allow access to function-internal operations.
@@ -292,7 +314,7 @@ def _initialize_context():
 
 
 def context():
-  """Returns a singleton Context object."""
+  """Returns a singleton context object."""
   if _context is None:
     _initialize_context()
   return _context
@@ -351,7 +373,7 @@ def device(name):
   ```python
   with tfe.device('gpu:0'):
     with tfe.device('cpu:0'):
-      shape = tfe.Tensor([], dtype=tf.int32)
+      shape = Tensor([], dtype=tf.int32)
     x = ops.truncated_normal(shape, tf.float32)
   ```
   will ensure that the `shape` Tensor is on CPU but the `truncated_normal`
@@ -368,13 +390,13 @@ def device(name):
 
 
 def run(main=None, argv=None):
-  """Runs the program with an optional 'main' function and 'argv' list.
+  """Runs the program with an optional main function and argv list.
 
   The program will run with eager execution enabled.
 
   Args:
-    main: the main function to run
-    argv: the arguments to pass to it
+    main: the main function to run.
+    argv: the arguments to pass to it.
   """
   enable_eager_execution()
   app.run(main, argv)
@@ -389,3 +411,21 @@ def enable_eager_execution():
   global _default_mode
   assert _default_mode == GRAPH_MODE
   _default_mode = EAGER_MODE
+
+
+def list_devices():
+  """List the names of the available devices.
+
+  Returns:
+    Names of the available devices, as a `list`.
+  """
+  return context().devices()
+
+
+def num_gpus():
+  """Get the number of available GPU devices.
+
+  Returns:
+    The number of available GPU devices.
+  """
+  return context().num_gpus()
