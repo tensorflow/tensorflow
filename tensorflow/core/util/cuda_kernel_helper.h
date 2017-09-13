@@ -347,6 +347,16 @@ __device__ __host__ inline std::complex<double> ldg(
 #endif
 }
 
+template <>
+__device__ __host__ inline Eigen::half ldg(const Eigen::half* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  return Eigen::half_impl::raw_uint16_to_half(
+      __ldg(reinterpret_cast<const uint16_t*>(address)));
+#else
+  return *address;
+#endif
+}
+
 // CUDA provides atomic ops, but not for all types.  We provide wrappers
 // for some ops and provide implementation for all reasonable types.
 #define CUDA_ATOMIC_WRAPPER(op, T) \
