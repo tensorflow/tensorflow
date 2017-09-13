@@ -413,6 +413,7 @@ filegroup(
         "//tensorflow/tools/api/golden:all_files",
         "//tensorflow/tools/api/lib:all_files",
         "//tensorflow/tools/api/tests:all_files",
+        "//tensorflow/tools/build_info:all_files",
         "//tensorflow/tools/common:all_files",
         "//tensorflow/tools/compatibility:all_files",
         "//tensorflow/tools/dist_test/server:all_files",

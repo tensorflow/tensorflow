@@ -19,6 +19,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
@@ -100,15 +101,19 @@ py_library(
     ]),
 )
 
+tf_py_build_info_genrule()
+
 py_library(
     name = "platform",
     srcs = glob(
-        ["platform/*.py"],
+        [
+            "platform/*.py",
+        ],
         exclude = [
             "**/*test.py",
             "**/benchmark.py",  # In platform_benchmark.
         ],
-    ),
+    ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":lib",
@@ -803,6 +808,22 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "build_info_test",
+    size = "small",
+    srcs = [
+        "platform/build_info.py",
+        "platform/build_info_test.py",
+    ],
+    main = "platform/build_info_test.py",
+    srcs_version = "PY2AND3",
+    tags = ["notap"],
+    deps = [
+        ":client_testlib",
+        ":platform",
     ],
 )
 
