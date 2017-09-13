@@ -212,6 +212,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
  public:
   SummaryWriterImpl(int max_queue, int flush_millis)
       : SummaryWriterInterface(),
+        is_initialized_(false),
         max_queue_(max_queue),
         flush_millis_(flush_millis) {}
 
@@ -231,11 +232,15 @@ class SummaryWriterImpl : public SummaryWriterInterface {
       return errors::Unknown("Could not initialize events writer.");
     }
     last_flush_ = Env::Default()->NowMicros();
+    is_initialized_ = true;
     return Status::OK();
   }
 
   Status Flush() override {
     mutex_lock ml(mu_);
+    if (!is_initialized_) {
+      return errors::FailedPrecondition("Class was not properly initialized.");
+    }
     return InternalFlush();
   }
 
@@ -403,6 +408,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     return Status::OK();
   }
 
+  bool is_initialized_;
   const int max_queue_;
   const int flush_millis_;
   uint64 last_flush_;
