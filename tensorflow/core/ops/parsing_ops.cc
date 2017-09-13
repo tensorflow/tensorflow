@@ -363,7 +363,7 @@ field_delim: char delimiter to separate fields in a record.
 use_quote_delim: If false, treats double quotation marks as regular
   characters inside of the string fields (ignoring RFC 4180, Section 2,
   Bullet 5).
-na_value: Additional strings to recognize as NA/NaN.
+na_value: Additional string to recognize as NA/NaN.
 output: Each tensor will have the same shape as records.
 )doc");
 
