@@ -2391,6 +2391,46 @@ class JpegTest(test_util.TensorFlowTestCase):
         error = self.averageError(rgb, cmyk)
         self.assertLess(error, 4)
 
+  def testCropAndDecodeJpeg(self):
+    with self.test_session() as sess:
+      # Encode it, then decode it, then encode it
+      base = "tensorflow/core/lib/jpeg/testdata"
+      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+
+      h, w, _ = 256, 128, 3
+      crop_windows = [[0, 0, 5, 5], [0, 0, 5, w], [0, 0, h, 5],
+                      [h - 6, w - 5, 6, 5], [6, 5, 15, 10], [0, 0, h, w]]
+      for crop_window in crop_windows:
+        # Explicit two stages: decode + crop.
+        image1 = image_ops.decode_jpeg(jpeg0)
+        y, x, h, w = crop_window
+        image1_crop = image_ops.crop_to_bounding_box(image1, y, x, h, w)
+
+        # Combined crop+decode.
+        image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+
+        # CropAndDecode should be equal to DecodeJpeg+Crop.
+        image1_crop, image2 = sess.run([image1_crop, image2])
+        self.assertAllEqual(image1_crop, image2)
+
+  def testCropAndDecodeJpegWithInvalidCropWindow(self):
+    with self.test_session() as sess:
+      # Encode it, then decode it, then encode it
+      base = "tensorflow/core/lib/jpeg/testdata"
+      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+
+      h, w, _ = 256, 128, 3
+      # Invalid crop windows.
+      crop_windows = [[-1, 11, 11, 11], [11, -1, 11, 11], [11, 11, -1, 11],
+                      [11, 11, 11, -1], [11, 11, 0, 11], [11, 11, 11, 0],
+                      [0, 0, h + 1, w], [0, 0, h, w + 1]]
+      for crop_window in crop_windows:
+        result = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+        with self.assertRaisesWithPredicateMatch(
+            errors.InvalidArgumentError,
+            lambda e: "Invalid JPEG data or crop window" in str(e)):
+          sess.run(result)
+
   def testSynthetic(self):
     with self.test_session(use_gpu=True) as sess:
       # Encode it, then decode it, then encode it
