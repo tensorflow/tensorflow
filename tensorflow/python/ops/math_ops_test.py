@@ -302,6 +302,20 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(sum(x), math_ops.accumulate_n(tf_x).eval())
       self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
 
+  def testGrad(self):
+    np.random.seed(42)
+    for num_inputs in range(1, 10):
+      with self.test_session(use_gpu=True) as sess:
+        input_vars = [
+            variables.Variable(10.0 * np.random.random())
+            for i in range(0, num_inputs)
+        ]
+        accum_n = math_ops.accumulate_n(input_vars)
+        sess.run(variables.global_variables_initializer())
+        accum_n_grad = gradients.gradients(accum_n, input_vars)
+        self.assertAllEqual(np.repeat(1.0, num_inputs), # d/dx (x + y + ...) = 1
+                            [g.eval() for g in accum_n_grad])
+
 
 class AddNTest(test_util.TensorFlowTestCase):
 
