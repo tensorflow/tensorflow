@@ -19,16 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.training import gen_training_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.python.training.gen_adadelta_ops import *
-from tensorflow.python.training.gen_adagrad_da_ops import *
-from tensorflow.python.training.gen_adagrad_ops import *
-from tensorflow.python.training.gen_adam_ops import *
-from tensorflow.python.training.gen_ftrl_ops import *
-from tensorflow.python.training.gen_gradient_descent_ops import *
-from tensorflow.python.training.gen_momentum_ops import *
-from tensorflow.python.training.gen_proximal_adagrad_ops import *
-from tensorflow.python.training.gen_proximal_gradient_descent_ops import *
-from tensorflow.python.training.gen_rms_prop_ops import *
+from tensorflow.python.training.gen_training_ops import *
 # pylint: enable=wildcard-import

@@ -1363,53 +1363,8 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "adagrad_ops_gen",
-    out = "training/gen_adagrad_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "adagrad_da_ops_gen",
-    out = "training/gen_adagrad_da_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "adadelta_ops_gen",
-    out = "training/gen_adadelta_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "adam_ops_gen",
-    out = "training/gen_adam_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "ftrl_ops_gen",
-    out = "training/gen_ftrl_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "gradient_descent_ops_gen",
-    out = "training/gen_gradient_descent_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "momentum_ops_gen",
-    out = "training/gen_momentum_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "proximal_adagrad_ops_gen",
-    out = "training/gen_proximal_adagrad_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "proximal_gradient_descent_ops_gen",
-    out = "training/gen_proximal_gradient_descent_ops.py",
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "rms_prop_ops_gen",
-    out = "training/gen_rms_prop_ops.py",
+    name = "training_ops_gen",
+    out = "training/gen_training_ops.py",
 )
 
 py_library(
@@ -2640,10 +2595,6 @@ py_library(
     ),
     srcs_version = "PY2AND3",
     deps = [
-        ":adadelta_ops_gen",
-        ":adagrad_da_ops_gen",
-        ":adagrad_ops_gen",
-        ":adam_ops_gen",
         ":array_ops",
         ":checkpoint_ops_gen",
         ":client",
@@ -2652,8 +2603,6 @@ py_library(
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
-        ":ftrl_ops_gen",
-        ":gradient_descent_ops_gen",
         ":gradients",
         ":init_ops",
         ":io_ops",
@@ -2661,21 +2610,18 @@ py_library(
         ":lib",
         ":lookup_ops",
         ":math_ops",
-        ":momentum_ops_gen",
         ":platform",
         ":protos_all_py",
-        ":proximal_adagrad_ops_gen",
-        ":proximal_gradient_descent_ops_gen",
         ":pywrap_tensorflow",
         ":random_ops",
         ":resource_variable_ops",
         ":resources",
-        ":rms_prop_ops_gen",
         ":sdca_ops",
         ":sparse_ops",
         ":state_ops",
         ":string_ops",
         ":summary",
+        ":training_ops_gen",
         ":util",
         ":variable_scope",
         ":variables",

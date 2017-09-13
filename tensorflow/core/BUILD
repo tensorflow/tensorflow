@@ -535,7 +535,6 @@ cc_library(
 
 # Generates library per group of ops.
 tf_gen_op_libs(
-    extra_srcs = ["ops/training_ops.h"],
     op_lib_names = [
         "bitwise_ops",
         "candidate_sampling_ops",
@@ -568,16 +567,7 @@ tf_gen_op_libs(
         "stateless_random_ops",
         "string_ops",
         "summary_ops",
-        "adadelta_ops",
-        "adagrad_da_ops",
-        "adagrad_ops",
-        "adam_ops",
-        "ftrl_ops",
-        "momentum_ops",
-        "gradient_descent_ops",
-        "proximal_adagrad_ops",
-        "proximal_gradient_descent_ops",
-        "rms_prop_ops",
+        "training_ops",
     ],
 )
 
@@ -655,16 +645,7 @@ cc_library(
         ":state_ops_op_lib",
         ":stateless_random_ops_op_lib",
         ":string_ops_op_lib",
-        ":adadelta_ops_op_lib",
-        ":adagrad_da_ops_op_lib",
-        ":adagrad_ops_op_lib",
-        ":adam_ops_op_lib",
-        ":ftrl_ops_op_lib",
-        ":momentum_ops_op_lib",
-        ":gradient_descent_ops_op_lib",
-        ":proximal_adagrad_ops_op_lib",
-        ":proximal_gradient_descent_ops_op_lib",
-        ":rms_prop_ops_op_lib",
+        ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
     ] + tf_additional_cloud_op_deps(),
