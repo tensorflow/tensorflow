@@ -54,7 +54,7 @@ new_http_archive(
   strip_prefix = "tools-0e906ebc527eab1cdbf7adabff5b474da9562e9f/",
   # Prefer tar over ZIP, bazel complains about "Zip entries cannot refer to files outside of their directory: raspberry-tools-master.zip has a symlink to ../../lib/libBrokenLocale.so.1"
   url = "https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz",
-  sha256 = "970285762565c7890c6c087d262b0a18286e7d0384f13a37786d8521773bc969"
+  sha256 = "4c622a5c7b9feb9615d4723b03a13142a7f3f813f9296861d5401282b9fbea96"
 )
 
 new_http_archive(
