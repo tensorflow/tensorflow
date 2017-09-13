@@ -251,6 +251,10 @@ XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
   ComputeAndCompareR1<float>(&builder, sum, param_data, ErrorSpec(0.0001f));
 }
 
+// Only run the 3,000-parameter tests in opt mode to avoid test timeouts.
+// Timeout last observed on 2017-09-12.
+#ifndef NDEBUG
+
 // TODO(b/65525254) Fails on GPU on 2017-09-10 because we try to reserve too
 // much space in parameter memory for the kernel.
 //
@@ -329,6 +333,8 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   }
   ComputeAndCompareTuple(&builder, *Literal::MakeTuple(ptrs), param_data);
 }
+
+#endif
 
 XLA_TEST_F(ParamsTest,
            DISABLED_ON_CPU_PARALLEL(TupleOfR1ParametersAddedTogether)) {
