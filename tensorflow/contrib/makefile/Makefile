@@ -323,7 +323,8 @@ $(TARGET_NSYNC_LIB) \
 -llog \
 -lz \
 -lm \
--ldl
+-ldl \
+-latomic
 
 	LD := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_OS_ARCH)/$(BIN_PREFIX)/bin/ld
 
