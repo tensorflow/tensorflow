@@ -36,9 +36,6 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
   return tensor;
 }
 
-// TEMPORARY debugging code
-#define CHECKPOINT(ix) fprintf(stderr, "Checkpoint " #ix "\n");
-
 // Replaces occurrences of the AccumulateN stub operator with a graph of
 // lower-level ops. The graph is equivalent (modulo certain corner cases)
 // to what the following Python code used to produce:
