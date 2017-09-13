@@ -274,7 +274,7 @@ def random_shuffle(value, seed=None, name=None):
       value, seed=seed1, seed2=seed2, name=name)
 
 
-def random_crop(value, size, seed=None, name=None):
+def random_crop(value, size, seed=None, name=None, get_offset=False):
   """Randomly crops a tensor to a given size.
 
   Slices a shape `size` portion out of `value` at a uniformly chosen offset.
@@ -291,9 +291,13 @@ def random_crop(value, size, seed=None, name=None):
       @{tf.set_random_seed}
       for behavior.
     name: A name for this operation (optional).
+    get_offset: Returns the random offset tensor in addition
+      to the cropped tensor.
 
   Returns:
-    A cropped tensor of the same rank as `value` and shape `size`.
+    A cropped tensor of the same rank as `value` and shape `size` if
+    `get_offset` is False (default). A tuple containing
+    `(cropped_tensor, offset)` if `get_offset` is True.
   """
   # TODO(shlens): Implement edge case to guarantee output size dimensions.
   # If size > value.shape, zero pad the result so that it always has shape
@@ -313,7 +317,11 @@ def random_crop(value, size, seed=None, name=None):
         dtype=size.dtype,
         maxval=size.dtype.max,
         seed=seed) % limit
-    return array_ops.slice(value, offset, size, name=name)
+    cropped = array_ops.slice(value, offset, size, name=name)
+    if get_offset:
+      return cropped, offset
+    else:
+      return cropped
 
 
 def multinomial(logits, num_samples, seed=None, name=None):
