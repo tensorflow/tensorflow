@@ -1758,9 +1758,8 @@ def _weight_tensor(features, weight_column_name):
     # We don't bother with expanding dims of non-staticly shaped tensors or
     # scalars, and >1d is already in a good format.
     if rank == 1:
-      logging.warning(
-          "Weights {} has shape {}, expanding to make it 2d.",
-          weight_column_name, shape)
+      logging.warning("Weights {} has shape {}, expanding to make it 2d.".
+                      format(weight_column_name, shape))
       return (
           sparse_ops.sparse_reshape(weight_tensor, (-1, 1))
           if isinstance(weight_tensor, sparse_tensor.SparseTensor) else
