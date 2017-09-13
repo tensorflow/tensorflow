@@ -198,6 +198,31 @@ resized_images: 4-D with shape
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("ResizeBicubicGrad")
+    .Input("grads: float")
+    .Input("original_image: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("align_corners: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes the gradient of bicubic interpolation.
+
+grads: 4-D with shape `[batch, height, width, channels]`.
+original_image: 4-D with shape `[batch, orig_height, orig_width, channels]`,
+  The image tensor that was resized.
+align_corners: If true, rescale grads by (orig_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of grads and original_image. If false, rescale by
+  orig_height / height. Treat similarly the width dimension.
+output: 4-D with shape `[batch, orig_height, orig_width, channels]`.
+  Gradients with respect to the input image. Input image must have been
+  float or double.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ResizeBilinear")
     .Input("images: T")
     .Input("size: int32")
