@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -76,8 +77,18 @@ string DumpToString(const T& entity) {
 // and Modules are slightly different.
 string DumpModuleToString(const llvm::Module& module);
 
-// Sanitizes the given name to be a valid LLVM IR value name.
-string SanitizeIrName(string name);
+// Constructs a human-friendly name from the HLO and the given suffix for
+// consumption by LLVM.  The current format is: "%hlo_name.suffix".
+//
+// Note this return std::string rather than ::string, so you don't have to do an
+// extra conversion to pass this value to LLVM.
+std::string IrName(const HloInstruction* hlo, tensorflow::StringPiece suffix);
+
+// Removes special characters from a function name.
+//
+// Note that this can cause different inputs to map to the same output, so after
+// sanitizing a function name, you must run it through a uniquer.
+string SanitizeFunctionName(string function_name);
 
 // Emits a call to the specified intrinsic with the given operands. Overloaded
 // intrinsics (for example, "minnum") must include a type in overloaded_types

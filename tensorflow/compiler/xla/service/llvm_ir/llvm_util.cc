@@ -440,11 +440,48 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
   return inst;
 }
 
-string SanitizeIrName(string function_name) {
-  // Replace some characters that cannot occur in LLVM names with '_'
-  std::replace(function_name.begin(), function_name.end(), '.', '_');
-  std::replace(function_name.begin(), function_name.end(), '%', '_');
-  std::replace(function_name.begin(), function_name.end(), '-', '_');
+std::string IrName(const HloInstruction* hlo, tensorflow::StringPiece suffix) {
+  tensorflow::StringPiece hlo_name = hlo->name();
+  if (hlo_name.starts_with("%")) {
+    hlo_name.remove_prefix(1);
+  }
+  return (llvm::Twine(AsStringRef(hlo_name)) + "." + AsStringRef(suffix)).str();
+}
+
+string SanitizeFunctionName(string function_name) {
+  // The backend with the strictest requirements on function names is NVPTX, so
+  // we sanitize to its requirements.
+  //
+  // A slightly stricter version of the NVPTX requirements is that names match
+  // /[a-zA-Z_$][a-zA-Z0-9_$]*/, with the exception that the names "_" and "$"
+  // are illegal.
+
+  // Sanitize chars in function_name.
+  std::transform(function_name.begin(), function_name.end(),
+                 function_name.begin(), [](char c) {
+                   if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
+                       ('0' <= c && c <= '9') || c == '_' || c == '$') {
+                     return c;
+                   }
+                   return '_';
+                 });
+
+  // Ensure the name isn't empty.
+  if (function_name.empty()) {
+    function_name = "__unnamed";
+  }
+
+  // Ensure the name doesn't start with a number.
+  if (!function_name.empty() && function_name[0] >= '0' &&
+      function_name[0] <= '9') {
+    function_name.insert(function_name.begin(), '_');
+  }
+
+  // Ensure the name isn't "_" or "$".
+  if (function_name == "_" || function_name == "$") {
+    function_name += '_';
+  }
+
   return function_name;
 }
 
