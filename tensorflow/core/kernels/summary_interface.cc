@@ -93,7 +93,7 @@ Status AddImages(const string& tag, int max_images, int batch_size, int w,
       v->set_tag(strings::StrCat(tag, "/image"));
     }
 
-    auto image = ith_image(i);
+    const auto image = ith_image(i);
     Summary::Image* si = v->mutable_image();
     si->set_height(h);
     si->set_width(w);
@@ -154,7 +154,7 @@ void NormalizeFloatImage(int hw, int depth,
   const float kZeroThreshold = 1e-6;
   T scale, offset;
   if (image_min < 0) {
-    float max_val = std::max(std::abs(image_min), std::abs(image_max));
+    const float max_val = std::max(std::abs(image_min), std::abs(image_max));
     scale = T(max_val < kZeroThreshold ? 0.0f : 127.0f / max_val);
     offset = T(128.0f);
   } else {
@@ -212,12 +212,13 @@ class SummaryWriterImpl : public SummaryWriterInterface {
  public:
   SummaryWriterImpl(int max_queue, int flush_millis)
       : SummaryWriterInterface(),
+        is_initialized_(false),
         max_queue_(max_queue),
         flush_millis_(flush_millis) {}
 
   Status Initialize(const string& logdir, const string& filename_suffix,
                     Env* env) {
-    Status is_dir = env->IsDirectory(logdir);
+    const Status is_dir = env->IsDirectory(logdir);
     if (!is_dir.ok()) {
       if (is_dir.code() != tensorflow::error::NOT_FOUND) {
         return is_dir;
@@ -231,11 +232,15 @@ class SummaryWriterImpl : public SummaryWriterInterface {
       return errors::Unknown("Could not initialize events writer.");
     }
     last_flush_ = Env::Default()->NowMicros();
+    is_initialized_ = true;
     return Status::OK();
   }
 
   Status Flush() override {
     mutex_lock ml(mu_);
+    if (!is_initialized_) {
+      return errors::FailedPrecondition("Class was not properly initialized.");
+    }
     return InternalFlush();
   }
 
@@ -403,6 +408,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     return Status::OK();
   }
 
+  bool is_initialized_;
   const int max_queue_;
   const int flush_millis_;
   uint64 last_flush_;
@@ -419,7 +425,7 @@ Status CreateSummaryWriter(int max_queue, int flush_millis,
                            const string& logdir, const string& filename_suffix,
                            Env* env, SummaryWriterInterface** result) {
   SummaryWriterImpl* w = new SummaryWriterImpl(max_queue, flush_millis);
-  Status s = w->Initialize(logdir, filename_suffix, env);
+  const Status s = w->Initialize(logdir, filename_suffix, env);
   if (!s.ok()) {
     w->Unref();
     *result = nullptr;

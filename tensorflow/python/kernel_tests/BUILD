@@ -2302,7 +2302,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "fft_ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

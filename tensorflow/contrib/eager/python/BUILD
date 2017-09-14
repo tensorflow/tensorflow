@@ -12,6 +12,7 @@ py_library(
         ":datasets",
         ":saver",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",

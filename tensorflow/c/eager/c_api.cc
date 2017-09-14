@@ -222,6 +222,15 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   tensorflow::Tensor* src = &(h->t);
+  if (!dst_cpu && !tensorflow::DataTypeCanUseMemcpy(src->dtype())) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        tensorflow::strings::StrCat("Can't copy Tensor with type ",
+                                    tensorflow::DataTypeString(src->dtype()),
+                                    " to device ", DeviceName(dstd), ".")
+            .c_str());
+    return nullptr;
+  }
   if (src_cpu) {
     tensorflow::Tensor dst(
         dstd->GetAllocator(tensorflow::AllocatorAttributes()), src->dtype(),

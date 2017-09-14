@@ -180,23 +180,26 @@ class TargetTest(test_util.TensorFlowTestCase):
 
   def testOperatorOverrides(self):
     a = tensor.Tensor([1])
-    b = tensor.Tensor([-2])
+    # TODO(henrytan): test with negative number.
+    b = tensor.Tensor([2])
 
     self.assertAllEqual((-a).numpy(), [-1])
     self.assertAllEqual(abs(b).numpy(), [2])
 
-    self.assertAllEqual((a + b).numpy(), [-1])
-    self.assertAllEqual((a - b).numpy(), [3])
-    self.assertAllEqual((a * b).numpy(), [-2])
-    # TODO(apassos) figure out why the line below hangs
-    # self.assertAllEqual((a**b).numpy(), [1])
-    self.assertAllEqual((a / b).numpy(), [1 / (-2)])
-    self.assertAllEqual((a % b).numpy(), [-1])
+    self.assertAllEqual((a + b).numpy(), [3])
+    self.assertAllEqual((a - b).numpy(), [-1])
+    self.assertAllEqual((a * b).numpy(), [2])
+    self.assertAllEqual((a * a).numpy(), [1])
 
-    self.assertAllEqual((a < b).numpy(), [False])
-    self.assertAllEqual((a <= b).numpy(), [False])
-    self.assertAllEqual((a > b).numpy(), [True])
-    self.assertAllEqual((a >= b).numpy(), [True])
+    self.assertAllEqual((a**b).numpy(), [1])
+    self.assertAllEqual((a / b).numpy(), [1 / 2])
+    self.assertAllEqual((a / a).numpy(), [1])
+    self.assertAllEqual((a % b).numpy(), [1])
+
+    self.assertAllEqual((a < b).numpy(), [True])
+    self.assertAllEqual((a <= b).numpy(), [True])
+    self.assertAllEqual((a > b).numpy(), [False])
+    self.assertAllEqual((a >= b).numpy(), [False])
     self.assertAllEqual((a == b), False)
     self.assertAllEqual((a != b), True)
 

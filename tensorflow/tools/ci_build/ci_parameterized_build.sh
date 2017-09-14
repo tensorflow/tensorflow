@@ -53,9 +53,6 @@
 #                      additional flag --copt=-mavx or --copt=-mavx2, to
 #                      perform AVX or AVX2 builds, respectively. This requires
 #                      AVX- or AVX2-compatible CPUs.
-#   TF_BUILD_ENABLE_XLA:
-#                      If it is set to any non-empty value that is not "0",
-#                      will enable XLA and run XLA tests.
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
 #                      //tensorflow/... -//tensorflow/compiler
@@ -79,10 +76,6 @@
 #                      If set to any non-empty and non-0 value, will perform
 #                      the benchmark tests (see *_logged_benchmark targets in
 #                      tools/test/BUILD)
-#   TF_BUILD_DISABLE_GCP:
-#                      If set to any non-empty and non-0 value, will disable
-#                      support for Google Cloud Platform (GCP), which is
-#                      enabled by default.
 #   TF_BUILD_OPTIONS:
 #                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2_FMA | MAVX_DBG |
 #                      MAVX2_FMA_DBG)
@@ -148,14 +141,7 @@ PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execut
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
 EXTRA_PARAMS=""
-
-export TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA:-0}
-if [[ -z $TF_BUILD_ENABLE_XLA ]] || [ $TF_BUILD_ENABLE_XLA == 0 ]; then
-  BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
-else
-  BAZEL_TARGET="//tensorflow/compiler/..."
-  EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_ENABLE_XLA=1"
-fi
+BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
 
 if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
   BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
@@ -197,9 +183,7 @@ echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
-echo "  TF_BUILD_DISABLE_GCP=${TF_BUILD_DISABLE_GCP}"
 echo "  TF_BUILD_OPTIONS=${TF_BUILD_OPTIONS}"
-echo "  TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA}"
 
 
 # Function that tries to determine CUDA capability, if deviceQuery binary

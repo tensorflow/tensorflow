@@ -48,6 +48,10 @@ typedef std::function<Status(const Scope&, const std::vector<Output>& inputs,
 //     unique name. This will be used as a prefix for created operations.
 // * outputs: output param that returns final loop variable outputs in non-error
 //     case. Must be non-null and empty.
+// * create_while_ctx: if true, a WhileContext is created and populated for this
+//     loop. See core/graph/while_context.h for more details.
+// * cond_output: if non-null, the output of the predicate is returned. This
+//     will always be a LoopCond node.
 //
 // Returns an error if the while loop could not be fully constructed.
 //
@@ -56,7 +60,8 @@ typedef std::function<Status(const Scope&, const std::vector<Output>& inputs,
 Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
                       const CondGraphBuilderFn& cond,
                       const BodyGraphBuilderFn& body, const string& frame_name,
-                      OutputList* outputs);
+                      OutputList* outputs, bool create_while_ctx = true,
+                      Output* cond_output = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

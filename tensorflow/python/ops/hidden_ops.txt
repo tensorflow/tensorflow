@@ -167,6 +167,7 @@ NonMaxSuppression
 NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
+ResizeBicubicGrad
 ResizeNearestNeighborGrad
 SampleDistortedBoundingBox
 SampleDistortedBoundingBoxV2

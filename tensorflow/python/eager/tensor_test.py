@@ -20,9 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import tensor
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 
 
@@ -135,6 +138,15 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = tensor.Tensor(t_np_orig)
     t_np = t.numpy()
     self.assertTrue(np.all(t_np == t_np_orig), "%s vs %s" % (t_np, t_np_orig))
+
+  def testStringTensorOnGPU(self):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    with ops.device("/device:GPU:0"):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Can't copy Tensor with type string to device"):
+        tensor.Tensor("test string")
 
 
 if __name__ == "__main__":

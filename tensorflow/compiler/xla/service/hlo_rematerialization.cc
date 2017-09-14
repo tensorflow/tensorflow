@@ -811,24 +811,6 @@ bool MemoryUsageTracker::Check() const {
     CHECK_EQ(buffer.unfinished_user_count, unfinished_uses)
         << "Incorrect unplaced use count for " << buffer.ToString();
   }
-
-  // Verify live set size against memory_usage_.
-  int64 live_size = 0;
-  for (const Buffer& buffer : buffers_) {
-    // The while instruction reuses its input buffers as output buffers so
-    // don't double count its buffers if it is currently executing.
-    if (IsCurrentlyLive(buffer.id) &&
-        !(buffer.defining_instruction == in_progress_item_ &&
-          in_progress_item_->instruction->opcode() == HloOpcode::kWhile)) {
-      live_size += AllocatedSize(buffer.id);
-    }
-  }
-  CHECK(live_size == memory_usage_)
-      << "Live set size " << live_size << " is not same as memory usage "
-      << memory_usage_
-      << ". This could happen if some nodes defined in the "
-         "computation are not being used/executed.";
-
   return true;
 }
 

@@ -20,11 +20,13 @@ See the @{$python/contrib.signal} guide.
 @@hamming_window
 @@hann_window
 @@inverse_stft
+@@linear_to_mel_weight_matrix
 @@overlap_and_add
 @@stft
 
 [hamming]: https://en.wikipedia.org/wiki/Window_function#Hamming_window
 [hann]: https://en.wikipedia.org/wiki/Window_function#Hann_window
+[mel]: https://en.wikipedia.org/wiki/Mel_scale
 [stft]: https://en.wikipedia.org/wiki/Short-time_Fourier_transform
 """
 
@@ -32,6 +34,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.signal.python.ops.mel_ops import linear_to_mel_weight_matrix
 from tensorflow.contrib.signal.python.ops.reconstruction_ops import overlap_and_add
 from tensorflow.contrib.signal.python.ops.shape_ops import frame
 # `frame` used to be named `frames`, which is a noun and not a verb.
