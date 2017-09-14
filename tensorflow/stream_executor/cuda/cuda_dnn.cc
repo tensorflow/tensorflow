@@ -1991,7 +1991,7 @@ dnn::AlgorithmType GetCudnnConvolutionForwardAlgorithm(
           // Silently return when we are profiling.
           return dnn::kNoSuitableAlgorithmFound;
         }
-        LOG_FIRST_N(WARNING, 50) << allocated.status().error_message();
+        LOG(WARNING) << allocated.status().error_message();
         // For the int8 case, we fail at this point since the no_scratch
         // algorithm should be set to dnn::kDefaultAlgorithm.
         CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
@@ -2100,7 +2100,7 @@ bool CudnnSupport::DoConvolveImpl(
           if (allocated.ok()) {
             scratch = allocated.ValueOrDie();
           } else {
-            LOG_FIRST_N(WARNING, 50) << allocated.status().error_message();
+            LOG(WARNING) << allocated.status().error_message();
           }
         } else {
           LOG(WARNING)
@@ -2147,7 +2147,7 @@ bool CudnnSupport::DoConvolveImpl(
       if (allocated.ok()) {
         scratch = allocated.ValueOrDie();
       } else {
-        LOG_FIRST_N(WARNING, 50) << allocated.status().error_message();
+        LOG(WARNING) << allocated.status().error_message();
       }
       if (scratch == nullptr) {
         CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
@@ -2897,7 +2897,7 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
           if (allocated.ok()) {
             scratch = allocated.ValueOrDie();
           } else {
-            LOG_FIRST_N(WARNING, 50) << allocated.status().error_message();
+            LOG(WARNING) << allocated.status().error_message();
           }
         } else {
           LOG(WARNING)
@@ -2947,7 +2947,7 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
       if (allocated.ok()) {
         scratch = allocated.ValueOrDie();
       } else {
-        LOG_FIRST_N(WARNING, 50) << allocated.status().error_message();
+        LOG(WARNING) << allocated.status().error_message();
       }
       if (scratch == nullptr) {
         CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
@@ -3148,7 +3148,7 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
           if (allocated.ok()) {
             scratch = allocated.ValueOrDie();
           } else {
-            LOG_FIRST_N(WARNING, 50) << allocated.status().error_message();
+            LOG(WARNING) << allocated.status().error_message();
           }
         } else {
           LOG(WARNING)
@@ -3196,7 +3196,7 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
       if (allocated.ok()) {
         scratch = allocated.ValueOrDie();
       } else {
-        LOG_FIRST_N(WARNING, 50) << allocated.status().error_message();
+        LOG(WARNING) << allocated.status().error_message();
       }
       if (scratch == nullptr) {
         CHECK(algorithm_config.algorithm_no_scratch() != dnn::kDefaultAlgorithm)
