@@ -1,3 +1,5 @@
+#ifdef TENSORFLOW_USE_MPI
+
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/contrib/mpi_collectives/ring.h"
@@ -53,3 +55,5 @@ GENERATE_ACCUMULATE(float);
 }
 }
 }
+
+#endif // TENSORFLOW_USE_MPI

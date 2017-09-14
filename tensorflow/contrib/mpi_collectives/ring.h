@@ -1,6 +1,8 @@
 #ifndef TENSORFLOW_CONTRIB_MPI_H_
 #define TENSORFLOW_CONTRIB_MPI_H_
 
+#ifdef TENSORFLOW_USE_MPI
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -303,6 +305,8 @@ Status RingAllgather(OpKernelContext* context, const Tensor* input,
 }
 }
 }
+
+#endif // TENSORFLOW_USE_MPI
 
 #undef TENSORFLOW_CONTRIB_MPI_H_
 #endif // TENSORFLOW_CONTRIB_MPI_H_

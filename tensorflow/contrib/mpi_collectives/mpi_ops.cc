@@ -13,6 +13,8 @@
 // limitations under the License.
 // ============================================================================
 
+#ifdef TENSORFLOW_USE_MPI
+
 #include <unordered_map>
 #include <queue>
 #include <thread>
@@ -1234,3 +1236,6 @@ REGISTER_KERNEL_BUILDER(Name("MPIAllgather")
 }  // namespace mpi
 }  // namespace contrib
 }  // namespace tensorflow
+
+
+#endif // TENSORFLOW_USE_MPI

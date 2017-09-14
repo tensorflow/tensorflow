@@ -1,3 +1,4 @@
+#ifdef TENSORFLOW_USE_MPI
 
 #if GOOGLE_CUDA
 
@@ -72,4 +73,6 @@ GENERATE_ACCUMULATE(float);
 }
 }
 }
-#endif
+#endif // GOOGLE_CUDA
+
+#endif // TENSORFLOW_USE_MPI
