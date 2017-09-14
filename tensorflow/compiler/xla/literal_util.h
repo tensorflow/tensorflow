@@ -166,12 +166,6 @@ class Literal {
   const Shape& shape() const { return shape_; }
   Shape* mutable_shape() { return &shape_; }
 
-  void Swap(Literal* other) {
-    Literal temp = *this;
-    *this = *other;
-    *other = temp;
-  }
-
   // Creates a new literal of a given rank. To minimize ambiguity (for users
   // and the compiler) these CreateR[0-2] methods should explicitly specify the
   // native type. For example:

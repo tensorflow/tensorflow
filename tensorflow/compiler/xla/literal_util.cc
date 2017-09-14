@@ -662,7 +662,7 @@ string Literal::ToString() const {
   std::vector<Shape> shape;
   for (auto& tuple_element : elements) {
     shape.push_back(tuple_element->shape());
-    literal->add_tuple_literals()->Swap(tuple_element.get());
+    *literal->add_tuple_literals() = std::move(*tuple_element);
   }
   *literal->mutable_shape() = ShapeUtil::MakeTupleShape(shape);
   return literal;
