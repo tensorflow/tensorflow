@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Removes parts of a graph that are only needed for training.
+"""Removes parts of a graph that are only needed for training.
 
 There are several common transformations that can be applied to GraphDefs
 created to train a model, that help reduce the amount of computation needed when
