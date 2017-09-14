@@ -39,7 +39,6 @@ _DELAY_SECS_PER_WORKER = 5
 _TF_CONFIG_ENV = 'TF_CONFIG'
 _ENVIRONMENT_KEY = 'environment'
 _ENVIRONMENT_GOOGLE_VALUE = 'google'
-_STD_SERVER_RUN_CONFIG = config_pb2.ConfigProto(log_device_placement=False)
 
 
 def _validate_input_fn(input_fn):
@@ -61,7 +60,7 @@ def _validate_hooks(hooks):
 
 
 def _is_google_env():
-  """Detects whether std server should be started in current environment."""
+  """Detects whether current environment is google."""
   tf_config = json.loads(os.environ.get(_TF_CONFIG_ENV) or '{}')
   if not tf_config:
     logging.warn('TF_CONFIG should not be empty in distributed environment.')
@@ -214,13 +213,6 @@ class _TrainingExecutor(object):
   """
 
   def __init__(self, estimator, train_spec, eval_spec):
-    """Constructor.
-
-    Args:
-      estimator: A `tf.estimator.Estimator` instance to train/evaluate model.
-      train_spec: A `TrainSpec` instance to specify training details.
-      eval_spec: A `EvalSpec` instance to specify evaluation details.
-    """
     if not isinstance(estimator, estimator_lib.Estimator):
       raise TypeError('`estimator` must have type `tf.estimator.Estimator`.')
     self._estimator = estimator
@@ -239,12 +231,12 @@ class _TrainingExecutor(object):
 
   def run_chief(self):
     """Runs task chief."""
-    # TODO(xiejw): Allows execution framework to add train hooks.
+    # TODO(xiejw): To allow execution framework to add train hooks.
     return self._start_distributed_training()
 
   def run_worker(self):
     """Runs task (training) worker."""
-    # TODO(xiejw): Allows execution framework to add train hooks.
+    # TODO(xiejw): To allow execution framework to add train hooks.
     return self._start_distributed_training()
 
   def run_evaluator(self):
@@ -270,7 +262,7 @@ class _TrainingExecutor(object):
         config.cluster_spec,
         job_name=config.task_type,
         task_index=config.task_id,
-        config=_STD_SERVER_RUN_CONFIG,
+        config=config_pb2.ConfigProto(log_device_placement=False),
         start=False)
     server.start()
     return server
@@ -280,13 +272,13 @@ class _TrainingExecutor(object):
     config = self._estimator.config
 
     # Start in-process TensorFlow server if needed. It's important to start the
-    # server before we (optionally) sleep for the case where no device_filters
-    # are set. Otherwise, the servers will wait to connect to each other before
-    # starting to train.
+    # server before we (optionally) sleep. Otherwise, the servers will wait to
+    # connect to each other before starting to train.
     if not _is_google_env():
       self._start_std_server(config)
 
-    # Delay worker to start. Chief starts the training immediately, so, worker
+    # Delay worker to start. For asynchronous training, this usually helps model
+    # to converge faster.  Chief starts the training immediately, so, worker
     # with task id x (0-based) should wait (x+1) * _DELAY_SECS_PER_WORKER.
     delay_secs = 0
     if config.task_type == run_config_lib.TaskType.WORKER:
