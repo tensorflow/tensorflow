@@ -127,16 +127,16 @@ for arch in $archs; do
                         include dependfile
                 ';;
 
-        ios)    xcode=/Applications/Xcode.app/Contents/Developer/Platforms
+        ios)
                 arch_flags=
                 case "$arch" in
                 i386|x86_64)
                         arch_flags="$arch_flags -mios-simulator-version-min=8.0"
-                        arch_flags="$arch_flags -isysroot $xcode/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator10.0.sdk"
+                        arch_flags="$arch_flags -isysroot `xcrun --sdk iphonesimulator --show-sdk-path`"
                         ;;
                 *)
                         arch_flags="$arch_flags -miphoneos-version-min=8.0"
-                        arch_flags="$arch_flags -isysroot $xcode/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.0.sdk"
+                        arch_flags="$arch_flags -isysroot `xcrun --sdk iphoneos --show-sdk-path`"
                         ;;
                 esac
                 makefile='
