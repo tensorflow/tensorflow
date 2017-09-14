@@ -56,7 +56,7 @@ with tf.Graph().as_default():
 
     session.run(tf.global_variables_initializer())
 
-    mask = (np.expend_dims(np.range(num_words), axis=0) <
+    mask = (np.expend_dims(np.arange(num_words), axis=0) <
             np.expend_dims(sequence_lengths, axis=1))
     total_labels = np.sum(sequence_lengths)
 
