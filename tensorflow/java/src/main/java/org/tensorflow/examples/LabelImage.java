@@ -29,12 +29,12 @@ import org.tensorflow.Output;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
 import org.tensorflow.TensorFlow;
-import org.tensorflow.types.Types;
-import org.tensorflow.types.TFType;
-import org.tensorflow.types.TFInt32;
-import org.tensorflow.types.TFUInt8;
 import org.tensorflow.types.TFFloat;
+import org.tensorflow.types.TFInt32;
 import org.tensorflow.types.TFString;
+import org.tensorflow.types.TFType;
+import org.tensorflow.types.TFUInt8;
+import org.tensorflow.types.Types;
 
 /** Sample use of the TensorFlow Java API to label images using a pre-trained model. */
 public class LabelImage {
@@ -71,9 +71,9 @@ public class LabelImage {
       float[] labelProbabilities = executeInceptionGraph(graphDef, image);
       int bestLabelIdx = maxIndex(labelProbabilities);
       System.out.println(
-          String.format("BEST MATCH: %s (%.2f%% likely)",
-              labels.get(bestLabelIdx),
-              labelProbabilities[bestLabelIdx] * 100f));
+          String.format(
+              "BEST MATCH: %s (%.2f%% likely)",
+              labels.get(bestLabelIdx), labelProbabilities[bestLabelIdx] * 100f));
     }
   }
 
@@ -115,7 +115,8 @@ public class LabelImage {
     try (Graph g = new Graph()) {
       g.importGraphDef(graphDef);
       try (Session s = new Session(g);
-          Tensor<TFFloat> result = s.runner().feed("input", image).fetch("output").run().get(0).expect(TFFloat.class)) {
+          Tensor<TFFloat> result =
+              s.runner().feed("input", image).fetch("output").run().get(0).expect(TFFloat.class)) {
         final long[] rshape = result.shape();
         if (result.numDimensions() != 2 || rshape[0] != 1) {
           throw new RuntimeException(
@@ -185,7 +186,11 @@ public class LabelImage {
 
     <T, U extends TFType> Output<U> cast(Output<T> value, Class<U> type) {
       DataType dtype = Types.dataType(type);
-      return g.opBuilder("Cast", "Cast").addInput(value).setAttr("DstT", dtype).build().<U>output(0);
+      return g.opBuilder("Cast", "Cast")
+          .addInput(value)
+          .setAttr("DstT", dtype)
+          .build()
+          .<U>output(0);
     }
 
     Output<TFUInt8> decodeJpeg(Output<TFString> contents, long channels) {
@@ -205,7 +210,7 @@ public class LabelImage {
             .<T>output(0);
       }
     }
-  
+
     Output<TFString> stringConstant(String name, byte[] value) {
       try (Tensor<TFString> t = Tensor.create(value, TFString.class)) {
         return g.opBuilder("Const", name)
@@ -215,42 +220,47 @@ public class LabelImage {
             .<TFString>output(0);
       }
     }
+
     Output<TFInt32> constant(String name, int value) {
-        try (Tensor<TFInt32> t = Tensor.create(value, TFInt32.class)) {
-          return g.opBuilder("Const", name)
-              .setAttr("dtype", DataType.INT32)
-              .setAttr("value", t)
-              .build()
-              .<TFInt32>output(0);
-        }
+      try (Tensor<TFInt32> t = Tensor.create(value, TFInt32.class)) {
+        return g.opBuilder("Const", name)
+            .setAttr("dtype", DataType.INT32)
+            .setAttr("value", t)
+            .build()
+            .<TFInt32>output(0);
       }
+    }
+
     Output<TFInt32> constant(String name, int[] value) {
-        try (Tensor<TFInt32> t = Tensor.create(value, TFInt32.class)) {
-          return g.opBuilder("Const", name)
-              .setAttr("dtype", DataType.INT32)
-              .setAttr("value", t)
-              .build()
-              .<TFInt32>output(0);
-        }
+      try (Tensor<TFInt32> t = Tensor.create(value, TFInt32.class)) {
+        return g.opBuilder("Const", name)
+            .setAttr("dtype", DataType.INT32)
+            .setAttr("value", t)
+            .build()
+            .<TFInt32>output(0);
       }
+    }
+
     Output<TFFloat> constant(String name, float value) {
-        try (Tensor<TFFloat> t = Tensor.create(value, TFFloat.class)) {
-          return g.opBuilder("Const", name)
-              .setAttr("dtype", DataType.FLOAT)
-              .setAttr("value", t)
-              .build()
-              .<TFFloat>output(0);
-        }
+      try (Tensor<TFFloat> t = Tensor.create(value, TFFloat.class)) {
+        return g.opBuilder("Const", name)
+            .setAttr("dtype", DataType.FLOAT)
+            .setAttr("value", t)
+            .build()
+            .<TFFloat>output(0);
       }
+    }
 
     @SuppressWarnings("unchecked")
     private <T> Output<T> binaryOp(String type, Output<T> in1, Output<T> in2) {
-      return (Output<T>)g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
+      return (Output<T>) g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
     }
+
     @SuppressWarnings("unchecked")
     private <T, U, V> Output<T> binaryOp3(String type, Output<U> in1, Output<V> in2) {
-       return (Output<T>)g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
+      return (Output<T>) g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
     }
+
     private Graph g;
   }
 }
