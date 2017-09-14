@@ -296,7 +296,7 @@ for arch in $archs; do
         fi
         if (cd "$nsync_platform_dir" && make depend nsync.a >&2); then
                 mkdir -p "$nsync_backup_dir"
-                cp "$nsync_platform_dir/nsync.a" "$nsync_backup_dir"
+                cp "$nsync_platform_dir/nsync.a" "$nsync_backup_dir/libnsync.a"
                 case "$target_platform" in
                 ios)    platform_libs="$platform_libs '$nsync_platform_dir/nsync.a'";;
                 *)      echo "$nsync_platform_dir/nsync.a";;
@@ -311,7 +311,7 @@ ios)    nsync_platform_dir="$nsync_builds_dir/lipo.$target_platform.c++11"
         mkdir "$nsync_platform_dir"
         mkdir -p "$nsync_platform_dir"
         eval lipo $platform_libs -create -output '$nsync_platform_dir/nsync.a'
-        cp "$nsync_platform_dir/nsync.a" "$makefile_dir/gen/nsync_ios"
+        cp "$nsync_platform_dir/nsync.a" "$makefile_dir/gen/nsync_ios/libnsync.a"
         echo "$nsync_platform_dir/nsync.a"
         ;;
 esac
