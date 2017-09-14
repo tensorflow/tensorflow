@@ -439,7 +439,7 @@ xla_test(
 xla_test(
     name = "scalar_computations_test",
     srcs = ["scalar_computations_test.cc"],
-    shard_count = 16,
+    shard_count = 32,
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
