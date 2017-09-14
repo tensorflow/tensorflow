@@ -123,6 +123,14 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrShape(TFE_Op* op, const char* attr_name,
                                               const int64_t* dims, const int num_dims,
                                               TF_Status* out_status);
 
+// Sets the attribute attr_name to be a function specified by 'function'.
+//
+// TODO(ashankar,iga): Add this functionality to the C API for graph
+// construction. Perhaps we want an AttrValueMap equivalent in the C API?
+TF_CAPI_EXPORT extern void TFE_OpSetAttrFunction(TFE_Op* op,
+                                                 const char* attr_name,
+                                                 const TFE_Op* value);
+
 TF_CAPI_EXPORT extern void TFE_OpSetAttrStringList(TFE_Op* op, const char* attr_name,
                                                    const char** value, int num_values);
 TF_CAPI_EXPORT extern void TFE_OpSetAttrIntList(TFE_Op* op, const char* attr_name,
