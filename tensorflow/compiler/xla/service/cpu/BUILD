@@ -373,6 +373,7 @@ cc_library(
         "llvm_ir_runtime.h",
     ],
     deps = [
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:transform_utils",

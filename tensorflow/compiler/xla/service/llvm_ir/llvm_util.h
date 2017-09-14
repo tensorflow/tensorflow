@@ -89,6 +89,16 @@ llvm::Value* EmitCallToIntrinsic(
     tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
     llvm::IRBuilder<>* ir_builder);
 
+// Emit float max. Emit maxnum intrinsic is fast math is disabled, or
+// fcmp+select otherwise
+llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder);
+
+// Emit float min. Emit minnum intrinsic is fast math is disabled, or
+// fcmp+select otherwise
+llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder);
+
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
 // determined from the element type of the array.  The int64 index overload
@@ -137,7 +147,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             int alignment = 0);
 
 // As EmitAllocaAtFunctionEntry, but allocates element_count entries
-// intead of a single element.
+// instead of a single element.
 llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
     llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
     llvm::IRBuilder<>* ir_builder, int alignment = 0);

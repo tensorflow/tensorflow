@@ -69,6 +69,28 @@ llvm::Value* EmitCallToIntrinsic(
   return ir_builder->CreateCall(intrinsic, operands_vec);
 }
 
+llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder) {
+  if (ir_builder->getFastMathFlags().noNaNs()) {
+    auto cmp = ir_builder->CreateFCmpUGE(lhs_value, rhs_value);
+    return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    return EmitCallToIntrinsic(llvm::Intrinsic::maxnum, {lhs_value, rhs_value},
+                               {lhs_value->getType()}, ir_builder);
+  }
+}
+
+llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder) {
+  if (ir_builder->getFastMathFlags().noNaNs()) {
+    auto cmp = ir_builder->CreateFCmpULE(lhs_value, rhs_value);
+    return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    return EmitCallToIntrinsic(llvm::Intrinsic::minnum, {lhs_value, rhs_value},
+                               {lhs_value->getType()}, ir_builder);
+  }
+}
+
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
                                    llvm::IRBuilder<>* ir_builder) {
   llvm::Type* array_type = array->getType();
