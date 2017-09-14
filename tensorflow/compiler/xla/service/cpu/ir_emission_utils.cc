@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -94,6 +95,10 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
       return false;
     }
 
+    if (ProfitableToImplementDotInLlvmIr(hlo) == DotInLlvmIrProfitable::kYes) {
+      return false;
+    }
+
     // If gemm can accept the operand shapes, use it rather than a custom
     // kernel.
     if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape())) {
@@ -118,6 +123,44 @@ bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
   }
 
   return false;
+}
+
+DotInLlvmIrProfitable ProfitableToImplementDotInLlvmIr(
+    const HloInstruction& dot) {
+  if (dot.opcode() == HloOpcode::kDot && dot.shape().dimensions_size() == 2) {
+    const Shape& result_shape = dot.shape();
+    // kReductionDimensionThresholdBytes was chosen to be 1/4 of a typical L1
+    // cache line size, so that we can have the reduction dimension of both the
+    // LHS and RHS matrices and still have some space "left over".  This needs
+    // to be tuned further.
+    const int64 kReductionDimensionThresholdBytes = 8 * 1024;
+    const bool single_threaded_eigen =
+        !dot.GetModule()->config().debug_options().xla_cpu_multi_thread_eigen();
+    const int64 kMaxSingleThreadedFlops = 16 * 1024;
+
+    const int64 M = result_shape.dimensions(0);
+    const int64 N = result_shape.dimensions(1);
+    const int64 K = dot.operand(1)->shape().dimensions(0);
+    const int64 primitive_type_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(result_shape.element_type());
+    if (M == 1 &&
+        K * primitive_type_size <= kReductionDimensionThresholdBytes &&
+        (single_threaded_eigen || M * K * N <= kMaxSingleThreadedFlops)) {
+      // Heuristics:
+      //
+      //  - Look for a configuration where we will likely be able to keep LHS in
+      //    L1 and do a cache-optimal traversal of RHS.
+      //
+      //  - Bail out on matrices that are large enough that Eigen can profitably
+      //    shard the computation across multiple cores.  This only applies when
+      //    multi-threading is enabled.
+      return LayoutUtil::IsMonotonicWithDim0Major(
+                 dot.operand(1)->shape().layout())
+                 ? DotInLlvmIrProfitable::kWithColumnMajorRhs
+                 : DotInLlvmIrProfitable::kYes;
+    }
+  }
+  return DotInLlvmIrProfitable::kNo;
 }
 
 }  // namespace cpu

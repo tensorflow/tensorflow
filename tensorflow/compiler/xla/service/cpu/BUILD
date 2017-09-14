@@ -501,6 +501,7 @@ cc_library(
     srcs = ["cpu_instruction_fusion.cc"],
     hdrs = ["cpu_instruction_fusion.h"],
     deps = [
+        ":ir_emission_utils",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
     ],
@@ -558,8 +559,32 @@ cc_library(
     hdrs = ["layout_assignment.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:layout_assignment",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "layout_assignment_test",
+    size = "small",
+    srcs = ["layout_assignment_test.cc"],
+    deps = [
+        ":layout_assignment",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_layout",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:computation_layout",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
     ],
 )

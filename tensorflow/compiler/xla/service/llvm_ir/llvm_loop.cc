@@ -33,18 +33,21 @@ namespace xla {
 namespace llvm_ir {
 
 ForLoop::ForLoop(tensorflow::StringPiece suffix, llvm::Value* start_index,
-                 llvm::Value* end_index, llvm::Value* step)
+                 llvm::Value* end_index, llvm::Value* step,
+                 bool prevent_unrolling)
     : suffix_(suffix.ToString()),
       start_index_(start_index),
       end_index_(end_index),
       step_(step),
-      insert_before_bb_(nullptr) {}
+      insert_before_bb_(nullptr),
+      prevent_unrolling_(prevent_unrolling) {}
 
 /* static */ std::unique_ptr<ForLoop> ForLoop::EmitForLoop(
     tensorflow::StringPiece suffix, llvm::Value* start_index,
-    llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* ir_builder) {
+    llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* ir_builder,
+    bool prevent_unrolling) {
   std::unique_ptr<ForLoop> loop(
-      new ForLoop(suffix, start_index, end_index, step));
+      new ForLoop(suffix, start_index, end_index, step, prevent_unrolling));
   loop->Emit(ir_builder);
   return loop;
 }
@@ -121,7 +124,19 @@ void ForLoop::Emit(llvm::IRBuilder<>* ir_builder) {
       ir_builder->CreateAdd(indvar, step, "invar.inc",
                             /*HasNUW=*/true, /*HasNSW=*/true);
   ir_builder->CreateStore(indvar_inc, indvar_address);
-  ir_builder->CreateBr(header_bb_);
+  llvm::BranchInst* back_branch = ir_builder->CreateBr(header_bb_);
+
+  if (prevent_unrolling_) {
+    const char* const kLlvmLoopUnrollDisableMDName = "llvm.loop.unroll.disable";
+    llvm::LLVMContext* ctx = &back_branch->getContext();
+
+    auto temp_node = llvm::MDNode::getTemporary(*ctx, llvm::None);
+    auto no_unroll_node = llvm::MDNode::get(
+        *ctx, {llvm::MDString::get(*ctx, kLlvmLoopUnrollDisableMDName)});
+    auto loop_id = llvm::MDNode::get(*ctx, {temp_node.get(), no_unroll_node});
+    loop_id->replaceOperandWith(0, loop_id);
+    back_branch->setMetadata(llvm::LLVMContext::MD_loop, loop_id);
+  }
 
   // Re-point the IR builder to the loop exit block.
   ir_builder->SetInsertPoint(exit_bb_);
@@ -143,20 +158,23 @@ llvm::BasicBlock* ForLoop::CreateBasicBlockWithSuffix(
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
                                               llvm::Value* start_index,
-                                              llvm::Value* end_index) {
-  return AddLoop(suffix, start_index, end_index, ir_builder_->getInt64(1));
+                                              llvm::Value* end_index,
+                                              bool prevent_unrolling) {
+  return AddLoop(suffix, start_index, end_index, ir_builder_->getInt64(1),
+                 prevent_unrolling);
 }
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
                                               llvm::Value* start_index,
                                               llvm::Value* end_index,
-                                              llvm::Value* stride) {
+                                              llvm::Value* stride,
+                                              bool prevent_unrolling) {
   if (inner_loop_body_bb_ != nullptr) {
     // Create this loop inside the previous one.
     ir_builder_->SetInsertPoint(&*inner_loop_body_bb_->getFirstInsertionPt());
   }
-  std::unique_ptr<ForLoop> loop =
-      ForLoop::EmitForLoop(suffix, start_index, end_index, stride, ir_builder_);
+  std::unique_ptr<ForLoop> loop = ForLoop::EmitForLoop(
+      suffix, start_index, end_index, stride, ir_builder_, prevent_unrolling);
 
   if (outer_loop_preheader_bb_ == nullptr) {
     outer_loop_preheader_bb_ = loop->GetPreheaderBasicBlock();
@@ -173,19 +191,21 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
                                               int64 end_index,
-                                              tensorflow::StringPiece suffix) {
+                                              tensorflow::StringPiece suffix,
+                                              bool prevent_unrolling) {
   CHECK_LE(start_index, end_index);
   return AddLoop(suffix, ir_builder_->getInt64(start_index),
-                 ir_builder_->getInt64(end_index));
+                 ir_builder_->getInt64(end_index), prevent_unrolling);
 }
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
                                               int64 end_index, int64 stride,
-                                              tensorflow::StringPiece suffix) {
+                                              tensorflow::StringPiece suffix,
+                                              bool prevent_unrolling) {
   CHECK_LE(start_index, end_index);
   return AddLoop(suffix, ir_builder_->getInt64(start_index),
                  ir_builder_->getInt64(end_index),
-                 ir_builder_->getInt64(stride));
+                 ir_builder_->getInt64(stride), prevent_unrolling);
 }
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
