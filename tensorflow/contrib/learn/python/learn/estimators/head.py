@@ -1684,11 +1684,13 @@ class _MultiHead(Head):
     for head, m in zip(self._heads, all_model_fn_ops):
       losses.append(m.loss)
       head_name = head.head_name
-      for k, v in m.predictions.items():
-        predictions[(head_name, k)] = v
-      for k, v in m.eval_metric_ops.items():
-        # metrics["%s/%s" % (k, head_name)] = v
-        metrics[k] = v
+      if m.predictions is not None:
+        for k, v in six.iteritems(m.predictions):
+          predictions[(head_name, k)] = v
+      if m.eval_metric_ops is not None:
+        for k, v in six.iteritems(m.eval_metric_ops):
+          # metrics["%s/%s" % (k, head_name)] = v
+          metrics[k] = v
       additional_train_ops.append(m.train_op)
     loss = self._loss_merger(losses)
 
