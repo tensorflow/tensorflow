@@ -96,9 +96,7 @@ class BackpropTest(test.TestCase):
       return x
 
     grad_fn = backprop.gradients_function(f)
-    self.assertAllEqual(grad_fn(constant_op.constant(1.0),
-                                dy=constant_op.constant(2.0))[0].numpy(),
-                        2.0)
+    self.assertAllEqual(2., grad_fn(1., dy=2.)[0].numpy())
 
   def testImplicitGradOverEmbeddingLookup(self):
     batch_size = 8
@@ -296,7 +294,7 @@ class BackpropTest(test.TestCase):
       return math_ops._mul_dispatch(x, x)  # pylint: disable=protected-access
 
     self.assertAllEqual(
-        backprop.gradients_function(mul)(constant_op.constant(3.0))[0].numpy(),
+        backprop.gradients_function(mul)(3.0)[0].numpy(),
         6.0)
 
   def testMakeAttrShape(self):

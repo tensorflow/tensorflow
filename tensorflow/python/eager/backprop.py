@@ -523,10 +523,12 @@ def val_and_grad_function(f, params):
   def decorated(*args, **kwds):
     """Computes the value and gradient of the decorated function."""
     dy = kwds.pop("dy", None)
+    if dy is not None:
+      dy = ops.convert_to_tensor(dy)
     assert not kwds, "The gradient function can't take keyword arguments."
     tape.push_new_tape()
     sources = []
-    args = list(args)
+    args = [ops.convert_to_tensor(x) for x in args]
     for i in parameter_positions:
       sources.append(args[i])
       tape.watch(args[i])
