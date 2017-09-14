@@ -418,14 +418,6 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // Cost condition: not fuse (simple, expensive producers) and (consumers who
-  // reuse operand elements).
-  if (producer->opcode() != HloOpcode::kFusion &&
-      consumer->ReusesOperandElements(operand_index) &&
-      is_expensive_(*producer)) {
-    return false;
-  }
-
   if (producer->CouldBeBitcast() &&
       // We can't fuse parameters anyhow, so we leave the user unfused to become
       // a bitcast. If the operand is not a parameter, we would break a

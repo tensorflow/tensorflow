@@ -2419,7 +2419,8 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   HloComputation* condition = xla_while->while_condition();
   TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
                condition->root_instruction()->shape().element_type() == PRED)
-      << "While condition computation must return bool";
+      << "While condition computation must return bool; got: "
+      << ShapeUtil::HumanString(condition->root_instruction()->shape());
   // Check that all while-related buffers share an allocation slice.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
