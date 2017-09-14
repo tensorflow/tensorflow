@@ -1158,7 +1158,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":android_tensorflow_lib",
-        ":protos_cc",
+        ":android_test_proto_lib",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
