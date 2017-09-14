@@ -2593,7 +2593,7 @@ class Graph(object):
     self._control_flow_context = None
     # A new node will depend of the union of all of the nodes in the stack.
     self._control_dependencies_stack = []
-    # Arbritrary collections of objects.
+    # Arbitrary collections of objects.
     self._collections = {}
     # The graph-level random seed
     self._seed = None
@@ -3393,7 +3393,8 @@ class Graph(object):
       name: The key for the collection. The `GraphKeys` class
         contains many standard names for collections.
       value: The value to add to the collection.
-    """
+    """  # pylint: disable=g-doc-exception
+    _assert_collection_is_ok(name)
     self._check_not_finalized()
     with self._lock:
       if name not in self._collections:
@@ -3439,7 +3440,8 @@ class Graph(object):
     Returns:
       The list of values in the collection with the given `name`, or an empty
       list if no value has been added to that collection.
-    """
+    """  # pylint: disable=g-doc-exception
+    _assert_collection_is_ok(name)
     with self._lock:
       coll_list = self._collections.get(name, None)
       if coll_list is None:
@@ -3468,17 +3470,18 @@ class Graph(object):
       an empty list if no value has been added to that collection. The
       list contains the values in the order under which they were
       collected.
-    """
+    """  # pylint: disable=g-doc-exception
+    _assert_collection_is_ok(name)
     with self._lock:
-      coll_list = self._collections.get(name, None)
-      if coll_list is None:
+      collection = self._collections.get(name, None)
+      if collection is None:
         return []
       if scope is None:
-        return list(coll_list)
+        return list(collection)
       else:
         c = []
         regex = re.compile(scope)
-        for item in coll_list:
+        for item in collection:
           if hasattr(item, "name") and regex.match(item.name):
             c.append(item)
         return c
@@ -4864,6 +4867,17 @@ class GraphKeys(object):
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
 
+  # List of all collections that keep track of variables.
+  _VARIABLE_COLLECTIONS = [
+      GLOBAL_VARIABLES,
+      LOCAL_VARIABLES,
+      MODEL_VARIABLES,
+      TRAINABLE_VARIABLES,
+      MOVING_AVERAGE_VARIABLES,
+      CONCATENATED_VARIABLES,
+      TRAINABLE_RESOURCE_VARIABLES,
+  ]
+
   # Key for streaming model ports.
   # NOTE(yuanbyu): internal and experimental.
   _STREAMING_MODEL_PORTS = "streaming_model_ports"
@@ -5131,6 +5145,13 @@ def get_from_proto_function(collection_name):
     return _proto_function_registry.lookup(collection_name)[2]
   except LookupError:
     return None
+
+
+def _assert_collection_is_ok(collection_name):
+  if context.in_eager_mode():
+    if collection_name in GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
+      raise ValueError("When Eager Execution is enabled, variable "
+                       "collections are not supported.")
 
 
 def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):

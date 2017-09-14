@@ -201,7 +201,7 @@ class SaverTest(test.TestCase):
       w1 = resource_variable_ops.ResourceVariable(0.0, name="w1")
       w2 = resource_variable_ops.ResourceVariable(0.0, name="w2")
 
-      graph_saver = saver_module.Saver()
+      graph_saver = saver_module.Saver([w1, w2])
       graph_saver.restore(None, graph_ckpt_prefix)
 
       self.assertAllEqual(self.evaluate(w1), 1.0)
@@ -216,7 +216,7 @@ class SaverTest(test.TestCase):
       w3 = resource_variable_ops.ResourceVariable(3.0, name="w3")
       w4 = resource_variable_ops.ResourceVariable(4.0, name="w4")
 
-      graph_saver = saver_module.Saver()
+      graph_saver = saver_module.Saver([w3, w4])
       graph_saver.save(None, eager_ckpt_prefix)
 
     with context.graph_mode():
@@ -236,10 +236,12 @@ class SaverTest(test.TestCase):
       v = resource_variable_ops.ResourceVariable([1], caching_device="/cpu:0")
       if context.in_graph_mode():
         self.evaluate(variables.global_variables_initializer())
-      save = saver_module.Saver()
+      else:
+        sess = None
+      save = saver_module.Saver([v])
       save.save(sess, save_path)
 
-      save2 = saver_module.Saver()
+      save2 = saver_module.Saver([v])
       save2.restore(sess, save_path)
       self.assertEquals(self.evaluate(v), [1])
 
@@ -624,7 +626,9 @@ class SaverTest(test.TestCase):
           }, pad_step_number=pad_step_number)
       if context.in_graph_mode():
         self.evaluate(var.initializer)
-      sess = ops_lib.get_default_session() if context.in_graph_mode() else None
+        sess = ops_lib.get_default_session()
+      else:
+        sess = None
       if use_tensor:
         global_step = constant_op.constant(global_step_int)
         val = save.save(sess, save_path, global_step=global_step)
