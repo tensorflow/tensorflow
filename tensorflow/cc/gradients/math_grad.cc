@@ -707,8 +707,7 @@ Status LgammaGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
                   std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
-  Scope grad_scope = scope.WithControlDependencies(grad);
-  auto x = ConjugateHelper(grad_scope, op.input(0));
+  auto x = ConjugateHelper(scope, op.input(0));
   auto dx = Mul(scope, grad, Digamma(scope, x));
   grad_outputs->push_back(dx);
   return scope.status();
