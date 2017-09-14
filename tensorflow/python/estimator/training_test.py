@@ -19,14 +19,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
+import json
+import time
+
 from tensorflow.python.estimator import estimator as estimator_lib
+from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator import training
 from tensorflow.python.platform import test
+from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 
 _DEFAULT_EVAL_STEPS = 100
 _DEFAULT_EVAL_DELAY_SECS = 120
 _DEFAULT_EVAL_THROTTLE_SECS = 600
+_DELAY_SECS_PER_WORKER = 5
 _INVALID_INPUT_FN_MSG = '`input_fn` must be callable'
 _INVALID_HOOK_MSG = 'All hooks must be `SessionRunHook` instances'
 _INVALID_MAX_STEPS_MSG = 'Must specify max_steps > 0'
@@ -37,6 +44,33 @@ _INVALID_EVAL_THROTTLE_SECS_MSG = 'Must specify throttle_secs >= 0'
 _INVALID_ESTIMATOR_MSG = '`estimator` must have type `tf.estimator.Estimator`'
 _INVALID_TRAIN_SPEC_MSG = '`train_spec` must have type `tf.estimator.TrainSpec`'
 _INVALID_EVAL_SPEC_MSG = '`eval_spec` must have type `tf.estimator.EvalSpec`'
+_INVALID_CONFIG_FOR_STD_SERVER_MSG = 'Could not start server; .*TF_CONFIG'
+
+_TF_CONFIG_FOR_CHIEF = {
+    'cluster': {
+        run_config_lib.TaskType.CHIEF: ['host0:0'],
+        run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+        run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4']
+    },
+    'task': {
+        'type': run_config_lib.TaskType.CHIEF,
+        'index': 0
+    }
+}
+
+_TF_CONFIG_FOR_WORKER = {
+    'cluster': {
+        run_config_lib.TaskType.CHIEF: ['host0:0'],
+        run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+        run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4']
+    },
+    'task': {
+        'type': run_config_lib.TaskType.WORKER,
+        'index': 1
+    }
+}
+
+_TF_CONFIG_FOR_GOOGLE = {'environment': 'google'}
 
 
 class _FakeHook(session_run_hook.SessionRunHook):
@@ -45,6 +79,11 @@ class _FakeHook(session_run_hook.SessionRunHook):
 
 class _InvalidHook(object):
   """Invalid hook (not a subclass of `SessionRunHook`)."""
+
+
+def _create_run_config_with_cluster_spec(tf_config):
+  with test.mock.patch.dict('os.environ', {'TF_CONFIG': json.dumps(tf_config)}):
+    return run_config_lib.RunConfig()
 
 
 class TrainSpecTest(test.TestCase):
@@ -133,8 +172,8 @@ class EvalSpecTest(test.TestCase):
       training.EvalSpec(input_fn=lambda: 1, throttle_secs=-1)
 
 
-class TrainingExecutorTest(test.TestCase):
-  """Tests _TrainingExecutor."""
+class TrainingExecutorConstructorTest(test.TestCase):
+  """Tests constructor of _TrainingExecutor."""
 
   def testRequiredArgumentsSet(self):
     estimator = estimator_lib.Estimator(model_fn=lambda features: features)
@@ -167,6 +206,176 @@ class TrainingExecutorTest(test.TestCase):
 
     with self.assertRaisesRegexp(TypeError, _INVALID_EVAL_SPEC_MSG):
       training._TrainingExecutor(estimator, train_spec, invalid_eval_spec)
+
+
+class _TrainingExecutorTrainingTest(object):
+  """Tests training of _TrainingExecutor."""
+
+  def __init__(self, run_config):
+    self._run_config = run_config
+
+  def _run_task(self, executor):
+    return getattr(executor, 'run_' + self._run_config.task_type)()
+
+  @test.mock.patch.object(time, 'sleep')
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_train_with_train_spec(self, mock_server, unused_mock_sleep):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = self._run_config
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=2, hooks=[_FakeHook()])
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+    mock_server_instance = mock_server.return_value
+
+    executor = training._TrainingExecutor(mock_est, train_spec, mock_eval_spec)
+    self._run_task(executor)
+
+    mock_server.assert_called_with(
+        mock_est.config.cluster_spec,
+        job_name=mock_est.config.task_type,
+        task_index=mock_est.config.task_id,
+        config=test.mock.ANY,
+        start=False)
+
+    mock_server_instance.start.assert_called()
+
+    mock_est.train.assert_called_with(input_fn=train_spec.input_fn,
+                                      max_steps=train_spec.max_steps,
+                                      hooks=train_spec.hooks)
+    mock_est.evaluate.assert_not_called()
+    mock_est.export_savedmodel.assert_not_called()
+
+  @test.mock.patch.object(time, 'sleep')
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_no_server_startup_in_google(self, mock_server, unused_mock_sleep):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = self._run_config
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec,
+                                          mock_eval_spec)
+    tf_config = {'TF_CONFIG': json.dumps(_TF_CONFIG_FOR_GOOGLE)}
+    with test.mock.patch.dict('os.environ', tf_config):
+      self._run_task(executor)
+      mock_server.assert_not_called()
+
+  def test_fail_with_empty_cluster_spec(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = None
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = 'worker'
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      self._run_task(training._TrainingExecutor(mock_est, mock_train_spec,
+                                                mock_eval_spec))
+
+  def test_fail_with_empty_master(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.master = ''
+    mock_est.config.task_type = 'worker'
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      self._run_task(training._TrainingExecutor(mock_est, mock_train_spec,
+                                                mock_eval_spec))
+
+  def test_fail_with_empty_task_type(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = ''
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      self._run_task(training._TrainingExecutor(mock_est, mock_train_spec,
+                                                mock_eval_spec))
+
+  def test_fail_with_none_task_id(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = 'worker'
+    mock_est.config.task_id = None
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      self._run_task(training._TrainingExecutor(mock_est, mock_train_spec,
+                                                mock_eval_spec))
+
+
+class TrainingExecutorRunWorkerTest(_TrainingExecutorTrainingTest,
+                                    test.TestCase):
+  """Tests run_worker of _TrainingExecutor."""
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    _TrainingExecutorTrainingTest.__init__(
+        self,
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_WORKER))
+
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_delay_for_worker(self, _):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = self._run_config
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec,
+                                          mock_eval_spec)
+
+    expected_secs = (self._run_config.task_id + 1) * _DELAY_SECS_PER_WORKER
+    with test.mock.patch.object(time, 'sleep') as mock_sleep:
+      mock_sleep.side_effect = lambda s: self.assertEqual(expected_secs, s)
+      self._run_task(executor)
+      mock_sleep.assert_called()
+
+
+class TrainingExecutorRunChiefTest(_TrainingExecutorTrainingTest,
+                                   test.TestCase):
+  """Tests run_chief of _TrainingExecutor."""
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    _TrainingExecutorTrainingTest.__init__(
+        self,
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_CHIEF))
+
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_no_delay_for_chief(self, _):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = self._run_config
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec,
+                                          mock_eval_spec)
+
+    with test.mock.patch.object(time, 'sleep') as mock_sleep:
+      self._run_task(executor)
+      mock_sleep.assert_not_called()
+
 
 if __name__ == '__main__':
   test.main()
