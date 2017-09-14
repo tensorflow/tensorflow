@@ -1113,12 +1113,17 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   the first K dimensions of `tensor`'s shape.  We then have:
     `boolean_mask(tensor, mask)[i, j1,...,jd] = tensor[i1,...,iK,j1,...,jd]`
   where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
+  The `axis` could be used with `mask` to indicate the axis to mask from.
+  In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
+  the first `axis + dim(mask)` dimensions of `tensor`'s shape.
 
   Args:
     tensor:  N-D tensor.
     mask:  K-D boolean tensor, K <= N and K must be known statically.
     name:  A name for this operation (optional).
-    axis: The axis in `tensor` to mask from. Defaults to the first dimension.
+    axis:  A 0-D int Tensor representing the axis in `tensor` to mask from.
+      By default, axis is 0 which will mask from the first dimension. Otherwise
+      K + axis <= N.
 
   Returns:
     (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding
