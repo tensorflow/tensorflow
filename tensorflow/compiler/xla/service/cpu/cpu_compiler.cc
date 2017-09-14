@@ -363,7 +363,7 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
 Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(ir_module_string));
   TF_RETURN_IF_ERROR(f->Close());
   return Status::OK();

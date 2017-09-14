@@ -721,6 +721,7 @@ tf_cuda_library(
         "graph/graph_def_builder.h",
         "graph/node_builder.h",
         "graph/validate.h",
+        "graph/while_context.h",
         "public/session.h",
         "public/session_options.h",
     ],
@@ -1584,6 +1585,8 @@ tf_cuda_library(
             "graph/edgeset.cc",
             "graph/graph.h",
             "graph/graph.cc",
+            "graph/while_context.h",
+            "graph/while_context.cc",
         ],
         exclude = [
             "**/*test*",
@@ -1720,6 +1723,7 @@ CORE_CPU_BASE_HDRS = [
     "graph/testlib.h",
     "graph/types.h",
     "graph/validate.h",
+    "graph/while_context.h",
 ]
 
 tf_cuda_library(

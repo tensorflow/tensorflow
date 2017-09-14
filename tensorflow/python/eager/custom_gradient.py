@@ -18,20 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
-
 from tensorflow.python.eager import tape
-from tensorflow.python.eager import tensor as _tensor
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.util import nest
-
-
-def _watch_value_from_tape(tensor):
-  for t in tape._tape_stack.stack:  # pylint: disable=protected-access
-    w = t.value.tensors.get(tf_ops.tensor_id(tensor), None)
-    if w is not None:
-      return w
-  return tensor
 
 
 def custom_gradient(f):
@@ -52,27 +41,23 @@ def custom_gradient(f):
 
   def decorated(*args, **kwargs):
     """Decorated function with custom gradient."""
-    input_tensors = [_watch_value_from_tape(x) for x in args
-                     if isinstance(x, (_tensor.Tensor, tf_ops.Tensor))
-                     or ag_core.isnode(x)]
+    input_tensors = [x for x in args
+                     if isinstance(x, tf_ops.Tensor)]
     result, grad_fn = f(*args, **kwargs)
-    result_size = len(result) if isinstance(result, (list, tuple)) else 1
 
     # TODO(apassos): naive uses of custom_gradient will not get the correct
     # second derivative this way if they capture any output tensors. Change the
     # signature of custom_gradient.
     def actual_grad_fn(*outputs):
-      outputs = outputs[result_size:]
       return grad_fn(*outputs)
 
     flat_result = nest.flatten(result)
-    flat_result = [ag_core.getval(x) for x in flat_result]
-    flat_result = tape.record_operation(
+    tape.record_operation(
         flat_result,
         input_tensors,
         [],
         actual_grad_fn)
     flat_result = list(flat_result)
-    return nest.pack_sequence_as(structure=result, flat_sequence=flat_result)
+    return result
 
   return decorated

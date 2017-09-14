@@ -23,7 +23,6 @@ import collections
 import contextlib
 import threading
 
-from autograd import core as ag_core
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -88,6 +87,7 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
     captured_value = captured_value[1]
+  tape.record_operation([captured_value], [value], [], lambda x: x)
   return captured_value
 
 
@@ -193,11 +193,8 @@ class _GraphModeFunction(object):
     self._num_outputs = len(fdef.signature.output_arg)
     self._ops = operations
     self._func_outputs = func_outputs
-    if (isinstance(func_outputs, (ops.Tensor, type(None))) or
-        ag_core.isnode(func_outputs)):
-      self._returns = [func_outputs]
-    else:
-      self._returns = list(func_outputs)
+    self._returns = [func_outputs] if isinstance(
+        func_outputs, (ops.Tensor, type(None))) else list(func_outputs)
     self._returns_to_fedf_outputs = func_outputs_to_fdef_outputs
     self._output_shapes = output_shapes
 
@@ -208,7 +205,7 @@ class _GraphModeFunction(object):
       c = _CapturingContext()
       with c:
         filtered_outputs = [
-            ag_core.getval(x) for x in self._returns if x is not None
+            x for x in self._returns if x is not None
         ]
         self._out_grad_placeholders = [
             graph_placeholder(x.dtype, x.shape) for x in filtered_outputs
@@ -242,16 +239,19 @@ class _GraphModeFunction(object):
     if context.in_graph_mode():
       g = ops.get_default_graph()
       g._add_function(self._forward_fdef)  # pylint: disable=protected-access
-      unwrapped_args = [ag_core.getval(x) for x in all_args]
+      def make_tensor(x):
+        if isinstance(x, ops.Tensor):
+          return x
+        return ops.convert_to_tensor(x)
       op = g.create_op(
-          signature.name, [ops.convert_to_tensor(x) for x in unwrapped_args],
+          signature.name, [make_tensor(x) for x in all_args],
           [dtypes.DType(x.type) for x in signature.output_arg],
           op_def=signature,
           name="FunctionCall",
           compute_shapes=False)
       outputs = op.outputs
       outputs = [outputs] if isinstance(
-          outputs, (tensor.Tensor, ops.Tensor, type(None))) else list(outputs)
+          outputs, (ops.Tensor, type(None))) else list(outputs)
       for i, s in enumerate(self._output_shapes):
         outputs[i].set_shape(s)
     else:
@@ -261,25 +261,12 @@ class _GraphModeFunction(object):
           inputs=all_args)
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
-    watched_extra_inputs = []
-    for t in self._extra_inputs:
-      tid = ops.tensor_id(t)
-      for t in tape._tape_stack.stack:  # pylint: disable=protected-access
-        w = t.value.tensors.get(tid, None)
-        if w is not None:
-          watched_extra_inputs.append(w)
-          break
-      else:  # Note: for-else here done on purpose
-        watched_extra_inputs.append(t)
 
-    def backward_function_wrapper(*outputs):
-      outputs = outputs[len(real_outputs):]
-      return self._backward_function(*outputs)
-    real_outputs = tape.record_operation(
+    tape.record_operation(
         real_outputs,
-        (args + watched_extra_inputs),
+        (args + self._extra_inputs),
         side_outputs,
-        backward_function_wrapper)
+        self._backward_function)
 
     return self._build_call_outputs(self._returns, real_outputs)
 
@@ -288,10 +275,10 @@ class _GraphModeFunction(object):
     tensor_inputs = [
         x for x in nest.flatten(args)
         if isinstance(x, (tensor.Tensor, ops.Tensor,
-                          tensor.LazyZero)) or ag_core.isnode(x)
+                          tensor.LazyZero))
     ]
-    if tape.should_record(tensor_inputs) or any(
-        tape.any_tape_has(t) for t in self._extra_inputs):
+    if tape.should_record(tensor_inputs) or tape.should_record(
+        self._extra_inputs):
       if not self._has_backprop:
         self._compute_backprop()
       return self._backprop_call(tensor_inputs)
@@ -334,12 +321,12 @@ class _GraphModeFunction(object):
     """
     if self._func_outputs is None:
       return None
-    if isinstance(ag_core.getval(self._func_outputs), ops.Tensor):
+    if isinstance(self._func_outputs, ops.Tensor):
       return result[0]
 
     outputs = []
     for o in func_outputs:
-      vo = ag_core.getval(o)
+      vo = o
       if isinstance(vo, ops.Tensor):
         outputs.append(result[self._returns_to_fedf_outputs[id(vo)]])
       elif type(vo) in (tuple, list):
@@ -354,7 +341,6 @@ def _get_defun_inputs(args):
   """Maps the inputs args to graph inputs."""
   ret = []
   for a in args:
-    a = ag_core.getval(a)
     if isinstance(a, (tensor.LazyZero, ops.Tensor, tensor.Tensor)):
       ret.append(graph_placeholder(a.dtype, a.shape))
     elif type(a) in (tuple, list):
@@ -395,7 +381,7 @@ def _defun_internal(name, func, args, kwds):
   ]
   all_inputs = flat_inputs + list(extra_placeholders)
 
-  func_def_outputs = [ag_core.getval(x) for x in outputs_list if x is not None]
+  func_def_outputs = [x for x in outputs_list if x is not None]
   inference_function_def = graph_to_function_def.graph_to_function_def(
       tmp_graph, tmp_graph.get_operations(), all_inputs, func_def_outputs)
   # Register any other functions defined in the graph
@@ -421,7 +407,6 @@ _ZeroDtype = collections.namedtuple("_ZeroDtype", ["dtype", "shape"])
 
 def _cache_key(x):
   """Cache key for tfe functions."""
-  x = ag_core.getval(x)
   if isinstance(x, tensor.Tensor):
     return _TensorDtype(x.dtype, x._shape_tuple())  # pylint: disable=protected-access
   if isinstance(x, tensor.LazyZero):
