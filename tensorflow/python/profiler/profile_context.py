@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import contextlib
 import os
+import threading
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as print_mdl
@@ -163,6 +164,7 @@ class ProfileContext(object):
     self._traced_steps = 0
     self._auto_profiles = []
     self._profiler = None
+    self._lock = threading.Lock()
 
   def add_auto_profiling(self, cmd, options, profile_steps):
     """Traces and profiles at some session run steps.
@@ -181,9 +183,10 @@ class ProfileContext(object):
   @property
   def profiler(self):
     """Returns the current profiler object."""
-    if not self._profiler:
-      self._profiler = model_analyzer.Profiler(ops.get_default_graph())
-    return self._profiler
+    with self._lock:
+      if not self._profiler:
+        self._profiler = model_analyzer.Profiler(ops.get_default_graph())
+      return self._profiler
 
   def trace_next_step(self):
     """Enables tracing and add traces to profiler at next step."""

@@ -50,19 +50,8 @@ Status MakeXlaCompilerArgumentsFromInputs(
       TF_RETURN_IF_ERROR(ctx->GetResourceInput(i, &resource));
 
       arg.initialized = resource->value.handle() > 0;
-      switch (resource->kind) {
-        case XlaResource::kVariable:
-          arg.kind = XlaCompiler::Argument::kVariable;
-          break;
-        case XlaResource::kTensorArray:
-          arg.kind = XlaCompiler::Argument::kTensorArray;
-          break;
-        case XlaResource::kStack:
-          arg.kind = XlaCompiler::Argument::kStack;
-          break;
-        case XlaResource::kInvalid:
-          CHECK(false);
-      }
+      arg.kind = XlaCompiler::Argument::kResource;
+      arg.resource_kind = resource->kind;
       arg.type = resource->type;
       if (arg.initialized) {
         auto shape = ctx->builder()->GetShape(resource->value);

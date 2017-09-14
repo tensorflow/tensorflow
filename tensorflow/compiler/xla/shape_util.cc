@@ -299,21 +299,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 /* static */ bool ShapeUtil::ShapeIs(const Shape& shape,
                                      PrimitiveType element_type,
                                      std::initializer_list<int64> dimensions) {
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
-  if (shape.element_type() != element_type) {
-    return false;
-  }
-  if (shape.dimensions_size() != Rank(shape)) {
-    return false;
-  }
-  int64 i = 0;
-  for (int64 dimension : dimensions) {
-    if (shape.dimensions(i) != dimension) {
-      return false;
-    }
-    i += 1;
-  }
-  return true;
+  return Equal(shape, MakeShape(element_type, dimensions));
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {

@@ -14,7 +14,12 @@
 
 ### Command Line Inputs
 
-tfprof command line tool uses the following inputs:
+tfprof command line tool uses the following input:
+
+<b>--profile_path:</b> A ProfileProto binary proto file.
+See QuickStart on generating the file.
+
+<b>THE OLD WAY BELOW IS DEPRECATED:</b>
 
 <b>--graph_path:</b> GraphDef proto file (required). Used to build in-memory
 data structure of the model. For example, graph.pbtxt written by tf.Supervisor

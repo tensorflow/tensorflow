@@ -9,6 +9,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
     "tf_cc_test",
+    "if_android_mips",
 )
 
 exports_files(["LICENSE"])
@@ -82,7 +83,7 @@ cc_binary(
             "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
         ],
         "//conditions:default": [],
-    }),
+    }) + if_android_mips(["-latomic"]),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [":benchmark_model_lib"],

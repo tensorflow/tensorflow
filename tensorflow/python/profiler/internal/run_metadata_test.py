@@ -70,6 +70,7 @@ def _run_model():
     opts = builder.time_and_memory()
     opts['min_micros'] = 0
     opts['min_bytes'] = 0
+    opts['order_by'] = 'name'
     opts['output'] = 'none'
     _ = sess.run(y,
                  options=config_pb2.RunOptions(
@@ -95,6 +96,7 @@ def _run_loop_model():
                  run_metadata=run_meta)
 
     opts = builder.time_and_memory()
+    opts['order_by'] = 'name'
     opts['output'] = 'none'
 
     tfprof_node = model_analyzer.profile(
