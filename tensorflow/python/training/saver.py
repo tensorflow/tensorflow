@@ -167,8 +167,17 @@ class BaseSaverBuilder(object):
         self.handle_op = var.op.inputs[0]
         tensor = var
       elif isinstance(var, resource_variable_ops.ResourceVariable):
+
+        def _read_variable_closure(v):
+          def f():
+            with ops.device(v.device):
+              x = v.read_value()
+            with ops.device("/device:CPU:0"):
+              return array_ops.identity(x)
+          return f
+
         self.handle_op = var.handle
-        tensor = var.read_value
+        tensor = _read_variable_closure(var)
       else:
         raise ValueError(
             "Saveable is neither a resource variable nor a read operation."
