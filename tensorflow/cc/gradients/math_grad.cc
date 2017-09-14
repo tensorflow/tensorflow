@@ -693,8 +693,7 @@ Status ErfGrad(const Scope& scope, const Operation& op,
   auto grad = grad_inputs[0];
   auto two_over_root_pi = Cast(scope, Const(scope, 2 / std::sqrt(M_PI)),
                                grad.type());
-  Scope grad_scope = scope.WithControlDependencies(grad);
-  auto x = ConjugateHelper(grad_scope, op.input(0));
+  auto x = ConjugateHelper(scope, op.input(0));
   // grad * 2/sqrt(pi) * exp(-x**2)
   auto dx = Mul(scope,
                 Mul(scope, grad, two_over_root_pi),
