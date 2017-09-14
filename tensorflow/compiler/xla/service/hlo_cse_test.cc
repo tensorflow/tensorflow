@@ -435,7 +435,3 @@ TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

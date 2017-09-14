@@ -26,12 +26,13 @@ limitations under the License.
 #include "grpc++/create_channel.h"
 #else
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
-#pragma comment(lib,"Ws2_32.lib")
+#pragma comment(lib, "Ws2_32.lib")
 #endif  // #ifndef PLATFORM_WINDOWS
 
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"

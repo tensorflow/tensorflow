@@ -24,6 +24,8 @@ py_test(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],

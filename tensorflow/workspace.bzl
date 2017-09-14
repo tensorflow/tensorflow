@@ -234,10 +234,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "gemmlowp",
       urls = [
-          "http://mirror.bazel.build/github.com/google/gemmlowp/archive/010bb3e71a26ca1d0884a167081d092b43563996.tar.gz",
+          # TODO(gunan): reenable once mirror is updated.
+          # "http://mirror.bazel.build/github.com/google/gemmlowp/archive/010bb3e71a26ca1d0884a167081d092b43563996.tar.gz",
           "https://github.com/google/gemmlowp/archive/010bb3e71a26ca1d0884a167081d092b43563996.tar.gz",
       ],
-      sha256 = "0d7a44327e26b622ee08faaea10f8d10b439bcfda622f9c98be1c036bc645cad",
+      sha256 = "861cc6d9d902861f54fd77e1ab79286477dcc559b2a283e75b9c22d37b61f6ae",
       strip_prefix = "gemmlowp-010bb3e71a26ca1d0884a167081d092b43563996",
   )
 
@@ -629,11 +630,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "nccl_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/nvidia/nccl/archive/ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b.tar.gz",
-          "https://github.com/nvidia/nccl/archive/ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b.tar.gz",
+          "http://mirror.bazel.build/github.com/nvidia/nccl/archive/29a1a916dc14bb2c00feed3d4820d51fa85be1e6.tar.gz",
+          "https://github.com/nvidia/nccl/archive/29a1a916dc14bb2c00feed3d4820d51fa85be1e6.tar.gz",
       ],
-      sha256 = "6c34a0862d9f8ed4ad5984c6a8206b351957bb14cf6ad7822720f285f4aada04",
-      strip_prefix = "nccl-ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b",
+      sha256 = "6387030e37d14762f87eefbc86ee527293ec04745c66ccd820cf7fc0fdc23f92",
+      strip_prefix = "nccl-29a1a916dc14bb2c00feed3d4820d51fa85be1e6",
       build_file = str(Label("//third_party:nccl.BUILD")),
       repository = tf_repo_name,
   )
