@@ -853,55 +853,6 @@ class Dataset(object):
     return PrefetchDataset(self, buffer_size)
 
   @staticmethod
-  def read_batch_features(file_pattern,
-                          batch_size,
-                          features,
-                          reader,
-                          reader_args=None,
-                          randomize_input=True,
-                          num_epochs=None,
-                          capacity=10000):
-    """Reads batches of Examples.
-
-    Args:
-      file_pattern: A string pattern or a placeholder with list of filenames.
-      batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        consecutive elements of this dataset to combine in a single batch.
-      features: A `dict` mapping feature keys to `FixedLenFeature` or
-        `VarLenFeature` values. See `tf.parse_example`.
-      reader: A function or class that can be called with a `filenames` tensor
-        and (optional) `reader_args` and returns a `Dataset` of serialized
-        Examples.
-      reader_args: Additional arguments to pass to the reader class.
-      randomize_input: Whether the input should be randomized.
-      num_epochs: Integer specifying the number of times to read through the
-        dataset. If None, cycles through the dataset forever.
-      capacity: Capacity of the ShuffleDataset.
-
-    Returns:
-      A `Dataset`.
-    """
-    if isinstance(file_pattern, str):
-      filenames = _get_file_names(file_pattern, randomize_input)
-    else:
-      filenames = file_pattern
-    if reader_args:
-      dataset = reader(filenames, *reader_args)
-    else:
-      dataset = reader(filenames)
-    dataset = dataset.repeat(num_epochs)
-    if dataset.output_types == (dtypes.string, dtypes.string):
-      dataset = dataset.map(lambda unused_k, v: v)
-    elif dataset.output_types != dtypes.string:
-      raise TypeError("`reader` must be a dataset of `tf.string` values, "
-                      "or `(tf.string, tf.string)` key-value pairs.")
-    if randomize_input:
-      dataset = dataset.shuffle(capacity)
-    dataset = dataset.map(lambda x: _parse_example(nest.flatten(x), features))
-    dataset = dataset.batch(batch_size)
-    return dataset
-
-  @staticmethod
   def list_files(file_pattern):
     """A dataset of all files matching a pattern.
 

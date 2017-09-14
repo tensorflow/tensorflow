@@ -175,8 +175,7 @@ __global__ void BlockReduceKernel(
   const int num_elements_to_reduce =
       max(min(num_elems - bid * blockDim.x, num_threads), 0);
 
-  sum = BlockReduce(temp_storage)
-            .template Reduce(sum, op, num_elements_to_reduce);
+  sum = BlockReduce(temp_storage).Reduce(sum, op, num_elements_to_reduce);
 
   if (tid == 0) out[bid] = sum;
 }
@@ -211,7 +210,7 @@ __global__ void RowReduceKernel(
 
   __shared__ typename WarpReduce::TempStorage temp_storage;
 
-  sum = WarpReduce(temp_storage).template Reduce(sum, op, min(num_cols, 32));
+  sum = WarpReduce(temp_storage).Reduce(sum, op, min(num_cols, 32));
 
   if (row < num_rows && lane == 0) out[row] = sum;
 }
@@ -671,11 +670,88 @@ void Launch3DXZReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
   }
 }
 
+namespace reduction_op_helper {
+
+template <typename T, typename Op>
+struct IsSum {
+  constexpr static bool value =
+      (std::is_same<Op, cub::Sum>::value ||
+       std::is_same<Op, Eigen::internal::SumReducer<T>>::value);
+};
+
+template <typename T, typename Op>
+struct IsMax {
+  constexpr static bool value =
+      (std::is_same<Op, cub::Max>::value ||
+       std::is_same<Op, Eigen::internal::MaxReducer<T>>::value);
+};
+
+template <typename T, typename Op>
+struct IsMin {
+  constexpr static bool value =
+      (std::is_same<Op, cub::Min>::value ||
+       std::is_same<Op, Eigen::internal::MinReducer<T>>::value);
+};
+
+template <typename T, typename Op>
+struct IsProd {
+  constexpr static bool value =
+      (std::is_same<Op, Prod<T>>::value ||
+       std::is_same<Op, Eigen::internal::ProdReducer<T>>::value);
+};
+
+template <typename T, typename Op>
+struct IdentityValue {
+  static_assert(IsSum<T, Op>::value || IsMax<T, Op>::value ||
+                    IsMin<T, Op>::value || IsProd<T, Op>::value ||
+                    std::is_same<Op, And>::value || std::is_same<Op, Or>::value,
+                "IdentityValue not yet defined for this type");
+
+  template <typename U = T, typename OpCopy = Op>
+  U operator()(
+      typename std::enable_if<IsSum<U, OpCopy>::value, U>::type t = U(0)) {
+    return t;
+  }
+
+  template <typename U = T, typename OpCopy = Op>
+  U operator()(typename std::enable_if<IsMax<U, OpCopy>::value, U>::type t =
+                   Eigen::NumTraits<U>::lowest()) {
+    return t;
+  }
+
+  template <typename U = T, typename OpCopy = Op>
+  U operator()(typename std::enable_if<IsMin<U, OpCopy>::value, U>::type t =
+                   Eigen::NumTraits<U>::highest()) {
+    return t;
+  }
+
+  template <typename U = T, typename OpCopy = Op>
+  U operator()(
+      typename std::enable_if<IsProd<U, OpCopy>::value, U>::type t = U(1)) {
+    return t;
+  }
+
+  template <typename U = T, typename OpCopy = Op>
+  U operator()(typename std::enable_if<std::is_same<OpCopy, And>::value,
+                                       bool>::type t = true) {
+    return t;
+  }
+
+  template <typename U = T, typename OpCopy = Op>
+  U operator()(typename std::enable_if<std::is_same<OpCopy, Or>::value,
+                                       bool>::type t = false) {
+    return t;
+  }
+};
+
+}  // namespace reduction_op_helper
+
 template <typename T, typename Op, typename OUT_T, typename IN_T,
           typename ReductionAxes>
 void ReduceImpl(OpKernelContext* ctx, OUT_T out, IN_T in, int in_rank,
                 int in_dim0, int in_dim1, int in_dim2, int out_rank,
-                const ReductionAxes& reduction_axes, Op op, T init) {
+                const ReductionAxes& reduction_axes, Op op) {
+  T init = reduction_op_helper::IdentityValue<T, Op>()();
   const cudaStream_t& cu_stream = GetCudaStream(ctx);
   if (out_rank == 0) {
     const int in_size = in_dim0 * in_dim1 * in_dim2;
@@ -721,7 +797,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<T>> {
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Sum(), T(0));
+        cub::Sum());
   }
 
   template <typename OUT_T>
@@ -757,7 +833,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T>> {
                               in.dimension(0),
                               in.rank() >= 2 ? in.dimension(1) : 1,
                               in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
-                              reduction_axes, cub::Sum(), T(0));
+                              reduction_axes, cub::Sum());
   }
 
   template <typename OUT_T>
@@ -800,7 +876,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<Eigen::half>> {
         ctx, itr, input_itr, in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Sum(), 0.f);
+        cub::Sum());
   }
 
   template <typename OUT_T>
@@ -821,7 +897,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MaxReducer<T>> {
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Max(), std::numeric_limits<T>::lowest());
+        cub::Max());
   }
 
   template <typename OUT_T>
@@ -841,7 +917,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MinReducer<T>> {
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Min(), std::numeric_limits<T>::max());
+        cub::Min());
   }
 
   template <typename OUT_T>
@@ -861,7 +937,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::ProdReducer<T>> {
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        Prod<T>(), T(1));
+        Prod<T>());
   }
 
   template <typename OUT_T>
@@ -880,8 +956,8 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::AndReducer> {
     ReduceImpl<bool, And, bool*, bool*, ReductionAxes>(
         ctx, (bool*)out.data(), (bool*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
-        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes, And(),
-        true);
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
+        And());
   }
 
   template <typename OUT_T>
@@ -900,8 +976,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::OrReducer> {
     ReduceImpl<bool, Or, bool*, bool*, ReductionAxes>(
         ctx, (bool*)out.data(), (bool*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
-        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes, Or(),
-        false);
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes, Or());
   }
 
   template <typename OUT_T>

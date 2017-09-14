@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import six
 
 from google.protobuf import text_format
@@ -57,7 +56,6 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
   """
   ctx = context.get_default_context()
   # TODO(apassos) move this to convert_to_tensor
-  inputs = [ag_core.getval(x) for x in inputs]
   # pylint: disable=protected-access
   input_handles = [c._handle for c in inputs]
   device_name = ctx.device_name
@@ -184,7 +182,7 @@ def args_to_matching_eager(l, default_dtype=None):
   # Is some input already a Tensor with a dtype?
   dtype = None
   for t in l:
-    if isinstance(ag_core.getval(t), tensor.Tensor):
+    if isinstance(t, tensor.Tensor):
       dtype = t.dtype
       break
 
@@ -203,7 +201,7 @@ def args_to_matching_eager(l, default_dtype=None):
 
 
 def convert_to_mixed_eager_tensors(values):
-  v = [t if isinstance(ag_core.getval(t), tensor.Tensor) else tensor.Tensor(t)
+  v = [t if isinstance(t, tensor.Tensor) else tensor.Tensor(t)
        for t in values]
   types = [t.dtype for t in v]
   return types, v
@@ -228,7 +226,7 @@ def args_to_mixed_eager_tensors(lists):
     dtype = None
     # If any list has a Tensor, use that dtype
     for l in lists:
-      if isinstance(ag_core.getval(l[i]), tensor.Tensor):
+      if isinstance(l[i], tensor.Tensor):
         dtype = l[i].dtype
         break
     if dtype is None:

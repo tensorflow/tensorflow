@@ -25,6 +25,16 @@ py_library(
 )
 
 cuda_py_tests(
+    name = "mel_ops_test",
+    srcs = ["python/kernel_tests/mel_ops_test.py"],
+    additional_deps = [
+        ":signal_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_tests(
     name = "reconstruction_ops_test",
     srcs = ["python/kernel_tests/reconstruction_ops_test.py"],
     additional_deps = [

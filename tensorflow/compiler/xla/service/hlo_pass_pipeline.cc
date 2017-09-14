@@ -36,8 +36,8 @@ void DumpModule(const HloModule& module,
 
                 const string& message) {
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
-  VLOG(2) << "HLO " << message << ":";
-  XLA_VLOG_LINES(2, module.ToString());
+  VLOG(3) << "HLO " << message << ":";
+  XLA_VLOG_LINES(3, module.ToString());
 }
 }  // namespace
 

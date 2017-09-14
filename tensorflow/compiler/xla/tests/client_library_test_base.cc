@@ -258,7 +258,8 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     LOG(WARNING) << "performing exact comparison of floating point numbers";
   } else {
     TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
-                 expected.shape().element_type() == PRED);
+                 expected.shape().element_type() == PRED)
+        << ShapeUtil::HumanString(expected.shape());
   }
   auto expect_equal = [&](const Literal& actual, const string& error_message) {
     LiteralTestUtil::ExpectEqual(expected, actual, error_message);
