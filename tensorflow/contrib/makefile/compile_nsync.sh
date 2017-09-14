@@ -127,7 +127,7 @@ for arch in $archs; do
                         include dependfile
                 ';;
 
-        ios)    xcode=/Applications/Xcode.app/Contents/Developer/Platforms
+        ios)
                 arch_flags=
                 case "$arch" in
                 i386|x86_64)
