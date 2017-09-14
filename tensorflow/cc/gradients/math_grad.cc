@@ -695,6 +695,7 @@ Status ErfGrad(const Scope& scope, const Operation& op,
                                grad.type());
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto x = ConjugateHelper(grad_scope, op.input(0));
+  // grad * 2/sqrt(pi) * exp(-x**2)
   auto dx = Mul(scope,
                 Mul(scope, grad, two_over_root_pi),
                 Exp(scope, Neg(scope, Square(scope, x))));
