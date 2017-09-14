@@ -98,7 +98,6 @@ cc_library(
 
 cc_test(
     name = "xla_compiler_test",
-    size = "small",
     srcs = ["xla_compiler_test.cc"],
     deps = [
         ":xla_compiler",
@@ -121,7 +120,6 @@ cc_test(
 
 cc_test(
     name = "str_util_test",
-    size = "small",
     srcs = [
         "str_util_test.cc",
     ],
@@ -135,7 +133,6 @@ cc_test(
 
 cc_test(
     name = "literal_util_test",
-    size = "small",
     srcs = [
         "literal_util_test.cc",
     ],

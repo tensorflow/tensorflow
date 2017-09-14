@@ -471,7 +471,6 @@ cc_test(
 
 cc_test(
     name = "cpu_instruction_fusion_test",
-    size = "small",
     srcs = ["cpu_instruction_fusion_test.cc"],
     deps = [
         ":cpu_instruction_fusion",
@@ -582,7 +581,6 @@ cc_library(
 
 cc_test(
     name = "conv_canonicalization_test",
-    size = "small",
     srcs = ["conv_canonicalization_test.cc"],
     deps = [
         ":conv_canonicalization",
