@@ -368,11 +368,6 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   Raises:
     An exception on error.
   """
-  num_outputs = len(results)
-  if num_outputs == 0:
-    return results
-  if attrs is not None:
-    attrs = attrs
 
   def grad_fn(*orig_outputs):
     """Generated gradient function."""
@@ -388,7 +383,6 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   if _tracing:
     print("Computed op", (name if name else op_name), "inputs", inputs,
           "outputs", results)
-  return results
 
 
 execute.record_gradient = _record_gradient

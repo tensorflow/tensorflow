@@ -99,20 +99,17 @@ To install TensorFlow, you must install the following packages:
   * `pip`, which enables you to install and manage certain Python packages.
   * `wheel`, which enables you to manage Python compressed packages in
     the wheel (.whl) format.
-  * `autograd`, which is used internally for gradient computation.
 
 To install these packages for Python 2.7, issue the following command:
 
 <pre>
 $ <b>sudo apt-get install python-numpy python-dev python-pip python-wheel</b>
-$ <b>sudo pip install autograd</b>
 </pre>
 
 To install these packages for Python 3.n, issue the following command:
 
 <pre>
 $ <b>sudo apt-get install python3-numpy python3-dev python3-pip python3-wheel</b>
-$ <b>sudo pip3 install autograd</b>
 </pre>
 
 
@@ -176,7 +173,6 @@ To install TensorFlow, you must install the following packages:
   * numpy, which is a numerical processing package that TensorFlow requires.
   * wheel, which enables you to manage Python compressed packages
     in the wheel (.whl) format.
-  * autograd, for dynamic differentiation
 
 You may install the python dependencies using pip. If you don't have pip
 on your machine, we recommend using homebrew to install Python and pip as
@@ -185,7 +181,7 @@ If you follow these instructions, you will not need to disable SIP.
 
 After installing pip, invoke the following commands:
 
-<pre> $ <b>sudo pip install six numpy wheel autograd</b> </pre>
+<pre> $ <b>sudo pip install six numpy wheel</b> </pre>
 
 
 

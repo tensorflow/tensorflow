@@ -499,8 +499,8 @@ string GenEagerPythonOp::Code() {
   }
 
   if (num_outs_ > 0) {
-    strings::StrAppend(&result_, "  _result = _execute.record_gradient(\n",
-                       "      \"", op_def_.name(),
+    strings::StrAppend(&result_, "  _execute.record_gradient(\n", "      \"",
+                       op_def_.name(),
                        "\", _inputs_flat, _attrs, _result, name)\n");
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
       // Single list result.
@@ -684,7 +684,6 @@ import collections as _collections
 from tensorflow.python.eager import execute as _execute
 from tensorflow.python.eager import context as _context
 from tensorflow.python.eager import core as _core
-from tensorflow.python.eager import tensor as _tensor
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import tensor_shape as _tensor_shape
 
