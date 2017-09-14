@@ -1,0 +1,9 @@
+build:
+  template_file: linux-opt-base.tyml
+  routes:
+    - "index.project.deepspeech.tensorflow.pip.${event.head.branch}.cpu"
+    - "index.project.deepspeech.tensorflow.pip.${event.head.branch}.${event.head.sha}.cpu"
+    - "index.project.deepspeech.tensorflow.pip.cpu.${event.head.sha}"
+  metadata:
+    name: "TensorFlow Linux AMD64 CPU"
+    description: "Building TensorFlow for Linux/AMD64, CPU only, optimized version"

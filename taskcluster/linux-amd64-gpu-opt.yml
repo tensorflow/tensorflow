@@ -1,0 +1,13 @@
+build:
+  template_file: linux-opt-base.tyml
+  routes:
+    - "index.project.deepspeech.tensorflow.pip.${event.head.branch}.gpu"
+    - "index.project.deepspeech.tensorflow.pip.${event.head.branch}.${event.head.sha}.gpu"
+    - "index.project.deepspeech.tensorflow.pip.gpu.${event.head.sha}"
+  maxRunTime: 14400
+  args:
+    tcsetup: "--cuda"
+    tcbuild: "--gpu"
+  metadata:
+    name: "TensorFlow Linux AMD64 CUDA"
+    description: "Building TensorFlow for Linux/AMD64, CUDA-enabled, optimized version"
