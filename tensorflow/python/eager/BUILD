@@ -332,6 +332,7 @@ py_library(
 py_test(
     name = "graph_callable_test",
     srcs = ["graph_callable_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":graph_callable",
         "//tensorflow/python:dtypes",
