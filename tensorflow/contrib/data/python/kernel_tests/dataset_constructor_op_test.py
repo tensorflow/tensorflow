@@ -22,11 +22,15 @@ import threading
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -475,6 +479,35 @@ class DatasetConstructorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testSplitPipelineFailsWithPlacementError(self):
+
+    with session.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+
+      dataset = dataset_ops.Dataset.from_tensors(0)
+
+      # Define a pipeline that attempts to use variables on two
+      # different devices.
+      #
+      # Initialize the variables before creating to iterator, to avoid the
+      # placement algorithm overriding the DT_RESOURCE colocation constraints.
+      with ops.device("/cpu:0"):
+        var_0 = resource_variable_ops.ResourceVariable(initial_value=0)
+        dataset = dataset.map(lambda x: x + var_0.read_value())
+      sess.run(var_0.initializer)
+
+      with ops.device("/cpu:1"):
+        var_1 = resource_variable_ops.ResourceVariable(initial_value=0)
+        dataset = dataset.map(lambda x: x + var_1.read_value())
+      sess.run(var_1.initializer)
+
+      iterator = dataset.make_initializable_iterator()
+
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Trying to access resource located in device"):
+        sess.run(iterator.initializer)
 
 if __name__ == "__main__":
   test.main()

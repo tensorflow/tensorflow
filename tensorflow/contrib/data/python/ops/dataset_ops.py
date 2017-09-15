@@ -99,8 +99,9 @@ class Iterator(object):
         shared_name=shared_name,
         output_types=nest.flatten(dataset.output_types),
         output_shapes=nest.flatten(dataset.output_shapes))
-    initializer = gen_dataset_ops.make_iterator(dataset.make_dataset_resource(),
-                                                iterator_resource)
+    with ops.colocate_with(iterator_resource):
+      initializer = gen_dataset_ops.make_iterator(
+          dataset.make_dataset_resource(), iterator_resource)
     return Iterator(iterator_resource, initializer, dataset.output_types,
                     dataset.output_shapes)
 
@@ -291,6 +292,7 @@ class Iterator(object):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
                           (self._output_shapes, dataset.output_shapes))
+    with ops.colocate_with(self._iterator_resource):
       return gen_dataset_ops.make_iterator(
           dataset.make_dataset_resource(), self._iterator_resource, name=name)
 
@@ -2404,12 +2406,16 @@ def rejection_resample(dataset,
     num_classes = (target_dist.shape[0].value or
                    array_ops.shape(target_dist)[0])
     smoothing_constant = 10
-    num_examples_per_class_seen = resource_variable_ops.ResourceVariable(
-        initial_value=array_ops.fill([num_classes],
-                                     np.int64(smoothing_constant)),
-        trainable=False,
-        name="class_count",
-        dtype=dtypes.int64)
+    # Disable device functions and colocation constraints so that the variable
+    # will be placed with the eventual DT_VARIANT dataset tensor.
+    with ops.colocate_with(None, ignore_existing=True):
+      num_examples_per_class_seen = resource_variable_ops.ResourceVariable(
+          initial_value=array_ops.fill([num_classes],
+                                       np.int64(smoothing_constant)),
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          name="local_class_count",
+          dtype=dtypes.int64)
 
     def update_estimate_and_tile(c):
       return array_ops.tile(
