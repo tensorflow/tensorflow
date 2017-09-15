@@ -2737,14 +2737,10 @@ llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction* hlo) {
     }
 
     prof_counter_idx = it->second;
-    uintptr_t hlo_address = reinterpret_cast<uintptr_t>(hlo);
-    counter_name = tensorflow::strings::StrCat(
-        "prof_counter_0x",
-        tensorflow::strings::Hex(
-            hlo_address, tensorflow::strings::PadSpec(sizeof(hlo_address))));
+    counter_name = IrName("prof_counter", hlo->name());
   } else {
     prof_counter_idx = hlo_to_profile_idx_->size();
-    counter_name = "prof_counter_computation";
+    counter_name = "prof_counter.computation";
   }
   return ir_builder_.CreateGEP(GetProfileCountersArgument(),
                                ir_builder_.getInt64(prof_counter_idx),
