@@ -121,7 +121,9 @@ class Tape(object):
       self._tensor_usage[i] -= 1
       if self._tensor_usage[i] == 0:
         del self._tensor_usage[i]
-        op_id = self._tensor_tape.pop(i)
+        op_id = self._tensor_tape.pop(i, None)
+        if op_id is None:
+          return
         op = self._op_tape[op_id]
         if not any(tensor_id in self._tensor_usage
                    for tensor_id in op.output_ids):
@@ -247,3 +249,8 @@ def top_tape_watched_tensors():
 def top_tape_watched_variables():
   t = _tape_stack.stack[-1]
   return t._watched_variables  # pylint: disable=protected-access
+
+
+def could_possibly_record():
+  """Returns True if any tape is active."""
+  return len(_tape_stack.stack) > 0  # pylint: disable=g-explicit-length-test
