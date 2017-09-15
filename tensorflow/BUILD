@@ -410,6 +410,7 @@ filegroup(
         "//tensorflow/python/profiler/internal:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
+        "//tensorflow/tools/api/generator:all_files",
         "//tensorflow/tools/api/golden:all_files",
         "//tensorflow/tools/api/lib:all_files",
         "//tensorflow/tools/api/tests:all_files",
