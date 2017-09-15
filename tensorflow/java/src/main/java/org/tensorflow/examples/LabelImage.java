@@ -212,23 +212,11 @@ public class LabelImage {
     }
 
     Output<TFString> stringConstant(String name, byte[] value) {
-      try (Tensor<TFString> t = Tensor.create(value, TFString.class)) {
-        return g.opBuilder("Const", name)
-            .setAttr("dtype", t.dataType())
-            .setAttr("value", t)
-            .build()
-            .<TFString>output(0);
-      }
+      return this.<TFString>constant(name, value, TFString.class);
     }
 
     Output<TFInt32> constant(String name, int value) {
-      try (Tensor<TFInt32> t = Tensor.create(value, TFInt32.class)) {
-        return g.opBuilder("Const", name)
-            .setAttr("dtype", DataType.INT32)
-            .setAttr("value", t)
-            .build()
-            .<TFInt32>output(0);
-      }
+      return this.<TFInt32>constant(name, value, TFInt32.class);
     }
 
     Output<TFInt32> constant(String name, int[] value) {

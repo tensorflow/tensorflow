@@ -32,19 +32,7 @@ public class TestUtil {
           .<T>output(0);
     }
   }
-  public static Output<TFInt32> constant(Graph g, String name, int[][] value) {
-    try (Tensor<TFInt32> t = Tensor.create(value)) {
-      return g.opBuilder("Const", name)
-          .setAttr("dtype", t.dataType())
-          .setAttr("value", t)
-          .build()
-          .<TFInt32>output(0);
-    }
-  }
 
-  public static Output<?> placeholder(Graph g, String name, DataType dtype) {
-    return g.opBuilder("Placeholder", name).setAttr("dtype", dtype).build().output(0);
-  }
   public static <T extends TFType> Output<T> placeholder(Graph g, String name, Class<T> type) {
     return g.opBuilder("Placeholder", name)
         .setAttr("dtype", Types.dataType(type))

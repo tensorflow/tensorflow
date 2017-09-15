@@ -126,10 +126,10 @@ public final class Tensor<T> implements AutoCloseable {
   /**
    * Creates a tensor from an object whose class is inspected to figure out what the underlying data
    * type should be. The parameter {@code T} must match the data type of the object, but this is
-   * <em>not</em> checked. Not all types {@code T} can be distinguished based on the run-time class
-   * of {@code obj}. For example, a {@code byte[]} array could be either a 1-D tensor of uint8 or a
-   * scalar string. Use the class {@link org.tensorflow.Tensors} for methods that create Tensors in
-   * a fully type-safe way.
+   * checked only at run time, <em>not</em> at compile time. Not all types {@code T} can be
+   * distinguished based on the run-time class of {@code obj}. For example, a {@code byte[]} array
+   * could be either a 1-D tensor of uint8 or a scalar string. Use the class {@link
+   * org.tensorflow.Tensors} for methods that create Tensors in a fully type-safe way.
    *
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system.
