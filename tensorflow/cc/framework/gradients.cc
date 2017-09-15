@@ -202,12 +202,6 @@ Status SymbolicGradientBuilder::Initialize() {
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
     for (const Output& nout : inputs_) {
-      LOG(INFO) << "Input: " << nout.node()->id();
-      LOG(INFO) << "Input: " << nout.node()->name();
-      if (!reachable_nodes[nout.node()->id()]) {
-        return errors::InvalidArgument(
-          nout.node()->name() + " is unreachable from the output(s).");
-      }
       if (visited.find(nout.node()) == visited.end()) {
         queue.push_back(nout.node());
         visited.insert(nout.node());
