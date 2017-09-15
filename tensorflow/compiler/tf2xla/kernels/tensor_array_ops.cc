@@ -223,7 +223,9 @@ class TensorArrayWriteOp : public XlaOpKernel {
     xla::ComputationDataHandle flow = ctx->Input(3);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices = XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
+    auto start_indices =
+        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+               xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
@@ -266,7 +268,8 @@ class TensorArrayReadOp : public XlaOpKernel {
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
     auto start_indices =
-        XlaHelpers::PadWithZeros(b, index, ta_shape.dims() - 1);
+        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+               xla::MakeEdgePaddingConfig({{0, ta_shape.dims() - 1}}));
 
     auto slice_shape = ta_shape.dim_sizes();
     slice_shape[0] = 1LL;
@@ -371,7 +374,8 @@ class TensorArrayScatterOp : public XlaOpKernel {
       // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
       auto index = b->Slice(indices, {i}, {i + 1}, {1});
       auto start_indices =
-          XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
+          b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+                 xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
       ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices);
     }
 

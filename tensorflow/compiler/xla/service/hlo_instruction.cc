@@ -2620,4 +2620,21 @@ void HloInstruction::set_outer_dimension_partitions(
   outer_dimension_partitions_ = outer_dimension_partitions;
 }
 
+void HloInstruction::RelayoutConstant(const Layout& new_layout,
+                                      const ShapeIndex& shape_index) {
+  CHECK_EQ(opcode(), HloOpcode::kConstant);
+  Shape* mutable_array_subshape =
+      ShapeUtil::GetMutableSubshape(mutable_shape(), shape_index);
+  CHECK(ShapeUtil::IsArray(*mutable_array_subshape));
+
+  // Normally array_subshape will always have a layout, but this invariant is
+  // temporarily broken in LayoutAssignment::AssignLayouts.
+
+  if (!mutable_array_subshape->has_layout() ||
+      !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
+    literal_ = literal_->Relayout(new_layout, shape_index);
+    *mutable_array_subshape->mutable_layout() = new_layout;
+  }
+}
+
 }  // namespace xla

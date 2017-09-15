@@ -163,7 +163,6 @@ py_library(
 
 py_test(
     name = "gc_test",
-    size = "small",
     srcs = ["gc_test.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],

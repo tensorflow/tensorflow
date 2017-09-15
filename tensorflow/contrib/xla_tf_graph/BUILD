@@ -41,7 +41,6 @@ cc_library(
 
 cc_test(
     name = "xla_tf_graph_util_test",
-    size = "small",
     srcs = ["xla_tf_graph_util_test.cc"],
     linkstatic = 1,
     tags = ["nomac"],  # b/63908145

@@ -68,7 +68,8 @@ class Saver(object):
     Returns:
       See save method in tf.train.Saver.
     """
-    return self._saver.save(None, save_path, global_step=global_step)
+    return self._saver.save(None, save_path, write_meta_graph=False,
+                            global_step=global_step)
 
   def restore(self, save_path):
     """Restores previously saved variables.

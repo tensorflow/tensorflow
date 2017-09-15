@@ -20,11 +20,25 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
+import os
+import time
 
 import six
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import estimator as estimator_lib
+from tensorflow.python.estimator import run_config as run_config_lib
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
+
+
+_MAX_DELAY_SECS = 60
+_DELAY_SECS_PER_WORKER = 5
+_TF_CONFIG_ENV = 'TF_CONFIG'
+_ENVIRONMENT_KEY = 'environment'
+_ENVIRONMENT_GOOGLE_VALUE = 'google'
 
 
 def _validate_input_fn(input_fn):
@@ -43,6 +57,14 @@ def _validate_hooks(hooks):
           'All hooks must be `SessionRunHook` instances, given: {}'.format(
               hook))
   return hooks
+
+
+def _is_google_env():
+  """Detects whether current environment is google."""
+  tf_config = json.loads(os.environ.get(_TF_CONFIG_ENV) or '{}')
+  if not tf_config:
+    logging.warn('TF_CONFIG should not be empty in distributed environment.')
+  return tf_config.get(_ENVIRONMENT_KEY) == _ENVIRONMENT_GOOGLE_VALUE
 
 
 class TrainSpec(
@@ -209,11 +231,13 @@ class _TrainingExecutor(object):
 
   def run_chief(self):
     """Runs task chief."""
-    raise UnimplementedError('Method run_chief has not been implemented.')
+    # TODO(xiejw): To allow execution framework to add train hooks.
+    return self._start_distributed_training()
 
   def run_worker(self):
     """Runs task (training) worker."""
-    raise UnimplementedError('Method run_worker has not been implemented.')
+    # TODO(xiejw): To allow execution framework to add train hooks.
+    return self._start_distributed_training()
 
   def run_evaluator(self):
     """Runs task evaluator."""
@@ -226,3 +250,46 @@ class _TrainingExecutor(object):
   def run_local(self):
     """Runs training and evaluation locally (non-distributed)."""
     raise UnimplementedError('Method run_local has not been implemented.')
+
+  def _start_std_server(self, config):
+    """Creates, starts, and returns a server_lib.Server."""
+    if (not config.cluster_spec or not config.task_type or not config.master or
+        config.task_id is None):
+      raise RuntimeError('Could not start server; be sure to specify '
+                         'cluster_spec, task_type, master, and task in '
+                         'RunConfig or set the TF_CONFIG environment variable.')
+    server = server_lib.Server(
+        config.cluster_spec,
+        job_name=config.task_type,
+        task_index=config.task_id,
+        config=config_pb2.ConfigProto(log_device_placement=False),
+        start=False)
+    server.start()
+    return server
+
+  def _start_distributed_training(self):
+    """Calls `Estimator` train in a distributed setting."""
+    config = self._estimator.config
+
+    # Start in-process TensorFlow server if needed. It's important to start the
+    # server before we (optionally) sleep. Otherwise, the servers will wait to
+    # connect to each other before starting to train.
+    if not _is_google_env():
+      self._start_std_server(config)
+
+    # Delay worker to start. For asynchronous training, this usually helps model
+    # to converge faster.  Chief starts the training immediately, so, worker
+    # with task id x (0-based) should wait (x+1) * _DELAY_SECS_PER_WORKER.
+    delay_secs = 0
+    if config.task_type == run_config_lib.TaskType.WORKER:
+      # TODO(xiejw): Replace the hard code logic (task_id + 1) with unique id in
+      # training cluster.
+      delay_secs = min(_MAX_DELAY_SECS,
+                       (config.task_id + 1) * _DELAY_SECS_PER_WORKER)
+    if delay_secs > 0:
+      logging.info('Waiting %d secs before starting training.', delay_secs)
+      time.sleep(delay_secs)
+
+    self._estimator.train(input_fn=self._train_spec.input_fn,
+                          max_steps=self._train_spec.max_steps,
+                          hooks=self._train_spec.hooks)
