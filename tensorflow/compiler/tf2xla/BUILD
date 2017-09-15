@@ -20,6 +20,8 @@ package(
     default_visibility = [":internal"],
 )
 
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+
 cc_library(
     name = "xla_compiler",
     srcs = [
@@ -29,7 +31,10 @@ cc_library(
         "xla_helpers.cc",
         "xla_op_kernel.cc",
         "xla_op_registry.cc",
-    ],
+        "xla_cpu_backend.cc",
+    ] + if_cuda_is_configured([
+        "xla_gpu_backend.cc",
+    ]),
     hdrs = [
         "xla_compilation_device.h",
         "xla_compiler.h",
@@ -93,7 +98,6 @@ cc_library(
 
 cc_test(
     name = "xla_compiler_test",
-    size = "small",
     srcs = ["xla_compiler_test.cc"],
     deps = [
         ":xla_compiler",
@@ -116,7 +120,6 @@ cc_test(
 
 cc_test(
     name = "str_util_test",
-    size = "small",
     srcs = [
         "str_util_test.cc",
     ],
@@ -130,7 +133,6 @@ cc_test(
 
 cc_test(
     name = "literal_util_test",
-    size = "small",
     srcs = [
         "literal_util_test.cc",
     ],

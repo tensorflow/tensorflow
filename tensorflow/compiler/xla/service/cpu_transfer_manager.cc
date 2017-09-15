@@ -182,9 +182,8 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
     tensorflow::gtl::ArraySlice<int64> dimensions(
         tensorflow::bit_cast<const int64*>(literal_shape.dimensions().data()),
         literal_shape.dimensions().size());
-    auto empty =
-        Literal::CreateFromDimensions(literal_shape.element_type(), dimensions);
-    literal->Swap(empty.get());
+    *literal = std::move(*Literal::CreateFromDimensions(
+        literal_shape.element_type(), dimensions));
     TF_ASSIGN_OR_RETURN(Shape received_shape,
                         TransferArrayBufferFromOutfeed(
                             executor, literal->MutableInternalData(), size));
@@ -235,8 +234,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
   for (int64 i = 0; i < literal_shape.tuple_shapes_size(); ++i) {
     *elements[i]->mutable_shape() = received_shape.tuple_shapes(i);
   }
-  auto result = Literal::MakeTupleOwned(std::move(elements));
-  literal->Swap(result.get());
+  *literal = std::move(*Literal::MakeTupleOwned(std::move(elements)));
   TF_RET_CHECK(ShapeUtil::Equal(literal->shape(), literal_shape));
   return Status::OK();
 }

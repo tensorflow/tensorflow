@@ -41,10 +41,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/versions.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -62,6 +60,7 @@ class Graph;
 class GraphDef;
 class Node;
 class VersionDef;
+class WhileContext;
 
 class NeighborIter;  // Declared below
 class NodeIter;      // Declared below
@@ -184,6 +183,13 @@ class Node {
   Status input_node(int idx, const Node** n) const;
   Status input_node(int idx, Node** n) const;
 
+  WhileContext* while_ctx() const { return while_ctx_; }
+  void set_while_ctx(WhileContext* while_ctx) {
+    DCHECK(IsExit());
+    DCHECK(while_ctx_ == nullptr);
+    while_ctx_ = while_ctx;
+  }
+
  private:
   friend class Graph;
   Node();
@@ -256,7 +262,34 @@ class Node {
   // field and reclaim that memory.
   Graph* graph_;
 
+  // Set if this is an exit node of a while loop with an associated
+  // WhileContext. Otherwise null. (This is only set for exit nodes because
+  // they're the first nodes of a loop encountered while creating the gradient
+  // graph. Exit nodes that are part of while loop gradient graphs will not have
+  // this set.)
+  WhileContext* while_ctx_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
+};
+
+// Represents an input of a node, i.e., the `index`-th input to `node`.
+struct InputTensor {
+  const Node* node;
+  int index;
+
+  InputTensor(const Node* n, int i) : node(n), index(i) {}
+  InputTensor() : node(nullptr), index(0) {}
+};
+
+// Represents an output of a node, i.e., the `index`-th output of `node`. Note
+// that a single `OutputTensor` can correspond to multiple `Edge`s if the output
+// is consumed by multiple destination nodes.
+struct OutputTensor {
+  const Node* node;
+  int index;
+
+  OutputTensor(const Node* n, int i) : node(n), index(i) {}
+  OutputTensor() : node(nullptr), index(0) {}
 };
 
 class Edge {
@@ -278,6 +311,8 @@ class Edge {
   // Return true iff this is an edge that indicates a control-flow
   // (as opposed to a data-flow) dependency.
   bool IsControlEdge() const;
+
+  string DebugString() const;
 
  private:
   Edge() {}
@@ -503,10 +538,30 @@ class Graph {
     node->assigned_device_name_index_ = InternDeviceName(device_name);
   }
 
+  // Returns OK if `node` is non-null and belongs to this graph
+  Status IsValidNode(const Node* node) const;
+
+  // Returns OK if IsValidNode(`node`) and `idx` is less than
+  // node->num_outputs()
+  Status IsValidOutputTensor(const Node* node, int idx) const;
+
+  // Returns OK if IsValidNode(`node`) and `idx` is less than
+  // node->num_inputs()
+  Status IsValidInputTensor(const Node* node, int idx) const;
+
+  // Create and return a new WhileContext owned by this graph. This is called
+  // when a new while loop is created. `frame_name` must be unique among
+  // WhileContexts in this graph.
+  Status AddWhileContext(StringPiece frame_name, std::vector<Node*> enter_nodes,
+                         std::vector<Node*> exit_nodes,
+                         OutputTensor cond_output,
+                         std::vector<OutputTensor> body_inputs,
+                         std::vector<OutputTensor> body_outputs,
+                         WhileContext** result);
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
-  bool IsValidNode(Node* node) const;
   // If cost_node is non-null, then cost accounting (in CostModel)
   // will be associated with that node rather than the new one being
   // created.
@@ -569,6 +624,12 @@ class Graph {
 
   // Maps unique device names to indices within device_names_[i].
   std::unordered_map<string, int> device_names_map_;
+
+  // All the while contexts owned by this graph, keyed by frame name,
+  // corresonding to all the while loops contained in this graph (including
+  // nested loops). The stored contexts are usually accessed via
+  // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
+  std::map<string, WhileContext> while_ctxs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };

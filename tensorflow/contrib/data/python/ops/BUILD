@@ -24,10 +24,26 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "sloppy_ops",
+    srcs = ["sloppy_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_ops",
+        "//tensorflow/contrib/data/python/framework:function",
+        "//tensorflow/contrib/data/python/util:nest",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
     ],
 )
 

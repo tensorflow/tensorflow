@@ -329,22 +329,26 @@ class ImperativeGraph(ops.Graph):
             attr_value_pb2.AttrValue(
                 s=compat.as_bytes(self._imperative_op_type)))
 
-      return MultiOutputOperation(values)
+      return MultiOutputOperation(values, orig_op)
 
 
 class MultiOutputOperation(object):
   """A 'duck-type' wrapper class for a list of Tensors, acting as an Operation.
 
   NOTE(keveman): `create_op` produces a list of values but collected from
-  multiple ops. So there is no one `Operation` that we can pass to the
-  consumers of `create_op`. But the consumers of `create_op` only require
-  the object passed in to have the `outputs` property defined. This class
-  simply defines the `outputs` property, so the consumers of
-  `create_op` work correctly.
+  multiple ops. So there is no one `Operation` that we can pass to the consumers
+  of `create_op`. But the consumers of `create_op` only require the object
+  passed in to have the `outputs` property and get_attr method defined. This
+  class simply defines the `outputs` property, so the consumers of `create_op`
+  work correctly.
   """
 
-  def __init__(self, outputs):
+  def __init__(self, outputs, op):
     self.outputs = outputs
+    self._op = op
+
+  def get_attr(self, name):
+    return self._op.get_attr(name)
 
 
 class OperationProxy(ops.Operation):

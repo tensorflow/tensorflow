@@ -57,7 +57,7 @@ class Device : public DeviceBase {
   ~Device() override;
 
   // Full name of this device (see top comment).
-  const string& name() const { return device_attributes_.name(); }
+  const string& name() const override { return device_attributes_.name(); }
 
   // Parsed name of this device
   const DeviceNameUtils::ParsedName& parsed_name() const {

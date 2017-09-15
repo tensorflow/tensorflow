@@ -33,7 +33,7 @@ To try the code for this tutorial:
         $ pip install -U pandas
 
     If you have trouble installing pandas, consult the
-    [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
+    [instructions](https://pandas.pydata.org/pandas-docs/stable/install.html)
     on the pandas site.
 
 4. Execute the tutorial code with the following command to train the linear
@@ -62,7 +62,7 @@ urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/ad
 ```
 
 Once the CSV files are downloaded, let's read them into
-[Pandas](http://pandas.pydata.org/) dataframes.
+[Pandas](https://pandas.pydata.org/) dataframes.
 
 ```python
 import pandas as pd

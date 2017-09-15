@@ -39,6 +39,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -139,7 +140,8 @@ def create_slot_with_initializer(primary, initializer, shape, dtype, name,
   # and the same name has been previously used, the scope name will add '_N'
   # as suffix for unique identifications.
   validate_shape = shape.is_fully_defined()
-  with variable_scope.variable_scope(None, primary.op.name + "/" + name):
+  prefix = primary.op.name if context.in_graph_mode() else primary._shared_name  # pylint: disable=protected-access
+  with variable_scope.variable_scope(None, prefix + "/" + name):
     if colocate_with_primary:
       with ops.colocate_with(primary):
         return _create_slot_var(primary, initializer, "", validate_shape, shape,

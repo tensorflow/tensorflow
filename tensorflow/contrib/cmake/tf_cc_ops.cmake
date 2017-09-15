@@ -106,6 +106,16 @@ add_library(tf_cc_ops OBJECT
 )
 
 ########################################################
+# tf_cc_while_loop library
+########################################################
+add_library(tf_cc_while_loop OBJECT
+    "${tensorflow_source_dir}/tensorflow/cc/ops/while_loop.h"
+    "${tensorflow_source_dir}/tensorflow/cc/ops/while_loop.cc"
+)
+
+add_dependencies(tf_cc_while_loop tf_core_framework tf_cc_ops)
+
+########################################################
 # tf_cc library
 ########################################################
 file(GLOB_RECURSE tf_cc_srcs

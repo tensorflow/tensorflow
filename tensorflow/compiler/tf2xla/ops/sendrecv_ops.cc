@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -22,6 +23,7 @@ REGISTER_OP("_XLASend")
     .Attr("T: type")
     .Attr("tensor_name: string")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Sends the named tensor to another XLA computation.
 
@@ -35,6 +37,7 @@ REGISTER_OP("_XLARecv")
     .Attr("tensor_name: string")
     .Attr("shape: shape")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Receives the named tensor from another XLA computation.
 

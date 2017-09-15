@@ -22,20 +22,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import standard_ops
-from tensorflow.python.ops import variable_scope as vs
-
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import standard_ops
 
 
 class Dense(base.Layer):
@@ -148,13 +149,14 @@ class Dense(base.Layer):
   def call(self, inputs):
     inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
     shape = inputs.get_shape().as_list()
-    output_shape = shape[:-1] + [self.units]
-    if len(output_shape) > 2:
+    if len(shape) > 2:
       # Broadcasting is required for the inputs.
       outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
                                                              [0]])
       # Reshape the output back to the original ndim of the input.
-      outputs.set_shape(output_shape)
+      if context.in_graph_mode():
+        output_shape = shape[:-1] + [self.units]
+        outputs.set_shape(output_shape)
     else:
       outputs = standard_ops.matmul(inputs, self.kernel)
     if self.use_bias:
@@ -287,6 +289,7 @@ class Dropout(base.Layer):
     return self.noise_shape
 
   def call(self, inputs, training=False):
+
     def dropped_inputs():
       return nn.dropout(inputs, 1  - self.rate,
                         noise_shape=self._get_noise_shape(inputs),
@@ -332,6 +335,67 @@ def dropout(inputs,
   """
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
+
+
+class Flatten(base.Layer):
+  """Flattens an input tensor while preserving the batch axis (axis 0).
+
+  Examples:
+
+  ```
+    x = tf.placeholder(shape=(None, 4, 4), dtype='float32')
+    y = Flatten()(x)
+    # now `y` has shape `(None, 16)`
+
+    x = tf.placeholder(shape=(None, 3, None), dtype='float32')
+    y = Flatten()(x)
+    # now `y` has shape `(None, None)`
+  ```
+  """
+
+  def __init__(self, **kwargs):
+    super(Flatten, self).__init__(**kwargs)
+    self.input_spec = base.InputSpec(min_ndim=2)
+
+  def call(self, inputs):
+    outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
+    outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+    return outputs
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    output_shape = [input_shape[0]]
+    if all(input_shape[1:]):
+      output_shape += [np.prod(input_shape[1:])]
+    else:
+      output_shape += [None]
+    return tensor_shape.TensorShape(output_shape)
+
+
+def flatten(inputs, name=None):
+  """Flattens an input tensor while preserving the batch axis (axis 0).
+
+  Arguments:
+    inputs: Tensor input.
+    name: The name of the layer (string).
+
+  Returns:
+    Reshaped tensor.
+
+  Examples:
+
+  ```
+    x = tf.placeholder(shape=(None, 4, 4), dtype='float32')
+    y = flatten(x)
+    # now `y` has shape `(None, 16)`
+
+    x = tf.placeholder(shape=(None, 3, None), dtype='float32')
+    y = flatten(x)
+    # now `y` has shape `(None, None)`
+  ```
+  """
+  layer = Flatten(name=name)
+  return layer.apply(inputs)
 
 
 # Aliases

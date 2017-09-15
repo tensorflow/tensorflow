@@ -89,6 +89,31 @@ class IteratorResource : public ResourceBase {
     }
   }
 
+  Status SaveState(OpKernelContext* ctx, StringPiece path) {
+    std::shared_ptr<IteratorBase> captured_iterator(iterator_);
+    if (captured_iterator) {
+      return captured_iterator->SaveState(ctx, path);
+    } else {
+      return errors::FailedPrecondition(
+          "SaveState() failed because the iterator has not been initialized. "
+          "Ensure that you have run the initializer operation for this "
+          "iterator before getting the next element.");
+    }
+  }
+
+  Status RestoreState(OpKernelContext* ctx, StringPiece path) {
+    std::shared_ptr<IteratorBase> captured_iterator(iterator_);
+    if (captured_iterator) {
+      return captured_iterator->RestoreState(ctx, path);
+    } else {
+      return errors::FailedPrecondition(
+          "RestoreState() failed because the iterator has not been "
+          "initialized. "
+          "Ensure that you have run the initializer operation for this "
+          "iterator before getting the next element.");
+    }
+  }
+
   // Transfers ownership of iterator to this. This method is thread-safe.
   Status set_iterator(std::unique_ptr<IteratorBase> iterator) {
     if (iterator) {
@@ -150,14 +175,39 @@ class MakeIteratorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     DatasetBase* dataset;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &dataset));
-    core::ScopedUnref unref_dataset(dataset);
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
-    OP_REQUIRES_OK(ctx,
-                   iterator_resource->set_iterator(dataset->MakeIterator()));
+    OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(
+                            dataset->MakeIterator("Iterator")));
     iterator_resource->Unref();
+  }
+};
+
+class SaveIteratorOp : public OpKernel {
+ public:
+  explicit SaveIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    const string& path = ctx->input(1).scalar<string>()();
+    OP_REQUIRES_OK(ctx, iterator_resource->SaveState(ctx, path));
+  }
+};
+
+class RestoreIteratorOp : public OpKernel {
+ public:
+  explicit RestoreIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    const string& path = ctx->input(1).scalar<string>()();
+    OP_REQUIRES_OK(ctx, iterator_resource->RestoreState(ctx, path));
   }
 };
 
@@ -294,25 +344,19 @@ class OneShotIteratorOp : public AsyncOpKernel {
                                  });
     n.WaitForNotification();
     TF_RETURN_IF_ERROR(factory_status);
-    if (return_values.size() != 1 || return_values[0].dtype() != DT_RESOURCE ||
+    if (return_values.size() != 1 || return_values[0].dtype() != DT_VARIANT ||
         !TensorShapeUtils::IsScalar(return_values[0].shape())) {
       return errors::InvalidArgument(
           "The `dataset_factory` function must return "
-          "a single scalar of dtype DT_RESOURCE.");
+          "a single scalar of dtype DT_VARIANT.");
     }
 
-    // Retrieve the dataset that was created in the factory function.
-    DatasetBase* dataset;
-    const ResourceHandle& dataset_resource =
-        return_values[0].flat<ResourceHandle>()(0);
-    TF_RETURN_IF_ERROR(LookupResource(ctx, dataset_resource, &dataset));
-    core::ScopedUnref unref_dataset(dataset);
-
     // Create an iterator for the dataset that was created in the
-    // factory function. This transfers ownership of the dataset to
-    // the iterator, so we can delete it from the resource manager.
-    TF_RETURN_IF_ERROR((*iterator)->set_iterator(dataset->MakeIterator()));
-    TF_RETURN_IF_ERROR(DeleteResource<DatasetBase>(ctx, dataset_resource));
+    // factory function.
+    DatasetBase* dataset;
+    TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
+    TF_RETURN_IF_ERROR(
+        (*iterator)->set_iterator(dataset->MakeIterator("Iterator")));
 
     (*iterator)->Ref();
     return Status::OK();
@@ -503,6 +547,10 @@ class IteratorFromStringHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("SaveIterator").Device(DEVICE_CPU),
+                        SaveIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("RestoreIterator").Device(DEVICE_CPU),
+                        RestoreIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),

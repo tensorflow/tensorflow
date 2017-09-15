@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -76,8 +77,24 @@ string DumpToString(const T& entity) {
 // and Modules are slightly different.
 string DumpModuleToString(const llvm::Module& module);
 
-// Sanitizes the given name to be a valid LLVM IR value name.
-string SanitizeIrName(string name);
+// Constructs a human-friendly name from the given inputs.  The result is
+// suitable for use as an llvm::Value's name.
+//
+// This is equivalent to
+//
+//   - changing the HloInstruction* to its name() (if we called that overload),
+//   - joining all of the nonempty inputs by '.', and then
+//   - removing all '%'s.
+//
+string IrName(string a);
+string IrName(tensorflow::StringPiece a, tensorflow::StringPiece b);
+string IrName(const HloInstruction* a, tensorflow::StringPiece b = "");
+
+// Removes special characters from a function name.
+//
+// Note that this can cause different inputs to map to the same output, so after
+// sanitizing a function name, you must run it through a uniquer.
+string SanitizeFunctionName(string function_name);
 
 // Emits a call to the specified intrinsic with the given operands. Overloaded
 // intrinsics (for example, "minnum") must include a type in overloaded_types
@@ -88,6 +105,16 @@ llvm::Value* EmitCallToIntrinsic(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
     llvm::IRBuilder<>* ir_builder);
+
+// Emit float max. Emit maxnum intrinsic is fast math is disabled, or
+// fcmp+select otherwise
+llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder);
+
+// Emit float min. Emit minnum intrinsic is fast math is disabled, or
+// fcmp+select otherwise
+llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder);
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
@@ -137,7 +164,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             int alignment = 0);
 
 // As EmitAllocaAtFunctionEntry, but allocates element_count entries
-// intead of a single element.
+// instead of a single element.
 llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
     llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
     llvm::IRBuilder<>* ir_builder, int alignment = 0);

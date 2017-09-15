@@ -228,7 +228,7 @@ XLA_TEST_P(BatchNormTest, RandomizedTests) {
   auto input_squared =
       ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
   std::vector<int64> reduce_dims;
-  for (int64 i = 0; i < bounds.size(); ++i) {
+  for (int64 i = 0; i < static_cast<int64>(bounds.size()); ++i) {
     if (i != feature_index) {
       reduce_dims.push_back(i);
     }
@@ -306,6 +306,109 @@ XLA_TEST_P(BatchNormTest, RandomizedTests) {
       ErrorSpec(0.01, 1));
 }
 
+XLA_TEST_P(BatchNormTest, RandomizedInferencingTests) {
+  float epsilon = 0.001;
+  ComputationBuilder builder(client_, TestName());
+  const std::vector<int64>& bounds = GetParam().bounds;
+  Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
+  input_array.FillRandom(GetParam().random_value_var,
+                         GetParam().random_value_mean);
+
+  const int64 feature_index = GetParam().feature_index;
+  const int64 num_elements_per_feature =
+      Product(bounds) / bounds[feature_index];
+  const int64 feature_bound = bounds[feature_index];
+  std::vector<float> offset(feature_bound, 1);
+  std::vector<float> scale(feature_bound, 2);
+
+  auto input_squared =
+      ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
+  std::vector<int64> reduce_dims;
+  for (int64 i = 0; i < static_cast<int64>(bounds.size()); ++i) {
+    if (i != feature_index) {
+      reduce_dims.push_back(i);
+    }
+  }
+
+  auto sum =
+      ReferenceUtil::Reduce4DTo1D(input_array, /*init=*/0.0f, reduce_dims,
+                                  [](float a, float b) { return a + b; });
+
+  auto sum_squared =
+      ReferenceUtil::Reduce4DTo1D(*input_squared, /*init=*/0.0f, reduce_dims,
+                                  [](float a, float b) { return a + b; });
+
+  std::vector<float> mean(feature_bound);
+
+  for (int64 i = 0; i < feature_bound; ++i) {
+    mean[i] = sum[i] / num_elements_per_feature;
+  }
+
+  std::vector<float> mean_square(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    mean_square[i] = mean[i] * mean[i];
+  }
+
+  std::vector<float> square_mean(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    square_mean[i] = sum_squared[i] / num_elements_per_feature;
+  }
+
+  std::vector<float> var(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    var[i] = square_mean[i] - mean_square[i];
+  }
+
+  Array4D<float> mean4D =
+      *ReferenceUtil::Broadcast1DTo4D(mean, bounds, feature_index);
+  auto var4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
+  auto scale4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
+  auto offset4D =
+      *ReferenceUtil::Broadcast1DTo4D(offset, bounds, feature_index);
+
+  auto normalized = *ReferenceUtil::BatchNorm4D(input_array, mean4D, var4D,
+                                                scale4D, offset4D, epsilon);
+
+  auto offset_literal = Literal::CreateR1<float>(offset);
+  auto scale_literal = Literal::CreateR1<float>(scale);
+  auto mean_literal = Literal::CreateR1<float>(mean);
+  auto var_literal = Literal::CreateR1<float>(var);
+  auto input_literal = Literal::CreateR4FromArray4D<float>(input_array);
+
+  auto input_activations =
+      builder.Parameter(0, input_literal->shape(), "input");
+  auto scale_activations =
+      builder.Parameter(1, scale_literal->shape(), "offset");
+  auto offset_activations =
+      builder.Parameter(2, offset_literal->shape(), "scale");
+  auto mean_activations = builder.Parameter(3, mean_literal->shape(), "mean");
+  auto variance_activations =
+      builder.Parameter(4, var_literal->shape(), "variance");
+
+  Array4D<float> expected = normalized;
+
+  std::unique_ptr<GlobalData> input_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> scale_data =
+      client_->TransferToServer(*scale_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> offset_data =
+      client_->TransferToServer(*offset_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> mean_data =
+      client_->TransferToServer(*mean_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> variance_data =
+      client_->TransferToServer(*var_literal).ConsumeValueOrDie();
+
+  builder.BatchNormInference(input_activations, scale_activations,
+                             offset_activations, mean_activations,
+                             variance_activations, epsilon, feature_index);
+
+  ComputeAndCompareR4<float>(
+      &builder, expected,
+      {input_data.get(), scale_data.get(), offset_data.get(), mean_data.get(),
+       variance_data.get()},
+      ErrorSpec(0.01, 1));
+}
+
 XLA_TEST_P(BatchNormTest, RandomizedGradTests) {
   float epsilon = 0.001;
   ComputationBuilder builder(client_, TestName());
@@ -327,7 +430,7 @@ XLA_TEST_P(BatchNormTest, RandomizedGradTests) {
   auto input_squared =
       ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
   std::vector<int64> reduce_dims;
-  for (int64 i = 0; i < bounds.size(); ++i) {
+  for (int64 i = 0; i < static_cast<int64>(bounds.size()); ++i) {
     if (i != feature_index) {
       reduce_dims.push_back(i);
     }
@@ -368,21 +471,25 @@ XLA_TEST_P(BatchNormTest, RandomizedGradTests) {
   auto scale4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
 
   auto var_add_epsilon = *ReferenceUtil::MapArray4D(
-      var4D, [epsilon](float a) { return std::sqrt(a + epsilon); });
+      var4D, [epsilon](float a) { return a + epsilon; });
+
+  auto rsqrt_var_add_epsilon = *ReferenceUtil::MapArray4D(
+      var_add_epsilon, [epsilon](float a) { return 1 / std::sqrt(a); });
 
   auto grad_output_times_var =
       *ReferenceUtil::MapArray4D(grad_output_array, var_add_epsilon,
                                  [](float a, float b) { return a * b; });
 
-  auto grad_activation = *ReferenceUtil::MapArray4D(
-      grad_output_times_var, scale4D, [](float a, float b) { return a * b; });
-
   auto activation_shifted = *ReferenceUtil::MapArray4D(
       input_array, mean4D, [](float a, float b) { return a - b; });
 
-  auto grad_scale_before_reduction =
-      *ReferenceUtil::MapArray4D(grad_output_times_var, activation_shifted,
+  auto activation_shifted_times_grad_output =
+      *ReferenceUtil::MapArray4D(grad_output_array, activation_shifted,
                                  [](float a, float b) { return a * b; });
+
+  auto grad_scale_before_reduction = *ReferenceUtil::MapArray4D(
+      activation_shifted_times_grad_output, rsqrt_var_add_epsilon,
+      [](float a, float b) { return a * b; });
 
   auto grad_scale = ReferenceUtil::Reduce4DTo1D(
       grad_scale_before_reduction, /*init=*/0.0f, reduce_dims,
@@ -391,6 +498,45 @@ XLA_TEST_P(BatchNormTest, RandomizedGradTests) {
   auto grad_offset =
       ReferenceUtil::Reduce4DTo1D(grad_output_array, /*init=*/0.0f, reduce_dims,
                                   [](float a, float b) { return a + b; });
+
+  auto scale_times_rsqrt_var_add_epsilon = *ReferenceUtil::MapArray4D(
+      scale4D, rsqrt_var_add_epsilon, [](float a, float b) { return a * b; });
+
+  auto I1 = *ReferenceUtil::MapArray4D(
+      grad_output_array, [&](float a) { return num_elements_per_feature * a; });
+
+  auto I2 = *ReferenceUtil::Broadcast1DTo4D(grad_offset, bounds, feature_index);
+
+  // I3 = sum(output_grad * (activation - mean(activation)))
+  auto I3 = *ReferenceUtil::Broadcast1DTo4D(
+      ReferenceUtil::Reduce4DTo1D(activation_shifted_times_grad_output,
+                                  /*init=*/0.0f, reduce_dims,
+                                  [](float a, float b) { return a + b; }),
+      bounds, feature_index);
+
+  // I4 = (activation - mean(activation)) *
+  //   sum(output_grad * (activation - mean(activation)))
+  auto I4 = *ReferenceUtil::MapArray4D(I3, activation_shifted,
+                                       [](float a, float b) { return a * b; });
+
+  // I5 = (activation - mean(activation)) *
+  //   sum(output_grad * (activation - mean(activation))) / (variance +
+  //   epsilon))
+  auto I5 = *ReferenceUtil::MapArray4D(I4, var_add_epsilon,
+                                       [](float a, float b) { return a / b; });
+
+  auto grad_activation = *ReferenceUtil::MapArray4D(
+      I1, I2, [](float a, float b) { return a - b; });
+
+  grad_activation = *ReferenceUtil::MapArray4D(
+      grad_activation, I5, [](float a, float b) { return a - b; });
+
+  grad_activation = *ReferenceUtil::MapArray4D(
+      grad_activation, scale4D, [](float a, float b) { return a * b; });
+
+  grad_activation = *ReferenceUtil::MapArray4D(
+      grad_activation, rsqrt_var_add_epsilon,
+      [=](float a, float b) { return a * b / num_elements_per_feature; });
 
   auto expected_grad_activation =
       Literal::CreateR4FromArray4D<float>(grad_activation);
@@ -590,8 +736,8 @@ XLA_TEST_F(BatchNormTest, BatchNormGradBasic) {
                         /*epsilon=*/0.0, kFeatureIndex);
 
   auto expected = *Literal::MakeTuple(
-      {Literal::CreateR4<float>(
-           {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}})
+      {Literal::CreateR4<float>({{{{-3.f}, {-3.f}}, {{-1.f}, {-1.f}}},
+                                 {{{1.f}, {1.f}}, {{3.f}, {3.f}}}})
            .get(),
        Literal::CreateR1<float>({0, 0}).get(),
        Literal::CreateR1<float>({16, 20}).get()});

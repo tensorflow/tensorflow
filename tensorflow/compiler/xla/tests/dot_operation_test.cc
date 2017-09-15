@@ -151,6 +151,27 @@ XLA_TEST_F(DotOperationTest, Dot_2x0_0x2) {
                              error_spec_);
 }
 
+XLA_TEST_F(DotOperationTest, FusedDot) {
+  ComputationBuilder builder(client_, TestName());
+  auto param0 = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 4}), "arg0");
+  auto param1 = builder.Parameter(1, ShapeUtil::MakeShape(F32, {4, 1}), "arg1");
+  auto exp0 = builder.Exp(param0);
+  auto result = builder.Dot(exp0, param1);
+
+  auto lhs_handle = client_
+                        ->TransferToServer(*Literal::CreateR2<float>(
+                            {{1.0, 2.0, 3.0, 4.0}, {-1.0, -2.0, -3.0, -4.0}}))
+                        .ConsumeValueOrDie();
+  auto rhs_handle = client_
+                        ->TransferToServer(*Literal::CreateR2<float>(
+                            {{1.0}, {2.0}, {3.0}, {4.0}}))
+                        .ConsumeValueOrDie();
+
+  ComputeAndCompareR2<float>(
+      &builder, Array2D<float>({{296.14560492846033}, {0.8611737683031964}}),
+      {lhs_handle.get(), rhs_handle.get()}, error_spec_);
+}
+
 template <typename Element>
 void DotOperationTest::TestSquareMatrixDot(bool lhs_row_major,
                                            bool rhs_row_major) {

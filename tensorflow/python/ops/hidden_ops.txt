@@ -38,6 +38,10 @@ LogUniformCandidateSampler
 ThreadUnsafeUnigramCandidateSampler
 UniformCandidateSampler
 
+# checkpoint_ops
+GenerateVocabRemapping
+LoadAndRemapMatrix
+
 # control_flow_ops
 Switch
 Merge
@@ -163,6 +167,7 @@ NonMaxSuppression
 NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
+ResizeBicubicGrad
 ResizeNearestNeighborGrad
 SampleDistortedBoundingBox
 SampleDistortedBoundingBoxV2

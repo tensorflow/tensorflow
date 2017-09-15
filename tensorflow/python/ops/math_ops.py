@@ -100,6 +100,7 @@ See the @{$python/math_ops} guide.
 @@complex
 @@conj
 @@imag
+@@angle
 @@real
 @@fft
 @@ifft
@@ -146,6 +147,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -622,10 +624,9 @@ def imag(input, name=None):
   r"""Returns the imaginary part of a complex number.
 
   Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float32` or `float64` that is the imaginary part of each element in
-  `input`. All elements in `input` must be complex numbers of the form \\(a +
-  bj\\), where *a* is the real part and *b* is the imaginary part returned by
-  this operation.
+  type `float` that is the argument of each element in `input`. All elements in
+  `input` must be complex numbers of the form \\(a + bj\\), where *a*
+  is the real part and *b* is the imaginary part returned by the operation.
 
   For example:
 
@@ -644,6 +645,35 @@ def imag(input, name=None):
   """
   with ops.name_scope(name, "Imag", [input]) as name:
     return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
+
+
+def angle(input, name=None):
+  r"""Returns the argument of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  type `float32` or `float64` that is the argument of each element in `input`.
+  All elements in `input` must be complex numbers of the form \\(a + bj\\),
+  where *a* is the real part and *b* is the imaginary part.
+
+  The argument returned by this function is of the form \\(atan2(b, a)\\).
+
+  For example:
+
+  ```
+  # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+  tf.angle(input) ==> [2.0132, 1.056]
+  ```
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `complex64`,
+      `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32` or `float64`.
+  """
+  with ops.name_scope(name, "Angle", [input]) as name:
+    return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
 
 
 # pylint: enable=redefined-outer-name,redefined-builtin
@@ -705,10 +735,9 @@ def cast(x, dtype, name=None):
       values_cast = cast(x.values, base_type, name=name)
       return sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
     else:
-      # TODO(touts): Handle what Josh said.
-      #
-      # Could return ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
-      # allows some conversions that cast() can't do, e.g.  casting numbers to
+      # TODO(josh11b): If x is not already a Tensor, we could return
+      # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
+      # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype.base_dtype == base_type:
@@ -2010,6 +2039,10 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
+  if context.in_eager_mode():
+    # TODO(apassos) remove this once the lifetime of eager variables gets
+    # addressed.
+    raise ValueError("accumulate_n not supported in eager mode")
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise ValueError("inputs must be a list of at least one Tensor with the "
                      "same dtype and shape")
@@ -2031,7 +2064,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     tensor_dtype = inputs[0].dtype
   if tensor_dtype != inputs[0].dtype:
     raise TypeError("tensor_dtype is {}, but input is of type {}"
-                     .format(tensor_dtype, inputs[0].dtype))
+                    .format(tensor_dtype, inputs[0].dtype))
   if len(inputs) == 1:
     return inputs[0]
   with ops.name_scope(name, "AccumulateN", inputs) as name:
@@ -2465,8 +2498,8 @@ def tensordot(a, b, axes, name=None):
         b_axes = [b_axes]
       if len(a_axes) != len(b_axes):
         raise ValueError(
-            "Different number of contraction axes 'a' and 'b', %s != %s.",
-            len(a_axes), len(b_axes))
+            "Different number of contraction axes 'a' and 'b', %s != %s." %
+            (len(a_axes), len(b_axes)))
       return a_axes, b_axes
     else:
       axes = ops.convert_to_tensor(axes, name="axes", dtype=dtypes.int32)

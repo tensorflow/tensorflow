@@ -351,6 +351,44 @@ TEST_F(SelectAndScatterTest, R4F32RefValidRandomSmall) {
   ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-7));
 }
 
+TEST_F(SelectAndScatterTest, R4F32ValidBig) {
+  Array4D<float> o(7, 7, 256, 128);
+  o.FillRandom(1.5f);
+  auto operand = builder_.ConstantR4FromArray4D(o);
+
+  Array4D<float> s(3, 3, 256, 128);
+  s.FillRandom(12.0f);
+  auto source = builder_.ConstantR4FromArray4D(s);
+
+  builder_.SelectAndScatter(operand, ge_f32_, {3, 3, 1, 1}, {2, 2, 1, 1},
+                            Padding::kValid, source,
+                            builder_.ConstantR0<float>(0.0f), add_f32_);
+
+  auto e = ReferenceUtil::SelectAndScatter4DGePlus(o, s, 0.0f, {3, 3, 1, 1},
+                                                   {2, 2, 1, 1}, false);
+
+  ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-5));
+}  // namespace
+
+TEST_F(SelectAndScatterTest, R4F32SameBig) {
+  Array4D<float> o(6, 6, 256, 128);
+  o.FillRandom(1.5f);
+  auto operand = builder_.ConstantR4FromArray4D(o);
+
+  Array4D<float> s(3, 3, 256, 128);
+  s.FillRandom(12.0f);
+  auto source = builder_.ConstantR4FromArray4D(s);
+
+  builder_.SelectAndScatter(operand, ge_f32_, {3, 3, 1, 1}, {2, 2, 1, 1},
+                            Padding::kSame, source,
+                            builder_.ConstantR0<float>(0.0f), add_f32_);
+
+  auto e = ReferenceUtil::SelectAndScatter4DGePlus(o, s, 0.0f, {3, 3, 1, 1},
+                                                   {2, 2, 1, 1}, true);
+
+  ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-5));
+}
+
 XLA_TEST_F(SelectAndScatterTest, R1F32OverlappingWindowMaxScatter) {
   const auto operand = builder_.ConstantR1<float>({1, 2, 3, 100, 3, 2, 1});
   const auto source = builder_.ConstantR1<float>({34, 42, 53, 19});

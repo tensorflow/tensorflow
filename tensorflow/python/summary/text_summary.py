@@ -23,7 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 import json
 
 from tensorflow.core.framework import summary_pb2
@@ -32,9 +31,6 @@ from tensorflow.python.ops.summary_ops import tensor_summary
 from tensorflow.python.summary import plugin_asset
 
 PLUGIN_NAME = "text"
-
-# Contains event-related data specific to the text plugin.
-_TextPluginData = namedtuple("_TextPluginData", [])
 
 
 def text_summary(name, tensor, collections=None):
@@ -67,11 +63,9 @@ def text_summary(name, tensor, collections=None):
     raise ValueError("Expected tensor %s to have dtype string, got %s" %
                      (tensor.name, tensor.dtype))
 
-  summary_metadata = summary_pb2.SummaryMetadata()
-  text_plugin_data = _TextPluginData()
-  data_dict = text_plugin_data._asdict()  # pylint: disable=protected-access
-  summary_metadata.plugin_data.plugin_name = PLUGIN_NAME
-  summary_metadata.plugin_data.content = json.dumps(data_dict)
+  summary_metadata = summary_pb2.SummaryMetadata(
+      plugin_data=summary_pb2.SummaryMetadata.PluginData(
+          plugin_name=PLUGIN_NAME))
   t_summary = tensor_summary(
       name=name,
       tensor=tensor,

@@ -1652,7 +1652,8 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
   if input_sequences:
     seq = list(input_sequences.values())[0]
     if isinstance(seq, ops.Tensor):
-      value_length = array_ops.shape(seq)[0]
+      with ops.control_dependencies([seq]):
+        value_length = array_ops.shape(seq)[0]
     else:
       value_length = seq.dense_shape[0]
   value_length = math_ops.cast(value_length, dtype=dtypes.int64)

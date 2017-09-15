@@ -51,6 +51,7 @@ See the @{$python/contrib.layers} guide.
 @@unit_norm
 @@bow_encoder
 @@embed_sequence
+@@maxout
 
 @@apply_regularization
 @@l1_l2_regularizer
@@ -116,6 +117,7 @@ _allowed_symbols = ['bias_add',
                     'legacy_linear',
                     'legacy_relu',
                     'OPTIMIZER_CLS_NAMES',
+                    'OPTIMIZER_SUMMARIES',
                     'regression_target',
                     'SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY',
                     'summaries']

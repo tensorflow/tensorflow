@@ -40,6 +40,14 @@ import six as _six
 from tensorflow.python.util.all_util import remove_undocumented
 
 
+def _sorted(dict_):
+  """Returns a sorted list of the dict keys, with error if keys not sortable."""
+  try:
+    return sorted(_six.iterkeys(dict_))
+  except TypeError:
+    raise TypeError("nest only supports dicts with sortable keys.")
+
+
 def _sequence_like(instance, args):
   """Converts the sequence `args` to the same type as `instance`.
 
@@ -51,9 +59,13 @@ def _sequence_like(instance, args):
     `args` with the type of `instance`.
   """
   if isinstance(instance, dict):
-    # This is a dict. Iterate over the keys in sorted order to make
-    # this deterministic.
-    return {k: v for k, v in zip(sorted(instance.keys()), args)}
+    # Pack dictionaries in a deterministic order by sorting the keys.
+    # Notice this means that we ignore the original order of `OrderedDict`
+    # instances. This is intentional, to avoid potential bugs caused by mixing
+    # ordered and plain dicts (e.g., flattening a dict but using a
+    # corresponding `OrderedDict` to pack it back).
+    result = dict(zip(_sorted(instance), args))
+    return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
   elif (isinstance(instance, tuple) and
         hasattr(instance, "_fields") and
         isinstance(instance._fields, _collections.Sequence) and
@@ -65,16 +77,22 @@ def _sequence_like(instance, args):
     return type(instance)(args)
 
 
-def _elements_of(nest):
-  if isinstance(nest, dict):
-    # Iterate over dict keys in sorted order to make this deterministic.
-    return [v for _, v in sorted(nest.items())]
+def _yield_value(iterable):
+  if isinstance(iterable, dict):
+    # Iterate through dictionaries in a deterministic order by sorting the
+    # keys. Notice this means that we ignore the original order of `OrderedDict`
+    # instances. This is intentional, to avoid potential bugs caused by mixing
+    # ordered and plain dicts (e.g., flattening a dict but using a
+    # corresponding `OrderedDict` to pack it back).
+    for key in _sorted(iterable):
+      yield iterable[key]
   else:
-    return nest
+    for value in iterable:
+      yield value
 
 
 def _yield_flat_nest(nest):
-  for n in _elements_of(nest):
+  for n in _yield_value(nest):
     if is_sequence(n):
       for ni in _yield_flat_nest(n):
         yield ni
@@ -132,7 +150,7 @@ def _recursive_assert_same_structure(nest1, nest2, check_types):
           "structure has type %s, while second structure has type %s."
           % (type_nest1, type_nest2))
 
-    for n1, n2 in zip(_elements_of(nest1), _elements_of(nest2)):
+    for n1, n2 in zip(_yield_value(nest1), _yield_value(nest2)):
       _recursive_assert_same_structure(n1, n2, check_types)
 
 
@@ -181,7 +199,7 @@ def _packed_nest_with_indices(structure, flat, index):
       (assuming indexing starts from `index`).
   """
   packed = []
-  for s in structure:
+  for s in _yield_value(structure):
     if is_sequence(s):
       new_index, child = _packed_nest_with_indices(s, flat, index)
       packed.append(_sequence_like(s, child))
@@ -286,8 +304,8 @@ def map_structure(func, *structure, **check_types_dict):
 def _yield_flat_up_to(shallow_tree, input_tree):
   """Yields elements `input_tree` partially flattened up to `shallow_tree`."""
   if is_sequence(shallow_tree):
-    for shallow_branch, input_branch in zip(_elements_of(shallow_tree),
-                                            _elements_of(input_tree)):
+    for shallow_branch, input_branch in zip(_yield_value(shallow_tree),
+                                            _yield_value(input_tree)):
       for input_leaf in _yield_flat_up_to(shallow_branch, input_branch):
         yield input_leaf
   else:

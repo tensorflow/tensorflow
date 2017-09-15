@@ -106,23 +106,6 @@ resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
 )");
 
-REGISTER_OP("_UnsafeReadVariable")
-    .Input("resource: resource")
-    .Output("value: dtype")
-    .Attr("dtype: type")
-    .SetShapeFn(ReadVariableShapeFn)
-    .Doc(R"(
-Reads the value of a variable without any memory model.
-
-The tensor returned by this operation aliases a mutable Tensor, and its value
-can be observed to be different by different ops.
-
-Internal and private to the tensorflow implementation.
-
-resource: handle to the resource in which to store the variable.
-dtype: the dtype of the value.
-)");
-
 REGISTER_OP("DestroyResourceOp")
     .Input("resource: resource")
     .Attr("ignore_lookup_error: bool = true")
@@ -214,6 +197,34 @@ Checks whether a resource handle-based variable has been initialized.
 resource: the input resource handle.
 is_initialized: a scalar boolean which is true if the variable has been
 initialized.
+)doc");
+
+Status VariableShapeShapeFn(InferenceContext* c) {
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data == nullptr || handle_data->empty()) {
+    return errors::InvalidArgument("Handle doesn't have shape information.");
+  }
+  c->set_output(0, (*handle_data)[0].shape);
+  return Status::OK();
+}
+
+REGISTER_OP("VariableShape")
+    .Input("input: resource")
+    .Output("output: out_type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
+    .SetShapeFn(VariableShapeShapeFn)
+    .Doc(R"doc(
+Returns the shape of the variable pointed to by `resource`.
+
+This operation returns a 1-D integer tensor representing the shape of `input`.
+
+For example:
+
+```
+# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+shape(t) ==> [2, 2, 3]
+```
+
 )doc");
 
 REGISTER_OP("ResourceGather")

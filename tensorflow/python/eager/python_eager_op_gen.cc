@@ -277,9 +277,7 @@ string GenEagerPythonOp::Code() {
   AddDocStringArgs();
   AddDocStringInputs();
   AddDocStringAttrs();
-  strings::StrAppend(
-      &result_,
-      "    name: A name for the operation (optional, only for graph mode).\n");
+  AddDocStringNameArg();
   AddOutputGlobals();
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
@@ -501,8 +499,8 @@ string GenEagerPythonOp::Code() {
   }
 
   if (num_outs_ > 0) {
-    strings::StrAppend(&result_, "  _result = _execute.record_gradient(\n",
-                       "      \"", op_def_.name(),
+    strings::StrAppend(&result_, "  _execute.record_gradient(\n", "      \"",
+                       op_def_.name(),
                        "\", _inputs_flat, _attrs, _result, name)\n");
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
       // Single list result.
@@ -626,8 +624,8 @@ void GenEagerPythonOp::AddEagerInputCasts() {
     const string fn = arg.number_attr().empty() ? "" : "n_";
     const string dtype =
         python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
-    strings::StrAppend(&result_, "    ", param, " = _tensor.convert_", fn,
-                       "to_eager_tensor(", param, ", ", dtype, ")\n");
+    strings::StrAppend(&result_, "    ", param, " = _ops.convert_", fn,
+                       "to_tensor(", param, ", ", dtype, ")\n");
   }
 }
 
@@ -652,7 +650,7 @@ void GenEagerPythonOp::AddEagerAttrs() {
 void GenEagerPythonOp::AddEagerExecute(const string& num_outputs_expr) {
   const string return_prefix = "    _result = _execute.execute(";
   const string return_args =
-      strings::StrCat("\"", op_def_.name(), "\", ", num_outputs_expr,
+      strings::StrCat("b\"", op_def_.name(), "\", ", num_outputs_expr,
                       ", inputs=_inputs_flat, attrs=_attrs, name=name)");
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
@@ -661,21 +659,31 @@ void GenEagerPythonOp::AddEagerExecute(const string& num_outputs_expr) {
 
 string GetEagerPythonOps(const OpList& ops,
                          const std::vector<string>& hidden_ops,
-                         bool require_shapes) {
+                         bool require_shapes,
+                         const string& source_file_name = "") {
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
-  strings::StrAppend(&result, R"("""Python wrappers for TensorFlow ops.
+  strings::StrAppend(&result, R"("""Python wrappers around TensorFlow ops.
 
 This file is MACHINE GENERATED! Do not edit.
-"""
+)");
+
+  // Mention the original source file so someone tracing back through generated
+  // Python code will know where to look next.
+  if (!source_file_name.empty()) {
+    strings::StrAppend(&result, "Original C++ source file: ");
+    strings::StrAppend(&result, source_file_name);
+    strings::StrAppend(&result, "\n");
+  }
+
+  strings::StrAppend(&result, R"("""
 
 import collections as _collections
 
 from tensorflow.python.eager import execute as _execute
 from tensorflow.python.eager import context as _context
 from tensorflow.python.eager import core as _core
-from tensorflow.python.eager import tensor as _tensor
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import tensor_shape as _tensor_shape
 
@@ -749,8 +757,10 @@ from tensorflow.python.framework import op_def_library as _op_def_library
 
 void PrintEagerPythonOps(const OpList& ops,
                          const std::vector<string>& hidden_ops,
-                         bool require_shapes) {
-  printf("%s", GetEagerPythonOps(ops, hidden_ops, require_shapes).c_str());
+                         bool require_shapes, const string& source_file_name) {
+  printf("%s",
+         GetEagerPythonOps(ops, hidden_ops, require_shapes, source_file_name)
+             .c_str());
 }
 
 string GetEagerPythonWrappers(const char* op_list_buf, size_t op_list_len) {

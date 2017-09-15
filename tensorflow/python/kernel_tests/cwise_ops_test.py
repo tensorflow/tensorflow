@@ -82,6 +82,7 @@ def _default_tolerance(dtype):
   else:
     return None # Fail fast for unexpected types
 
+
 class UnaryOpTest(test.TestCase):
 
   def _compareCpu(self, x, np_func, tf_func, grad_rtol=None, grad_atol=None):
@@ -1950,6 +1951,33 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareRealImag(cplx, use_gpu=False)
     self._compareRealImag(cplx, use_gpu=True)
 
+  def _compareAngle(self, cplx, use_gpu):
+    np_angle = np.angle(cplx)
+    with self.test_session(use_gpu=use_gpu) as sess:
+      inx = ops.convert_to_tensor(cplx)
+      tf_angle = math_ops.angle(inx)
+      tf_angle_val = sess.run(tf_angle)
+    self.assertAllEqual(np_angle, tf_angle_val)
+    self.assertShapeEqual(np_angle, tf_angle)
+
+  def testAngle64(self):
+    real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
+    imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float32)
+    cplx = real + 1j * imag
+    self._compareAngle(cplx, use_gpu=False)
+    # TODO: Enable GPU tests for angle op after resolving
+    # build failures on GPU (See #10643 for context).
+    # self._compareAngle(cplx, use_gpu=True)
+
+  def testAngle(self):
+    real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float64)
+    imag = (np.arange(-3, 3) / 5.).reshape([1, 3, 2]).astype(np.float64)
+    cplx = real + 1j * imag
+    self._compareAngle(cplx, use_gpu=False)
+    # TODO: Enable GPU tests for angle op after resolving
+    # build failures on GPU (See #10643 for context).
+    # self._compareAngle(cplx, use_gpu=True)
+
   def testRealReal(self):
     for dtype in dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32, dtypes_lib.float64:
       x = array_ops.placeholder(dtype)
@@ -2095,7 +2123,6 @@ class AccumulateTest(test.TestCase):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
         tf_val = math_ops.accumulate_n([a,b], tensor_dtype=np.int32) 
-
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked

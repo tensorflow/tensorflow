@@ -1179,8 +1179,7 @@ tensorflow::Status Service::GetComputationStats(
   HloCostAnalysis analysis(
       execute_backend_->compiler()->ShapeSizeBytesFunction());
 
-  TF_RETURN_IF_ERROR(
-      module->entry_computation()->root_instruction()->Accept(&analysis));
+  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
 
   ComputationStats stats;
   stats.set_flop_count(analysis.flop_count());
@@ -1210,6 +1209,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kBatchNormTrainingRequest:
       handle_status = computation->AddBatchNormTrainingInstruction(
           arg->batch_norm_training_request());
+      break;
+    case OpRequest::kBatchNormInferenceRequest:
+      handle_status = computation->AddBatchNormInferenceInstruction(
+          arg->batch_norm_inference_request());
       break;
     case OpRequest::kBatchNormGradRequest:
       handle_status = computation->AddBatchNormGradInstruction(

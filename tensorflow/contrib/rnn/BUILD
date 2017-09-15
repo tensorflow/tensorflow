@@ -85,10 +85,6 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = [
-        "noasan",  # times out b/63678675
-        "notsan",  # http://b/62135981
-    ],
     xla_enabled = True,
 )
 
@@ -369,6 +365,7 @@ py_binary(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
@@ -382,9 +379,9 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":checkpoint_convert",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],

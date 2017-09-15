@@ -15,18 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_io_utils.h"
 
+#include <stddef.h>
+#include <string.h>
+#include <cmath>
+#include <limits>
+#include <utility>
 #include <vector>
 
 #ifndef PLATFORM_WINDOWS
 #include "grpc++/create_channel.h"
 #else
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
-#pragma comment(lib,"Ws2_32.lib")
+#pragma comment(lib, "Ws2_32.lib")
 #endif  // #ifndef PLATFORM_WINDOWS
 
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -257,10 +263,13 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
     event.set_graph_def(strings::StrCat(hash, ",", device_name, ",", wall_time,
                                         "|", i, "|", num_chunks, "|",
                                         encoded_graph_def.substr(pos, len)));
-    if (!DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url).ok()) {
+    const Status s = DebugGrpcIO::SendEventProtoThroughGrpcStream(
+        event, debug_url, num_chunks - 1 == i);
+    if (!s.ok()) {
       return errors::FailedPrecondition(
           "Failed to send chunk ", i, " of ", num_chunks,
-          " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes");
+          " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes, ",
+          "due to: ", s.error_message());
     }
   }
   return Status::OK();
@@ -269,22 +278,16 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
 
 }  // namespace
 
-// static
 const char* const DebugIO::kDebuggerPluginName = "debugger";
 
-// static
 const char* const DebugIO::kMetadataFilePrefix = "_tfdbg_";
 
-// static
 const char* const DebugIO::kCoreMetadataTag = "core_metadata_";
 
-// static
 const char* const DebugIO::kDeviceTag = "device_";
 
-// static
 const char* const DebugIO::kGraphTag = "graph_";
 
-// static
 const char* const DebugIO::kHashTag = "hash";
 
 DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
@@ -296,6 +299,15 @@ DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
       debug_node_name(
           strings::StrCat(node_name, ":", output_slot, ":", debug_op)),
       device_path(DeviceNameToDevicePath(device_name)) {}
+
+bool DebugNodeKey::operator==(const DebugNodeKey& other) const {
+  return (device_name == other.device_name && node_name == other.node_name &&
+          output_slot == other.output_slot && debug_op == other.debug_op);
+}
+
+bool DebugNodeKey::operator!=(const DebugNodeKey& other) const {
+  return !((*this) == other);
+}
 
 Status ReadEventFromFile(const string& dump_file_path, Event* event) {
   Env* env(Env::Default());
@@ -326,7 +338,6 @@ Status ReadEventFromFile(const string& dump_file_path, Event* event) {
   return Status::OK();
 }
 
-// static
 const string DebugNodeKey::DeviceNameToDevicePath(const string& device_name) {
   return strings::StrCat(
       DebugIO::kMetadataFilePrefix, DebugIO::kDeviceTag,
@@ -335,13 +346,10 @@ const string DebugNodeKey::DeviceNameToDevicePath(const string& device_name) {
           true));
 }
 
-// static
 const char* const DebugIO::kFileURLScheme = "file://";
-// static
 const char* const DebugIO::kGrpcURLScheme = "grpc://";
 
 // Publishes debug metadata to a set of debug URLs.
-// static
 Status DebugIO::PublishDebugMetadata(
     const int64 global_step, const int64 session_run_index,
     const int64 executor_step_index, const std::vector<string>& input_names,
@@ -406,7 +414,7 @@ Status DebugIO::PublishDebugMetadata(
                           ",\"grpc_path\":\"", path, "\"}"));
 
       status.Update(
-          DebugGrpcIO::SendEventProtoThroughGrpcStream(grpc_event, url));
+          DebugGrpcIO::SendEventProtoThroughGrpcStream(grpc_event, url, true));
 #else
       GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR;
 #endif
@@ -428,7 +436,6 @@ Status DebugIO::PublishDebugMetadata(
   return status;
 }
 
-// static
 Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
@@ -479,7 +486,6 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
   }
 }
 
-// static
 Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
@@ -488,7 +494,6 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                             false);
 }
 
-// static
 Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
                              const std::unordered_set<string>& debug_urls) {
   GraphDef graph_def;
@@ -528,7 +533,6 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
   return status;
 }
 
-// static
 bool DebugIO::IsCopyNodeGateOpen(
     const std::vector<DebugWatchAndURLSpec>& specs) {
 #ifndef PLATFORM_WINDOWS
@@ -537,7 +541,7 @@ bool DebugIO::IsCopyNodeGateOpen(
                                              DebugIO::kGrpcURLScheme)) {
       return true;
     } else {
-      if (DebugGrpcIO::IsGateOpen(spec.watch_key, spec.url)) {
+      if (DebugGrpcIO::IsReadGateOpen(spec.url, spec.watch_key)) {
         return true;
       }
     }
@@ -548,7 +552,6 @@ bool DebugIO::IsCopyNodeGateOpen(
 #endif
 }
 
-// static
 bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
                                   const std::vector<string>& debug_urls) {
 #ifndef PLATFORM_WINDOWS
@@ -557,7 +560,7 @@ bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
                           DebugIO::kGrpcURLScheme)) {
       return true;
     } else {
-      if (DebugGrpcIO::IsGateOpen(watch_key, debug_url)) {
+      if (DebugGrpcIO::IsReadGateOpen(debug_url, watch_key)) {
         return true;
       }
     }
@@ -568,21 +571,19 @@ bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
 #endif
 }
 
-// static
 bool DebugIO::IsDebugURLGateOpen(const string& watch_key,
                                  const string& debug_url) {
 #ifndef PLATFORM_WINDOWS
   if (debug_url.find(kGrpcURLScheme) != 0) {
     return true;
   } else {
-    return DebugGrpcIO::IsGateOpen(watch_key, debug_url);
+    return DebugGrpcIO::IsReadGateOpen(debug_url, watch_key);
   }
 #else
   return true;
 #endif
 }
 
-// static
 Status DebugIO::CloseDebugURL(const string& debug_url) {
   if (debug_url.find(DebugIO::kGrpcURLScheme) == 0) {
 #ifndef PLATFORM_WINDOWS
@@ -596,10 +597,8 @@ Status DebugIO::CloseDebugURL(const string& debug_url) {
   }
 }
 
-// static
 static Status CloseDebugURL(const string& debug_url) { return Status::OK(); }
 
-// static
 Status DebugFileIO::DumpTensorToDir(const DebugNodeKey& debug_node_key,
                                     const Tensor& tensor,
                                     const uint64 wall_time_us,
@@ -615,7 +614,6 @@ Status DebugFileIO::DumpTensorToDir(const DebugNodeKey& debug_node_key,
   return DumpTensorToEventFile(debug_node_key, tensor, wall_time_us, file_path);
 }
 
-// static
 string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
                                     const DebugNodeKey& debug_node_key,
                                     const uint64 wall_time_us) {
@@ -627,7 +625,6 @@ string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
       wall_time_us);
 }
 
-// static
 Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
                                          const string& dir_name,
                                          const string& file_name) {
@@ -653,7 +650,6 @@ Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
   return Status::OK();
 }
 
-// static
 Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
                                           const Tensor& tensor,
                                           const uint64 wall_time_us,
@@ -665,7 +661,6 @@ Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
                               io::Basename(file_path).ToString());
 }
 
-// static
 Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {
     // The path already exists as a directory. Return OK right away.
@@ -731,28 +726,32 @@ bool DebugGrpcChannel::WriteEvent(const Event& event) {
   return reader_writer_->Write(event);
 }
 
-Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
+bool DebugGrpcChannel::ReadEventReply(EventReply* event_reply) {
+  return reader_writer_->Read(event_reply);
+}
+
+void DebugGrpcChannel::ReceiveAndProcessEventReplies(const size_t max_replies) {
   mutex_lock l(mu_);
 
-  reader_writer_->WritesDone();
-
-  // Read all EventReply messages (if any) from the server.
   EventReply event_reply;
-  while (reader_writer_->Read(&event_reply)) {
+  size_t num_replies = 0;
+  while ((max_replies == 0 || ++num_replies <= max_replies) &&
+         ReadEventReply(&event_reply)) {
     for (const EventReply::DebugOpStateChange& debug_op_state_change :
          event_reply.debug_op_state_changes()) {
       string watch_key = strings::StrCat(debug_op_state_change.node_name(), ":",
                                          debug_op_state_change.output_slot(),
                                          ":", debug_op_state_change.debug_op());
-      if (debug_op_state_change.change() ==
-          EventReply::DebugOpStateChange::ENABLE) {
-        DebugGrpcIO::EnableWatchKey(url_, watch_key);
-      } else if (debug_op_state_change.change() ==
-                 EventReply::DebugOpStateChange::DISABLE) {
-        DebugGrpcIO::DisableWatchKey(url_, watch_key);
-      }
+      DebugGrpcIO::SetDebugNodeKeyGrpcState(url_, watch_key,
+                                            debug_op_state_change.state());
     }
   }
+}
+
+Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
+  reader_writer_->WritesDone();
+  // Read all EventReply messages (if any) from the server.
+  ReceiveAndProcessEventReplies(0);
 
   if (reader_writer_->Finish().ok()) {
     return Status::OK();
@@ -762,20 +761,15 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
   }
 }
 
-// static
 mutex DebugGrpcIO::streams_mu;
 
-// static
 int64 DebugGrpcIO::channel_connection_timeout_micros = 900 * 1000 * 1000;
 // TODO(cais): Make this configurable?
 
-// static
 const size_t DebugGrpcIO::kGrpcMessageSizeLimitBytes = 4000 * 1024;
 
-// static
 const size_t DebugGrpcIO::kGrpcMaxVarintLengthSize = 6;
 
-// static
 std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
 DebugGrpcIO::GetStreamChannels() {
   static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
@@ -784,12 +778,12 @@ DebugGrpcIO::GetStreamChannels() {
   return stream_channels;
 }
 
-// static
 Status DebugGrpcIO::SendTensorThroughGrpcStream(
     const DebugNodeKey& debug_node_key, const Tensor& tensor,
     const uint64 wall_time_us, const string& grpc_stream_url,
     const bool gated) {
-  if (gated && !IsGateOpen(debug_node_key.debug_node_name, grpc_stream_url)) {
+  if (gated &&
+      !IsReadGateOpen(grpc_stream_url, debug_node_key.debug_node_name)) {
     return Status::OK();
   } else {
     std::vector<Event> events;
@@ -799,13 +793,37 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
       TF_RETURN_IF_ERROR(
           SendEventProtoThroughGrpcStream(event, grpc_stream_url));
     }
+    if (IsWriteGateOpen(grpc_stream_url, debug_node_key.debug_node_name)) {
+      EventReply event_reply;
+      TF_RETURN_IF_ERROR(ReceiveEventReplyProtoThroughGrpcStream(
+          &event_reply, grpc_stream_url));
+      // TODO(cais): Support new tensor value carried in the EventReply for
+      // overriding the value of the tensor being published.
+    }
     return Status::OK();
   }
 }
 
-// static
+Status DebugGrpcIO::ReceiveEventReplyProtoThroughGrpcStream(
+    EventReply* event_reply, const string& grpc_stream_url) {
+  std::shared_ptr<DebugGrpcChannel> debug_grpc_channel;
+  {
+    mutex_lock l(streams_mu);
+    std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+        stream_channels = GetStreamChannels();
+    debug_grpc_channel = (*stream_channels)[grpc_stream_url];
+  }
+  if (debug_grpc_channel->ReadEventReply(event_reply)) {
+    return Status::OK();
+  } else {
+    return errors::Cancelled(strings::StrCat(
+        "Reading EventReply from stream URL ", grpc_stream_url, " failed."));
+  }
+}
+
 Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
-    const Event& event_proto, const string& grpc_stream_url) {
+    const Event& event_proto, const string& grpc_stream_url,
+    const bool receive_reply) {
   const string addr_with_path =
       grpc_stream_url.find(DebugIO::kGrpcURLScheme) == 0
           ? grpc_stream_url.substr(strlen(DebugIO::kGrpcURLScheme))
@@ -821,9 +839,7 @@ Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
       debug_grpc_channel.reset(new DebugGrpcChannel(server_stream_addr));
       TF_RETURN_IF_ERROR(
           debug_grpc_channel->Connect(channel_connection_timeout_micros));
-
       (*stream_channels)[grpc_stream_url] = debug_grpc_channel;
-      CreateEmptyEnabledSet(grpc_stream_url);
     } else {
       debug_grpc_channel = (*stream_channels)[grpc_stream_url];
     }
@@ -835,23 +851,32 @@ Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
                                              grpc_stream_url, " failed."));
   }
 
+  if (receive_reply) {
+    debug_grpc_channel->ReceiveAndProcessEventReplies(1);
+  }
+
   return Status::OK();
 }
 
-// static
-bool DebugGrpcIO::IsGateOpen(const string& watch_key,
-                             const string& grpc_debug_url) {
-  std::unordered_map<string, std::unordered_set<string>>* enabled_watch_keys =
-      GetEnabledWatchKeys();
-  if (enabled_watch_keys->find(grpc_debug_url) == enabled_watch_keys->end()) {
+bool DebugGrpcIO::IsReadGateOpen(const string& grpc_debug_url,
+                                 const string& watch_key) {
+  const DebugNodeName2State* enabled_node_to_state =
+      GetEnabledDebugOpStatesAtUrl(grpc_debug_url);
+  return enabled_node_to_state->find(watch_key) != enabled_node_to_state->end();
+}
+
+bool DebugGrpcIO::IsWriteGateOpen(const string& grpc_debug_url,
+                                  const string& watch_key) {
+  const DebugNodeName2State* enabled_node_to_state =
+      GetEnabledDebugOpStatesAtUrl(grpc_debug_url);
+  auto it = enabled_node_to_state->find(watch_key);
+  if (it == enabled_node_to_state->end()) {
     return false;
   } else {
-    const auto& url_enabled = (*enabled_watch_keys)[grpc_debug_url];
-    return url_enabled.find(watch_key) != url_enabled.end();
+    return it->second == EventReply::DebugOpStateChange::READ_WRITE;
   }
 }
 
-// static
 Status DebugGrpcIO::CloseGrpcStream(const string& grpc_stream_url) {
   mutex_lock l(streams_mu);
 
@@ -870,57 +895,46 @@ Status DebugGrpcIO::CloseGrpcStream(const string& grpc_stream_url) {
   }
 }
 
-// static
-std::unordered_map<string, std::unordered_set<string>>*
-DebugGrpcIO::GetEnabledWatchKeys() {
-  static std::unordered_map<string, std::unordered_set<string>>*
-      enabled_watch_keys =
-          new std::unordered_map<string, std::unordered_set<string>>();
-  return enabled_watch_keys;
+std::unordered_map<string, DebugGrpcIO::DebugNodeName2State>*
+DebugGrpcIO::GetEnabledDebugOpStates() {
+  static std::unordered_map<string, DebugNodeName2State>*
+      enabled_debug_op_states =
+          new std::unordered_map<string, DebugNodeName2State>();
+  return enabled_debug_op_states;
 }
 
-// static
-void DebugGrpcIO::EnableWatchKey(const string& grpc_debug_url,
-                                 const string& watch_key) {
-  std::unordered_map<string, std::unordered_set<string>>* enabled_watch_keys =
-      GetEnabledWatchKeys();
-  if (enabled_watch_keys->find(grpc_debug_url) == enabled_watch_keys->end()) {
-    CreateEmptyEnabledSet(grpc_debug_url);
+DebugGrpcIO::DebugNodeName2State* DebugGrpcIO::GetEnabledDebugOpStatesAtUrl(
+    const string& grpc_debug_url) {
+  static mutex* debug_ops_state_mu = new mutex();
+  std::unordered_map<string, DebugNodeName2State>* states =
+      GetEnabledDebugOpStates();
+
+  mutex_lock l(*debug_ops_state_mu);
+  if (states->find(grpc_debug_url) == states->end()) {
+    DebugNodeName2State url_enabled_debug_op_states;
+    (*states)[grpc_debug_url] = url_enabled_debug_op_states;
   }
-  (*enabled_watch_keys)[grpc_debug_url].insert(watch_key);
+  return &(*states)[grpc_debug_url];
 }
 
-// static
-void DebugGrpcIO::DisableWatchKey(const string& grpc_debug_url,
-                                  const string& watch_key) {
-  std::unordered_map<string, std::unordered_set<string>>* enabled_watch_keys =
-      GetEnabledWatchKeys();
-  if (enabled_watch_keys->find(grpc_debug_url) == enabled_watch_keys->end()) {
-    LOG(WARNING) << "Attempt to disable a watch key for an unregistered gRPC "
-                 << "debug URL: " << grpc_debug_url;
-  } else {
-    std::unordered_set<string>& url_enabled =
-        (*enabled_watch_keys)[grpc_debug_url];
-    if (url_enabled.find(watch_key) == url_enabled.end()) {
-      LOG(WARNING) << "Attempt to disable a watch key that is not currently "
-                   << "enabled at " << grpc_debug_url << ": " << watch_key;
+void DebugGrpcIO::SetDebugNodeKeyGrpcState(
+    const string& grpc_debug_url, const string& watch_key,
+    const EventReply::DebugOpStateChange::State new_state) {
+  DebugNodeName2State* states = GetEnabledDebugOpStatesAtUrl(grpc_debug_url);
+  if (new_state == EventReply::DebugOpStateChange::DISABLED) {
+    if (states->find(watch_key) == states->end()) {
+      LOG(ERROR) << "Attempt to disable a watch key that is not currently "
+                 << "enabled at " << grpc_debug_url << ": " << watch_key;
     } else {
-      url_enabled.erase(watch_key);
+      states->erase(watch_key);
     }
+  } else if (new_state != EventReply::DebugOpStateChange::STATE_UNSPECIFIED) {
+    (*states)[watch_key] = new_state;
   }
 }
 
-// static
-void DebugGrpcIO::ClearEnabledWatchKeys() { GetEnabledWatchKeys()->clear(); }
-
-// static
-void DebugGrpcIO::CreateEmptyEnabledSet(const string& grpc_debug_url) {
-  std::unordered_map<string, std::unordered_set<string>>* enabled_watch_keys =
-      GetEnabledWatchKeys();
-  if (enabled_watch_keys->find(grpc_debug_url) == enabled_watch_keys->end()) {
-    std::unordered_set<string> empty_watch_keys;
-    (*enabled_watch_keys)[grpc_debug_url] = empty_watch_keys;
-  }
+void DebugGrpcIO::ClearEnabledWatchKeys() {
+  GetEnabledDebugOpStates()->clear();
 }
 
 #endif  // #ifndef PLATFORM_WINDOWS

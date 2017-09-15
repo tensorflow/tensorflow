@@ -312,11 +312,12 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
-               bool show_addresses, const HloExecutionProfile* profile,
-               NodeFilter filter)
+               bool show_addresses, bool show_metadata,
+               const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
         label_(label.ToString()),
         show_addresses_(show_addresses),
+        show_metadata_(show_metadata),
         profile_(profile),
         filter_(std::move(filter)) {}
 
@@ -351,6 +352,7 @@ class HloDotDumper {
   ColorScheme GetInstructionColor(const HloInstruction* instr);
   string GetInstructionNodeShape(const HloInstruction* instr);
   string GetInstructionNodeLabel(const HloInstruction* instr);
+  string GetInstructionNodeMetadata(const HloInstruction* instr);
   string GetInstructionNodeExtraInfo(const HloInstruction* instr);
   string GetInstructionNodeInlinedConstants(const HloInstruction* instr);
   void AddInstructionIncomingEdges(const HloInstruction* instr);
@@ -363,6 +365,7 @@ class HloDotDumper {
   const HloComputation* computation_;  // never null
   const string label_;                 // overall name for the graph
   const bool show_addresses_;
+  const bool show_metadata_;
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
@@ -479,7 +482,7 @@ stylesheet="
     // If this edge crosses a fusion cluster boundary, highlight it when the
     // cluster is hovered over.
     if (from_node->IsFused() &&
-        from_node->fusion_instruction()->fused_expression_root() == from_node) {
+        from_node->parent()->root_instruction() == from_node) {
       int64 cluster_id = cluster_ids_.at(from_node->parent());
       add_hover_css_rule("clust", cluster_id, kBlue);
     }
@@ -561,13 +564,21 @@ tooltip = " ";
   }
 
   string comp_body = DumpComputation(subcomp);
-  string computation =
-      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
 
-  // Add an edge from the subcomputation to its parent node.  If subcomp
-  // belongs to a fusion node, it's drawn in place of the fusion instruction, so
-  // there's no need to link those.
-  if (parent_instr->opcode() != HloOpcode::kFusion) {
+  if (parent_instr->opcode() == HloOpcode::kFusion) {
+    // Dump any nested fusion nodes.
+    for (const auto& subcomp_instr : subcomp->instructions()) {
+      if (subcomp_instr->opcode() == HloOpcode::kFusion) {
+        StrAppend(
+            &comp_body,
+            DumpSubcomputation(subcomp_instr->fused_instructions_computation(),
+                               subcomp_instr.get()));
+      }
+    }
+  } else {
+    // Add an edge from the subcomputation to its parent node.  If subcomp
+    // belongs to a fusion node, it's drawn in place of the fusion instruction,
+    // so there's no need to link those.
     edge_ids_.insert(
         {{subcomp->root_instruction(), parent_instr}, next_edge_id_++});
     const char* edge_fmt =
@@ -577,6 +588,9 @@ tooltip = " ";
                InstructionId(parent_instr), SubcomputationId(subcomp),
                subcomp->name(), parent_instr->name()));
   }
+
+  string computation =
+      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
 
   return computation;
 }
@@ -610,6 +624,7 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   ColorScheme color = GetInstructionColor(instr);
   string node_shape = GetInstructionNodeShape(instr);
   string node_label = GetInstructionNodeLabel(instr);
+  string node_metadata = GetInstructionNodeMetadata(instr);
   string extra_info = GetInstructionNodeExtraInfo(instr);
   string inlined_constants = GetInstructionNodeInlinedConstants(instr);
   string trivial_subcomputation = GetInstructionTrivialComputationStr(instr);
@@ -627,7 +642,7 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   // Build the text that will be displayed inside the node.
   string node_body = node_label;
   for (const string& s :
-       {trivial_subcomputation, extra_info, inlined_constants}) {
+       {trivial_subcomputation, node_metadata, extra_info, inlined_constants}) {
     if (!s.empty()) {
       StrAppend(&node_body, "<br/>", s);
     }
@@ -657,7 +672,7 @@ string HloDotDumper::GetInstructionNodeInlinedConstants(
   // Special case: If instr is a parameter to a fusion node, check whether the
   // corresponding operand to the fusion node is a constant.
   if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->fusion_instruction();
+    const HloInstruction* fusion = instr->parent()->FusionInstruction();
     const HloInstruction* operand = fusion->operand(instr->parameter_number());
     if (operand->opcode() != HloOpcode::kConstant) {
       return "";
@@ -742,6 +757,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kParameter:
       return kOrange;
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kReduce:
     case HloOpcode::kSelectAndScatter:
@@ -792,6 +808,28 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
   return Printf("<b>%s</b><br/>%s",
                 HtmlLikeStringSanitize(instr->ExtendedOpcodeStr()),
                 HtmlLikeStringSanitize(instr->name()));
+}
+
+string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
+  if (!show_metadata_) {
+    return "";
+  }
+
+  std::vector<string> lines;
+  if (!instr->metadata().op_name().empty()) {
+    lines.push_back(HtmlLikeStringSanitize(instr->metadata().op_name()));
+  }
+  if (!instr->metadata().op_type().empty()) {
+    lines.push_back(Printf(
+        "op_type: %s", HtmlLikeStringSanitize(instr->metadata().op_type())));
+  }
+  if (!instr->metadata().source_file().empty() &&
+      instr->metadata().source_line() != 0) {
+    lines.push_back(Printf("op_type: %s", instr->metadata().source_file(),
+                           instr->metadata().source_line()));
+  }
+
+  return Join(lines, "<br/>");
 }
 
 string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
@@ -869,7 +907,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
 
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
-                      int64 operand_num) {
+                      int64 operand_num, bool control_edge = false) {
     // Fusion nodes' subcomputations are displayed inline, so if 'from' is a
     // fusion node and the node's subcomputation is shown, we draw our edge
     // starting at the fusion node's root instead of at the fusion node itself.
@@ -883,8 +921,10 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     edge_ids_.insert({{from, to}, next_edge_id_++});
 
     string edge_label;
-    if (instr->operand_count() > 1) {
+    if (instr->operand_count() > 1 && !control_edge) {
       edge_label = Printf(R"( headlabel="%lld", labeldistance=2)", operand_num);
+    } else if (control_edge) {
+      edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
     const char* kEdgeFmt = R"(%s -> %s [tooltip="%s -> %s" %s];)";
     edges_.push_back(Printf(kEdgeFmt, InstructionId(from), InstructionId(to),
@@ -895,12 +935,15 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   // expressions are handled specially -- we draw an edge from the corresponding
   // operand on the fusion node itself to the parameter.
   if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->fusion_instruction();
+    const HloInstruction* fusion = instr->parent()->FusionInstruction();
     add_edge(fusion->operand(instr->parameter_number()), instr,
              /*operand_num=*/0);
   } else {
     for (int64 i = 0; i < instr->operand_count(); ++i) {
       add_edge(instr->operand(i), instr, i);
+    }
+    for (const HloInstruction* pred : instr->control_predecessors()) {
+      add_edge(pred, instr, /*operand_num=*/0, /*control_edge=*/true);
     }
   }
 }
@@ -1118,11 +1161,11 @@ string DumpGraph(const HloComputation& computation, const string& label,
     graph_url = FileGraphRenderer().RenderGraph(
         graph, GraphRendererInterface::TF_GRAPHDEF, debug_options);
   } else {
-    graph =
-        HloDotDumper(&computation, label,
-                     /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
-                     hlo_execution_profile, NodeFilter())
-            .Dump();
+    graph = HloDotDumper(
+                &computation, label,
+                /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
+                /*show_metadata=*/false, hlo_execution_profile, NodeFilter())
+                .Dump();
     graph_url = GetGraphRenderer()->RenderGraph(
         graph, GraphRendererInterface::DOT_GRAPH, debug_options);
   }
@@ -1131,7 +1174,8 @@ string DumpGraph(const HloComputation& computation, const string& label,
   return graph_url;
 }
 
-string DumpNeighborhoodAround(const HloInstruction& node, int radius) {
+string DumpNeighborhoodAround(const HloInstruction& node, int radius,
+                              bool show_metadata) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
@@ -1139,7 +1183,7 @@ string DumpNeighborhoodAround(const HloInstruction& node, int radius) {
   string graph =
       HloDotDumper(node.parent(), label,
                    /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
-                   /*profile=*/nullptr, filter)
+                   show_metadata, /*profile=*/nullptr, filter)
           .Dump();
   return GetGraphRenderer()->RenderGraph(
       graph, GraphRendererInterface::DOT_GRAPH, debug_options);

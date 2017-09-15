@@ -164,7 +164,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // Compute the kernel name. The opcode string may contain "-" which cannot be
   // in a PTX function name, so sanitize the name before uniquifying it.
   string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
-      llvm_ir::SanitizeIrName(inst.name()));
+      llvm_ir::SanitizeFunctionName(inst.name()));
 
   // Create the kernel and adds it to the module.
   llvm::Module* module = ir_emitter_context_->llvm_module();
@@ -200,6 +200,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
                                    temp_allocation_total_size);
   }
   kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
+
+  // TODO(b/65380986): Investigate if adding fast math flags for generated
+  // kernels makes sense.
 
   // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
   // treats it as a CUDA kernel.
@@ -894,7 +897,7 @@ Status IrEmitterUnnested::EmitColumnReduction(
     llvm_ir::SetToFirstInsertPoint(if_tile_in_bounds_data.after_block,
                                    &ir_builder_);
     const HloInstruction* output =
-        reduce->IsFused() ? reduce->fusion_instruction() : reduce;
+        reduce->IsFused() ? reduce->parent()->FusionInstruction() : reduce;
     llvm::Value* output_address = GetIrArray(*output).EmitArrayElementAddress(
         llvm_ir::IrArray::Index(x, output->shape(), &ir_builder_), &ir_builder_,
         "output_element_address");
@@ -996,7 +999,7 @@ Status IrEmitterUnnested::EmitRowReduction(
   //   for (shuffle_distance = 16; shuffle_distance > 0; shuffle_distance /= 2)
   //     partial_result = Reducer(
   //         partial_result,
-  //         __shfl_down(partial_result, shuffle_distance));
+  //         __shfl_down_sync(CUDA_WARP_ALL, partial_result, shuffle_distance));
   //   if (lane_id == 0)
   //     AtomicReducer(&output[y], partial_result);
   // }
@@ -1142,7 +1145,7 @@ Status IrEmitterUnnested::EmitRowReduction(
     }
 
     const HloInstruction* output =
-        reduce->IsFused() ? reduce->fusion_instruction() : reduce;
+        reduce->IsFused() ? reduce->parent()->FusionInstruction() : reduce;
 
     // Emit an atomic operation that accumulates the partial reduction result of
     // lane 0 (which holds the partially accumulated result for its warp) to the
@@ -1913,10 +1916,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
   }
   ir_builder_.SetInsertPoint(ir_builder_.GetInsertBlock()->getTerminator());
-  //  const HloInstruction* root = hlo.fused_expression_root();
-  llvm_ir::EmitTuple(
-      GetIrArray(*hlo.fused_expression_root()->fusion_instruction()),
-      tuple_operand_ptrs, &ir_builder_);
+  llvm_ir::EmitTuple(GetIrArray(hlo), tuple_operand_ptrs, &ir_builder_);
   return Status::OK();
 }
 

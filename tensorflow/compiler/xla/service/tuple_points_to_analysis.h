@@ -27,12 +27,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/logical_buffer_analysis.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/compactptrset.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
@@ -46,14 +48,12 @@ namespace xla {
 // nested tuple). Each node in this tree corresponds to a single buffer in the
 // instruction's output and contains the set of Buffers which might define
 // the corresponding buffer.
-class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
+class PointsToSet {
  public:
   // Construct our ShapeTree with a pointer rather than a reference to a Shape
   // because this is very hot code, and copying (and then destroying) all these
   // Shapes is slow.
-  explicit PointsToSet(const Shape* shape)
-      : ShapeTree<std::vector<const LogicalBuffer*>>(shape),
-        tuple_sources_(shape) {}
+  explicit PointsToSet(const Shape* shape) : tree_(shape) {}
 
   // Returns true if any points-to sets for any subshape element is not a
   // singleton.
@@ -69,7 +69,8 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 
   // Creates a set containing the union of all LogicalBuffers contained in the
   // PointsToSet.
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> CreateFlattenedSet() const;
+  using BufferSet = tensorflow::gtl::CompactPointerSet<const LogicalBuffer*>;
+  BufferSet CreateFlattenedSet() const;
 
   // Returns true if the given buffer is in the points-to set at the given
   // index.
@@ -102,13 +103,49 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
   // tuple_sources() at the index of an array shape (not a tuple) returns the
   // empty set. The instructions in the set returned by tuple_sources
   // necessarily are either Tuple instructions, constants, or parameters.
-  const std::set<HloInstruction*>& tuple_sources(const ShapeIndex& index) const;
+  using SourceSet = tensorflow::gtl::CompactPointerSet<HloInstruction*>;
+  const SourceSet& tuple_sources(const ShapeIndex& index) const;
 
   // Add a tuple source instruction for the given index.
   void add_tuple_source(const ShapeIndex& index, HloInstruction* tuple);
 
+  using BufferList = tensorflow::gtl::InlinedVector<const LogicalBuffer*, 1>;
+
+  // Return the list of logical buffers for the subshape at index.
+  const BufferList& element(const ShapeIndex& index) const {
+    return tree_.element(index).buffers;
+  }
+  BufferList* mutable_element(const ShapeIndex& index) {
+    return &tree_.mutable_element(index)->buffers;
+  }
+
+  // Call fn(index, buflist) for every subshape index.
+  template <typename Fn>
+  void ForEachElement(const Fn& fn) const {
+    tree_.ForEachElement([&fn](const ShapeIndex& index, const Elem& elem) {
+      fn(index, elem.buffers);
+    });
+  }
+  template <typename Fn>
+  void ForEachMutableElement(const Fn& fn) {
+    tree_.ForEachMutableElement([&fn](const ShapeIndex& index, Elem* elem) {
+      fn(index, &elem->buffers);
+    });
+  }
+  template <typename Fn>
+  Status ForEachElementWithStatus(const Fn& fn) const {
+    return tree_.ForEachElementWithStatus(
+        [&fn](const ShapeIndex& index, const Elem& elem) {
+          return fn(index, elem.buffers);
+        });
+  }
+
  private:
-  ShapeTree<std::set<HloInstruction*>> tuple_sources_;
+  struct Elem {
+    BufferList buffers;
+    SourceSet tuple_sources;
+  };
+  ShapeTree<Elem> tree_;
 
   // PointsToSet contains references (const LogicalBuffer*) to elements within
   // TuplePointsToAnalysis so disable copying.
@@ -172,7 +209,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   const BufferAliasVector& GetBufferAliases(const LogicalBuffer& buffer) const;
 
   // Returns the number of logical buffers in the module
-  LogicalBuffer::Id num_logical_buffers() const { return next_buffer_id_; }
+  LogicalBuffer::Id num_logical_buffers() const {
+    return logical_buffer_analysis_->num_logical_buffers();
+  }
 
   // Return a the logical buffer with id "id" in the module. Iteration
   // over all logical buffers is usually done with something like:
@@ -181,9 +220,8 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   //   const auto& buffer = points_to.logical_buffer(id);
   //   ... do something with buffer ...
   // }
-  const std::unique_ptr<LogicalBuffer>& logical_buffer(
-      LogicalBuffer::Id id) const {
-    return logical_buffers_[id].logical_buffer;
+  LogicalBuffer& logical_buffer(LogicalBuffer::Id id) const {
+    return logical_buffer_analysis_->GetBuffer(id);
   }
 
   // Returns a vector of buffers that the instruction produces. Most
@@ -223,7 +261,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   string ToString() const;
 
  private:
-  explicit TuplePointsToAnalysis(const HloModule* module) : module_(module) {}
+  explicit TuplePointsToAnalysis(
+      const HloModule* module,
+      std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis)
+      : module_(module),
+        logical_buffer_analysis_(std::move(logical_buffer_analysis)) {}
 
   // Perform the analysis. Should be called immediately after constructing the
   // object and before calling GetPointsToSet.
@@ -235,12 +277,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // list of instructions.
   Status PopulateDefinedBuffersAndAliases(
       const std::list<std::unique_ptr<HloInstruction>>& instructions);
-
-  // Create a new logical buffer and return a reference to it. The newly created
-  // buffer is stored in an internal vector of LogicalBuffers and can be
-  // accessed with GetBuffer.
-  const LogicalBuffer& NewLogicalBuffer(HloInstruction* instruction,
-                                        const ShapeIndex& index);
 
   // Creates an empty PointsToSet in the points_to_ map for the given
   // instruction.
@@ -267,13 +303,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     BufferDefinitionVector instruction_defined_buffers;
   };
 
-  // Information kept per logical buffer
-  struct PerLogicalBuffer {
-    std::unique_ptr<LogicalBuffer> logical_buffer;
-    // Empircally, ~85% of buffers have 1 buffer_alias
-    BufferAliasVector buffer_aliases;
-  };
-
   const PerInstruction* PerInst(const HloInstruction* inst) const {
     int id = inst->unique_id();
     DCHECK_GE(id, 0);
@@ -287,23 +316,18 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     return &per_instruction_[id];
   }
 
-  PerLogicalBuffer* PerBuffer(const LogicalBuffer::Id id) {
-    DCHECK_GE(id, 0);
-    DCHECK_LT(id, logical_buffers_.size());
-    return &logical_buffers_[id];
-  }
-
   // The module this analysis is performed on.
   const HloModule* module_;
+
+  // The logical buffers for this module.
+  const std::unique_ptr<LogicalBufferAnalysis> logical_buffer_analysis_;
 
   // A map from instruction->unique_id() to
   std::vector<PerInstruction> per_instruction_;
 
-  // A map from LogicalBuffer->id() to information about that logical buffer
-  std::vector<PerLogicalBuffer> logical_buffers_;
-
-  // The ID of the next logical buffer created.
-  LogicalBuffer::Id next_buffer_id_ = 0;
+  // A map from LogicalBuffer->id() to alias information about that logical
+  // buffer
+  std::vector<BufferAliasVector> logical_buffer_aliases_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TuplePointsToAnalysis);
 };

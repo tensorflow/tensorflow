@@ -96,7 +96,7 @@ TensorFlow:
   ```
 
 * Variables are automatically initialized, no need to run the
-  [`tf.global_variables_initializer()`](https://www.tensorflow.org/api_docs/python/state_ops/variable_helper_functions#global_variables_initializer) operation.
+  [`tf.global_variables_initializer()`](https://www.tensorflow.org/api_docs/python/tf/global_variables_initializer) operation.
 
   ```python
   x = tf.Variable(np.random.normal(size=[2, 2]), dtype=tf.float32)

@@ -46,12 +46,14 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -63,7 +65,7 @@ def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU" or x.device_type == "SYCL":
-      return x.name
+      return compat.as_str(x.name)
   return ""
 
 
@@ -206,6 +208,71 @@ def NHWCToNCHW(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+def NHWCToNCHW_VECT_C(input_shape_or_tensor):
+  """Transforms the input from the NHWC layout to NCHW_VECT_C layout.
+
+  Note: Does not include quantization or type conversion steps, which should
+  be applied afterwards.
+
+  Args:
+    input_shape_or_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NCHW_VECT_C
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not evenly
+        divisible by 4.
+  """
+  permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  temp_shape = (input_shape_or_tensor.shape.as_list()
+                if is_tensor else input_shape_or_tensor)
+  if temp_shape[-1] % 4 != 0:
+    raise ValueError(
+        "Last dimension of input must be evenly divisible by 4 to convert to "
+        "NCHW_VECT_C.")
+  temp_shape[-1] //= 4
+  temp_shape.append(4)
+  permutation = permutations[len(temp_shape)]
+  if is_tensor:
+    t = array_ops.reshape(input_shape_or_tensor, temp_shape)
+    return array_ops.transpose(t, permutation)
+  else:
+    return [temp_shape[a] for a in permutation]
+
+
+def NCHW_VECT_CToNHWC(input_shape_or_tensor):
+  """Transforms the input from the NCHW_VECT_C layout to NHWC layout.
+
+  Note: Does not include de-quantization or type conversion steps, which should
+  be applied beforehand.
+
+  Args:
+    input_shape_or_tensor: a 5- or 6-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NHWC
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not 4.
+  """
+  permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  input_shape = (input_shape_or_tensor.shape.as_list()
+                 if is_tensor else input_shape_or_tensor)
+  if input_shape[-1] != 4:
+    raise ValueError("Last dimension of NCHW_VECT_C must be 4.")
+  permutation = permutations[len(input_shape)]
+  nhwc_shape = [input_shape[a] for a in permutation[:-1]]
+  nhwc_shape[-1] *= input_shape[-1]
+  if is_tensor:
+    t = array_ops.transpose(input_shape_or_tensor, permutation)
+    return array_ops.reshape(t, nhwc_shape)
+  else:
+    return nhwc_shape
+
+
 def NCHWToNHWC(input_tensor):
   """Converts the input from the NCHW format to NHWC.
 
@@ -271,6 +338,112 @@ def enable_c_api(fn):
     The wrapped function
   """
   return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
+
+
+def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
+                                 use_gpu=False, force_gpu=False,
+                                 reset_test=True):
+  """Runs the test in both graph and eager modes.
+
+  Args:
+    __unused__: Prevents sliently skipping tests.
+    graph: Optional graph to use during the returned session.
+    config: An optional config_pb2.ConfigProto to use to configure the
+      session.
+    use_gpu: If True, attempt to run as many ops as possible on GPU.
+    force_gpu: If True, pin all ops to `/device:GPU:0`.
+    reset_test: If True, tearDown and SetUp the test case again.
+
+  Returns:
+    Returns a decorator that will run the decorated test function
+        using both a graph and using eager execution.
+  """
+
+  assert not __unused__, "Add () after run_in_graph_and_eager_modes."
+
+  def decorator(f):
+    """Test method decorator."""
+    def decorated(self, **kwargs):
+      """Decorated the test method."""
+      with context.graph_mode():
+        with self.test_session(graph, config, use_gpu, force_gpu):
+          f(self, **kwargs)
+
+      if reset_test:
+        # This decorator runs the wrapped test twice.
+        # Reset the test environment between runs.
+        self.tearDown()
+        self.setUp()
+
+      def run_eager_mode():
+        if force_gpu:
+          gpu_name = gpu_device_name()
+          if not gpu_name:
+            gpu_name = "/device:GPU:0"
+          with context.device(gpu_name):
+            f(self)
+        elif use_gpu:
+          # TODO(xpan): Support softplacement and gpu by default when available.
+          f(self, **kwargs)
+        else:
+          with context.device("/device:CPU:0"):
+            f(self, **kwargs)
+
+      eager_graph = graph or ops.Graph()
+      with context.eager_mode():
+        with eager_graph.as_default():
+          run_eager_mode()
+
+    return decorated
+  return decorator
+
+
+def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
+  """Returns whether TensorFlow can access a GPU.
+
+  Args:
+    cuda_only: limit the search to CUDA gpus.
+    min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
+      CUDA compute capability required, or None if no requirement.
+
+  Returns:
+    True iff a gpu device of the requested kind is available.
+  """
+
+  def compute_capability_from_device_desc(device_desc):
+    # TODO(jingyue): The device description generator has to be in sync with
+    # this file. Another option is to put compute capability in
+    # DeviceAttributes, but I avoided that to keep DeviceAttributes
+    # target-independent. Reconsider this option when we have more things like
+    # this to keep in sync.
+    # LINT.IfChange
+    match = re.search(r"compute capability: (\d+)\.(\d+)", device_desc)
+    # LINT.ThenChange(//tensorflow/core/\
+    #                 common_runtime/gpu/gpu_device.cc)
+    if not match:
+      return 0, 0
+    return int(match.group(1)), int(match.group(2))
+
+  for local_device in device_lib.list_local_devices():
+    if local_device.device_type == "GPU":
+      if (min_cuda_compute_capability is None or
+          compute_capability_from_device_desc(local_device.physical_device_desc)
+          >= min_cuda_compute_capability):
+        return True
+    if local_device.device_type == "SYCL" and not cuda_only:
+      return True
+  return False
+
+
+@contextlib.contextmanager
+def device(use_gpu):
+  """Uses gpu when requested and available."""
+  if use_gpu and is_gpu_available():
+    dev = "/device:GPU:0"
+  else:
+    dev = "/device:CPU:0"
+  with ops.device(dev):
+    yield
 
 
 class TensorFlowTestCase(googletest.TestCase):
@@ -386,6 +559,37 @@ class TensorFlowTestCase(googletest.TestCase):
       fail_msg += " : %r" % (msg) if msg else ""
       self.fail(fail_msg)
 
+  def _eval_helper(self, tensors):
+    if isinstance(tensors, ops.EagerTensor):
+      return tensors.numpy()
+    if isinstance(tensors, resource_variable_ops.ResourceVariable):
+      return tensors.read_value().numpy()
+
+    if isinstance(tensors, tuple):
+      return tuple([self._eval_helper(t) for t in tensors])
+    elif isinstance(tensors, list):
+      return [self._eval_helper(t) for t in tensors]
+    elif isinstance(tensors, dict):
+      assert not tensors, "Only support empty dict now."
+      return dict()
+    else:
+      raise ValueError("Unsupported type.")
+
+  def evaluate(self, tensors):
+    """Evaluates tensors and returns numpy values.
+
+    Args:
+      tensors: A Tensor or a nested list/tuple of Tensors.
+
+    Returns:
+      tensors numpy values.
+    """
+    if context.in_eager_mode():
+      return self._eval_helper(tensors)
+    else:
+      sess = ops.get_default_session()
+      return sess.run(tensors)
+
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def test_session(self,
@@ -456,6 +660,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
       config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.arithmetic_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
@@ -657,7 +863,7 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
-      np.testing.assert_allclose(b, a, rtol=rtol, atol=atol, err_msg=msg)
+      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, err_msg=msg)
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
     """Asserts that two numpy arrays, or dicts of same, have near values.
@@ -752,7 +958,7 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       print("not equal lhs = ", x)
       print("not equal rhs = ", y)
-      np.testing.assert_array_equal(b, a)
+      np.testing.assert_array_equal(a, b)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
