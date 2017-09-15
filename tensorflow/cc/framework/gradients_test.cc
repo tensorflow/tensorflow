@@ -447,10 +447,11 @@ TEST_F(GradientsTest, UnreachableInput) {
   //  / \ / \
   // z   y   x
   std::vector<Output> grad_outputs;
-  Status status = AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1}, &grad_outputs);
+  Status status = AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1},
+      &grad_outputs);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_EQ(status.error_message(), "Cannot compute the partial derivative for node"
-      " 'z' as it's unreachable from the output node(s).");
+  EXPECT_EQ(status.error_message(), "Cannot compute the partial derivative"
+      " for node 'z' as it's unreachable from the output node(s).");
 }
 
 // StopGradientSingleOutputMultiEdgeTest tests combinations of valid and
