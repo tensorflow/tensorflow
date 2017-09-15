@@ -37,7 +37,6 @@ cc_library(
 
 cc_test(
     name = "signature_def_utils_test",
-    size = "small",
     srcs = ["signature_def_utils_test.cc"],
     deps = [
         ":signature_def_utils",

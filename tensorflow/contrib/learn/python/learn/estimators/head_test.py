@@ -1700,10 +1700,10 @@ class MultiHeadTest(test.TestCase):
         train_op_fn=head_lib.no_op_train_fn,
         logits=((-0.7, 0.2, .1, .1, .1, .1, .1),))
 
-    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertTrue(model_fn_ops.eval_metric_ops)
+    self.assertFalse(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1725,10 +1725,10 @@ class MultiHeadTest(test.TestCase):
         mode=model_fn.ModeKeys.TRAIN,
         train_op_fn=head_lib.no_op_train_fn,
         logits=((-0.7, 0.2, .1, .1, .1, .1, .1),))
-    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertTrue(model_fn_ops.eval_metric_ops)
+    self.assertFalse(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1752,10 +1752,10 @@ class MultiHeadTest(test.TestCase):
         logits={head1.head_name: ((-0.7, 0.2, .1),),
                 head2.head_name: ((.1, .1, .1, .1),)})
 
-    self.assertIsNotNone(model_fn_ops.predictions)
+    self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertTrue(model_fn_ops.eval_metric_ops)
+    self.assertFalse(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:

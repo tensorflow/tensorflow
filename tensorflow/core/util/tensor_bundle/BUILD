@@ -62,7 +62,6 @@ cc_library(
 
 cc_test(
     name = "tensor_bundle_test",
-    size = "small",
     srcs = ["tensor_bundle_test.cc"],
     deps = [
         ":tensor_bundle",

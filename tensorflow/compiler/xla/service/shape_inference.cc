@@ -924,8 +924,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormTrainingShape(
-    const Shape& operand_shape, const Shape& offset_shape,
-    const Shape& scale_shape, int64 feature_index) {
+    const Shape& operand_shape, const Shape& scale_shape,
+    const Shape& offset_shape, int64 feature_index) {
   TF_RETURN_IF_ERROR(
       ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm training"));
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
@@ -1027,8 +1027,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormInferenceShape(
-    const Shape& operand_shape, const Shape& offset_shape,
-    const Shape& scale_shape, const Shape& mean_shape,
+    const Shape& operand_shape, const Shape& scale_shape,
+    const Shape& offset_shape, const Shape& mean_shape,
     const Shape& variance_shape, int64 feature_index) {
   TF_RETURN_IF_ERROR(
       ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm inference"));

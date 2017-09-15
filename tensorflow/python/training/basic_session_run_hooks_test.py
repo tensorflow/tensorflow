@@ -533,7 +533,7 @@ class CheckpointSaverHookTest(test.TestCase):
         global_step_saved_val = sess2.run(global_step)
     self.assertEqual(2, global_step_saved_val)
 
-  @test.mock.patch('time.time')
+  @test.mock.patch.object(time, 'time')
   def test_save_secs_saves_periodically(self, mock_time):
     # Let's have a realistic start time
     current_time = 1484695987.209386
@@ -580,9 +580,13 @@ class CheckpointSaverHookTest(test.TestCase):
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
 
-  # Flaky because of time.sleep()
-  def DISABLED_test_save_secs_calls_listeners_periodically(self):
+  @test.mock.patch.object(time, 'time')
+  def test_save_secs_calls_listeners_periodically(self, mock_time):
+    # Let's have a realistic start time
+    current_time = 1484695987.209386
+
     with self.graph.as_default():
+      mock_time.return_value = current_time
       listener = MockCheckpointSaverListener()
       hook = basic_session_run_hooks.CheckpointSaverHook(
           self.model_dir,
@@ -594,15 +598,29 @@ class CheckpointSaverHookTest(test.TestCase):
       with session_lib.Session() as sess:
         sess.run(self.scaffold.init_op)
         mon_sess = monitored_session._HookedSession(sess, [hook])
+
+        mock_time.return_value = current_time + 0.5
         mon_sess.run(self.train_op)  # hook runs here
+
+        mock_time.return_value = current_time + 0.5
         mon_sess.run(self.train_op)
-        time.sleep(2.5)
+
+        mock_time.return_value = current_time + 3.0
         mon_sess.run(self.train_op)  # hook runs here
+
+        mock_time.return_value = current_time + 3.5
         mon_sess.run(self.train_op)
+
+        mock_time.return_value = current_time + 4.0
         mon_sess.run(self.train_op)
-        time.sleep(2.5)
+
+        mock_time.return_value = current_time + 6.5
         mon_sess.run(self.train_op)  # hook runs here
+
+        mock_time.return_value = current_time + 7.0
         mon_sess.run(self.train_op)  # hook won't run here, so it does at end
+
+        mock_time.return_value = current_time + 7.5
         hook.end(sess)  # hook runs here
       self.assertEqual({
           'begin': 1,

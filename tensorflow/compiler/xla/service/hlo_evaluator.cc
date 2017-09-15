@@ -178,16 +178,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     std::vector<int64> broadcast_indices(
         ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
 
-    // Special case for broadcasting scalars: ignore broadcast dimension and
-    // broadcast to whatever the output dimension is.
-    // TODO(b/64533549): Remove the need of this once this bug is resolved.
-    if (ShapeUtil::IsScalar(operand_to_broadcast.shape())) {
-      return output->Populate<ReturnT>(
-          [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-            return operand_to_broadcast.Get<ReturnT>({});
-          });
-    }
-
     TF_RET_CHECK(broadcast->dimensions().size() ==
                  ShapeUtil::Rank(operand_to_broadcast.shape()))
         << "broadcast dimensions is of size: " << broadcast->dimensions().size()
