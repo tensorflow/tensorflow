@@ -175,8 +175,12 @@ Status SymbolicGradientBuilder::Initialize() {
         "Must specify a gradient input for each output.");
   }
   std::vector<bool> reachable_nodes = GetReachableNodes();
-  // TODO(theflofly) Check that inputs_ are reachable from
-  // outputs_ using reachable_nodes
+  for (const Output& nout : inputs_) {
+    if (!reachable_nodes[nout.node()->id()]) {
+      return errors::InvalidArgument(
+        nout.node()->name() + " is unreachable from the output(s).");
+    }
+  }
   grad_outputs_->clear();
   grad_outputs_->resize(inputs_.size());
   // Populate `output_nodes_` from node ids in `outputs_`.
@@ -198,6 +202,12 @@ Status SymbolicGradientBuilder::Initialize() {
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
     for (const Output& nout : inputs_) {
+      LOG(INFO) << "Input: " << nout.node()->id();
+      LOG(INFO) << "Input: " << nout.node()->name();
+      if (!reachable_nodes[nout.node()->id()]) {
+        return errors::InvalidArgument(
+          nout.node()->name() + " is unreachable from the output(s).");
+      }
       if (visited.find(nout.node()) == visited.end()) {
         queue.push_back(nout.node());
         visited.insert(nout.node());

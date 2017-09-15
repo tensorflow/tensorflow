@@ -431,6 +431,39 @@ TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
       outputs[0], test::AsTensor<double>({17.5, 24.7, 26.8}, {3, 1}), 1e-5);
 }
 
+TEST_F(GradientsTest, UnreachableInput) {
+  auto x = Variable(scope_test_, {2, 3}, DT_DOUBLE);
+  auto x_const = Const(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+  auto x_assign = Assign(scope_test_, x, x_const);
+
+  auto y = Variable(scope_test_, {3, 1}, DT_DOUBLE);
+  auto y_const = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
+  auto y_assign = Assign(scope_test_, y, y_const);
+
+  auto m1 = MatMul(scope_test_, x, y);
+
+  auto z = Variable(scope_test_.WithOpName("z"), {1, 3}, DT_DOUBLE);
+  auto z_const = Const(scope_test_, {{9.0, 10.0, 11.0}});
+  auto z_assign = Assign(scope_test_, z, z_const);
+
+  auto m2 = MatMul(scope_test_, y, z);
+
+  auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
+  auto dm2 =
+      Const(scope_test_, {{0.5, 0.5, 0.5}, {0.6, 0.7, 0.8}, {0.6, 0.7, 0.9}});
+
+  std::vector<Output> grad_outputs;
+  // from m1 z is unreachable, an error status should be returned
+  //   m2  m1
+  //   |   |
+  //   *   *
+  //  / \ / \
+  // z   y   x
+  Status status = AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1}, nullptr);
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.error_message(), "z is unreachable from the output(s).");
+}
+
 // StopGradientSingleOutputMultiEdgeTest tests combinations of valid and
 // 'NoGradient' (induced by StopGradient op) returned along multiple edges from
 // a single nodes output.
