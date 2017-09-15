@@ -643,7 +643,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "http://bazel-mirror.storage.googleapis.com/github.com/aws/aws-sdk-cpp/archive/1.0.90.tar.gz",
           "https://github.com/aws/aws-sdk-cpp/archive/1.0.90.tar.gz",
       ],
-      sha256 = "ffa501fa00e18d789cd10c768b55a2907c314816f09bcaf96e6d816a5b67f6e7",
+      sha256 = "f599b57aec4f03ad696044dd430b2d201864113937353adc346f53ad47991319",
       strip_prefix = "aws-sdk-cpp-1.0.90",
       build_file = str(Label("//third_party:aws.BUILD")),
   )
