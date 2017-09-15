@@ -434,6 +434,98 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   }
 }
 
+bool SplitUTF8(StringPiece text, string delim, std::vector<string>* result,
+               string* error) {
+  // Bytes    Byte 1    Byte 2    Byte 3    Byte 4
+  //   1     0xxxxxxx
+  //   2     110xxxxx  10xxxxxx
+  //   3     1110xxxx  10xxxxxx  10xxxxxx
+  //   4     11110xxx  10xxxxxx  10xxxxxx  10xxxxxx
+  result->clear();
+  result->reserve(text.size());
+  size_t off = 0, len = 0;
+  bool advance = true;
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (off == i) {
+      if ((text[i] & 0x80) == 0x00) {
+        string entry = text.substr(off, 1).ToString();
+        if (delim == "") {
+          // If delim is "" then always advance
+          result->emplace_back(entry);
+        } else if (delim != entry) {
+          // If delim is not the current char, then advance only once
+          if (advance) {
+            advance = false;
+            result->emplace_back(entry);
+          } else {
+            (*result)[result->size() - 1] =
+                (*result)[result->size() - 1] + entry;
+          }
+        } else {
+          // If delim is the current char, then set the advance but
+          // not append the string.
+          advance = true;
+        }
+        off++;
+      } else if ((text[i] & 0xE0) == 0xC0) {
+        len = 2;
+      } else if ((text[i] & 0xF0) == 0xE0) {
+        len = 3;
+      } else if ((text[i] & 0xF8) == 0xF0) {
+        len = 4;
+      } else {
+        result->clear();
+        if (error) {
+          std::ostringstream ss;
+          ss << "Invalid UTF8 encoding at position of " << i;
+          *error = ss.str();
+        }
+        return false;
+      }
+    } else {
+      if ((text[i] & 0xC0) != 0x80) {
+        result->clear();
+        if (error) {
+          std::ostringstream ss;
+          ss << "Invalid UTF8 encoding at position of " << i;
+          *error = ss.str();
+        }
+        return false;
+      }
+      if (off + len == i + 1) {
+        string entry = text.substr(off, len).ToString();
+        if (delim == "") {
+          // If delim is "" then always advance
+          result->emplace_back(entry);
+        } else if (delim != entry) {
+          // If delim is not the current char, then advance only once
+          if (advance) {
+            advance = false;
+            result->emplace_back(entry);
+          } else {
+            (*result)[result->size() - 1] =
+                (*result)[result->size() - 1] + entry;
+          }
+        } else {
+          // If delim is the current char, then set the advance but
+          // not append the string.
+          advance = true;
+        }
+        off += len;
+      }
+    }
+  }
+  if (off < text.size()) {
+    result->clear();
+    if (error) {
+      std::ostringstream ss;
+      *error = "Not enough characters for UTF8 encoding";
+    }
+    return false;
+  }
+  return true;
+}
+
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result) {
   return SplitAndParseAsInts<int32>(text, delim, strings::safe_strto32, result);

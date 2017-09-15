@@ -162,14 +162,16 @@ class StringSplitOpTest(test.TestCase):
     # Invalid char
     strings1 = [b"\xE2\x28\xA1"]
     tokens1 = string_ops.string_split(strings1, delimiter="", encoding="utf8")
-    with self.assertRaisesRegexp(errors.InternalError, "invalid utf8 encoding"):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Invalid UTF8 encoding at position of 1"):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens1)
 
     # Not enough char
     strings2 = [b"\xE6\x82"]
     tokens2 = string_ops.string_split(strings2, delimiter="", encoding="utf8")
-    with self.assertRaisesRegexp(errors.InternalError, "invalid utf8 encoding"):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Not enough characters for UTF8 encoding"):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens2)
 

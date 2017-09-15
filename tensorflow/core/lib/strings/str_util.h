@@ -130,6 +130,15 @@ std::vector<string> Split(StringPiece text, StringPiece delims);
 template <typename Predicate>
 std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 
+// Split "text" into into a vector of strings where each string
+// in the array is a string of ASII or unicode chars. If the
+// delim is empty, then each string in the array consists of
+// one ASCII or one unicode char. If successful, the result
+// is passed to "*result" and returns true. Otherwise returns false
+// and error message is passed to "*error".
+bool SplitUTF8(StringPiece text, string delim, std::vector<string>* result,
+               string* error);
+
 // Split "text" at "delim" characters, and parse each component as
 // an integer.  If successful, adds the individual numbers in order
 // to "*result" and returns true.  Otherwise returns false.

@@ -438,4 +438,25 @@ TEST(Strnlen, Basic) {
   EXPECT_EQ(4, str_util::Strnlen("a \t\n", 10));
 }
 
+TEST(SplitUTF8, Basic) {
+  std::vector<string> result;
+  // UTF8 \xE6\x82\xA8 \xE5\xA5\xBD \xE6\x82\xA8 \xE5\xA5\xBD
+  EXPECT_TRUE(str_util::SplitUTF8(
+      "\xE6\x82\xA8\xE5\xA5\xBD\xE4\xB8\x96\xE7\x95\x8C", "", &result, NULL));
+  EXPECT_EQ(result.size(), 4);
+
+  // UTF8 \xE6\x82\xA8 \xE5\xA5\xBD \xE4\xB8\x96 \xE7\x95\x8C
+  EXPECT_TRUE(
+      str_util::SplitUTF8("\xE6\x82\xA8\xE5\xA5\xBD\xE4\xB8\x96\xE7\x95\x8C",
+                          "\xE5\xA5\xBD", &result, NULL));
+  EXPECT_EQ(result.size(), 2);
+
+  string error;
+  EXPECT_FALSE(str_util::SplitUTF8("\xE2\x28\xA1", "", &result, &error));
+  EXPECT_EQ(error, "Invalid UTF8 encoding at position of 1");
+
+  EXPECT_FALSE(str_util::SplitUTF8("\xE6\x82", "", &result, &error));
+  EXPECT_EQ(error, "Not enough characters for UTF8 encoding");
+}
+
 }  // namespace tensorflow
