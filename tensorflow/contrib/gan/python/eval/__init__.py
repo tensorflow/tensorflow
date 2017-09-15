@@ -1,10 +1,10 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-# http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -13,30 +13,27 @@
 # limitations under the License.
 # ==============================================================================
 """TFGAN grouped API. Please see README.md for details and usage."""
+# pylint: disable=,wildcard-import,unused-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Collapse TFGAN into a tiered namespace.
-from tensorflow.contrib.gan.python import eval  # pylint:disable=redefined-builtin
-from tensorflow.contrib.gan.python import features
-from tensorflow.contrib.gan.python import losses
-from tensorflow.contrib.gan.python import namedtuples
-from tensorflow.contrib.gan.python import train
+# Collapse eval into a single namespace.
+from tensorflow.contrib.gan.python.eval.python import classifier_metrics
+from tensorflow.contrib.gan.python.eval.python import eval_utils
+from tensorflow.contrib.gan.python.eval.python import summaries
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.gan.python.namedtuples import *
-from tensorflow.contrib.gan.python.train import *
-# pylint: enable=unused-import,wildcard-import
+from tensorflow.contrib.gan.python.eval.python.classifier_metrics import *
+from tensorflow.contrib.gan.python.eval.python.eval_utils import *
+from tensorflow.contrib.gan.python.eval.python.summaries import *
+# pylint: enable=wildcard-import,unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'eval',
-    'features',
-    'losses',
-]
-_allowed_symbols += train.__all__
-_allowed_symbols += namedtuples.__all__
+    'classifier_metrics',
+    'summaries',
+    'eval_utils',
+] + classifier_metrics.__all__ + summaries.__all__ + eval_utils.__all__
 remove_undocumented(__name__, _allowed_symbols)
