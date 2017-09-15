@@ -26,8 +26,8 @@ package org.tensorflow;
  * ops.math().cast(decodeJpeg, DataType.FLOAT);
  *
  * // The output "y" of the "unique" operation can be used as an operand to the "cast" operation
- * Output<TFInt32> y = ops.array().unique(...).y();
- * ops.math().cast(y, TFFloat);
+ * Output y = ops.array().unique(...).y();
+ * ops.math().cast(y, DataType.FLOAT);
  *
  * // The "split" operation can be used as operand list to the "concat" operation
  * Iterable<? extends Operand<TFFloat>> split = ops.array().split(...);
