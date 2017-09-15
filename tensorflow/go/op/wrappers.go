@@ -19448,7 +19448,7 @@ func MatrixTriangularSolveAdjoint(value bool) MatrixTriangularSolveAttr {
 // `rhs` is a tensor of shape `[..., M, K]`.
 //
 // The output is a tensor of shape `[..., M, K]`. If `adjoint` is
-// `True` then the innermost matrices in output` satisfy matrix equations
+// `True` then the innermost matrices in `output` satisfy matrix equations
 // `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
 // If `adjoint` is `False` then the strictly then the  innermost matrices in
 // `output` satisfy matrix equations
