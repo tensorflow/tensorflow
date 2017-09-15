@@ -264,6 +264,7 @@ py_test(
     srcs = ["resample_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
+    tags = ["noasan"],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
