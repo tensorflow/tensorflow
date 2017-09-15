@@ -68,6 +68,37 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:summary",
+        "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:head",
+        "//tensorflow/python/estimator:metric_keys",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
+py_test(
+    name = "head_test",
+    size = "small",
+    srcs = ["python/estimator/head_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":head",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:metric_keys",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )

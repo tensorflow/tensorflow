@@ -29,6 +29,7 @@ _allowed_symbols = [
     'add_metrics',
     'binary_classification_head',
     'multi_class_head',
+    'multi_label_head',
     'regression_head',
 ]
 
