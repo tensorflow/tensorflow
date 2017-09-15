@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package tensorflow.tfcompile;
+package tensorflow.tf2xla;
 option cc_enable_arenas = true;
-option java_outer_classname = "CompileProtos";
+option java_outer_classname = "Tf2XlaProtos";
 option java_multiple_files = true;
-option java_package = "org.tensorflow.tfcompile";
+option java_package = "org.tensorflow.tf2xla";
 
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
@@ -19,32 +19,32 @@ message TensorId {
 };
 
 // Feed represents a single feed tensor in the graph, which corresponds to an
-// input argument for the generated function.
+// input argument for the generated computation.
 message Feed {
   TensorId id = 1;
   TensorShapeProto shape = 2;
   string name = 3;  // Optional name for generated code.
 
   // Optional data type. This is not normally required, as the graph itself
-  // contains this information. However, if the node being fed is an op that
-  // is not linked into the tfcompile binary, then the type cannot be inferred
-  // from the node; in this case, the type should be set here.
+  // contains this information. However, if the node being fed is an op that is
+  // not linked into the binary, then the type cannot be inferred from the node;
+  // in this case, the type should be set here.
   DataType type = 4;
 };
 
 // Fetch represents a single fetch tensor in the graph, which corresponds to an
-// output argument for the generated function.
+// output argument for the generated computation.
 message Fetch {
   TensorId id = 1;
   string name = 2;  // Optional name for generated code.
 };
 
-// Config represents configuration information for tfcompile.
+// Config represents configuration information for tf2xla conversion.
 message Config {
-  // Each feed is a positional input argument for the generated function.  The
-  // order of each entry matches the order of each input argument.
+  // Each feed is a positional input argument for the generated computation.
+  // The order of each entry matches the order of each input argument.
   repeated Feed feed = 1;
-  // Each fetch is a positional output argument for the generated function.  The
-  // order of each entry matches the order of each output argument.
+  // Each fetch is a positional output argument for the generated computation.
+  // The order of each entry matches the order of each output argument.
   repeated Fetch fetch = 2;
 };

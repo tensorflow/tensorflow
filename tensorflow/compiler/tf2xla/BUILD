@@ -21,6 +21,40 @@ package(
 )
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+
+xla_proto_library(
+    name = "tf2xla_proto",
+    srcs = ["tf2xla.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "tf2xla",
+    srcs = ["tf2xla.cc"],
+    hdrs = ["tf2xla.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":common",
+        ":dump_graph",
+        ":tf2xla_proto",
+        ":tf2xla_util",
+        ":xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/client",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
 
 cc_library(
     name = "xla_compiler",
@@ -95,6 +129,51 @@ cc_library(
 )
 
 # Internal targets below this point.
+
+cc_library(
+    name = "tf2xla_util",
+    srcs = ["tf2xla_util.cc"],
+    hdrs = ["tf2xla_util.h"],
+    deps = [
+        ":tf2xla_proto",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_test(
+    name = "tf2xla_util_test",
+    srcs = ["tf2xla_util_test.cc"],
+    deps = [
+        ":tf2xla_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "tf2xla_test",
+    srcs = ["tf2xla_test.cc"],
+    deps = [
+        ":tf2xla",
+        ":tf2xla_proto",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
 
 cc_test(
     name = "xla_compiler_test",
