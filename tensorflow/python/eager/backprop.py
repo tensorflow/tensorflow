@@ -97,8 +97,7 @@ def _prepare_backprop(target, tensor_to_op, op_to_entry, id_sources):
       continue
     op_trace = op_to_entry[op]
     o_to_e[op] = op_trace
-    for i in op_trace.inputs:
-      it = ops.tensor_id(i)
+    for it in op_trace.input_ids:
       if it in tensor_usage_counts:
         tensor_usage_counts[it] += 1
       else:
@@ -220,7 +219,7 @@ def imperative_grad(
   if not tape._tape_stack.stack:  # pylint: disable=protected-access
     raise RuntimeError("Computing a gradient with no tape present")
   bp_tape = tape.pop_tape()
-  tensor_to_op, op_to_entry, output_to_shape_dtype = bp_tape.export()
+  tensor_to_op, op_to_entry = bp_tape.export()
   # This overwrites the op_to_entry variable, which will release all memory used
   # to keep traces that are irrelevant to the gradient computation we're doing
   # here.
@@ -238,8 +237,7 @@ def imperative_grad(
     for i in range(len(out_gradients)):
       if out_gradients[i] is None:
         # TODO(apassos) this should be in the right device
-        out_gradients[i] = array_ops.zeros(
-            *output_to_shape_dtype[op_trace.output_ids[i]])
+        out_gradients[i] = array_ops.zeros(*op_trace.output_shape_and_dtype[i])
       else:
         out_gradients[i] = _aggregate_grads(out_gradients[i])
 
@@ -250,14 +248,15 @@ def imperative_grad(
                                                  ops.IndexedSlices,
                                                  type(None)))
                     else in_gradients)
-    for i, t in enumerate(op_trace.inputs):
+    for i, t in enumerate(op_trace.input_ids):
       if in_gradients[i] is not None:
-        gradients[ops.tensor_id(t)].append(in_gradients[i])
-      if tensor_usage_counts.get(ops.tensor_id(t), 0) > 0:
-        tensor_usage_counts[ops.tensor_id(t)] -= 1
-        if ops.tensor_id(t) in tensor_to_op and tensor_usage_counts[
-            ops.tensor_id(t)] == 0 and ops.tensor_id(t) not in id_sources:
-          in_op = tensor_to_op[ops.tensor_id(t)]
+        gradients[t].append(in_gradients[i])
+      if tensor_usage_counts.get(t, 0) > 0:
+        tensor_usage_counts[t] -= 1
+        if (t in tensor_to_op
+            and tensor_usage_counts[t] == 0
+            and t not in id_sources):
+          in_op = tensor_to_op[t]
           if in_op is None:
             continue
           if op_missing_tensor.get(in_op, 0) > 0:
