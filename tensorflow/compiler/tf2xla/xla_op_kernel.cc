@@ -126,7 +126,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
         "Error evaluating ", context_->op_kernel().name(), " input ", index,
         ": ", computed.status().error_message());
   }
-  constant_literal->Swap(computed.ValueOrDie().get());
+  *constant_literal = std::move(*computed.ValueOrDie());
 
   return Status::OK();
 }
@@ -195,7 +195,7 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
       return Status::OK();
 
     case xla::S64:
-      out->Swap(&literal);
+      *out = std::move(literal);
       return Status::OK();
 
     default:

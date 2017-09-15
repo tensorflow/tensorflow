@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -63,10 +65,12 @@ class DenseTest(test.TestCase):
     outputs = dense(inputs)
     self.assertListEqual([5, 2], outputs.get_shape().as_list())
     self.assertListEqual(dense.variables, [dense.kernel, dense.bias])
-    self.assertListEqual(dense.trainable_variables, [dense.kernel, dense.bias])
+    self.assertListEqual(dense.trainable_variables,
+                         [dense.kernel, dense.bias])
     self.assertListEqual(dense.non_trainable_variables, [])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
+    if context.in_graph_mode():
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
     self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
     self.assertEqual(dense.bias.name, 'my_dense/bias:0')
 
@@ -85,8 +89,9 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.variables, [dense.kernel])
     self.assertListEqual(dense.trainable_variables, [dense.kernel])
     self.assertListEqual(dense.non_trainable_variables, [])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
+    if context.in_graph_mode():
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
     self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
     self.assertEqual(dense.bias, None)
 
@@ -99,8 +104,9 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.non_trainable_variables,
                          [dense.kernel, dense.bias])
     self.assertListEqual(dense.trainable_variables, [])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 0)
+    if context.in_graph_mode():
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 0)
 
   @test_util.run_in_graph_and_eager_modes()
   def testOutputShape(self):
@@ -202,41 +208,46 @@ class DenseTest(test.TestCase):
     inputs = random_ops.random_uniform((5, 3), seed=1)
     outputs = core_layers.dense(
         inputs, 2, activation=nn_ops.relu, name='my_dense')
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
     if context.in_graph_mode():
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
       self.assertEqual(outputs.op.name, 'my_dense/Relu')
+    else:
+      self.assertEqual(
+          len(_get_variable_dict_from_varstore().values()), 2)
     self.assertEqual(outputs.get_shape().as_list(), [5, 2])
 
   @test_util.run_in_graph_and_eager_modes()
   def testFunctionalDenseTwice(self):
     inputs = random_ops.random_uniform((5, 3), seed=1)
     core_layers.dense(inputs, 2)
-    vars1 = variables.trainable_variables()
+    vars1 = _get_variable_dict_from_varstore().values()
     core_layers.dense(inputs, 2)
-    vars2 = variables.trainable_variables()
+    vars2 = _get_variable_dict_from_varstore().values()
     self.assertEqual(len(vars1), 2)
     self.assertEqual(len(vars2), 4)
 
-  @test_util.run_in_graph_and_eager_modes()
+  # TODO(alive): get this to  work in eager mode.
   def testFunctionalDenseTwiceReuse(self):
-    inputs = random_ops.random_uniform((5, 3), seed=1)
-    core_layers.dense(inputs, 2, name='my_dense')
-    vars1 = variables.trainable_variables()
-    core_layers.dense(inputs, 2, name='my_dense', reuse=True)
-    vars2 = variables.trainable_variables()
-    self.assertEqual(vars1, vars2)
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testFunctionalDenseTwiceReuseFromScope(self):
-    with variable_scope.variable_scope('scope'):
+    with self.test_session():
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2, name='my_dense')
       vars1 = variables.trainable_variables()
-    with variable_scope.variable_scope('scope', reuse=True):
-      core_layers.dense(inputs, 2, name='my_dense')
+      core_layers.dense(inputs, 2, name='my_dense', reuse=True)
       vars2 = variables.trainable_variables()
-    self.assertEqual(vars1, vars2)
+      self.assertEqual(vars1, vars2)
+
+  # TODO(alive): get this to  work in eager mode.
+  def testFunctionalDenseTwiceReuseFromScope(self):
+    with self.test_session():
+      with variable_scope.variable_scope('scope'):
+        inputs = random_ops.random_uniform((5, 3), seed=1)
+        core_layers.dense(inputs, 2, name='my_dense')
+        vars1 = variables.trainable_variables()
+      with variable_scope.variable_scope('scope', reuse=True):
+        core_layers.dense(inputs, 2, name='my_dense')
+        vars2 = variables.trainable_variables()
+      self.assertEqual(vars1, vars2)
 
   @test_util.run_in_graph_and_eager_modes()
   def testFunctionalDenseInitializerFromScope(self):
@@ -244,15 +255,17 @@ class DenseTest(test.TestCase):
         'scope', initializer=init_ops.ones_initializer()):
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2)
-      if context.in_graph_mode():
-        self.evaluate(variables.global_variables_initializer())
-      weights = variables.trainable_variables()
+      self.evaluate(variables.global_variables_initializer())
+      weights = _get_variable_dict_from_varstore()
       self.assertEqual(len(weights), 2)
       # Check that the matrix weights got initialized to ones (from scope).
       self.assertAllClose(
-          self.evaluate(weights[0].read_value()), np.ones((3, 2)))
+          self.evaluate(weights['scope/dense/kernel'].read_value()),
+          np.ones((3, 2)))
       # Check that the bias still got initialized to zeros.
-      self.assertAllClose(self.evaluate(weights[1].read_value()), np.zeros((2)))
+      self.assertAllClose(
+          self.evaluate(weights['scope/dense/bias'].read_value()),
+          np.zeros((2)))
 
   @test_util.run_in_graph_and_eager_modes()
   def testFunctionalDenseWithCustomGetter(self):
@@ -272,18 +285,21 @@ class DenseTest(test.TestCase):
     with variable_scope.variable_scope('test'):
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2, name='my_dense')
-      var = variables.trainable_variables()[0]
-      self.assertEqual(var.name, 'test/my_dense/kernel:0')
+      var_dict = _get_variable_dict_from_varstore()
+      var_key = 'test/my_dense/kernel'
+      self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
     with variable_scope.variable_scope('test1') as scope:
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2, name=scope)
-      var = variables.trainable_variables()[2]
-      self.assertEqual(var.name, 'test1/kernel:0')
+      var_dict = _get_variable_dict_from_varstore()
+      var_key = 'test1/kernel'
+      self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
     with variable_scope.variable_scope('test2'):
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2)
-      var = variables.trainable_variables()[4]
-      self.assertEqual(var.name, 'test2/dense/kernel:0')
+      var_dict = _get_variable_dict_from_varstore()
+      var_key = 'test2/dense/kernel'
+      self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
 
   @test_util.run_in_graph_and_eager_modes()
   def testComputeOutputShape(self):
@@ -318,6 +334,13 @@ class DenseTest(test.TestCase):
     dense(inputs)
     self.assertEqual(dense.kernel_constraint, k_constraint)
     self.assertEqual(dense.bias_constraint, b_constraint)
+
+
+def _get_variable_dict_from_varstore():
+  var_dict = variable_scope._get_default_variable_store()._vars  # pylint: disable=protected-access
+  sorted_var_dict = collections.OrderedDict(
+      sorted(var_dict.items(), key=lambda t: t[0]))
+  return sorted_var_dict
 
 
 class DropoutTest(test.TestCase):
@@ -389,6 +412,57 @@ class DropoutTest(test.TestCase):
       self.assertAlmostEqual(0., np_output.min())
       np_output = sess.run(dropped, feed_dict={rate: 0.0})
       self.assertAllClose(np.ones((5, 5)), np_output)
+
+
+class FlattenTest(test.TestCase):
+
+  def testCreateFlatten(self):
+    with self.test_session() as sess:
+      x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
+      y = core_layers.Flatten()(x)
+      np_output = sess.run(y, feed_dict={x: np.zeros((3, 2, 3))})
+      self.assertEqual(list(np_output.shape), [3, 6])
+      self.assertEqual(y.get_shape().as_list(), [None, 6])
+
+      x = array_ops.placeholder(shape=(1, 2, 3, 2), dtype='float32')
+      y = core_layers.Flatten()(x)
+      np_output = sess.run(y, feed_dict={x: np.zeros((1, 2, 3, 2))})
+      self.assertEqual(list(np_output.shape), [1, 12])
+      self.assertEqual(y.get_shape().as_list(), [1, 12])
+
+  def testComputeShape(self):
+    shape = core_layers.Flatten()._compute_output_shape((1, 2, 3, 2))
+    self.assertEqual(shape.as_list(), [1, 12])
+
+    shape = core_layers.Flatten()._compute_output_shape((None, 3, 2))
+    self.assertEqual(shape.as_list(), [None, 6])
+
+    shape = core_layers.Flatten()._compute_output_shape((None, 3, None))
+    self.assertEqual(shape.as_list(), [None, None])
+
+  def testFunctionalFlatten(self):
+    x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
+    y = core_layers.flatten(x, name='flatten')
+    self.assertEqual(y.get_shape().as_list(), [None, 6])
+
+  def testFlattenValueError(self):
+    x = array_ops.placeholder(shape=(None,), dtype='float32')
+    with self.assertRaises(ValueError):
+      core_layers.Flatten()(x)
+
+  def testFlattenUnknownAxes(self):
+    with self.test_session() as sess:
+      x = array_ops.placeholder(shape=(5, None, None), dtype='float32')
+      y = core_layers.Flatten()(x)
+      np_output = sess.run(y, feed_dict={x: np.zeros((5, 2, 3))})
+      self.assertEqual(list(np_output.shape), [5, 6])
+      self.assertEqual(y.get_shape().as_list(), [5, None])
+
+      x = array_ops.placeholder(shape=(5, None, 2), dtype='float32')
+      y = core_layers.Flatten()(x)
+      np_output = sess.run(y, feed_dict={x: np.zeros((5, 3, 2))})
+      self.assertEqual(list(np_output.shape), [5, 6])
+      self.assertEqual(y.get_shape().as_list(), [5, None])
 
 
 if __name__ == '__main__':

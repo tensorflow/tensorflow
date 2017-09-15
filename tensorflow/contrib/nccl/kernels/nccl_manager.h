@@ -75,10 +75,28 @@ class NcclManager {
                         perftools::gputools::Stream* tensor_stream,
                         Tensor* out_t, DoneCallback done_callback);
 
+  // AddReduceSend and AddReduceRecv combine to sent data from all senders
+  // to one receiver.
+  void AddReduceSend(int num_devices, const string& key,
+                     ncclRedOp_t reduction_op,
+                     perftools::gputools::StreamExecutor* executor,
+                     int gpu_device_id, EventMgr* event_mgr,
+                     perftools::gputools::Stream* tensor_stream,
+                     const Tensor* in_t, Tensor* temp_t,
+                     DoneCallback done_callback);
+  void AddReduceRecv(int num_devices, const string& key,
+                     ncclRedOp_t reduction_op,
+                     perftools::gputools::StreamExecutor* executor,
+                     int gpu_device_id, EventMgr* event_mgr,
+                     perftools::gputools::Stream* tensor_stream,
+                     const Tensor* in_t, Tensor* out_t,
+                     DoneCallback done_callback);
+
  private:
   enum CollectiveType {
     kAllReduce = 1,
     kBroadcast = 2,
+    kReduce = 3,
   };
   struct Collective;
   struct Communicator;

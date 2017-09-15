@@ -58,7 +58,7 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   return Get(ctx->op_kernel_context());
 }
 
-void XlaContext::set_args(std::vector<Argument> args) {
+void XlaContext::set_args(std::vector<XlaExpression> args) {
   args_ = std::move(args);
 }
 
@@ -78,8 +78,8 @@ XlaContext::GetOrCreateRuntimeContextParameter() {
 
   // Allocate the next available parameter for the context parameter.
   int num_parameters = 0;
-  for (const Argument& arg : args_) {
-    if (!arg.value.is_constant) {
+  for (const XlaExpression& arg : args_) {
+    if (!arg.has_constant_value()) {
       ++num_parameters;
     }
   }
@@ -99,9 +99,7 @@ void XlaContext::AddRetval(int retval_index, DataType type,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
-  retvals_[retval_index].is_constant = false;
-  retvals_[retval_index].type = type;
-  retvals_[retval_index].handle = handle;
+  retvals_[retval_index].set_handle(handle);
 }
 
 Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
@@ -111,14 +109,12 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
-  retvals_[retval_index].type = dtype;
   if (resolve_compile_time_constants_) {
-    retvals_[retval_index].is_constant = true;
-    TF_RETURN_IF_ERROR(LiteralToHostTensor(
-        literal, dtype, &retvals_[retval_index].constant_value));
+    Tensor value;
+    TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value));
+    retvals_[retval_index].set_constant_value(std::move(value));
   } else {
-    retvals_[retval_index].is_constant = false;
-    retvals_[retval_index].handle = builder_->ConstantLiteral(literal);
+    retvals_[retval_index].set_handle(builder_->ConstantLiteral(literal));
   }
   return Status::OK();
 }

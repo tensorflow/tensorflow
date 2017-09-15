@@ -144,7 +144,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -736,10 +735,9 @@ def cast(x, dtype, name=None):
       values_cast = cast(x.values, base_type, name=name)
       return sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
     else:
-      # TODO(touts): Handle what Josh said.
-      #
-      # Could return ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
-      # allows some conversions that cast() can't do, e.g.  casting numbers to
+      # TODO(josh11b): If x is not already a Tensor, we could return
+      # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
+      # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype.base_dtype == base_type:
@@ -1114,12 +1112,11 @@ floormod = gen_math_ops._floor_mod
 
 def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
-  is_tensor_y = isinstance(ag_core.getval(y), ops.Tensor)
+  is_tensor_y = isinstance(y, ops.Tensor)
   if is_tensor_y:
     return gen_math_ops._mul(x, y, name=name)
   else:
-    assert isinstance(ag_core.getval(y),
-                      sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
+    assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
                                                      y.dense_shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.dense_shape)

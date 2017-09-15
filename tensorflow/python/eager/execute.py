@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import six
 
 from google.protobuf import text_format
@@ -26,7 +25,6 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
-from tensorflow.python.eager import tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -57,24 +55,22 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
   """
   ctx = context.get_default_context()
   # TODO(apassos) move this to convert_to_tensor
-  inputs = [ag_core.getval(x) for x in inputs]
   # pylint: disable=protected-access
   input_handles = [c._handle for c in inputs]
   device_name = ctx.device_name
   try:
     outh = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
-                                            str(op_name), input_handles, attrs,
+                                            op_name, input_handles, attrs,
                                             num_outputs)
-    # pylint: enable=protected-access
-  except core._NotOkStatusException as e:  # pylint: disable=protected-access
+  except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
     else:
       message = e.message
-    raise core._status_to_exception(e.code, message)  # pylint: disable=protected-access
+    raise core._status_to_exception(e.code, message)
   # pylint: enable=protected-access
 
-  tensors = [tensor._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
+  tensors = [ops._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
   # TODO(alive, cais): Use the execution callback mechanism.
   if core.active_trace() is not None:
     trace_name = name if name else op_name
@@ -94,10 +90,10 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
   return tensors
 
 
-def record_gradient(unused_op_name, unused_inputs, unused_attrs, results,
+def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
                     unused_name):
   """Import backprop if you want gradients recorded."""
-  return results
+  pass
 
 
 def make_float(v, arg_name):
@@ -154,9 +150,10 @@ def make_shape(v, arg_name):
   try:
     shape = tensor_shape.as_shape(v)
   except TypeError as e:
-    raise TypeError("Error converting %s to a TensorShape: %s" % (arg_name, e))
+    raise TypeError("Error converting %s to a TensorShape: %s." % (arg_name, e))
   except ValueError as e:
-    raise ValueError("Error converting %s to a TensorShape: %s" % (arg_name, e))
+    raise ValueError("Error converting %s to a TensorShape: %s." % (arg_name,
+                                                                    e))
   if shape.ndims is None:
     return None
   else:
@@ -172,7 +169,7 @@ def make_tensor(v, arg_name):
     text_format.Merge(v, pb)
     return pb
   raise TypeError(
-      "Don't know how to convert %s to a TensorProto for argument '%s'" %
+      "Don't know how to convert %s to a TensorProto for argument '%s'." %
       (repr(v), arg_name))
 
 
@@ -184,7 +181,7 @@ def args_to_matching_eager(l, default_dtype=None):
   # Is some input already a Tensor with a dtype?
   dtype = None
   for t in l:
-    if isinstance(ag_core.getval(t), tensor.Tensor):
+    if isinstance(t, ops.EagerTensor):
       dtype = t.dtype
       break
 
@@ -203,7 +200,7 @@ def args_to_matching_eager(l, default_dtype=None):
 
 
 def convert_to_mixed_eager_tensors(values):
-  v = [t if isinstance(ag_core.getval(t), tensor.Tensor) else tensor.Tensor(t)
+  v = [t if isinstance(t, ops.EagerTensor) else ops.EagerTensor(t)
        for t in values]
   types = [t.dtype for t in v]
   return types, v
@@ -218,7 +215,7 @@ def args_to_mixed_eager_tensors(lists):
   for l in lists[1:]:
     if len(l) != len(lists[0]):
       raise ValueError(
-          "Expected list arguments to be the same length: %d != %d (%r vs. %r)"
+          "Expected list arguments to be the same length: %d != %d (%r vs. %r)."
           % (len(lists[0]), len(l), lists[0], l))
     lists_ret.append([])
 
@@ -228,7 +225,7 @@ def args_to_mixed_eager_tensors(lists):
     dtype = None
     # If any list has a Tensor, use that dtype
     for l in lists:
-      if isinstance(ag_core.getval(l[i]), tensor.Tensor):
+      if isinstance(l[i], ops.EagerTensor):
         dtype = l[i].dtype
         break
     if dtype is None:

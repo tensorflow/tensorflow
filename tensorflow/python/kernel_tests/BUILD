@@ -518,7 +518,7 @@ tf_py_test(
 
 tf_py_test(
     name = "matrix_solve_ls_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matrix_solve_ls_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -683,13 +683,15 @@ cuda_py_test(
 
 tf_py_test(
     name = "segment_reduction_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
+        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python:nn_grad",
     ],
 )
@@ -1092,7 +1094,6 @@ cuda_py_test(
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:tensor",
     ],
     shard_count = 10,
 )
@@ -1709,6 +1710,26 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "reduction_ops_test_big",
+    size = "medium",
+    srcs = ["reduction_ops_test_big.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+    ],
+    tags = [
+        "manual",
+        "no_gpu",
+        "nogpu",
+        "noguitar",
+        "notap",
+    ],
+)
+
+cuda_py_test(
     name = "relu_op_test",
     size = "small",
     srcs = ["relu_op_test.py"],
@@ -2154,7 +2175,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    tags = ["noasan"],  # times out b/63680444
+    shard_count = 2,
 )
 
 cuda_py_test(
@@ -2280,7 +2301,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "fft_ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2654,7 +2675,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 cuda_py_test(
@@ -2670,7 +2690,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 cuda_py_test(

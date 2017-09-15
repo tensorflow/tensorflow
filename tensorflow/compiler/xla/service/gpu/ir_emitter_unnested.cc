@@ -164,7 +164,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // Compute the kernel name. The opcode string may contain "-" which cannot be
   // in a PTX function name, so sanitize the name before uniquifying it.
   string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
-      llvm_ir::SanitizeIrName(inst.name()));
+      llvm_ir::SanitizeFunctionName(inst.name()));
 
   // Create the kernel and adds it to the module.
   llvm::Module* module = ir_emitter_context_->llvm_module();
@@ -200,6 +200,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
                                    temp_allocation_total_size);
   }
   kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
+
+  // TODO(b/65380986): Investigate if adding fast math flags for generated
+  // kernels makes sense.
 
   // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
   // treats it as a CUDA kernel.
@@ -996,7 +999,7 @@ Status IrEmitterUnnested::EmitRowReduction(
   //   for (shuffle_distance = 16; shuffle_distance > 0; shuffle_distance /= 2)
   //     partial_result = Reducer(
   //         partial_result,
-  //         __shfl_down(partial_result, shuffle_distance));
+  //         __shfl_down_sync(CUDA_WARP_ALL, partial_result, shuffle_distance));
   //   if (lane_id == 0)
   //     AtomicReducer(&output[y], partial_result);
   // }

@@ -41,7 +41,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -60,7 +59,7 @@ def _eager_reshape(tensor, shape):
   attr_tshape = attr_tshape.as_datatype_enum
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
-  result, = execute.execute("Reshape", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(b"Reshape", 1, inputs=inputs_flat, attrs=attrs)
   return result
 
 
@@ -70,23 +69,37 @@ def _eager_fill(dims, value):
   dims = convert_to_eager_tensor(dims, dtypes.int32)
   inputs_flat = [dims, value]
   attrs = ("T", attr_t)
-  result, = execute.execute("Fill", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(b"Fill", 1, inputs=inputs_flat, attrs=attrs)
+  return result
+
+
+def _eager_identity(tensor):
+  """Eager-only version of Identity op; requires tensor is an eager Tensor."""
+  attrs = ("T", tensor.dtype.as_datatype_enum)
+  result, = execute.execute(b"Identity", 1, inputs=[tensor], attrs=attrs)
   return result
 
 
 def convert_to_eager_tensor(t, dtype=None):
   """Converts the given `value` to an `EagerTensor`."""
-  if isinstance(ag_core.getval(t), ops.EagerTensor):
+  if isinstance(t, ops.EagerTensor):
     if dtype is not None and t.dtype != dtype:
       raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
     return t
-  # Handle converting ResourceVariable to Tensor.
-  # TODO(josh11b): get rid of this explicit ugly conversion once we have a more
-  # general scheme in place.
-  try:
-    return t._dense_var_to_tensor(dtype=dtype, as_ref=False)  # pylint: disable=protected-access
-  except AttributeError:
-    pass
+  if isinstance(t, (int, float)):
+    # Use a scalar cache. This will put each scalar of each type only once on
+    # each device. Scalars don't use much device memory but copying scalars can
+    # trigger memcpys which are slow.
+    ctx = context.context()
+    device = ctx.device_name
+    cache_key = device, t, dtype, type(t)
+    scalar_cache = ctx.scalar_cache()
+    tensor = scalar_cache.get(cache_key, None)
+    if tensor is not None:
+      return tensor
+    value = ops.EagerTensor(t, dtype=dtype)
+    scalar_cache[cache_key] = value
+    return value
   return ops.EagerTensor(t, dtype=dtype)
 
 
@@ -153,7 +166,14 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
     if num_t == shape.num_elements():
       return _eager_reshape(t, shape.as_list())
     if num_t == 1:
-      return _eager_fill(shape.as_list(), t)
+      if t.dtype == dtypes.bool:
+        # We don't have a Fill kernel for bool dtype on GPU. So we first run
+        # Fill on CPU and then copy to GPU if needed.
+        with ops.device("/device:CPU:0"):
+          x = _eager_fill(shape.as_list(), t.as_cpu_tensor())
+        return _eager_identity(x)
+      else:
+        return _eager_fill(shape.as_list(), t)
     raise TypeError("Eager execution of tf.constant with unsupported shape "
                     "(value has %d elements, shape is %s with %d elements)." %
                     (num_t, shape, shape.num_elements()))

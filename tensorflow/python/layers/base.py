@@ -25,24 +25,20 @@ from __future__ import print_function
 
 import collections
 import copy
-import functools
 import re
 import weakref
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
-import six
-
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import util as estimator_util
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.util import nest
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 
 class Layer(object):
@@ -410,14 +406,17 @@ class Layer(object):
     # Note that we currently don't support variable regularization in Eager
     # mode. An alternative is for users to directly compute these losses before
     # performing a backward pass.
-    if regularizer is not None and context.in_eager_mode():
-      raise RuntimeError('Variable regularization not supported in Eager mode.')
+    if context.in_graph_mode():
+      existing_variables = set(tf_variables.global_variables())
+    else:
+      existing_variables = []
+      if regularizer is not None:
+        raise RuntimeError('Variable regularization not supported in Eager '
+                           'mode.')
     if dtype is None:
       dtype = self.dtype
-    existing_variables = set(tf_variables.global_variables())
 
     self._set_scope(None)
-
     vs_reuse = ((self.built or self._reuse)
                 if context.in_graph_mode() else vs.AUTO_REUSE)
     with vs.variable_scope(self._scope, reuse=vs_reuse) as scope:

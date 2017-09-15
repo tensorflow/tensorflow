@@ -167,11 +167,13 @@ def tf_copts():
       "-fno-exceptions",
       "-ftemplate-depth=900",
   ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
-      ["-mfpu=neon", "-fomit-frame-pointer"]) + if_linux_x86_64(["-msse3"]) + select({
+      ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
               "-std=c++11",
               "-DTF_LEAN_BINARY",
               "-O2",
+              "-Wno-narrowing",
+              "-fomit-frame-pointer",
           ],
           clean_dep("//tensorflow:darwin"): [],
           clean_dep("//tensorflow:windows"): WIN_COPTS,
@@ -1290,6 +1292,16 @@ def tf_version_info_genrule():
       "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\"",
       local=1,
       tools=[clean_dep("//tensorflow/tools/git:gen_git_source.py")],)
+
+
+def tf_py_build_info_genrule():
+  native.genrule(
+      name="py_build_info_gen",
+      outs=["platform/build_info.py"],
+      cmd=
+      "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
+      local=1,
+      tools=[clean_dep("//tensorflow/tools/build_info:gen_build_info.py")],)
 
 
 def cc_library_with_android_deps(deps,

@@ -1,0 +1,29 @@
+path: "tensorflow.keras.utils.HDF5Matrix"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.utils.io_utils.HDF5Matrix\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ndim"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "refs"
+    mtype: "<type \'collections.defaultdict\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "size"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'datapath\', \'dataset\', \'start\', \'end\', \'normalizer\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
+  }
+}

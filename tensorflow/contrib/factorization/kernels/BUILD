@@ -52,7 +52,6 @@ cc_library(
 
 cc_test(
     name = "clustering_ops_test",
-    size = "small",
     srcs = ["clustering_ops_test.cc"],
     deps = [
         ":clustering_ops",

@@ -33,6 +33,7 @@ from tensorflow.contrib.learn.python.learn import export_strategy
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.contrib.tpu.python.tpu import tpu_estimator
 from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -221,6 +222,14 @@ class Experiment(object):
             "`estimator` must implement `tf.contrib.learn.Trainable`"
             "or `tf.estimator.`Estimator`.")
 
+    if isinstance(estimator, tpu_estimator.TPUEstimator):
+      raise ValueError(
+          "`Experiment` class cannot work with `tf.contrib.tpu.TPUEstimator`. "
+          "Please call `TPUEstimator` train/evaluate directly. \n"
+          "Details: `Experiment` class is designed for between-graph "
+          "distributed training, while `TPUEstimator` is working in in-graph "
+          "distributed mode.")
+
     super(Experiment, self).__init__()
     # Immutable fields.
     self._estimator = estimator
@@ -401,7 +410,8 @@ class Experiment(object):
                        delay_secs,
                        throttle_delay_secs,
                        evaluate_checkpoint_only_once=True,
-                       continuous_eval_predicate_fn=None):
+                       continuous_eval_predicate_fn=None,
+                       export=True):
     """Run continuous eval.
 
     Runs infinite eval on the evaluation data set. This function starts
@@ -427,6 +437,7 @@ class Experiment(object):
         handles that gracefully. When `predicate_fn` is not specified,
         continuous eval will run in an infinite loop (if `train_steps` is None)
         or exit once global step reaches `train_steps`.
+      export: Whether to export from this step. Default is 'True'.
 
     Raises:
       ValueError: if `continuous_eval_predicate_fn` is neither None nor
@@ -486,7 +497,8 @@ class Experiment(object):
         if not eval_result:
           eval_result = {}
 
-        self._maybe_export(eval_result, checkpoint_path=latest_path)
+        if export:
+          self._maybe_export(eval_result, checkpoint_path=latest_path)
 
         # Clear warning timer and update last evaluated checkpoint
         last_warning_time = 0
@@ -532,7 +544,8 @@ class Experiment(object):
         name=name,
         delay_secs=delay_secs,
         throttle_delay_secs=throttle_delay_secs,
-        continuous_eval_predicate_fn=continuous_eval_predicate_fn)
+        continuous_eval_predicate_fn=continuous_eval_predicate_fn,
+        export=False)
 
   def train_and_evaluate(self):
     """Interleaves training and evaluation.

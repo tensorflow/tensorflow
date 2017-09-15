@@ -319,10 +319,10 @@ TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
 
   HloInstruction* literal_instruction = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
-  // Broadcast dimension is ignored in the case of scalars.
+  // Broadcast dimension should be empty in the case of scalars.
   b.AddInstruction(HloInstruction::CreateBroadcast(
       output_literal->shape(), literal_instruction,
-      /*broadcast_dimensions=*/{1}));
+      /*broadcast_dimensions=*/{}));
   HloModule module(TestName());
   auto computation = module.AddEntryComputation(b.Build());
 
@@ -330,6 +330,53 @@ TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
   LiteralTestUtil::ExpectEqual(*result, *output_literal);
+}
+
+TEST_F(HloEvaluatorTest, DoesConcatenateSimple) {
+  HloComputation::Builder b(TestName());
+
+  HloInstruction* operand1 = b.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<int64>({{-1, -2}, {100, 200}})));
+  HloInstruction* operand2 = b.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<int64>({{-2, -3}, {-100, -200}})));
+
+  std::vector<HloInstruction*> operands = {operand1, operand2};
+
+  Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
+  b.AddInstruction(HloInstruction::CreateConcatenate(shape, operands, 0));
+
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected =
+      Literal::CreateR2<int64>({{-1, -2}, {100, 200}, {-2, -3}, {-100, -200}});
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, ConcatenateHandlesShapeWithZeroElement) {
+  HloComputation::Builder b(TestName());
+
+  HloInstruction* operand1 = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({100, 200})));
+  HloInstruction* operand2 = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({})));
+
+  std::vector<HloInstruction*> operands = {operand1, operand2};
+
+  Shape shape = ShapeUtil::MakeShape(S64, {2});
+  b.AddInstruction(HloInstruction::CreateConcatenate(shape, operands, 0));
+
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(b.Build());
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
+
+  auto expected = Literal::CreateR1<int64>({100, 200});
+  LiteralTestUtil::ExpectEqual(*expected, *result);
 }
 
 TEST_F(HloEvaluatorTest, ConvertWithSameLayout) {

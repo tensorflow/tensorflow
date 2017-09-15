@@ -27,7 +27,6 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 #    path = "<PATH_TO_SDK>",
 #)
 #
-# Android NDK r12b is recommended (higher may cause issues with Bazel)
 #android_ndk_repository(
 #    name="androidndk",
 #    path="<PATH_TO_NDK>",

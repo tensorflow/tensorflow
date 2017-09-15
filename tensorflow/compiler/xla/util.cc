@@ -210,6 +210,18 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
   return padding_config;
 }
 
+PaddingConfig MakeEdgePaddingConfig(
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+  PaddingConfig padding_config;
+  for (const std::pair<int64, int64>& dim : padding) {
+    auto dimension = padding_config.add_dimensions();
+    dimension->set_edge_padding_low(dim.first);
+    dimension->set_edge_padding_high(dim.second);
+    dimension->set_interior_padding(0);
+  }
+  return padding_config;
+}
+
 bool HasInteriorPadding(const PaddingConfig& config) {
   for (const auto& dim : config.dimensions()) {
     if (dim.interior_padding() != 0) {

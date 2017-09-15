@@ -51,7 +51,8 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;
   ~ParallelLoopEmitter() override = default;
 
-  llvm_ir::IrArray::Index EmitIndexAndSetExitBasicBlock() override;
+  llvm_ir::IrArray::Index EmitIndexAndSetExitBasicBlock(
+      tensorflow::StringPiece loop_name) override;
 
  private:
   // The thread and block dimension to parallelize the loop on.

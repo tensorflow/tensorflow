@@ -65,7 +65,7 @@ def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU" or x.device_type == "SYCL":
-      return x.name
+      return compat.as_str(x.name)
   return ""
 
 
@@ -208,6 +208,71 @@ def NHWCToNCHW(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+def NHWCToNCHW_VECT_C(input_shape_or_tensor):
+  """Transforms the input from the NHWC layout to NCHW_VECT_C layout.
+
+  Note: Does not include quantization or type conversion steps, which should
+  be applied afterwards.
+
+  Args:
+    input_shape_or_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NCHW_VECT_C
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not evenly
+        divisible by 4.
+  """
+  permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  temp_shape = (input_shape_or_tensor.shape.as_list()
+                if is_tensor else input_shape_or_tensor)
+  if temp_shape[-1] % 4 != 0:
+    raise ValueError(
+        "Last dimension of input must be evenly divisible by 4 to convert to "
+        "NCHW_VECT_C.")
+  temp_shape[-1] //= 4
+  temp_shape.append(4)
+  permutation = permutations[len(temp_shape)]
+  if is_tensor:
+    t = array_ops.reshape(input_shape_or_tensor, temp_shape)
+    return array_ops.transpose(t, permutation)
+  else:
+    return [temp_shape[a] for a in permutation]
+
+
+def NCHW_VECT_CToNHWC(input_shape_or_tensor):
+  """Transforms the input from the NCHW_VECT_C layout to NHWC layout.
+
+  Note: Does not include de-quantization or type conversion steps, which should
+  be applied beforehand.
+
+  Args:
+    input_shape_or_tensor: a 5- or 6-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NHWC
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not 4.
+  """
+  permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  input_shape = (input_shape_or_tensor.shape.as_list()
+                 if is_tensor else input_shape_or_tensor)
+  if input_shape[-1] != 4:
+    raise ValueError("Last dimension of NCHW_VECT_C must be 4.")
+  permutation = permutations[len(input_shape)]
+  nhwc_shape = [input_shape[a] for a in permutation[:-1]]
+  nhwc_shape[-1] *= input_shape[-1]
+  if is_tensor:
+    t = array_ops.transpose(input_shape_or_tensor, permutation)
+    return array_ops.reshape(t, nhwc_shape)
+  else:
+    return nhwc_shape
+
+
 def NCHWToNHWC(input_tensor):
   """Converts the input from the NCHW format to NHWC.
 
@@ -298,11 +363,11 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
 
   def decorator(f):
     """Test method decorator."""
-    def decorated(self):
+    def decorated(self, **kwargs):
       """Decorated the test method."""
       with context.graph_mode():
         with self.test_session(graph, config, use_gpu, force_gpu):
-          f(self)
+          f(self, **kwargs)
 
       if reset_test:
         # This decorator runs the wrapped test twice.
@@ -319,10 +384,10 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
             f(self)
         elif use_gpu:
           # TODO(xpan): Support softplacement and gpu by default when available.
-          f(self)
+          f(self, **kwargs)
         else:
           with context.device("/device:CPU:0"):
-            f(self)
+            f(self, **kwargs)
 
       eager_graph = graph or ops.Graph()
       with context.eager_mode():

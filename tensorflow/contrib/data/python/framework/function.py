@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
@@ -152,6 +153,11 @@ class _ExperimentalDefinedFunction(function._DefinedFunction):
 
   def _create_definition_if_needed(self):
     """Creates the function definition if it's not created yet."""
+    with context.graph_mode():
+      self._create_definition_if_needed_impl()
+
+  def _create_definition_if_needed_impl(self):
+    """You're looking for _create_definition_if_needed(), not this."""
 
     if self._definition is not None:
       return

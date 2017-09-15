@@ -17,33 +17,11 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
-
-StatusOr<bool> CallInliner::Run(HloModule* module) {
-  std::deque<HloInstruction*> work_queue;
-
-  // Seed the work queue with call instructions from the main computation.
-  TF_RETURN_IF_ERROR(
-      module->entry_computation()->Accept([&](HloInstruction* hlo) {
-        if (hlo->opcode() == HloOpcode::kCall) {
-          work_queue.push_back(hlo);
-        }
-        return Status::OK();
-      }));
-
-  VLOG(1) << "Work queue seeded with " << work_queue.size() << " entries.";
-
-  bool mutated = false;
-  while (!work_queue.empty()) {
-    mutated = true;
-    HloInstruction* call = work_queue.front();
-    work_queue.pop_front();
-    TF_RETURN_IF_ERROR(ReplaceWithInlinedBody(call, &work_queue));
-  }
-  return mutated;
-}
+namespace {
 
 // Traverses the callee computation, inlining cloned nodes into the caller
 // computation and connecting them to producers/consumers appropriately.
@@ -52,14 +30,18 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
 // computation have been added to the work_queue.
 class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
  public:
-  SubcomputationInsertionVisitor(HloInstruction* call,
-                                 std::deque<HloInstruction*>* work_queue)
-      : call_(call), outer_(call->parent()), work_queue_(work_queue) {}
+  // call is the call operation -- it will be replaced with the body of the
+  // called computation.
+  explicit SubcomputationInsertionVisitor(HloInstruction* call)
+      : call_(call), outer_(call->parent()) {
+    CHECK_EQ(HloOpcode::kCall, call_->opcode());
+  }
 
   // Resolves the operands to the HLO instruction in the inlined (caller) graph,
   // and clones the HLO instruction into that graph with the new operands.
   // If the instruction is a call, it is added to the work queue.
   Status DefaultAction(HloInstruction* hlo) override {
+    TF_RET_CHECK(hlo->opcode() != HloOpcode::kCall);
     std::vector<HloInstruction*> new_operands;
     for (HloInstruction* operand : hlo->operands()) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_operand, Resolve(operand));
@@ -79,12 +61,6 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
           new_control_predecessor->AddControlDependencyTo(new_hlo_pointer));
     }
 
-    if (new_hlo_pointer->opcode() == HloOpcode::kCall) {
-      VLOG(1) << "Adding new call HLO to work queue.";
-      // Call instructions we observe in the subcomputation are added to the
-      // inliner work queue.
-      work_queue_->push_back(new_hlo_pointer);
-    }
     return Status::OK();
   }
 
@@ -141,16 +117,30 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   std::deque<HloInstruction*>* work_queue_;
 };
 
-Status CallInliner::ReplaceWithInlinedBody(
-    HloInstruction* call, std::deque<HloInstruction*>* work_queue) {
-  TF_RET_CHECK(call->opcode() == HloOpcode::kCall);
-  TF_RET_CHECK(call->called_computations().size() == 1);
-  HloComputation* called = call->called_computations()[0];
-  VLOG(1) << "Replacing call " << call->ToString() << " with inlined body of "
-          << called->name();
+}  // namespace
 
-  SubcomputationInsertionVisitor visitor(call, work_queue);
-  return called->Accept(&visitor);
+StatusOr<bool> CallInliner::Run(HloModule* module) {
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  // Because call graph nodes are visited in post-order (callees before callers)
+  // we'll always inline kCalls into their callers in the appropriate order.
+  bool did_mutate = false;
+  TF_RETURN_IF_ERROR(
+      call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
+        for (const CallSite& callsite : node.caller_callsites()) {
+          VLOG(1) << "Visiting callsite: " << callsite.ToString();
+          if (callsite.instruction()->opcode() == HloOpcode::kCall) {
+            did_mutate = true;
+            const auto& callees = callsite.called_computations();
+            TF_RET_CHECK(callees.size() == 1);
+            HloComputation* callee = callees[0];
+            // We visit the callee, cloning its body into its caller.
+            SubcomputationInsertionVisitor visitor(callsite.instruction());
+            TF_RETURN_IF_ERROR(callee->Accept(&visitor));
+          }
+        }
+        return Status::OK();
+      }));
+  return did_mutate;
 }
 
 }  // namespace xla

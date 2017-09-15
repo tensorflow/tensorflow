@@ -37,7 +37,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(new ModelPruner());
   }
   if (optimizer == "constfold") {
-    graph_optimizer.reset(new ConstantFolding());
+    graph_optimizer.reset(new ConstantFolding(cpu_device_));
   }
   if (optimizer == "layout") {
     graph_optimizer.reset(new LayoutOptimizer());
@@ -64,7 +64,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
     if (cfg_.constant_folding() != RewriterConfig::OFF) {
       optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new ConstantFolding()));
+          std::unique_ptr<GraphOptimizer>(new ConstantFolding(cpu_device_)));
     }
     if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
       optimizers.push_back(
@@ -144,8 +144,9 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
-                        Cluster* cluster, GraphDef* optimized_graph) {
-  MetaOptimizer optimizer(cfg);
+                        DeviceBase* cpu_device, Cluster* cluster,
+                        GraphDef* optimized_graph) {
+  MetaOptimizer optimizer(cpu_device, cfg);
   return optimizer.Optimize(cluster, item, optimized_graph);
 }
 

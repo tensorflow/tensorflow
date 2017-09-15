@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 
 namespace tensorflow {
@@ -303,11 +304,12 @@ void Timeline::GenerateCodeTimeline(const CodeNode* node) {
 }
 
 void Timeline::OutputTimeline() {
+  string outfile = strings::Printf("%s_%lld", outfile_.c_str(), step());
   Status s =
-      WriteStringToFile(Env::Default(), outfile_, chrome_formatter_.Format());
+      WriteStringToFile(Env::Default(), outfile, chrome_formatter_.Format());
   if (!s.ok()) {
     fprintf(stderr, "Failed to write timeline file: %s\nError: %s\n",
-            outfile_.c_str(), s.ToString().c_str());
+            outfile.c_str(), s.ToString().c_str());
     return;
   }
   fprintf(stdout, "\n******************************************************\n");
@@ -315,7 +317,7 @@ void Timeline::OutputTimeline() {
           "Timeline file is written to %s.\n"
           "Open a Chrome browser, enter URL chrome://tracing and "
           "load the timeline file.",
-          outfile_.c_str());
+          outfile.c_str());
   fprintf(stdout, "\n******************************************************\n");
   fflush(stdout);
 }

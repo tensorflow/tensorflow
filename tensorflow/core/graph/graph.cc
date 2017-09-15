@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -110,7 +111,8 @@ Node::Node()
       cost_id_(-1),
       class_(NC_UNINITIALIZED),
       props_(nullptr),
-      assigned_device_name_index_(0) {}
+      assigned_device_name_index_(0),
+      while_ctx_(nullptr) {}
 
 void Node::Initialize(int id, int cost_id,
                       std::shared_ptr<NodeProperties> props) {
@@ -523,6 +525,28 @@ Status Graph::IsValidNode(const Node* node) const {
   return Status::OK();
 }
 
+Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
+  TF_RETURN_IF_ERROR(IsValidNode(node));
+  if (idx >= node->num_outputs()) {
+    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
+                                   node->op_def().name(),
+                                   "', num of outputs: ", node->num_outputs(),
+                                   ") does not have ", "output ", idx);
+  }
+  return Status::OK();
+}
+
+Status Graph::IsValidInputTensor(const Node* node, int idx) const {
+  TF_RETURN_IF_ERROR(IsValidNode(node));
+  if (idx >= node->num_inputs()) {
+    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
+                                   node->op_def().name(),
+                                   "', num of inputs: ", node->num_inputs(),
+                                   ") does not have ", "input ", idx);
+  }
+  return Status::OK();
+}
+
 Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
                           const Node* cost_node) {
   Node* node = nullptr;
@@ -571,8 +595,29 @@ int Graph::InternDeviceName(const string& device_name) {
   return index;
 }
 
+Status Graph::AddWhileContext(StringPiece frame_name,
+                              std::vector<Node*> enter_nodes,
+                              std::vector<Node*> exit_nodes,
+                              OutputTensor cond_output,
+                              std::vector<OutputTensor> body_inputs,
+                              std::vector<OutputTensor> body_outputs,
+                              WhileContext** result) {
+  auto pair = while_ctxs_.insert(std::pair<string, WhileContext>(
+      frame_name.ToString(),
+      WhileContext(frame_name, std::move(enter_nodes), std::move(exit_nodes),
+                   cond_output, std::move(body_inputs),
+                   std::move(body_outputs))));
+  if (!pair.second) {
+    *result = nullptr;
+    return errors::InvalidArgument("WhileContext with frame name '", frame_name,
+                                   "' already exists");
+  }
+  *result = &pair.first->second;
+  return Status::OK();
+}
+
 string Edge::DebugString() const {
-  return strings::Printf("Edge %d %s:%d -> %s:%d", id_, src_->name().c_str(),
+  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_->name().c_str(),
                          src_output_, dst_->name().c_str(), dst_input_);
 }
 

@@ -259,11 +259,10 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
     update_op: An operation that increments the confusion matrix.
   """
   # Local variable to accumulate the predictions in the confusion matrix.
-  cm_dtype = dtypes.int64 if weights is not None else dtypes.float64
   total_cm = _create_local(
       'total_confusion_matrix',
       shape=[num_classes, num_classes],
-      dtype=cm_dtype)
+      dtype=dtypes.float64)
 
   # Cast the type to int64 required by confusion_matrix_ops.
   predictions = math_ops.to_int64(predictions)
@@ -282,7 +281,7 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
 
   # Accumulate the prediction to current confusion matrix.
   current_cm = confusion_matrix.confusion_matrix(
-      labels, predictions, num_classes, weights=weights, dtype=cm_dtype)
+      labels, predictions, num_classes, weights=weights, dtype=dtypes.float64)
   update_op = state_ops.assign_add(total_cm, current_cm)
   return total_cm, update_op
 
@@ -461,12 +460,22 @@ def _confusion_matrix_at_thresholds(
   else:
     for include in includes:
       if include not in all_includes:
-        raise ValueError('Invaild key: %s.' % include)
+        raise ValueError('Invalid key: %s.' % include)
 
-  predictions, labels, weights = _remove_squeezable_dimensions(
-      predictions=math_ops.to_float(predictions),
-      labels=math_ops.cast(labels, dtype=dtypes.bool),
-      weights=weights)
+  with ops.control_dependencies([
+      check_ops.assert_greater_equal(
+          predictions,
+          math_ops.cast(0.0, dtype=predictions.dtype),
+          message='predictions must be in [0, 1]'),
+      check_ops.assert_less_equal(
+          predictions,
+          math_ops.cast(1.0, dtype=predictions.dtype),
+          message='predictions must be in [0, 1]')
+  ]):
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.to_float(predictions),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
 
   num_thresholds = len(thresholds)
 

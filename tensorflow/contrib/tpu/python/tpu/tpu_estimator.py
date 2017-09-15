@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import copy
 import threading
+import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -102,10 +103,12 @@ def _increase_eval_step_op(iterations_per_loop):
                               use_locking=True)
 
 
-def _tpu_job(run_config):
+def _tpu_job(run_config, mode):
   # The tpu job is determined by the run_config. Right now, this method is
   # required as tpu_config is not part of the RunConfig.
-  return None if run_config.master in ['', 'local'] else 'tpu_worker'
+  master = (run_config.evaluation_master if mode == model_fn_lib.ModeKeys.EVAL
+            else run_config.master)
+  return None if master in ['', 'local'] else 'tpu_worker'
 
 
 def _is_running_on_cpu(use_tpu, mode, eval_batch_size):
@@ -142,14 +145,16 @@ class TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
 
   TPU evaluation expects a slightly different signature from the
   ${tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
-  dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and a tensor
-  list.  The tensor list specifies the list of tensors, usually model logits,
-  which are transferred back from TPU system to CPU host. All tensors must have
-  be batch-major, i.e., the batch size is the first dimension. Once all tensors
-  are available at CPU host, they are joined and passed as positional arguments
-  to the `metric_fn`. `metric_fn` takes the tensor list (concatenated on CPU
-  from all shards) and returns a dict from metric string name to the result of
-  calling a metric function, namely a `(metric_tensor, update_op)` tuple.
+  dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`.
+  The `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. The
+  `tensors` usually specify the model logits, which are transferred back from
+  TPU system to CPU host. All tensors must have be batch-major, i.e., the batch
+  size is the first dimension. Once all tensors are available at CPU host from
+  all shards, they are concatenated (on CPU) and passed as positional arguments
+  to the `metric_fn` if `tensors` is list or keyword arguments if `tensors` is
+  dict. `metric_fn` takes the `tensors` and returns a dict from metric string
+  name to the result of calling a metric function, namely a `(metric_tensor,
+  update_op)` tuple.
 
   See `TPUEstimator` for MNIST example how to specify the `eval_metrics`.
   """
@@ -265,9 +270,9 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
      dequeue.
   """
 
-  def __init__(self, run_config, enqueue_fn, dequeue_ops=None):
+  def __init__(self, run_config, mode, enqueue_fn, dequeue_ops=None):
     self._iterations = run_config.tpu_config.iterations_per_loop
-    self._tpu_job = _tpu_job(run_config)
+    self._tpu_job = _tpu_job(run_config, mode)
     self._enqueue_fn = enqueue_fn
     self._dequeue_ops = dequeue_ops
 
@@ -830,6 +835,8 @@ class _EvalMetrics(object):
 
   def __init__(self):
     self._metric_fn = None
+    self._is_dict = False
+    self._tensor_keys = []
     self._tensors = []
     self._tensor_dtypes = []
     self._tensor_shapes = []
@@ -845,30 +852,60 @@ class _EvalMetrics(object):
       raise ValueError('eval_metrics should have two elements.')
     if not callable(eval_metrics[0]):
       raise TypeError('eval_metrics[0] should be callable.')
-    if not isinstance(eval_metrics[1], (tuple, list)):
-      raise ValueError('eval_metrics[1] should be tuple or list.')
+    if not isinstance(eval_metrics[1], (tuple, list, dict)):
+      raise ValueError('eval_metrics[1] should be tuple or list, or dict.')
 
-    fn_args = util.fn_args(eval_metrics[0])
-    if len(eval_metrics[1]) != len(fn_args):
-      raise RuntimeError(
-          'In TPUEstimatorSpec.eval_metrics, length of tensors does not '
-          'match method args of metric_fn.')
+    if isinstance(eval_metrics[1], (tuple, list)):
+      fn_args = util.fn_args(eval_metrics[0])
+      if len(eval_metrics[1]) != len(fn_args):
+        raise RuntimeError(
+            'In TPUEstimatorSpec.eval_metrics, length of tensors does not '
+            'match method args of metric_fn.')
 
   @staticmethod
   def to_metric_metric_ops_for_cpu(eval_metrics):
     """Converts `TPUEstimatorSpec.eval_metrics` to `eval_metric_ops` for CPU."""
-    return (eval_metrics[0](*eval_metrics[1]) if eval_metrics is not None
-            else None)
+    if not eval_metrics:
+      return None
+
+    _EvalMetrics.validate(eval_metrics)
+
+    metric_fn, tensors = eval_metrics
+
+    if isinstance(tensors, (tuple, list)):
+      return metric_fn(*tensors)
+    else:
+      # Must be dict.
+      try:
+        return metric_fn(**tensors)
+      except TypeError as e:
+        logging.warning(
+            'Exception while calling metric_fn for evalution: %s. '
+            'It is likely the tensors (eval_metrics[1]) do not match the '
+            'metric_fn arguments', e)
+        raise e
 
   def record(self, spec):
+    """Records the eval_metrics structure in `spec`."""
     if self._recorded:
       raise RuntimeError('Eval metrics have been recorded already.')
 
-    self._metric_fn, self._tensors = spec.eval_metrics
+    self._metric_fn, tensor_list_or_dict = spec.eval_metrics
 
-    for tensor in self._tensors:
-      self._tensor_dtypes.append(tensor.dtype)
-      self._tensor_shapes.append(tensor.shape)
+    if isinstance(tensor_list_or_dict, dict):
+      self._is_dict = True
+      for (key, tensor) in six.iteritems(tensor_list_or_dict):
+        self._tensor_keys.append(key)
+        self._tensors.append(tensor)
+        self._tensor_dtypes.append(tensor.dtype)
+        self._tensor_shapes.append(tensor.shape)
+    else:
+      # List or tuple.
+      self._is_dict = False
+      self._tensors = tensor_list_or_dict
+      for tensor in tensor_list_or_dict:
+        self._tensor_dtypes.append(tensor.dtype)
+        self._tensor_shapes.append(tensor.shape)
     self._recorded = True
 
   @property
@@ -899,7 +936,7 @@ class _EvalMetrics(object):
     """
 
     num_shards = run_config.tpu_config.num_shards
-    job = _tpu_job(run_config)
+    job = _tpu_job(run_config, model_fn_lib.ModeKeys.EVAL)
     job_device = '' if job is None else ('/job:%s' % job)
 
     # For each i, dequeue_ops[i] is a list containing the tensors from all
@@ -926,7 +963,19 @@ class _EvalMetrics(object):
               'dimension, but got scalar {}'.format(dequeue_ops[i][0]))
         # TODO(xiejw): Allow users to specify the axis for batch size dimension.
         dequeue_ops[i] = array_ops.concat(dequeue_ops[i], axis=0)
-      eval_metric_ops = self._metric_fn(*dequeue_ops)
+
+      if self._is_dict:
+        dequeue_ops = dict(zip(self._tensor_keys, dequeue_ops))
+        try:
+          eval_metric_ops = self._metric_fn(**dequeue_ops)
+        except TypeError as e:
+          logging.warning(
+              'Exception while calling metric_fn for evalution: %s. '
+              'It is likely the tensors (eval_metrics[1]) do not match the '
+              'metric_fn arguments', e)
+          raise e
+      else:
+        eval_metric_ops = self._metric_fn(*dequeue_ops)
 
     eval_update_ops = []
     for k, v in eval_metric_ops.items():
@@ -961,14 +1010,11 @@ class TPUEstimator(estimator_lib.Estimator):
   `TPUEstimatorSpec` instead of `EstimatorSpec`, which expects the
   `eval_metrics` for TPU evaluation.
 
-  `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and a tensor list.
-  The tensor list specifies the list of tensors, usually model logits, which are
-  transferred back from TPU system to CPU host. All tensors must have be
-  batch-major, i.e., the batch size is the first dimension. Once all tensors are
-  available at CPU host, they are joined and passed as positional arguments to
-  the `metric_fn`. `metric_fn` takes the tensor list (concatenated on CPU from
-  all shards) and returns a dict from metric string name to the result of
-  calling a metric function, namely a `(metric_tensor, update_op)` tuple.
+  `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`, where
+  `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. (See
+  `TPUEstimatorSpec` for details).  `metric_fn` takes the `tensors` and returns
+  a dict from metric string name to the result of calling a metric function,
+  namely a `(metric_tensor, update_op)` tuple.
 
   Current limitations:
 
@@ -978,22 +1024,38 @@ class TPUEstimator(estimator_lib.Estimator):
 
   Example (MNIST):
   ```
+  # The metric Fn which runs on CPU.
+  def metric_fn(labels, logits):
+    predictions = tf.argmax(logits, 1)
+    return {
+      'accuracy': tf.metrics.precision(
+          labels=labels, predictions=predictions),
+    }
+
+  # Your model Fn which runs on TPU (eval_metrics is list in this example)
   def model_fn(features, labels, mode, config, params):
     ...
     logits = ...
 
     if mode = tf.estimator.ModeKeys.EVAL:
-      def metric_fn(labels, logits):
-        predictions = tf.argmax(logits, 1)
-        return {
-          'precision': tf.metrics.precision(
-              labels=labels, predictions=predictions),
-        }
-
       return tpu_estimator.TPUEstimatorSpec(
           mode=mode,
           loss=loss,
           eval_metrics=(metric_fn, [labels, logits]))
+
+  # or specify the eval_metrics tensors as dict.
+  def model_fn(features, labels, mode, config, params):
+    ...
+    final_layer_output = ...
+
+    if mode = tf.estimator.ModeKeys.EVAL:
+      return tpu_estimator.TPUEstimatorSpec(
+          mode=mode,
+          loss=loss,
+          eval_metrics=(metric_fn, {
+              'labels': labels,
+              'logits': final_layer_output,
+          }))
   ```
 
   Predict support on TPU is not yet implemented. So, `predict` and
@@ -1162,7 +1224,7 @@ class TPUEstimator(estimator_lib.Estimator):
       with ops.device('/device:CPU:0'):
         return input_fn(**kwargs)
 
-    job = _tpu_job(config)
+    job = _tpu_job(config, mode)
     def placement_function(index):
       if job is None:
         return '/replica:0/task:0/device:CPU:0'
@@ -1190,13 +1252,14 @@ class TPUEstimator(estimator_lib.Estimator):
 
 # TODO(b/64607814): Ensure batch_axis works with nested structures.
 def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
-                                              batch_axis):
+                                              batch_axis, mode):
   """Utility to convert input_fn to enqueue and dequeue fns for TPU.
 
   Args:
     inputs_holder: An `_InputsHolder` holding features and labels.
     run_config: A `RunConfig` instance.
     batch_axis: A python list of batch dimensions.
+    mode: ModeKeys
 
   Returns:
     A tuple of (dequeue_fn, enqueue_fn)
@@ -1239,7 +1302,7 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(inputs_holder, run_config,
       return infeed_queue.generate_enqueue_ops(
           sharded_inputs, tpu_ordinal_function=tpu_ordinal_function)
     else:
-      job = _tpu_job(run_config)
+      job = _tpu_job(run_config, mode)
       def placement_function(index):
         if job is None:
           return '/replica:0/task:0/device:CPU:0'
@@ -1271,12 +1334,12 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
                            num_shards=config.tpu_config.num_shards)
 
     dequeue_fn, enqueue_fn = _create_infeed_enqueue_ops_and_dequeue_fn(
-        inputs, config, batch_axis)
+        inputs, config, batch_axis, mode)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       loss = _train_on_tpu_system(model_fn_wrapper, dequeue_fn)
       hooks = [
-          TPUInfeedOutfeedSessionHook(config, enqueue_fn),
+          TPUInfeedOutfeedSessionHook(config, mode, enqueue_fn),
           training.LoggingTensorHook(
               {'loss': array_ops.identity(loss),
                'step': training.get_global_step()},
@@ -1318,7 +1381,7 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
         eval_metric_ops.to_metric_metric_ops_for_tpu(
             config, dummy_update_op))
     hooks = [
-        TPUInfeedOutfeedSessionHook(config, enqueue_fn, eval_update_ops),
+        TPUInfeedOutfeedSessionHook(config, mode, enqueue_fn, eval_update_ops),
     ]
 
     return model_fn_lib.EstimatorSpec(

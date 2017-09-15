@@ -101,7 +101,7 @@ TEST_F(ShapeOpTest, Simple) {
     Tensor variant_tensor(DT_VARIANT, TensorShape({1}));
     Status s = session.Run({{input, variant_tensor}}, {shape_output}, &outputs);
     EXPECT_FALSE(s.ok());
-    ExpectHasError(s, "Shape of non-scalar Variant not supported.");
+    ExpectHasError(s, "Shape of non-unary Variant not supported.");
   }
 
   {

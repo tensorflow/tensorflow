@@ -198,8 +198,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx);
-    TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
-        &profile_candidates_for_computation));
+    TF_RETURN_IF_ERROR(
+        computation->Accept(&profile_candidates_for_computation));
     return hlo_to_profile_idx;
   }
 
@@ -216,8 +216,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override {
     TF_RETURN_IF_ERROR(DefaultAction(call));
     CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(
-        call->to_apply()->root_instruction()->Accept(&candidates_for_call));
+    TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
     return Status::OK();
   }
 
@@ -236,12 +235,11 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_condition()->root_instruction()->Accept(
-        &candidates_for_condition));
+    TF_RETURN_IF_ERROR(
+        xla_while->while_condition()->Accept(&candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_body()->root_instruction()->Accept(
-        &candidates_for_body));
+    TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
     return Status::OK();
   }
@@ -365,7 +363,7 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
 Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(ir_module_string));
   TF_RETURN_IF_ERROR(f->Close());
   return Status::OK();
@@ -433,6 +431,10 @@ Status InitializeModuleHooks(
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  const string timer_message =
+      "Compiling [" + module->name() + "] for CPU using JIT";
+  ScopedLoggingTimer compiling_timer(timer_message, 1);
+
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,

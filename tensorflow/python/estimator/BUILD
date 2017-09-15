@@ -22,6 +22,7 @@ py_library(
         ":model_fn",
         ":parsing_utils",
         ":run_config",
+        ":training",
         "//tensorflow/python:util",
     ],
 )
@@ -67,6 +68,28 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python/saved_model:signature_constants",
+    ],
+)
+
+py_library(
+    name = "training",
+    srcs = ["training.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        "//tensorflow/python:training",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "training_test",
+    size = "small",
+    srcs = ["training_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":training",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -148,6 +171,7 @@ py_test(
     name = "dnn_test",
     size = "medium",
     srcs = ["canned/dnn_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -201,7 +225,7 @@ py_test(
     name = "dnn_linear_combined_test",
     size = "medium",
     srcs = ["canned/dnn_linear_combined_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -330,7 +354,6 @@ py_library(
 
 py_test(
     name = "parsing_utils_test",
-    size = "small",
     srcs = ["canned/parsing_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -552,11 +575,9 @@ py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["canned/linear_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-        "noasan",  # times out b/63680444
-    ],
+    tags = ["no_pip"],
     deps = [
         ":linear",
         ":linear_testing_utils",

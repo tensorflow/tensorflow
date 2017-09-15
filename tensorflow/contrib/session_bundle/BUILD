@@ -163,7 +163,6 @@ py_library(
 
 py_test(
     name = "gc_test",
-    size = "small",
     srcs = ["gc_test.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
@@ -234,7 +233,7 @@ cc_library(
 
 cc_test(
     name = "session_bundle_test",
-    size = "small",
+    size = "medium",
     srcs = ["session_bundle_test.cc"],
     data = [":session_bundle_half_plus_two"],
     # Link in all registered kernels.

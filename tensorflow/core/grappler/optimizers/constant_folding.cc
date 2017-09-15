@@ -95,8 +95,8 @@ class DeviceSimple : public DeviceBase {
 };
 
 }  // namespace
-
-ConstantFolding::ConstantFolding() {
+ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
+    : cpu_device_(cpu_device) {
   resource_mgr_.reset(new ResourceMgr());
 }
 
@@ -381,11 +381,11 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
                                      TensorVector* output) const {
   Status status;
   auto op_kernel =
-      CreateOpKernel("CPU", device_.get(), device_->GetAllocator({}), node,
+      CreateOpKernel("CPU", cpu_device_, cpu_device_->GetAllocator({}), node,
                      TF_GRAPH_DEF_VERSION, &status);
   TF_RETURN_IF_ERROR(status);
   OpKernelContext::Params params;
-  params.device = device_.get();
+  params.device = cpu_device_;
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op_kernel.get();
@@ -845,8 +845,11 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   graph_ = item.graph;
   node_map_.reset(new NodeMap(&graph_));
   nodes_to_preserve_ = item.NodesToPreserve();
-  device_.reset(new DeviceSimple());
   *output = GraphDef();
+  if (cpu_device_ == nullptr) {
+    owned_device_.reset(new DeviceSimple());
+    cpu_device_ = owned_device_.get();
+  }
 
   bool has_feed = !item.feed.empty();
   has_fetch_ = !item.fetch.empty();
