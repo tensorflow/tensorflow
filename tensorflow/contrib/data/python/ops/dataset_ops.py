@@ -2525,7 +2525,13 @@ def read_batch_features(file_pattern,
     dataset = reader(filenames, *reader_args)
   else:
     dataset = reader(filenames)
-  dataset = dataset.repeat(num_epochs)
+  if dataset.output_types == (dtypes.string, dtypes.string):
+    dataset = dataset.map(lambda unused_k, v: v)
+  elif dataset.output_types != dtypes.string:
+    raise TypeError("`reader` must be a dataset of `tf.string` values, "
+                    "or `(tf.string, tf.string)` key-value pairs.")
+  if num_epochs != 1:
+    dataset = dataset.repeat(num_epochs)
   if randomize_input:
     dataset = dataset.shuffle(capacity)
   dataset = dataset.batch(batch_size)
