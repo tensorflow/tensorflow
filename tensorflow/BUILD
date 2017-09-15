@@ -275,7 +275,6 @@ filegroup(
         "//tensorflow/contrib/crf:all_files",
         "//tensorflow/contrib/cudnn_rnn:all_files",
         "//tensorflow/contrib/data:all_files",
-        "//tensorflow/contrib/data/python/framework:all_files",
         "//tensorflow/contrib/data/python/kernel_tests:all_files",
         "//tensorflow/contrib/data/python/ops:all_files",
         "//tensorflow/contrib/data/python/util:all_files",
