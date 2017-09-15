@@ -71,9 +71,8 @@ def write_docs(output_dir, parser_config, yaml_toc):
   """
   # Make output_dir.
   if not os.path.isabs(output_dir):
-    raise ValueError(
-        "'output_dir' must be an absolute path.\n"
-        "    output_dir='%s'" % output_dir)
+    raise ValueError("'output_dir' must be an absolute path.\n"
+                     "    output_dir='%s'" % output_dir)
 
   try:
     if not os.path.exists(output_dir):
@@ -193,7 +192,6 @@ def _get_default_do_not_descend_map():
       'tf': ['cli', 'lib', 'wrappers'],
       'tf.contrib': [
           'compiler',
-          'factorization',
           'grid_rnn',
           'labeled_tensor',
           'ndlstm',
@@ -493,8 +491,8 @@ class DocGenerator(object):
         base_dir=base_dir)
 
   def run_extraction(self):
-    return extract(
-        self._py_modules, self._private_map, self._do_not_descend_map)
+    return extract(self._py_modules, self._private_map,
+                   self._do_not_descend_map)
 
   def build(self, flags):
     """Actually build the docs."""

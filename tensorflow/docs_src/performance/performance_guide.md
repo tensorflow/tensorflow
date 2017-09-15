@@ -222,9 +222,9 @@ and even how the hardware has been configured. An example of this, is that two
 systems can be built with NVIDIA Tesla P100s but one may be using PCIe and the
 other [NVLink](http://www.nvidia.com/object/nvlink.html). In that scenario, the
 optimal solution for each system may be different. For real world examples, read
-the @{$benchmarks$benchmark} page which details the settings that were optimal
-for a variety of platforms. Below is a summary of what was learned from
-benchmarking various platforms and configurations:
+the @{$performance/benchmarks$benchmark} page which details the settings that
+were optimal for a variety of platforms. Below is a summary of what was learned
+from benchmarking various platforms and configurations:
 
 *   **Tesla K80**: If the GPUs are on the same PCI Express root complex and are
     able to use [NVIDIA GPUDirect](https://developer.nvidia.com/gpudirect) Peer

@@ -18,10 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import graph_callable
-from tensorflow.python.eager import tensor
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -39,12 +39,12 @@ class GraphCallableTest(test.TestCase):
       return v + x
 
     self.assertEqual(2,
-                     my_function(tensor.Tensor(2,
-                                               dtype=dtypes.float32)).numpy())
+                     my_function(ops.EagerTensor(2,
+                                                 dtype=dtypes.float32)).numpy())
     my_function.variables[0].assign(1.)
     self.assertEqual(3,
-                     my_function(tensor.Tensor(2,
-                                               dtype=dtypes.float32)).numpy())
+                     my_function(ops.EagerTensor(2,
+                                                 dtype=dtypes.float32)).numpy())
 
   def testMismatchingNumArgs(self):
     # pylint: disable=anomalous-backslash-in-string
@@ -65,9 +65,9 @@ class GraphCallableTest(test.TestCase):
     @graph_callable.graph_callable(
         [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.int32)])
     def f(x):
-      return math_ops.add(x, tensor.Tensor(3))
+      return math_ops.add(x, ops.EagerTensor(3))
 
-    self.assertAllEqual(5, f(tensor.Tensor(2)).numpy())
+    self.assertAllEqual(5, f(ops.EagerTensor(2)).numpy())
 
   def testNestedFunction(self):
 
@@ -83,7 +83,7 @@ class GraphCallableTest(test.TestCase):
     def add_one(x):
       return add(x, 1)
 
-    self.assertAllEqual(3, add_one(tensor.Tensor(2)).numpy())
+    self.assertAllEqual(3, add_one(ops.EagerTensor(2)).numpy())
 
   # TODO(ashankar): Make this work.
   # The problem is that the two graph_callables (for add_one and add_two)
@@ -104,7 +104,7 @@ class GraphCallableTest(test.TestCase):
     def add_two(x):
       return add(x, 2)
 
-    two = tensor.Tensor(2)
+    two = ops.EagerTensor(2)
     self.assertAllEqual(3, add_one(two).numpy())
     self.assertAllEqual(4, add_two(two).numpy())
 
@@ -118,8 +118,8 @@ class GraphCallableTest(test.TestCase):
           "my_v", initializer=init_ops.zeros_initializer(), shape=())
       return [a + a + v, tuple([e + e, f + f]), c + c], a + e + f + c + v
 
-    inputs = [tensor.Tensor(1.), [tensor.Tensor(2.), tensor.Tensor(3.)],
-              tensor.Tensor(4.)]
+    inputs = [ops.EagerTensor(1.), [ops.EagerTensor(2.), ops.EagerTensor(3.)],
+              ops.EagerTensor(4.)]
     ret = my_op(inputs)
     self.assertEqual(len(ret), 2.)
     self.assertEqual(ret[1].numpy(), 10.)

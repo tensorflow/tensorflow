@@ -545,6 +545,10 @@ class Graph {
   // node->num_outputs()
   Status IsValidOutputTensor(const Node* node, int idx) const;
 
+  // Returns OK if IsValidNode(`node`) and `idx` is less than
+  // node->num_inputs()
+  Status IsValidInputTensor(const Node* node, int idx) const;
+
   // Create and return a new WhileContext owned by this graph. This is called
   // when a new while loop is created. `frame_name` must be unique among
   // WhileContexts in this graph.

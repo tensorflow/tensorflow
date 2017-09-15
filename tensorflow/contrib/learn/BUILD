@@ -252,7 +252,6 @@ py_test(
 
 py_test(
     name = "tensor_signature_test",
-    size = "small",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
     deps = [

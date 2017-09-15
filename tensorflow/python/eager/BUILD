@@ -32,7 +32,6 @@ py_library(
         ":graph_callable",
         ":graph_only_ops",
         ":tape",
-        ":tensor",
         ":test",
         "//tensorflow/python:pywrap_tensorflow",
     ],
@@ -48,17 +47,6 @@ py_library(
         ":memory_trace",
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
-    ],
-)
-
-py_library(
-    name = "tensor",
-    srcs = ["tensor.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:framework_ops",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -98,7 +86,6 @@ cuda_py_test(
     srcs = ["tensor_test.py"],
     additional_deps = [
         ":context",
-        ":tensor",
         ":test",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -112,7 +99,6 @@ cuda_py_test(
     additional_deps = [
         ":backprop",
         ":context",
-        ":tensor",
         ":test",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:array_ops",
@@ -132,7 +118,6 @@ cuda_py_test(
         ":context",
         ":core",
         ":execute",
-        ":tensor",
         ":test",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -149,7 +134,6 @@ cuda_py_test(
         ":context",
         ":function",
         ":tape",
-        ":tensor",
         ":test",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:math_ops",
@@ -176,7 +160,6 @@ py_library(
     deps = [
         ":context",
         ":core",
-        ":tensor",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:lib",
@@ -304,7 +287,6 @@ py_library(
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/eager:tensor",
         "//third_party/py/numpy",
     ],
 )
@@ -340,7 +322,6 @@ py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/eager:tensor",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -362,7 +343,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/eager:tensor",
         "@six_archive//:six",
     ],
 )
@@ -375,7 +355,6 @@ py_test(
         ":backprop",
         ":context",
         ":function",
-        ":tensor",
         ":test",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
@@ -392,7 +371,6 @@ py_test(
         ":backprop",
         ":context",
         ":custom_gradient",
-        ":tensor",
         ":test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -411,7 +389,6 @@ py_test(
     deps = [
         ":context",
         ":execute",
-        ":tensor",
         ":test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",

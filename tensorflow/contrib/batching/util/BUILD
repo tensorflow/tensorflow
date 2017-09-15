@@ -40,7 +40,6 @@ cc_library(
 
 cc_test(
     name = "periodic_function_test",
-    size = "small",
     srcs = ["periodic_function_test.cc"],
     deps = [
         ":periodic_function_dynamic",
