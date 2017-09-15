@@ -25,8 +25,43 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dnn",
         ":extenders",
         ":head",
+    ],
+)
+
+py_library(
+    name = "dnn",
+    srcs = ["python/estimator/dnn.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:nn",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:dnn",
+    ],
+)
+
+py_test(
+    name = "dnn_test",
+    size = "small",
+    srcs = ["python/estimator/dnn_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dnn",
+        ":head",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python/estimator:dnn_testing_utils",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:numpy_io",
+        "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
