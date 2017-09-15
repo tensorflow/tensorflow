@@ -665,7 +665,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_band_part_op",
     prefix = "matrix_band_part_op",
-    deps = ARRAY_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+    ]) + ARRAY_DEPS,
 )
 
 tf_kernel_library(
