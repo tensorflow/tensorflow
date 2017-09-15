@@ -30,6 +30,7 @@ cuda_py_test(
         ":tfe",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:test",
     ],
 )
 
