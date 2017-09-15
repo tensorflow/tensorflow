@@ -222,6 +222,15 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   tensorflow::Tensor* src = &(h->t);
+  if (!dst_cpu && !tensorflow::DataTypeCanUseMemcpy(src->dtype())) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        tensorflow::strings::StrCat("Can't copy Tensor with type ",
+                                    tensorflow::DataTypeString(src->dtype()),
+                                    " to device ", DeviceName(dstd), ".")
+            .c_str());
+    return nullptr;
+  }
   if (src_cpu) {
     tensorflow::Tensor dst(
         dstd->GetAllocator(tensorflow::AllocatorAttributes()), src->dtype(),
@@ -289,11 +298,11 @@ static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
   }
 }
 
-void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx, const char* device_name,
-                     TF_Status* status) {
+void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
+    status->status =
+        op->ctx->session->device_mgr->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
   TFE_OpSetDeviceHelper(op, d, status);
@@ -479,20 +488,16 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
     kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
-    if (!op->is_function()) {
-      status->status =
-          tensorflow::KernelAndDevice::InitOp(device, ndef, kernel);
-    } else {
-      // Knowledge of the implementation of InitFn (and in-turn
-      // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
-      // will be accessed, so grab on to the lock.
-      // See WARNING comment below - would be nice to rework to avoid this
-      // subtlety.
-      tensorflow::mutex_lock l(ctx->functions_mu);
-      status->status = tensorflow::KernelAndDevice::InitFn(
-          ndef, ctx->func_lib(device), kernel);
-    }
+    // Knowledge of the implementation of Init (and in-turn
+    // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
+    // will be accessed, so grab on to the lock.
+    // See WARNING comment below - would be nice to rework to avoid this
+    // subtlety.
+    tensorflow::tf_shared_lock l(ctx->functions_mu);
+    status->status =
+        tensorflow::KernelAndDevice::Init(ndef, ctx->func_lib(device), kernel);
     if (!status->status.ok()) {
+      delete kernel;
       return;
     }
     tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);

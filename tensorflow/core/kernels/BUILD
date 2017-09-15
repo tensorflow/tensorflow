@@ -417,6 +417,7 @@ cc_library(
     hdrs = ["training_op_helpers.h"],
     visibility = [":friends"],
     deps = [
+        ":dense_update_functor",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1759,6 +1760,7 @@ tf_kernel_library(
         ":gather_functor",
         ":scatter_functor",
         ":state",
+        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2585,7 +2587,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "reduction_ops",
-    srcs = ["reduction_ops_gpu_kernels.h"],
+    gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
     deps = MATH_DEPS + if_cuda(["@cub_archive//:cub"]),
 )
@@ -2936,7 +2938,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
-    ],
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -3030,7 +3032,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softmax_op",
     prefix = "softmax_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + if_cuda([
+        ":reduction_ops",
+        "@cub_archive//:cub",
+    ]),
 )
 
 tf_kernel_library(
@@ -3071,7 +3076,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "l2loss_op",
     prefix = "l2loss_op",
-    #srcs = ["reduction_ops_gpu_kernels.h"],
     deps = [
         ":reduction_ops",
         "//third_party/eigen3",
@@ -4358,7 +4362,6 @@ filegroup(
         "slice_op_cpu_impl_6.cc",
         "slice_op_cpu_impl_7.cc",
         "softmax_op.cc",
-        "softmax_op.h",
         "softmax_op_functor.h",
         "split_lib.h",
         "split_lib_cpu.cc",
@@ -4676,6 +4679,7 @@ filegroup(
             "encode_jpeg_op.*",
             "extract_jpeg_shape_op.*",
             "decode_jpeg_op.*",
+            "decode_and_crop_jpeg_op.*",
             "decode_gif_op.*",
             "identity_reader_op.*",
             "remote_fused_graph_execute_op.*",

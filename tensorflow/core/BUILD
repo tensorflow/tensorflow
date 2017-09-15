@@ -721,6 +721,7 @@ tf_cuda_library(
         "graph/graph_def_builder.h",
         "graph/node_builder.h",
         "graph/validate.h",
+        "graph/while_context.h",
         "public/session.h",
         "public/session_options.h",
     ],
@@ -1584,6 +1585,8 @@ tf_cuda_library(
             "graph/edgeset.cc",
             "graph/graph.h",
             "graph/graph.cc",
+            "graph/while_context.h",
+            "graph/while_context.cc",
         ],
         exclude = [
             "**/*test*",
@@ -1720,6 +1723,7 @@ CORE_CPU_BASE_HDRS = [
     "graph/testlib.h",
     "graph/types.h",
     "graph/validate.h",
+    "graph/while_context.h",
 ]
 
 tf_cuda_library(
@@ -1788,7 +1792,7 @@ tf_cuda_library(
         "common_runtime/process_util.cc",
         "common_runtime/renamed_device.cc",
         "common_runtime/rendezvous_mgr.cc",
-        "common_runtime/resource_variable_read_optimizer.cc",
+        "common_runtime/rendezvous_util.cc",
         "common_runtime/session.cc",
         "common_runtime/session_factory.cc",
         "common_runtime/session_options.cc",
@@ -1831,6 +1835,7 @@ tf_cuda_library(
         "common_runtime/profile_handler.h",
         "common_runtime/renamed_device.h",
         "common_runtime/rendezvous_mgr.h",
+        "common_runtime/rendezvous_util.h",
         "common_runtime/session_factory.h",
         "common_runtime/graph_execution_state.h",
         "common_runtime/placer.h",
@@ -2325,7 +2330,6 @@ tf_cc_tests(
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
         "common_runtime/placer_test.cc",
-        "common_runtime/resource_variable_read_optimizer_test.cc",
         "common_runtime/session_test.cc",
         "example/feature_util_test.cc",
         "framework/allocator_test.cc",
@@ -2675,29 +2679,29 @@ tf_cc_test(
     srcs = ["common_runtime/process_function_library_runtime_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":core",
         ":core_cpu",
         ":core_cpu_internal",
-        ":direct_session_internal",
         ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
         ":test",
         ":test_main",
         ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:functional_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:shape_ops",
-        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime_rendezvous_util_test",
+    size = "small",
+    srcs = ["common_runtime/rendezvous_util_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core_cpu_internal",
+        ":lib",
+        ":test",
+        ":test_main",
     ],
 )
 

@@ -42,6 +42,8 @@ message ProfileProto {
   map<int64, ProfileNode> nodes = 1;
   // Whether or not has code traces.
   bool has_trace = 2;
+  // Traced steps.
+  repeated int64 steps = 3;
 }
 
 message ProfileNode {

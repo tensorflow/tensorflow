@@ -99,7 +99,7 @@ class TargetTest(test_util.TensorFlowTestCase):
   # with tfe.device('/gpu:0'):
   #   ...  # code here
   #   with tfe.device('/cpu:0'):
-  #     shape = tfe.Tensor(...)
+  #     shape = Tensor(...)
   #   y = tfe.ops.random_uniform(.., shape)
   #
   # Without the CPU device block tfe.ops.random_uniform would fail since the
@@ -108,7 +108,7 @@ class TargetTest(test_util.TensorFlowTestCase):
   # After this change, we simplify the code:
   #
   # with tfe.device('/gpu:0'):
-  #   y = tfe.ops.random_uniform(, tfe.Tensor(...))
+  #   y = tfe.ops.random_uniform(, Tensor(...))
   #
   # The approximation is not exact since if there are GPU kernels which do not
   # require host memory for int32 tensors, there will be a discrepancy between
@@ -180,23 +180,26 @@ class TargetTest(test_util.TensorFlowTestCase):
 
   def testOperatorOverrides(self):
     a = tensor.Tensor([1])
-    b = tensor.Tensor([-2])
+    # TODO(henrytan): test with negative number.
+    b = tensor.Tensor([2])
 
     self.assertAllEqual((-a).numpy(), [-1])
     self.assertAllEqual(abs(b).numpy(), [2])
 
-    self.assertAllEqual((a + b).numpy(), [-1])
-    self.assertAllEqual((a - b).numpy(), [3])
-    self.assertAllEqual((a * b).numpy(), [-2])
-    # TODO(apassos) figure out why the line below hangs
-    # self.assertAllEqual((a**b).numpy(), [1])
-    self.assertAllEqual((a / b).numpy(), [1 / (-2)])
-    self.assertAllEqual((a % b).numpy(), [-1])
+    self.assertAllEqual((a + b).numpy(), [3])
+    self.assertAllEqual((a - b).numpy(), [-1])
+    self.assertAllEqual((a * b).numpy(), [2])
+    self.assertAllEqual((a * a).numpy(), [1])
 
-    self.assertAllEqual((a < b).numpy(), [False])
-    self.assertAllEqual((a <= b).numpy(), [False])
-    self.assertAllEqual((a > b).numpy(), [True])
-    self.assertAllEqual((a >= b).numpy(), [True])
+    self.assertAllEqual((a**b).numpy(), [1])
+    self.assertAllEqual((a / b).numpy(), [1 / 2])
+    self.assertAllEqual((a / a).numpy(), [1])
+    self.assertAllEqual((a % b).numpy(), [1])
+
+    self.assertAllEqual((a < b).numpy(), [True])
+    self.assertAllEqual((a <= b).numpy(), [True])
+    self.assertAllEqual((a > b).numpy(), [False])
+    self.assertAllEqual((a >= b).numpy(), [False])
     self.assertAllEqual((a == b), False)
     self.assertAllEqual((a != b), True)
 

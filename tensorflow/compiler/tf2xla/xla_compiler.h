@@ -85,17 +85,9 @@ class XlaCompiler {
       // Argument is a compile-time constant. No associated runtime parameter.
       kConstant,
 
-      // Argument is a Variable resource. Has an associated runtime parameter
-      // iff `initialized` is true.
-      kVariable,
-
-      // Argument is a TensorArray resource. Has an associated runtime parameter
-      // iff `initialized` is true.
-      kTensorArray,
-
-      // Argument is a Stack resource. Has an associated runtime parameter
-      // iff `initialized` is true.
-      kStack,
+      // Argument is a Variable, TensorArray, or Stack resource. Has an
+      // associated runtime parameter iff `initialized` is true.
+      kResource,
 
       // Argument is a run-time parameter.
       kParameter,
@@ -118,11 +110,14 @@ class XlaCompiler {
     // The name of this argument, used for debugging.
     string name;
 
-    // For a kVariable or kTensorArray, has this resource been initialized?
+    // For a kResource, what kind of resource is it?
+    XlaResource::Kind resource_kind = XlaResource::kInvalid;
+
+    // For a kResource, has this resource been initialized?
     bool initialized = false;
 
-    // For a kTensorArray, what is the array's declared size? (Used for lazy
-    // initialization.)
+    // For a TensorArray or Stack resource, what is the array's declared size?
+    // (Used for lazy initialization.)
     int64 tensor_array_size = -1;
 
     bool operator==(const Argument& other) const;

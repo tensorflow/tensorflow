@@ -405,7 +405,3 @@ TEST_F(OpcodeFusionTest, Exponential_Transpose_Negate) {
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

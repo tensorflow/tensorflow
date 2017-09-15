@@ -211,17 +211,17 @@ class Estimator(object):
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the training loop.
       steps: Number of steps for which to train model. If `None`, train forever
-        or train until input_fn generates the `OutOfRange` or `StopIteration`
-        error. 'steps' works incrementally. If you call two times
-        train(steps=10) then training occurs in total 20 steps. If `OutOfRange`
-        or `StopIteration` error occurs in the middle, training stops before 20
-        steps. If you don't want to have incremental behavior please set
-        `max_steps` instead. If set, `max_steps` must be `None`.
+        or train until input_fn generates the `OutOfRange` error or
+        `StopIteration` exception. 'steps' works incrementally. If you call two
+        times train(steps=10) then training occurs in total 20 steps. If
+        `OutOfRange` or `StopIteration` occurs in the middle, training stops
+        before 20 steps. If you don't want to have incremental behavior please
+        set `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
-        train forever or train until input_fn generates the `OutOfRange` or
-        `StopIteration` error. If set, `steps` must be `None`. If `OutOfRange`
-        or `StopIteration` error occurs in the middle, training stops before
-        `max_steps` steps.
+        train forever or train until input_fn generates the `OutOfRange` error
+        or `StopIteration` exception. If set, `steps` must be `None`. If
+        `OutOfRange` or `StopIteration` occurs in the middle, training stops
+        before `max_steps` steps.
 
         Two calls to `train(steps=100)` means 200 training
         iterations. On the other hand, two calls to `train(max_steps=100)` means

@@ -528,7 +528,6 @@ tf_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 tf_py_test(
@@ -2303,7 +2302,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "fft_ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["fft_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2677,7 +2676,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 cuda_py_test(
@@ -2693,7 +2691,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 cuda_py_test(

@@ -150,28 +150,19 @@ class KernelAndDevice {
  public:
   // Populates 'out' with a kernel appropriate for 'ndef'.
   //
-  // Assumes that 'ndef' refers to a primitive op (as opposed to a function).
-  static Status InitOp(Device* device, const NodeDef& ndef,
-                       KernelAndDevice* out);
-
-  // Like InitOp but for functions defined in flib (i.e., ndef.op() refers to a
-  // TensorFlow function in the FunctionLibraryRuntime).
-  //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
   //
-  // TODO(ashankar): There shouldn't be a need for a separate InitOp and InitFn.
-  // The implementation of InitFn should work for both because
-  // FunctionLibraryRuntime::CreateKernel will create a primitive op kernel if
-  // appropriate. However, for now we keep them separate because I haven't
-  // figured out thread-safety concerns around FunctionLibraryRuntime (in
-  // particular, how the underlying FunctionLibraryDefinition might be mutated
-  // by another thread as new functions are registered with it).
-  // Conservatively, thread-safe usage of the FunctionLibraryRuntime is pushed
-  // on to the caller (see locking in c_api.cc) for now.  But I really should
-  // dig into this so that both InitOp and InitFn can be collapsed to
-  // FunctionLibraryRuntime::CreateKernel.
-  static Status InitFn(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+  // TODO(ashankar): Figure out thread-safety concerns around
+  // FunctionLibraryRuntime (in particular, how the underlying
+  // FunctionLibraryDefinition might be mutated by another thread as new
+  // functions are registered with it).  Conservatively, thread-safe usage of
+  // the FunctionLibraryRuntime is pushed on to the caller (see locking in
+  // c_api.cc).
+  static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+                     KernelAndDevice* out);
+  // TODO(ashankar): Remove this
+  static Status InitOp(Device* device, const NodeDef& ndef,
                        KernelAndDevice* out);
 
   KernelAndDevice(tensorflow::Rendezvous* rendez)
@@ -184,10 +175,10 @@ class KernelAndDevice {
 
  private:
   std::unique_ptr<OpKernel> kernel_;
-  tensorflow::Device* device_;
-  tensorflow::FunctionLibraryRuntime* flib_;
-  tensorflow::checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
-  tensorflow::Rendezvous* rendez_;
+  Device* device_;
+  FunctionLibraryRuntime* flib_;
+  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
+  Rendezvous* rendez_;
 };
 
 }  // namespace tensorflow

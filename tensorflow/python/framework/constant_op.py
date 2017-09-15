@@ -41,7 +41,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -60,7 +59,7 @@ def _eager_reshape(tensor, shape):
   attr_tshape = attr_tshape.as_datatype_enum
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
-  result, = execute.execute("Reshape", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(b"Reshape", 1, inputs=inputs_flat, attrs=attrs)
   return result
 
 
@@ -70,38 +69,29 @@ def _eager_fill(dims, value):
   dims = convert_to_eager_tensor(dims, dtypes.int32)
   inputs_flat = [dims, value]
   attrs = ("T", attr_t)
-  result, = execute.execute("Fill", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(b"Fill", 1, inputs=inputs_flat, attrs=attrs)
   return result
-
-
-# Rely on the GIL for thread-safety.
-_scalar_cache = {}
 
 
 def convert_to_eager_tensor(t, dtype=None):
   """Converts the given `value` to an `EagerTensor`."""
-  if isinstance(ag_core.getval(t), ops.EagerTensor):
+  if isinstance(t, ops.EagerTensor):
     if dtype is not None and t.dtype != dtype:
       raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
     return t
-  # Handle converting ResourceVariable to Tensor.
-  # TODO(josh11b): get rid of this explicit ugly conversion once we have a more
-  # general scheme in place.
-  try:
-    return t._dense_var_to_tensor(dtype=dtype, as_ref=False)  # pylint: disable=protected-access
-  except AttributeError:
-    pass
   if isinstance(t, (int, float)):
     # Use a scalar cache. This will put each scalar of each type only once on
     # each device. Scalars don't use much device memory but copying scalars can
     # trigger memcpys which are slow.
-    device = context.context().device_name
+    ctx = context.context()
+    device = ctx.device_name
     cache_key = device, t, dtype, type(t)
-    tensor = _scalar_cache.get(cache_key, None)
+    scalar_cache = ctx.scalar_cache()
+    tensor = scalar_cache.get(cache_key, None)
     if tensor is not None:
       return tensor
     value = ops.EagerTensor(t, dtype=dtype)
-    _scalar_cache[cache_key] = value
+    scalar_cache[cache_key] = value
     return value
   return ops.EagerTensor(t, dtype=dtype)
 

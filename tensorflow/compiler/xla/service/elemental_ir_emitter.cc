@@ -293,18 +293,26 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  // TODO(b/64580527): We can do better here if fast-math is enabled.
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
-                                      {lhs_value, rhs_value},
-                                      {lhs_value->getType()}, ir_builder_);
+  if (ir_builder_->getFastMathFlags().noNaNs()) {
+    auto cmp = ir_builder_->CreateFCmpUGE(lhs_value, rhs_value);
+    return ir_builder_->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
+                                        {lhs_value, rhs_value},
+                                        {lhs_value->getType()}, ir_builder_);
+  }
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  // TODO(b/64580527): We can do better here if fast-math is enabled.
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
-                                      {lhs_value, rhs_value},
-                                      {lhs_value->getType()}, ir_builder_);
+  if (ir_builder_->getFastMathFlags().noNaNs()) {
+    auto cmp = ir_builder_->CreateFCmpULE(lhs_value, rhs_value);
+    return ir_builder_->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
+                                        {lhs_value, rhs_value},
+                                        {lhs_value->getType()}, ir_builder_);
+  }
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
