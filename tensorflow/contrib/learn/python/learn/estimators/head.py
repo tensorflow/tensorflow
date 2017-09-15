@@ -1678,19 +1678,9 @@ class _MultiHead(Head):
       ModelFnOps that merges all heads for TRAIN.
     """
     losses = []
-    predictions = {}
-    metrics = {}
     additional_train_ops = []
-    for head, m in zip(self._heads, all_model_fn_ops):
+    for m in all_model_fn_ops:
       losses.append(m.loss)
-      head_name = head.head_name
-      if m.predictions is not None:
-        for k, v in six.iteritems(m.predictions):
-          predictions[(head_name, k)] = v
-      if m.eval_metric_ops is not None:
-        for k, v in six.iteritems(m.eval_metric_ops):
-          # metrics["%s/%s" % (k, head_name)] = v
-          metrics[k] = v
       additional_train_ops.append(m.train_op)
     loss = self._loss_merger(losses)
 
@@ -1698,10 +1688,8 @@ class _MultiHead(Head):
     train_op = control_flow_ops.group(train_op, *additional_train_ops)
     return model_fn.ModelFnOps(
         mode=model_fn.ModeKeys.TRAIN,
-        predictions=predictions,
         loss=loss,
-        train_op=train_op,
-        eval_metric_ops=metrics)
+        train_op=train_op)
 
   def _merge_infer(self, all_model_fn_ops):
     """Merges list of ModelFnOps for inference.
