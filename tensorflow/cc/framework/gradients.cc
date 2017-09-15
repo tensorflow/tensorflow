@@ -175,10 +175,12 @@ Status SymbolicGradientBuilder::Initialize() {
         "Must specify a gradient input for each output.");
   }
   std::vector<bool> reachable_nodes = GetReachableNodes();
-  for (const Output& nout : inputs_) {
-    if (!reachable_nodes[nout.node()->id()]) {
+  for (const Output& input : inputs_) {
+    if (!reachable_nodes[input.node()->id()]) {
       return errors::InvalidArgument(
-        nout.node()->name() + " is unreachable from the output(s).");
+        "Cannot compute the partial derivative for node '"
+        + input.node()->name()
+        + "' as it's unreachable from the output node(s).");
     }
   }
   grad_outputs_->clear();
