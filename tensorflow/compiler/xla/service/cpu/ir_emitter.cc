@@ -63,7 +63,11 @@ limitations under the License.
 
 namespace xla {
 
+namespace {
+using llvm_ir::AsStringRef;
+using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
+}  // namespace
 
 namespace cpu {
 
@@ -732,14 +736,14 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
 
   // Initialize the output array with the given init_value.
   TF_RETURN_IF_ERROR(EmitTargetElementLoop(
-      select_and_scatter,
+      select_and_scatter, /*desc=*/IrName(select_and_scatter, "init"),
       [this, init_value](const llvm_ir::IrArray::Index& target_index) {
         llvm::Value* init_value_addr = GetEmittedValueFor(init_value);
         return ir_builder_.CreateLoad(init_value_addr);
       }));
 
   // Create a loop to iterate over the source array to scatter to the output.
-  llvm_ir::ForLoopNest source_loops(&ir_builder_);
+  llvm_ir::ForLoopNest source_loops(IrName(select_and_scatter), &ir_builder_);
   const llvm_ir::IrArray::Index source_index =
       source_loops.AddLoopsForShape(source->shape(), "source");
   SetToFirstInsertPoint(source_loops.GetInnerLoopBodyBasicBlock(),
@@ -1037,6 +1041,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
               ir_builder_.getInt64(rhs_row_dilation),
               ir_builder_.getInt64(rhs_col_dilation),
           });
+      target_address->setName(AsStringRef(IrName(convolution)));
       emitted_value_[convolution] = target_address;
 
       return Status::OK();
@@ -1350,7 +1355,7 @@ Status IrEmitter::HandleBatchNormTraining(HloInstruction* batch_norm_training) {
             return mean;
           },
           mean_array, &ir_builder_)
-          .EmitLoop());
+          .EmitLoop(IrName(batch_norm_training, "mean_var")));
 
   TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
                       EmitTargetAddressForOp(batch_norm_training));
@@ -1408,7 +1413,7 @@ Status IrEmitter::HandleBatchNormTraining(HloInstruction* batch_norm_training) {
             return result;
           },
           target_array, &ir_builder_)
-          .EmitLoop());
+          .EmitLoop(IrName(batch_norm_training, "normalize")));
 
   llvm_ir::EmitTuple(
       llvm_ir::IrArray(target_address, batch_norm_training->shape()),
@@ -1785,7 +1790,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   //    }
   //  }
 
-  llvm_ir::ForLoopNest loop_nest(&ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(IrName(reduce), &ir_builder_);
   llvm_ir::IrArray::Index array_index(reduce->shape().dimensions_size());
   for (int i = reduce->shape().layout().minor_to_major_size() - 1; i > 0; --i) {
     int64 dimension = reduce->shape().layout().minor_to_major(i);
@@ -2056,7 +2061,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
   AddAliasingInformationToIrArray(*slice, &target_array);
 
   const int64 num_outer_loops = outer_dims.size();
-  llvm_ir::ForLoopNest loops(&ir_builder_);
+  llvm_ir::ForLoopNest loops(IrName(slice), &ir_builder_);
   llvm_ir::IrArray::Index target_index =
       loops.AddLoopsForShapeOnDimensions(slice->shape(), outer_dims, "slice");
 
@@ -2109,6 +2114,7 @@ Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
                         EmitTargetAddressForOp(dynamic_slice));
+    target_address->setName(AsStringRef(IrName(dynamic_slice)));
     emitted_value_[dynamic_slice] = target_address;
     return EmitMemcpy(*operand, *dynamic_slice);
   }
@@ -2167,6 +2173,7 @@ Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
   if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
     TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
                         EmitTargetAddressForOp(dynamic_update_slice));
+    target_address->setName(AsStringRef(IrName(dynamic_update_slice)));
     emitted_value_[dynamic_update_slice] = target_address;
     return EmitMemcpy(*update, *dynamic_update_slice);
   } else if (CanUpdateDynamicSliceInPlace(assignment_, dynamic_update_slice)) {
@@ -2219,7 +2226,7 @@ Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
 
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(loop_body_emitter, update->shape(), &ir_builder_)
-            .EmitLoop());
+            .EmitLoop(IrName(dynamic_update_slice)));
 
     TF_ASSIGN_OR_RETURN(llvm::Value * dynamic_update_slice_address,
                         EmitTargetAddressForOp(dynamic_update_slice));
@@ -2369,6 +2376,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
   TF_ASSIGN_OR_RETURN(llvm::Value * output_address,
                       EmitTargetAddressForOp(call));
+  output_address->setName(AsStringRef(IrName(call)));
 
   EmitArrayFunctionCallInto(call_ir_function, parameter_addresses,
                             output_address, computation->name());
@@ -2396,7 +2404,7 @@ Status IrEmitter::HandleCustomCall(
   }
   auto* custom_call_ir_function =
       llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-          llvm_ir::AsStringRef(custom_call_target),
+          AsStringRef(custom_call_target),
           llvm::FunctionType::get(
               /*Result=*/ir_builder_.getVoidTy(),
               /*Params=*/{i8_ptr_type, operands_alloca->getType()},
@@ -2404,6 +2412,8 @@ Status IrEmitter::HandleCustomCall(
 
   TF_ASSIGN_OR_RETURN(llvm::Value * output_address,
                       EmitTargetAddressForOp(custom_call));
+  output_address->setName(AsStringRef(IrName(custom_call)));
+
   auto* output_address_arg =
       ir_builder_.CreatePointerCast(output_address, i8_ptr_type);
 
@@ -2472,7 +2482,8 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 
   // Terminates the current block with a branch to a while header.
   llvm::BasicBlock* header_bb = llvm::BasicBlock::Create(
-      module_->getContext(), "while_header", compute_function_);
+      module_->getContext(), AsStringRef(IrName(xla_while, "header")),
+      compute_function_);
   ir_builder_.CreateBr(header_bb);
   ir_builder_.SetInsertPoint(header_bb);
 
@@ -2481,7 +2492,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   llvm::Value* while_result = GetEmittedValueFor(xla_while);
   llvm::Value* while_condition = EmitElementFunctionCall(
       condition_ir_function, condition->root_instruction()->shape(),
-      {while_result}, "condition_function");
+      {while_result}, IrName(xla_while, "cond"));
   llvm::Value* while_predicate = ir_builder_.CreateICmpNE(
       while_condition,
       llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, &ir_builder_),
@@ -2489,9 +2500,10 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 
   // Branches to the body or to the while exit depending on the condition.
   llvm::BasicBlock* body_bb = llvm::BasicBlock::Create(
-      module_->getContext(), "while_body", compute_function_);
-  llvm::BasicBlock* exit_bb =
-      llvm::BasicBlock::Create(module_->getContext(), "while__exit");
+      module_->getContext(), AsStringRef(IrName(xla_while, "body")),
+      compute_function_);
+  llvm::BasicBlock* exit_bb = llvm::BasicBlock::Create(
+      module_->getContext(), AsStringRef(IrName(xla_while, "exit")));
   ir_builder_.CreateCondBr(while_predicate, body_bb, exit_bb);
 
   // Calls the body function from the body block.
@@ -2499,7 +2511,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 
   // Calls the body function.
   EmitArrayFunctionCallInto(body_ir_function, {while_result}, while_result,
-                            "while_body");
+                            IrName(xla_while, "body"));
   // Finishes with a branch back to the header.
   ir_builder_.CreateBr(header_bb);
 
@@ -2557,7 +2569,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
 
   llvm_ir::IrArray target_array(target_address, output_shape);
 
-  llvm_ir::ForLoopNest loops(&ir_builder_);
+  llvm_ir::ForLoopNest loops(IrName(concatenate), &ir_builder_);
   llvm_ir::IrArray::Index outer_dims_index =
       loops.AddLoopsForShapeOnDimensions(output_shape, outer_dims, "concat");
   std::replace(outer_dims_index.begin(), outer_dims_index.end(),
@@ -2736,7 +2748,7 @@ llvm::Value* IrEmitter::GetProfileCounterFor(const HloInstruction* hlo) {
   }
   return ir_builder_.CreateGEP(GetProfileCountersArgument(),
                                ir_builder_.getInt64(prof_counter_idx),
-                               llvm_ir::AsStringRef(counter_name));
+                               AsStringRef(counter_name));
 }
 
 void IrEmitter::ProfilingState::UpdateProfileCounter(
@@ -2782,6 +2794,7 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(
 void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* ir_builder,
                                                  HloInstruction* hlo) {
   auto* cycle_start = ReadCycleCounter(ir_builder);
+  cycle_start->setName(AsStringRef(IrName(hlo, "cycle_start")));
   cycle_starts_[hlo] = cycle_start;
   if (first_read_cycle_start_ == nullptr) {
     first_read_cycle_start_ = cycle_start;
@@ -2792,6 +2805,7 @@ void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* ir_builder,
                                                  HloInstruction* hlo,
                                                  llvm::Value* prof_counter) {
   auto* cycle_end = ReadCycleCounter(ir_builder);
+  cycle_end->setName(AsStringRef(IrName(hlo, "cycle_end")));
   auto* cycle_start = cycle_starts_[hlo];
   UpdateProfileCounter(ir_builder, prof_counter, cycle_end, cycle_start);
   last_read_cycle_end_ = cycle_end;
@@ -2859,9 +2873,8 @@ llvm::Value* IrEmitter::GetDynamicLoopBound(const int64 offset) {
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
   llvm::Argument* loop_bounds_arg = GetArg(compute_function_, 4);
   string name = tensorflow::strings::StrCat("dynamic_loop_bound_", offset);
-  return ir_builder_.CreateLoad(
-      ir_builder_.CreateGEP(loop_bounds_arg, ir_builder_.getInt64(offset),
-                            llvm_ir::AsStringRef(name)));
+  return ir_builder_.CreateLoad(ir_builder_.CreateGEP(
+      loop_bounds_arg, ir_builder_.getInt64(offset), AsStringRef(name)));
 }
 
 llvm::Value* IrEmitter::GetExecutableRunOptionsArgument() {
@@ -2929,7 +2942,7 @@ llvm::Value* IrEmitter::EmitElementFunctionCall(
       function, return_shape, 1, parameter_addresses, name);
   return ir_builder_.CreateLoad(
       return_value_buffer,
-      llvm_ir::AsStringRef(tensorflow::strings::StrCat(name, "_return_value")));
+      AsStringRef(tensorflow::strings::StrCat(name, "_return_value")));
 }
 
 // Emits a core function call based on the following pseudo-code.
@@ -2955,8 +2968,8 @@ void IrEmitter::EmitArrayFunctionCallInto(
   for (size_t i = 0; i < parameter_addresses.size(); ++i) {
     llvm::Value* parameter_as_i8ptr = ir_builder_.CreateBitCast(
         parameter_addresses[i], ir_builder_.getInt8PtrTy(),
-        llvm_ir::AsStringRef(tensorflow::strings::StrCat(name, "_parameter_", i,
-                                                         "_address_as_i8ptr")));
+        AsStringRef(tensorflow::strings::StrCat(name, "_parameter_", i,
+                                                "_address_as_i8ptr")));
     llvm::Value* slot_in_param_adresses = ir_builder_.CreateInBoundsGEP(
         parameter_addresses_buffer, {ir_builder_.getInt64(i)});
     ir_builder_.CreateStore(parameter_as_i8ptr, slot_in_param_adresses);
@@ -3018,6 +3031,12 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
 
 Status IrEmitter::EmitTargetElementLoop(
     HloInstruction* target_op,
+    const llvm_ir::ElementGenerator& element_generator) {
+  return EmitTargetElementLoop(target_op, /*desc=*/"", element_generator);
+}
+
+Status IrEmitter::EmitTargetElementLoop(
+    HloInstruction* target_op, tensorflow::StringPiece desc,
     const llvm_ir::ElementGenerator& element_generator) {
   VLOG(2) << "EmitTargetElementLoop: " << target_op->ToString();
 

@@ -77,12 +77,18 @@ string DumpToString(const T& entity) {
 // and Modules are slightly different.
 string DumpModuleToString(const llvm::Module& module);
 
-// Constructs a human-friendly name from the HLO and the given suffix for
-// consumption by LLVM.  The current format is: "%hlo_name.suffix".
+// Constructs a human-friendly name from the given inputs.  The result is
+// suitable for use as an llvm::Value's name.
 //
-// Note this return std::string rather than ::string, so you don't have to do an
-// extra conversion to pass this value to LLVM.
-std::string IrName(const HloInstruction* hlo, tensorflow::StringPiece suffix);
+// This is equivalent to
+//
+//   - changing the HloInstruction* to its name() (if we called that overload),
+//   - joining all of the nonempty inputs by '.', and then
+//   - removing all '%'s.
+//
+string IrName(string a);
+string IrName(tensorflow::StringPiece a, tensorflow::StringPiece b);
+string IrName(const HloInstruction* a, tensorflow::StringPiece b = "");
 
 // Removes special characters from a function name.
 //

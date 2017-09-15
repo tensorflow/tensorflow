@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -64,15 +65,13 @@ class ForLoop {
   //                                             |     ...      |
   //                                             +--------------+
   //
-  // `suffix` is a string used to disambiguate variable and basic block names
-  // emitted in LLVM IR. This string is appended to the name of the induction
-  // variable value and each basic block created for the loop. The builder
-  // insert point is set to the end of the exit block after the function
-  // returns.
+  // `prefix` is used to disambiguate variable and basic block names emitted in
+  // LLVM IR. If non-empty, it is prepended to the name of the induction
+  // variable value and each basic block created for the loop.
   //
   // If `prevent_unrolling` is true then emit metadata that directs LLVM to not
   // unroll the generated loop.
-  static std::unique_ptr<ForLoop> EmitForLoop(tensorflow::StringPiece suffix,
+  static std::unique_ptr<ForLoop> EmitForLoop(tensorflow::StringPiece prefix,
                                               llvm::Value* start_index,
                                               llvm::Value* end_index,
                                               llvm::Value* step,
@@ -126,19 +125,24 @@ class ForLoop {
   llvm::Value* GetIndVarValue() const { return indvar_; }
 
  private:
-  ForLoop(tensorflow::StringPiece suffix, llvm::Value* start_index,
-          llvm::Value* end_index, llvm::Value* step, bool prevent_unrolling);
+  // Allow ForLoopNest to call this private constructor.
+  friend class ForLoopNest;
+
+  ForLoop(tensorflow::StringPiece prefix, tensorflow::StringPiece suffix,
+          llvm::Value* start_index, llvm::Value* end_index, llvm::Value* step,
+          bool prevent_unrolling);
 
   // Emit the loop at the insert point of the builder.
   void Emit(llvm::IRBuilder<>* ir_builder);
 
-  llvm::BasicBlock* CreateBasicBlockWithSuffix(tensorflow::StringPiece name,
-                                               llvm::IRBuilder<>* ir_builder);
+  llvm::BasicBlock* CreateLoopBB(tensorflow::StringPiece name,
+                                 llvm::IRBuilder<>* ir_builder);
 
-  // Create a name for an LLVM construct appending the member suffix_ if it is
-  // set.
-  string GetNameWithSuffix(tensorflow::StringPiece name);
+  // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
+  // they are set.
+  string GetQualifiedName(tensorflow::StringPiece name);
 
+  string prefix_;
   string suffix_;
   llvm::Value* start_index_;
   llvm::Value* end_index_;
@@ -164,7 +168,11 @@ class ForLoop {
 class ForLoopNest {
  public:
   explicit ForLoopNest(llvm::IRBuilder<>* ir_builder)
-      : outer_loop_preheader_bb_(nullptr),
+      : ForLoopNest(/*name=*/"", ir_builder) {}
+
+  ForLoopNest(tensorflow::StringPiece name, llvm::IRBuilder<>* ir_builder)
+      : name_(name.ToString()),
+        outer_loop_preheader_bb_(nullptr),
         outer_loop_exit_bb_(nullptr),
         inner_loop_body_bb_(nullptr),
         ir_builder_(ir_builder) {}
@@ -230,6 +238,9 @@ class ForLoopNest {
   llvm::BasicBlock* GetInnerLoopBodyBasicBlock() { return inner_loop_body_bb_; }
 
  private:
+  // Human-friendly name of the loop nest.
+  string name_;
+
   // The preheader and exit basic block of the outermost loop, or nullptr if no
   // loop has been added yet.
   llvm::BasicBlock* outer_loop_preheader_bb_;

@@ -135,7 +135,7 @@ tensorflow::Status DotOpEmitter::Emit() {
   // Create loop nests which loop through the LHS operand dimensions and the RHS
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
-  llvm_ir::ForLoopNest loop_nest(ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(llvm_ir::IrName(&dot_), ir_builder_);
   llvm_ir::IrArray::Index lhs_index = EmitOperandArrayLoopNest(
       &loop_nest, lhs_array_, lhs_reduction_dimension, "lhs");
   llvm_ir::IrArray::Index rhs_index = EmitOperandArrayLoopNest(

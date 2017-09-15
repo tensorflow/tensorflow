@@ -146,8 +146,8 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
     typed_ir_value =
         ir_builder_->CreateBitCast(ir_value, pointee_type->getPointerTo());
   }
-  ir_value->setName(llvm_ir::IrName(&hlo, "raw"));
-  typed_ir_value->setName(llvm_ir::IrName(&hlo, "typed"));
+  ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "raw")));
+  typed_ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "typed")));
   return typed_ir_value;
 }
 

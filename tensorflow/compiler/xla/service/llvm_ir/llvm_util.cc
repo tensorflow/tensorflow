@@ -440,12 +440,20 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
   return inst;
 }
 
-std::string IrName(const HloInstruction* hlo, tensorflow::StringPiece suffix) {
-  tensorflow::StringPiece hlo_name = hlo->name();
-  if (hlo_name.starts_with("%")) {
-    hlo_name.remove_prefix(1);
+string IrName(string a) {
+  a.erase(std::remove(a.begin(), a.end(), '%'), a.end());
+  return a;
+}
+
+string IrName(tensorflow::StringPiece a, tensorflow::StringPiece b) {
+  if (!a.empty() && !b.empty()) {
+    return IrName(tensorflow::strings::StrCat(a, ".", b));
   }
-  return (llvm::Twine(AsStringRef(hlo_name)) + "." + AsStringRef(suffix)).str();
+  return IrName(tensorflow::strings::StrCat(a, b));
+}
+
+string IrName(const HloInstruction* a, tensorflow::StringPiece b) {
+  return IrName(a->name(), b);
 }
 
 string SanitizeFunctionName(string function_name) {
