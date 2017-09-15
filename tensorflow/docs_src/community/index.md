@@ -10,5 +10,5 @@ This section contains the following documents:
     TensorFlow source code or documentation, please read this guide.
   * @{$style_guide$TensorFlow Style Guide}, which identifies coding style
     conventions that TensorFlow developers and users should follow.
-  * @{$benchmarks$Benchmarks}, Benchmarks, a guide for defining and 
+  * @{$community/benchmarks$Benchmarks}, Benchmarks, a guide for defining and
     running a TensorFlow benchmark.

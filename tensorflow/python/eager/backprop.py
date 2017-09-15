@@ -368,11 +368,6 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   Raises:
     An exception on error.
   """
-  num_outputs = len(results)
-  if num_outputs == 0:
-    return results
-  if attrs is not None:
-    attrs = attrs
 
   def grad_fn(*orig_outputs):
     """Generated gradient function."""
@@ -388,7 +383,6 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   if _tracing:
     print("Computed op", (name if name else op_name), "inputs", inputs,
           "outputs", results)
-  return results
 
 
 execute.record_gradient = _record_gradient
@@ -529,10 +523,12 @@ def val_and_grad_function(f, params):
   def decorated(*args, **kwds):
     """Computes the value and gradient of the decorated function."""
     dy = kwds.pop("dy", None)
+    if dy is not None:
+      dy = ops.convert_to_tensor(dy)
     assert not kwds, "The gradient function can't take keyword arguments."
     tape.push_new_tape()
     sources = []
-    args = list(args)
+    args = [ops.convert_to_tensor(x) for x in args]
     for i in parameter_positions:
       sources.append(args[i])
       tape.watch(args[i])

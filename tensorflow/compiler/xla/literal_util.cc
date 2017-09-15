@@ -146,10 +146,18 @@ Status Literal::Copy(const Literal& src_literal,
                      tensorflow::gtl::ArraySlice<int64> copy_size) {
   TF_RET_CHECK(ShapeUtil::SameElementType(src_literal.shape(), shape()));
   switch (src_literal.shape().element_type()) {
+    case U8:
+      return CopyRange<uint8>(src_literal, src_base, dest_base, copy_size);
+    case U16:
+      return CopyRange<uint16>(src_literal, src_base, dest_base, copy_size);
     case U32:
       return CopyRange<uint32>(src_literal, src_base, dest_base, copy_size);
     case U64:
       return CopyRange<uint64>(src_literal, src_base, dest_base, copy_size);
+    case S8:
+      return CopyRange<int8>(src_literal, src_base, dest_base, copy_size);
+    case S16:
+      return CopyRange<int16>(src_literal, src_base, dest_base, copy_size);
     case S32:
       return CopyRange<int32>(src_literal, src_base, dest_base, copy_size);
     case S64:
@@ -333,17 +341,29 @@ Status Literal::Copy(const Literal& src_literal,
   return CreateR2FromArray2D(*value);
 }
 
-std::unique_ptr<Literal> Literal::Relayout(const Layout& layout) const {
-  CHECK(ShapeUtil::IsArray(shape()));
-  std::unique_ptr<Literal> result = CloneToUnique();
-  *result->mutable_shape()->mutable_layout() = layout;
+std::unique_ptr<Literal> Literal::Relayout(
+    const Layout& new_layout, const ShapeIndex& shape_index) const {
+  std::unique_ptr<Literal> outer_result = CloneToUnique();
 
-  DimensionVector base(ShapeUtil::Rank(shape()), 0);
-  DimensionVector copy_size(shape().dimensions().begin(),
-                            shape().dimensions().end());
+  const Literal* copy_from = this;
+  Literal* copy_to = outer_result.get();
+  for (int64 i = 0; i < shape_index.size(); i++) {
+    *ShapeUtil::GetMutableSubshape(copy_to->mutable_shape(),
+                                   ShapeIndex(shape_index, i))
+         ->mutable_layout() = new_layout;
+    copy_from = &copy_from->tuple_literals_[shape_index[i]];
+    copy_to = &copy_to->tuple_literals_[shape_index[i]];
+  }
 
-  TF_CHECK_OK(result->Copy(*this, base, base, copy_size));
-  return result;
+  DimensionVector base(ShapeUtil::Rank(copy_from->shape()), 0);
+  DimensionVector copy_size(copy_from->shape().dimensions().begin(),
+                            copy_from->shape().dimensions().end());
+
+  CHECK(ShapeUtil::IsArray(copy_from->shape()));
+  CHECK(ShapeUtil::IsArray(copy_to->shape()));
+  *copy_to->mutable_shape()->mutable_layout() = new_layout;
+  TF_CHECK_OK(copy_to->Copy(*copy_from, base, base, copy_size));
+  return outer_result;
 }
 
 StatusOr<std::unique_ptr<Literal>> Literal::Reshape(
@@ -662,7 +682,7 @@ string Literal::ToString() const {
   std::vector<Shape> shape;
   for (auto& tuple_element : elements) {
     shape.push_back(tuple_element->shape());
-    literal->add_tuple_literals()->Swap(tuple_element.get());
+    *literal->add_tuple_literals() = std::move(*tuple_element);
   }
   *literal->mutable_shape() = ShapeUtil::MakeTupleShape(shape);
   return literal;
@@ -971,6 +991,20 @@ tensorflow::gtl::MutableArraySlice<uint8> Literal::GetMutableArraySlice() {
 }
 
 template <>
+tensorflow::gtl::MutableArraySlice<int16> Literal::GetMutableArraySlice() {
+  auto values = mutable_s16s();
+  return tensorflow::gtl::MutableArraySlice<int16>(values->data(),
+                                                   values->size());
+}
+
+template <>
+tensorflow::gtl::MutableArraySlice<uint16> Literal::GetMutableArraySlice() {
+  auto values = mutable_u16s();
+  return tensorflow::gtl::MutableArraySlice<uint16>(values->data(),
+                                                    values->size());
+}
+
+template <>
 tensorflow::gtl::MutableArraySlice<int32> Literal::GetMutableArraySlice() {
   auto values = mutable_s32s();
   return tensorflow::gtl::MutableArraySlice<int32>(values->data(),
@@ -1055,6 +1089,18 @@ tensorflow::gtl::ArraySlice<int8> Literal::GetArraySlice<int8>() const {
   CHECK_EQ(shape().element_type(), S8);
   return tensorflow::gtl::ArraySlice<int8>(
       reinterpret_cast<const int8*>(u8s().data()), u8s().size());
+}
+
+template <>
+tensorflow::gtl::ArraySlice<uint16> Literal::GetArraySlice<uint16>() const {
+  CHECK_EQ(shape().element_type(), U16);
+  return tensorflow::gtl::ArraySlice<uint16>(u16s().data(), u16s().size());
+}
+
+template <>
+tensorflow::gtl::ArraySlice<int16> Literal::GetArraySlice<int16>() const {
+  CHECK_EQ(shape().element_type(), S16);
+  return tensorflow::gtl::ArraySlice<int16>(s16s().data(), s16s().size());
 }
 
 template <>

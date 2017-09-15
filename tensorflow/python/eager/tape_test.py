@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Basic tests for autograd-based gradients."""
+"""Basic tests for gradients."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,7 +22,6 @@ from __future__ import print_function
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import custom_gradient
-from tensorflow.python.eager import tensor
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -60,8 +59,8 @@ class TapeTest(test.TestCase):
       d, f = array_ops.split(c, 2)
       return d + f
 
-    a = tensor.Tensor([[1., 0.], [0., 1.]])
-    b = tensor.Tensor([[1., 2.], [3., 4.]])
+    a = constant_op.constant([[1., 0.], [0., 1.]])
+    b = constant_op.constant([[1., 2.], [3., 4.]])
     da, db = backprop.gradients_function(fn, [0, 1])(a, b)
     with context.graph_mode(), self.test_session():
       tf_a = constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.float32)
@@ -80,8 +79,8 @@ class TapeTest(test.TestCase):
       mm = math_ops.matmul(a, b)
       return math_ops.reduce_sum(mm)
 
-    aa = tensor.Tensor([[1., 0.], [0., 1.]])
-    bb = tensor.Tensor([[1., 2.], [3., 4.]])
+    aa = constant_op.constant([[1., 0.], [0., 1.]])
+    bb = constant_op.constant([[1., 2.], [3., 4.]])
     da, = backprop.gradients_function(forward, ['a'])(aa, bb)
     self.assertAllEqual(da.numpy(),
                         math_ops.matmul(
@@ -94,8 +93,8 @@ class TapeTest(test.TestCase):
       mm = math_ops.matmul(a, b)
       return math_ops.reduce_sum(mm)
 
-    aa = tensor.Tensor([[1., 0.], [0., 1.]])
-    bb = tensor.Tensor([[1., 2.], [3., 4.]])
+    aa = constant_op.constant([[1., 0.], [0., 1.]])
+    bb = constant_op.constant([[1., 2.], [3., 4.]])
     da, = backprop.gradients_function(forward, [0])(aa, bb)
     self.assertAllEqual(da.numpy(),
                         math_ops.matmul(
@@ -108,8 +107,8 @@ class TapeTest(test.TestCase):
       mm = math_ops.matmul(a, b)
       return math_ops.reduce_sum(mm)
 
-    aa = tensor.Tensor([[1., 0.], [0., 1.]])
-    bb = tensor.Tensor([[1., 2.], [3., 4.]])
+    aa = constant_op.constant([[1., 0.], [0., 1.]])
+    bb = constant_op.constant([[1., 2.], [3., 4.]])
     val, (da,) = backprop.val_and_grad_function(forward, ['a'])(aa, bb)
     self.assertAllEqual(da.numpy(),
                         math_ops.matmul(
@@ -123,8 +122,8 @@ class TapeTest(test.TestCase):
       mm, r = two_outputs(x, y)
       return r + math_ops.reduce_sum(mm)
 
-    a = tensor.Tensor([[1., 0.], [0., 1.]])
-    b = tensor.Tensor([[1., 2.], [3., 4.]])
+    a = constant_op.constant([[1., 0.], [0., 1.]])
+    b = constant_op.constant([[1., 2.], [3., 4.]])
     da, db = backprop.gradients_function(fn, [0, 1])(a, b)
     with context.graph_mode(), self.test_session():
       tf_a = constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.float32)
@@ -142,8 +141,8 @@ class TapeTest(test.TestCase):
       return nn_ops.sparse_softmax_cross_entropy_with_logits(logits=x,
                                                              labels=y)[0]
 
-    labels = tensor.Tensor([0])
-    logits = tensor.Tensor([[0.0]])
+    labels = constant_op.constant([0])
+    logits = constant_op.constant([[0.0]])
     grad, = backprop.gradients_function(fn, [0])(logits, labels)
     self.assertAllEqual(grad.numpy(), [[0.0]])
 

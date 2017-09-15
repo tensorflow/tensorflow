@@ -88,11 +88,13 @@ class AttrBuilder {
   template <class T>
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     MayBeInitializeNodeDef();
-    return SetInNodeDef(attr_name, value);
+    SetInAttrValueMap(node_def_->mutable_attr(), attr_name, value);
+    return *this;
   }
 
   tensorflow::Fprint128 CacheKey(const string& device) const;
 
+  void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
   const NodeDef& BuildNodeDef();
 
  private:
@@ -100,21 +102,25 @@ class AttrBuilder {
   using AttrVec = tensorflow::gtl::InlinedVector<std::pair<StringPiece, T>, 2>;
 
   void MayBeInitializeNodeDef();
+  void FillAttrValueMap(AttrValueMap* m, bool include_those_in_node_def) const;
 
   template <class T>
-  AttrBuilder& SetInNodeDef(StringPiece attr_name, T&& value) {
-    DCHECK(!node_def_finalized_) << "Calling SetInNodeDef after BuildNodeDef.";
+  void SetInAttrValueMap(AttrValueMap* m, StringPiece attr_name,
+                         T&& value) const {
+    DCHECK(!node_def_finalized_)
+        << "Calling SetInAttrValueMap after BuildNodeDef.";
     // Copied from NodeDefBuilder::Attr
-    const AttrValue* found = AttrSlice(*node_def_).Find(attr_name);
+    const AttrValue* found = AttrSlice(m).Find(attr_name);
+    AttrValue attr_value;
     if (found == nullptr) {
-      AddNodeAttr(attr_name, std::forward<T>(value), node_def_.get());
+      SetAttrValue(value, &attr_value);
+      m->insert(AttrValueMap::value_type(attr_name.ToString(), attr_value));
     } else {
-      AttrValue attr_value;
-      SetAttrValue(std::forward<T>(value), &attr_value);
       // TODO(ashankar): Do what is done in
       // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
+      SetAttrValue(std::forward<T>(value), &attr_value);
+      (*m)[attr_name.ToString()] = attr_value;
     }
-    return *this;
   }
 
   AttrVec<StringPiece> string_attrs_;
@@ -122,7 +128,7 @@ class AttrBuilder {
   AttrVec<float> float_attrs_;
   AttrVec<bool> bool_attrs_;
   AttrVec<tensorflow::DataType> type_attrs_;
-  string op_name_;
+  const string op_name_;
   int num_inputs_;
   std::unique_ptr<NodeDef> node_def_;
   bool node_def_finalized_;

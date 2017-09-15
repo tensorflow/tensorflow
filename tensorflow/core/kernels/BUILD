@@ -27,6 +27,7 @@ package_group(
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_android",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -4735,16 +4736,9 @@ cc_library(
 
 cc_library(
     name = "android_tensorflow_image_op",
-    srcs = [
-        "decode_image_op.cc",
-    ],
+    srcs = if_android(["decode_image_op.cc"]),
     copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:android": [
-            "-ldl",
-        ],
-        "//conditions:default": [],
-    }),
+    linkopts = ["-ldl"],
     tags = [
         "manual",
         "notap",

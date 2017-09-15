@@ -1094,7 +1094,6 @@ cuda_py_test(
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:tensor",
     ],
     shard_count = 10,
 )

@@ -184,9 +184,12 @@ class RNNCell(base_layer.Layer):
 
   def _rnn_get_variable(self, getter, *args, **kwargs):
     variable = getter(*args, **kwargs)
-    trainable = (variable in tf_variables.trainable_variables() or
-                 (isinstance(variable, tf_variables.PartitionedVariable) and
-                  list(variable)[0] in tf_variables.trainable_variables()))
+    if context.in_graph_mode():
+      trainable = (variable in tf_variables.trainable_variables() or
+                   (isinstance(variable, tf_variables.PartitionedVariable) and
+                    list(variable)[0] in tf_variables.trainable_variables()))
+    else:
+      trainable = variable._trainable  # pylint: disable=protected-access
     if trainable and variable not in self._trainable_weights:
       self._trainable_weights.append(variable)
     elif not trainable and variable not in self._non_trainable_weights:
