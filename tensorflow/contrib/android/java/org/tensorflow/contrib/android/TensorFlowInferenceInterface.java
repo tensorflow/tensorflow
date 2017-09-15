@@ -21,19 +21,21 @@ import android.os.Build.VERSION;
 import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
+
 import org.tensorflow.DataType;
 import org.tensorflow.Graph;
 import org.tensorflow.Operation;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
 import org.tensorflow.TensorFlow;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
@@ -48,684 +50,654 @@ import java.util.List;
 /**
  * Wrapper over the TensorFlow API ({@link Graph}, {@link Session}) providing a smaller API surface
  * for inference.
- * <p>
+ *
  * <p>See tensorflow/examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java for an
  * example usage.
  */
 public class TensorFlowInferenceInterface {
-    private static final String TAG = "TensorFlowInferenceInt";
-    private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
+  private static final String TAG = "TensorFlowInferenceInt";
+  private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
 
-    /*
-     * copy model file out of assets if necessary to internal storage
-     * so that it can be memory mapped
-     *
-     * @param ctx The context to use to load the model file.
-     * @param filename The filename of the GraphDef proto representing the model.
-     */
-    private void copyFile(Context ctx, String filename) {
-        AssetManager assetManager = ctx.getAssets();
-        InputStream in = null;
-        OutputStream out = null;
-        try {
-            if (!new File(ctx.getFilesDir(), filename).exists()) {
-                in = assetManager.open(filename);
-                out = ctx.openFileOutput(filename, Context.MODE_PRIVATE);
-                copyFile(in, out);
-                in.close();
-                in = null;
-                out.flush();
-                out.close();
-                out = null;
-            }
-        } catch (IOException e) {
-            Log.e("ERROR", "Failed to copy asset file: " + filename, e);
-        } finally {
-            try {
-                if (in != null) {
-                    in.close();
-                }
-            } catch (IOException e) {
-                Log.e("ERROR", "Failed to copy asset file: " + filename, e);
-            }
-            in = null;
-            try {
-                if (out != null) {
-                    out.flush();
-                }
-            } catch (IOException e) {
-                Log.e("ERROR", "Failed to copy asset file: " + filename, e);
-            }
-            try {
-                if (out != null) {
-                    out.close();
-                }
-            } catch (IOException e) {
-                Log.e("ERROR", "Failed to close out : " + out, e);
-            }
-            out = null;
+  /**
+   * Copies raw resource to a cache file.
+   *
+   * @return File reference to cache file.
+   */
+  private File createCacheFile(Context context, int resourceId, String filename)
+      throws IOException {
+    File cacheFile = new File(context.getCacheDir(), filename);
+
+    if (cacheFile.createNewFile() == false) {
+      cacheFile.delete();
+      cacheFile.createNewFile();
+    }
+
+    // from: InputStream to: FileOutputStream.
+    InputStream inputStream = context.getResources().openRawResource(resourceId);
+    FileOutputStream fileOutputStream = new FileOutputStream(cacheFile);
+    byte[] buffer = new byte[1024 * 512];
+    int count;
+    while ((count = inputStream.read(buffer)) != -1) {
+      fileOutputStream.write(buffer, 0, count);
+    }
+
+    fileOutputStream.close();
+    inputStream.close();
+
+    return cacheFile;
+  }
+
+  /*
+   * Load a TensorFlow model via FileChannel mmap
+   * This requires that assets files are copied to internal storage already
+   * getFileStreamPath() points to that directory; context used must be passed in here
+   *
+   * @param ctx The context to use to load the model file; same as one used to copy files
+   * @param model The filepath to the GraphDef proto representing the model.
+   */
+  public TensorFlowInferenceInterface(Context ctx, int model) {
+    prepareNativeRuntime();
+    File mModelFile = null;
+    this.g = new Graph();
+    this.sess = new Session(g);
+    this.runner = sess.runner();
+    this.modelName = String.valueOf(model);
+    MappedByteBuffer buffer = null;
+    FileChannel fileChannel = null;
+    RandomAccessFile raf = null;
+    File cacheFile;
+    try {
+      cacheFile = createCacheFile(ctx, model, "delete-me-please");
+      raf = new RandomAccessFile(cacheFile, "r");
+      fileChannel = raf.getChannel();
+      buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
+    } catch (FileNotFoundException f) {
+      throw new RuntimeException("Failed to find model file: " + mModelFile, f);
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to map model from: " + mModelFile, e);
+    }
+
+    try {
+      if (!buffer.isLoaded()) {
+        buffer.load();
+      }
+      byte[] graphDef = new byte[buffer.limit()];
+      buffer.get(graphDef);
+      loadGraph(graphDef, g);
+      Log.i(TAG, "Successfully loaded model from map '" + model + "'");
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to load model from" + model, e);
+    } finally {
+      try {
+        raf.close();
+        cacheFile.delete();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to close FileChannel '" + fileChannel + "'", e);
+      }
+      try {
+        //@todo individual exceptions
+        fileChannel.close();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to close RAF '" + fileChannel + "'", e);
+      }
+      if (buffer != null) {
+        buffer.clear();
+        buffer = null;
+      }
+
+    }
+  }
+
+  /*
+   * Load a TensorFlow model from the AssetManager or from disk if it is not an asset file.
+   *
+   * @param assetManager The AssetManager to use to load the model file.
+   * @param model The filepath to the GraphDef proto representing the model.
+   */
+  public TensorFlowInferenceInterface(AssetManager assetManager, String model) {
+    prepareNativeRuntime();
+
+    this.modelName = model;
+    this.g = new Graph();
+    this.sess = new Session(g);
+    this.runner = sess.runner();
+
+    final boolean hasAssetPrefix = model.startsWith(ASSET_FILE_PREFIX);
+    InputStream is = null;
+    try {
+      String aname = hasAssetPrefix ? model.split(ASSET_FILE_PREFIX)[1] : model;
+      is = assetManager.open(aname);
+    } catch (IOException e) {
+      if (hasAssetPrefix) {
+        throw new RuntimeException("Failed to load model from '" + model + "'", e);
+      }
+      // Perhaps the model file is not an asset but is on disk.
+      try {
+        is = new FileInputStream(model);
+      } catch (IOException e2) {
+        throw new RuntimeException("Failed to load model from '" + model + "'", e);
+      }
+    }
+
+    try {
+      if (VERSION.SDK_INT >= 18) {
+        Trace.beginSection("initializeTensorFlow");
+        Trace.beginSection("readGraphDef");
+      }
+
+      // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
+      byte[] graphDef = new byte[is.available()];
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // readGraphDef.
+      }
+
+      loadGraph(graphDef, g);
+      is.close();
+      Log.i(TAG, "Successfully loaded model from '" + model + "'");
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // initializeTensorFlow.
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to load model from '" + model + "'", e);
+    }
+  }
+
+  /*
+   * Load a TensorFlow model from provided InputStream.
+   * Note: The InputStream will not be closed after loading model, users need to
+   * close it themselves.
+   *
+   * @param is The InputStream to use to load the model.
+   */
+  public TensorFlowInferenceInterface(InputStream is) {
+    prepareNativeRuntime();
+
+    // modelName is redundant for model loading from input stream, here is for
+    // avoiding error in initialization as modelName is marked final.
+    this.modelName = "";
+    this.g = new Graph();
+    this.sess = new Session(g);
+    this.runner = sess.runner();
+
+    try {
+      if (VERSION.SDK_INT >= 18) {
+        Trace.beginSection("initializeTensorFlow");
+        Trace.beginSection("readGraphDef");
+      }
+
+      int baosInitSize = is.available() > 16384 ? is.available() : 16384;
+      ByteArrayOutputStream baos = new ByteArrayOutputStream(baosInitSize);
+      int numBytesRead;
+      byte[] buf = new byte[16384];
+      while ((numBytesRead = is.read(buf, 0, buf.length)) != -1) {
+        baos.write(buf, 0, numBytesRead);
+      }
+      byte[] graphDef = baos.toByteArray();
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // readGraphDef.
+      }
+
+      loadGraph(graphDef, g);
+      Log.i(TAG, "Successfully loaded model from the input stream");
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // initializeTensorFlow.
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to load model from the input stream", e);
+    }
+  }
+
+  /**
+   * Runs inference between the previously registered input nodes (via feed*) and the requested
+   * output nodes. Output nodes can then be queried with the fetch* methods.
+   *
+   * @param outputNames A list of output nodes which should be filled by the inference pass.
+   */
+  public void run(String[] outputNames) {
+    run(outputNames, false);
+  }
+
+  /**
+   * Runs inference between the previously registered input nodes (via feed*) and the requested
+   * output nodes. Output nodes can then be queried with the fetch* methods.
+   *
+   * @param outputNames A list of output nodes which should be filled by the inference pass.
+   */
+  public void run(String[] outputNames, boolean enableStats) {
+    // Release any Tensors from the previous run calls.
+    closeFetches();
+
+    // Add fetches.
+    for (String o : outputNames) {
+      fetchNames.add(o);
+      TensorId tid = TensorId.parse(o);
+      runner.fetch(tid.name, tid.outputIndex);
+    }
+
+    // Run the session.
+    try {
+      if (enableStats) {
+        Session.Run r = runner.setOptions(RunStats.runOptions()).runAndFetchMetadata();
+        fetchTensors = r.outputs;
+
+        if (runStats == null) {
+          runStats = new RunStats();
         }
+        runStats.add(r.metadata);
+      } else {
+        fetchTensors = runner.run();
+      }
+    } catch (RuntimeException e) {
+      // Ideally the exception would have been let through, but since this interface predates the
+      // TensorFlow Java API, must return -1.
+      Log.e(
+          TAG,
+          "Failed to run TensorFlow inference with inputs:["
+              + TextUtils.join(", ", feedNames)
+              + "], outputs:["
+              + TextUtils.join(", ", fetchNames)
+              + "]");
+      throw e;
+    } finally {
+      // Always release the feeds (to save resources) and reset the runner, this run is
+      // over.
+      closeFeeds();
+      runner = sess.runner();
     }
+  }
 
-    private static void copyFile(InputStream in, OutputStream out) throws IOException {
-        byte[] buffer = new byte[1024];
-        int read;
-        while ((read = in.read(buffer)) != -1) {
-            out.write(buffer, 0, read);
-        }
+  /**
+   * Returns a reference to the Graph describing the computation run during inference.
+   */
+  public Graph graph() {
+    return g;
+  }
+
+  public Operation graphOperation(String operationName) {
+    final Operation operation = g.operation(operationName);
+    if (operation == null) {
+      throw new RuntimeException(
+          "Node '" + operationName + "' does not exist in model '" + modelName + "'");
     }
+    return operation;
+  }
 
-    /*
-     * Load a TensorFlow model via FileChannel mmap
-     * This requires that assets files are copied to internal storage already
-     * getFileStreamPath() points to that directory; context used must be passed in here
-     *
-     * @param ctx The context to use to load the model file; same as one used to copy files
-     * @param model The filepath to the GraphDef proto representing the model.
-     */
-    public TensorFlowInferenceInterface(Context ctx, String model) {
-        prepareNativeRuntime();
-        File mModelFile = null;
-        this.modelName = model;
-        this.g = new Graph();
-        this.sess = new Session(g);
-        this.runner = sess.runner();
-        MappedByteBuffer buffer = null;
-        FileChannel fileChannel = null;
-        RandomAccessFile raf = null;
-        copyFile(ctx, model);  //checks for it
-        mModelFile = ctx.getFileStreamPath(model);
-        try {
-            raf = new RandomAccessFile(mModelFile, "r");
-            fileChannel = raf.getChannel();
-            buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
-        } catch (FileNotFoundException f) {
-            throw new RuntimeException("Failed to find model file: " + mModelFile, f);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to map model from: " + mModelFile, e);
-        }
+  /**
+   * Returns the last stat summary string if logging is enabled.
+   */
+  public String getStatString() {
+    return (runStats == null) ? "" : runStats.summary();
+  }
 
-        try {
-            if (!buffer.isLoaded()) {
-                buffer.load();
-            }
-            byte[] graphDef = new byte[buffer.limit()];
-            buffer.get(graphDef);
-            loadGraph(graphDef, g);
-            Log.i(TAG, "Successfully loaded model from map '" + model + "'");
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load model from" + model, e);
-        } finally {
-            try {
-                raf.close();
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to close FileChannel '" + fileChannel + "'", e);
-            }
-            try {
-                //@todo individual exceptions
-                fileChannel.close();
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to close RAF '" + fileChannel + "'", e);
-            }
-            if (buffer != null) {
-                buffer.clear();
-                buffer = null;
-            }
-
-        }
+  /**
+   * Cleans up the state associated with this Object.
+   *
+   * <p>The TenosrFlowInferenceInterface object is no longer usable after this method returns.
+   */
+  public void close() {
+    closeFeeds();
+    closeFetches();
+    sess.close();
+    g.close();
+    if (runStats != null) {
+      runStats.close();
     }
+    runStats = null;
+  }
 
-    /*
-     * Load a TensorFlow model from the AssetManager or from disk if it is not an asset file.
-     *
-     * @param assetManager The AssetManager to use to load the model file.
-     * @param model The filepath to the GraphDef proto representing the model.
-     */
-    public TensorFlowInferenceInterface(AssetManager assetManager, String model) {
-        prepareNativeRuntime();
-
-        this.modelName = model;
-        this.g = new Graph();
-        this.sess = new Session(g);
-        this.runner = sess.runner();
-
-        final boolean hasAssetPrefix = model.startsWith(ASSET_FILE_PREFIX);
-        InputStream is = null;
-        try {
-            String aname = hasAssetPrefix ? model.split(ASSET_FILE_PREFIX)[1] : model;
-            is = assetManager.open(aname);
-        } catch (IOException e) {
-            if (hasAssetPrefix) {
-                throw new RuntimeException("Failed to load model from '" + model + "'", e);
-            }
-            // Perhaps the model file is not an asset but is on disk.
-            try {
-                is = new FileInputStream(model);
-            } catch (IOException e2) {
-                throw new RuntimeException("Failed to load model from '" + model + "'", e);
-            }
-        }
-
-        try {
-            if (VERSION.SDK_INT >= 18) {
-                Trace.beginSection("initializeTensorFlow");
-                Trace.beginSection("readGraphDef");
-            }
-
-            // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
-            byte[] graphDef = new byte[is.available()];
-
-            if (VERSION.SDK_INT >= 18) {
-                Trace.endSection(); // readGraphDef.
-            }
-
-            loadGraph(graphDef, g);
-            is.close();
-            Log.i(TAG, "Successfully loaded model from '" + model + "'");
-
-            if (VERSION.SDK_INT >= 18) {
-                Trace.endSection(); // initializeTensorFlow.
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load model from '" + model + "'", e);
-        }
+  @Override
+  protected void finalize() throws Throwable {
+    try {
+      close();
+    } finally {
+      super.finalize();
     }
+  }
 
-    /*
-     * Load a TensorFlow model from provided InputStream.
-     * Note: The InputStream will not be closed after loading model, users need to
-     * close it themselves.
-     *
-     * @param is The InputStream to use to load the model.
-     */
-    public TensorFlowInferenceInterface(InputStream is) {
-        prepareNativeRuntime();
+  // Methods for taking a native Tensor and filling it with values from Java arrays.
 
-        // modelName is redundant for model loading from input stream, here is for
-        // avoiding error in initialization as modelName is marked final.
-        this.modelName = "";
-        this.g = new Graph();
-        this.sess = new Session(g);
-        this.runner = sess.runner();
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, float[] src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, FloatBuffer.wrap(src)));
+  }
 
-        try {
-            if (VERSION.SDK_INT >= 18) {
-                Trace.beginSection("initializeTensorFlow");
-                Trace.beginSection("readGraphDef");
-            }
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, int[] src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, IntBuffer.wrap(src)));
+  }
 
-            int baosInitSize = is.available() > 16384 ? is.available() : 16384;
-            ByteArrayOutputStream baos = new ByteArrayOutputStream(baosInitSize);
-            int numBytesRead;
-            byte[] buf = new byte[16384];
-            while ((numBytesRead = is.read(buf, 0, buf.length)) != -1) {
-                baos.write(buf, 0, numBytesRead);
-            }
-            byte[] graphDef = baos.toByteArray();
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, long[] src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, LongBuffer.wrap(src)));
+  }
 
-            if (VERSION.SDK_INT >= 18) {
-                Trace.endSection(); // readGraphDef.
-            }
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, double[] src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, DoubleBuffer.wrap(src)));
+  }
 
-            loadGraph(graphDef, g);
-            Log.i(TAG, "Successfully loaded model from the input stream");
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, byte[] src, long... dims) {
+    addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
+  }
 
-            if (VERSION.SDK_INT >= 18) {
-                Trace.endSection(); // initializeTensorFlow.
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load model from the input stream", e);
-        }
-    }
+  /**
+   * Copy a byte sequence into the input Tensor with name {@link inputName} as a string-valued
+   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of
+   * bytes, not a Java {@code String} (which is a sequence of characters).
+   */
+  public void feedString(String inputName, byte[] src) {
+    addFeed(inputName, Tensor.create(src));
+  }
 
-    /**
-     * Runs inference between the previously registered input nodes (via feed*) and the requested
-     * output nodes. Output nodes can then be queried with the fetch* methods.
-     *
-     * @param outputNames A list of output nodes which should be filled by the inference pass.
-     */
-    public void run(String[] outputNames) {
-        run(outputNames, false);
-    }
+  /**
+   * Copy an array of byte sequences into the input Tensor with name {@link inputName} as a
+   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string"
+   * is an arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of
+   * characters).
+   */
+  public void feedString(String inputName, byte[][] src) {
+    addFeed(inputName, Tensor.create(src));
+  }
 
-    /**
-     * Runs inference between the previously registered input nodes (via feed*) and the requested
-     * output nodes. Output nodes can then be queried with the fetch* methods.
-     *
-     * @param outputNames A list of output nodes which should be filled by the inference pass.
-     */
-    public void run(String[] outputNames, boolean enableStats) {
-        // Release any Tensors from the previous run calls.
-        closeFetches();
+  // Methods for taking a native Tensor and filling it with src from Java native IO buffers.
 
-        // Add fetches.
-        for (String o : outputNames) {
-            fetchNames.add(o);
-            TensorId tid = TensorId.parse(o);
-            runner.fetch(tid.name, tid.outputIndex);
-        }
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, FloatBuffer src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, src));
+  }
 
-        // Run the session.
-        try {
-            if (enableStats) {
-                Session.Run r = runner.setOptions(RunStats.runOptions()).runAndFetchMetadata();
-                fetchTensors = r.outputs;
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, IntBuffer src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, src));
+  }
 
-                if (runStats == null) {
-                    runStats = new RunStats();
-                }
-                runStats.add(r.metadata);
-            } else {
-                fetchTensors = runner.run();
-            }
-        } catch (RuntimeException e) {
-            // Ideally the exception would have been let through, but since this interface predates the
-            // TensorFlow Java API, must return -1.
-            Log.e(
-                    TAG,
-                    "Failed to run TensorFlow inference with inputs:["
-                            + TextUtils.join(", ", feedNames)
-                            + "], outputs:["
-                            + TextUtils.join(", ", fetchNames)
-                            + "]");
-            throw e;
-        } finally {
-            // Always release the feeds (to save resources) and reset the runner, this run is
-            // over.
-            closeFeeds();
-            runner = sess.runner();
-        }
-    }
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, LongBuffer src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, src));
+  }
 
-    /**
-     * Returns a reference to the Graph describing the computation run during inference.
-     */
-    public Graph graph() {
-        return g;
-    }
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, DoubleBuffer src, long... dims) {
+    addFeed(inputName, Tensor.create(dims, src));
+  }
 
-    public Operation graphOperation(String operationName) {
-        final Operation operation = g.operation(operationName);
-        if (operation == null) {
-            throw new RuntimeException(
-                    "Node '" + operationName + "' does not exist in model '" + modelName + "'");
-        }
-        return operation;
-    }
+  /**
+   * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
+   * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
+   * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
+   * elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, ByteBuffer src, long... dims) {
+    addFeed(inputName, Tensor.create(DataType.UINT8, dims, src));
+  }
 
-    /**
-     * Returns the last stat summary string if logging is enabled.
-     */
-    public String getStatString() {
-        return (runStats == null) ? "" : runStats.summary();
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   */
+  public void fetch(String outputName, float[] dst) {
+    fetch(outputName, FloatBuffer.wrap(dst));
+  }
 
-    /**
-     * Cleans up the state associated with this Object.
-     * <p>
-     * <p>The TenosrFlowInferenceInterface object is no longer usable after this method returns.
-     */
-    public void close() {
-        closeFeeds();
-        closeFetches();
-        sess.close();
-        g.close();
-        if (runStats != null) {
-            runStats.close();
-        }
-        runStats = null;
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   */
+  public void fetch(String outputName, int[] dst) {
+    fetch(outputName, IntBuffer.wrap(dst));
+  }
 
-    @Override
-    protected void finalize() throws Throwable {
-        try {
-            close();
-        } finally {
-            super.finalize();
-        }
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   */
+  public void fetch(String outputName, long[] dst) {
+    fetch(outputName, LongBuffer.wrap(dst));
+  }
 
-// Methods for taking a native Tensor and filling it with values from Java arrays.
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   */
+  public void fetch(String outputName, double[] dst) {
+    fetch(outputName, DoubleBuffer.wrap(dst));
+  }
 
-    /**
-     * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
-     * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
-     * as many elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, float[] src, long... dims) {
-        addFeed(inputName, Tensor.create(dims, FloatBuffer.wrap(src)));
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
+   * dst} must have length greater than or equal to that of the source Tensor. This operation will
+   * not affect dst's content past the source Tensor's size.
+   */
+  public void fetch(String outputName, byte[] dst) {
+    fetch(outputName, ByteBuffer.wrap(dst));
+  }
 
-    /**
-     * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
-     * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
-     * as many elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, int[] src, long... dims) {
-        addFeed(inputName, Tensor.create(dims, IntBuffer.wrap(src)));
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   */
+  public void fetch(String outputName, FloatBuffer dst) {
+    getTensor(outputName).writeTo(dst);
+  }
 
-    /**
-     * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
-     * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
-     * as many elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, long[] src, long... dims) {
-        addFeed(inputName, Tensor.create(dims, LongBuffer.wrap(src)));
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   */
+  public void fetch(String outputName, IntBuffer dst) {
+    getTensor(outputName).writeTo(dst);
+  }
 
-    /**
-     * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
-     * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
-     * as many elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, double[] src, long... dims) {
-        addFeed(inputName, Tensor.create(dims, DoubleBuffer.wrap(src)));
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   */
+  public void fetch(String outputName, LongBuffer dst) {
+    getTensor(outputName).writeTo(dst);
+  }
 
-    /**
-     * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
-     * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
-     * as many elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, byte[] src, long... dims) {
-        addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   */
+  public void fetch(String outputName, DoubleBuffer dst) {
+    getTensor(outputName).writeTo(dst);
+  }
 
-    /**
-     * Copy a byte sequence into the input Tensor with name {@link inputName} as a string-valued
-     * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of
-     * bytes, not a Java {@code String} (which is a sequence of characters).
-     */
-    public void feedString(String inputName, byte[] src) {
-        addFeed(inputName, Tensor.create(src));
-    }
+  /**
+   * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
+   * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
+   * or equal to that of the source Tensor. This operation will not affect dst's content past the
+   * source Tensor's size.
+   */
+  public void fetch(String outputName, ByteBuffer dst) {
+    getTensor(outputName).writeTo(dst);
+  }
 
-    /**
-     * Copy an array of byte sequences into the input Tensor with name {@link inputName} as a
-     * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string"
-     * is an arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of
-     * characters).
-     */
-    public void feedString(String inputName, byte[][] src) {
-        addFeed(inputName, Tensor.create(src));
-    }
-
-// Methods for taking a native Tensor and filling it with src from Java native IO buffers.
-
-    /**
-     * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
-     * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
-     * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
-     * elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, FloatBuffer src, long... dims) {
-        addFeed(inputName, Tensor.create(dims, src));
-    }
-
-    /**
-     * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
-     * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
-     * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
-     * elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, IntBuffer src, long... dims) {
-        addFeed(inputName, Tensor.create(dims, src));
-    }
-
-    /**
-     * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
-     * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
-     * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
-     * elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, LongBuffer src, long... dims) {
-        addFeed(inputName, Tensor.create(dims, src));
-    }
-
-    /**
-     * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
-     * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
-     * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
-     * elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, DoubleBuffer src, long... dims) {
-        addFeed(inputName, Tensor.create(dims, src));
-    }
-
-    /**
-     * Given a source buffer with shape {@link dims} and content {@link src}, both stored as
-     * <b>direct</b> and <b>native ordered</b> java.nio buffers, copy the contents into the input
-     * Tensor with name {@link inputName}. The source buffer {@link src} must have at least as many
-     * elements as that of the destination Tensor. If {@link src} has more elements than the
-     * destination has capacity, the copy is truncated.
-     */
-    public void feed(String inputName, ByteBuffer src, long... dims) {
-        addFeed(inputName, Tensor.create(DataType.UINT8, dims, src));
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
-     * dst} must have length greater than or equal to that of the source Tensor. This operation will
-     * not affect dst's content past the source Tensor's size.
-     */
-    public void fetch(String outputName, float[] dst) {
-        fetch(outputName, FloatBuffer.wrap(dst));
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
-     * dst} must have length greater than or equal to that of the source Tensor. This operation will
-     * not affect dst's content past the source Tensor's size.
-     */
-    public void fetch(String outputName, int[] dst) {
-        fetch(outputName, IntBuffer.wrap(dst));
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
-     * dst} must have length greater than or equal to that of the source Tensor. This operation will
-     * not affect dst's content past the source Tensor's size.
-     */
-    public void fetch(String outputName, long[] dst) {
-        fetch(outputName, LongBuffer.wrap(dst));
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
-     * dst} must have length greater than or equal to that of the source Tensor. This operation will
-     * not affect dst's content past the source Tensor's size.
-     */
-    public void fetch(String outputName, double[] dst) {
-        fetch(outputName, DoubleBuffer.wrap(dst));
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into a Java array. {@link
-     * dst} must have length greater than or equal to that of the source Tensor. This operation will
-     * not affect dst's content past the source Tensor's size.
-     */
-    public void fetch(String outputName, byte[] dst) {
-        fetch(outputName, ByteBuffer.wrap(dst));
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
-     * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
-     * or equal to that of the source Tensor. This operation will not affect dst's content past the
-     * source Tensor's size.
-     */
-    public void fetch(String outputName, FloatBuffer dst) {
-        getTensor(outputName).writeTo(dst);
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
-     * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
-     * or equal to that of the source Tensor. This operation will not affect dst's content past the
-     * source Tensor's size.
-     */
-    public void fetch(String outputName, IntBuffer dst) {
-        getTensor(outputName).writeTo(dst);
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
-     * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
-     * or equal to that of the source Tensor. This operation will not affect dst's content past the
-     * source Tensor's size.
-     */
-    public void fetch(String outputName, LongBuffer dst) {
-        getTensor(outputName).writeTo(dst);
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
-     * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
-     * or equal to that of the source Tensor. This operation will not affect dst's content past the
-     * source Tensor's size.
-     */
-    public void fetch(String outputName, DoubleBuffer dst) {
-        getTensor(outputName).writeTo(dst);
-    }
-
-    /**
-     * Read from a Tensor named {@link outputName} and copy the contents into the <b>direct</b> and
-     * <b>native ordered</b> java.nio buffer {@link dst}. {@link dst} must have capacity greater than
-     * or equal to that of the source Tensor. This operation will not affect dst's content past the
-     * source Tensor's size.
-     */
-    public void fetch(String outputName, ByteBuffer dst) {
-        getTensor(outputName).writeTo(dst);
-    }
-
-    private void prepareNativeRuntime() {
-        Log.i(TAG, "Checking to see if TensorFlow native methods are already loaded");
-        try {
-            // Hack to see if the native libraries have been loaded.
-            new RunStats();
-            Log.i(TAG, "TensorFlow native methods already loaded");
-        } catch (UnsatisfiedLinkError e1) {
-            Log.i(
-                    TAG, "TensorFlow native methods not found, attempting to load via tensorflow_inference");
-            try {
-                System.loadLibrary("tensorflow_inference");
-                Log.i(TAG, "Successfully loaded TensorFlow native methods (RunStats error may be ignored)");
-            } catch (UnsatisfiedLinkError e2) {
-                throw new RuntimeException(
-                        "Native TF methods not found; check that the correct native"
-                                + " libraries are present in the APK.");
-            }
-        }
-    }
-
-    private void loadGraph(byte[] graphDef, Graph g) throws IOException {
-        final long startMs = System.currentTimeMillis();
-
-        if (VERSION.SDK_INT >= 18) {
-            Trace.beginSection("importGraphDef");
-        }
-
-        try {
-            g.importGraphDef(graphDef);
-        } catch (IllegalArgumentException e) {
-            throw new IOException("Not a valid TensorFlow Graph serialization: " + e.getMessage());
-        }
-
-        if (VERSION.SDK_INT >= 18) {
-            Trace.endSection(); // importGraphDef.
-        }
-
-        final long endMs = System.currentTimeMillis();
-        Log.i(
-                TAG,
-                "Model load took " + (endMs - startMs) + "ms, TensorFlow version: " + TensorFlow.version());
-    }
-
-    private void addFeed(String inputName, Tensor t) {
-        // The string format accepted by TensorFlowInferenceInterface is node_name[:output_index].
-        TensorId tid = TensorId.parse(inputName);
-        runner.feed(tid.name, tid.outputIndex, t);
-        feedNames.add(inputName);
-        feedTensors.add(t);
-    }
-
-    private static class TensorId {
-        String name;
-        int outputIndex;
-
-        // Parse output names into a TensorId.
-        //
-        // E.g., "foo" --> ("foo", 0), while "foo:1" --> ("foo", 1)
-        public static TensorId parse(String name) {
-            TensorId tid = new TensorId();
-            int colonIndex = name.lastIndexOf(':');
-            if (colonIndex < 0) {
-                tid.outputIndex = 0;
-                tid.name = name;
-                return tid;
-            }
-            try {
-                tid.outputIndex = Integer.parseInt(name.substring(colonIndex + 1));
-                tid.name = name.substring(0, colonIndex);
-            } catch (NumberFormatException e) {
-                tid.outputIndex = 0;
-                tid.name = name;
-            }
-            return tid;
-        }
-
-    }
-
-    private Tensor getTensor(String outputName) {
-        int i = 0;
-        for (String n : fetchNames) {
-            if (n.equals(outputName)) {
-                return fetchTensors.get(i);
-            }
-            ++i;
-        }
+  private void prepareNativeRuntime() {
+    Log.i(TAG, "Checking to see if TensorFlow native methods are already loaded");
+    try {
+      // Hack to see if the native libraries have been loaded.
+      new RunStats();
+      Log.i(TAG, "TensorFlow native methods already loaded");
+    } catch (UnsatisfiedLinkError e1) {
+      Log.i(
+          TAG, "TensorFlow native methods not found, attempting to load via tensorflow_inference");
+      try {
+        System.loadLibrary("tensorflow_inference");
+        Log.i(TAG, "Successfully loaded TensorFlow native methods (RunStats error may be ignored)");
+      } catch (UnsatisfiedLinkError e2) {
         throw new RuntimeException(
-                "Node '" + outputName + "' was not provided to run(), so it cannot be read");
+            "Native TF methods not found; check that the correct native"
+                + " libraries are present in the APK.");
+      }
+    }
+  }
+
+  private void loadGraph(byte[] graphDef, Graph g) throws IOException {
+    final long startMs = System.currentTimeMillis();
+
+    if (VERSION.SDK_INT >= 18) {
+      Trace.beginSection("importGraphDef");
     }
 
-    private void closeFeeds() {
-        for (Tensor t : feedTensors) {
-            t.close();
-        }
-        feedTensors.clear();
-        feedNames.clear();
+    try {
+      g.importGraphDef(graphDef);
+    } catch (IllegalArgumentException e) {
+      throw new IOException("Not a valid TensorFlow Graph serialization: " + e.getMessage());
     }
 
-    private void closeFetches() {
-        for (Tensor t : fetchTensors) {
-            t.close();
-        }
-        fetchTensors.clear();
-        fetchNames.clear();
+    if (VERSION.SDK_INT >= 18) {
+      Trace.endSection(); // importGraphDef.
     }
 
-    // Immutable state.
-    private final String modelName;
-    private final Graph g;
-    private final Session sess;
+    final long endMs = System.currentTimeMillis();
+    Log.i(
+        TAG,
+        "Model load took " + (endMs - startMs) + "ms, TensorFlow version: " + TensorFlow.version());
+  }
 
-    // State reset on every call to run.
-    private Session.Runner runner;
-    private List<String> feedNames = new ArrayList<String>();
-    private List<Tensor> feedTensors = new ArrayList<Tensor>();
-    private List<String> fetchNames = new ArrayList<String>();
-    private List<Tensor> fetchTensors = new ArrayList<Tensor>();
+  private void addFeed(String inputName, Tensor t) {
+    // The string format accepted by TensorFlowInferenceInterface is node_name[:output_index].
+    TensorId tid = TensorId.parse(inputName);
+    runner.feed(tid.name, tid.outputIndex, t);
+    feedNames.add(inputName);
+    feedTensors.add(t);
+  }
 
-    // Mutable state.
-    private RunStats runStats;
+  private static class TensorId {
+    String name;
+    int outputIndex;
+
+    // Parse output names into a TensorId.
+    //
+    // E.g., "foo" --> ("foo", 0), while "foo:1" --> ("foo", 1)
+    public static TensorId parse(String name) {
+      TensorId tid = new TensorId();
+      int colonIndex = name.lastIndexOf(':');
+      if (colonIndex < 0) {
+        tid.outputIndex = 0;
+        tid.name = name;
+        return tid;
+      }
+      try {
+        tid.outputIndex = Integer.parseInt(name.substring(colonIndex + 1));
+        tid.name = name.substring(0, colonIndex);
+      } catch (NumberFormatException e) {
+        tid.outputIndex = 0;
+        tid.name = name;
+      }
+      return tid;
+    }
+  }
+
+  private Tensor getTensor(String outputName) {
+    int i = 0;
+    for (String n : fetchNames) {
+      if (n.equals(outputName)) {
+        return fetchTensors.get(i);
+      }
+      ++i;
+    }
+    throw new RuntimeException(
+        "Node '" + outputName + "' was not provided to run(), so it cannot be read");
+  }
+
+  private void closeFeeds() {
+    for (Tensor t : feedTensors) {
+      t.close();
+    }
+    feedTensors.clear();
+    feedNames.clear();
+  }
+
+  private void closeFetches() {
+    for (Tensor t : fetchTensors) {
+      t.close();
+    }
+    fetchTensors.clear();
+    fetchNames.clear();
+  }
+
+  // Immutable state.
+  private final String modelName;
+  private final Graph g;
+  private final Session sess;
+
+  // State reset on every call to run.
+  private Session.Runner runner;
+  private List<String> feedNames = new ArrayList<String>();
+  private List<Tensor> feedTensors = new ArrayList<Tensor>();
+  private List<String> fetchNames = new ArrayList<String>();
+  private List<Tensor> fetchTensors = new ArrayList<Tensor>();
+
+  // Mutable state.
+  private RunStats runStats;
 }
