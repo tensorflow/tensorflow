@@ -126,7 +126,7 @@ def extract_sub_graph(graph_def, dest_nodes):
   # Github 13047, cast single string to list
   if isinstance(dest_nodes, str):
     dest_nodes = [dest_nodes]
-    logging.warn("dest_nodes should be a list.")
+    logging.warning("dest_nodes should be a list.")
 
   edges = {}  # Keyed by the dest node name.
   name_to_node_map = {}  # Keyed by node name.
