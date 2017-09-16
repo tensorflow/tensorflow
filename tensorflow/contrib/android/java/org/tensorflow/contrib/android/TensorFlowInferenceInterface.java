@@ -331,7 +331,7 @@ public class TensorFlowInferenceInterface {
     }
     return operation;
   }
-  
+    
   /** Returns the last stat summary string if logging is enabled. */
   public String getStatString() {
     return (runStats == null) ? "" : runStats.summary();
