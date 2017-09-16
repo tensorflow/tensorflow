@@ -268,50 +268,7 @@ Status Env::CopyFile(const string& src, const string& target) {
   if (src_fs == target_fs) {
     return src_fs->CopyFile(src, target);
   }
-
-  uint64 size;
-  Status s = GetFileSize(src, &size);
-  if (!s.ok()) {
-    return s;
-  }
-  std::unique_ptr<RandomAccessFile> src_file;
-  s = src_fs->NewRandomAccessFile(src, &src_file);
-  if (!s.ok()) {
-    return s;
-  }
-  std::unique_ptr<WritableFile> target_file;
-  s = target_fs->NewWritableFile(target, &target_file);
-  if (!s.ok()) {
-    return s;
-  }
-
-  uint64 offset = 0;
-  while (offset < size) {
-    char scratch[kCopyFileBufferSize];
-    StringPiece result;
-    size_t chunk =
-        offset + sizeof(scratch) < size ? sizeof(scratch) : size - offset;
-    s = src_file->Read(offset, chunk, &result, scratch);
-    if (!s.ok()) {
-      return s;
-    }
-
-    s = target_file->Append(result);
-    if (!s.ok()) {
-      return s;
-    }
-
-    offset += chunk;
-  }
-  s = GetFileSize(src, &size);
-  if (!s.ok()) {
-    return s;
-  }
-  if (offset != size) {
-    return errors::Aborted("File ", src, " changed while reading: ", size,
-                           " vs. ", offset);
-  }
-  return target_file->Close();
+  return tensorflow::CopyFile(src_fs, src, target_fs, target);
 }
 
 string Env::GetExecutablePath() {
@@ -454,6 +411,32 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 };
 
 }  // namespace
+
+Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
+                const string& target) {
+  uint64 size;
+  TF_RETURN_IF_ERROR(src_fs->GetFileSize(src, &size));
+
+  std::unique_ptr<RandomAccessFile> src_file;
+  TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
+
+  std::unique_ptr<WritableFile> target_file;
+  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
+
+  uint64 offset = 0;
+  while (offset < size) {
+    char scratch[kCopyFileBufferSize];
+    StringPiece result;
+    size_t bytes_to_read =
+        offset + sizeof(scratch) < size ? sizeof(scratch) : size - offset;
+    TF_RETURN_IF_ERROR(src_file->Read(offset, bytes_to_read, &result, scratch));
+
+    TF_RETURN_IF_ERROR(target_file->Append(result));
+
+    offset += bytes_to_read;
+  }
+  return target_file->Close();
+}
 
 Status WriteBinaryProto(Env* env, const string& fname,
                         const ::tensorflow::protobuf::MessageLite& proto) {

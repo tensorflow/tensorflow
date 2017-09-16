@@ -278,9 +278,6 @@ Status PosixFileSystem::RenameFile(const string& src, const string& target) {
 }
 
 Status PosixFileSystem::CopyFile(const string& src, const string& target) {
-#if defined(PLATFORM_WINDOWS)
-  return FileSystem::CopyFile(src, target);
-#else
   string translated_src = TranslateName(src);
   struct stat sbuf;
   if (stat(translated_src.c_str(), &sbuf) != 0) {
@@ -291,6 +288,10 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
     return IOError(src, errno);
   }
   string translated_target = TranslateName(target);
+  // O_WRONLY | O_CREAT:
+  //   Open file for write and if file does not exist, create the file.
+  // S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH:
+  //   Create the file with permission of 0666
   int target_fd =
       open64(translated_target.c_str(), O_WRONLY | O_CREAT,
              S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
@@ -316,7 +317,6 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
     result = IOError(target, errno);
   }
   return result;
-#endif
 }
 
 }  // namespace tensorflow

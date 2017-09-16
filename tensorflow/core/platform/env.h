@@ -377,6 +377,11 @@ struct ThreadOptions {
   size_t guard_size = 0;  // 0: use system default value
 };
 
+/// A utility routine: copy contents of `src` in file system `src_fs`
+/// to `target` in file system `target_fs`.
+Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
+                const string& target);
+
 /// A utility routine: reads contents of named file into `*data`
 Status ReadFileToString(Env* env, const string& fname, string* data);
 
@@ -384,10 +389,6 @@ Status ReadFileToString(Env* env, const string& fname, string* data);
 /// (overwriting existing contents, if any).
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data);
-
-/// A utility routine: copy contents of `oldpath` to `newpath`
-Status CopyFile(Env* env, const string& oldpath, const string& newpath,
-                bool overwrite);
 
 /// Write binary representation of "proto" to the named file.
 Status WriteBinaryProto(Env* env, const string& fname,
