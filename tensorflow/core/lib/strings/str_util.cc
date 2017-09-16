@@ -480,7 +480,7 @@ Status SplitUTF8(StringPiece text, const string& delim,
                                        i);
       }
     } else {
-      if ((text[i] & 0xC0) != 0x80) {
+      if (PREDICT_FALSE((text[i] & 0xC0) != 0x80)) {
         result->clear();
         return errors::InvalidArgument("Invalid UTF8 encoding at position of ",
                                        i);
@@ -508,7 +508,7 @@ Status SplitUTF8(StringPiece text, const string& delim,
       }
     }
   }
-  if (off < text.size()) {
+  if (PREDICT_FALSE(off < text.size())) {
     result->clear();
     return errors::InvalidArgument("Not enough characters for UTF8 encoding");
   }
