@@ -28,10 +28,10 @@ namespace tensorflow {
 
 namespace {
 
-Status Split(const string& str, const string& delimiter, const bool skipEmpty,
+Status Split(const string& str, const string& delimiter, const bool skip_empty,
              const string& encoding, std::vector<string>* result) {
   if (!delimiter.empty()) {
-    if (skipEmpty) {
+    if (skip_empty) {
       *result = str_util::Split(str, delimiter, str_util::SkipEmpty());
       return Status::OK();
     }
