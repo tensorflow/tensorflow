@@ -993,24 +993,25 @@ class Dataset(object):
     ```
 
     Important caveats:
-     - Be sure to shard before you use any randomizing operator (such as
-       shuffle).
-     - Generally it is best if the shard operator is used early in the dataset
-       pipeline. For example, when reading from a set of TFRecord files, shard
-       before converting the dataset to input samples. This avoids reading every
-       file on every worker. The following is an example of an efficient
-       sharding strategy within a complete pipeline:
 
-       ```python
-       d = Dataset.list_files(FLAGS.pattern)
-       d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
-       d = d.repeat(FLAGS.num_epochs)
-       d = d.shuffle(FLAGS.shuffle_buffer_size)
-       d = d.repeat()
-       d = d.interleave(tf.contrib.data.TFRecordDataset,
-                        cycle_length=FLAGS.num_readers, block_length=1)
-       d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
-       ```
+    - Be sure to shard before you use any randomizing operator (such as
+      shuffle).
+    - Generally it is best if the shard operator is used early in the dataset
+      pipeline. For example, when reading from a set of TFRecord files, shard
+      before converting the dataset to input samples. This avoids reading every
+      file on every worker. The following is an example of an efficient
+      sharding strategy within a complete pipeline:
+
+    ```python
+    d = Dataset.list_files(FLAGS.pattern)
+    d = d.shard(FLAGS.num_workers, FLAGS.worker_index)
+    d = d.repeat(FLAGS.num_epochs)
+    d = d.shuffle(FLAGS.shuffle_buffer_size)
+    d = d.repeat()
+    d = d.interleave(tf.contrib.data.TFRecordDataset,
+                     cycle_length=FLAGS.num_readers, block_length=1)
+    d = d.map(parser_fn, num_parallel_calls=FLAGS.num_map_threads)
+    ```
 
     Args:
       num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
