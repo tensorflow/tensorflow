@@ -136,6 +136,10 @@ DotInLlvmIrProfitable ProfitableToImplementDotInLlvmIr(
     const int64 kReductionDimensionThresholdBytes = 8 * 1024;
     const bool single_threaded_eigen =
         !dot.GetModule()->config().debug_options().xla_cpu_multi_thread_eigen();
+
+    // This is the point at which it is better to call into Eigen and shard the
+    // dot across multiple worker threads.  This is a rough estimate by running
+    // a matmult benchmark on my local machine, and it can be tuned further.
     const int64 kMaxSingleThreadedFlops = 16 * 1024;
 
     const int64 M = result_shape.dimensions(0);

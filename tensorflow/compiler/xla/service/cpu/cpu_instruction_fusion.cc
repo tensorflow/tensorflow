@@ -50,14 +50,6 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // Producer or consumer cannot be Map. Maps are technically elementwise but
-  // of a slightly different form (call instead of a computation). These are not
-  // yet supported in the CPU backend.
-  if (producer->opcode() == HloOpcode::kMap ||
-      consumer->opcode() == HloOpcode::kMap) {
-    return false;
-  }
-
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion &&

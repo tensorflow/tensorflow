@@ -14,10 +14,12 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":eval",
         ":features",
         ":losses",
         ":namedtuples",
         ":train",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -70,6 +72,18 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "eval",
+    srcs = ["python/eval/__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":classifier_metrics",
+        ":eval_utils",
+        ":summaries",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -253,6 +267,105 @@ py_test(
         ":clip_weights",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "classifier_metrics",
+    srcs = [
+        "python/eval/python/classifier_metrics.py",
+        "python/eval/python/classifier_metrics_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "classifier_metrics_test",
+    srcs = ["python/eval/python/classifier_metrics_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":classifier_metrics",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "eval_utils",
+    srcs = [
+        "python/eval/python/eval_utils.py",
+        "python/eval/python/eval_utils_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "eval_utils_test",
+    srcs = ["python/eval/python/eval_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":eval_utils",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "summaries",
+    srcs = [
+        "python/eval/python/summaries.py",
+        "python/eval/python/summaries_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":eval_utils",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:util",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
+py_test(
+    name = "summaries_test",
+    srcs = ["python/eval/python/summaries_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":namedtuples",
+        ":summaries",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
+from tensorflow.contrib.estimator.python.estimator.dnn import *
 from tensorflow.contrib.estimator.python.estimator.extenders import *
 from tensorflow.contrib.estimator.python.estimator.head import *
 
@@ -29,7 +30,9 @@ _allowed_symbols = [
     'add_metrics',
     'binary_classification_head',
     'multi_class_head',
+    'multi_label_head',
     'regression_head',
+    'DNNEstimator',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

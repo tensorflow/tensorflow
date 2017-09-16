@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/aot/tfcompile_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
 #include <queue>
 #include <set>
 #include <unordered_map>
 
-#include "tensorflow/compiler/aot/tfcompile.pb.h"
+#include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -29,21 +29,13 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
-namespace tfcompile {
 
 namespace {
 
-bool IsAlpha(char c) {
-  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
-}
-
-bool IsAlphaNum(char c) { return IsAlpha(c) || (c >= '0' && c <= '9'); }
-
-Status ValidateTensorId(const TensorId& id) {
+Status ValidateTensorId(const tf2xla::TensorId& id) {
   if (id.node_name().empty()) {
     return errors::InvalidArgument("TensorId node_name must be non-empty");
   }
@@ -53,10 +45,9 @@ Status ValidateTensorId(const TensorId& id) {
   return Status::OK();
 }
 
-Status ValidateFeedFetchName(const string& kind, const string& name,
-                             std::set<string>* names) {
+Status CheckNameDuplicates(const string& kind, const string& name,
+                           std::set<string>* names) {
   if (!name.empty()) {
-    TF_RETURN_IF_ERROR(ValidateCppIdent(name, kind + " name"));
     if (!names->insert(name).second) {
       return errors::InvalidArgument("duplicate ", kind, " name: ", name);
     }
@@ -80,42 +71,18 @@ Status CheckFeedFetchNameConflicts(const string& kind,
 
 }  // namespace
 
-Status ValidateCppIdent(StringPiece ident, StringPiece msg) {
-  if (ident.empty()) {
-    return errors::InvalidArgument("empty identifier: ", msg);
-  }
-  // Require that the identifier starts with a nondigit, and is composed of
-  // nondigits and digits, as specified in section [2.11 Identifiers] of the
-  // C++11 Standard.  Note that nondigit is defined as [_a-zA-Z] and digit is
-  // defined as [0-9].
-  //
-  // Technically the standard also allows for `universal-character-name`, with a
-  // table of allowed unicode ranges, as well as `other implementation-defined
-  // characters`.  We disallow those here to give better error messages, at the
-  // expensive of being more restrictive than the standard.
-  if (ident[0] != '_' && !IsAlpha(ident[0])) {
-    return errors::InvalidArgument("illegal leading char: ", msg);
-  }
-  for (size_t pos = 1; pos < ident.size(); ++pos) {
-    if (ident[pos] != '_' && !IsAlphaNum(ident[pos])) {
-      return errors::InvalidArgument("illegal char: ", msg);
-    }
-  }
-  return Status::OK();
-}
-
-Status ValidateConfig(const Config& config) {
+Status ValidateConfig(const tf2xla::Config& config) {
   std::set<string> names;
-  for (const Feed& feed : config.feed()) {
+  for (const tf2xla::Feed& feed : config.feed()) {
     TF_RETURN_IF_ERROR(ValidateTensorId(feed.id()));
     TF_RETURN_IF_ERROR(TensorShape::IsValidShape(feed.shape()));
-    TF_RETURN_IF_ERROR(ValidateFeedFetchName("feed", feed.name(), &names));
+    TF_RETURN_IF_ERROR(CheckNameDuplicates("feed", feed.name(), &names));
   }
   TF_RETURN_IF_ERROR(CheckFeedFetchNameConflicts("feed", names));
   names.clear();
-  for (const Fetch& fetch : config.fetch()) {
+  for (const tf2xla::Fetch& fetch : config.fetch()) {
     TF_RETURN_IF_ERROR(ValidateTensorId(fetch.id()));
-    TF_RETURN_IF_ERROR(ValidateFeedFetchName("fetch", fetch.name(), &names));
+    TF_RETURN_IF_ERROR(CheckNameDuplicates("fetch", fetch.name(), &names));
   }
   TF_RETURN_IF_ERROR(CheckFeedFetchNameConflicts("fetch", names));
   if (config.feed().empty() || config.fetch().empty()) {
@@ -125,10 +92,10 @@ Status ValidateConfig(const Config& config) {
 }
 
 Status AddPlaceholdersForFeeds(
-    const Config& config, const OpRegistryInterface* op_registry,
+    const tf2xla::Config& config, const OpRegistryInterface* op_registry,
     std::unordered_map<string, string>* feed_remapping, GraphDef* graph_def) {
   struct PlaceholderInfo {
-    const Feed* feed = nullptr;  // point to Feed in <config>.
+    const tf2xla::Feed* feed = nullptr;  // point to Feed in <config>.
     string placeholder_name;
     DataType data_type = DT_INVALID;
   };
@@ -137,9 +104,9 @@ Status AddPlaceholdersForFeeds(
   // when creating placeholders (genrules want deterministic output).
   std::map<string, PlaceholderInfo> placeholder_info;
   for (int i = 0; i < config.feed_size(); ++i) {
-    const Feed* feed = &config.feed(i);
+    const tf2xla::Feed* feed = &config.feed(i);
     const string name_port = TensorIdToString(feed->id());
-    auto& info = placeholder_info[name_port];
+    PlaceholderInfo& info = placeholder_info[name_port];
     info.feed = feed;
     info.placeholder_name = strings::StrCat(
         "aot_feed_", feed->id().output_index(), "/", feed->id().node_name());
@@ -153,7 +120,7 @@ Status AddPlaceholdersForFeeds(
   }
   for (auto it = placeholder_info.begin(); it != placeholder_info.end(); ++it) {
     PlaceholderInfo& info = it->second;
-    const TensorId& feed_id = info.feed->id();
+    const tf2xla::TensorId& feed_id = info.feed->id();
 
     // Find the existing node and determine data type.
     auto node_it = name_to_node.find(feed_id.node_name());
@@ -214,16 +181,16 @@ Status AddPlaceholdersForFeeds(
   return Status::OK();
 }
 
-Status PruneGraphDefInto(const Config& config, const GraphDef& in,
+Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
                          GraphDef* out) {
   *out = in;
   out->clear_node();
 
   // Tensors needed for feeding.
   std::set<std::pair<string, int>> feed_tensors;
-  for (const auto& feed_config : config.feed()) {
-    feed_tensors.insert(std::make_pair(feed_config.id().node_name(),
-                                       feed_config.id().output_index()));
+  for (const tf2xla::Feed& feed : config.feed()) {
+    feed_tensors.insert(
+        std::make_pair(feed.id().node_name(), feed.id().output_index()));
   }
 
   // Maps node name to reachability.
@@ -279,9 +246,8 @@ Status PruneGraphDefInto(const Config& config, const GraphDef& in,
   return Status::OK();
 }
 
-string TensorIdToString(const TensorId& id) {
+string TensorIdToString(const tf2xla::TensorId& id) {
   return strings::StrCat(id.node_name(), ":", id.output_index());
 }
 
-}  // namespace tfcompile
 }  // namespace tensorflow

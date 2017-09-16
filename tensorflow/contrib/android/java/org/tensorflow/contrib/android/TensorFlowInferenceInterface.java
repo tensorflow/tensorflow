@@ -21,14 +21,6 @@ import android.os.Build.VERSION;
 import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
-
-import org.tensorflow.DataType;
-import org.tensorflow.Graph;
-import org.tensorflow.Operation;
-import org.tensorflow.Session;
-import org.tensorflow.Tensor;
-import org.tensorflow.TensorFlow;
-
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -46,6 +38,12 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
+import org.tensorflow.DataType;
+import org.tensorflow.Graph;
+import org.tensorflow.Operation;
+import org.tensorflow.Session;
+import org.tensorflow.Tensor;
+import org.tensorflow.TensorFlow;
 
 /**
  * Wrapper over the TensorFlow API ({@link Graph}, {@link Session}) providing a smaller API surface
@@ -186,8 +184,17 @@ public class TensorFlowInferenceInterface {
         Trace.beginSection("initializeTensorFlow");
         Trace.beginSection("readGraphDef");
       }
+
       // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
       byte[] graphDef = new byte[is.available()];
+      final int numBytesRead = is.read(graphDef);
+      if (numBytesRead != graphDef.length) {
+        throw new IOException(
+            "read error: read only "
+                + numBytesRead
+                + " of the graph, expected to read "
+                + graphDef.length);
+      }
 
       if (VERSION.SDK_INT >= 18) {
         Trace.endSection(); // readGraphDef.
@@ -414,8 +421,8 @@ public class TensorFlowInferenceInterface {
 
   /**
    * Copy a byte sequence into the input Tensor with name {@link inputName} as a string-valued
-   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of
-   * bytes, not a Java {@code String} (which is a sequence of characters).
+   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of bytes, not
+   * a Java {@code String} (which is a sequence of characters).
    */
   public void feedString(String inputName, byte[] src) {
     addFeed(inputName, Tensor.create(src));
@@ -423,9 +430,8 @@ public class TensorFlowInferenceInterface {
 
   /**
    * Copy an array of byte sequences into the input Tensor with name {@link inputName} as a
-   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string"
-   * is an arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of
-   * characters).
+   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string" is an
+   * arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of characters).
    */
   public void feedString(String inputName, byte[][] src) {
     addFeed(inputName, Tensor.create(src));

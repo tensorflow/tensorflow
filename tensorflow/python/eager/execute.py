@@ -73,12 +73,11 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
   tensors = [ops._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
   # TODO(alive, cais): Use the execution callback mechanism.
   if core.active_trace() is not None:
-    trace_name = name if name else op_name
     for t in tensors:
       # pylint: disable=protected-access
-      core.active_trace().record_tensor(trace_name,
+      core.active_trace().record_tensor(op_name,
                                         ops.tensor_id(t),
-                                        t._device_name(),
+                                        t.device,
                                         t.shape.num_elements())
       # pylint: enable=protected-access
 

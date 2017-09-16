@@ -259,6 +259,7 @@ class _DefinedFunction(object):
                python_grad_func=None,
                out_names=None,
                shape_func=None,
+               capture_by_value=False,
                **kwargs):
     """Creates _DefinedFunction.
 
@@ -277,6 +278,8 @@ class _DefinedFunction(object):
         names.
       shape_func: An optional function mapping an op to a list of static
         output shapes.
+      capture_by_value: Boolean (defaults to False). If True, captured values
+        will be copied into the function body.
       **kwargs: The keyword arguments. **kwargs is passed to every call
         site of this function.
 
@@ -291,6 +294,7 @@ class _DefinedFunction(object):
     self._python_grad_func = python_grad_func
     self._out_names = out_names
     self._shape_func = shape_func
+    self._capture_by_value = capture_by_value
     self._extra_kwargs = kwargs
     self._definition = None  # Constructed lazily.
     self._c_func = None  # Constructed with definition.
@@ -344,12 +348,16 @@ class _DefinedFunction(object):
 
   def _create_definition_if_needed(self):
     """Creates the function definition if it's not created yet."""
+    with context.graph_mode():
+      self._create_definition_if_needed_impl()
 
+  def _create_definition_if_needed_impl(self):
+    """This is not what you want, see _create_definition_if_needed."""
     if self._definition is not None:
       return
 
     # Create the func_def object.
-    temp_graph = _FuncGraph()
+    temp_graph = _FuncGraph(capture_by_value=self._capture_by_value)
     with temp_graph.as_default():
       # List of placeholders for the function_def.
       inputs = []
@@ -613,8 +621,9 @@ class _FuncGraph(ops.Graph):
   function argument and the caller passes in the captured tensor.
   """
 
-  def __init__(self, *args, **kwargs):
+  def __init__(self, capture_by_value, *args, **kwargs):
     super(_FuncGraph, self).__init__(*args, **kwargs)
+    self._capture_by_value = capture_by_value
     self._building_function = True
     self._outer_graph = ops.get_default_graph()
     self._vscope = vs.get_variable_scope()
@@ -672,6 +681,8 @@ class _FuncGraph(ops.Graph):
         if x in self._captured:
           # Captured already.
           inputs[i] = self._captured[x]
+        elif self._capture_by_value:
+          inputs[i] = self._add_tensor_and_parents(x)
         else:
           # Substitute with a placeholder.
           self.extra_inputs.append(x)
@@ -684,6 +695,35 @@ class _FuncGraph(ops.Graph):
           self.extra_args.append(ph)
     return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
                                              **kwargs)
+
+  def _add_tensor_and_parents(self, tensor):
+    op = self._add_op_and_parents(tensor.op)
+    return op.outputs[tensor.value_index]
+
+  def _add_op_and_parents(self, op):
+    # pylint: disable=protected-access
+    op_def = graph_to_function_def._get_op_def(op)
+    # pylint: enable=protected-access
+    if op_def.is_stateful:
+      raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
+                       "by value." % (op.name, op.type))
+    elif op.type in ("Placeholder", "PlaceholderV2"):
+      raise ValueError("Cannot capture a placeholder (name:%s, type:%s) "
+                       "by value." % (op.name, op.type))
+
+    captured_inputs = [self._add_tensor_and_parents(x) for x in op.inputs]
+
+    captured_op = self.create_op(
+        op.type,
+        captured_inputs, [o.dtype for o in op.outputs],
+        name=op.name,
+        attrs=op.node_def.attr,
+        op_def=op_def)
+
+    for t, captured_t in zip(op.outputs, captured_op.outputs):
+      self._captured[t] = captured_t
+
+    return captured_op
 
 
 def _call(sig, *inputs, **kwargs):

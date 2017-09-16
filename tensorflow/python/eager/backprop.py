@@ -97,8 +97,7 @@ def _prepare_backprop(target, tensor_to_op, op_to_entry, id_sources):
       continue
     op_trace = op_to_entry[op]
     o_to_e[op] = op_trace
-    for i in op_trace.inputs:
-      it = ops.tensor_id(i)
+    for it in op_trace.input_ids:
       if it in tensor_usage_counts:
         tensor_usage_counts[it] += 1
       else:
@@ -220,7 +219,7 @@ def imperative_grad(
   if not tape._tape_stack.stack:  # pylint: disable=protected-access
     raise RuntimeError("Computing a gradient with no tape present")
   bp_tape = tape.pop_tape()
-  tensor_to_op, op_to_entry, output_to_shape_dtype = bp_tape.export()
+  tensor_to_op, op_to_entry = bp_tape.export()
   # This overwrites the op_to_entry variable, which will release all memory used
   # to keep traces that are irrelevant to the gradient computation we're doing
   # here.
@@ -238,8 +237,7 @@ def imperative_grad(
     for i in range(len(out_gradients)):
       if out_gradients[i] is None:
         # TODO(apassos) this should be in the right device
-        out_gradients[i] = array_ops.zeros(
-            *output_to_shape_dtype[op_trace.output_ids[i]])
+        out_gradients[i] = array_ops.zeros(*op_trace.output_shape_and_dtype[i])
       else:
         out_gradients[i] = _aggregate_grads(out_gradients[i])
 
@@ -250,14 +248,15 @@ def imperative_grad(
                                                  ops.IndexedSlices,
                                                  type(None)))
                     else in_gradients)
-    for i, t in enumerate(op_trace.inputs):
+    for i, t in enumerate(op_trace.input_ids):
       if in_gradients[i] is not None:
-        gradients[ops.tensor_id(t)].append(in_gradients[i])
-      if tensor_usage_counts.get(ops.tensor_id(t), 0) > 0:
-        tensor_usage_counts[ops.tensor_id(t)] -= 1
-        if ops.tensor_id(t) in tensor_to_op and tensor_usage_counts[
-            ops.tensor_id(t)] == 0 and ops.tensor_id(t) not in id_sources:
-          in_op = tensor_to_op[ops.tensor_id(t)]
+        gradients[t].append(in_gradients[i])
+      if tensor_usage_counts.get(t, 0) > 0:
+        tensor_usage_counts[t] -= 1
+        if (t in tensor_to_op
+            and tensor_usage_counts[t] == 0
+            and t not in id_sources):
+          in_op = tensor_to_op[t]
           if in_op is None:
             continue
           if op_missing_tensor.get(in_op, 0) > 0:
@@ -350,6 +349,109 @@ _gradient_functions_lock = threading.Lock()
 _tracing = False
 
 
+# TODO(apassos) replace this with a mechanism which can happen at the op
+# gradient function registration site, to be less error-prone
+# TODO(apassos) add ops other than those in nn_grad and math_grad
+_ops_which_dont_need_outputs = set([
+    "MatMul",
+    "Conv2DBackpropInput",
+    "Conv2DBackpropFilter",
+    "Conv3D",
+    "Conv3DBackpropInputV2",
+    "AvgPool3D",
+    "AvgPool3DGrad",
+    "MaxPool3D",
+    "MaxPool3DGrad",
+    "MaxPool3DGradGrad",
+    "BiasAdd",
+    "BiasAddV1",
+    "BiasAddGrad",
+    "Relu6",
+    "Softplus",
+    "SoftplusGrad",
+    "Softsign",
+    "ReluGrad",
+    "Conv2D",
+    "DepthwiseConv2dNative",
+    "Dilation2D",
+    "AvgPool",
+    "AvgPoolGrad",
+    "BatchNormWithGlobalNormalization",
+    "L2Loss",
+    "Sum",
+    "Prod",
+    "SegmentSum",
+    "SegmentMean",
+    "SparseSegmentSum",
+    "SparseSegmentMean",
+    "SparseSegmentSqrtN",
+    "SegmentMin",
+    "SegmentMax",
+    "UnsortedSegmentSum",
+    "UnsortedSegmentMax",
+    "Abs",
+    "Neg",
+    "ReciprocalGrad",
+    "Square",
+    "Expm1",
+    "Log",
+    "Log1p",
+    "TanhGrad",
+    "SigmoidGrad",
+    "Sign",
+    "Sin",
+    "Cos",
+    "Tan",
+    "Add",
+    "Sub",
+    "Mul",
+    "Div",
+    "RealDiv",
+    "Pow",
+    "Maximum",
+    "Minimum",
+    "SquaredDifference",
+    "Select",
+    "SparseMatMul",
+    "BatchMatMul",
+    "Complex",
+    "Real",
+    "Imag",
+    "Angle",
+    "Conj",
+    "Cast",
+    "Cross",
+    "Cumsum",
+    "Cumprod",
+    "ReadVariableOp",
+    "VarHandleOp",
+    "Shape",
+])
+
+_ops_which_dont_need_inputs = set([
+    "Softmax",
+    "LogSoftmax",
+    "BiasAdd",
+    "Relu",
+    "Elu",
+    "Selu",
+    "SparseSoftmaxCrossEntropyWithLogits",
+    "Neg",
+    "Inv",
+    "Reciprocal",
+    "Sqrt",
+    "Exp",
+    "Tanh",
+    "Sigmoid",
+    "Real",
+    "Imag",
+    "Conj",
+    "ReadVariableOp",
+    "VarHandleOp",
+    "Shape",
+])
+
+
 def _record_gradient(op_name, inputs, attrs, results, name):
   """Records gradients for a TensorFlow operation.
 
@@ -368,13 +470,32 @@ def _record_gradient(op_name, inputs, attrs, results, name):
   Raises:
     An exception on error.
   """
+  if not tape.could_possibly_record():
+    return
+
+  if op_name in _ops_which_dont_need_outputs:
+    op_outputs = None
+  else:
+    # TODO(apassos) this line creates a weak circular reference where the
+    # backprop function keeps an output alive which in turn keeps the tape entry
+    # alive which keeps the backprop function alive. Figure out how to break
+    # this up without breaking second derivatives of ops like Exp whose
+    # gradients depend only on the outputs.
+    op_outputs = results
+
+  if op_name in _ops_which_dont_need_inputs:
+    op_inputs = None
+  else:
+    op_inputs = inputs
+
+  num_inputs = len(inputs)
 
   def grad_fn(*orig_outputs):
     """Generated gradient function."""
-    result = _magic_gradient_function(op_name, attrs, len(inputs),
-                                      inputs, results, orig_outputs)
+    result = _magic_gradient_function(op_name, attrs, num_inputs,
+                                      op_inputs, op_outputs, orig_outputs)
     if _tracing:
-      print("Gradient for", (name if name else op_name), "inputs", inputs,
+      print("Gradient for", (name if name else op_name), "inputs", op_inputs,
             "output_grads", orig_outputs, "gradients", result)
     return result
 
