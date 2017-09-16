@@ -303,7 +303,6 @@ filegroup(
         "//tensorflow/contrib/hooks:all_files",
         "//tensorflow/contrib/hvx/hvx_ops_support_checker:all_files",
         "//tensorflow/contrib/image:all_files",
-        "//tensorflow/contrib/imperative:all_files",
         "//tensorflow/contrib/input_pipeline:all_files",
         "//tensorflow/contrib/input_pipeline/kernels:all_files",
         "//tensorflow/contrib/integrate:all_files",
