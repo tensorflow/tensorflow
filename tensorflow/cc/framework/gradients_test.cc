@@ -373,24 +373,22 @@ TEST_F(GradientsTest, UnreachableEdgeGradOneOutput) {
   auto y_const = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
   auto y_assign = Assign(scope_test_, y, y_const);
 
-  auto m1 = MatMul(scope_test_, x, y);
+  auto m = MatMul(scope_test_, x, y);
 
   auto z = Variable(scope_test_, {1, 3}, DT_DOUBLE);
   auto z_const = Const(scope_test_, {{9.0, 10.0, 11.0}});
   auto z_assign = Assign(scope_test_, z, z_const);
 
-  auto m2 = MatMul(scope_test_, y, z);
-
-  auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
+  auto diff_m = Const(scope_test_, {{0.5}, {0.5}});
 
   std::vector<Output> grad_outputs;
   TF_ASSERT_OK(
-      AddSymbolicGradients(scope_test_, {m1}, {y}, {dm1}, &grad_outputs));
+      AddSymbolicGradients(scope_test_, {m}, {y}, {diff_m}, &grad_outputs));
 
   std::vector<Tensor> outputs;
   test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
                    {grad_outputs[0]}, &outputs);
-  // dz/dy = xT * dm1
+  // dz/dy = xT * diff_m
   test::ExpectTensorNear<double>(
       outputs[0], test::AsTensor<double>({2.5, 3.5, 4.5}, {3, 1}), 1e-5);
 }
