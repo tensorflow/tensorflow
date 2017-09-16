@@ -55,7 +55,7 @@ import java.util.List;
  * example usage.
  */
 public class TensorFlowInferenceInterface {
-  private static final String TAG = "TensorFlowInferenceInt";
+  private static final String TAG = "TensorFlowInferenceInterface";
   private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
 
   /**
@@ -72,7 +72,6 @@ public class TensorFlowInferenceInterface {
       cacheFile.createNewFile();
     }
 
-    // from: InputStream to: FileOutputStream.
     InputStream inputStream = context.getResources().openRawResource(resourceId);
     FileOutputStream fileOutputStream = new FileOutputStream(cacheFile);
     byte[] buffer = new byte[1024 * 512];
@@ -97,7 +96,7 @@ public class TensorFlowInferenceInterface {
    */
   public TensorFlowInferenceInterface(Context ctx, int model) {
     prepareNativeRuntime();
-    File mModelFile = null;
+    File modelFile = null;
     this.g = new Graph();
     this.sess = new Session(g);
     this.runner = sess.runner();
@@ -105,46 +104,49 @@ public class TensorFlowInferenceInterface {
     MappedByteBuffer buffer = null;
     FileChannel fileChannel = null;
     RandomAccessFile raf = null;
-    File cacheFile;
+    File cacheFile = null;
+
     try {
-      cacheFile = createCacheFile(ctx, model, "delete-me-please");
+      cacheFile = createCacheFile(ctx, model, modelName);
       raf = new RandomAccessFile(cacheFile, "r");
       fileChannel = raf.getChannel();
-      buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
     } catch (FileNotFoundException f) {
-      throw new RuntimeException("Failed to find model file: " + mModelFile, f);
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to map model from: " + mModelFile, e);
+      throw new RuntimeException("Failed to create cache file: " + modelFile, f);
+    } catch (IOException ioe) {
+      throw new RuntimeException("Failed to create random access file: " + modelFile, ioe);
     }
 
     try {
+      buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
       if (!buffer.isLoaded()) {
         buffer.load();
       }
       byte[] graphDef = new byte[buffer.limit()];
       buffer.get(graphDef);
       loadGraph(graphDef, g);
-      Log.i(TAG, "Successfully loaded model from map '" + model + "'");
+      Log.i(TAG, "Successfully loaded model from map" + model);
     } catch (IOException e) {
-      throw new RuntimeException("Failed to load model from" + model, e);
+      throw new RuntimeException("Failed to map  model from" + model, e);
     } finally {
       try {
-        raf.close();
-        cacheFile.delete();
+        if (raf != null) {
+          raf.close();
+        }
+        if (cacheFile != null) {
+          cacheFile.delete();
+        }
       } catch (IOException e) {
-        throw new RuntimeException("Failed to close FileChannel '" + fileChannel + "'", e);
+        throw new RuntimeException("Failed to close RandomAccessFile " + raf, e);
       }
       try {
-        //@todo individual exceptions
         fileChannel.close();
       } catch (IOException e) {
-        throw new RuntimeException("Failed to close RAF '" + fileChannel + "'", e);
+        throw new RuntimeException("Failed to close FileChannel " + fileChannel, e);
       }
       if (buffer != null) {
         buffer.clear();
         buffer = null;
       }
-
     }
   }
 
@@ -184,7 +186,6 @@ public class TensorFlowInferenceInterface {
         Trace.beginSection("initializeTensorFlow");
         Trace.beginSection("readGraphDef");
       }
-
       // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
       byte[] graphDef = new byte[is.available()];
 
@@ -257,6 +258,7 @@ public class TensorFlowInferenceInterface {
    *
    * @param outputNames A list of output nodes which should be filled by the inference pass.
    */
+
   public void run(String[] outputNames) {
     run(outputNames, false);
   }
