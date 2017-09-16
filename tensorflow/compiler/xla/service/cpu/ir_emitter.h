@@ -133,6 +133,13 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       bool is_top_level_computation,
       std::vector<const HloInstruction*>* instruction_order);
 
+  llvm::IRBuilder<>* ir_builder() { return &ir_builder_; }
+
+  // Emits a call to `computation` with scalar arguments `arguments`.
+  StatusOr<llvm::Value*> EmitScalarCall(
+      PrimitiveType return_type, HloComputation* computation,
+      const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name);
+
  protected:
   //
   // The following methods implement the DfsHloVisitor interface.

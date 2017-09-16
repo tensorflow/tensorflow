@@ -2354,8 +2354,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     for (HloInstruction* operand : fusion->operands()) {
       parameter_arrays.push_back(GetIrArrayForOp(operand));
     }
-    CpuElementalIrEmitter elemental_emitter(hlo_module_config_, &ir_builder_,
-                                            module_);
+    CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     FusedIrEmitter fused_emitter(parameter_arrays, &elemental_emitter);
     TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
@@ -3176,10 +3175,25 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
       return GetIrArrayForOp(operand).EmitReadArrayElement(index, &ir_builder_);
     };
   }
-  CpuElementalIrEmitter elemental_emitter(hlo_module_config_, &ir_builder_,
-                                          module_);
+  CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
   return EmitTargetElementLoop(
       hlo, elemental_emitter.MakeElementGenerator(hlo, operand_to_generator));
+}
+
+StatusOr<llvm::Value*> IrEmitter::EmitScalarCall(
+    PrimitiveType return_type, HloComputation* computation,
+    const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name) {
+  llvm::Function* llvm_function = FindOrDie(emitted_functions_, computation);
+  std::vector<llvm::Value*> argument_addrs;
+  for (auto argument : arguments) {
+    llvm::Value* argument_addr = llvm_ir::EmitAllocaAtFunctionEntry(
+        argument->getType(), "arg_addr", &ir_builder_);
+    ir_builder_.CreateStore(argument, argument_addr);
+    argument_addrs.push_back(argument_addr);
+  }
+  return EmitElementFunctionCall(llvm_function,
+                                 ShapeUtil::MakeShape(return_type, {}),
+                                 argument_addrs, name);
 }
 
 unsigned TargetMachineFeatures::largest_register_size_in_bytes(
