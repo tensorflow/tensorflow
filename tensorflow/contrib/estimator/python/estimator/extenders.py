@@ -54,7 +54,7 @@ def add_metrics(estimator, metric_fn):
   ```
 
   Args:
-    estimator: A ${tf.estimator.Esitmator} object.
+    estimator: A ${tf.estimator.Estimator} object.
     metric_fn: A function which should obey the following signature:
       - Args: can only have following four arguments in any order:
         * predictions: Predictions `Tensor` or dict of `Tensor` created by given

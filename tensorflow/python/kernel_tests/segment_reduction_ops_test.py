@@ -645,7 +645,6 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
           s.eval()
 
-
 class SegmentReductionOpBenchmark(test.Benchmark):
   outer_dim_options = [2**x for x in range(9, 14, 2)]
   ratio_options = [2**x for x in range(1, 6, 2)]

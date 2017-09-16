@@ -2340,7 +2340,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "svd_op",
     prefix = "svd_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]),
 )
 
 cc_library(
@@ -2938,7 +2941,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
-    ],
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -5502,6 +5505,22 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_input_conversion_op",
+    hdrs = ["mkl_tfconv_op.h"],
+    prefix = "mkl_input_conversion",
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
     name = "mkl_pooling_ops",
     srcs = [
         "mkl_avgpooling_op.cc",
@@ -5544,6 +5563,14 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_aggregate_ops",
+    prefix = "mkl_aggregate_ops",
+    deps = MATH_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
     deps = ARRAY_DEPS + [
@@ -5571,6 +5598,20 @@ tf_mkl_kernel_library(
     name = "mkl_lrn_op",
     prefix = "mkl_lrn_op",
     deps = NN_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_cwise_ops_common",
+    hdrs = [
+        "cwise_ops.h",
+        "cwise_ops_common.h",
+        "cwise_ops_gradients.h",
+    ],
+    prefix = "mkl_cwise_ops_common",
+    deps = NN_DEPS + [
+        "cwise_op",
         "//third_party/mkl:intel_binary_blob",
     ],
 )

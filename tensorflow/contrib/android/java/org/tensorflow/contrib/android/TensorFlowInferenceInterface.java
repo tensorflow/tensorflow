@@ -20,6 +20,7 @@ import android.os.Build.VERSION;
 import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
+import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -78,10 +79,35 @@ public class TensorFlowInferenceInterface {
         throw new RuntimeException("Failed to load model from '" + model + "'", e);
       }
     }
+
     try {
-      loadGraph(is, g);
+      if (VERSION.SDK_INT >= 18) {
+        Trace.beginSection("initializeTensorFlow");
+        Trace.beginSection("readGraphDef");
+      }
+
+      // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
+      byte[] graphDef = new byte[is.available()];
+      final int numBytesRead = is.read(graphDef);
+      if (numBytesRead != graphDef.length) {
+        throw new IOException(
+            "read error: read only "
+                + numBytesRead
+                + " of the graph, expected to read "
+                + graphDef.length);
+      }
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // readGraphDef.
+      }
+
+      loadGraph(graphDef, g);
       is.close();
       Log.i(TAG, "Successfully loaded model from '" + model + "'");
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // initializeTensorFlow.
+      }
     } catch (IOException e) {
       throw new RuntimeException("Failed to load model from '" + model + "'", e);
     }
@@ -105,8 +131,30 @@ public class TensorFlowInferenceInterface {
     this.runner = sess.runner();
 
     try {
-      loadGraph(is, g);
+      if (VERSION.SDK_INT >= 18) {
+        Trace.beginSection("initializeTensorFlow");
+        Trace.beginSection("readGraphDef");
+      }
+
+      int baosInitSize = is.available() > 16384 ? is.available() : 16384;
+      ByteArrayOutputStream baos = new ByteArrayOutputStream(baosInitSize);
+      int numBytesRead;
+      byte[] buf = new byte[16384];
+      while ((numBytesRead = is.read(buf, 0, buf.length)) != -1) {
+        baos.write(buf, 0, numBytesRead);
+      }
+      byte[] graphDef = baos.toByteArray();
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // readGraphDef.
+      }
+
+      loadGraph(graphDef, g);
       Log.i(TAG, "Successfully loaded model from the input stream");
+
+      if (VERSION.SDK_INT >= 18) {
+        Trace.endSection(); // initializeTensorFlow.
+      }
     } catch (IOException e) {
       throw new RuntimeException("Failed to load model from the input stream", e);
     }
@@ -269,8 +317,8 @@ public class TensorFlowInferenceInterface {
 
   /**
    * Copy a byte sequence into the input Tensor with name {@link inputName} as a string-valued
-   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of
-   * bytes, not a Java {@code String} (which is a sequence of characters).
+   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of bytes, not
+   * a Java {@code String} (which is a sequence of characters).
    */
   public void feedString(String inputName, byte[] src) {
     addFeed(inputName, Tensor.create(src));
@@ -278,9 +326,8 @@ public class TensorFlowInferenceInterface {
 
   /**
    * Copy an array of byte sequences into the input Tensor with name {@link inputName} as a
-   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string"
-   * is an arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of
-   * characters).
+   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string" is an
+   * arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of characters).
    */
   public void feedString(String inputName, byte[][] src) {
     addFeed(inputName, Tensor.create(src));
@@ -458,27 +505,10 @@ public class TensorFlowInferenceInterface {
     }
   }
 
-  private void loadGraph(InputStream is, Graph g) throws IOException {
+  private void loadGraph(byte[] graphDef, Graph g) throws IOException {
     final long startMs = System.currentTimeMillis();
 
     if (VERSION.SDK_INT >= 18) {
-      Trace.beginSection("loadGraph");
-      Trace.beginSection("readGraphDef");
-    }
-
-    // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
-    byte[] graphDef = new byte[is.available()];
-    final int numBytesRead = is.read(graphDef);
-    if (numBytesRead != graphDef.length) {
-      throw new IOException(
-          "read error: read only "
-              + numBytesRead
-              + " of the graph, expected to read "
-              + graphDef.length);
-    }
-
-    if (VERSION.SDK_INT >= 18) {
-      Trace.endSection(); // readGraphDef.
       Trace.beginSection("importGraphDef");
     }
 
@@ -490,7 +520,6 @@ public class TensorFlowInferenceInterface {
 
     if (VERSION.SDK_INT >= 18) {
       Trace.endSection(); // importGraphDef.
-      Trace.endSection(); // loadGraph.
     }
 
     final long endMs = System.currentTimeMillis();

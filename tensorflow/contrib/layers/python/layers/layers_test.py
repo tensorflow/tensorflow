@@ -2636,6 +2636,13 @@ class BatchNormTest(test.TestCase):
             data_format='NCHW', shape=shape, is_training=True)
         self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
+  def testBatchNormBeta(self):
+    # Test case for 11673
+    with self.test_session() as sess:
+      a = array_ops.placeholder(dtypes.float32, shape=(10, 10, 10, 10))
+      b = _layers.batch_norm(a, center=False, data_format='NCHW',
+                                       zero_debias_moving_mean=True)
+      sess.run(variables_lib.global_variables_initializer())
 
 class LayerNormTest(test.TestCase):
 

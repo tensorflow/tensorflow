@@ -50,6 +50,7 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
+from tensorflow.python.layers.maxout import maxout
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
@@ -92,7 +93,8 @@ __all__ = ['avg_pool2d',
            'unit_norm',
            'legacy_fully_connected',
            'legacy_linear',
-           'legacy_relu']
+           'legacy_relu',
+           'maxout']
 
 DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
@@ -811,7 +813,8 @@ def batch_norm(inputs,
     if data_format == DATA_FORMAT_NCHW:
       mean = array_ops.reshape(mean, params_shape_broadcast)
       variance = array_ops.reshape(variance, params_shape_broadcast)
-      beta = array_ops.reshape(beta, params_shape_broadcast)
+      if beta is not None:
+        beta = array_ops.reshape(beta, params_shape_broadcast)
       if gamma is not None:
         gamma = array_ops.reshape(gamma, params_shape_broadcast)
 
