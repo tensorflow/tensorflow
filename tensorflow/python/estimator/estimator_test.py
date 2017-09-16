@@ -127,6 +127,12 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
       def _create_global_step(self, graph):
         pass
 
+      def _convert_train_steps_to_hooks(self, steps, max_steps):
+        pass
+
+      def _convert_eval_steps_to_hooks(self, steps):
+        pass
+
     _Estimator()
 
 
