@@ -36,7 +36,6 @@ py_library(
         "//tensorflow/contrib/image:distort_image_py",
         "//tensorflow/contrib/image:image_py",
         "//tensorflow/contrib/image:single_image_random_dot_stereograms_py",
-        "//tensorflow/contrib/imperative",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/keras",
