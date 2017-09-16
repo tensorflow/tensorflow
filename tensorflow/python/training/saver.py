@@ -167,8 +167,17 @@ class BaseSaverBuilder(object):
         self.handle_op = var.op.inputs[0]
         tensor = var
       elif isinstance(var, resource_variable_ops.ResourceVariable):
+
+        def _read_variable_closure(v):
+          def f():
+            with ops.device(v.device):
+              x = v.read_value()
+            with ops.device("/device:CPU:0"):
+              return array_ops.identity(x)
+          return f
+
         self.handle_op = var.handle
-        tensor = var.read_value
+        tensor = _read_variable_closure(var)
       else:
         raise ValueError(
             "Saveable is neither a resource variable nor a read operation."
@@ -1182,6 +1191,10 @@ class Saver(object):
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
           "Either set defer_build=False or var_list=None.")
+    if context.in_eager_mode() and var_list is None:
+      raise ValueError(
+          "When eager execution is enabled, `var_list` must specify a list of "
+          "variables to save")
     self._var_list = var_list
     self._reshape = reshape
     self._sharded = sharded
@@ -1574,9 +1587,7 @@ class Saver(object):
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
-      if context.in_eager_mode():
-        self.export_meta_graph(meta_graph_filename)
-      else:
+      if context.in_graph_mode():
         with sess.graph.as_default():
           self.export_meta_graph(meta_graph_filename)
 
@@ -1774,7 +1785,11 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
 
     A None value is returned if no variables exist in the `MetaGraphDef`
     (i.e., there are no variables to restore).
-  """
+  """  # pylint: disable=g-doc-exception
+  if context.in_eager_mode():
+    raise ValueError("Exporting/importing meta graphs is not supported when "
+                     "eager execution is enabled. No graph exists when eager "
+                     "execution is enabled.")
   if not isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
     meta_graph_def = meta_graph.read_meta_graph_file(meta_graph_or_file)
   else:
@@ -1841,6 +1856,10 @@ def export_meta_graph(filename=None,
   Raises:
     ValueError: When the `GraphDef` is larger than 2GB.
   """
+  if context.in_eager_mode():
+    raise ValueError("Exporting/importing meta graphs is not supported when "
+                     "eager execution is enabled. No graph exists when eager "
+                     "execution is enabled.")
   meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
       filename=filename,
       meta_info_def=meta_info_def,

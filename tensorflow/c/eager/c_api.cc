@@ -101,7 +101,7 @@ struct TFE_Op {
   bool const is_function() const { return attr_types == nullptr; }
 
   TFE_Context* ctx;  // Must outlive the TFE_Op.
-  const char* name;
+  const string name;
   tensorflow::AttrBuilder attrs;
   const tensorflow::AttrTypeMap* attr_types;
   std::vector<tensorflow::Tensor> inputs;
@@ -370,6 +370,15 @@ void TFE_OpSetAttrShape(TFE_Op* op, const char* attr_name, const int64_t* dims,
     }
   }
   op->attrs.Set(attr_name, proto);
+}
+
+void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
+                           const TFE_Op* value) {
+  tensorflow::AttrValue attr_value;
+  tensorflow::NameAttrList* func = attr_value.mutable_func();
+  func->set_name(value->name);
+  value->attrs.FillAttrValueMap(func->mutable_attr());
+  op->attrs.Set(attr_name, attr_value);
 }
 
 #define TFE_OP_SET_ATTR_LIST(fn, type)                                \

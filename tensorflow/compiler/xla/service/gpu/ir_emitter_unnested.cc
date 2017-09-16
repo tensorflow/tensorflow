@@ -164,7 +164,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // Compute the kernel name. The opcode string may contain "-" which cannot be
   // in a PTX function name, so sanitize the name before uniquifying it.
   string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
-      llvm_ir::SanitizeIrName(inst.name()));
+      llvm_ir::SanitizeFunctionName(inst.name()));
 
   // Create the kernel and adds it to the module.
   llvm::Module* module = ir_emitter_context_->llvm_module();

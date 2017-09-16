@@ -54,9 +54,6 @@ class IteratorTest(test.TestCase):
     self.assertEqual(4, total)
 
   def testMapAndFilter(self):
-    # TODO(ashankar): Address this
-    self.skipTest('Not working yet, requires function attribute support')
-
     def even(x):
       return math_ops.equal(math_ops.mod(x, 2), 0)
 

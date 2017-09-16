@@ -319,10 +319,10 @@ TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
 
   HloInstruction* literal_instruction = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
-  // Broadcast dimension is ignored in the case of scalars.
+  // Broadcast dimension should be empty in the case of scalars.
   b.AddInstruction(HloInstruction::CreateBroadcast(
       output_literal->shape(), literal_instruction,
-      /*broadcast_dimensions=*/{1}));
+      /*broadcast_dimensions=*/{}));
   HloModule module(TestName());
   auto computation = module.AddEntryComputation(b.Build());
 

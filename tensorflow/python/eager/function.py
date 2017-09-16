@@ -28,7 +28,6 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
-from tensorflow.python.eager import tensor
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -95,7 +94,7 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
 # Note that we register this at a higher priority than ops.Tensor since we want
 # to handle subclass specific conversion before a superclass conversion.
 ops.register_tensor_conversion_function(
-    tensor.Tensor, _convert_to_graph_tensor, priority=-1)
+    ops.EagerTensor, _convert_to_graph_tensor, priority=-1)
 
 
 class _CapturingContext(object):
@@ -274,8 +273,7 @@ class _GraphModeFunction(object):
     """Executes the passed function in eager mode."""
     tensor_inputs = [
         x for x in nest.flatten(args)
-        if isinstance(x, (tensor.Tensor, ops.Tensor,
-                          tensor.LazyZero))
+        if isinstance(x, ops.Tensor)
     ]
     if tape.should_record(tensor_inputs) or tape.should_record(
         self._extra_inputs):
@@ -285,7 +283,8 @@ class _GraphModeFunction(object):
 
     if context.in_graph_mode():
       g = ops.get_default_graph()
-      g._add_function(self._fdef)  # pylint: disable=protected-access
+      if self._fdef.name not in g._functions:  # pylint: disable=protected-access
+        g._add_function(self._fdef)  # pylint: disable=protected-access
       signature = self._fdef.definition.signature
       args = list(tensor_inputs) + self._extra_inputs
       op = g.create_op(
@@ -298,10 +297,6 @@ class _GraphModeFunction(object):
       for i, s in enumerate(self._output_shapes):
         result[i].set_shape(s)
     else:
-      tensor_inputs = [
-          x.tensor() if isinstance(x, tensor.LazyZero) else x
-          for x in tensor_inputs
-      ]
       result = execute.execute(
           str(self._func_name),
           num_outputs=self._num_outputs,
@@ -341,7 +336,7 @@ def _get_defun_inputs(args):
   """Maps the inputs args to graph inputs."""
   ret = []
   for a in args:
-    if isinstance(a, (tensor.LazyZero, ops.Tensor, tensor.Tensor)):
+    if isinstance(a, ops.Tensor):
       ret.append(graph_placeholder(a.dtype, a.shape))
     elif type(a) in (tuple, list):
       ret.append(_get_defun_inputs(a))
@@ -407,10 +402,8 @@ _ZeroDtype = collections.namedtuple("_ZeroDtype", ["dtype", "shape"])
 
 def _cache_key(x):
   """Cache key for tfe functions."""
-  if isinstance(x, tensor.Tensor):
+  if isinstance(x, ops.Tensor):
     return _TensorDtype(x.dtype, x._shape_tuple())  # pylint: disable=protected-access
-  if isinstance(x, tensor.LazyZero):
-    return _TensorDtype(x.dtype, tuple(x.shape.as_list()))  # pylint: disable=protected-access
   if isinstance(x, np.ndarray):
     return ("array", x.shape, tuple(x.reshape(-1)))
   if type(x) in (list, tuple):
@@ -444,7 +437,7 @@ def named_defun(func, name):
     """Decorated version of func."""
     # Macroexpand on non-Tensor arguments
     cache_key = tuple(_cache_key(x) for x in args)
-    assert all(not isinstance(x, tensor.Tensor) for x in kwds.values())
+    assert all(not isinstance(x, ops.EagerTensor) for x in kwds.values())
     cache_key = (cache_key, tuple(kwds.items()))
 
     if cache_key not in arguments_to_functions:
