@@ -966,10 +966,10 @@ if(WIN32)
        "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/ops/array_ops.cc"
     )
 
-    #AddUserOps(TARGET _periodic_resample_op
-    #    SOURCES "${tf_periodic_resample_srcs}"
-    #    DEPENDS pywrap_tensorflow_internal tf_python_ops
-    #    DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/periodic_resample/python/ops/)
+    AddUserOps(TARGET _periodic_resample_op
+        SOURCES "${tf_periodic_resample_srcs}"
+        DEPENDS pywrap_tensorflow_internal tf_python_ops
+        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/periodic_resample/python/ops/)
 
     # include contrib/nearest_neighbor as .so
     #
