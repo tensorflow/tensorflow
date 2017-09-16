@@ -18,6 +18,7 @@ limitations under the License.
 #include <ctype.h>
 #include <algorithm>
 #include <vector>
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -434,8 +435,8 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   }
 }
 
-bool SplitUTF8(StringPiece text, string delim, std::vector<string>* result,
-               string* error) {
+Status SplitUTF8(StringPiece text, const string& delim,
+                 std::vector<string>* result) {
   // Bytes    Byte 1    Byte 2    Byte 3    Byte 4
   //   1     0xxxxxxx
   //   2     110xxxxx  10xxxxxx
@@ -475,22 +476,14 @@ bool SplitUTF8(StringPiece text, string delim, std::vector<string>* result,
         len = 4;
       } else {
         result->clear();
-        if (error) {
-          std::ostringstream ss;
-          ss << "Invalid UTF8 encoding at position of " << i;
-          *error = ss.str();
-        }
-        return false;
+        return errors::InvalidArgument("Invalid UTF8 encoding at position of ",
+                                       i);
       }
     } else {
       if ((text[i] & 0xC0) != 0x80) {
         result->clear();
-        if (error) {
-          std::ostringstream ss;
-          ss << "Invalid UTF8 encoding at position of " << i;
-          *error = ss.str();
-        }
-        return false;
+        return errors::InvalidArgument("Invalid UTF8 encoding at position of ",
+                                       i);
       }
       if (off + len == i + 1) {
         string entry = text.substr(off, len).ToString();
@@ -517,13 +510,9 @@ bool SplitUTF8(StringPiece text, string delim, std::vector<string>* result,
   }
   if (off < text.size()) {
     result->clear();
-    if (error) {
-      std::ostringstream ss;
-      *error = "Not enough characters for UTF8 encoding";
-    }
-    return false;
+    return errors::InvalidArgument("Not enough characters for UTF8 encoding");
   }
-  return true;
+  return Status::OK();
 }
 
 bool SplitAndParseAsInts(StringPiece text, char delim,

@@ -39,10 +39,7 @@ Status Split(const string& str, const string& delimiter, const bool skipEmpty,
     return Status::OK();
   }
   if (encoding == "utf8") {
-    string error;
-    if (!str_util::SplitUTF8(str, delimiter, result, &error)) {
-      return errors::InvalidArgument(error);
-    }
+    TF_RETURN_IF_ERROR(str_util::SplitUTF8(str, delimiter, result));
   } else {
     result->resize(str.size());
     for (size_t i = 0; i < str.size(); ++i) {
