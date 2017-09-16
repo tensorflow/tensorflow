@@ -348,7 +348,11 @@ class _DefinedFunction(object):
 
   def _create_definition_if_needed(self):
     """Creates the function definition if it's not created yet."""
+    with context.graph_mode():
+      self._create_definition_if_needed_impl()
 
+  def _create_definition_if_needed_impl(self):
+    """This is not what you want, see _create_definition_if_needed."""
     if self._definition is not None:
       return
 
