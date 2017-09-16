@@ -1448,6 +1448,7 @@ cc_test(
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:computation_tracker",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/core:test_main",
     ],
