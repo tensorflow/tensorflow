@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.eager.python import tfe
-from tensorflow.python.platform import test
+from tensorflow.python.eager import test
 
 
 class TFETest(test.TestCase):
@@ -30,6 +30,14 @@ class TFETest(test.TestCase):
   def testNumGPUs(self):
     devices = tfe.list_devices()
     self.assertEqual(len(devices) - 1, tfe.num_gpus())
+
+  def testCallingEnableEagerExecutionMoreThanOnce(self):
+    # Note that eager.test.main() has already invoked enable_eager_exceution().
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Do not call tfe\.%s more than once in the same process" %
+        tfe.enable_eager_execution.__name__):
+      tfe.enable_eager_execution()
 
 
 if __name__ == "__main__":

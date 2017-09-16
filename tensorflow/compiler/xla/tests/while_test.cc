@@ -50,7 +50,7 @@ class WhileTest : public ClientLibraryTestBase {};
 // while (result < 5) {
 //   result = result + 1;
 // }
-TEST_F(WhileTest, WhileWithScalarResult) {
+TEST_F(WhileTest, WhileWithScalarS32Result) {
   auto result_shape = ShapeUtil::MakeShape(S32, {});
 
   // Create a computation for the condition: repeat for 5 iterations.
@@ -79,6 +79,43 @@ TEST_F(WhileTest, WhileWithScalarResult) {
   auto shape = builder.GetShape(result).ConsumeValueOrDie();
 
   ComputeAndCompareR0<int32>(&builder, 5, {});
+}
+
+// Tests a while node when the result type T is S64.
+//
+// int32 result = 0;
+// while (result < 5) {
+//   result = result + 1;
+// }
+TEST_F(WhileTest, WhileWithScalarS64Result) {
+  auto result_shape = ShapeUtil::MakeShape(S64, {});
+
+  // Create a computation for the condition: repeat for 5 iterations.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    builder.Gt(builder.ConstantR0<int64>(5), prev);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body: add 1 to the result variable.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto input = builder.ConstantR0<int64>(1);
+    auto result = builder.Add(input, prev);
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, TestName());
+  auto init = builder.ConstantR0<int64>(0);
+  auto result = builder.While(condition, body, init);
+  auto shape = builder.GetShape(result).ConsumeValueOrDie();
+
+  ComputeAndCompareR0<int64>(&builder, 5, {});
 }
 
 TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {

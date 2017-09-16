@@ -180,15 +180,18 @@ cc_library(
 
 cc_library(
     name = "ir_emitter",
-    srcs = ["ir_emitter.cc"],
+    srcs = [
+        "elemental_ir_emitter.cc",
+        "ir_emitter.cc",
+    ],
     hdrs = [
+        "elemental_ir_emitter.h",
         "ir_emitter.h",
     ],
     deps = [
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
-        ":elemental_ir_emitter",
         ":ir_emission_utils",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:shape_util",
@@ -522,22 +525,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "elemental_ir_emitter",
-    srcs = ["elemental_ir_emitter.cc"],
-    hdrs = ["elemental_ir_emitter.h"],
-    deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:elemental_ir_emitter",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "@llvm//:core",
     ],
 )
 

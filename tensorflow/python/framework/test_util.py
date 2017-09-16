@@ -472,7 +472,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def tearDown(self):
     for thread in self._threads:
-      self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+      thread.check_termination()
 
     self._ClearCachedSession()
 
@@ -726,6 +726,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self._thread = threading.Thread(target=self._protected_run)
       self._exception = None
 
+      self._is_thread_joined = False
+
     def _protected_run(self):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
@@ -748,6 +750,7 @@ class TensorFlowTestCase(googletest.TestCase):
         self._testcase.failureException: If the thread terminates with due to
           an exception.
       """
+      self._is_thread_joined = True
       self._thread.join()
       if self._exception is not None:
         self._testcase.fail("Error in checkedThread: %s" % str(self._exception))
@@ -762,6 +765,28 @@ class TensorFlowTestCase(googletest.TestCase):
         True if the thread is alive, otherwise False.
       """
       return self._thread.is_alive()
+
+    def check_termination(self):
+      """Returns whether the checked thread was properly used and did terminate.
+
+      Every checked thread should be "join"ed after starting, and before the
+      test tears down. If it is not joined, it is possible the thread will hang
+      and cause flaky failures in tests.
+
+      Raises:
+        self._testcase.failureException: If check_termination was called before
+        thread was joined.
+
+        RuntimeError: If the thread is not terminated. This means thread was not
+        joined with the main thread.
+      """
+      if self._is_thread_joined:
+        if self.is_alive():
+          raise RuntimeError(
+              "Thread was not joined with main thread, and is still running "
+              "when the test finished.")
+      else:
+        self._testcase.fail("A checked thread was not joined.")
 
   def checkedThread(self, target, args=None, kwargs=None):
     """Returns a Thread wrapper that asserts 'target' completes successfully.
