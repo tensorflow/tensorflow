@@ -318,8 +318,7 @@ public class TensorFlowInferenceInterface {
     }
   }
 
-  
-  /** Returns a reference to the Graph describing the computation run during inference.*/
+  /** Returns a reference to the Graph describing the computation run during inference. */
   public Graph graph() {
     return g;
   }
@@ -333,7 +332,7 @@ public class TensorFlowInferenceInterface {
     return operation;
   }
   
-  /** Returns the last stat summary string if logging is enabled.*/
+  /** Returns the last stat summary string if logging is enabled. */
   public String getStatString() {
     return (runStats == null) ? "" : runStats.summary();
   }
