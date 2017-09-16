@@ -43,7 +43,9 @@ def custom_gradient(f):
     """Decorated function with custom gradient."""
     input_tensors = [x for x in args
                      if isinstance(x, tf_ops.Tensor)]
-    result, grad_fn = f(*args, **kwargs)
+
+    with tape.stop_recording():
+      result, grad_fn = f(*args, **kwargs)
 
     # TODO(apassos): naive uses of custom_gradient will not get the correct
     # second derivative this way if they capture any output tensors. Change the

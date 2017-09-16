@@ -128,7 +128,7 @@ class FunctionTestMethods(object):
     @function.Defun(dtypes.float32, dtypes.float32)
     def APlus2B(a, b):
       print(a + b * 2)  # Create some ops to have nodes in the body
-                        # Using 'print' to make lint happy
+      # Using 'print' to make lint happy
 
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(ValueError,
@@ -1211,6 +1211,35 @@ class FunctionOverloadTest(test.TestCase):
 
     self.assertEqual(g.as_graph_def().library.function[0].signature.description,
                      "Successor of x.")
+
+
+class FunctionCaptureByValueTest(test.TestCase):
+
+  def testCaptureByValue(self):
+    g = ops.Graph()
+    with g.as_default():
+      w = constant_op.constant([[1.0]])
+      b = constant_op.constant([2.0])
+
+      # Foo() captures w and b.
+      @function.Defun(dtypes.float32, capture_by_value=True)
+      def Foo(x):
+
+        # Plus() captures b.
+        @function.Defun(dtypes.float32, capture_by_value=True)
+        def Plus(y):
+          return y + b
+
+        self.assertEqual(0, len(Plus.captured_inputs))
+
+        return Plus(math_ops.matmul(w, x))
+
+      y = Foo(constant_op.constant([[10.]]))
+
+    self.assertEqual(0, len(Foo.captured_inputs))
+
+    with self.test_session(graph=g):
+      self.assertAllEqual(y.eval(), [[12.0]])
 
 
 class UnrollLSTMTest(test.TestCase):
