@@ -48,9 +48,9 @@ class GradientsTest : public ::testing::Test {
   Scope scope_test_;
 };
 
-// EX.
+// Example:
 //      ^             ^
-//    dy|           dx|        // MatMul Gradient Graph
+//    dy|           dx|        (MatMul Gradient Graph)
 //      |             |
 //   MatMul_1      MatMul_2
 //   ^   ^          ^    ^
@@ -61,7 +61,7 @@ class GradientsTest : public ::testing::Test {
 //   |     Const_3       |
 //   |                   |
 //   |        ^          |
-//   |       z|          |     // MatMul Forward Graph
+//   |       z|          |     (MatMul Forward Graph)
 //   |        |          |
 //   |      MatMul_0     |
 //   |     /        \    |
@@ -424,8 +424,8 @@ TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
   test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
                    {grad_outputs[0]}, &outputs);
 
-  // the gradients from m1 and m2 will be summed to compute the gradient
-  // w.r.t y
+  // The gradients from m1 and m2 will be summed to compute the gradient
+  // w.r.t y:
   // dz/dy = xT * dm1 + dm2 * zT
   test::ExpectTensorNear<double>(
       outputs[0], test::AsTensor<double>({17.5, 24.7, 26.8}, {3, 1}), 1e-5);
@@ -440,7 +440,7 @@ TEST_F(GradientsTest, UnreachableInput) {
   auto m2 = MatMul(scope_test_, y, z);
   auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
   
-  // from m1 z is unreachable, an error status should be returned
+  // From m1, z is unreachable, so an error status should be returned.
   //   m2  m1
   //   |   |
   //   *   *
