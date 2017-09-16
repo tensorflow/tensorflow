@@ -23,10 +23,10 @@ import threading
 
 import numpy as np
 
-from tensorflow.contrib.data.python.framework import function
 from tensorflow.contrib.data.python.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -99,8 +99,9 @@ class Iterator(object):
         shared_name=shared_name,
         output_types=nest.flatten(dataset.output_types),
         output_shapes=nest.flatten(dataset.output_shapes))
-    initializer = gen_dataset_ops.make_iterator(dataset.make_dataset_resource(),
-                                                iterator_resource)
+    with ops.colocate_with(iterator_resource):
+      initializer = gen_dataset_ops.make_iterator(
+          dataset.make_dataset_resource(), iterator_resource)
     return Iterator(iterator_resource, initializer, dataset.output_types,
                     dataset.output_shapes)
 
@@ -291,6 +292,7 @@ class Iterator(object):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
                           (self._output_shapes, dataset.output_shapes))
+    with ops.colocate_with(self._iterator_resource):
       return gen_dataset_ops.make_iterator(
           dataset.make_dataset_resource(), self._iterator_resource, name=name)
 
@@ -2404,12 +2406,16 @@ def rejection_resample(dataset,
     num_classes = (target_dist.shape[0].value or
                    array_ops.shape(target_dist)[0])
     smoothing_constant = 10
-    num_examples_per_class_seen = resource_variable_ops.ResourceVariable(
-        initial_value=array_ops.fill([num_classes],
-                                     np.int64(smoothing_constant)),
-        trainable=False,
-        name="class_count",
-        dtype=dtypes.int64)
+    # Disable device functions and colocation constraints so that the variable
+    # will be placed with the eventual DT_VARIANT dataset tensor.
+    with ops.colocate_with(None, ignore_existing=True):
+      num_examples_per_class_seen = resource_variable_ops.ResourceVariable(
+          initial_value=array_ops.fill([num_classes],
+                                       np.int64(smoothing_constant)),
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          name="local_class_count",
+          dtype=dtypes.int64)
 
     def update_estimate_and_tile(c):
       return array_ops.tile(
@@ -2519,7 +2525,13 @@ def read_batch_features(file_pattern,
     dataset = reader(filenames, *reader_args)
   else:
     dataset = reader(filenames)
-  dataset = dataset.repeat(num_epochs)
+  if dataset.output_types == (dtypes.string, dtypes.string):
+    dataset = dataset.map(lambda unused_k, v: v)
+  elif dataset.output_types != dtypes.string:
+    raise TypeError("`reader` must be a dataset of `tf.string` values, "
+                    "or `(tf.string, tf.string)` key-value pairs.")
+  if num_epochs != 1:
+    dataset = dataset.repeat(num_epochs)
   if randomize_input:
     dataset = dataset.shuffle(capacity)
   dataset = dataset.batch(batch_size)
@@ -2729,3 +2741,137 @@ def group_by_window(dataset,
 
   assert window_size_func is not None
   return GroupByWindowDataset(dataset, key_func, reduce_func, window_size_func)
+
+
+class _RestructuredDataset(Dataset):
+  """An internal helper for changing the structure and shape of a dataset."""
+
+  def __init__(self, dataset, output_types, output_shapes=None):
+    """Creates a new dataset with the given output types and shapes.
+
+    The given `dataset` must have a structure that is convertible:
+    * `dataset.output_types` must be the same as `output_types` module nesting.
+    * Each shape in `dataset.output_shapes` must be compatible with each shape
+      in `output_shapes` (if given).
+
+    Note: This helper permits "unsafe casts" for shapes, equivalent to using
+    `tf.Tensor.set_shape()` where domain-specific knowledge is available.
+
+    Args:
+      dataset: A `Dataset` object.
+      output_types: A nested structure of `tf.DType` objects.
+      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects.
+        If omitted, the shapes will be inherited from `dataset`.
+
+    Raises:
+      ValueError: If either `output_types` or `output_shapes` is not compatible
+        with the structure of `dataset`.
+    """
+    super(_RestructuredDataset, self).__init__()
+    self._dataset = dataset
+
+    # Validate that the types are compatible.
+    output_types = nest.map_structure(dtypes.as_dtype, output_types)
+    flat_original_types = nest.flatten(dataset.output_types)
+    flat_new_types = nest.flatten(output_types)
+    if flat_original_types != flat_new_types:
+      raise ValueError(
+          "Dataset with output types %r cannot be restructured to have output "
+          "types %r" % (dataset.output_types, output_types))
+
+    self._output_types = output_types
+
+    if output_shapes is None:
+      # Inherit shapes from the original `dataset`.
+      self._output_shapes = nest.pack_sequence_as(
+          output_types, nest.flatten(dataset.output_shapes))
+    else:
+      # Validate that the shapes are compatible.
+      nest.assert_same_structure(output_types, output_shapes)
+      flat_original_shapes = nest.flatten(dataset.output_shapes)
+      flat_new_shapes = nest.flatten_up_to(output_types, output_shapes)
+
+      for original_shape, new_shape in zip(flat_original_shapes,
+                                           flat_new_shapes):
+        if not original_shape.is_compatible_with(new_shape):
+          raise ValueError(
+              "Dataset with output shapes %r cannot be restructured to have "
+              "incompatible output shapes %r"
+              % (dataset.output_shapes, output_shapes))
+      self._output_shapes = nest.map_structure_up_to(
+          output_types, tensor_shape.as_shape, output_shapes)
+
+  def make_dataset_resource(self):
+    return self._dataset.make_dataset_resource()
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+
+def batch_and_drop_remainder(batch_size):
+  """A batching transformation that omits the final small batch (if present).
+
+  Like @{tf.contrib.data.Dataset.batch}, this transformation combines
+  consecutive elements of this dataset into batches. However, if the batch
+  size does not evenly divide the input dataset size, this transformation will
+  drop the final smaller element.
+
+  The following example illustrates the difference between this
+  transformation and `Dataset.batch()`:
+
+  ```python
+  dataset = tf.contrib.data.Dataset.range(200)
+  batched = dataset.apply(tf.contrib.data.batch_and_drop_remainder(128))
+  print(batched.output_shapes)  # ==> "(128,)" (the batch dimension is known)
+  ```
+
+  By contrast, `dataset.batch(128)` would yield a two-element dataset with
+  shapes `(128,)` and `(72,)`, so the batch dimension would not be statically
+  known.
+
+  Args:
+    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        consecutive elements of this dataset to combine in a single batch.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    @{tf.contrib.data.Dataset.apply}
+  """
+
+  def _apply_fn(dataset):
+    """Function from `Dataset` to `Dataset` that applies the transformation."""
+    tensor_batch_size = ops.convert_to_tensor(
+        batch_size, dtype=dtypes.int64, name="batch_size")
+
+    batched = dataset.batch(tensor_batch_size)
+    flattened = _RestructuredDataset(batched,
+                                     tuple(nest.flatten(batched.output_types)))
+
+    def _predicate(*xs):
+      """Return `True` if this element is a full batch."""
+      # Extract the dynamic batch size from the first component of the flattened
+      # batched element.
+      first_component = xs[0]
+      first_component_batch_size = array_ops.shape(
+          first_component, out_type=dtypes.int64)[0]
+
+      return math_ops.equal(first_component_batch_size, tensor_batch_size)
+
+    filtered = flattened.filter(_predicate)
+
+    maybe_constant_batch_size = tensor_util.constant_value(tensor_batch_size)
+
+    def _set_first_dimension(shape):
+      return shape.merge_with(
+          tensor_shape.vector(maybe_constant_batch_size).concatenate(shape[1:]))
+
+    known_shapes = nest.map_structure(_set_first_dimension,
+                                      batched.output_shapes)
+    return _RestructuredDataset(filtered, batched.output_types, known_shapes)
+
+  return _apply_fn

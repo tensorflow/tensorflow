@@ -76,10 +76,11 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
   // Since CUDA 9.0, all GPU versions are included in a single file
   const char* unified_libdevice_filename = "libdevice.10.bc";
   std::vector<string> unified_libdevice_files;
-  tensorflow::Env::Default()->GetMatchingPaths(
+  const tensorflow::Status status = 
+    tensorflow::Env::Default()->GetMatchingPaths(
       tensorflow::io::JoinPath(libdevice_dir_path, unified_libdevice_filename),
       &unified_libdevice_files);
-  if( unified_libdevice_files.size() == 1 ) {
+  if (status.ok() && unified_libdevice_files.size() == 1) {
     return unified_libdevice_filename;
   }
   // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU

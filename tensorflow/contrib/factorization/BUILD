@@ -221,6 +221,7 @@ tf_py_test(
         "manual",
         "noasan",  # times out b/63678675
         "nomsan",
+        "notsan",
     ],
 )
 
