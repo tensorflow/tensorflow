@@ -40,10 +40,13 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import resource_loader
 
 
 __all__ = [
     'get_graph_def_from_disk',
+    'get_graph_def_from_resource',
+    'get_graph_def_from_url_tarball',
     'preprocess_image',
     'run_image_classifier',
     'run_inception',
@@ -177,6 +180,11 @@ def get_graph_def_from_disk(filename):
   """Get a GraphDef proto from a disk location."""
   with gfile.FastGFile(filename, 'rb') as f:
     return graph_pb2.GraphDef.FromString(f.read())
+
+
+def get_graph_def_from_resource(filename):
+  """Get a GraphDef proto from within a .par file."""
+  return graph_pb2.GraphDef.FromString(resource_loader.load_resource(filename))
 
 
 def get_graph_def_from_url_tarball(url, filename):

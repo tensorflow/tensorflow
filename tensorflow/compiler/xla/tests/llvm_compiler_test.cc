@@ -45,13 +45,13 @@ XLA_TEST_F(LLVMCompilerTest, CompilerHooks) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(builder.Build());
 
-  auto compiler = static_cast<LLVMCompiler *>(backend_->compiler());
+  auto compiler = static_cast<LLVMCompiler *>(backend().compiler());
   compiler->SetPreOptimizationHook(pre_opt_hook);
   compiler->SetPostOptimizationHook(post_opt_hook);
 
   ASSERT_TRUE(
       compiler
-          ->Compile(std::move(hlo_module), backend_->default_stream_executor())
+          ->Compile(std::move(hlo_module), backend().default_stream_executor())
           .ok());
 
   // Test that hooks were called.

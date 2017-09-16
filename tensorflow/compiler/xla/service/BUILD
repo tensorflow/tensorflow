@@ -420,7 +420,6 @@ cc_library(
         ":compiler",
         ":computation_layout",
         ":computation_tracker",
-        ":cpu_transfer_manager",
         ":device_memory_allocator",
         ":executable",
         ":execution_tracker",
@@ -447,7 +446,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
@@ -803,6 +801,7 @@ cc_test(
         ":call_graph",
         ":computation_tracker",
         ":copy_insertion",
+        ":cpu_plugin",
         ":flatten_call_graph",
         ":hlo",
         ":hlo_ordering",
@@ -1091,6 +1090,7 @@ cc_test(
     name = "inliner_test",
     srcs = ["inliner_test.cc"],
     deps = [
+        ":cpu_plugin",
         ":hlo",
         ":hlo_matchers",
         ":inliner",
@@ -1236,6 +1236,7 @@ cc_test(
     srcs = ["hlo_cost_analysis_test.cc"],
     deps = [
         ":computation_tracker",
+        ":cpu_plugin",
         ":hlo",
         ":hlo_cost_analysis",
         ":local_service",
@@ -1742,6 +1743,7 @@ cc_test(
     name = "hlo_cse_test",
     srcs = ["hlo_cse_test.cc"],
     deps = [
+        ":cpu_plugin",
         ":hlo",
         ":hlo_cse",
         ":hlo_matchers",
@@ -1938,7 +1940,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/core:lib",
     ],
 )
