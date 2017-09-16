@@ -137,7 +137,7 @@ def _initial_gradients(target, output_gradients, tensor_usage_counts):
         assert output_gradients is None or output_gradients[i] is None
       else:
         if output_gradients is None or output_gradients[i] is None:
-          out_grad = ops.ones_like(t)
+          out_grad = array_ops.ones_like(t)
         else:
           out_grad = output_gradients[i]
         gradients[ops.tensor_id(t)].append(out_grad)
@@ -649,7 +649,10 @@ def val_and_grad_function(f, params):
     assert not kwds, "The gradient function can't take keyword arguments."
     tape.push_new_tape()
     sources = []
-    args = [ops.convert_to_tensor(x) for x in args]
+    args = [
+        ops.convert_to_tensor(args[i]) if i in parameter_positions else args[i]
+        for i in range(len(args))
+    ]
     for i in parameter_positions:
       sources.append(args[i])
       tape.watch(args[i])

@@ -327,6 +327,28 @@ class BackpropTest(test.TestCase):
     grad = backprop.implicit_grad(fn)()[0][0]
     self.assertAllEqual([1.0], grad.numpy())
 
+  def testOutput(self):
+
+    def multiout(x):
+      return x + 2, x * x
+
+    x = constant_op.constant([0.0, 1.0, 2.0])
+
+    grad = backprop.gradients_function(multiout)(x)[0]
+    self.assertAllEqual([1.0, 3.0, 5.0], grad.numpy())
+
+  def testMultiValuePreservesIfNotDiffedAgainst(self):
+
+    def tfe_conv2d(timage, tkernel, conv2dstrides):
+      return nn_ops.conv2d(timage, tkernel, conv2dstrides, 'SAME')
+
+    i = constant_op.constant([[[[1.0]]]])
+    k = constant_op.constant([[[[2.0]]]])
+    s = [1, 1, 1, 1]
+
+    grad = backprop.gradients_function(tfe_conv2d, params=(0,))(i, k, s)[0]
+    self.assertAllEqual([[[[2.0]]]], grad.numpy())
+
 
 if __name__ == '__main__':
   test.main()
