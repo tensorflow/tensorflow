@@ -37,6 +37,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+struct RdmaParams{
+    ibv_device* ibv_dev;
+    uint8_t port_num;
+};
 // structure to save the address of remote channels.
 struct RdmaAddress {
   uint32_t lid;
@@ -83,6 +87,8 @@ class RdmaAdapter {
 
  protected:
   static const int MAX_CONCURRENT_WRITES = 1000;
+  // RDMA configuration parameters
+  RdmaParams params_;
   ibv_context* context_;
   // ibverbs protection domain
   ibv_pd* pd_;
