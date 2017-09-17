@@ -159,6 +159,22 @@ public class TensorFlowInferenceInterface {
       throw new RuntimeException("Failed to load model from the input stream", e);
     }
   }
+  
+  /*
+   * Construct a TensorFlowInferenceInterface with provided Graph
+   *
+   * @param g The Graph to use to construct this interface.
+   */
+  public TensorFlowInferenceInterface(Graph g) {
+    prepareNativeRuntime();
+      
+    // modelName is redundant here, here is for
+    // avoiding error in initialization as modelName is marked final.
+    this.modelName = "";
+    this.g = g;
+    this.sess = new Session(g);
+    this.runner = sess.runner();
+  }
 
   /**
    * Runs inference between the previously registered input nodes (via feed*) and the requested
