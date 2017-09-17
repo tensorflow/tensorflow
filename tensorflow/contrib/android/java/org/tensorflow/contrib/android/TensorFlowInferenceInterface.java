@@ -305,7 +305,7 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, byte[] src, long... dims) {
-    addFeed(inputName, Tensor.create(TFUInt8.class, dims, ByteBuffer.wrap(src)));
+    addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
   }
 
   /**
@@ -381,7 +381,7 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, ByteBuffer src, long... dims) {
-    addFeed(inputName, Tensor.create(TFUInt8.class, dims, src));
+    addFeed(inputName, Tensor.create(DataType.UINT8, dims, src));
   }
 
   /**

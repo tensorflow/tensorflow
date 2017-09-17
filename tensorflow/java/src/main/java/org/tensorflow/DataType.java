@@ -117,7 +117,7 @@ public enum DataType {
     return zeros.get(c);
   }
 
-  private static final Map<DataType, Object> zeros = new HashMap<>();
+  private static final Map<Class<?>, Object> zeros = new HashMap<>();
 
   static {
     zeros.put(TFFloat.class, 0.0f);
