@@ -199,10 +199,11 @@ cc_library(
         "@local_config_sycl//sycl:{}".format(sycl_library_path("ComputeCpp")),
     ]),
     linkopts = if_ccpp([
-        "-Wl,-rpath,../local_config_sycl/sycl/lib"
+        "-Wl,-rpath,../local_config_sycl/sycl/lib",
     ]),
     deps = if_ccpp(["@local_config_sycl//sycl:syclrt"],
-                   ["@local_config_sycl//sycl:sycl_headers"]),
+                   ["@local_config_sycl//sycl:sycl_headers"]
+    ),
 )
 
 filegroup(
