@@ -332,7 +332,6 @@ REGISTER_OP("DecodeCSV")
     .Attr("OUT_TYPE: list({float,int32,int64,string})")
     .Attr("field_delim: string = ','")
     .Attr("use_quote_delim: bool = true")
-    .Attr("na_value: string = ''")
     .SetShapeFn([](InferenceContext* c) {
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {
@@ -363,7 +362,6 @@ field_delim: char delimiter to separate fields in a record.
 use_quote_delim: If false, treats double quotation marks as regular
   characters inside of the string fields (ignoring RFC 4180, Section 2,
   Bullet 5).
-na_value: Additional string to recognize as NA/NaN.
 output: Each tensor will have the same shape as records.
 )doc");
 

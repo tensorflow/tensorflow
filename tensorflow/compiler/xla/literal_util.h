@@ -80,8 +80,10 @@ class Literal {
   void Clear() {
     shape_.Clear();
     u8s_.clear();
+    s16s_.clear();
     s32s_.clear();
     s64s_.clear();
+    u16s_.clear();
     u32s_.clear();
     u64s_.clear();
     f16s_.clear();
@@ -102,6 +104,11 @@ class Literal {
     return &u8s_;
   }
 
+  int s16s_size() const { return s16s().size(); }
+  int32 s16s(int i) const { return s16s_[i]; }
+  const std::vector<int16>& s16s() const { return s16s_; }
+  std::vector<int16>* mutable_s16s() { return &s16s_; }
+
   int s32s_size() const { return s32s().size(); }
   int32 s32s(int i) const { return s32s_[i]; }
   const std::vector<int32>& s32s() const { return s32s_; }
@@ -111,6 +118,11 @@ class Literal {
   void add_s64s(int64 value) { s64s_.push_back(value); }
   const std::vector<int64>& s64s() const { return s64s_; }
   std::vector<int64>* mutable_s64s() { return &s64s_; }
+
+  int u16s_size() const { return u16s().size(); }
+  uint32 u16s(int i) const { return u16s_[i]; }
+  const std::vector<uint16>& u16s() const { return u16s_; }
+  std::vector<uint16>* mutable_u16s() { return &u16s_; }
 
   int u32s_size() const { return u32s().size(); }
   uint32 u32s(int i) const { return u32s_[i]; }
@@ -165,12 +177,6 @@ class Literal {
 
   const Shape& shape() const { return shape_; }
   Shape* mutable_shape() { return &shape_; }
-
-  void Swap(Literal* other) {
-    Literal temp = *this;
-    *this = *other;
-    *other = temp;
-  }
 
   // Creates a new literal of a given rank. To minimize ambiguity (for users
   // and the compiler) these CreateR[0-2] methods should explicitly specify the
@@ -251,10 +257,14 @@ class Literal {
   // minor-to-major dimension layout and the value in the cell at any given
   // logical index (i0, i1) will be the same.
   //
+  // For tuple shaped literals, shape_index should be used to select the inner
+  // array that the new layout applies to.
+  //
   // Note: this is useful when the client wants to ensure that a value placed in
   // the XLA allocation tracker has a particular layout; for efficiency
   // purposes or avoiding unimplemented operation/layout combinations.
-  std::unique_ptr<Literal> Relayout(const Layout& new_layout) const;
+  std::unique_ptr<Literal> Relayout(const Layout& new_layout,
+                                    const ShapeIndex& shape_index = {}) const;
 
   // Creates a new literal by reshaping this literal to have 'shape'. Both the
   // original shape and 'shape' must contain the same number of elements. The
@@ -575,8 +585,10 @@ class Literal {
 
   Shape shape_;
   std::vector<uint8> u8s_;
+  std::vector<int16> s16s_;
   std::vector<int32> s32s_;
   std::vector<int64> s64s_;
+  std::vector<uint16> u16s_;
   std::vector<uint32> u32s_;
   std::vector<uint64> u64s_;
   std::vector<half> f16s_;
@@ -596,6 +608,12 @@ tensorflow::gtl::ArraySlice<uint8> Literal::GetArraySlice<uint8>() const;
 
 template <>
 tensorflow::gtl::ArraySlice<int8> Literal::GetArraySlice<int8>() const;
+
+template <>
+tensorflow::gtl::ArraySlice<uint16> Literal::GetArraySlice<uint16>() const;
+
+template <>
+tensorflow::gtl::ArraySlice<int16> Literal::GetArraySlice<int16>() const;
 
 template <>
 tensorflow::gtl::ArraySlice<uint32> Literal::GetArraySlice<uint32>() const;
@@ -630,6 +648,12 @@ tensorflow::gtl::MutableArraySlice<int8> Literal::GetMutableArraySlice();
 
 template <>
 tensorflow::gtl::MutableArraySlice<uint8> Literal::GetMutableArraySlice();
+
+template <>
+tensorflow::gtl::MutableArraySlice<int16> Literal::GetMutableArraySlice();
+
+template <>
+tensorflow::gtl::MutableArraySlice<uint16> Literal::GetMutableArraySlice();
 
 template <>
 tensorflow::gtl::MutableArraySlice<int32> Literal::GetMutableArraySlice();

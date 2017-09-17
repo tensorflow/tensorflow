@@ -28,6 +28,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.platform import app
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_inspect
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -406,10 +407,19 @@ def run(main=None, argv=None):
 def enable_eager_execution():
   """Enables, for the rest of the lifetime of this program, eager execution.
 
-  If not called immediately on startup risks creating breakage and bugs.
+  If not called immediately on startup risks creating breakage and bugs. Calling
+  this method more than once in the same process will lead to an exception.
+
+  Raises:
+    ValueError: If this method has already been invoked in the current process.
   """
   global _default_mode
-  assert _default_mode == GRAPH_MODE
+  if _default_mode == EAGER_MODE:
+    func_name = (
+        "tfe." + tf_inspect.getframeinfo(tf_inspect.currentframe()).function)
+    raise ValueError(
+        "Do not call %s more than once in the same process. Note eager-mode "
+        "methods such as tfe.run() also call %s." % (func_name, func_name))
   _default_mode = EAGER_MODE
 
 

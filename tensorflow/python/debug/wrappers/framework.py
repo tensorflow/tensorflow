@@ -383,6 +383,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
       raise ValueError(
           "Invalid OnSessionInitAction value: %s" % response.action)
 
+    self._default_session_context_manager = None
+
   @property
   def graph(self):
     return self._sess.graph
@@ -398,9 +400,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
   @property
   def session(self):
     return self._sess
-
-  def as_default(self):
-    return ops.default_session(self)
 
   def run(self,
           fetches,
@@ -683,11 +682,17 @@ class BaseDebugWrapperSession(session.SessionInterface):
       An instance of `OnRunStartResponse`.
     """
 
+  def as_default(self):
+    return ops.default_session(self)
+
   def __enter__(self):
-    return self._sess.__enter__()
+    if self._default_session_context_manager is None:
+      self._default_session_context_manager = self.as_default()
+    return self._default_session_context_manager.__enter__()
 
   def __exit__(self, exec_type, exec_value, exec_tb):
-    self._sess.__exit__(exec_type, exec_value, exec_tb)
+    self._default_session_context_manager.__exit__(
+        exec_type, exec_value, exec_tb)
 
   def __del__(self):
     self._sess.__del__()

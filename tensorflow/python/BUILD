@@ -19,6 +19,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
@@ -43,6 +44,7 @@ py_library(
         "//tensorflow/contrib/learn/python/learn/datasets:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/tools/api/generator:__pkg__",
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
@@ -100,15 +102,19 @@ py_library(
     ]),
 )
 
+tf_py_build_info_genrule()
+
 py_library(
     name = "platform",
     srcs = glob(
-        ["platform/*.py"],
+        [
+            "platform/*.py",
+        ],
         exclude = [
             "**/*test.py",
             "**/benchmark.py",  # In platform_benchmark.
         ],
-    ),
+    ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":lib",
@@ -444,7 +450,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:tensor",
     ],
 )
 
@@ -484,6 +489,7 @@ py_library(
         ":sparse_tensor",
         ":tensor_util",
         ":util",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -567,6 +573,7 @@ py_library(
         ":util",
         ":variable_scope",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -637,6 +644,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
+        "//tensorflow/python/eager:tape",
         "@six_archive//:six",
     ],
 )
@@ -802,6 +810,22 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "build_info_test",
+    size = "small",
+    srcs = [
+        "platform/build_info.py",
+        "platform/build_info_test.py",
+    ],
+    main = "platform/build_info_test.py",
+    srcs_version = "PY2AND3",
+    tags = ["notap"],
+    deps = [
+        ":client_testlib",
+        ":platform",
     ],
 )
 
@@ -1009,15 +1033,6 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
     ],
-)
-
-py_test(
-    name = "framework_pip_dependencies_test",
-    size = "small",
-    srcs = ["framework/pip_dependencies_test.py"],
-    main = "framework/pip_dependencies_test.py",
-    srcs_version = "PY2AND3",
-    deps = [":client_testlib"],
 )
 
 py_test(
@@ -1800,7 +1815,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:custom_gradient",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/eager:tensor_node",
     ],
 )
 
@@ -3229,7 +3243,9 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
+        "no_oss",
         "no_pip_gpu",
+        "notap",
     ],
     deps = [
         ":array_ops",

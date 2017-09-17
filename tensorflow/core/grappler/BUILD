@@ -38,7 +38,6 @@ cc_library(
 
 cc_test(
     name = "utils_test",
-    size = "small",
     srcs = ["utils_test.cc"],
     deps = [
         ":utils",
@@ -100,7 +99,6 @@ cc_library(
 
 cc_test(
     name = "grappler_item_test",
-    size = "small",
     srcs = ["grappler_item_test.cc"],
     deps = [
         ":grappler_item",
@@ -113,7 +111,6 @@ cc_test(
 
 cc_test(
     name = "grappler_item_builder_test",
-    size = "small",
     srcs = ["grappler_item_builder_test.cc"],
     deps = [
         ":grappler_item_builder",

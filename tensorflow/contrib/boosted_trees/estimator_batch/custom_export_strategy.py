@@ -151,7 +151,7 @@ def convert_to_universal_format(dtec, sorted_feature_names,
               generic_tree_model_pb2.InequalityTest.LESS_OR_EQUAL)
           inequality_test.threshold.float_value = split.threshold
         elif node_type == "sparse_float_binary_split_default_right":
-          split = gtflow_node.sparse_float_binary_split_default_right
+          split = gtflow_node.sparse_float_binary_split_default_right.split
           node.default_direction = (
               generic_tree_model_pb2.BinaryNode.RIGHT)
           feature_id = split.feature_column + num_dense

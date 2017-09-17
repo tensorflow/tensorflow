@@ -178,7 +178,6 @@ py_test(
 
 py_test(
     name = "optimizers_test",
-    size = "small",
     srcs = ["python/layers/optimizers_test.py"],
     srcs_version = "PY2AND3",
     deps = [

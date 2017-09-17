@@ -51,7 +51,6 @@ tf_py_test(
 
 tf_py_test(
     name = "summaries_test",
-    size = "small",
     srcs = ["python/summaries_test.py"],
     additional_deps = [
         ":specs",

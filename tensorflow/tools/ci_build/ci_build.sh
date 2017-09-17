@@ -73,11 +73,6 @@ CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
 "${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
-if [[ ! -z "${TF_BUILD_DISABLE_GCP}" ]] &&
-   [[ "${TF_BUILD_DISABLE_GCP}" != "0" ]]; then
-  CI_COMMAND_PREFIX+=("--disable-gcp")
-fi
-
 # cmake (CPU) builds do not require configuration.
 if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
   CI_COMMAND_PREFIX=("")

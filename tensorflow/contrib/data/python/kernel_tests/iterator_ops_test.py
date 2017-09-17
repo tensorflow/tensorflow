@@ -487,7 +487,7 @@ class IteratorTest(test.TestCase):
       iterator_3_handle = iterator_3.string_handle()
 
     def _encode_raw(byte_array):
-      return "".join([chr(item) for item in byte_array])
+      return bytes(bytearray(byte_array))
 
     @function.Defun(dtypes.uint8)
     def _remote_fn(h):
