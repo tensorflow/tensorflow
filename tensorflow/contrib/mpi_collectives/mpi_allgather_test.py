@@ -12,20 +12,20 @@ average_allgather = False
 
 class AllgatherTest(test.TestCase):
   def checkAllgather(self, num_ranks, all_gathered, local_gathered):
-    # Ensure that indices match
+    # Ensure that indices match.
     all_gat_ind = np.sort(all_gathered.indices)
     loc_gat_ind = np.sort(local_gathered.indices)
     assert(len(loc_gat_ind) == len(all_gat_ind))
     for i in range(len(loc_gat_ind)):
       assert(loc_gat_ind[i] == all_gat_ind[i])
 
-    # For each index, verify same values
+    # For each index, verify same values.
     local_checked = []
     for i in range(len(local_gathered.indices)):
       local_checked.append(False)
     for i in range(len(all_gathered.indices)):
       all_index = all_gathered.indices[i]
-      # TODO: Make this lookup quicker using sorting
+      # TODO(jthestness): Make this lookup quicker using sorting.
       loc_index = -1
       for j in range(len(local_gathered.indices)):
         if local_gathered.indices[j] == all_index and not local_checked[j]:
@@ -47,7 +47,7 @@ class AllgatherTest(test.TestCase):
     indices_per_rank = 100
     tensor_width = 10
 
-    # Create IndexedSlices for each rank, some with overlapping indices
+    # Create IndexedSlices for each rank, some with overlapping indices.
     to_gather_indices = []
     to_gather_values = []
     to_gather = []
@@ -70,7 +70,7 @@ class AllgatherTest(test.TestCase):
       to_gather.append(tf.IndexedSlices(concat_vals, concat_ind))
 
     # Collect the local IndexedSlices (indices and values) to create
-    # correct IndexedSlices output
+    # correct IndexedSlices output.
     correct_gather_indices = tf.concat(to_gather_indices, 0)
     correct_gather_values = tf.concat(to_gather_values, 0)
     correct_gather = tf.IndexedSlices(correct_gather_values,
@@ -78,17 +78,17 @@ class AllgatherTest(test.TestCase):
 
     all_gather = mpi.allreduce(to_gather[my_rank], average_allgather)
 
-    # NOTE: This assumes that device IDs are numbered the same as ranks
+    # NOTE: This assumes that device IDs are numbered the same as ranks.
     gpu_options = tf.GPUOptions(visible_device_list=str(my_rank))
     config = tf.ConfigProto(gpu_options=gpu_options)
 
-    # MPI Session to test allgather
+    # MPI Session to test allgather.
     with mpi.Session(config=config) as sess:
       sess.run(tf.global_variables_initializer())
 
       all_gathered, local_gathered = sess.run([all_gather, correct_gather])
 
-      # Compare all_gathered with local_gathered
+      # Compare all_gathered with local_gathered.
       self.checkAllgather(num_ranks, all_gathered, local_gathered)
 
 
