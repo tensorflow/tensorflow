@@ -282,13 +282,13 @@ class CTCLossTest(test.TestCase):
     setup_name = "desired_ctc_loss_tensor_name"
     desired_name = setup_name + ':0'
     with self.test_session(use_gpu=False):
-        named = ctc_ops.ctc_loss(
-            inputs=inputs_t, labels=labels, sequence_length=seq_lens, name=setup_name)
-        self.assertEqual(named.name, desired_name, "ctc_loss name param not work")
+      named = ctc_ops.ctc_loss(
+          inputs=inputs_t, labels=labels, sequence_length=seq_lens, name=setup_name)
+      self.assertEqual(named.name, desired_name, "ctc_loss name param not work")
 
-        unnamed = ctc_ops.ctc_loss(
-            inputs=inputs_t, labels=labels, sequence_length=seq_lens)
-        self.assertIsNotNone(unnamed.name, "ctc_loss name param default value error")
+      unnamed = ctc_ops.ctc_loss(
+          inputs=inputs_t, labels=labels, sequence_length=seq_lens)
+      self.assertIsNotNone(unnamed.name, "ctc_loss name param default value error")
 
 if __name__ == "__main__":
   test.main()
