@@ -2145,5 +2145,4 @@ def in_top_k(predictions, targets, k, name=None):
     A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
   """
   with ops.name_scope(name, 'in_top_k'):
-    # TODO (yongtang): Need to switch to v2 after 3 weeks.
-    return gen_nn_ops._in_top_k(predictions, targets, k, name=name)
+    return gen_nn_ops._in_top_kv2(predictions, targets, k, name=name)
