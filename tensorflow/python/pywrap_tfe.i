@@ -17,6 +17,8 @@ limitations under the License.
 
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_NumpyToTensorHandle;
+%rename("%s") TFE_Py_SequenceToTensorHandle;
+%rename("%s") TFE_Py_AllEqualInt64;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
+#include "tensorflow/python/lib/core/py_seq_tensor.h"
 
 using tensorflow::string;
 
@@ -383,6 +384,27 @@ TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj) {
     auto msg = tensorflow::strings::StrCat(
         "failed to convert numpy ndarray to a Tensor (",
         cppstatus.error_message(), ")");
+    if (exception_class != nullptr) {
+      PyErr_SetObject(exception_class,
+                      Py_BuildValue("si", msg.c_str(), TF_INVALID_ARGUMENT));
+    } else {
+      PyErr_SetString(PyExc_RuntimeError, msg.c_str());
+    }
+  }
+  return nullptr;
+}
+
+TFE_TensorHandle* TFE_Py_SequenceToTensorHandle(PyObject* obj,
+                                                PyObject* dtype) {
+  tensorflow::Tensor t;
+  auto cppstatus = tensorflow::PySeqToTensor(obj, dtype, &t);
+  if (cppstatus.ok()) {
+    return TFE_NewTensorHandle(t);
+  } else {
+    tensorflow::mutex_lock l(exception_class_mutex);
+    auto msg =
+        tensorflow::strings::StrCat("failed to convert value to a Tensor (",
+                                    cppstatus.error_message(), ")");
     if (exception_class != nullptr) {
       PyErr_SetObject(exception_class,
                       Py_BuildValue("si", msg.c_str(), TF_INVALID_ARGUMENT));

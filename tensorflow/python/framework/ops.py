@@ -579,36 +579,19 @@ class Tensor(_TensorLike):
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
 
-# TODO(apassos): unify this logic that in constant_op.py
-def _maybe_modify_numpy_dtype_determination(np_array):
-  """Tweak numpy dtype determination.
-
-  numpy prefers int64 and float64, we prefer int32 and float32.
-  (int32 is often used as the "shape" input to various operations,
-  many of which only support int32 shapes).
-  This preference is copied from tensor_util.make_tensor_proto
-  (https://goto.google.com/numpy_prefs_156503903)
-
-  Args:
-    np_array: A numpy ndarray
-  Returns:
-    A numpy ndarray whose dtype may have been modified.
-  """
-  if np_array.dtype == np.float64:
-    return np_array.astype(np.float32)
-  if np_array.dtype == np.int64:
-    # Downcast iff there is no precision loss.
-    downcasted = np_array.astype(np.int32)
-    if np.array_equal(downcasted, np_array):
-      return downcasted
-  return np_array
-
-
-def _has_string(value):
-  if isinstance(value, compat.bytes_or_text_types): return True
-  if isinstance(value, collections.Sequence) and value:
-    return _has_string(value[0])
-  return False
+def _eager_cast(tensor_handle, src_type_enum, dest_type_enum):
+  """Cast tensor_handle from src_type_enum to dest_type_enum."""
+  ctx = context.get_default_context()
+  # pylint: disable=protected-access
+  try:
+    out_handle, = c_api.TFE_Py_Execute(
+        ctx._handle, b"/job:localhost/replica:0/task:0/device:CPU:0", b"Cast",
+        [tensor_handle], (b"SrcT", src_type_enum, b"DstT", dest_type_enum), 1)
+  except core._NotOkStatusException as e:
+    raise core._status_to_exception(e.code, e.message)
+  # pylint: enable=protected-access
+  # TODO(josh11b): Should we support tracing or post_execution_callbacks here?
+  return out_handle
 
 
 # TODO(agarwal): rename to TensorHandle.
@@ -631,26 +614,31 @@ class EagerTensor(Tensor):
     # tf.constant defined in
     # https://www.tensorflow.org/code/tensorflow/python/framework/constant_op.py
     self._id = uid()
-    if not isinstance(value, np.ndarray):
-      if dtype is None and _has_string(value):
-        dtype = dtypes.string
-      npt = None if dtype is None else dtype.as_numpy_dtype
+    if isinstance(value, np.ndarray):
+      if dtype is not None:
+        npt = dtype.as_numpy_dtype
+        if npt != value.dtype:
+          value = value.astype(npt)
       try:
-        value = np.array(value, dtype=npt)
-      except ValueError as e:
-        raise ValueError(
-            "Cannot convert %s to array. Error: %s" % (str(value), e))
-      if dtype is None:
-        value = _maybe_modify_numpy_dtype_determination(value)
-    elif dtype is not None:
-      npt = dtype.as_numpy_dtype
-      if npt != value.dtype:
-        value = value.astype(npt)
-    try:
-      value = np.asarray(value, order="C")
-      self._handle = c_api.TFE_Py_NumpyToTensorHandle(value)
-    except core._NotOkStatusException as e:  # pylint: disable=protected-access
-      raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+        value = np.asarray(value, order="C")
+        self._handle = c_api.TFE_Py_NumpyToTensorHandle(value)
+      except core._NotOkStatusException as e:  # pylint: disable=protected-access
+        raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+      dtype = dtypes.as_dtype(c_api.TFE_TensorHandleDataType(self._handle))
+    else:
+      dtype_enum = None if dtype is None else dtype.as_datatype_enum
+      try:
+        self._handle = c_api.TFE_Py_SequenceToTensorHandle(value, dtype_enum)
+      except core._NotOkStatusException as e:  # pylint: disable=protected-access
+        raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+
+      dtype_enum = c_api.TFE_TensorHandleDataType(self._handle)
+      dtype_actual = dtypes.as_dtype(dtype_enum)
+      if dtype is not None and dtype != dtype_actual:
+        self._handle = _eager_cast(self._handle, dtype_enum,
+                                   dtype.as_datatype_enum)
+      else:
+        dtype = dtype_actual
 
     # Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
     # memory.  This change approximates the same behavior for eager execution -
@@ -678,7 +666,7 @@ class EagerTensor(Tensor):
     # require host memory for int32 tensors, there will be a discrepancy between
     # eager execution and TensorFlow graphs. However, as of July 2017, there
     # were no known GPU kernels that kept int32 tensors in device memory.
-    if _in_gpu_device() and value.dtype != np.int32:
+    if _in_gpu_device() and dtype != dtypes.int32:
       ctx = context.context()
       # pylint: disable=protected-access
       device_name = ctx.device_name
@@ -687,7 +675,7 @@ class EagerTensor(Tensor):
             self._handle, ctx._handle, device_name, status)
       # pylint: enable=protected-access
 
-    self._dtype = dtypes.as_dtype(c_api.TFE_TensorHandleDataType(self._handle))
+    self._dtype = dtype
 
     # This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
     # be None for tensors of type other than DT_REOSURCE. For DT_RESOURCE
@@ -1077,7 +1065,8 @@ def internal_convert_to_tensor(value,
       try:
         ret = conversion_func(
             value, dtype=preferred_dtype, name=name, as_ref=as_ref)
-      except (TypeError, ValueError):
+      except (TypeError, ValueError, errors.UnimplementedError,
+              errors.InvalidArgumentError):
         # Could not coerce the conversion to use the preferred dtype.
         ret = None
 

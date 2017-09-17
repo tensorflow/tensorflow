@@ -56,6 +56,17 @@ PyObject* TFE_Py_TensorHandleToNumpy(TFE_TensorHandle* h, TF_Status* status);
 // other.
 TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj);
 
+// Convert a Python sequence value to a TFE_TensorHandle.
+//
+// The dtype of the result is determined by the type of values found
+// in *obj, *dtype is the desired type but it is only considered a
+// hint. *dtype should be an integer representing the desired DataType
+// enum value, or Py_None.  Unlike TFE_Py_NumpyToTensorHandle, this
+// always makes a copy.  Returns nullptr and raises an exception on
+// error.
+// TODO(josh11b): Cast to dtype automatically.
+TFE_TensorHandle* TFE_Py_SequenceToTensorHandle(PyObject* obj, PyObject* dtype);
+
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
