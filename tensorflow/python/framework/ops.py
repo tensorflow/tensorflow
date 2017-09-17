@@ -588,7 +588,7 @@ def _eager_cast(tensor_handle, src_type_enum, dest_type_enum):
         ctx._handle, b"/job:localhost/replica:0/task:0/device:CPU:0", b"Cast",
         [tensor_handle], (b"SrcT", src_type_enum, b"DstT", dest_type_enum), 1)
   except core._NotOkStatusException as e:
-    raise core._status_to_exception(e.code, e.message)
+    six.raise_from(core._status_to_exception(e.code, e.message), None)
   # pylint: enable=protected-access
   # TODO(josh11b): Should we support tracing or post_execution_callbacks here?
   return out_handle
@@ -614,6 +614,7 @@ class EagerTensor(Tensor):
     # tf.constant defined in
     # https://www.tensorflow.org/code/tensorflow/python/framework/constant_op.py
     self._id = uid()
+    # pylint: disable=protected-access
     if isinstance(value, np.ndarray):
       if dtype is not None:
         npt = dtype.as_numpy_dtype
@@ -622,15 +623,15 @@ class EagerTensor(Tensor):
       try:
         value = np.asarray(value, order="C")
         self._handle = c_api.TFE_Py_NumpyToTensorHandle(value)
-      except core._NotOkStatusException as e:  # pylint: disable=protected-access
-        raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+      except core._NotOkStatusException as e:
+        six.raise_from(core._status_to_exception(e.code, e.message), None)
       dtype = dtypes.as_dtype(c_api.TFE_TensorHandleDataType(self._handle))
     else:
       dtype_enum = None if dtype is None else dtype.as_datatype_enum
       try:
         self._handle = c_api.TFE_Py_SequenceToTensorHandle(value, dtype_enum)
-      except core._NotOkStatusException as e:  # pylint: disable=protected-access
-        raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+      except core._NotOkStatusException as e:
+        six.raise_from(core._status_to_exception(e.code, e.message), None)
 
       dtype_enum = c_api.TFE_TensorHandleDataType(self._handle)
       dtype_actual = dtypes.as_dtype(dtype_enum)
@@ -639,6 +640,7 @@ class EagerTensor(Tensor):
                                    dtype.as_datatype_enum)
       else:
         dtype = dtype_actual
+    # pylint: enable=protected-access
 
     # Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
     # memory.  This change approximates the same behavior for eager execution -
