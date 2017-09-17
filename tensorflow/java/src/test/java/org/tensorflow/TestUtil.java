@@ -16,15 +16,14 @@ limitations under the License.
 package org.tensorflow;
 
 import java.lang.reflect.Array;
-
-import org.tensorflow.types.Types;
-import org.tensorflow.types.TFType;
 import org.tensorflow.types.TFInt32;
+import org.tensorflow.types.TFType;
 
 /** Static utility functions. */
 public class TestUtil {
+  @SuppressWarnings({"unchecked", "deprecation"})
   public static <T extends TFType> Output<T> constant(Graph g, String name, Object value) {
-    try (Tensor<T> t = Tensor.create(value)) {
+    try (Tensor<T> t = (Tensor<T>) Tensor.create(value)) {
       return g.opBuilder("Const", name)
           .setAttr("dtype", t.dataType())
           .setAttr("value", t)
@@ -35,11 +34,11 @@ public class TestUtil {
 
   public static <T extends TFType> Output<T> placeholder(Graph g, String name, Class<T> type) {
     return g.opBuilder("Placeholder", name)
-        .setAttr("dtype", Types.dataType(type))
+        .setAttr("dtype", DataType.fromClass(type))
         .build()
         .<T>output(0);
   }
-  
+
   public static Output<?> addN(Graph g, Output<?>... inputs) {
     return g.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
   }

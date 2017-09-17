@@ -34,7 +34,6 @@ import org.tensorflow.types.TFInt32;
 import org.tensorflow.types.TFString;
 import org.tensorflow.types.TFType;
 import org.tensorflow.types.TFUInt8;
-import org.tensorflow.types.Types;
 
 /** Sample use of the TensorFlow Java API to label images using a pre-trained model. */
 public class LabelImage {
@@ -77,6 +76,13 @@ public class LabelImage {
     }
   }
 
+  static <T> Tensor<T> expect(Tensor<?> t, Class<? extends TFType> type) {
+    if (t.dataType() != DataType.fromClass(type)) {
+      throw new Error("Expected a tensor of " + DataType.fromClass(type) + ", got " + t.dataType());
+    }
+    return (Tensor<T>) t;
+  }
+
   private static Tensor<TFFloat> constructAndExecuteGraphToNormalizeImage(byte[] imageBytes) {
     try (Graph g = new Graph()) {
       GraphBuilder b = new GraphBuilder(g);
@@ -106,7 +112,8 @@ public class LabelImage {
                   b.constant("mean", mean)),
               b.constant("scale", scale));
       try (Session s = new Session(g)) {
-        return s.runner().fetch(output.op().name()).run().get(0).expect(TFFloat.class);
+        Tensor<?> result = s.runner().fetch(output.op().name()).run().get(0);
+        return (Tensor<TFFloat>) result;
       }
     }
   }
@@ -115,8 +122,8 @@ public class LabelImage {
     try (Graph g = new Graph()) {
       g.importGraphDef(graphDef);
       try (Session s = new Session(g);
-          Tensor<TFFloat> result =
-              s.runner().feed("input", image).fetch("output").run().get(0).expect(TFFloat.class)) {
+          Tensor<?> result =
+              s.runner().feed("input", image).fetch("output").run().get(0)) {
         final long[] rshape = result.shape();
         if (result.numDimensions() != 2 || rshape[0] != 1) {
           throw new RuntimeException(
@@ -185,7 +192,7 @@ public class LabelImage {
     }
 
     <T, U extends TFType> Output<U> cast(Output<T> value, Class<U> type) {
-      DataType dtype = Types.dataType(type);
+      DataType dtype = DataType.fromClass(type);
       return g.opBuilder("Cast", "Cast")
           .addInput(value)
           .setAttr("DstT", dtype)
@@ -202,9 +209,10 @@ public class LabelImage {
     }
 
     <T extends TFType> Output<T> constant(String name, Object value, Class<T> type) {
-      try (Tensor<T> t = Tensor.create(value, type)) {
+      try (@SuppressWarnings("unchecked")
+          Tensor<T> t = (Tensor<T>) Tensor.create(value, DataType.fromClass(type))) {
         return g.opBuilder("Const", name)
-            .setAttr("dtype", Types.dataType(type))
+            .setAttr("dtype", DataType.fromClass(type))
             .setAttr("value", t)
             .build()
             .<T>output(0);
@@ -220,7 +228,8 @@ public class LabelImage {
     }
 
     Output<TFInt32> constant(String name, int[] value) {
-      try (Tensor<TFInt32> t = Tensor.create(value, TFInt32.class)) {
+      try (@SuppressWarnings("unchecked")
+          Tensor<TFInt32> t = (Tensor<TFInt32>) Tensor.create(value)) {
         return g.opBuilder("Const", name)
             .setAttr("dtype", DataType.INT32)
             .setAttr("value", t)
@@ -230,7 +239,8 @@ public class LabelImage {
     }
 
     Output<TFFloat> constant(String name, float value) {
-      try (Tensor<TFFloat> t = Tensor.create(value, TFFloat.class)) {
+      try (@SuppressWarnings("unchecked")
+          Tensor<TFFloat> t = (Tensor<TFFloat>) Tensor.create(value)) {
         return g.opBuilder("Const", name)
             .setAttr("dtype", DataType.FLOAT)
             .setAttr("value", t)

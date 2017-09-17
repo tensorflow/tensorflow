@@ -22,13 +22,13 @@ import static org.junit.Assert.fail;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.tensorflow.DataType;
 import org.tensorflow.Graph;
 import org.tensorflow.Output;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
-import org.tensorflow.types.Types;
-import org.tensorflow.types.TFType;
 import org.tensorflow.types.TFInt32;
+import org.tensorflow.types.TFType;
 
 /** Unit tests for {@link org.tensorflow.Scope}. */
 @RunWith(JUnit4.class)
@@ -151,7 +151,8 @@ public class ScopeTest {
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope s = new Scope(g);
-      Output<TFInt32> data = Const.create(s.withName("data"), new int[] {600, 470, 170, 430, 300}).output();
+      Output<TFInt32> data =
+          Const.create(s.withName("data"), new int[] {600, 470, 170, 430, 300}).output();
 
       // Create a composite op with a customized name
       Variance<TFInt32> var1 = Variance.create(s.withName("example"), data, TFInt32.class);
@@ -160,7 +161,7 @@ public class ScopeTest {
       // Confirm internally added ops have the right names.
       assertNotNull(g.operation("example/squared_deviation"));
       assertNotNull(g.operation("example/Mean"));
-      //assertNotNull(g.operation("example/zero"));
+      // assertNotNull(g.operation("example/zero"));
 
       // Same composite op with a default name
       Variance<TFInt32> var2 = Variance.create(s, data, TFInt32.class);
@@ -169,10 +170,11 @@ public class ScopeTest {
       // Confirm internally added ops have the right names.
       assertNotNull(g.operation("variance/squared_deviation"));
       assertNotNull(g.operation("variance/Mean"));
-      //assertNotNull(g.operation("variance/zero"));
+      // assertNotNull(g.operation("variance/zero"));
 
       // Verify correct results as well.
-      Tensor<TFInt32> result = sess.runner().fetch(var1.output()).run().get(0).expect(TFInt32.class);
+      Tensor<TFInt32> result =
+          sess.runner().fetch(var1.output()).run().get(0).expect(TFInt32.class);
       assertEquals(21704, result.intValue());
       result = sess.runner().fetch(var2.output()).run().get(0).expect(TFInt32.class);
       assertEquals(21704, result.intValue());
@@ -182,24 +184,30 @@ public class ScopeTest {
   // "handwritten" sample operator classes
   private static final class Const<T> {
     private final Output<T> output;
-    
+
+    @SuppressWarnings("unchecked")
     static Const<TFInt32> create(Scope s, int v) {
-      return create(s, Tensor.create(v, TFInt32.class));
+      return create(s, (Tensor<TFInt32>) Tensor.create(v));
     }
+
+    @SuppressWarnings("unchecked")
     static Const<TFInt32> create(Scope s, int[] v) {
-      return create(s, Tensor.create(v, TFInt32.class));
+      return create(s, (Tensor<TFInt32>) Tensor.create(v));
     }
+
     static <T> Const<T> create(Scope s, Tensor<T> value) {
       return new Const<T>(
           s.graph()
-          .opBuilder("Const", s.makeOpName("Const"))
-          .setAttr("dtype", value.dataType())
-          .setAttr("value", value)
-          .build()
-          .<T>output(0));
+              .opBuilder("Const", s.makeOpName("Const"))
+              .setAttr("dtype", value.dataType())
+              .setAttr("value", value)
+              .build()
+              .<T>output(0));
     }
+
     static <T extends TFType> Const<T> create(Scope s, Object v, Class<T> type) {
-      try (Tensor<T> value = Tensor.create(v, type)) {
+      try (@SuppressWarnings("unchecked")
+          Tensor<T> value = (Tensor<T>) Tensor.create(v, DataType.fromClass(type))) {
         return new Const<T>(
             s.graph()
                 .opBuilder("Const", s.makeOpName("Const"))
@@ -240,7 +248,7 @@ public class ScopeTest {
       return output;
     }
   }
-  
+
   private static final class SquaredDifference<T> {
     private final Output<T> output;
 
@@ -268,7 +276,7 @@ public class ScopeTest {
 
     static <T extends TFType> Variance<T> create(Scope base, Output<T> x, Class<T> type) {
       Scope s = base.withSubScope("variance");
-      Output<T> zero = Const.create(base, Types.zeroValue(type), type).output();
+      Output<T> zero = Const.create(base, DataType.zeroValue(type), type).output();
       Output<T> sqdiff =
           SquaredDifference.create(
                   s.withName("squared_deviation"), x, Mean.create(s, x, zero).output())

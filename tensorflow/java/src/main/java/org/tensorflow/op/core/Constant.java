@@ -52,8 +52,9 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    * @param object a Java object representing the constant.
    * @see org.tensorflow.Tensor#create(Object) Tensor.create
    */
-  public static <T extends TFType> Constant<T> create(Scope scope, Object object) {
-    try (Tensor<T> value = Tensor.create(object)) {
+  public static <T extends TFType> Constant<T> create(Scope scope, Object object, Class<T> type) {
+    try (@SuppressWarnings({"unchecked", "deprecation"})
+        Tensor<T> value = (Tensor<T>) Tensor.create(object, DataType.fromClass(type))) {
       return createWithTensor(scope, value);
     }
   }
@@ -148,8 +149,10 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
-  public static <T extends TFType> Constant<T> create(Scope scope, Class<T> type, long[] shape, ByteBuffer data) {
-    try (Tensor<T> value = Tensor.create(type, shape, data)) {
+  public static <T extends TFType> Constant<T> create(
+      Scope scope, Class<T> type, long[] shape, ByteBuffer data) {
+    try (@SuppressWarnings({"deprecation", "unchecked"})
+        Tensor<T> value = (Tensor<T>) Tensor.create(DataType.fromClass(type), shape, data)) {
       return createWithTensor(scope, value);
     }
   }

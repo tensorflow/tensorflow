@@ -23,8 +23,8 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.tensorflow.types.TFInt32;
 import org.tensorflow.types.TFBool;
+import org.tensorflow.types.TFInt32;
 
 /** Unit tests for {@link org.tensorflow.OperationBuilder}. */
 @RunWith(JUnit4.class)
@@ -50,7 +50,8 @@ public class OperationBuilderTest {
   @Test
   public void failOnUseAfterBuild() {
     try (Graph g = new Graph();
-        Tensor<TFInt32> t = Tensor.create(1)) {
+        @SuppressWarnings("unchecked")
+            Tensor<TFInt32> t = (Tensor<TFInt32>) Tensor.create(1)) {
       OperationBuilder b =
           g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
       b.build();
@@ -66,7 +67,8 @@ public class OperationBuilderTest {
   public void failOnUseAfterGraphClose() {
     OperationBuilder b = null;
     try (Graph g = new Graph();
-        Tensor<TFInt32> t = Tensor.create(1)) {
+        @SuppressWarnings("unchecked")
+            Tensor<TFInt32> t = (Tensor<TFInt32>) Tensor.create(1)) {
       b = g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
     }
     try {
@@ -87,7 +89,8 @@ public class OperationBuilderTest {
     // types that aren't inferred from the input arguments.
     try (Graph g = new Graph()) {
       // dtype, tensor attributes.
-      try (Tensor<TFInt32> t = Tensor.create(1)) {
+      try (@SuppressWarnings("unchecked")
+          Tensor<TFInt32> t = (Tensor<TFInt32>) Tensor.create(1)) {
         g.opBuilder("Const", "DataTypeAndTensor")
             .setAttr("dtype", DataType.INT32)
             .setAttr("value", t)
@@ -103,7 +106,7 @@ public class OperationBuilderTest {
       assertTrue(hasNode(g, "StringAndBool"));
       // int (TF "int" attributes are 64-bit signed, so a Java long).
       g.opBuilder("RandomUniform", "Int")
-          .addInput(TestUtil.constant(g, "RandomUniformShape", new int[]{1}))
+          .addInput(TestUtil.constant(g, "RandomUniformShape", new int[] {1}))
           .setAttr("seed", 10)
           .setAttr("dtype", DataType.FLOAT)
           .build();
@@ -151,19 +154,20 @@ public class OperationBuilderTest {
     }
   }
 
+  @SuppressWarnings("unchecked")
   @Test
   public void addControlInput() {
     try (Graph g = new Graph();
         Session s = new Session(g);
-        Tensor<TFBool> yes = Tensor.create(true);
-        Tensor<TFBool> no = Tensor.create(false)) {
+        Tensor<TFBool> yes = (Tensor<TFBool>) Tensor.create(true);
+        Tensor<TFBool> no = (Tensor<TFBool>) Tensor.create(false)) {
       Output<TFBool> placeholder = TestUtil.placeholder(g, "boolean", TFBool.class);
       Operation check =
           g.opBuilder("Assert", "assert")
               .addInput(placeholder)
               .addInputList(new Output<?>[] {placeholder})
               .build();
-      Operation noop = g.opBuilder("NoOp", "noop").addControlInput(check).build(); 
+      Operation noop = g.opBuilder("NoOp", "noop").addControlInput(check).build();
 
       // No problems when the Assert check succeeds
       s.runner().feed(placeholder, yes).addTarget(noop).run();

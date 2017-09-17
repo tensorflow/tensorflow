@@ -31,7 +31,6 @@ import org.tensorflow.types.TFFloat;
 import org.tensorflow.types.TFInt32;
 import org.tensorflow.types.TFInt64;
 import org.tensorflow.types.TFType;
-import org.tensorflow.types.Types;
 
 /**
  * A statically typed multi-dimensional array whose elements are of a type described by T.
@@ -110,18 +109,19 @@ public final class Tensor<T> implements AutoCloseable {
    *     system.
    * @see org.tensorflow.op.Tensors
    */
-  public static <T extends TFType> Tensor<T> create(Object obj, Class<T> type) {
-    DataType dt2 = Types.dataType(type);
-    if (!objectCompatWithType(obj, dt2)) {
-      throw new IllegalArgumentException(
-          "Data type of object does not match T (expected "
-              + dt2
-              + ", got "
-              + dataTypeOf(obj)
-              + ")");
-    }
-    return create(obj, dt2);
-  }
+  //  @SuppressWarnings("unchecked")
+  //  public static <T extends TFType> Tensor<T> create(Object obj, Class<T> type) {
+  //    DataType dtype = Types.dataType(type);
+  //    if (!objectCompatWithType(obj, dtype)) {
+  //      throw new IllegalArgumentException(
+  //          "Data type of object does not match T (expected "
+  //              + dtype
+  //              + ", got "
+  //              + dataTypeOf(obj)
+  //              + ")");
+  //    }
+  //    return (Tensor<T>)create(obj, dtype);
+  //  }
 
   /**
    * Creates a tensor from an object whose class is inspected to figure out what the underlying data
@@ -134,7 +134,7 @@ public final class Tensor<T> implements AutoCloseable {
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system.
    */
-  public static <T extends TFType> Tensor<T> create(Object obj) {
+  public static Tensor<?> create(Object obj) {
     return create(obj, dataTypeOf(obj));
   }
 
@@ -143,15 +143,20 @@ public final class Tensor<T> implements AutoCloseable {
    * to match {@code type}, but this condition is not checked statically. Use class {@link
    * org.tensorflow.Tensors} to create Tensors in a fully type-safe way.
    *
-   * @param obj the object supplying the tensor data. It type must be compatible with T.
-   * @param dtype the DataType representation of the type T. It must match the the run-time type of
-   *     the object.
+   * @param obj the object supplying the tensor data.
+   * @param dtype the data type of the tensor to create. It must be compatible with the run-time
+   *     type of the object.
    * @return the new tensor
    */
-  static <T extends TFType> Tensor<T> create(Object obj, DataType dtype) {
-    Tensor<T> t = new Tensor<T>(dtype);
+  public static Tensor<?> create(Object obj, DataType dtype) {
+    @SuppressWarnings("rawtypes")
+    Tensor<?> t = new Tensor(dtype);
     t.shapeCopy = new long[numDimensions(obj, dtype)];
-    assert objectCompatWithType(obj, dtype);
+    if (!objectCompatWithType(obj, dtype)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Expected an object compatible with %s, got %s instead", dtype, dataTypeOf(obj)));
+    }
     fillShape(obj, 0, t.shapeCopy);
     if (t.dtype != DataType.STRING) {
       int byteSize = elemByteSize(t.dtype) * numElements(t.shapeCopy);
@@ -251,9 +256,10 @@ public final class Tensor<T> implements AutoCloseable {
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
-  public static <T extends TFType> Tensor<T> create(Class<T> type, long[] shape, ByteBuffer data) {
-    return create(Types.dataType(type), shape, data);
-  }
+  //  public static <T extends TFType> Tensor<T> create(Class<T> type, long[] shape, ByteBuffer
+  // data) {
+  //    return create(Types.dataType(type), shape, data);
+  //  }
 
   /**
    * Creates a Tensor of any type with data from the given buffer.
@@ -268,10 +274,8 @@ public final class Tensor<T> implements AutoCloseable {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
-   * @deprecated The type-safe version of {@code create} is preferred.
    */
-  @Deprecated
-  public static <T> Tensor<T> create(DataType dtype, long[] shape, ByteBuffer data) {
+  public static Tensor<?> create(DataType dtype, long[] shape, ByteBuffer data) {
     int nremaining = 0;
     if (dtype != DataType.STRING) {
       int elemBytes = elemByteSize(dtype);
@@ -285,7 +289,7 @@ public final class Tensor<T> implements AutoCloseable {
     } else {
       nremaining = data.remaining();
     }
-    Tensor<T> t = allocateForBuffer(dtype, shape, nremaining);
+    Tensor<?> t = allocateForBuffer(dtype, shape, nremaining);
     t.buffer().put(data);
     return t;
   }
@@ -296,11 +300,12 @@ public final class Tensor<T> implements AutoCloseable {
    * given a value of type {@code Tensor<?>}.
    *
    * @param type any (non-null) array of the correct type.
-   * @return this
+   * @return this TODO(andrewmyers): If the DataType/Class<?> split is maintained, this method
+   *     should move to Tensors, once Tensors exists.
    */
   @SuppressWarnings("unchecked")
   public <U extends TFType> Tensor<U> expect(Class<U> type) {
-    DataType dt = Types.dataType(type);
+    DataType dt = DataType.fromClass(type);
     if (!dt.equals(dtype)) {
       throw new IllegalArgumentException(
           "Cannot cast from tensor of " + dtype + " to tensor of " + dt);
@@ -563,19 +568,6 @@ public final class Tensor<T> implements AutoCloseable {
   static Tensor<?> fromHandle(long handle) {
     @SuppressWarnings("rawtypes")
     Tensor<?> t = new Tensor(DataType.fromC(dtype(handle)));
-    t.shapeCopy = shape(handle);
-    t.nativeHandle = handle;
-    return t;
-  }
-
-  /**
-   * Create a Tensor object from a handle to the C TF_Tensor object.
-   *
-   * <p>Takes ownership of the handle. Requires the type of the created tensor to be {@code type},
-   * i.e., the same as {@code T}.
-   */
-  static <T extends TFType> Tensor<T> fromHandle(long handle, Class<T> type) {
-    Tensor<T> t = new Tensor<T>(DataType.fromC(dtype(handle)));
     t.shapeCopy = shape(handle);
     t.nativeHandle = handle;
     return t;

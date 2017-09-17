@@ -15,9 +15,21 @@ limitations under the License.
 
 package org.tensorflow;
 
-/** Represents the type of elements in a {@link Tensor} as an enum.
+import java.util.HashMap;
+import java.util.Map;
+import org.tensorflow.types.TFBool;
+import org.tensorflow.types.TFDouble;
+import org.tensorflow.types.TFFloat;
+import org.tensorflow.types.TFInt32;
+import org.tensorflow.types.TFInt64;
+import org.tensorflow.types.TFString;
+import org.tensorflow.types.TFType;
+import org.tensorflow.types.TFUInt8;
+
+/**
+ * Represents the type of elements in a {@link Tensor} as an enum.
  *
- *  @see org.tensorflow.types
+ * @see org.tensorflow.types
  */
 public enum DataType {
   /** 32-bit single precision floating point. */
@@ -56,16 +68,64 @@ public enum DataType {
   int c() {
     return value;
   }
-  
+
   // Cached to avoid copying it
-  final private static DataType[] values = values();
+  private static final DataType[] values = values();
 
   static DataType fromC(int c) {
     for (DataType t : values) {
-      if (t.value == c)
-        return t;
+      if (t.value == c) return t;
     }
     throw new IllegalArgumentException(
         "DataType " + c + " is not recognized in Java (version " + TensorFlow.version() + ")");
+  }
+
+  /**
+   * Returns the DataType value corresponding to a TensorFlow type class.
+   *
+   * @param c The class describing the TensorFlow type of interest.
+   */
+  public static DataType fromClass(Class<? extends TFType> c) {
+    DataType dtype = typeCodes.get(c);
+    if (dtype == null) {
+      throw new IllegalArgumentException("" + c + " is not a TensorFlow type.");
+    }
+    return dtype;
+  }
+
+  private static final Map<Class<?>, DataType> typeCodes = new HashMap<>();
+
+  static {
+    typeCodes.put(TFFloat.class, DataType.FLOAT);
+    typeCodes.put(TFDouble.class, DataType.DOUBLE);
+    typeCodes.put(TFInt32.class, DataType.INT32);
+    typeCodes.put(TFUInt8.class, DataType.UINT8);
+    typeCodes.put(TFInt64.class, DataType.INT64);
+    typeCodes.put(TFBool.class, DataType.BOOL);
+    typeCodes.put(TFString.class, DataType.STRING);
+  }
+
+  /**
+   * Returns the zero value of type described by {@code c}, or null if the type (e.g., string) is
+   * not numeric and therefore has no zero value.
+   *
+   * @param c The class describing the TensorFlow type of interest.
+   * TODO(andrewmyers): Not clear we want this at all; probably this is the wrong
+   * place for it if we do want it.
+   */
+  public static Object zeroValue(Class<? extends TFType> c) {
+    return zeros.get(c);
+  }
+
+  private static final Map<DataType, Object> zeros = new HashMap<>();
+
+  static {
+    zeros.put(TFFloat.class, 0.0f);
+    zeros.put(TFDouble.class, 0.0);
+    zeros.put(TFInt32.class, 0);
+    zeros.put(TFUInt8.class, (byte) 0);
+    zeros.put(TFInt64.class, 0L);
+    zeros.put(TFBool.class, false);
+    zeros.put(TFString.class, null); // no zero value
   }
 }

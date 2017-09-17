@@ -36,7 +36,8 @@ public class SessionTest {
     try (Graph g = new Graph();
         Session s = new Session(g)) {
       TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
-      try (Tensor<TFInt32> x = Tensor.create(new int[][] {{5}, {7}});
+      try (@SuppressWarnings("unchecked")
+              Tensor<TFInt32> x = (Tensor<TFInt32>) Tensor.create(new int[][] {{5}, {7}});
           AutoCloseableList<Tensor<?>> outputs =
               new AutoCloseableList<Tensor<?>>(s.runner().feed("X", x).fetch("Y").run())) {
         assertEquals(1, outputs.size());
@@ -53,7 +54,8 @@ public class SessionTest {
       TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
       Output<TFInt32> feed = g.operation("X").output(0);
       Output<TFInt32> fetch = g.operation("Y").output(0);
-      try (Tensor<TFInt32> x = Tensor.create(new int[][] {{5}, {7}});
+      try (@SuppressWarnings("unchecked")
+              Tensor<TFInt32> x = (Tensor<TFInt32>) Tensor.create(new int[][] {{5}, {7}});
           AutoCloseableList<Tensor<?>> outputs =
               new AutoCloseableList<Tensor<?>>(s.runner().feed(feed, x).fetch(fetch).run())) {
         assertEquals(1, outputs.size());
@@ -79,14 +81,22 @@ public class SessionTest {
           .build()
           .output(0);
       // Fetch using colon separated names.
-      try (Tensor<TFInt32> fetched = s.runner().fetch("Split:1").run().get(0).expect(TFInt32.class)) {
+      try (Tensor<TFInt32> fetched =
+          s.runner().fetch("Split:1").run().get(0).expect(TFInt32.class)) {
         final int[] expected = {3, 4};
         assertArrayEquals(expected, fetched.copyTo(new int[2]));
       }
       // Feed using colon separated names.
-      try (Tensor<TFInt32> fed = Tensor.create(new int[] {4, 3, 2, 1}, TFInt32.class);
+      try (@SuppressWarnings("unchecked")
+              Tensor<TFInt32> fed = (Tensor<TFInt32>) Tensor.create(new int[] {4, 3, 2, 1});
           Tensor<TFInt32> fetched =
-              s.runner().feed("Split:0", fed).feed("Split:1", fed).fetch("Add").run().get(0).expect(TFInt32.class)) {
+              s.runner()
+                  .feed("Split:0", fed)
+                  .feed("Split:1", fed)
+                  .fetch("Add")
+                  .run()
+                  .get(0)
+                  .expect(TFInt32.class)) {
         final int[] expected = {8, 6, 4, 2};
         assertArrayEquals(expected, fetched.copyTo(new int[4]));
       }
@@ -98,7 +108,8 @@ public class SessionTest {
     try (Graph g = new Graph();
         Session s = new Session(g)) {
       TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
-      try (Tensor<TFInt32> x = Tensor.create(new int[][] {{5}, {7}})) {
+      try (@SuppressWarnings("unchecked")
+          Tensor<TFInt32> x = (Tensor<TFInt32>) Tensor.create(new int[][] {{5}, {7}})) {
         Session.Run result =
             s.runner()
                 .feed("X", x)
