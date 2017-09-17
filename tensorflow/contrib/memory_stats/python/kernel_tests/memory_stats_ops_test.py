@@ -65,8 +65,11 @@ class MemoryStatsOpsTest(test_util.TensorFlowTestCase):
       sess.run(d)
 
       max_bytes_in_use = sess.run(memory_stats_ops.MaxBytesInUse())
+      bytes_in_use = sess.run(memory_stats_ops.BytesInUse())
       self.assertGreaterEqual(max_bytes_in_use, matrix_size_in_bytes * 3)
       self.assertLess(max_bytes_in_use, matrix_size_in_bytes * 4)
+      self.assertGreaterEqual(bytes_in_use, matrix_size_in_bytes * 3)
+      self.assertLess(bytes_in_use, matrix_size_in_bytes * 4)
 
 
 if __name__ == '__main__':

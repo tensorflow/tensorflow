@@ -16,6 +16,31 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Op that measures current memory in bytes.
+class BytesInUseOp : public MemoryStatsOp {
+ public:
+  explicit BytesInUseOp(OpKernelConstruction* context)
+      : MemoryStatsOp(context) {}
+
+ private:
+  int64 ExtractAllocatorStats(
+      const AllocatorStats& allocator_stats) const override {
+    return allocator_stats.bytes_in_use;
+  }
+};
+
+// register this op on GPU only, see comment for MaxBytesInUse for reason
+REGISTER_KERNEL_BUILDER(
+    Name("BytesInUse").Device(DEVICE_GPU).HostMemory("out"),
+    BytesInUseOp);
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("MaxBytesInUse").Device(DEVICE_SYCL).HostMemory("out"),
+    MaxBytesInUseOp);
+#endif // TENSORFLOW_USE_SYCL
+
+
 // Base class of ops that collects statistics of the allocator of a device.
 class MemoryStatsOp : public OpKernel {
  public:
