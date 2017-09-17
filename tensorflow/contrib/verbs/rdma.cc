@@ -66,16 +66,130 @@ string MessageTypeToString(RdmaMessageType rmt) {
 }
 }  // namespace
 
-ibv_context* open_default_device() {
+int get_dev_active_port_num(ibv_device *device)
+{
+	ibv_device_attr device_att;
+	ibv_port_attr port_attr;
+	ibv_context* context = NULL;
+	int rc, port_index, active_ports = 0;
+
+	context = ibv_open_device(device);
+	CHECK(context) << "Open context failed for " << ibv_get_device_name(device);
+	rc = ibv_query_device(context,&device_att);
+	CHECK(!rc) << "Failed to query the device";
+
+	for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
+		rc = ibv_query_port(context, port_index, &port_attr);
+		CHECK(!rc) << "Failed to query the port" << port_index;
+		if (port_attr.state == 4/*IBV_PORT_ACTIVE*/) {
+			active_ports++;
+		}
+	}
+	ibv_close_device(context);
+	return active_ports;
+}
+
+ibv_device* set_device() {
   ibv_device** dev_list;
-  ibv_device* ib_dev;
-  dev_list = ibv_get_device_list(NULL);
+  int dev_num;
+  int device_index;
+  int device_to_open = 0;
+  bool found_active_port = false;
+  string env_p_rdma_device;
+  char const* env_p_rdma_device_temp;
+
+  dev_list = ibv_get_device_list(&dev_num);
   CHECK(dev_list) << "No InfiniBand device found";
-  ib_dev = dev_list[0];
-  CHECK(ib_dev) << "No InfiniBand device found";
-  ibv_context* context = ibv_open_device(ib_dev);
-  CHECK(context) << "Open context failed for " << ibv_get_device_name(ib_dev);
-  return context;
+
+  env_p_rdma_device_temp = getenv("RDMA_DEVICE");
+  env_p_rdma_device = (env_p_rdma_device_temp == NULL)?string(): string(env_p_rdma_device_temp);
+
+  if (!env_p_rdma_device.empty()) {
+	  for (device_index = 0; device_index < dev_num; device_index++) {
+		  if (!env_p_rdma_device.compare(ibv_get_device_name(dev_list[device_index]))) {
+			  CHECK(get_dev_active_port_num(dev_list[device_index]) != 0) << "Device " << ibv_get_device_name(dev_list[device_index]) << " has no active ports";
+		      return dev_list[device_index];
+			  }
+		  }
+	  //check validity of input device
+	  CHECK(false) <<  "The device " << env_p_rdma_device << " wasn't found";
+  }
+  else {
+	  for (device_index = 0; device_index < dev_num; device_index++) {
+		  //get port_num
+		  if (get_dev_active_port_num(dev_list[device_index]) > 0){
+			  CHECK(found_active_port != true)  << "More than one device with active port in the system. Please enter RDMA_DEVICE";
+		  }
+		  else {
+			  //found device with at least 1 active port
+			  found_active_port = true;
+			  device_to_open = device_index;
+		  }
+	  }
+	  CHECK(found_active_port) << "There is no active port in the system";
+	  return dev_list[device_to_open];
+  }
+  CHECK(false) << "No device was set!";
+  return NULL;
+}
+
+ibv_context* open_device(ibv_device *ibv_dev) {
+	ibv_context* context = ibv_open_device(ibv_dev);
+
+	CHECK(context) << "Open context failed for " << ibv_get_device_name(ibv_dev);
+	return context;
+}
+
+uint8_t set_port(ibv_device *ibv_dev) {
+	uint8_t port_num = 1;
+	string str_port_num;
+	char const* str_port_num_temp;
+	ibv_device_attr device_att;
+	ibv_context* context;
+	ibv_port_attr port_attr;
+	int rc, port_index;
+
+	context = open_device(ibv_dev);
+	rc = ibv_query_device(context, &device_att);
+	CHECK (!rc) << "Failed to query the device\n";
+
+	str_port_num_temp = getenv("RDMA_DEVICE_PORT");
+	str_port_num = str_port_num_temp == NULL ? string() : string(str_port_num_temp);
+	//user defined port
+	if (!str_port_num.empty()) {
+		port_num = stoi(str_port_num);
+		CHECK(port_num > 0) << "RDMA_DEVICE_PORT should be positive";
+		CHECK(port_num <= device_att.phys_port_cnt) << "RDMA_DEVICE_PORT should be less or equal to amount of available ports";
+		rc = ibv_query_port(context, port_num, &port_attr);
+        CHECK(!rc) << "Failed to query the port" << port_num;
+		//check if port id active
+		CHECK(port_attr.state == 4/*IBV_PORT_ACTIVE*/) << "Selected RDMA_DEVICE_PORT is not active";
+	}
+	// set default port
+	else {
+		for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
+			rc = ibv_query_port(context, port_index, &port_attr);
+			CHECK(!rc) << "Failed to query the port" << port_index;
+			if (port_attr.state == 4/*IBV_PORT_ACTIVE*/) {
+				port_num = port_index;
+				break;
+			}
+			CHECK(port_index != device_att.phys_port_cnt) << "No active ports";
+		}
+	}
+	ibv_close_device(context);
+	return port_num;
+}
+
+RdmaParams params_init(){
+
+	RdmaParams params;
+
+	params.ibv_dev = set_device();
+	CHECK(params.ibv_dev)  << "Params_init set_device failed";
+	params.port_num = set_port(params.ibv_dev);
+	CHECK(params.ibv_dev)  << "Params_init set_port failed";
+	return params;
 }
 
 ibv_pd* alloc_protection_domain(ibv_context* context) {
@@ -85,9 +199,11 @@ ibv_pd* alloc_protection_domain(ibv_context* context) {
 }
 
 RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
-    : context_(open_default_device()),
+    : params_(params_init()),
+      context_(open_device(params_.ibv_dev)),
       pd_(alloc_protection_domain(context_)),
       worker_env_(worker_env) {
+	// check params
   event_channel_ = ibv_create_comp_channel(context_);
   CHECK(event_channel_) << "Failed to create completion channel";
   cq_ = ibv_create_cq(context_, MAX_CONCURRENT_WRITES * 2, NULL, event_channel_,
@@ -258,7 +374,7 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
     memset(&attr, 0, sizeof(ibv_qp_attr));
     attr.qp_state = IBV_QPS_INIT;
     attr.pkey_index = 0;
-    attr.port_num = 1;
+    attr.port_num = adapter_->params_.port_num;
     attr.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
 
     int mask =
