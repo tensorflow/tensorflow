@@ -408,6 +408,13 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
+def _one_like_dtype(other):
+  if isinstance(other, ops.Tensor):
+    return constant(1, other.dtype)
+  else:
+    return np.ones_like(other).dtype.type(1)
+
+
 def _SliceHelper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -488,7 +495,8 @@ def _SliceHelper(tensor, slice_spec, var=None):
       if s.step is not None:
         strides.append(s.step)
       else:
-        strides.append(1)
+        # Use a 1 of the same dtype as begin.
+        strides.append(_one_like_dtype(begin[-1]))
     elif s is Ellipsis:
       begin.append(0)
       end.append(0)
@@ -502,7 +510,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
     else:
       begin.append(s)
       end.append(s + 1)
-      strides.append(1)
+      strides.append(_one_like_dtype(s))
       shrink_axis_mask |= (1 << index)
     index += 1
 
@@ -512,15 +520,6 @@ def _SliceHelper(tensor, slice_spec, var=None):
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
-      if (packed_begin.dtype == dtypes.int64 or
-          packed_end.dtype == dtypes.int64 or
-          packed_strides.dtype == dtypes.int64):
-        if packed_begin.dtype != dtypes.int64:
-          packed_begin = gen_math_ops.cast(packed_begin, dtypes.int64)
-        if packed_end.dtype != dtypes.int64:
-          packed_end = gen_math_ops.cast(packed_end, dtypes.int64)
-        if packed_strides.dtype != dtypes.int64:
-          packed_strides = gen_math_ops.cast(packed_strides, dtypes.int64)
     else:
       var_empty = constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
