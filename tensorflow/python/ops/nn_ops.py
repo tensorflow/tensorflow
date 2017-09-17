@@ -1022,8 +1022,8 @@ def conv2d_transpose(value,
     axis = 3 if data_format == "NHWC" else 1
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[3], filter.get_shape(
-                       )[3]))
+                       "{} != {}".format(value.get_shape()[axis],
+                                         filter.get_shape()[3]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
