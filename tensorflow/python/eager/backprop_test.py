@@ -254,6 +254,30 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(dx.numpy(), y.numpy())
     self.assertAllEqual(dy.numpy(), x.numpy())
 
+  def testEmptyParamsForValueAndGradFunction(self):
+    def fn(a, b):
+      return a * b
+    val_and_grads_fn = backprop.val_and_grad_function(fn)
+
+    x = 2.0
+    y = 3.0
+    val, (dx, dy) = val_and_grads_fn(x, y)
+    self.assertAllClose(val.numpy(), x * y)
+    self.assertAllEqual(dx.numpy(), y)
+    self.assertAllEqual(dy.numpy(), x)
+
+  def testNonEmptyParamsForValueAndGradFunction(self):
+    def fn(a, b):
+      return a * b
+    val_and_grad_fn = backprop.val_and_grad_function(fn, params=[1])
+
+    x = 2.0
+    y = 3.0
+    val, grads = val_and_grad_fn(x, y)
+    self.assertAllClose(val.numpy(), x * y)
+    self.assertEqual(1, len(grads))
+    self.assertAllEqual(grads[0].numpy(), x)
+
   def testTensorCopyCPU2GPU2CPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
