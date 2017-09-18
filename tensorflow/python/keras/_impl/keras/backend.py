@@ -2889,7 +2889,7 @@ def elu(x, alpha=1.):
   """Exponential linear unit.
 
   Arguments:
-      x: A tenor or variable to compute the activation function for.
+      x: A tensor or variable to compute the activation function for.
       alpha: A scalar, slope of positive section.
 
   Returns:
