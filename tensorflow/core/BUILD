@@ -207,12 +207,6 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-go_proto_library(
-    name = "protos_all_go_proto",
-    visibility = ["//visibility:public"],
-    deps = [":protos_all_cc"],
-)
-
 tf_jspb_proto_library(
     name = "protos_all_jspb_proto",
     visibility = ["//visibility:public"],
