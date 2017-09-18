@@ -37,6 +37,7 @@ _allowed_symbols = [
     'get_losses',
     'get_regularization_losses',
     'get_total_loss',
+    'focal_loss',
     'log_loss',
     'mean_pairwise_squared_error',
     'mean_squared_error',

@@ -36,6 +36,7 @@ __all__ = ["absolute_difference",
            "get_losses",
            "get_regularization_losses",
            "get_total_loss",
+           "focal_loss",
            "hinge_loss",
            "log_loss",
            "mean_pairwise_squared_error",
@@ -303,7 +304,7 @@ def absolute_difference(predictions, labels=None, weights=1.0, scope=None):
             "Use tf.losses.sigmoid_cross_entropy instead. Note that the order "
             "of the predictions and labels arguments has been changed.")
 def sigmoid_cross_entropy(
-    logits, multi_class_labels, weights=1.0, label_smoothing=0, scope=None):
+        logits, multi_class_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
@@ -352,7 +353,7 @@ def sigmoid_cross_entropy(
             "Use tf.losses.softmax_cross_entropy instead. Note that the order "
             "of the logits and labels arguments has been changed.")
 def softmax_cross_entropy(
-    logits, onehot_labels, weights=1.0, label_smoothing=0, scope=None):
+        logits, onehot_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
@@ -544,7 +545,7 @@ def mean_squared_error(predictions, labels=None, weights=1.0, scope=None):
             "Use tf.losses.mean_pairwise_squared_error instead. Note that the "
             "order of the predictions and labels arguments has been changed.")
 def mean_pairwise_squared_error(
-    predictions, labels=None, weights=1.0, scope=None):
+        predictions, labels=None, weights=1.0, scope=None):
   """Adds a pairwise-errors-squared loss to the training procedure.
 
   Unlike `mean_squared_error`, which is a measure of the differences between
@@ -624,7 +625,7 @@ def mean_pairwise_squared_error(
 
 @deprecated("2016-12-30", "Use tf.losses.cosine_distance instead.")
 def cosine_distance(
-    predictions, labels=None, dim=None, weights=1.0, scope=None):
+        predictions, labels=None, dim=None, weights=1.0, scope=None):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
@@ -655,5 +656,62 @@ def cosine_distance(
     labels = math_ops.to_float(labels)
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
+    losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim, ])
+    return compute_weighted_loss(losses, weights, scope=scope)
+
+
+def focal_loss(predictions, labels, gamma=2, alpha=1, weights=1.0,
+               epsilon=1e-7, scope=None):
+  """Adds a Focal Loss term to the training procedure.
+
+  For each value x in `predictions`, and the corresponding l in `labels`,
+  the following is calculated:
+
+  ```
+    pt = 1 - x                  if l == 0
+    pt = x                      if l == 1
+
+    focal_loss = - a * (1 - pt)**g * log(pt)
+  ```
+
+  where g is `gamma`, a is `alpha`.
+
+  See: https://arxiv.org/pdf/1708.02002.pdf
+
+  `weights` acts as a coefficient for the loss. If a scalar is provided, then
+  the loss is simply scaled by the given value. If `weights` is a tensor of size
+  [batch_size], then the total loss for each sample of the batch is rescaled
+  by the corresponding element in the `weights` vector. If the shape of
+  `weights` matches the shape of `predictions`, then the loss of each
+  measurable element of `predictions` is scaled by the corresponding value of
+  `weights`.
+
+  Args:
+    labels: The ground truth output tensor, same dimensions as 'predictions'.
+    predictions: The predicted outputs.
+    gamma, alpha: parameters.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
+    epsilon: A small increment to add to avoid taking a log of zero.
+    scope: The scope for the operations performed in computing the loss.
+    loss_collection: collection to which the loss will be added.
+    reduction: Type of reduction to apply to loss.
+
+  Returns:
+    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+    shape as `labels`; otherwise, it is scalar.
+
+  Raises:
+    ValueError: If the shape of `predictions` doesn't match that of `labels` or
+      if the shape of `weights` is invalid.
+  """
+  with ops.name_scope(scope, "focal_loss",
+                      (predictions, labels, weights)) as scope:
+    predictions = math_ops.to_float(predictions)
+    labels = math_ops.to_float(labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    preds = array_ops.where(
+        math_ops.equal(labels, 1), predictions, 1. - predictions)
+    losses = -alpha * (1. - preds)**gamma * math_ops.log(preds + epsilon)
     return compute_weighted_loss(losses, weights, scope=scope)
