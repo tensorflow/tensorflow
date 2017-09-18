@@ -278,6 +278,19 @@ cc_library(
 )
 
 cc_library(
+    name = "py_seq_tensor",
+    srcs = ["lib/core/py_seq_tensor.cc"],
+    hdrs = ["lib/core/py_seq_tensor.h"],
+    deps = [
+        ":numpy_lib",
+        ":safe_ptr",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
     name = "py_record_reader_lib",
     srcs = ["lib/io/py_record_reader.cc"],
     hdrs = ["lib/io/py_record_reader.h"],

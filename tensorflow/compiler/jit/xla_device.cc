@@ -98,8 +98,6 @@ perftools::gputools::Platform* XlaDevice::Metadata::platform() const {
   return platform_;
 }
 
-XlaDevice::Metadata::~Metadata() {}
-
 xla::LocalClient* XlaDevice::Metadata::client() const {
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(platform_);
   return client.ValueOrDie();
@@ -109,16 +107,15 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return device_type_;
 }
 
-string XlaDevice::Metadata::DebugString() { return "XLA device metadata"; }
-
 /* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
-                                           Metadata** metadata) {
-  ResourceMgr* rm = ctx->resource_manager();
-  if (rm == nullptr) {
-    return errors::Internal("No resource manager.");
+                                           const Metadata** metadata) {
+  XlaDevice* xla_device = dynamic_cast<XlaDevice*>(ctx->device());
+  if (xla_device == nullptr) {
+    return errors::Internal(
+        "GetMetadata should be called on an XLA device. This usually means an "
+        "internal bug or Op is placed on the wrong device.");
   }
-  TF_RETURN_IF_ERROR(
-      rm->Lookup<Metadata>(rm->default_container(), "xla_metadata", metadata));
+  *metadata = &(xla_device->xla_metadata_);
   return Status::OK();
 }
 
@@ -128,16 +125,12 @@ XlaDevice::XlaDevice(const SessionOptions& options,
                      perftools::gputools::Platform* platform,
                      Allocator* xla_allocator)
     : LocalDevice(options, attrs),
+      xla_metadata_(device_ordinal, platform, jit_device_name),
       device_ordinal_(device_ordinal),
       jit_device_name_(jit_device_name),
       xla_allocator_(xla_allocator),
-      platform_(platform) {
-  // Store the platform in the resource manager so Ops can retrieve it
-  // e.g., to lazily create a XlaCompilationCache object.
-  TF_CHECK_OK(resource_manager()->Create<Metadata>(
-      resource_manager()->default_container(), "xla_metadata",
-      new Metadata(device_ordinal_, platform_, jit_device_name_)));
-}
+      platform_(platform) {}
+
 XlaDevice::~XlaDevice() {}
 
 xla::LocalClient* XlaDevice::client() const {

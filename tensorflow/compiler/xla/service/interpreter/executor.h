@@ -13,38 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declares the ExecutorExecutor class, which is a CPU-only implementation of
+// Declares the InterpreterExecutor class, which is a CPU-only implementation of
 // the StreamExecutor interface. For now, this is used for testing and to
 // examine the performance of host-based StreamExecutor code.
-#ifndef TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_EXECUTOR_H_
-#define TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_EXECUTOR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
 
-#include "tensorflow/stream_executor/host/host_stream.h"
-#include "tensorflow/stream_executor/host/host_timer.h"
+#include <functional>
+#include <memory>
 
 #include "tensorflow/compiler/xla/shape_util.h"
-
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/stream_executor/device_description.h"
+#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/device_options.h"
+#include "tensorflow/stream_executor/event.h"
+#include "tensorflow/stream_executor/host/host_stream.h"
+#include "tensorflow/stream_executor/host/host_timer.h"
+#include "tensorflow/stream_executor/kernel.h"
+#include "tensorflow/stream_executor/kernel_spec.h"
+#include "tensorflow/stream_executor/launch_dim.h"
+#include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/rng.h"
+#include "tensorflow/stream_executor/shared_memory_config.h"
+#include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
-
-#include <list>
-#include <mutex>
+#include "tensorflow/stream_executor/timer.h"
 
 namespace perftools {
 namespace gputools {
-namespace executorplugin {
+namespace interpreter {
 
 using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
 
-class ExecutorExecutor : public internal::StreamExecutorInterface {
+class InterpreterExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit ExecutorExecutor(const PluginConfig &plugin_config);
-  ~ExecutorExecutor() override;
+  explicit InterpreterExecutor(const PluginConfig &plugin_config);
+  ~InterpreterExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
     return port::Status::OK();
@@ -194,9 +203,6 @@ class ExecutorExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::TimerInterface>(new host::HostTimer());
   }
 
-  port::StatusOr<DeviceMemoryBase> ExecuteGraph(const xla::Shape &shape,
-                                                Args args);
-
  private:
   DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
 
@@ -206,8 +212,8 @@ class ExecutorExecutor : public internal::StreamExecutorInterface {
   const PluginConfig plugin_config_;
 };
 
-}  // namespace executorplugin
+}  // namespace interpreter
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_EXECUTOR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
