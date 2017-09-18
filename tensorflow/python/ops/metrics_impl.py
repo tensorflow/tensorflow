@@ -929,6 +929,12 @@ def mean_iou(labels,
       cm_diag = math_ops.to_float(array_ops.diag_part(total_cm))
       denominator = sum_over_row + sum_over_col - cm_diag
 
+      # The mean is only computed over classes that appear in the
+      # label or prediction tensor. If the denominator is 0, we need to
+      # ignore the class.
+      num_valid_entries = math_ops.reduce_sum(math_ops.cast(
+          math_ops.not_equal(denominator, 0), dtype=dtypes.float32))
+
       # If the value of the denominator is 0, set it to 1 to avoid
       # zero division.
       denominator = array_ops.where(
@@ -936,7 +942,7 @@ def mean_iou(labels,
           denominator,
           array_ops.ones_like(denominator))
       iou = math_ops.div(cm_diag, denominator)
-      return math_ops.reduce_mean(iou, name=name)
+      return math_ops.reduce_sum(iou, name=name)/num_valid_entries
 
     mean_iou_v = compute_mean_iou('mean_iou')
 
