@@ -528,7 +528,6 @@ tf_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 tf_py_test(
@@ -1095,7 +1094,6 @@ cuda_py_test(
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:tensor",
     ],
     shard_count = 10,
 )
@@ -2677,7 +2675,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 cuda_py_test(
@@ -2693,7 +2690,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    tags = ["nomsan"],  # fails in msan from numpy calls
 )
 
 cuda_py_test(

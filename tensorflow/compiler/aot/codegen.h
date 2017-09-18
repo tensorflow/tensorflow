@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/aot/compile.h"
+#include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -37,7 +39,7 @@ struct HeaderOpts {
 // GenerateHeader uses the meta-information from compile_result to generate a
 // C++ header giving access to the function in the generated object file.  The
 // header includes API usage documentation.
-Status GenerateHeader(const HeaderOpts& opts, const Config& config,
+Status GenerateHeader(const HeaderOpts& opts, const tf2xla::Config& config,
                       const CompileResult& compile_result, string* header);
 
 // ParseCppClass parses `cpp_class` into its `class_name` and `namespaces`
@@ -46,6 +48,10 @@ Status GenerateHeader(const HeaderOpts& opts, const Config& config,
 // may precede the class name, separated by double-colons.
 Status ParseCppClass(const string& cpp_class, string* class_name,
                      std::vector<string>* namespaces);
+
+// ValidateCppIdent returns OK iff ident is a valid C++ identifier.  The msg is
+// appended to error messages.
+Status ValidateCppIdent(StringPiece ident, StringPiece msg);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

@@ -67,8 +67,8 @@ bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
 #endif
   TF_SetStatus(
       status, TF_INVALID_ARGUMENT,
-      tensorflow::strings::StrCat("Expecting a const char* value for attr ",
-                                  key, ", got ", py_value->ob_type->tp_name)
+      tensorflow::strings::StrCat("Expecting a string value for attr ", key,
+                                  ", got ", py_value->ob_type->tp_name)
           .c_str());
   return false;
 }
@@ -200,8 +200,8 @@ bool SetOpAttrList(TFE_Op* op, const char* key, PyObject* py_list,
   return true;
 }
 
-bool SetOpAttrScalar(TFE_Op* op, const char* key, PyObject* py_value,
-                     TF_AttrType type, TF_Status* status) {
+bool SetOpAttrScalar(TFE_Context* ctx, TFE_Op* op, const char* key,
+                     PyObject* py_value, TF_AttrType type, TF_Status* status) {
   if (type == TF_ATTR_STRING) {
     const char* value;
     if (!ParseStringValue(key, py_value, status, &value)) return false;
@@ -247,6 +247,35 @@ bool SetOpAttrScalar(TFE_Op* op, const char* key, PyObject* py_value,
       TFE_OpSetAttrShape(op, key, dims.get(), num_dims, status);
     }
     if (TF_GetCode(status) != TF_OK) return false;
+  } else if (type == TF_ATTR_FUNC) {
+    // Allow:
+    // (1) String function name, OR
+    // (2) A Python object with a .name attribute
+    //     (A crude test for being a
+    //     tensorflow.python.framework.function._DefinedFunction)
+    //     (which is what the various "defun" or "Defun" decorators do).
+    // And in the future also allow an object that can encapsulate
+    // the function name and its attribute values.
+    const char* func_name = nullptr;
+    if (!ParseStringValue(key, py_value, status, &func_name)) {
+      PyObject* name_attr = PyObject_GetAttrString(py_value, "name");
+      if (name_attr == nullptr ||
+          !ParseStringValue(key, name_attr, status, &func_name)) {
+        TF_SetStatus(
+            status, TF_INVALID_ARGUMENT,
+            tensorflow::strings::StrCat(
+                "unable to set function value attribute from a ",
+                py_value->ob_type->tp_name,
+                " object. If you think this is an error, please file an issue "
+                "at https://github.com/tensorflow/tensorflow/issues/new")
+                .c_str());
+        return false;
+      }
+    }
+    TFE_Op* func = TFE_NewOp(ctx, func_name, status);
+    if (TF_GetCode(status) != TF_OK) return false;
+    TFE_OpSetAttrFunction(op, key, func);
+    TFE_DeleteOp(func);
   } else {
     TF_SetStatus(
         status, TF_UNIMPLEMENTED,
@@ -257,7 +286,8 @@ bool SetOpAttrScalar(TFE_Op* op, const char* key, PyObject* py_value,
   return true;
 }
 
-void SetOpAttrs(TFE_Op* op, PyObject* attrs, TF_Status* out_status) {
+void SetOpAttrs(TFE_Context* ctx, TFE_Op* op, PyObject* attrs,
+                TF_Status* out_status) {
   if (attrs == Py_None) return;
   if (!PyTuple_Check(attrs)) {
     TF_SetStatus(out_status, TF_INVALID_ARGUMENT, "Expecting an attrs tuple.");
@@ -285,7 +315,7 @@ void SetOpAttrs(TFE_Op* op, PyObject* attrs, TF_Status* out_status) {
     if (is_list != 0) {
       if (!SetOpAttrList(op, key, py_value, type, out_status)) return;
     } else {
-      if (!SetOpAttrScalar(op, key, py_value, type, out_status)) return;
+      if (!SetOpAttrScalar(ctx, op, key, py_value, type, out_status)) return;
     }
   }
 }
@@ -297,7 +327,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     TF_Status* out_status) {
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
   if (TF_GetCode(out_status) != TF_OK) return;
-  TFE_OpSetDevice(op, ctx, device_name, out_status);
+  TFE_OpSetDevice(op, device_name, out_status);
   if (TF_GetCode(out_status) == TF_OK) {
     for (int i = 0; i < inputs->size() && TF_GetCode(out_status) == TF_OK;
          ++i) {
@@ -305,7 +335,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
     }
   }
   if (TF_GetCode(out_status) == TF_OK) {
-    SetOpAttrs(op, attrs, out_status);
+    SetOpAttrs(ctx, op, attrs, out_status);
   }
   if (TF_GetCode(out_status) == TF_OK) {
     int num_outputs = outputs->size();

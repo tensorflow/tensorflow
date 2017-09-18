@@ -65,6 +65,7 @@ struct DebugNodeKey {
   const string device_path;
 };
 
+// TODO(cais): Put static functions and members in a namespace, not a class.
 class DebugIO {
  public:
   static const char* const kDebuggerPluginName;
@@ -295,6 +296,16 @@ class DebugGrpcChannel {
   //   True iff the read is successful.
   bool ReadEventReply(EventReply* event_reply);
 
+  // Receive and process EventReply protos from the gRPC debug server.
+  //
+  // The processing includes setting debug watch key states using the
+  // DebugOpStateChange fields of the EventReply.
+  //
+  // Args:
+  //   max_replies: Maximum number of replies to receive. Will receive all
+  //     remaining replies iff max_replies == 0.
+  void ReceiveAndProcessEventReplies(size_t max_replies);
+
   // Receive EventReplies from server (if any) and close the stream and the
   // channel.
   Status ReceiveServerRepliesAndClose();
@@ -326,8 +337,19 @@ class DebugGrpcIO {
   // Sends an Event proto through a debug gRPC stream.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to CloseGrpcStream().
-  static Status SendEventProtoThroughGrpcStream(const Event& event_proto,
-                                                const string& grpc_stream_url);
+  //
+  // Args:
+  //   event_proto: The Event proto to be sent.
+  //   grpc_stream_url: The grpc:// URL of the stream to use, e.g.,
+  //     "grpc://localhost:11011", "localhost:22022".
+  //   receive_reply: Whether an EventReply proto will be read after event_proto
+  //     is sent and before the function returns.
+  //
+  // Returns:
+  //   The Status of the operation.
+  static Status SendEventProtoThroughGrpcStream(
+      const Event& event_proto, const string& grpc_stream_url,
+      const bool receive_reply = false);
 
   // Receive an EventReply proto through a debug gRPC stream.
   static Status ReceiveEventReplyProtoThroughGrpcStream(

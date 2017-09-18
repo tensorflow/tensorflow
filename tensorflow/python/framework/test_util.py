@@ -208,6 +208,71 @@ def NHWCToNCHW(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+def NHWCToNCHW_VECT_C(input_shape_or_tensor):
+  """Transforms the input from the NHWC layout to NCHW_VECT_C layout.
+
+  Note: Does not include quantization or type conversion steps, which should
+  be applied afterwards.
+
+  Args:
+    input_shape_or_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NCHW_VECT_C
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not evenly
+        divisible by 4.
+  """
+  permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  temp_shape = (input_shape_or_tensor.shape.as_list()
+                if is_tensor else input_shape_or_tensor)
+  if temp_shape[-1] % 4 != 0:
+    raise ValueError(
+        "Last dimension of input must be evenly divisible by 4 to convert to "
+        "NCHW_VECT_C.")
+  temp_shape[-1] //= 4
+  temp_shape.append(4)
+  permutation = permutations[len(temp_shape)]
+  if is_tensor:
+    t = array_ops.reshape(input_shape_or_tensor, temp_shape)
+    return array_ops.transpose(t, permutation)
+  else:
+    return [temp_shape[a] for a in permutation]
+
+
+def NCHW_VECT_CToNHWC(input_shape_or_tensor):
+  """Transforms the input from the NCHW_VECT_C layout to NHWC layout.
+
+  Note: Does not include de-quantization or type conversion steps, which should
+  be applied beforehand.
+
+  Args:
+    input_shape_or_tensor: a 5- or 6-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NHWC
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not 4.
+  """
+  permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  input_shape = (input_shape_or_tensor.shape.as_list()
+                 if is_tensor else input_shape_or_tensor)
+  if input_shape[-1] != 4:
+    raise ValueError("Last dimension of NCHW_VECT_C must be 4.")
+  permutation = permutations[len(input_shape)]
+  nhwc_shape = [input_shape[a] for a in permutation[:-1]]
+  nhwc_shape[-1] *= input_shape[-1]
+  if is_tensor:
+    t = array_ops.transpose(input_shape_or_tensor, permutation)
+    return array_ops.reshape(t, nhwc_shape)
+  else:
+    return nhwc_shape
+
+
 def NCHWToNHWC(input_tensor):
   """Converts the input from the NCHW format to NHWC.
 
@@ -392,7 +457,6 @@ class TensorFlowTestCase(googletest.TestCase):
     self._cached_session = None
 
   def setUp(self):
-    logging.info("SET UP: %s" % str(self))
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
@@ -407,9 +471,8 @@ class TensorFlowTestCase(googletest.TestCase):
     ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
 
   def tearDown(self):
-    logging.info("TEAR DOWN: %s" % str(self))
     for thread in self._threads:
-      self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+      thread.check_termination()
 
     self._ClearCachedSession()
 
@@ -663,6 +726,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self._thread = threading.Thread(target=self._protected_run)
       self._exception = None
 
+      self._is_thread_joined = False
+
     def _protected_run(self):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
@@ -685,6 +750,7 @@ class TensorFlowTestCase(googletest.TestCase):
         self._testcase.failureException: If the thread terminates with due to
           an exception.
       """
+      self._is_thread_joined = True
       self._thread.join()
       if self._exception is not None:
         self._testcase.fail("Error in checkedThread: %s" % str(self._exception))
@@ -699,6 +765,28 @@ class TensorFlowTestCase(googletest.TestCase):
         True if the thread is alive, otherwise False.
       """
       return self._thread.is_alive()
+
+    def check_termination(self):
+      """Returns whether the checked thread was properly used and did terminate.
+
+      Every checked thread should be "join"ed after starting, and before the
+      test tears down. If it is not joined, it is possible the thread will hang
+      and cause flaky failures in tests.
+
+      Raises:
+        self._testcase.failureException: If check_termination was called before
+        thread was joined.
+
+        RuntimeError: If the thread is not terminated. This means thread was not
+        joined with the main thread.
+      """
+      if self._is_thread_joined:
+        if self.is_alive():
+          raise RuntimeError(
+              "Thread was not joined with main thread, and is still running "
+              "when the test finished.")
+      else:
+        self._testcase.fail("A checked thread was not joined.")
 
   def checkedThread(self, target, args=None, kwargs=None):
     """Returns a Thread wrapper that asserts 'target' completes successfully.

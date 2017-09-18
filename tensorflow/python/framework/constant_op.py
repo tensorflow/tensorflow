@@ -41,7 +41,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -60,7 +59,7 @@ def _eager_reshape(tensor, shape):
   attr_tshape = attr_tshape.as_datatype_enum
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
-  result, = execute.execute("Reshape", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(b"Reshape", 1, inputs=inputs_flat, attrs=attrs)
   return result
 
 
@@ -70,38 +69,36 @@ def _eager_fill(dims, value):
   dims = convert_to_eager_tensor(dims, dtypes.int32)
   inputs_flat = [dims, value]
   attrs = ("T", attr_t)
-  result, = execute.execute("Fill", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(b"Fill", 1, inputs=inputs_flat, attrs=attrs)
   return result
 
 
-# Rely on the GIL for thread-safety.
-_scalar_cache = {}
+def _eager_identity(tensor):
+  """Eager-only version of Identity op; requires tensor is an eager Tensor."""
+  attrs = ("T", tensor.dtype.as_datatype_enum)
+  result, = execute.execute(b"Identity", 1, inputs=[tensor], attrs=attrs)
+  return result
 
 
 def convert_to_eager_tensor(t, dtype=None):
   """Converts the given `value` to an `EagerTensor`."""
-  if isinstance(ag_core.getval(t), ops.EagerTensor):
+  if isinstance(t, ops.EagerTensor):
     if dtype is not None and t.dtype != dtype:
       raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
     return t
-  # Handle converting ResourceVariable to Tensor.
-  # TODO(josh11b): get rid of this explicit ugly conversion once we have a more
-  # general scheme in place.
-  try:
-    return t._dense_var_to_tensor(dtype=dtype, as_ref=False)  # pylint: disable=protected-access
-  except AttributeError:
-    pass
   if isinstance(t, (int, float)):
     # Use a scalar cache. This will put each scalar of each type only once on
     # each device. Scalars don't use much device memory but copying scalars can
     # trigger memcpys which are slow.
-    device = context.context().device_name
+    ctx = context.context()
+    device = ctx.device_name
     cache_key = device, t, dtype, type(t)
-    tensor = _scalar_cache.get(cache_key, None)
+    scalar_cache = ctx.scalar_cache()
+    tensor = scalar_cache.get(cache_key, None)
     if tensor is not None:
       return tensor
     value = ops.EagerTensor(t, dtype=dtype)
-    _scalar_cache[cache_key] = value
+    scalar_cache[cache_key] = value
     return value
   return ops.EagerTensor(t, dtype=dtype)
 
@@ -109,33 +106,33 @@ def convert_to_eager_tensor(t, dtype=None):
 def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   """Creates a constant tensor.
 
-   The resulting tensor is populated with values of type `dtype`, as
-   specified by arguments `value` and (optionally) `shape` (see examples
-   below).
+  The resulting tensor is populated with values of type `dtype`, as
+  specified by arguments `value` and (optionally) `shape` (see examples
+  below).
 
-   The argument `value` can be a constant value, or a list of values of type
-   `dtype`. If `value` is a list, then the length of the list must be less
-   than or equal to the number of elements implied by the `shape` argument (if
-   specified). In the case where the list length is less than the number of
-   elements specified by `shape`, the last element in the list will be used
-   to fill the remaining entries.
+  The argument `value` can be a constant value, or a list of values of type
+  `dtype`. If `value` is a list, then the length of the list must be less
+  than or equal to the number of elements implied by the `shape` argument (if
+  specified). In the case where the list length is less than the number of
+  elements specified by `shape`, the last element in the list will be used
+  to fill the remaining entries.
 
-   The argument `shape` is optional. If present, it specifies the dimensions of
-   the resulting tensor. If not present, the shape of `value` is used.
+  The argument `shape` is optional. If present, it specifies the dimensions of
+  the resulting tensor. If not present, the shape of `value` is used.
 
-   If the argument `dtype` is not specified, then the type is inferred from
-   the type of `value`.
+  If the argument `dtype` is not specified, then the type is inferred from
+  the type of `value`.
 
-   For example:
+  For example:
 
-   ```python
-   # Constant 1-D Tensor populated with value list.
-   tensor = tf.constant([1, 2, 3, 4, 5, 6, 7]) => [1 2 3 4 5 6 7]
+  ```python
+  # Constant 1-D Tensor populated with value list.
+  tensor = tf.constant([1, 2, 3, 4, 5, 6, 7]) => [1 2 3 4 5 6 7]
 
-   # Constant 2-D tensor populated with scalar value -1.
-   tensor = tf.constant(-1.0, shape=[2, 3]) => [[-1. -1. -1.]
-                                                [-1. -1. -1.]]
-   ```
+  # Constant 2-D tensor populated with scalar value -1.
+  tensor = tf.constant(-1.0, shape=[2, 3]) => [[-1. -1. -1.]
+                                               [-1. -1. -1.]]
+  ```
 
   Args:
     value:          A constant value (or list) of output type `dtype`.
@@ -169,7 +166,14 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
     if num_t == shape.num_elements():
       return _eager_reshape(t, shape.as_list())
     if num_t == 1:
-      return _eager_fill(shape.as_list(), t)
+      if t.dtype == dtypes.bool:
+        # We don't have a Fill kernel for bool dtype on GPU. So we first run
+        # Fill on CPU and then copy to GPU if needed.
+        with ops.device("/device:CPU:0"):
+          x = _eager_fill(shape.as_list(), t.as_cpu_tensor())
+        return _eager_identity(x)
+      else:
+        return _eager_fill(shape.as_list(), t)
     raise TypeError("Eager execution of tf.constant with unsupported shape "
                     "(value has %d elements, shape is %s with %d elements)." %
                     (num_t, shape, shape.num_elements()))

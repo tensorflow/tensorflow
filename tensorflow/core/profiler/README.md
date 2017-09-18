@@ -216,7 +216,7 @@ seq2seq_attention_model.py:363:build_graph:self._add_train_o..., cpu: 1.28sec, a
 
 ```shell
 # The following example generates a timeline.
-tfprof> graph -step 0 -max_depth 100000 -output timeline:outfile=<filename>
+tfprof> graph -step -1 -max_depth 100000 -output timeline:outfile=<filename>
 
 generating trace file.
 

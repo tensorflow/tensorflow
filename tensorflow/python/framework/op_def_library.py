@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -503,7 +502,6 @@ class OpDefLibrary(object):
             default_dtype = default_type_attr_map[input_arg.type_attr]
 
           try:
-            values = ag_core.getval(values)
             values = ops.internal_convert_to_tensor(
                 values,
                 name=input_arg.name,
@@ -784,7 +782,6 @@ class OpDefLibrary(object):
                               if arg.is_ref]
       with _MaybeColocateWith(must_colocate_inputs):
         # Add Op to graph
-        inputs = [ag_core.getval(x) for x in inputs]
         op = g.create_op(op_type_name, inputs, output_types, name=scope,
                          input_types=input_types, attrs=attr_protos,
                          op_def=op_def)

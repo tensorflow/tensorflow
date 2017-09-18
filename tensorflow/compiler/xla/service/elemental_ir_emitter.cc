@@ -293,18 +293,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  // TODO(b/64580527): We can do better here if fast-math is enabled.
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
-                                      {lhs_value, rhs_value},
-                                      {lhs_value->getType()}, ir_builder_);
+  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, ir_builder_);
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  // TODO(b/64580527): We can do better here if fast-math is enabled.
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
-                                      {lhs_value, rhs_value},
-                                      {lhs_value->getType()}, ir_builder_);
+  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, ir_builder_);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
@@ -1164,7 +1158,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
 
         std::unique_ptr<llvm_ir::ForLoop> inner_loop =
             llvm_ir::ForLoop::EmitForLoop(
-                "dot.inner", ir_builder_->getInt64(0),
+                llvm_ir::IrName(hlo, "inner"), ir_builder_->getInt64(0),
                 ir_builder_->getInt64(contracted_dim_size),
                 ir_builder_->getInt64(1), ir_builder_);
 

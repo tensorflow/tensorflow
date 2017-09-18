@@ -664,12 +664,12 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     bool in_operand_list = std::find(operands_.begin(), operands_.end(),
                                      instruction_to_fuse) != operands_.end();
     CHECK(add_output || in_operand_list);
-    const std::vector<HloInstruction*>& fused_parameters_ =
+    const std::vector<HloInstruction*>& fused_parameters =
         fused_instructions_computation()->parameter_instructions();
     for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
       if (instruction_to_fuse == operands_[operand_num]) {
         // replace the fused parameter instruction's uses with the clone.
-        HloInstruction* fused_parameter = fused_parameters_[operand_num];
+        HloInstruction* fused_parameter = fused_parameters[operand_num];
         TF_CHECK_OK(fused_parameter->ReplaceAllUsesWith(clone));
 
         // Remove the corresponding fused parameter and operand from their
@@ -693,7 +693,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   }
 
   // Reread the parameters in the computation.
-  const std::vector<HloInstruction*>& fused_parameters_ =
+  const std::vector<HloInstruction*>& fused_parameters =
       fused_instructions_computation()->parameter_instructions();
 
   // Add each operand of the clone as an operand of the fusion instruction. A
@@ -704,11 +704,11 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     HloInstruction* operand = clone->mutable_operand(operand_num);
 
     // See if this operand is already an operand of the fusion node.
-    CHECK_EQ(operands_.size(), fused_parameters_.size());
+    CHECK_EQ(operands_.size(), fused_parameters.size());
     HloInstruction* fused_param = nullptr;
     for (int64 i = 0; i < operands_.size(); ++i) {
       if (operands_[i] == operand) {
-        fused_param = fused_parameters_[i];
+        fused_param = fused_parameters[i];
         break;
       }
     }
@@ -717,7 +717,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // Clone's operand was not already an operand of the fusion
       // instruction. Add it as an operand and add a corresponding fused
       // parameter instruction.
-      int64 param_no = fused_parameters_.size();
+      int64 param_no = fused_parameters.size();
       // Name the parameter after the instruction it represents in the outer
       // (non-fusion) computation. Strip the leading "%" from the operand name
       // to avoid a double %%.
@@ -2618,6 +2618,23 @@ void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
 void HloInstruction::set_outer_dimension_partitions(
     const std::vector<int64>& outer_dimension_partitions) {
   outer_dimension_partitions_ = outer_dimension_partitions;
+}
+
+void HloInstruction::RelayoutConstant(const Layout& new_layout,
+                                      const ShapeIndex& shape_index) {
+  CHECK_EQ(opcode(), HloOpcode::kConstant);
+  Shape* mutable_array_subshape =
+      ShapeUtil::GetMutableSubshape(mutable_shape(), shape_index);
+  CHECK(ShapeUtil::IsArray(*mutable_array_subshape));
+
+  // Normally array_subshape will always have a layout, but this invariant is
+  // temporarily broken in LayoutAssignment::AssignLayouts.
+
+  if (!mutable_array_subshape->has_layout() ||
+      !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
+    literal_ = literal_->Relayout(new_layout, shape_index);
+    *mutable_array_subshape->mutable_layout() = new_layout;
+  }
 }
 
 }  // namespace xla

@@ -216,8 +216,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override {
     TF_RETURN_IF_ERROR(DefaultAction(call));
     CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(
-        call->to_apply()->root_instruction()->Accept(&candidates_for_call));
+    TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
     return Status::OK();
   }
 
@@ -364,7 +363,7 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
 Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(ir_module_string));
   TF_RETURN_IF_ERROR(f->Close());
   return Status::OK();

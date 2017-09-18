@@ -321,7 +321,17 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
                                       self._observer)
 
     with wrapper as sess:
-      sess.run(self._s)
+      self.assertAllClose([[3.0], [4.0]], self._s.eval())
+      self.assertEqual(1, self._observer["on_run_start_count"])
+      self.assertEqual(self._s, self._observer["run_fetches"])
+      self.assertEqual(1, self._observer["on_run_end_count"])
+
+      self.assertAllClose(
+          [[11.0], [-1.0]],
+          sess.run(self._q, feed_dict={self._ph: np.array([[1.0], [2.0]])}))
+      self.assertEqual(2, self._observer["on_run_start_count"])
+      self.assertEqual(self._q, self._observer["run_fetches"])
+      self.assertEqual(2, self._observer["on_run_end_count"])
 
   def testUsingWrappedSessionShouldSupportEvalWithAsDefault(self):
     wrapper = TestDebugWrapperSession(self._sess, self._dump_root,
