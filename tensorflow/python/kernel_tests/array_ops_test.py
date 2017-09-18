@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -366,14 +367,14 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
 
 class RollTest(test_util.TensorFlowTestCase):
-  def _testRoll(self, np_input, shift, axis, use_gpu=True):
+  def _testRoll(self, np_input, shift, axis):
     expected_roll = np.roll(np_input, shift, axis)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session():
       roll = array_ops.roll(np_input, shift, axis)
       self.assertAllEqual(roll.eval(), expected_roll)
 
-  def _testGradient(self, np_input, shift, axis, use_gpu=True):
-    with self.test_session(use_gpu=use_gpu):
+  def _testGradient(self, np_input, shift, axis):
+    with self.test_session():
       inx = constant_op.constant(np_input.tolist())
       xs = list(np_input.shape)
       y = array_ops.roll(inx, shift, axis)
@@ -383,10 +384,10 @@ class RollTest(test_util.TensorFlowTestCase):
           inx, xs, y, ys, x_init_value=np_input)
       self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
 
-  def _testAll(self, np_input, shift, axis, use_gpu=True):
-    self._testRoll(np_input, shift, axis, use_gpu)
+  def _testAll(self, np_input, shift, axis):
+    self._testRoll(np_input, shift, axis)
     if np_input.dtype == np.float32:
-      self._testGradient(np_input, shift, axis, use_gpu)
+      self._testGradient(np_input, shift, axis)
 
   def testIntTypes(self):
     for t in [np.int32, np.int64]:
@@ -415,9 +416,9 @@ class RollTest(test_util.TensorFlowTestCase):
     shift = 1
     axis = 0
     with self.test_session():
-      with self.assertRaisesRegexp(InvalidArgumentError,
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "input must be 1-D or higher"):
-        roll_module.roll(tensor, shift, axis).eval()
+        array_ops.roll(tensor, shift, axis).eval()
 
   def testRollAxisMustBeScalarOrVectorRaises(self):
     tensor = [[1, 2],
@@ -425,9 +426,9 @@ class RollTest(test_util.TensorFlowTestCase):
     shift = 1
     axis = [[0, 1]]
     with self.test_session():
-      with self.assertRaisesRegexp(InvalidArgumentError,
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "axis must be a scalar or a 1-D vector"):
-        roll_module.roll(tensor, shift, axis).eval()
+        array_ops.roll(tensor, shift, axis).eval()
 
   def testRollShiftMustBeScalarOrVectorRaises(self):
     tensor = [[1, 2],
@@ -435,9 +436,9 @@ class RollTest(test_util.TensorFlowTestCase):
     shift = [[0, 1]]
     axis = 1
     with self.test_session():
-      with self.assertRaisesRegexp(InvalidArgumentError,
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "shift must be a scalar or a 1-D vector"):
-        roll_module.roll(tensor, shift, axis).eval()
+        array_ops.roll(tensor, shift, axis).eval()
 
   def testRollShiftAndAxisMustBeSameSizeRaises(self):
     tensor = [[1, 2],
@@ -445,17 +446,18 @@ class RollTest(test_util.TensorFlowTestCase):
     shift = [1]
     axis = [0, 1]
     with self.test_session():
-      with self.assertRaisesRegexp(InvalidArgumentError,
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "shift and axis must be the same size"):
-        roll_module.roll(tensor, shift, axis).eval()
+        array_ops.roll(tensor, shift, axis).eval()
 
   def testRollAxisOutOfRangeRaises(self):
     tensor = [1, 2]
     shift = 1
     axis = 1
     with self.test_session():
-      with self.assertRaisesRegexp(InvalidArgumentError, "is out of range"):
-        roll_module.roll(tensor, shift, axis).eval()
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "is out of range"):
+        array_ops.roll(tensor, shift, axis).eval()
 
 
 

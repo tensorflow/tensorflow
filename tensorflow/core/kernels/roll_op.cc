@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/register_types_traits.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -161,9 +161,9 @@ void DoRollV2(OpKernelContext* context, const int64 N, const int D,
           if (indx == threshold[d]) {
             out_ptr -= dim_range[d];  // now wraps around
           }
-          break;  // indx != 0 don't need to carry
-        } else {
-          out_ptr += dim_range[d];  // indx became 0 so reverse wrap around
+          break;                         // indx != 0 don't need to carry
+        } else if (threshold[d] != 0) {  // if threshold is 0 shift is 0
+          out_ptr += dim_range[d];       // indx became 0 so reverse wrap around
         }
       }
 
@@ -217,8 +217,8 @@ class RollOp : public OpKernel {
     const int M = static_cast<int>(shift_flat.size());
     const int D = static_cast<int>(input.dims());
 
-    int shift_mod_sum[D];  // if any duplicate axes, will sum corresponding
-                           // shifts
+    int shift_mod_sum[D];  // if there are any duplicate axes,
+                           // this will sum corresponding shifts
     for (int d = 0; d < D; d++) shift_mod_sum[d] = 0;  // default is 0
     for (int m = 0; m < M; m++) {
       const int a = axis_flat(m);
