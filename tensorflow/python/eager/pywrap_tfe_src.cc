@@ -433,7 +433,7 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
   }
 }
 
-int TFE_Py_MayBeRaiseException(TF_Status* status) {
+int TFE_Py_MaybeRaiseException(TF_Status* status) {
   if (TF_GetCode(status) == TF_OK) return 0;
   tensorflow::mutex_lock l(exception_class_mutex);
   if (exception_class != nullptr) {
@@ -445,7 +445,7 @@ int TFE_Py_MayBeRaiseException(TF_Status* status) {
   return -1;
 }
 
-char* TFE_GetPyThonString(PyObject* o) {
+char* TFE_GetPythonString(PyObject* o) {
   if (PyBytes_Check(o)) {
     return PyBytes_AsString(o);
   }
