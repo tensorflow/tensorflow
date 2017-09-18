@@ -75,11 +75,11 @@ import os.path
 import sys
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import input_data
 import models
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.platform import gfile
 
 FLAGS = None
