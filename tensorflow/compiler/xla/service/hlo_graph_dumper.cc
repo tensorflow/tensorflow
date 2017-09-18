@@ -45,14 +45,14 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 
 using ::tensorflow::Env;
+using ::tensorflow::WriteStringToFile;
 using ::tensorflow::gtl::nullopt;
 using ::tensorflow::gtl::optional;
 using ::tensorflow::io::JoinPath;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::str_util::StringReplace;
-using ::tensorflow::WriteStringToFile;
+using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace hlo_graph_dumper {
@@ -854,6 +854,12 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
         return Printf("feature_index=%lld", instr->feature_index());
       case HloOpcode::kCustomCall:
         return Printf("custom_call_target=%s", instr->custom_call_target());
+      case HloOpcode::kSlice:
+        return std::all_of(instr->slice_strides().begin(),
+                           instr->slice_strides().end(),
+                           [](int64 stride) { return stride == 1; })
+                   ? ""
+                   : StrCat("stride=", VectorString(instr->slice_strides()));
       default:
         return "";
     }
