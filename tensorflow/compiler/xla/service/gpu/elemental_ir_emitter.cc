@@ -49,6 +49,7 @@ namespace xla {
 namespace gpu {
 
 using llvm_ir::IrArray;
+using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 using tensorflow::strings::StrAppend;
 
@@ -322,7 +323,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
           ir_builder_->CreateStore(init_value, accum_ptr);
         }
 
-        llvm_ir::ForLoopNest loops(ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
         std::vector<int64> window_size;
         for (const auto& dim : window.dimensions()) {
           window_size.push_back(dim.size());
@@ -381,7 +382,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
                             operand_to_generator.at(hlo->operand(1))({}));
         ir_builder()->CreateStore(init_value, accum_ptr);
 
-        llvm_ir::ForLoopNest loops(ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
         IrArray::Index input_index = loops.AddLoopsForShapeOnDimensions(
             operand->shape(), hlo->dimensions(), "reduction_dim");
         if (!ShapeUtil::IsScalar(hlo->shape())) {

@@ -67,6 +67,8 @@ namespace gpu {
 
 namespace {
 
+using llvm_ir::IrName;
+
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
 const int64 kMinDimensionToTransposeTiled = 16;
@@ -452,7 +454,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
                            ir_emitter_context_->llvm_module());
     return ParallelLoopEmitter(loop_body_emitter, update_shape,
                                launch_dimensions, &ir_builder_)
-        .EmitLoop();
+        .EmitLoop(IrName(fusion));
   }
   if (ImplementedAsGemm(*fusion)) {
     thunk_sequence_->emplace_back(BuildGemmThunk(fusion));
@@ -917,7 +919,7 @@ Status IrEmitterUnnested::EmitColumnReduction(
       ir_emitter_context_->llvm_module());
   return ParallelLoopEmitter(loop_body_emitter, tiled_input_shape,
                              launch_dimensions, &ir_builder_)
-      .EmitLoop();
+      .EmitLoop(IrName(reduce));
 }
 
 Status IrEmitterUnnested::EmitRowReduction(
@@ -1175,7 +1177,7 @@ Status IrEmitterUnnested::EmitRowReduction(
       ir_emitter_context_->llvm_module());
   return ParallelLoopEmitter(loop_body_emitter, tiled_input_shape,
                              launch_dimensions, &ir_builder_)
-      .EmitLoop();
+      .EmitLoop(IrName(reduce));
 }
 
 // Figures out whether `reduce` is a row or column reduction, and which
@@ -1421,7 +1423,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
                             initialized_flag_address);
 
     // Create the inner loop to iterate over the window.
-    llvm_ir::ForLoopNest window_loops(&ir_builder_);
+    llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "inner"),
+                                      &ir_builder_);
     std::vector<int64> window_size;
     for (const auto& dim : window.dimensions()) {
       window_size.push_back(dim.size());
@@ -1543,7 +1546,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
       ir_emitter_context_->llvm_module());
   return ParallelLoopEmitter(loop_body_emitter, source->shape(),
                              launch_dimensions, &ir_builder_)
-      .EmitLoop();
+      .EmitLoop(IrName(select_and_scatter));
 }
 
 Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
@@ -1899,7 +1902,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   if (!hlo.IsMultiOutputFusion()) {
     return ParallelLoopEmitter(element_generator, GetIrArray(hlo),
                                launch_dimensions, &ir_builder_)
-        .EmitLoop();
+        .EmitLoop(IrName(&hlo));
   }
 
   // For multiple outputs fusion, we need to emit each operand and the root.
@@ -1909,7 +1912,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   }
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, output_arrays,
                                          launch_dimensions, &ir_builder_)
-                         .EmitLoop());
+                         .EmitLoop(IrName(&hlo)));
 
   std::vector<llvm::Value*> tuple_operand_ptrs;
   for (int64 i = 0; i < output_arrays.size(); ++i) {
