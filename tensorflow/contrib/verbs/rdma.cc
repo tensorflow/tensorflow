@@ -181,6 +181,96 @@ uint8_t set_port(ibv_device *ibv_dev) {
 	return port_num;
 }
 
+uint8_t set_pkey() {
+	uint8_t pkey_index = 0;
+	string pkey_index_s;
+	char const* pkey_index_s_temp;
+
+	pkey_index_s_temp = getenv("RDMA_PKEY");
+	pkey_index_s = pkey_index_s_temp == NULL ? string() : string(pkey_index_s_temp);
+
+	if (!pkey_index_s.empty()) {
+		pkey_index = stoi(pkey_index_s);
+	}
+	else {
+		pkey_index = 0;
+	}
+
+	return pkey_index;
+}
+
+uint32_t set_queue_depth() {
+	uint32_t queue_depth = 0;
+	string queue_depth_s;
+	char const* queue_depth_s_temp;
+
+	queue_depth_s_temp = getenv("RDMA_QUEUE_DEPTH");
+	queue_depth_s = queue_depth_s_temp == NULL ? string() : string(queue_depth_s_temp);
+
+	if (!queue_depth_s.empty()) {
+		queue_depth = stoi(queue_depth_s);
+	}
+	else {
+		queue_depth = 1024;
+	}
+
+	return queue_depth;
+}
+
+uint8_t set_timeout() {
+	uint8_t timeout = 0;
+	string timeout_s;
+	char const* timeout_s_temp;
+
+	timeout_s_temp = getenv("RDMA_TIMEOUT");
+	timeout_s = timeout_s_temp == NULL ? string() : string(timeout_s_temp);
+
+	if (!timeout_s.empty()) {
+		timeout = stoi(timeout_s);
+	}
+	else {
+		timeout = 14;
+	}
+
+	return timeout;
+}
+
+uint8_t set_retry_cnt() {
+	uint8_t retry_cnt = 0;
+	string retry_cnt_s;
+	char const* retry_cnt_s_temp;
+
+	retry_cnt_s_temp = getenv("RDMA_RETRY_CNT");
+	retry_cnt_s = retry_cnt_s_temp == NULL ? string() : string(retry_cnt_s_temp);
+
+	if (!retry_cnt_s.empty()) {
+		retry_cnt = stoi(retry_cnt_s);
+	}
+	else {
+		retry_cnt = 7;
+	}
+
+	return retry_cnt;
+}
+
+uint8_t set_sl() {
+	uint8_t sl = 0;
+	string sl_s;
+	char const* sl_s_temp;
+
+	sl_s_temp = getenv("RDMA_SL");
+	sl_s = sl_s_temp == NULL ? string() : string(sl_s_temp);
+
+	if (!sl_s.empty()) {
+		sl = stoi(sl_s);
+	}
+	else {
+		sl = 0;
+	}
+
+	return sl;
+}
+
 RdmaParams params_init(){
 
 	RdmaParams params;
@@ -189,6 +279,16 @@ RdmaParams params_init(){
 	CHECK(params.ibv_dev)  << "Params_init set_device failed";
 	params.port_num = set_port(params.ibv_dev);
 	CHECK(params.ibv_dev)  << "Params_init set_port failed";
+	params.pkey_index = set_pkey();
+	CHECK(params.ibv_dev)  << "Params_init set_pkey failed";
+	params.queue_depth = set_queue_depth();
+	CHECK(params.ibv_dev)  << "Params_init set_queue_depth failed";
+	params.timeout = set_timeout();
+	CHECK(params.ibv_dev)  << "Params_init set_timeout failed";
+	params.retry_cnt = set_retry_cnt();
+	CHECK(params.ibv_dev)  << "Params_init set_retry_cnt failed";
+	params.sl = set_sl();
+	CHECK(params.ibv_dev)  << "Params_init set_sl failed";
 	return params;
 }
 
@@ -358,8 +458,8 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
     memset(&attr, 0, sizeof(ibv_qp_init_attr));
     attr.send_cq = adapter_->cq_;
     attr.recv_cq = adapter_->cq_;
-    attr.cap.max_send_wr = RdmaAdapter::MAX_CONCURRENT_WRITES;
-    attr.cap.max_recv_wr = RdmaAdapter::MAX_CONCURRENT_WRITES;
+    attr.cap.max_send_wr = adapter_->params_.queue_depth;
+    attr.cap.max_recv_wr = adapter_->params_.queue_depth;
     attr.cap.max_send_sge = 1;
     attr.cap.max_recv_sge = 1;
     attr.qp_type = IBV_QPT_RC;
@@ -373,7 +473,7 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
     struct ibv_qp_attr attr;
     memset(&attr, 0, sizeof(ibv_qp_attr));
     attr.qp_state = IBV_QPS_INIT;
-    attr.pkey_index = 0;
+    attr.pkey_index = adapter_->params_.pkey_index;
     attr.port_num = adapter_->params_.port_num;
     attr.qp_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE;
 
@@ -610,7 +710,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.ah_attr.grh.flow_label = 0;
     attr.ah_attr.grh.hop_limit = 255;
     attr.ah_attr.dlid = remoteAddr.lid;
-    attr.ah_attr.sl = 0;
+    attr.ah_attr.sl = adapter_->params_.sl;
     attr.ah_attr.src_path_bits = 0;
     attr.ah_attr.port_num = 1;
 
@@ -625,8 +725,8 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     memset(&attr, 0, sizeof(ibv_qp_attr));
     attr.qp_state = IBV_QPS_RTS;
     attr.sq_psn = self_.psn;
-    attr.timeout = 14;
-    attr.retry_cnt = 7;
+    attr.timeout = adapter_->params_.timeout;
+    attr.retry_cnt = adapter_->params_.retry_cnt;
     attr.rnr_retry = 7; /* infinite */
     attr.max_rd_atomic = 1;
 
