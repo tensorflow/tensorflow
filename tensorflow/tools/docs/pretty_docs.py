@@ -300,7 +300,7 @@ def _build_function_details(function_details):
     sub.append('#### ' + detail.keyword + ':\n\n')
     sub.append(detail.header)
     for key, value in detail.items:
-      sub.append('* <b>`%s`</b>:%s' % (key, value))
+      sub.append('* <b>`%s`</b>: %s' % (key, value))
     parts.append(''.join(sub))
 
   return '\n'.join(parts)
