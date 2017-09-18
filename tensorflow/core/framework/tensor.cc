@@ -451,7 +451,7 @@ Buffer<T>::~Buffer() {
 // default value for T.
 //
 // This routine is using the typed fields (float_val, etc.) in the
-// tenor proto as opposed to the untyped binary representation
+// tensor proto as opposed to the untyped binary representation
 // (tensor_content). This is used when we expect the TensorProto is
 // used by a client program which may not know how to encode a tensor
 // in the compact binary representation.
