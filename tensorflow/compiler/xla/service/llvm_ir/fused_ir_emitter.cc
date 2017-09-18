@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <functional>
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -125,6 +125,27 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
   gte_values_.insert(std::make_pair(
       parameter,
       parameter_arrays_[parameter->parameter_number()].GetBasePointer()));
+  return Status::OK();
+}
+
+Status FusedIrEmitter::HandleTuple(
+    HloInstruction* tuple,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  std::vector<llvm::Type*> operand_elemental_ir_types;
+  for (HloInstruction* operand : operands) {
+    operand_elemental_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(
+        operand->shape().element_type(), ir_builder_));
+  }
+  generators_[tuple] =
+      [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+    llvm::Value* ret = llvm::UndefValue::get(llvm::StructType::get(
+        ir_builder_->getContext(), operand_elemental_ir_types));
+    for (size_t i = 0; i < ShapeUtil::TupleElementCount(tuple->shape()); ++i) {
+      TF_ASSIGN_OR_RETURN(llvm::Value * val_i, generators_[operands[i]](index));
+      ret = ir_builder_->CreateInsertValue(ret, val_i, i);
+    }
+    return ret;
+  };
   return Status::OK();
 }
 

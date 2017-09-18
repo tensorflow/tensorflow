@@ -112,10 +112,11 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<BufferAssignment> assignment,
     HloCostAnalysis::ShapeSizeFunction shape_size_function)
-    : Executable(std::move(hlo_module), std::move(shape_size_function)),
+    : Executable(std::move(hlo_module)),
       ptx_(ptx),
       thunk_schedule_(std::move(thunk_schedule)),
-      assignment_(std::move(assignment)) {}
+      assignment_(std::move(assignment)),
+      shape_size_function_(std::move(shape_size_function)) {}
 
 Status GpuExecutable::ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
@@ -231,7 +232,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteOnStream(
       TF_RETURN_IF_ERROR(GetRootPointsToSet().ForEachElementWithStatus(
           [&referred_by_output, &buffer_allocations, this](
               const ShapeIndex& /*index*/,
-              const std::vector<const LogicalBuffer*>& buffers) {
+              const PointsToSet::BufferList& buffers) {
             // The points to set is unambiguous so the set should be a
             // singleton. That is, we know exactly which instruction produced
             // the array at this element.
@@ -310,7 +311,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
               [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
                 if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
-                  const std::vector<const LogicalBuffer*>& sources =
+                  const auto& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
                   // singleton. That is, we know exactly which instruction
@@ -354,6 +355,10 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& GpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
+}
+
+std::unique_ptr<HloCostAnalysis> GpuExecutable::CreateCostAnalysis() const {
+  return MakeUnique<HloCostAnalysis>(shape_size_function_);
 }
 
 }  // namespace gpu

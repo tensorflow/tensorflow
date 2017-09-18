@@ -105,7 +105,8 @@ float TensorDataSet::GetExampleValue(int example, int32 feature_id) const {
 
 void TensorDataSet::set_input_tensors(const Tensor& dense,
                                       const Tensor& sparse_indices,
-                                      const Tensor& sparse_values) {
+                                      const Tensor& sparse_values,
+                                      const Tensor& sparse_shape) {
   if (dense.shape().dims() == 2) {
     dense_data_.reset(new DenseStorageType(dense.tensor<float, 2>()));
   }
@@ -114,6 +115,7 @@ void TensorDataSet::set_input_tensors(const Tensor& dense,
         sparse_indices.tensor<int64, 2>()));
     sparse_values_.reset(new SparseValuesStorageType(
         sparse_values.tensor<float, 1>()));
+    sparse_batch_size_ = sparse_shape.tensor<int64, 1>()(0);
   }
   original_dense_tensor_ = dense;
 }

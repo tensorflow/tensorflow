@@ -250,6 +250,12 @@ section, we'll fix that, jumping from a very simple model to something
 moderately sophisticated: a small convolutional neural network. This will get us
 to around 99.2% accuracy -- not state of the art, but respectable.
 
+Here is a diagram, created with TensorBoard, of the model we will build:
+
+<div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img src="https://www.tensorflow.org/images/mnist_deep.png">
+</div>
+
 ### Weight Initialization
 
 To create this model, we're going to need to create a lot of weights and biases.

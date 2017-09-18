@@ -51,7 +51,8 @@ Status LiteralToHostTensor(const xla::Literal& literal, DataType target_type,
         " to tensor of type ", DataTypeString(target_type));
   }
 
-  TensorShape shape = XLAShapeToTensorShape(literal.shape());
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(literal.shape(), &shape));
   *host_tensor = Tensor(target_type, shape);
   size_t total_bytes = host_tensor->TotalBytes();
   if (total_bytes > 0) {

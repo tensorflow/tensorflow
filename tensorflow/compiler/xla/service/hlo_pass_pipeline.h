@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,9 +33,7 @@ namespace xla {
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
-  explicit HloPassPipeline(const string& name,
-                           const Compiler::HloDumper& dumper)
-      : name_(name), dumper_(dumper) {}
+  explicit HloPassPipeline(const string& name) : name_(name) {}
   tensorflow::StringPiece name() const override { return name_; }
 
   // Add a pass to the pipeline. It should be called with the arguments for the
@@ -69,7 +66,6 @@ class HloPassPipeline : public HloPassInterface {
 
  private:
   const string name_;
-  Compiler::HloDumper dumper_;
   std::vector<std::unique_ptr<HloPassInterface>> passes_;
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;

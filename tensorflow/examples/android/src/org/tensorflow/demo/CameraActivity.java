@@ -19,22 +19,37 @@ package org.tensorflow.demo;
 import android.Manifest;
 import android.app.Activity;
 import android.app.Fragment;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.hardware.Camera;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
 import android.media.Image.Plane;
+import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Trace;
 import android.util.Size;
 import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
+
+import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
+
+// Explicit import needed for internal Google builds.
 import org.tensorflow.demo.R;
 
-public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
+public abstract class CameraActivity extends Activity implements OnImageAvailableListener, Camera.
+        PreviewCallback {
   private static final Logger LOGGER = new Logger();
 
   private static final int PERMISSIONS_REQUEST = 1;
@@ -46,6 +61,20 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   private Handler handler;
   private HandlerThread handlerThread;
+  private boolean useCamera2API;
+  protected Bitmap rgbFrameBitmap = null;
+  private int[] rgbBytes = null;
+  protected int previewWidth = 0;
+  protected int previewHeight = 0;
+  protected Bitmap croppedBitmap = null;
+  protected static final boolean SAVE_PREVIEW_BITMAP = false;
+  protected long lastProcessingTimeMs;
+  protected Bitmap cropCopyBitmap;
+  protected ResultsView resultsView;
+  protected boolean computing = false;
+  protected Runnable postInferenceCallback;
+  protected byte[][] yuvBytes=new byte[3][];
+  protected int yRowStride;
 
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
@@ -60,6 +89,92 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     } else {
       requestPermission();
     }
+  }
+
+  /**
+   * Callback for android.hardware.Camera API
+   */
+  @Override
+  public void onPreviewFrame(final byte[] bytes, final Camera camera) {
+    if (computing) {
+      return;
+    }
+    computing = true;
+    yuvBytes[0] = bytes;
+    try {
+      // Initialize the storage bitmaps once when the resolution is known.
+      if (rgbBytes == null) {
+        Camera.Size previewSize = camera.getParameters().getPreviewSize();
+        previewHeight = previewSize.height;
+        previewWidth = previewSize.width;
+        rgbBytes = new int[previewWidth * previewHeight];
+        onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
+      }
+      ImageUtils.convertYUV420SPToARGB8888(bytes, previewWidth, previewHeight, rgbBytes);
+    } catch (final Exception e) {
+      LOGGER.e(e, "Exception!");
+      return;
+    }
+    postInferenceCallback = new Runnable() {
+      @Override
+      public void run() {
+        camera.addCallbackBuffer(bytes);
+      }
+    };
+    processImageRGBbytes(rgbBytes);
+  }
+
+  /**
+   * Callback for Camera2 API
+   */
+  @Override
+  public void onImageAvailable(final ImageReader reader) {
+    Image image = null;
+    //We need wait until we have some size from onPreviewSizeChosen
+    if (previewWidth == 0 || previewHeight == 0) {
+      return;
+    }
+    rgbBytes = new int[previewWidth * previewHeight];
+    try {
+      image = reader.acquireLatestImage();
+
+      if (image == null) {
+        return;
+      }
+
+      if (computing) {
+        image.close();
+        return;
+      }
+      computing = true;
+      Trace.beginSection("imageAvailable");
+      final Plane[] planes = image.getPlanes();
+      fillBytes(planes, yuvBytes);
+      yRowStride = planes[0].getRowStride();
+      final int uvRowStride = planes[1].getRowStride();
+      final int uvPixelStride = planes[1].getPixelStride();
+      ImageUtils.convertYUV420ToARGB8888(
+          yuvBytes[0],
+          yuvBytes[1],
+          yuvBytes[2],
+          previewWidth,
+          previewHeight,
+          yRowStride,
+          uvRowStride,
+          uvPixelStride,
+          rgbBytes);
+      image.close();
+
+    } catch (final Exception e) {
+      if (image != null) {
+        image.close();
+      }
+      LOGGER.e(e, "Exception!");
+      Trace.endSection();
+      return;
+    }
+    processImageRGBbytes(rgbBytes);
+    Trace.endSection();
   }
 
   @Override
@@ -123,8 +238,8 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     switch (requestCode) {
       case PERMISSIONS_REQUEST: {
         if (grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED
-                && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+            && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
           setFragment();
         } else {
           requestPermission();
@@ -135,7 +250,8 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   private boolean hasPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      return checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_GRANTED && checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_GRANTED;
+      return checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_GRANTED &&
+          checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_GRANTED;
     } else {
       return true;
     }
@@ -143,25 +259,80 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   private void requestPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) || shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
-        Toast.makeText(CameraActivity.this, "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
+      if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) ||
+          shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
+        Toast.makeText(CameraActivity.this,
+            "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
       }
       requestPermissions(new String[] {PERMISSION_CAMERA, PERMISSION_STORAGE}, PERMISSIONS_REQUEST);
     }
   }
 
+  // Returns true if the device supports the required hardware level, or better.
+  boolean isHardwareLevelSupported(CameraCharacteristics characteristics, int requiredLevel) {
+    int deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+    if (deviceLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY) {
+      return requiredLevel == deviceLevel;
+    }
+    // deviceLevel is not LEGACY, can use numerical sort
+    return requiredLevel <= deviceLevel;
+  }
+
+  private String chooseCamera() {
+    final CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+    try {
+      for (final String cameraId : manager.getCameraIdList()) {
+        final CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+
+        // We don't use a front facing camera in this sample.
+        final Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+        if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
+          continue;
+        }
+
+        final StreamConfigurationMap map =
+            characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+
+        if (map == null) {
+          continue;
+        }
+
+        useCamera2API = isHardwareLevelSupported(characteristics,
+            CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        LOGGER.i("Camera API lv2?: %s", useCamera2API);
+        return cameraId;
+      }
+    } catch (CameraAccessException e) {
+      LOGGER.e(e, "Not allowed to access camera");
+    }
+
+    return null;
+  }
+
   protected void setFragment() {
-    final Fragment fragment =
-        CameraConnectionFragment.newInstance(
-            new CameraConnectionFragment.ConnectionCallback() {
-              @Override
-              public void onPreviewSizeChosen(final Size size, final int rotation) {
-                CameraActivity.this.onPreviewSizeChosen(size, rotation);
-              }
-            },
-            this,
-            getLayoutId(),
-            getDesiredPreviewFrameSize());
+    String cameraId = chooseCamera();
+
+    Fragment fragment;
+    if (useCamera2API) {
+      CameraConnectionFragment camera2Fragment =
+          CameraConnectionFragment.newInstance(
+              new CameraConnectionFragment.ConnectionCallback() {
+                @Override
+                public void onPreviewSizeChosen(final Size size, final int rotation) {
+                  previewHeight = size.getHeight();
+                  previewWidth = size.getWidth();
+                  CameraActivity.this.onPreviewSizeChosen(size, rotation);
+                }
+              },
+              this,
+              getLayoutId(),
+              getDesiredPreviewFrameSize());
+
+      camera2Fragment.setCamera(cameraId);
+      fragment = camera2Fragment;
+    } else {
+      fragment = new LegacyCameraConnectionFragment(this, getLayoutId());
+    }
 
     getFragmentManager()
         .beginTransaction()
@@ -213,6 +384,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     return super.onKeyDown(keyCode, event);
   }
 
+  protected abstract void processImageRGBbytes(int[] rgbBytes ) ;
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
   protected abstract Size getDesiredPreviewFrameSize();

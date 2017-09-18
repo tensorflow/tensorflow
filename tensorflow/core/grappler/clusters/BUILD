@@ -110,10 +110,13 @@ cc_test(
     name = "single_machine_test",
     srcs = ["single_machine_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    tags = ["no_gpu"],
     deps = [
         ":single_machine",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Take a look at [this great article](http://colah.github.io/posts/2015-08-Understanding-LSTMs/)
+Take a look at [this great article](https://colah.github.io/posts/2015-08-Understanding-LSTMs/)
 for an introduction to recurrent neural networks and LSTMs in particular.
 
 ## Language Modeling
@@ -17,11 +17,11 @@ models, whilst being small and relatively fast to train.
 
 Language modeling is key to many interesting problems such as speech
 recognition, machine translation, or image captioning. It is also fun --
-take a look [here](http://karpathy.github.io/2015/05/21/rnn-effectiveness/).
+take a look [here](https://karpathy.github.io/2015/05/21/rnn-effectiveness/).
 
 For the purpose of this tutorial, we will reproduce the results from
-[Zaremba et al., 2014](http://arxiv.org/abs/1409.2329)
-([pdf](http://arxiv.org/pdf/1409.2329.pdf)), which achieves very good quality
+[Zaremba et al., 2014](https://arxiv.org/abs/1409.2329)
+([pdf](https://arxiv.org/pdf/1409.2329.pdf)), which achieves very good quality
 on the PTB dataset.
 
 ## Tutorial Files
@@ -75,7 +75,9 @@ The basic pseudocode is as follows:
 words_in_dataset = tf.placeholder(tf.float32, [num_batches, batch_size, num_features])
 lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
-state = tf.zeros([batch_size, lstm.state_size])
+hidden_state = tf.zeros([batch_size, lstm.state_size])
+current_state = tf.zeros([batch_size, lstm.state_size])
+state = hidden_state, current_state
 probabilities = []
 loss = 0.0
 for current_batch_of_words in words_in_dataset:

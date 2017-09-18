@@ -20,9 +20,34 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
+#include "cuda/include/cuda.h"
+
+// Mask for all 32 threads in a warp.
+#define CUDA_WARP_ALL 0xFFFFFFFF
+
+#if defined(CUDA_VERSION) && CUDA_VERSION < 9000
+// CUDA 9.0 introduces a new, light-weight barrier synchronization primitive
+// that operates at the warp-scope. This is required to ensure visibility of
+// reads/writes among threads that can make indepenent progress on Volta.
+// For previous CUDA versions these synchronizations not necessary, and we
+// define an empty function as a convenience for backward compatibility.
+__device__ inline void __syncwarp(unsigned mask=CUDA_WARP_ALL) {}
+
+// CUDA 9.0 deprecates the warp-intrinsic functions (shfl, ballot, etc.) in
+// favor of synchronizing versions. These ensure that all warp lanes specified
+// in mask execute the intrinsic in convergence. Here we provide legacy mappings
+// to the less-verbose routines provided in previous versions of CUDA.
+#define __ballot_sync(mask, predicate)              __ballot(predicate)
+#define __shfl_sync(mask, val, srcLane, width)      __shfl(val, srcLane, width)
+#define __shfl_down_sync(mask, val, delta, width)   __shfl_down(val, delta, width)
+#define __shfl_up_sync(mask, val, delta, width)     __shfl_up(val, delta, width)
+#define __shfl_xor_sync(mask, val, laneMask, width) __shfl_xor(val, laneMask, width)
+#endif
 
 // Usage of GetCudaLaunchConfig, GetCuda2DLaunchConfig, and
 // GetCuda3DLaunchConfig:
@@ -95,7 +120,8 @@ void MyDriverFunc(const GPUDevice &d) {
 }
 
 // See the test for this for more example:
-// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+//
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/cuda_kernel_helper_test.cu.cc
 
 */
 
@@ -107,7 +133,7 @@ void MyDriverFunc(const GPUDevice &d) {
   for (int i = blockIdx.axis * blockDim.axis + threadIdx.axis; i < n.axis; \
        i += blockDim.axis * gridDim.axis)
 
-#define DIV_UP(a, b) (((a) + (b) - 1) / (b))
+#define DIV_UP(a, b) (((a) + (b)-1) / (b))
 
 namespace tensorflow {
 
@@ -277,7 +303,19 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(
                                dynamic_shared_memory_size, block_size_limit);
 }
 
-namespace gpu {
+// Returns a raw reference to the current cuda stream.  Required by a
+// number of kernel calls (for which StreamInterface* does not work), i.e.
+// CUB and certain cublas primitives.
+inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
+  const cudaStream_t* ptr = CHECK_NOTNULL(
+      reinterpret_cast<const cudaStream_t*>(context->op_device_context()
+                                                ->stream()
+                                                ->implementation()
+                                                ->CudaStreamMemberHack()));
+  return *ptr;
+}
+
+namespace cuda_helper {
 
 template <typename IntType>
 __device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
@@ -299,7 +337,7 @@ __device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
   return first - orig;
 }
 
-}  // namespace gpu
+}  // namespace cuda_helper
 
 template <typename T>
 __device__ __host__ inline T ldg(const T* address) {
@@ -327,6 +365,16 @@ __device__ __host__ inline std::complex<double> ldg(
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
   double2 mem = __ldg(reinterpret_cast<const double2*>(address));
   return std::complex<double>(mem.x, mem.y);
+#else
+  return *address;
+#endif
+}
+
+template <>
+__device__ __host__ inline Eigen::half ldg(const Eigen::half* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  return Eigen::half_impl::raw_uint16_to_half(
+      __ldg(reinterpret_cast<const uint16_t*>(address)));
 #else
   return *address;
 #endif
@@ -588,82 +636,95 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T tf_max(const T& x, const T& y) {
   return x < y ? y : x;
 }
 
+__device__ EIGEN_ALWAYS_INLINE unsigned CudaBallot(unsigned mask,
+                                                   int predicate) {
+    return __ballot_sync(mask, predicate);
+}
+
 template <typename T>
-__device__ EIGEN_ALWAYS_INLINE T CudaShuffle(T value, int srcLane,
+__device__ EIGEN_ALWAYS_INLINE T CudaShuffle(unsigned mask, T value,
+                                             int srcLane,
                                              int width = warpSize) {
-  return __shfl(value, srcLane, width);
+  return __shfl_sync(mask, value, srcLane, width);
 }
 
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
 // TODO(csigg): remove when the bug is fixed in the next CUDA release.
-__device__ EIGEN_ALWAYS_INLINE double CudaShuffle(double value, int srcLane,
+__device__ EIGEN_ALWAYS_INLINE double CudaShuffle(unsigned mask,
+                                                  double value, int srcLane,
                                                   int width = warpSize) {
   unsigned lo, hi;
   asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
-  hi = __shfl(hi, srcLane, width);
-  lo = __shfl(lo, srcLane, width);
+  hi = __shfl_sync(mask, hi, srcLane, width);
+  lo = __shfl_sync(mask, lo, srcLane, width);
   asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
   return value;
 }
 
 template <typename T>
-__device__ EIGEN_ALWAYS_INLINE T CudaShuffleUp(T value, int delta,
+__device__ EIGEN_ALWAYS_INLINE T CudaShuffleUp(unsigned mask,
+                                               T value, int delta,
                                                int width = warpSize) {
-  return __shfl_up(value, delta, width);
+  return __shfl_up_sync(mask, value, delta, width);
 }
 
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
 // TODO(csigg): remove when the bug is fixed in the next CUDA release.
-__device__ EIGEN_ALWAYS_INLINE double CudaShuffleUp(double value, int delta,
+__device__ EIGEN_ALWAYS_INLINE double CudaShuffleUp(unsigned mask,
+                                                    double value, int delta,
                                                     int width = warpSize) {
   unsigned lo, hi;
   asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
-  hi = __shfl_up(hi, delta, width);
-  lo = __shfl_up(lo, delta, width);
+  hi = __shfl_up_sync(mask, hi, delta, width);
+  lo = __shfl_up_sync(mask, lo, delta, width);
   asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
   return value;
 }
 
 template <typename T>
-__device__ EIGEN_ALWAYS_INLINE T CudaShuffleDown(T value, int delta,
+__device__ EIGEN_ALWAYS_INLINE T CudaShuffleDown(unsigned mask,
+                                                 T value, int delta,
                                                  int width = warpSize) {
-  return __shfl_down(value, delta, width);
+  return __shfl_down_sync(mask, value, delta, width);
 }
 
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
 // TODO(csigg): remove when the bug is fixed in the next CUDA release.
-__device__ EIGEN_ALWAYS_INLINE double CudaShuffleDown(double value, int delta,
+__device__ EIGEN_ALWAYS_INLINE double CudaShuffleDown(unsigned mask,
+                                                      double value, int delta,
                                                       int width = warpSize) {
   unsigned lo, hi;
   asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
-  hi = __shfl_down(hi, delta, width);
-  lo = __shfl_down(lo, delta, width);
+  hi = __shfl_down_sync(mask, hi, delta, width);
+  lo = __shfl_down_sync(mask, lo, delta, width);
   asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
   return value;
 }
 
 template <typename T>
-__device__ EIGEN_ALWAYS_INLINE T CudaShuffleXor(T value, int laneMask,
+__device__ EIGEN_ALWAYS_INLINE T CudaShuffleXor(unsigned mask,
+                                                T value, int laneMask,
                                                 int width = warpSize) {
-  return __shfl_xor(value, laneMask, width);
+  return __shfl_xor_sync(mask, value, laneMask, width);
 }
 
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
 // TODO(csigg): remove when the bug is fixed in the next CUDA release.
-__device__ EIGEN_ALWAYS_INLINE double CudaShuffleXor(double value, int laneMask,
+__device__ EIGEN_ALWAYS_INLINE double CudaShuffleXor(unsigned mask,
+                                                     double value, int laneMask,
                                                      int width = warpSize) {
   unsigned lo, hi;
   asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
-  hi = __shfl_xor(hi, laneMask, width);
-  lo = __shfl_xor(lo, laneMask, width);
+  hi = __shfl_xor_sync(mask, hi, laneMask, width);
+  lo = __shfl_xor_sync(mask, lo, laneMask, width);
   asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
   return value;
 }

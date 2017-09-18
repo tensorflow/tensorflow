@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 
 #include <vector>
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
@@ -67,12 +68,14 @@ void CopyFromArray(string* s, const char* base, size_t bytes) {
 
 void EncodeResourceHandleList(const ResourceHandle* p, int64 n, string* out) {
   out->clear();
+  string rest;
+  ResourceHandleProto proto;
   for (int i = 0; i < n; ++i) {
-    core::PutVarint32(out, p[i].ByteSize());
+    p[i].AsProto(&proto);
+    core::PutVarint32(out, proto.ByteSize());
+    proto.AppendToString(&rest);
   }
-  for (int i = 0; i < n; ++i) {
-    p[i].AppendToString(out);
-  }
+  *out += rest;
 }
 
 bool DecodeResourceHandleList(const string& in, ResourceHandle* ps, int64 n) {
@@ -86,10 +89,12 @@ bool DecodeResourceHandleList(const string& in, ResourceHandle* ps, int64 n) {
   if (total != static_cast<int64>(reader.size())) {
     return false;
   }
+  ResourceHandleProto proto;
   for (int i = 0; i < n; ++i) {
-    if (!ps[i].ParseFromArray(reader.data(), sizes[i])) {
+    if (!proto.ParseFromArray(reader.data(), sizes[i])) {
       return false;
     }
+    ps[i].FromProto(proto);
     reader.remove_prefix(sizes[i]);
   }
   return true;

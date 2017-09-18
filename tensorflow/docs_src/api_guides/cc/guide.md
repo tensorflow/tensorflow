@@ -59,7 +59,8 @@ cc_binary(
 )
 ```
 
-You should be able to build and run the example using the following command:
+You should be able to build and run the example using the following command
+(be sure to run `./configure` in your build sandbox first):
 
 ```shell
 bazel run -c opt //tensorflow/cc/example:example

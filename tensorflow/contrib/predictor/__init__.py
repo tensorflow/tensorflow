@@ -13,12 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Modules for `Predictor`s."""
+"""Modules for `Predictor`s.
+
+@@from_contrib_estimator
+@@from_estimator
+@@from_saved_model
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.predictor import from_contrib_estimator
-from tensorflow.contrib.predictor import from_estimator
-from tensorflow.contrib.predictor import from_saved_model
+from tensorflow.contrib.predictor.predictor_factories import from_contrib_estimator
+from tensorflow.contrib.predictor.predictor_factories import from_estimator
+from tensorflow.contrib.predictor.predictor_factories import from_saved_model
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)

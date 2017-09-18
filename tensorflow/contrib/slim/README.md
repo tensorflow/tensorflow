@@ -775,7 +775,7 @@ images, labels = LoadTestData(...)
 predictions = MyModel(images)
 
 mae_value_op, mae_update_op = slim.metrics.streaming_mean_absolute_error(predictions, labels)
-mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels, labels)
+mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels)
 pl_value_op, pl_update_op = slim.metrics.percentage_less(mean_relative_errors, 0.3)
 ```
 

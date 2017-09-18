@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
-#include <regex>
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 
@@ -31,7 +32,7 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
-  ConstantFolding();
+  ConstantFolding(DeviceBase* cpu_device);
 
   ~ConstantFolding() override {}
 
@@ -45,7 +46,8 @@ class ConstantFolding : public GraphOptimizer {
 
  private:
   string AddControlDependency(const string& input_name);
-  Status MaterializeShapes(const GrapplerItem& item);
+  Status MaterializeShapes(const GrapplerItem& item,
+                           const GraphProperties& properties);
 
   bool IsFoldable(const NodeDef& node) const;
 
@@ -58,18 +60,25 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node,
                              std::vector<NodeDef>* outputs);
 
-  Status FoldNode(const NodeDef& node, GraphDef* output);
+  Status FoldNode(NodeDef* node);
 
   Status FoldGraph(GraphDef* output);
 
   bool IsSimplifiableReduction(const NodeDef& node) const;
-  Status SimplifyGraph(GraphDef* output);
+  bool IsSimplifiableReshape(const NodeDef& node,
+                             const GraphProperties& properties) const;
+  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
 
-  std::unique_ptr<DeviceBase> device_;
+  // Points to an externally provided device or to owned_device_;
+  DeviceBase* cpu_device_;
+  std::unique_ptr<DeviceBase> owned_device_;
+
+  std::unique_ptr<ResourceMgr> resource_mgr_;
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
-  std::set<string> nodes_to_preserve_;
-  std::regex ops_to_preserve_;
+  std::unordered_set<string> nodes_to_preserve_;
+  GraphDef added_graph_;
+  bool has_fetch_;
 };
 
 }  // end namespace grappler

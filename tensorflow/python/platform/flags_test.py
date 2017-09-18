@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import sys
 import unittest
 
@@ -34,6 +35,8 @@ flags.DEFINE_boolean("bool_a", False, "HelpString")
 flags.DEFINE_boolean("bool_c", False, "HelpString")
 flags.DEFINE_boolean("bool_d", True, "HelpString")
 flags.DEFINE_bool("bool_e", True, "HelpString")
+flags.DEFINE_string("string_foo_required", "default_val", "HelpString")
+flags.DEFINE_string("none_string_foo_required", None, "HelpString")
 
 FLAGS = flags.FLAGS
 
@@ -79,6 +82,22 @@ class FlagsTest(unittest.TestCase):
     FLAGS.float_foo = -1.0
     self.assertEqual(-1.0, FLAGS.float_foo)
 
+  def test_copy(self):
+    copied = copy.copy(FLAGS)
+    self.assertEqual(copied.__dict__, FLAGS.__dict__)
+
+  def testStringRequired(self):
+    res = FLAGS.string_foo_required
+    self.assertEqual(res, "default_val")
+    FLAGS.string_foo_required = "bar"
+    self.assertEqual("bar", FLAGS.string_foo_required)
+
+  def testNoneStringRequired(self):
+    res = FLAGS.none_string_foo_required
+    self.assertEqual(res, "default_val")
+    FLAGS.none_string_foo_required = "bar"
+    self.assertEqual("bar", FLAGS.none_string_foo_required)
+
 
 def main(_):
   # unittest.main() tries to interpret the unknown flags, so use the
@@ -92,7 +111,9 @@ if __name__ == "__main__":
   # Test command lines
   sys.argv.extend([
       "--bool_a", "--nobool_negation", "--bool_c=True", "--bool_d=False",
+      "--none_string_foo_required=default_val",
       "and_argument"
   ])
-
+  flags.mark_flag_as_required('string_foo_required')
+  flags.mark_flags_as_required(['none_string_foo_required'])
   app.run()

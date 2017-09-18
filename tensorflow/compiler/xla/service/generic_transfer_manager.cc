@@ -87,7 +87,7 @@ Status GenericTransferManager::TransferLiteralFromDevice(
       executor, source, /*size=*/ShapeUtil::ByteSizeOf(device_shape),
       /*destination=*/literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    literal->Swap(literal->Relayout(literal_shape.layout()).get());
+    *literal = std::move(*literal->Relayout(literal_shape.layout()));
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -170,14 +170,15 @@ Status GenericTransferManager::TransferBufferToInfeed(
 Status GenericTransferManager::TransferLiteralFromOutfeed(
     perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
     Literal* literal) {
-  return Unimplemented("Outfeed is not supported on CPU/GPU (b/30467474)");
+  return Unimplemented(
+      "Outfeed is not supported on this platform (b/30467474)");
 }
 
 Status GenericTransferManager::ResetDevices(
     tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-        executors) {
+    /*executors*/) {
   return Unimplemented(
-      "Device reset is not yet supported on CPU and GPU (b/30481585)");
+      "Device reset is not yet supported on this platform (b/30481585)");
 }
 
 int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {

@@ -36,5 +36,6 @@ ops.NotDifferentiable("BitwiseAnd")
 ops.NotDifferentiable("BitwiseOr")
 ops.NotDifferentiable("BitwiseXor")
 ops.NotDifferentiable("Invert")
+ops.NotDifferentiable("PopulationCount")
 
 remove_undocumented(__name__)

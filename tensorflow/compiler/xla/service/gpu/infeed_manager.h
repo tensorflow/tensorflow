@@ -86,7 +86,7 @@ class InfeedManager {
   // will be called when the buffer will no longer be accessed by the
   // InfeedManager, either as a result of a call to Reset or because the
   // runtime has dequeued and used the buffer.
-  void EnqueueBuffers(std::vector<InfeedBuffer*> buffers);
+  void EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers);
 
   // Blocks until the infeed queue is non-empty, then returns the
   // buffer at the head of the queue. Adds the current buffer to the
@@ -94,7 +94,7 @@ class InfeedManager {
   InfeedBuffer* BlockingDequeueBuffer();
 
   // Releases a set of buffers from the to-be released set.
-  void ReleaseBuffers(std::vector<InfeedBuffer*> buffers);
+  void ReleaseBuffers(const std::vector<InfeedBuffer*>& buffers);
 
   // Returns a cached stream associated with an executor. Allocates a
   // new stream on the first invocation. On subsequent invocations, if

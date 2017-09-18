@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -46,27 +47,52 @@ Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
 
+  if (!ShapeUtil::IsTuple(shape)) {
+    int64 size = GetByteSizeRequirement(shape);
+    return TransferBufferToInfeed(executor, size, literal.InternalData());
+  }
+
+  if (ShapeUtil::IsNestedTuple(shape)) {
+    return Unimplemented(
+        "Infeed with a nested tuple shape is not supported: %s",
+        ShapeUtil::HumanString(literal.shape()).c_str());
+  }
+
+  // For a tuple, we transfer each of its elements to the device and
+  // enqueue the resulting destination device addresses with the
+  // infeed manager.
   std::vector<gpu::InfeedBuffer*> buffers;
-
-  if (ShapeUtil::IsTuple(shape)) {
-    if (ShapeUtil::IsNestedTuple(shape)) {
-      return Unimplemented(
-          "Infeed with a nested tuple shape is not supported: %s",
-          ShapeUtil::HumanString(literal.shape()).c_str());
+  buffers.reserve(literal.tuple_literals_size());
+  auto cleanup = tensorflow::gtl::MakeCleanup([buffers]() {
+    for (gpu::InfeedBuffer* b : buffers) {
+      b->Done();
     }
+  });
 
-    for (const auto& tuple_element : literal.tuple_literals()) {
-      TF_ASSIGN_OR_RETURN(
-          gpu::InfeedBuffer * buffer,
-          TransferLiteralToInfeedInternal(executor, tuple_element));
-      buffers.push_back(buffer);
-    }
-  } else {
-    TF_ASSIGN_OR_RETURN(gpu::InfeedBuffer * buffer,
-                        TransferLiteralToInfeedInternal(executor, literal));
+  for (const auto& tuple_element : literal.tuple_literals()) {
+    const Shape& tuple_element_shape = tuple_element.shape();
+    int64 tuple_element_size = GetByteSizeRequirement(tuple_element_shape);
+    TF_ASSIGN_OR_RETURN(
+        gpu::InfeedBuffer * buffer,
+        TransferBufferToInfeedInternal(executor, tuple_element_size,
+                                       tuple_element.InternalData()));
     buffers.push_back(buffer);
   }
 
+  cleanup.release();
+  return EnqueueBuffersToInfeed(executor, buffers);
+}
+
+Status GpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
+                                                  int64 size,
+                                                  const void* source) {
+  TF_ASSIGN_OR_RETURN(gpu::InfeedBuffer * buffer,
+                      TransferBufferToInfeedInternal(executor, size, source));
+  return EnqueueBuffersToInfeed(executor, {buffer});
+}
+
+Status GpuTransferManager::EnqueueBuffersToInfeed(
+    se::StreamExecutor* executor, std::vector<gpu::InfeedBuffer*> buffers) {
   gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
   se::Stream* stream = infeed_manager->GetStream(executor);
 
@@ -89,35 +115,16 @@ Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   return Status::OK();
 }
 
-Status GpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
-                                                  int64 size,
-                                                  const void* source) {
-  return TransferBufferToInfeedInternal(executor, size, source).status();
-}
-
-StatusOr<gpu::InfeedBuffer*>
-GpuTransferManager::TransferLiteralToInfeedInternal(
-    se::StreamExecutor* executor, const Literal& literal) {
-  const Shape& shape = literal.shape();
-  CHECK(!ShapeUtil::IsTuple(shape));
-
-  int64 size = GetByteSizeRequirement(shape);
-
+StatusOr<gpu::InfeedBuffer*> GpuTransferManager::TransferBufferToInfeedInternal(
+    se::StreamExecutor* executor, int64 size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
-    return Unimplemented("Infeed shape is too large: %s needs %lld bytes",
-                         ShapeUtil::HumanString(literal.shape()).c_str(), size);
+    return InvalidArgument("Infeed shape is too large: needs %lld bytes", size);
   }
 
   if (size == 0) {
-    return Unimplemented("Infeed shape %s needs 0 bytes",
-                         ShapeUtil::HumanString(literal.shape()).c_str());
+    return InvalidArgument("Infeed shape needs 0 bytes");
   }
 
-  return TransferBufferToInfeedInternal(executor, size, literal.InternalData());
-}
-
-StatusOr<gpu::InfeedBuffer*> GpuTransferManager::TransferBufferToInfeedInternal(
-    se::StreamExecutor* executor, int64 size, const void* source) {
   gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
   se::Stream* stream = infeed_manager->GetStream(executor);
   if (stream == nullptr) {

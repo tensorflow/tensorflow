@@ -32,7 +32,7 @@ struct ItemConfig {
         ignore_colocation(true),
         placeholder_unknown_output_shape_dim(-1),
         apply_optimizations(false),
-        inline_functions(true) {}
+        inline_functions(false) {}
 
   // If true, ignore all user specified node placement.
   bool ignore_user_placement;
@@ -45,6 +45,8 @@ struct ItemConfig {
   bool apply_optimizations;
   // If true, does inlining.
   bool inline_functions;
+  // If non-empty, override the directory of asset paths.
+  string assets_directory_override;
 };
 
 // Factory method for creating a GrapplerItem from a MetaGraphDef.

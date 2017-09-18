@@ -85,13 +85,9 @@ class XlaCompiler {
       // Argument is a compile-time constant. No associated runtime parameter.
       kConstant,
 
-      // Argument is a variable resource. Has an associated runtime parameter
-      // iff `initialized` is true.
-      kVariable,
-
-      // Argument is a TensorArray resource. Has an associated runtime parameter
-      // iff `initialized` is true.
-      kTensorArray,
+      // Argument is a Variable, TensorArray, or Stack resource. Has an
+      // associated runtime parameter iff `initialized` is true.
+      kResource,
 
       // Argument is a run-time parameter.
       kParameter,
@@ -99,13 +95,13 @@ class XlaCompiler {
 
     Kind kind = kInvalid;
 
-    // The type of the argument. If the argument is a resource variable, this
+    // The type of the argument. If the argument is a resource, this
     // is the type of the variable's value, not DT_RESOURCE.
     DataType type;
 
-    // The shape of the argument. If the argument is a resource variable, this
-    // is the shape of the variable's value.
-    TensorShape shape;
+    // The shape of the argument. If the argument is a resource, this is the
+    // shape of the resource's value.
+    xla::Shape shape;
 
     // The value of the argument, if it is a compile-time constant. Must be a
     // host-memory tensor.
@@ -114,11 +110,14 @@ class XlaCompiler {
     // The name of this argument, used for debugging.
     string name;
 
-    // For a kVariable or kTensorArray, has this resource been initialized?
+    // For a kResource, what kind of resource is it?
+    XlaResource::Kind resource_kind = XlaResource::kInvalid;
+
+    // For a kResource, has this resource been initialized?
     bool initialized = false;
 
-    // For a kTensorArray, what is the array's declared size? (Used for lazy
-    // initialization.)
+    // For a TensorArray or Stack resource, what is the array's declared size?
+    // (Used for lazy initialization.)
     int64 tensor_array_size = -1;
 
     bool operator==(const Argument& other) const;
@@ -142,7 +141,7 @@ class XlaCompiler {
 
     // Type and shape of the tensor to be written back.
     DataType type;
-    TensorShape shape;
+    xla::Shape shape;
 
     // Was the value of the variable modified by the computation?
     // (Always true, unless `return_updated_values_for_all_resources` is true.)
@@ -209,12 +208,6 @@ class XlaCompiler {
     // stored in device memory.
     bool local_executable_has_hybrid_result = false;
 
-    // If 'resolve_compile_time_constants' is true, then outputs of a
-    // computation that are known to be compile-time constants will be returned
-    // as Tensors at compile-time, rather than as run-time outputs of the
-    // computation.
-    bool resolve_compile_time_constants = true;
-
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
     // device is created, and can be used to create metadata objects
@@ -238,6 +231,12 @@ class XlaCompiler {
     // modified by the computation. Used when compiling loop bodies to ensure
     // the input and output signatures match.
     bool return_updated_values_for_all_resources = false;
+
+    // If 'resolve_compile_time_constants' is true, then outputs of a
+    // computation that are known to be compile-time constants will be returned
+    // as Tensors at compile-time, rather than as run-time outputs of the
+    // computation.
+    bool resolve_compile_time_constants = true;
   };
 
   // Compiles a Tensorflow function `fn_name_attrs` into an XLA computation.
@@ -272,7 +271,7 @@ class XlaCompiler {
   xla::Client* client() const { return options_.client; }
   XlaCompilationDevice* device() const { return device_; }
   const DeviceMgr* device_mgr() const { return &device_mgr_; }
-  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_.get(); }
+  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
@@ -289,16 +288,21 @@ class XlaCompiler {
   // Returns the next step sequence number.
   int64 NextStepId();
 
-  mutex mu_;
-
   // Internal sequence number for steps executed on the compilation device.
-  int64 next_step_id_ GUARDED_BY(mu_);
+  int64 next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   DeviceMgr device_mgr_;
 
-  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
-  std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
+  // To avoid copying the client's function library, use a local function
+  // library and runtime for functions created as part of the functionalize
+  // control flow transformation.
+  std::unique_ptr<FunctionLibraryDefinition> local_flib_def_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> local_pflr_;
+
+  FunctionLibraryRuntime* local_flib_runtime_;  // owned by local_pflr_.
+  FunctionLibraryRuntime* flib_runtime_;        // owned by pflr_.
 
   struct SignatureHash {
     uint64 operator()(
@@ -309,7 +313,7 @@ class XlaCompiler {
                      CompilationResult, SignatureHash>
       cache_;
 
-  std::unordered_map<string, xla::ChannelHandle> channels_ GUARDED_BY(mu_);
+  std::unordered_map<string, xla::ChannelHandle> channels_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };

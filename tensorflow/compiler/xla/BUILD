@@ -132,7 +132,10 @@ cc_library(
 cc_library(
     name = "statusor",
     srcs = ["statusor.cc"],
-    hdrs = ["statusor.h"],
+    hdrs = [
+        "statusor.h",
+        "statusor_internals.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":status",
@@ -168,7 +171,6 @@ cc_library(
         ":status",
         ":types",
         ":xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:util_flags",
         "//tensorflow/core:lib",
     ],
 )
@@ -191,7 +193,6 @@ cc_library(
 
 cc_test(
     name = "util_test",
-    size = "small",
     srcs = ["util_test.cc"],
     deps = [
         ":test",
@@ -223,7 +224,6 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
@@ -232,7 +232,6 @@ cc_library(
 
 cc_test(
     name = "shape_util_test",
-    size = "small",
     srcs = ["shape_util_test.cc"],
     deps = [
         ":shape_util",
@@ -247,20 +246,17 @@ cc_test(
 
 cc_test(
     name = "layout_util_test",
-    size = "small",
     srcs = ["layout_util_test.cc"],
     deps = [
         ":shape_util",
         ":test",
         ":test_helpers",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/core:test_main",
     ],
 )
 
 cc_test(
     name = "index_util_test",
-    size = "small",
     srcs = ["index_util_test.cc"],
     deps = [
         ":shape_util",
@@ -290,7 +286,6 @@ cc_library(
 
 cc_test(
     name = "literal_util_test",
-    size = "small",
     srcs = ["literal_util_test.cc"],
     deps = [
         ":array3d",
@@ -341,7 +336,6 @@ cc_library(
 
 cc_test(
     name = "array2d_test",
-    size = "small",
     srcs = ["array2d_test.cc"],
     deps = [
         ":array2d",
@@ -362,7 +356,6 @@ cc_library(
 
 cc_test(
     name = "array3d_test",
-    size = "small",
     srcs = ["array3d_test.cc"],
     deps = [
         ":array3d",
@@ -385,7 +378,6 @@ cc_library(
 
 cc_test(
     name = "array4d_test",
-    size = "small",
     srcs = ["array4d_test.cc"],
     deps = [
         ":array4d",
@@ -453,7 +445,6 @@ cc_library(
 
 cc_test(
     name = "text_literal_reader_test",
-    size = "small",
     srcs = ["text_literal_reader_test.cc"],
     deps = [
         ":literal_util",
@@ -484,7 +475,6 @@ cc_library(
 
 cc_test(
     name = "text_literal_writer_test",
-    size = "small",
     srcs = ["text_literal_writer_test.cc"],
     deps = [
         ":literal_util",
@@ -507,12 +497,12 @@ cc_library(
         ":util",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
 cc_test(
     name = "shape_tree_test",
-    size = "small",
     srcs = ["shape_tree_test.cc"],
     deps = [
         ":shape_tree",
@@ -563,6 +553,9 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_evaluator",
+        "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
         "//tensorflow/core:lib",
     ],
@@ -570,10 +563,10 @@ cc_library(
 
 cc_test(
     name = "reference_util_test",
-    size = "small",
     srcs = ["reference_util_test.cc"],
     deps = [
         ":array2d",
+        ":array3d",
         ":array4d",
         ":literal_util",
         ":reference_util",
@@ -608,7 +601,6 @@ cc_header_only_library(
         ":xla_data_proto",
         ":xla_proto",
         "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:stream_executor_headers_lib",

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+class DeviceMgr;
 
 /// \brief A Session instance lets a caller drive a TensorFlow graph
 /// computation.
@@ -177,12 +178,23 @@ class Session {
   /// *response. This API is optional. If it is unimplemented, Status will
   /// return a corresponding error message, and *response will be unmodified.
   virtual Status ListDevices(std::vector<DeviceAttributes>* response) = 0;
+
   /// \brief Closes this session.
   ///
   /// Closing a session releases the resources used by this session
   /// on the TensorFlow runtime (specified during session creation by
   /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
+
+  // NOTE(ashankar): As of July 2017, this method was added to faciliate some
+  // experimentation. Reconsider/re-evaluate after September 2017.
+  //
+  // Sets `*output` to the `DeviceMgr` that owns accessible devices in the
+  // address-space of the caller.
+  virtual Status LocalDeviceManager(const DeviceMgr** output) {
+    return errors::Unimplemented(
+        "LocalDeviceManager is not supported for this session.");
+  }
 };
 
 /// \brief Create a new session with the given options.

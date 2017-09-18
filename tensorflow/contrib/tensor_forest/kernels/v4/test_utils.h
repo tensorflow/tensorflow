@@ -22,9 +22,10 @@ namespace tensorforest {
 
 class TestableInputTarget : public StoredInputTarget<std::vector<float>> {
  public:
-  TestableInputTarget(const std::vector<float>* t, const std::vector<float>* w,
+  TestableInputTarget(const std::vector<float>& t, const std::vector<float>& w,
                       int num_t)
-      : StoredInputTarget(t, w, num_t) {}
+      : StoredInputTarget(new std::vector<float>(t), new std::vector<float>(w),
+                          num_t) {}
 
   int NumItems() const {
     return target_->size();

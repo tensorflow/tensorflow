@@ -52,7 +52,7 @@ class MomentumOptimizer(optimizer.Optimizer):
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Momentum".
       use_nesterov: If `True` use Nesterov Momentum.
-        See [Sutskever et. al., 2013](
+        See [Sutskever et al., 2013](
         http://jmlr.org/proceedings/papers/v28/sutskever13.pdf)
 
     """

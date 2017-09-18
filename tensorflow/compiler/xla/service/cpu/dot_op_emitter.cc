@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -44,7 +44,8 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
                            const llvm_ir::IrArray& lhs_array,
                            const llvm_ir::IrArray& rhs_array,
                            llvm::Value* executable_run_options_value,
-                           llvm::IRBuilder<>* ir_builder)
+                           llvm::IRBuilder<>* ir_builder,
+                           const HloModuleConfig& hlo_module_config)
     : dot_(dot),
       transpose_lhs_(transpose_lhs),
       transpose_rhs_(transpose_rhs),
@@ -52,18 +53,20 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
       lhs_array_(lhs_array),
       rhs_array_(rhs_array),
       executable_run_options_value_(executable_run_options_value),
-      ir_builder_(ir_builder) {}
+      ir_builder_(ir_builder),
+      hlo_module_config_(hlo_module_config) {}
 
 /* static */ tensorflow::Status DotOpEmitter::EmitDotOperation(
     const HloInstruction& dot, bool transpose_lhs, bool transpose_rhs,
     const llvm_ir::IrArray& target_array, const llvm_ir::IrArray& lhs_array,
     const llvm_ir::IrArray& rhs_array,
-    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder) {
+    llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
+    const HloModuleConfig& hlo_module_config) {
   PrimitiveType type = target_array.GetShape().element_type();
   TF_RET_CHECK(F32 == type || F64 == type);
   DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
                            lhs_array, rhs_array, executable_run_options_value,
-                           ir_builder);
+                           ir_builder, hlo_module_config);
   return dot_emitter.Emit();
 }
 
@@ -124,18 +127,32 @@ tensorflow::Status DotOpEmitter::Emit() {
   TF_RET_CHECK(lhs_shape.dimensions(lhs_reduction_dimension) ==
                rhs_shape.dimensions(rhs_reduction_dimension));
 
+  bool lhs_reduction_along_minor_dimension =
+      lhs_reduction_dimension == LayoutUtil::Minor(lhs_shape.layout(), 0);
+  bool rhs_reduction_along_minor_dimension =
+      rhs_reduction_dimension == LayoutUtil::Minor(rhs_shape.layout(), 0);
+
   // Create loop nests which loop through the LHS operand dimensions and the RHS
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
-  llvm_ir::ForLoopNest loop_nest(ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(llvm_ir::IrName(&dot_), ir_builder_);
   llvm_ir::IrArray::Index lhs_index = EmitOperandArrayLoopNest(
       &loop_nest, lhs_array_, lhs_reduction_dimension, "lhs");
   llvm_ir::IrArray::Index rhs_index = EmitOperandArrayLoopNest(
       &loop_nest, rhs_array_, rhs_reduction_dimension, "rhs");
 
   // Create the loop which does the sum of products reduction.
+  //
+  // The prevent_unrolling bit is working around a deficiency in LLVM's loop
+  // vectorization pipeline, wherein in some cases unrolling a loop can prevent
+  // effective vectorization.  Since we know that the IR we generate when
+  // reducing across the minor dimension in both LHS and RHS is vectorized well
+  // by the loop vectorizer, we block unrolling in that case to stop loop unroll
+  // from messing up the vectorization.
   std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
-      0, lhs_shape.dimensions(lhs_reduction_dimension), "reduction");
+      0, lhs_shape.dimensions(lhs_reduction_dimension), "reduction",
+      /*prevent_unrolling=*/lhs_reduction_along_minor_dimension &&
+          rhs_reduction_along_minor_dimension);
 
   // The final entry in the rhs and lhs indexes is the indvar of the
   // reduction loop.
@@ -233,22 +250,22 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   // The two transpose_... parameters are actually booleans, but we use int32
   // to avoid target-dependent calling convention details.
 
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  bool multi_threaded = flags->xla_cpu_multi_thread_eigen;
+  bool multi_threaded_eigen =
+      hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
     case F32:
-      fn_name = multi_threaded
-                    ? runtime::kEigenMatmulF32SymbolName
-                    : runtime::kEigenSingleThreadedMatmulF32SymbolName;
+      fn_name = multi_threaded_eigen
+                    ? runtime::kEigenMatMulF32SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF32SymbolName;
       float_type = ir_builder_->getFloatTy();
       break;
     case F64:
-      fn_name = multi_threaded
-                    ? runtime::kEigenMatmulF64SymbolName
-                    : runtime::kEigenSingleThreadedMatmulF64SymbolName;
+      fn_name = multi_threaded_eigen
+                    ? runtime::kEigenMatMulF64SymbolName
+                    : runtime::kEigenSingleThreadedMatMulF64SymbolName;
       float_type = ir_builder_->getDoubleTy();
       break;
     default:
@@ -280,10 +297,17 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   //
   //   (A x B)^T = B^T x A^T
   //
+  // The connection between this identity and memory layout is that the
+  // transpose operation can also be considered as an operation that changes the
+  // memory layout of a matrix from row-major to column-major or vice versa.
+  //
   // Effectively this involves swapping the 'lhs' with 'rhs' and 'm' with 'n'.
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
+
+  CHECK(LayoutUtil::Equal(lhs_shape.layout(), rhs_shape.layout()));
+
   int64 m = lhs_shape.dimensions(transpose_lhs_ ? 1 : 0);
   int64 k = lhs_shape.dimensions(transpose_lhs_ ? 0 : 1);
   int64 n = rhs_shape.dimensions(transpose_rhs_ ? 0 : 1);

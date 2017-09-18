@@ -688,16 +688,15 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         }
       }
       OP_REQUIRES(context,
-                  best_result.is_valid() &&
-                      best_result.algorithm() != kDefaultAlgorithm,
+                  best_result.is_valid() || best_result_no_scratch.is_valid(),
                   errors::NotFound("No algorithm worked!"));
-      OP_REQUIRES(context,
-                  best_result_no_scratch.is_valid() &&
-                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                  errors::NotFound("No algorithm without scratch worked!"));
-      algorithm_config.set_algorithm(best_result.algorithm());
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
+      if (best_result.is_valid()) {
+        algorithm_config.set_algorithm(best_result.algorithm());
+      }
+      if (best_result_no_scratch.is_valid()) {
+        algorithm_config.set_algorithm_no_scratch(
+            best_result_no_scratch.algorithm());
+      }
       AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
                                                    algorithm_config);
     }
@@ -1057,16 +1056,15 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         }
       }
       OP_REQUIRES(context,
-                  best_result.is_valid() &&
-                      best_result.algorithm() != kDefaultAlgorithm,
+                  best_result.is_valid() || best_result_no_scratch.is_valid(),
                   errors::NotFound("No algorithm worked!"));
-      OP_REQUIRES(context,
-                  best_result_no_scratch.is_valid() &&
-                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                  errors::NotFound("No algorithm without scratch worked!"));
-      algorithm_config.set_algorithm(best_result.algorithm());
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
+      if (best_result.is_valid()) {
+        algorithm_config.set_algorithm(best_result.algorithm());
+      }
+      if (best_result_no_scratch.is_valid()) {
+        algorithm_config.set_algorithm_no_scratch(
+            best_result_no_scratch.algorithm());
+      }
       AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
     }

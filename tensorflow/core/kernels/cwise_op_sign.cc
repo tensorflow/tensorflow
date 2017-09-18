@@ -34,10 +34,7 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER(UnaryOp, SYCL, "Sign", functor::sign, float);
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER3(UnaryOp, SYCL, "Sign", functor::sign, float, double, int64);
 REGISTER_KERNEL_BUILDER(Name("Sign")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

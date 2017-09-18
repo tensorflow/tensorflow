@@ -1344,14 +1344,46 @@ output: The gradients for LRN.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MaxPool")
-    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr(
+        "T: {float, double, int32, int64, uint8, int16, int8, uint16, "
+        "half, qint8} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::MaxPoolShape)
+    .Doc(R"doc(
+Performs max pooling on the input.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+input: 4-D input to pool over.
+output: The max pooled output tensor.
+)doc");
+
+REGISTER_OP("MaxPoolV2")
+    .Attr(
+        "T: {float, double, int32, int64, uint8, int16, int8, uint16, "
+        "half, qint8} = DT_FLOAT")
+    .Attr(GetPaddingAttrString())
+    .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
+    .Input("input: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
+    .Output("output: T")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolV2Shape(c, 3));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Performs max pooling on the input.
 
@@ -1399,6 +1431,37 @@ grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
 output: Gradients w.r.t. the input to `max_pool`.
 )doc");
 
+REGISTER_OP("MaxPoolGradV2")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
+    .Output("output: T")
+    .Attr("T: realnumbertype = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    })
+    .Doc(R"doc(
+Computes gradients of the maxpooling function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
+output: Gradients w.r.t. the input to `max_pool`.
+)doc");
+
 REGISTER_OP("MaxPoolGradGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -1411,6 +1474,43 @@ REGISTER_OP("MaxPoolGradGrad")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      ShapeHandle unused;
+      // Validate 'orig_input' is the same shape as 'grad'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
+      // Validate 'orig_output' is same shape as 'output'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes second-order gradients of the maxpooling function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
+output: Gradients of gradients w.r.t. the input to `max_pool`.
+)doc");
+
+REGISTER_OP("MaxPoolGradGradV2")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolV2Shape(c, 5));
       ShapeHandle unused;
       // Validate 'orig_input' is the same shape as 'grad'
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
@@ -1779,6 +1879,33 @@ backprops: The gradients: `gradients * (outputs + 1)` if outputs < 0,
 `gradients` otherwise.
 )doc");
 
+REGISTER_OP("Selu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
+if < 0, `scale * features` otherwise.
+
+See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+)doc");
+
+REGISTER_OP("SeluGrad")
+    .Input("gradients: T")
+    .Input("outputs: T")
+    .Output("backprops: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+Computes gradients for the scaled exponential linear (Selu) operation.
+
+gradients: The backpropagated gradients to the corresponding Selu operation.
+outputs: The outputs of the corresponding Selu operation.
+backprops: The gradients: `gradients * (outputs + scale * alpha)`
+if outputs < 0, `scale * gradients` otherwise.
+)doc");
+
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")
@@ -1822,7 +1949,7 @@ Computes softsign gradients for a softsign operation.
 
 gradients: The backpropagated gradients to the corresponding softsign operation.
 features: The features passed as input to the corresponding softsign operation.
-backprops: The gradients: `gradients / (1 + abs(-features)) ** 2`.
+backprops: The gradients: `gradients / (1 + abs(features)) ** 2`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1976,6 +2103,49 @@ predictions: A `batch_size` x `classes` tensor.
 targets: A `batch_size` vector of class ids.
 k: Number of top elements to look at for computing precision.
 precision: Computed Precision at `k` as a `bool Tensor`.
+
+)doc");
+
+// This is the same as `InTopK`, but takes `k` as in input rather than an attr.
+REGISTER_OP("InTopKV2")
+    .Input("predictions: float")
+    .Input("targets: T")
+    .Input("k: T")
+    .Output("precision: bool")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle predictions;
+      ShapeHandle targets;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &predictions));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &targets));
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
+      c->set_output(0, c->Vector(batch_size));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Says whether the targets are in the top `K` predictions.
+
+This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+prediction for the target class is among the top `k` predictions among
+all predictions for example `i`. Note that the behavior of `InTopK` differs
+from the `TopK` op in its handling of ties; if multiple classes have the
+same prediction value and straddle the top-`k` boundary, all of those
+classes are considered to be in the top `k`.
+
+More formally, let
+
+  \\(predictions_i\\) be the predictions for all classes for example `i`,
+  \\(targets_i\\) be the target class for example `i`,
+  \\(out_i\\) be the output for example `i`,
+
+$$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+
+predictions: A `batch_size` x `classes` tensor.
+targets: A `batch_size` vector of class ids.
+k: Number of top elements to look at for computing precision.
+precision: Computed precision at `k` as a `bool Tensor`.
 
 )doc");
 
@@ -2625,7 +2795,9 @@ REGISTER_OP("_MklConv2D")
     .Input("mkl_input: uint8")
     .Input("mkl_filter: uint8")
     .Output("output: T")
+    .Output("filter_output: T")
     .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
@@ -2647,7 +2819,9 @@ REGISTER_OP("_MklConv2DWithBias")
     .Input("mkl_filter: uint8")
     .Input("mkl_bias: uint8")
     .Output("output: T")
+    .Output("filter_output: T")
     .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
@@ -3063,6 +3237,29 @@ REGISTER_OP("_MklToTf")
     .Attr(GetConvnetDataFormatAttrString())
     .Doc(R"doc(
 MKL operator to convert a tensor from MKL layout to TensorFlow layout.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklInputConversion")
+    .Input("input_0: T")
+    .Input("input_1: T")
+    .Input("mkl_input_0: uint8")
+    .Input("mkl_input_1: uint8")
+    .Output("output_0: T")
+    .Output("output_1: T")
+    .Output("mkl_output_0: uint8")
+    .Output("mkl_output_1: uint8")
+    // All datatypes supported by element-wise ops
+    .Attr(
+        "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
+        "complex64, complex128}")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Doc(R"doc(
+MKL operator to process the inputs to an elementwise MKL op. Both inputs
+need to be either in TF or in MKL format. This op is added before every
+element-wise MKL op.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.

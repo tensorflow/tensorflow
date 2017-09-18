@@ -412,7 +412,8 @@ TEST(NNOpsTest, Dilation2DBackpropFilter_ShapeFn) {
 
 TEST(NNOpsTest, MergeBothInputs_ShapeFn) {
   for (const char* op_name :
-       {"ReluGrad", "Relu6Grad", "EluGrad", "SoftplusGrad", "SoftsignGrad"}) {
+       {"ReluGrad", "Relu6Grad", "EluGrad", "SeluGrad", "SoftplusGrad",
+        "SoftsignGrad"}) {
     ShapeInferenceTestOp op(op_name);
 
     INFER_OK(op, "?;?", "in0|in1");

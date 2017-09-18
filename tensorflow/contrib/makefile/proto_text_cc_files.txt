@@ -1,5 +1,6 @@
 tensorflow/tools/proto_text/gen_proto_text_functions_lib.cc
 tensorflow/tools/proto_text/gen_proto_text_functions.cc
+tensorflow/core/framework/resource_handle.cc
 tensorflow/core/platform/default/protobuf.cc
 tensorflow/core/platform/tracing.cc
 tensorflow/core/platform/tensor_coding.cc

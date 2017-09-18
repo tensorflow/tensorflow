@@ -51,7 +51,6 @@ class FertileStatsResource : public ResourceBase {
   // Resets the resource and frees the proto.
   // Caller needs to hold the mutex lock while calling this.
   void Reset() {
-    leaf_stats_.clear();
   }
 
   // Reset the stats for a node, but leave the leaf_stats intact.
@@ -71,7 +70,7 @@ class FertileStatsResource : public ResourceBase {
   void AddExampleToStatsAndInitialize(
       const std::unique_ptr<TensorDataSet>& input_data,
       const InputTarget* target, const std::vector<int>& examples,
-      int32 node_id, int32 node_depth, bool* is_finished);
+      int32 node_id, bool* is_finished);
 
   // Allocate a fertile slot for each ready node, then new children up to
   // max_fertile_nodes_.
@@ -85,19 +84,11 @@ class FertileStatsResource : public ResourceBase {
   // was found.
   bool BestSplit(int32 node_id, SplitCandidate* best, int32* depth);
 
-  const LeafStat& leaf_stat(int32 node_id) {
-    return leaf_stats_[node_id];
-  }
-
-  void set_leaf_stat(const LeafStat& stat, int32 node_id) {
-    leaf_stats_[node_id] = stat;
-  }
 
  private:
   mutex mu_;
   std::shared_ptr<LeafModelOperator> model_op_;
   std::unique_ptr<SplitCollectionOperator> collection_op_;
-  std::unordered_map<int32, LeafStat> leaf_stats_;
   const TensorForestParams params_;
 
   void AllocateNode(int32 node_id, int32 depth);

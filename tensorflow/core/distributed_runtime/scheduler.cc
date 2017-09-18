@@ -33,7 +33,7 @@ void InitializePending(const Graph* graph, std::vector<int>* pending) {
     const int id = node->id();
     int num_in_edges = 0;
     if (IsMerge(node)) {
-      // For forward executon order, Merge nodes are special. We process
+      // For forward execution order, Merge nodes are special. We process
       // them only once when one of its inputs is processed.
       for (const Edge* edge : node->in_edges()) {
         if (edge->IsControlEdge()) {
@@ -122,7 +122,7 @@ Microseconds SlackAnalysis::ComputeAlap(std::vector<Microseconds>* alap_times) {
   std::vector<int> pending_count;
   pending_count.resize(graph_->num_node_ids());
   for (const Node* n : graph_->nodes()) {
-    // For reverse executon order, Switch nodes are special. We process
+    // For reverse execution order, Switch nodes are special. We process
     // them only once when one of its outputs is processed.
     if (IsSwitch(n)) {
       int32 num_control_edges = 0;

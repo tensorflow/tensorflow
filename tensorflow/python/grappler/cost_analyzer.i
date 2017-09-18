@@ -48,7 +48,10 @@ per_node_report) {
   cfg.apply_optimizations = false;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef("metagraph", metagraph, cfg);
-
+  if (!item) {
+    return "Error: failed to preprocess metagraph: check your log file for errors";
+  }
+  
   // TODO(bsteiner): we should wrap the tf session instead to properly handle the case of a
   // distributed setup.
   const int timeout_s = 3600;

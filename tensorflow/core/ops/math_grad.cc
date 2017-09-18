@@ -189,6 +189,42 @@ Status TanhGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Tanh", TanhGrad);
 
+Status AsinhGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"y"}, "Asinh", {"x"}},
+      {{"cosh"}, "Cosh", {"y"}},
+      {{"dx"}, "Mul", {"dy", "cosh"}},  // dy * cosh(y)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Asinh", AsinhGrad);
+
+Status AcoshGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"y"}, "Acosh", {"x"}},
+      {{"sinh"}, "Sinh", {"y"}},
+      {{"dx"}, "Mul", {"dy", "sinh"}},  // dy * sinh(y)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Acosh", AcoshGrad);
+
+Status AtanhGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+    {{"x2"}, "Square", {"x"}},
+    FDH::Const("const", 1.0f),
+    {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+    {{"a"}, "Sub", {"one", "x2"}}, // 1 - x^2
+    {{"inv"}, "Reciprocal", {"a"}},
+    {{"dx"}, "Mul", {"dy", "inv"}}
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Atanh", AtanhGrad);
+
 Status SigmoidGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
@@ -312,6 +348,20 @@ Status ImagGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Imag", ImagGrad);
+
+Status AngleGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"re"}, "Real", {"x"}},
+      {{"im"}, "Imag", {"x"}},
+      {{"z"}, "Complex", {"im", "re"}},
+      {{"z_inv"}, "Reciprocal", {"z"}},
+      {{"neg"}, "Neg", {"z_inv"}},
+      {{"dx"}, "Mul", {"neg", "dy"}},
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Angle", AngleGrad);
 
 Status ConjGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off

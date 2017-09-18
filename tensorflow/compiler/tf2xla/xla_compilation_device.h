@@ -70,6 +70,7 @@ struct XlaResource {
     kInvalid,
     kVariable,
     kTensorArray,
+    kStack,
   };
 
   Kind kind = kInvalid;
@@ -138,8 +139,6 @@ class XlaExpression {
   Tensor constant_value_;
 
   XlaResource* resource_ = nullptr;  // Not owned.
-
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
 };
 
 }  // namespace tensorflow

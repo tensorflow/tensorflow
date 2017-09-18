@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_GRAPH_DEF_UTIL_H_
 
 #include <set>
-
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+// Forward declare proto so that it's symbols can be removed from .so exports
+class GraphDef;
 
 // Produce a human-readable version of a GraphDef that is more concise
 // than a text-format proto.

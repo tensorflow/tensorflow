@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/mem.h"
 
-#include "third_party/mkl/include/i_malloc.h"
+#include "i_malloc.h"
 
 namespace tensorflow {
 
@@ -75,12 +75,12 @@ class MklCPUAllocator : public Allocator {
   // Hooks provided by this allocator for memory allocation routines from MKL
 
   static inline void* MallocHook(size_t size) {
-    VLOG(2) << "MklCPUAllocator: In MallocHook";
+    VLOG(3) << "MklCPUAllocator: In MallocHook";
     return cpu_allocator()->AllocateRaw(kAlignment, size);
   }
 
   static inline void FreeHook(void* ptr) {
-    VLOG(2) << "MklCPUAllocator: In FreeHook";
+    VLOG(3) << "MklCPUAllocator: In FreeHook";
     cpu_allocator()->DeallocateRaw(ptr);
   }
 

@@ -129,7 +129,7 @@ bool AreEquivalentReshapes(const HloInstruction* a, const HloInstruction* b) {
 // metadata.
 bool IsElementwiseOfEquivalentReshapesOrTransposes(
     const HloInstruction* instruction) {
-  const std::vector<HloInstruction*>& operands = instruction->operands();
+  const auto& operands = instruction->operands();
   HloInstruction* first_reshape_operand =
       FirstNonScalarAndNonTrivialReshapeOperand(instruction);
   // If there are no non-trivial reshapes or transposes, then there is nothing
@@ -216,7 +216,7 @@ StatusOr<bool> TrySinkReshapeOrTranspose(HloComputation* computation,
           << "\n\tnew elementwise shape: "
           << ShapeUtil::HumanString(new_elementwise_shape);
 
-  std::vector<HloInstruction*> operands = instruction->operands();
+  auto operands = instruction->operands();
   for (size_t i = 0; i < operands.size(); ++i) {
     // All scalar operands remain as-is, even if they're reshape or transpose,
     // to simplify handling wrt special scalar broadcast rules for ops like
@@ -312,10 +312,17 @@ StatusOr<bool> TrySinkReshapeOrTranspose(HloComputation* computation,
 
 StatusOr<bool> ReshapeMover::Run(HloModule* module) {
   bool changed = false;
-  for (const auto& comp : module->computations()) {
+  std::vector<HloComputation*> computations;
+  for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
+    computations.push_back(computation.get());
+  }
+  for (const auto& comp : computations) {
     for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool did_change,
-                          TrySinkReshapeOrTranspose(comp.get(), instruction));
+                          TrySinkReshapeOrTranspose(comp, instruction));
       changed |= did_change;
     }
   }

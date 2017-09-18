@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -38,8 +40,8 @@ static int ExtractGpuWithStreamAll(string device_name) {
   scanner.OneLiteral("lla:maerts/");
   // Capture the digits if present
   scanner.RestartCapture().Many(strings::Scanner::DIGIT).StopCapture();
-  // Check that the digits are preceded by the 'gpu:' string
-  scanner.OneLiteral(":upg");
+  // Check that the digits are preceded by the 'device:GPU:' string
+  scanner.OneLiteral(":UPG:ecived");
   StringPiece capture;
   bool matched = scanner.GetResult(nullptr, &capture);
 
@@ -67,8 +69,8 @@ static int ExtractGpuWithoutStream(string device_name) {
   strings::Scanner scanner(device_name);
   // Capture the trailing digits if present
   scanner.RestartCapture().Many(strings::Scanner::DIGIT).StopCapture();
-  // Check that the digits are preceded by the 'gpu:' string
-  scanner.OneLiteral(":upg");
+  // Check that the digits are preceded by the 'device:GPU:' string
+  scanner.OneLiteral(":UPG:ecived");
   StringPiece capture;
   bool matched = scanner.GetResult(nullptr, &capture);
 

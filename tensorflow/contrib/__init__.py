@@ -21,6 +21,7 @@ from __future__ import print_function
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import bayesflow
 from tensorflow.contrib import cloud
+from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import compiler
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
@@ -28,8 +29,10 @@ from tensorflow.contrib import cudnn_rnn
 from tensorflow.contrib import data
 from tensorflow.contrib import deprecated
 from tensorflow.contrib import distributions
+from tensorflow.contrib import estimator
 from tensorflow.contrib import factorization
 from tensorflow.contrib import framework
+from tensorflow.contrib import gan
 from tensorflow.contrib import graph_editor
 from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import image
@@ -50,7 +53,10 @@ from tensorflow.contrib import metrics
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
+from tensorflow.contrib import predictor
 from tensorflow.contrib import quantization
+from tensorflow.contrib import reduce_slice_ops
+from tensorflow.contrib import resampler
 from tensorflow.contrib import rnn
 from tensorflow.contrib import saved_model
 from tensorflow.contrib import seq2seq
@@ -65,6 +71,7 @@ from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing
 from tensorflow.contrib import tfprof
+from tensorflow.contrib import timeseries
 from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util

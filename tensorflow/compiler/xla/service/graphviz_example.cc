@@ -156,10 +156,9 @@ int main(int argc, char** argv) {
 
   auto module = xla::MakeBigGraph();
 
-  printf("Graph URL: %s\n",
-         xla::hlo_graph_dumper::DumpGraph(
-             *module->entry_computation(), "Example computation",
-             /*show_addresses=*/false, /*show_layouts=*/false)
-             .c_str());
+  printf("Graph URL: %s\n", xla::hlo_graph_dumper::DumpGraph(
+                                *module->entry_computation(),
+                                "Example computation", xla::DebugOptions())
+                                .c_str());
   return 0;
 }

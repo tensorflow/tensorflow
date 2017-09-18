@@ -40,6 +40,7 @@ from tensorflow.python.platform import tf_logging
 
 ops.NotDifferentiable("DecodeRaw")
 ops.NotDifferentiable("ParseTensor")
+ops.NotDifferentiable("SerializeTensor")
 ops.NotDifferentiable("StringToNumber")
 
 
@@ -120,8 +121,10 @@ class SparseFeature(
       `value_key` are already sorted by their index position. If so skip
       sorting. False by default (optional).
   """
-  pass
-SparseFeature.__new__.__defaults__ = (False,)
+
+  def __new__(cls, index_key, value_key, dtype, size, already_sorted=False):
+    return super(SparseFeature, cls).__new__(
+        cls, index_key, value_key, dtype, size, already_sorted)
 
 
 class FixedLenFeature(collections.namedtuple(
@@ -137,8 +140,10 @@ class FixedLenFeature(collections.namedtuple(
     default_value: Value to be used if an example is missing this feature. It
         must be compatible with `dtype` and of the specified `shape`.
   """
-  pass
-FixedLenFeature.__new__.__defaults__ = (None,)
+
+  def __new__(cls, shape, dtype, default_value=None):
+    return super(FixedLenFeature, cls).__new__(
+        cls, shape, dtype, default_value)
 
 
 class FixedLenSequenceFeature(collections.namedtuple(
@@ -168,8 +173,10 @@ class FixedLenSequenceFeature(collections.namedtuple(
       `SequenceExample`. Defaults to "" for dtype string and 0 otherwise
       (optional).
   """
-  pass
-FixedLenSequenceFeature.__new__.__defaults__ = (False, None)
+
+  def __new__(cls, shape, dtype, allow_missing=False, default_value=None):
+    return super(FixedLenSequenceFeature, cls).__new__(
+        cls, shape, dtype, allow_missing, default_value)
 
 
 def _features_to_raw_params(features, types):
@@ -192,7 +199,11 @@ def _features_to_raw_params(features, types):
   sparse_types = []
   dense_keys = []
   dense_types = []
-  dense_defaults = {}
+  # When the graph is built twice, multiple dense_defaults in a normal dict
+  # could come out in different orders. This will fail the _e2e_test which
+  # expects exactly the same graph.
+  # OrderedDict which preserves the order can solve the problem.
+  dense_defaults = collections.OrderedDict()
   dense_shapes = []
   if features:
     # NOTE: We iterate over sorted keys to keep things deterministic.
@@ -200,21 +211,21 @@ def _features_to_raw_params(features, types):
       feature = features[key]
       if isinstance(feature, VarLenFeature):
         if VarLenFeature not in types:
-          raise ValueError("Unsupported VarLenFeature %s.", feature)
+          raise ValueError("Unsupported VarLenFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         sparse_keys.append(key)
         sparse_types.append(feature.dtype)
       elif isinstance(feature, SparseFeature):
         if SparseFeature not in types:
-          raise ValueError("Unsupported SparseFeature %s.", feature)
+          raise ValueError("Unsupported SparseFeature %s." % feature)
 
         if not feature.index_key:
           raise ValueError(
-              "Missing index_key for SparseFeature %s.", feature)
+              "Missing index_key for SparseFeature %s." % feature)
         if not feature.value_key:
           raise ValueError(
-              "Missing value_key for SparseFeature %s.", feature)
+              "Missing value_key for SparseFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         index_keys = feature.index_key
@@ -243,7 +254,7 @@ def _features_to_raw_params(features, types):
           sparse_types.append(feature.dtype)
       elif isinstance(feature, FixedLenFeature):
         if FixedLenFeature not in types:
-          raise ValueError("Unsupported FixedLenFeature %s.", feature)
+          raise ValueError("Unsupported FixedLenFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
@@ -264,7 +275,7 @@ def _features_to_raw_params(features, types):
           dense_defaults[key] = feature.default_value
       elif isinstance(feature, FixedLenSequenceFeature):
         if FixedLenSequenceFeature not in types:
-          raise ValueError("Unsupported FixedLenSequenceFeature %s.", feature)
+          raise ValueError("Unsupported FixedLenSequenceFeature %s." % feature)
         if not feature.dtype:
           raise ValueError("Missing type for feature %s." % key)
         if feature.shape is None:
@@ -411,7 +422,7 @@ def parse_example(serialized, features, name=None, example_names=None):
 
   then the output will look like:
 
-  ```
+  ```python
   {"ft": SparseTensor(indices=[[0, 0], [0, 1], [2, 0]],
                       values=[1.0, 2.0, 3.0],
                       dense_shape=(3, 2)) }
@@ -420,7 +431,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   If instead a `FixedLenSequenceFeature` with `default_value = -1.0` and
   `shape=[]` is used then the output will look like:
 
-  ```
+  ```python
   {"ft": [[1.0, 2.0], [3.0, -1.0]]}
   ```
 
@@ -618,7 +629,8 @@ def _parse_example_raw(serialized,
   """
   with ops.name_scope(name, "ParseExample", [serialized, names]):
     names = [] if names is None else names
-    dense_defaults = {} if dense_defaults is None else dense_defaults
+    dense_defaults = collections.OrderedDict(
+    ) if dense_defaults is None else dense_defaults
     sparse_keys = [] if sparse_keys is None else sparse_keys
     sparse_types = [] if sparse_types is None else sparse_types
     dense_keys = [] if dense_keys is None else dense_keys

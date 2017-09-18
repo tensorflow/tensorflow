@@ -2,6 +2,8 @@
 # execution service
 # DO NOT EDIT: automatically generated BUILD file
 
+licenses(["restricted"])
+
 package(default_visibility = ["//visibility:public"])
 
 cc_library(

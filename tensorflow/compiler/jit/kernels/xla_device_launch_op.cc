@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -210,6 +211,9 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES(ctx,
                 write.input_index >= 0 && write.input_index < ctx->num_inputs(),
                 errors::Internal("Invalid input index for variable write."));
+    TensorShape write_shape;
+    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(write.shape, &write_shape));
+
     // This code is very close to being a clone of AssignVariableOp, but the
     // key difference is that the contents of an XLA device tensor cannot be
     // copied safely; instead we must use
@@ -217,26 +221,27 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
     Var* variable = nullptr;
     // TODO(b/35625933): tensorflow::Var should contain a PersistentTensor, not
     // a Tensor.
-    OP_REQUIRES_OK(ctx, LookupOrCreateResource<Var>(
-                            ctx, HandleFromInput(ctx, write.input_index),
-                            &variable, [this, ctx, &write](Var** ptr) {
-                              *ptr = new Var(write.type);
-                              PersistentTensor unused;
-                              Tensor* tmp;
-                              TF_RETURN_IF_ERROR(ctx->allocate_persistent(
-                                  write.type, write.shape, &unused, &tmp));
-                              *(*ptr)->tensor() = *tmp;
-                              return Status::OK();
-                            }));
+    OP_REQUIRES_OK(ctx,
+                   LookupOrCreateResource<Var>(
+                       ctx, HandleFromInput(ctx, write.input_index), &variable,
+                       [this, ctx, &write, &write_shape](Var** ptr) {
+                         *ptr = new Var(write.type);
+                         PersistentTensor unused;
+                         Tensor* tmp;
+                         TF_RETURN_IF_ERROR(ctx->allocate_persistent(
+                             write.type, write_shape, &unused, &tmp));
+                         *(*ptr)->tensor() = *tmp;
+                         return Status::OK();
+                       }));
     core::ScopedUnref s(variable);
 
     mutex_lock ml(*variable->mu());
     OP_REQUIRES(ctx, variable->tensor()->dtype() == write.type,
                 errors::Internal("Mismatched type in variable write"));
-    if (!variable->tensor()->shape().IsSameSize(write.shape)) {
+    if (!variable->tensor()->shape().IsSameSize(write_shape)) {
       PersistentTensor unused;
       Tensor* tmp;
-      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(write.type, write.shape,
+      OP_REQUIRES_OK(ctx, ctx->allocate_persistent(write.type, write_shape,
                                                    &unused, &tmp));
       *variable->tensor() = *tmp;
     }

@@ -157,6 +157,10 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
                                                  found_unknown_shapes);
   }
 
+  void SetComputeMemoryOverlap(bool value) {
+    estimator_.compute_memory_overlap_ = value;
+  }
+
   OpLevelCostEstimator estimator_;
 };
 
@@ -166,6 +170,16 @@ TEST_F(OpLevelCostEstimatorTest, DummyExecutionTime) {
   EXPECT_EQ(Costs::Duration(200), cost.compute_time);
   EXPECT_EQ(Costs::Duration(2200), cost.execution_time);
   EXPECT_TRUE(cost.inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, ExecutionTimeSumOrMax) {
+  SetComputeMemoryOverlap(true);
+  auto cost = PredictCosts(DescribeOp("Dummy", 1000, 1));
+  EXPECT_EQ(Costs::Duration(2000), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(200), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(2000), cost.execution_time);  // max(2000, 200)
+  EXPECT_TRUE(cost.inaccurate);
+  SetComputeMemoryOverlap(false);  // Set it back to default.
 }
 
 TEST_F(OpLevelCostEstimatorTest, MulExecutionTime) {

@@ -14,14 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/executor/executor.h"
-#include "tensorflow/compiler/plugin/executor/platform_id.h"
-
-#include "tensorflow/compiler/xla/status_macros.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-namespace se = ::perftools::gputools;
+#include "tensorflow/compiler/plugin/executor/platform_id.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 
 namespace perftools {
 namespace gputools {
@@ -37,10 +35,7 @@ ExecutorExecutor::ExecutorExecutor(const PluginConfig &plugin_config)
 
 ExecutorExecutor::~ExecutorExecutor() {}
 
-void *ExecutorExecutor::Allocate(uint64 size) {
-  void *buf = new char[size];
-  return buf;
-}
+void *ExecutorExecutor::Allocate(uint64 size) { return new char[size]; }
 
 void *ExecutorExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
                                          uint64 offset_bytes,
@@ -126,8 +121,7 @@ DeviceDescription *ExecutorExecutor::PopulateDeviceDescription() const {
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
   builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
 
-  auto built = builder.Build();
-  return built.release();
+  return builder.Build().release();
 }
 
 }  // namespace executorplugin

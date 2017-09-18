@@ -18,6 +18,7 @@ py_binary(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
@@ -50,10 +51,16 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":label_image",
         ":retrain",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 

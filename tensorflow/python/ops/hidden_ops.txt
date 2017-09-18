@@ -6,6 +6,7 @@ ConcatOffset
 Concat
 ConcatV2
 Const
+DebugGradientIdentity
 EditDistance
 ExpandDims
 ListDiff
@@ -14,6 +15,7 @@ MirrorPadGrad
 OneHot
 Pack
 Pad
+PadV2
 ParallelConcat
 Placeholder
 RefIdentity
@@ -35,6 +37,10 @@ LearnedUnigramCandidateSampler
 LogUniformCandidateSampler
 ThreadUnsafeUnigramCandidateSampler
 UniformCandidateSampler
+
+# checkpoint_ops
+GenerateVocabRemapping
+LoadAndRemapMatrix
 
 # control_flow_ops
 Switch
@@ -111,6 +117,10 @@ Stack
 StackClose
 StackPop
 StackPush
+StackV2
+StackCloseV2
+StackPopV2
+StackPushV2
 TensorArray
 TensorArrayClose
 TensorArrayCloseV2
@@ -152,10 +162,15 @@ TensorArrayWriteV3
 SymbolicGradient
 
 # image_ops
+AdjustContrastv2
+NonMaxSuppression
+NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
+ResizeBicubicGrad
 ResizeNearestNeighborGrad
-AdjustContrastv2
+SampleDistortedBoundingBox
+SampleDistortedBoundingBoxV2
 ScaleImageGrad
 
 # io_ops
@@ -282,6 +297,7 @@ MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
+SeluGrad
 SoftplusGrad
 SoftsignGrad
 TopK
@@ -291,10 +307,13 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
+MaxPoolV2
 Softmax
 LogSoftmax
 FractionalAvgPoolGrad
 FractionalMaxPoolGrad
+InTopK
+InTopKV2
 
 # parsing_ops
 ParseExample

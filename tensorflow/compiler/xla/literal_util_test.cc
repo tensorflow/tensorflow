@@ -291,20 +291,20 @@ TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   auto colmajor = MakeUnique<Literal>();
   *colmajor->mutable_shape() = ShapeUtil::MakeShape(F32, {2, 2});
   *colmajor->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  colmajor.get()->Reserve(4);
-  colmajor.get()->Set<float>({0, 0}, 1.0);
-  colmajor.get()->Set<float>({0, 1}, 2.0);
-  colmajor.get()->Set<float>({1, 0}, 3.0);
-  colmajor.get()->Set<float>({1, 1}, 4.0);
+  colmajor->Reserve(4);
+  colmajor->Set<float>({0, 0}, 1.0);
+  colmajor->Set<float>({0, 1}, 2.0);
+  colmajor->Set<float>({1, 0}, 3.0);
+  colmajor->Set<float>({1, 1}, 4.0);
 
   auto rowmajor = MakeUnique<Literal>();
   *rowmajor->mutable_shape() = ShapeUtil::MakeShape(F32, {2, 2});
   *rowmajor->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({1, 0});
-  rowmajor.get()->Reserve(4);
-  rowmajor.get()->Set<float>({0, 0}, 1.0);
-  rowmajor.get()->Set<float>({0, 1}, 2.0);
-  rowmajor.get()->Set<float>({1, 0}, 3.0);
-  rowmajor.get()->Set<float>({1, 1}, 4.0);
+  rowmajor->Reserve(4);
+  rowmajor->Set<float>({0, 0}, 1.0);
+  rowmajor->Set<float>({0, 1}, 2.0);
+  rowmajor->Set<float>({1, 0}, 3.0);
+  rowmajor->Set<float>({1, 1}, 4.0);
 
   EXPECT_TRUE(rowmajor->Equal(*colmajor));
 }
@@ -339,6 +339,16 @@ TEST_F(LiteralUtilTest, IsAllTuple) {
   // Tuples should always return false for IsAll.
   EXPECT_FALSE(tuple->IsAll(0));
   EXPECT_FALSE(tuple->IsAll(1));
+}
+
+// Verifies that CreateFromShape works for tuples.
+TEST_F(LiteralUtilTest, CreateFromShapeTuple) {
+  auto scalar = Literal::CreateR0<float>(0.0);
+  auto matrix = Literal::CreateR2<int32>({{0, 0}, {0, 0}});
+  auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
+
+  auto x = Literal::CreateFromShape(tuple->shape());
+  EXPECT_TRUE(tuple->Equal(*x));
 }
 
 TEST_F(LiteralUtilTest, IsAll) {
@@ -688,24 +698,24 @@ TEST_F(LiteralUtilTest, Copy) {
   for (const auto& layout : layouts) {
     Shape shape = ShapeUtil::MakeShapeWithLayout(
         primitive_util::NativeToPrimitiveType<uint32>(), dimensions, layout);
-    auto blank = Literal::CreateFromShape(shape);
+
     auto source = Literal::CreateFromShape(shape);
     const int64 zero_base[] = {0, 0, 0, 0};
     const int64 step[] = {1, 1, 1, 1};
     uint32 seqnr = 0;
     auto init_proc = [&](const std::vector<int64>& indexes) {
-      source.get()->Set(indexes, ++seqnr);
+      source->Set(indexes, ++seqnr);
       return true;
     };
-
     ShapeUtil::ForEachIndex(source->shape(), zero_base, dimensions, step,
                             init_proc);
 
+    auto blank = Literal::CreateFromShape(shape);
     const int64 src_base[] = {3, 1, 5, 7};
     const int64 dest_base[] = {6, 4, 12, 2};
     const int64 copy_size[] = {7, 8, 11, 9};
+    TF_EXPECT_OK(blank->Copy(*source, src_base, dest_base, copy_size));
 
-    TF_EXPECT_OK(blank.get()->Copy(*source, src_base, dest_base, copy_size));
     std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
     bool matched = true;
@@ -720,6 +730,7 @@ TEST_F(LiteralUtilTest, Copy) {
       matched = (bval != 0 && bval == source->Get<uint32>(source_indexes));
       return matched;
     };
+
     ShapeUtil::ForEachIndex(source->shape(), zero_base, copy_size, step,
                             check_proc);
     EXPECT_TRUE(matched);
@@ -729,14 +740,38 @@ TEST_F(LiteralUtilTest, Copy) {
 TEST_F(LiteralUtilTest, CopyScalars) {
   auto zero = Literal::CreateR0<uint32>(0);
   auto nine = Literal::CreateR0<uint32>(9);
-  TF_EXPECT_OK(zero.get()->Copy(*nine, {}, {}, {}));
+  TF_EXPECT_OK(zero->Copy(*nine, {}, {}, {}));
   EXPECT_TRUE(zero->Equal(*nine));
 
   auto vect = Literal::CreateR1<uint32>({3, 4, 9, 12, 5, 17, 21});
-  TF_EXPECT_OK(zero.get()->Copy(*vect, {5}, {}, {}));
+  TF_EXPECT_OK(zero->Copy(*vect, {5}, {}, {}));
   EXPECT_EQ(zero->Get<uint32>({}), 17);
-  TF_EXPECT_OK(vect.get()->Copy(*zero, {}, {4}, {}));
+  TF_EXPECT_OK(vect->Copy(*zero, {}, {4}, {}));
   EXPECT_EQ(vect->Get<uint32>({4}), 17);
+}
+
+TEST_F(LiteralUtilTest, CopyFromAndToZeroElement) {
+  const Shape empty_r1_shape = ShapeUtil::MakeShape(F32, {0});
+  const auto const_nine = Literal::CreateR1<float>({9});
+  const auto const_empty = Literal::CreateFromShape(empty_r1_shape);
+
+  {
+    // Source contains dimension with zero elements.
+    const auto empty = Literal::CreateFromShape(empty_r1_shape);
+    auto nine = Literal::CreateR1<float>({9});
+
+    TF_EXPECT_OK(nine->Copy(*empty, {0}, {0}, {0}));
+    EXPECT_TRUE(nine->Equal(*const_nine));
+  }
+
+  {
+    // Copy 0 element to destination with zero elements.
+    const auto empty = Literal::CreateFromShape(empty_r1_shape);
+    auto nine = Literal::CreateR1<float>({9});
+
+    TF_EXPECT_OK(empty->Copy(*nine, {0}, {0}, {0}));
+    EXPECT_TRUE(empty->Equal(*const_empty));
+  }
 }
 
 TEST_F(LiteralUtilTest, F16) {
@@ -796,7 +831,7 @@ TEST_F(LiteralUtilTest, Populate) {
       // with zero.
       return literal->LinearIndex(indexes) + 17;
     };
-    TF_EXPECT_OK(literal.get()->Populate<uint32>(generator));
+    TF_EXPECT_OK(literal->Populate<uint32>(generator));
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
@@ -825,8 +860,8 @@ TEST_F(LiteralUtilTest, ConvertR4) {
      {{26, 27, 28, 29}, {30, 31, 32, 33}},
   }}, layout_r4_dim0major_);
   // clang-format on
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<Literal> converted,
-                         original->Convert(U32));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> converted,
+                          original->Convert(U32));
 
   EXPECT_TRUE(expected->Equal(*converted));
 }
@@ -868,6 +903,14 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
     {{0, 1, 0, 1}, {1, 0, 1, 0}},
     {{1, 0, 1, 0}, {0, 1, 0, 1}},
   }}, layout_r4_dim0major_);
+  auto f16 = Literal::CreateR4WithLayout<half>({{
+    {{half(10.0), half(0.0), half(12.0), half(0.0)},
+     {half(0.0), half(15.0), half(0.0), half(17.0)}},
+    {{half(0.0), half(19.0), half(0.0), half(21.0)},
+     {half(22.0), half(0.0), half(24.0), half(0.0)}},
+    {{half(26.0), half(0.0), half(28.0), half(0.0)},
+     {half(0.0), half(31.0), half(0.0), half(33.0)}},
+  }}, layout_r4_dim0major_);
   auto f32 = Literal::CreateR4WithLayout<float>({{
     {{10.0f, 0.0f, 12.0f, 0.0f}, {0.0f, 15.0f, 0.0f, 17.0f}},
     {{0.0f, 19.0f, 0.0f, 21.0f}, {22.0f, 0.0f, 24.0f, 0.0f}},
@@ -908,9 +951,19 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   conv = s32->Convert(F32).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*f32));
 
+  conv = f32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_TRUE(conv->Equal(*f16));
+
+  conv = f64->Convert(F16).ConsumeValueOrDie();
+  EXPECT_TRUE(conv->Equal(*f16));
+
+  conv = s32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_TRUE(conv->Equal(*f16));
+
+  conv = u32->Convert(F16).ConsumeValueOrDie();
+  EXPECT_TRUE(conv->Equal(*f16));
+
   EXPECT_EQ(s32->Convert(TUPLE).status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
-  EXPECT_EQ(s32->Convert(F16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
   EXPECT_EQ(s32->Convert(S16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
@@ -969,16 +1022,13 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   half h1(1.0f);
   half h2(2.0f);
 
-  const char half_vals[8] = {
-    0x00, 0x3C, 0x00, 0x40, 0x00, 0x40, 0x00, 0x3C
-  };
+  const char half_vals[8] = {0x00, 0x3C, 0x00, 0x40, 0x00, 0x40, 0x00, 0x3C};
   LiteralProto p;
   p.mutable_shape()->set_element_type(F16);
   p.mutable_shape()->clear_dimensions();
   p.mutable_shape()->add_dimensions(4);
   p.clear_f16s();
   p.set_f16s(half_vals, 8);
-
 
   Literal literal(p);
   ASSERT_EQ(4, literal.f16s_size());
@@ -994,7 +1044,6 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   ASSERT_EQ(h2, r[2]);
   ASSERT_EQ(h1, r[3]);
 }
-
 
 }  // namespace
 }  // namespace xla

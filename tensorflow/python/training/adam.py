@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -31,7 +32,7 @@ from tensorflow.python.training import training_ops
 class AdamOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adam algorithm.
 
-  See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
+  See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
   """
 
@@ -118,8 +119,11 @@ class AdamOptimizer(optimizer.Optimizer):
     # silently ignored).
     first_var = min(var_list, key=lambda x: x.name)
 
-    if (self._beta1_power is None or
-        self._beta1_power.graph is not first_var.graph):
+    create_new = self._beta1_power is None
+    if not create_new and context.in_graph_mode():
+      create_new = (self._beta1_power.graph is not first_var.graph)
+
+    if create_new:
       with ops.colocate_with(first_var):
         self._beta1_power = variable_scope.variable(self._beta1,
                                                     name="beta1_power",

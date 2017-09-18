@@ -138,7 +138,7 @@ class FakeLibCurl : public LibCurl {
     return CURLE_OK;
   }
   CURLcode curl_easy_perform(CURL* curl) override {
-    if (read_data_) {
+    if (is_post_ || is_put_) {
       char buffer[3];
       int bytes_read;
       posted_content_ = "";
@@ -148,7 +148,7 @@ class FakeLibCurl : public LibCurl {
             strings::StrCat(posted_content_, StringPiece(buffer, bytes_read));
       } while (bytes_read > 0);
     }
-    if (write_data_) {
+    if (write_data_ || write_callback_) {
       write_callback_(response_content_.c_str(), 1, response_content_.size(),
                       write_data_);
     }
@@ -435,6 +435,27 @@ TEST(HttpRequestTest, PutRequest_WithBody_FromFile_NonZeroOffset) {
   EXPECT_EQ("dy content", libcurl.posted_content_);
 
   std::remove(content_filename.c_str());
+}
+
+TEST(HttpRequestTest, PutRequest_WithoutBody) {
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
+  TF_EXPECT_OK(http_request.Init());
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetPutEmptyBody());
+  TF_EXPECT_OK(http_request.Send());
+
+  // Check interactions with libcurl.
+  EXPECT_TRUE(libcurl.is_initialized_);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url_);
+  EXPECT_EQ("", libcurl.custom_request_);
+  EXPECT_EQ(2, libcurl.headers_->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
+  EXPECT_EQ("Content-Length: 0", (*libcurl.headers_)[1]);
+  EXPECT_TRUE(libcurl.is_put_);
+  EXPECT_EQ("", libcurl.posted_content_);
 }
 
 TEST(HttpRequestTest, PostRequest_WithBody_FromMemory) {

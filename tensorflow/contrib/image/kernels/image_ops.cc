@@ -32,11 +32,11 @@ namespace functor {
 // Explicit instantiation of the CPU functor.
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template class FillProjectiveTransform<CPUDevice, uint8>;
-template class FillProjectiveTransform<CPUDevice, int32>;
-template class FillProjectiveTransform<CPUDevice, int64>;
-template class FillProjectiveTransform<CPUDevice, float>;
-template class FillProjectiveTransform<CPUDevice, double>;
+template struct FillProjectiveTransform<CPUDevice, uint8>;
+template struct FillProjectiveTransform<CPUDevice, int32>;
+template struct FillProjectiveTransform<CPUDevice, int64>;
+template struct FillProjectiveTransform<CPUDevice, float>;
+template struct FillProjectiveTransform<CPUDevice, double>;
 
 }  // end namespace functor
 
@@ -116,7 +116,7 @@ namespace functor {
   void FillProjectiveTransform<GPUDevice, TYPE>::operator()(                \
       const GPUDevice& device, OutputType* output, const InputType& images, \
       const TransformsType& transform) const;                               \
-  extern template class FillProjectiveTransform<GPUDevice, TYPE>
+  extern template struct FillProjectiveTransform<GPUDevice, TYPE>
 
 TF_CALL_uint8(DECLARE_FUNCTOR);
 TF_CALL_int32(DECLARE_FUNCTOR);

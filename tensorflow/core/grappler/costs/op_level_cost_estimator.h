@@ -82,10 +82,10 @@ class OpLevelCostEstimator {
                               bool* found_unknown_shapes) const;
   int64 CountBatchMatMulOperations(const OpInfo& op_features,
                                    bool* found_unknown_shapes) const;
-  int64 CountConv2DBackPropInputOperations(const OpInfo& op_features,
+  int64 CountConv2DBackpropInputOperations(const OpInfo& op_features,
                                            ConvolutionDimensions* conv_info,
                                            bool* found_unknown_shapes) const;
-  int64 CountConv2DBackPropFilterOperations(const OpInfo& op_features,
+  int64 CountConv2DBackpropFilterOperations(const OpInfo& op_features,
                                             ConvolutionDimensions* conv_info,
                                             bool* found_unknown_shapes) const;
 
@@ -124,11 +124,12 @@ class OpLevelCostEstimator {
   // device.
   Costs PredictConv2D(const OpInfo& op_features) const;
   Costs PredictCwiseOp(const OpInfo& op_features) const;
-  Costs PredictConv2DBackPropInput(const OpInfo& op_features) const;
-  Costs PredictConv2DBackPropFilter(const OpInfo& op_features) const;
+  Costs PredictConv2DBackpropInput(const OpInfo& op_features) const;
+  Costs PredictConv2DBackpropFilter(const OpInfo& op_features) const;
   Costs PredictMatMul(const OpInfo& op_features) const;
   Costs PredictNoOp(const OpInfo& op_features) const;
   Costs PredictBatchMatMul(const OpInfo& op_features) const;
+  Costs PredictMetadata(const OpInfo& op_features) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -149,6 +150,9 @@ class OpLevelCostEstimator {
   std::map<string, int> elementwise_ops_;
   typedef std::function<Costs(const OpInfo& op_feature)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
+  // If true, assume compute and memory overlap; hence, the op cost is max of
+  // compute_time and memory_time, insteaf of sum of those two.
+  bool compute_memory_overlap_;
 
  private:
   friend class OpLevelCostEstimatorTest;

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 
-#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/types.h"
 
 // CAVEAT: Comment-out the following macro if you want to use experimental
@@ -304,8 +303,8 @@ HexagonOpsDefinitions::BuildOpNameToSocOpTypeMap() {
   EmplaceOpType("INPUT", {}, SupportedOpType::INPUT, &op_map);
   EmplaceOpType("OUTPUT", {}, SupportedOpType::OUTPUT, &op_map);
   EmplaceOpType("NoOp", {}, SupportedOpType::NOP, &op_map);
-  EmplaceOpType(IGraphTransferOpsDefinitions::FLATTEN_OP_NAME, {},
-                SupportedOpType::FLATTEN, &op_map);
+  // Special op type for hexagon
+  EmplaceOpType("FLATTEN", {}, SupportedOpType::FLATTEN, &op_map);
   // Tensorflow op name
   // CAVEAT: Keep order of SupportedOpType
   EmplaceOpType("Identity", {}, SupportedOpType::NOP, &op_map);
@@ -373,7 +372,7 @@ HexagonOpsDefinitions::BuildOpNameToSocOpTypeMap() {
 HexagonOpsDefinitions::HexagonOpsDefinitions()
     : op_name_to_soc_op_type_map_(BuildOpNameToSocOpTypeMap()) {}
 
-/* static */ const IGraphTransferOpsDefinitions&
+/* static */ const IRemoteFusedGraphOpsDefinitions&
 HexagonOpsDefinitions::getInstance() {
   const static HexagonOpsDefinitions instance{};
   return instance;
@@ -393,17 +392,17 @@ int HexagonOpsDefinitions::GetOpIdFor(const string& op_type,
     if (dt_vec.empty()) {
       return static_cast<int>(std::get<1>(dt_to_op_vec.front()));
     }
+    // If there is only one op_id registered for empty op_vec, we assume
+    // that the op supports any data types.
+    if (dt_to_op_vec.size() == 1 && std::get<0>(dt_to_op_vec.front()).empty()) {
+      return static_cast<int>(std::get<1>(dt_to_op_vec.front()));
+    }
     for (const DataTypeToOp& data_type_to_op : dt_to_op_vec) {
       if (std::get<0>(data_type_to_op) == dt_vec) {
         return static_cast<int>(std::get<1>(data_type_to_op));
       }
     }
   }
-  return IGraphTransferOpsDefinitions::INVALID_OP_ID;
-}
-
-GraphTransferInfo::Destination HexagonOpsDefinitions::GetTransferDestination()
-    const {
-  return GraphTransferInfo::HEXAGON;
+  return IRemoteFusedGraphOpsDefinitions::INVALID_OP_ID;
 }
 }  // namespace tensorflow

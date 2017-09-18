@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 import tempfile
 
 from tensorflow.python.ops import io_ops
@@ -57,6 +58,20 @@ class IoOpsTest(test.TestCase):
           file_contents = f.read()
         self.assertEqual(file_contents, contents)
       os.remove(temp.name)
+
+  def testWriteFileCreateDir(self):
+    cases = ['', 'Some contents']
+    for contents in cases:
+      contents = compat.as_bytes(contents)
+      subdir = os.path.join(self.get_temp_dir(), 'subdir1')
+      filepath = os.path.join(subdir, 'subdir2', 'filename')
+      with self.test_session() as sess:
+        w = io_ops.write_file(filepath, contents)
+        sess.run(w)
+        with open(filepath, 'rb') as f:
+          file_contents = f.read()
+        self.assertEqual(file_contents, contents)
+      shutil.rmtree(subdir)
 
   def _subset(self, files, indices):
     return set(

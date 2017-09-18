@@ -78,7 +78,7 @@ def summary_scope(name, family=None, default_name=None, values=None):
   If `family` is set, then the tag name will be '<family>/<scope_name>', where
   `scope_name` is `<outer_scope>/<family>/<name>`. This ensures that `family`
   is always the prefix of the tag (and unmodified), while ensuring the scope
-  respects the outer scope from this this summary was created.
+  respects the outer scope from this summary was created.
 
   Args:
     name: A name for the generated summary node.

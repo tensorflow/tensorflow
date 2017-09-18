@@ -24,7 +24,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_remote_fused_graph_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -37,9 +42,9 @@ py_test(
     deps = [
         ":remote_fused_graph_ops_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
 )

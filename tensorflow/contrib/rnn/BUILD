@@ -26,7 +26,9 @@ load(
 
 tf_custom_op_py_library(
     name = "rnn_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
+    srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + [
+        "python/tools/checkpoint_convert.py",
+    ],
     dso = [
         ":python/ops/_gru_ops.so",
         ":python/ops/_lstm_ops.so",
@@ -83,7 +85,6 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = ["notsan"],  # http://b/62135981
     xla_enabled = True,
 )
 
@@ -364,6 +365,7 @@ py_binary(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
@@ -377,9 +379,9 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":checkpoint_convert",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],

@@ -18,6 +18,7 @@ limitations under the License.
 #include <limits>
 #include <unordered_map>
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"

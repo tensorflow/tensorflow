@@ -49,94 +49,6 @@ limitations under the License.
 
 namespace xla {
 
-// This class is a simple vector of boolean values. It's used to workaround some
-// implementations of std::vector<bool> that use a bitset which does not have
-// the semantics expected by Literal::preds().
-class BoolVector {
- public:
-  typedef bool* iterator;
-  typedef const bool* const_iterator;
-
-  BoolVector() : bits_(nullptr), size_(0), capacity_(0) {}
-
-  BoolVector(const_iterator other_begin, const_iterator other_end)
-      : bits_(nullptr), size_(0), capacity_(0) {
-    if (other_begin && other_end) {
-      resize(other_end - other_begin);
-      memcpy(begin(), other_begin, size());
-    }
-  }
-
-  BoolVector(const BoolVector& other) { CopyFrom(other); }
-
-  BoolVector& operator=(const BoolVector& other) {
-    CopyFrom(other);
-    return *this;
-  }
-
-  void push_back(const bool& value) {
-    resize(size_ + 1);
-    bits_[size_ - 1] = value;
-  }
-
-  bool* data() const { return bits_.get(); }
-
-  size_t size() const { return size_; }
-
-  size_t capacity() const { return capacity_; }
-
-  void resize(size_t new_size, bool val = false) {
-    if (new_size == 0) {
-      bits_.reset(nullptr);
-      size_ = 0;
-      capacity_ = 0;
-    } else {
-      size_t old_size = size();
-      if (new_size > old_size) {
-        grow(new_size);
-      }
-      if (old_size < new_size) {
-        memset(&bits_[old_size], val, new_size - old_size);
-      }
-      size_ = new_size;
-    }
-  }
-
-  void clear() {
-    bits_.reset(nullptr);
-    size_ = 0;
-    capacity_ = 0;
-  }
-
-  iterator begin() { return &bits_[0]; }
-  iterator end() { return &bits_[size()]; }
-  const_iterator begin() const { return &bits_[0]; }
-  const_iterator end() const { return &bits_[size()]; }
-
- private:
-  void grow(size_t n) {
-    if (capacity_ < n) {
-      capacity_ = 2 * n;
-      bool* new_bits = new bool[capacity_]();
-      if (size_ > 0) {
-        memcpy(new_bits, bits_.get(), size_);
-      }
-      bits_.reset(new_bits);
-    }
-  }
-
-  void CopyFrom(const BoolVector& other) {
-    bits_ = MakeUnique<bool[]>(other.capacity());
-    memcpy(begin(), other.begin(), other.size());
-    size_ = other.size();
-    capacity_ = other.capacity();
-  }
-
-  std::unique_ptr<bool[]> bits_;
-  size_t size_;
-  size_t capacity_;
-};
-
 // Utility class for dealing with XLA literal values.  Most methods are
 // templated by native (host) type which corresponds to a unique XLA
 // PrimitiveType. See ComputationBuilder for details.  Not all primitive types
@@ -147,10 +59,12 @@ class Literal {
   Literal() {}
 
   Literal(const Literal& other) = default;
+  Literal(Literal&&) = default;
 
   explicit Literal(const LiteralProto& other) { CopyFromProto(other); }
 
   Literal& operator=(const Literal& other) = default;
+  Literal& operator=(Literal&&) = default;
 
   LiteralProto ToProto() const;
 
@@ -165,10 +79,11 @@ class Literal {
 
   void Clear() {
     shape_.Clear();
-    preds_.clear();
     u8s_.clear();
+    s16s_.clear();
     s32s_.clear();
     s64s_.clear();
+    u16s_.clear();
     u32s_.clear();
     u64s_.clear();
     f16s_.clear();
@@ -177,9 +92,22 @@ class Literal {
     tuple_literals_.clear();
   }
 
-  int preds_size() const { return preds().size(); }
-  const BoolVector& preds() const { return preds_; }
-  BoolVector* mutable_preds() { return &preds_; }
+  int preds_size() const { return u8s().size(); }
+  const std::vector<uint8>& preds() const {
+    static_assert(sizeof(uint8) == sizeof(bool),
+                  "The uint8 and bool types should be the same size");
+    return u8s_;
+  }
+  std::vector<uint8>* mutable_preds() {
+    static_assert(sizeof(uint8) == sizeof(bool),
+                  "The uint8 and bool types should be the same size");
+    return &u8s_;
+  }
+
+  int s16s_size() const { return s16s().size(); }
+  int32 s16s(int i) const { return s16s_[i]; }
+  const std::vector<int16>& s16s() const { return s16s_; }
+  std::vector<int16>* mutable_s16s() { return &s16s_; }
 
   int s32s_size() const { return s32s().size(); }
   int32 s32s(int i) const { return s32s_[i]; }
@@ -190,6 +118,11 @@ class Literal {
   void add_s64s(int64 value) { s64s_.push_back(value); }
   const std::vector<int64>& s64s() const { return s64s_; }
   std::vector<int64>* mutable_s64s() { return &s64s_; }
+
+  int u16s_size() const { return u16s().size(); }
+  uint32 u16s(int i) const { return u16s_[i]; }
+  const std::vector<uint16>& u16s() const { return u16s_; }
+  std::vector<uint16>* mutable_u16s() { return &u16s_; }
 
   int u32s_size() const { return u32s().size(); }
   uint32 u32s(int i) const { return u32s_[i]; }
@@ -244,12 +177,6 @@ class Literal {
 
   const Shape& shape() const { return shape_; }
   Shape* mutable_shape() { return &shape_; }
-
-  void Swap(Literal* other) {
-    Literal temp = *this;
-    *this = *other;
-    *other = temp;
-  }
 
   // Creates a new literal of a given rank. To minimize ambiguity (for users
   // and the compiler) these CreateR[0-2] methods should explicitly specify the
@@ -316,6 +243,9 @@ class Literal {
   // The src_literal and this literal must have the same primitive type,
   // src_base+copy_size must fit the source literal dimensions, as well as
   // dest_base+copy_size must fit the destination literal dimensions.
+  // Note: if either src_literal or this literal contains dimensions with zero
+  // element, then copy_size must be 0 in these dimensions while the
+  // corresponding base indices being 0.
   Status Copy(const Literal& src_literal,
               tensorflow::gtl::ArraySlice<int64> src_base,
               tensorflow::gtl::ArraySlice<int64> dest_base,
@@ -327,10 +257,14 @@ class Literal {
   // minor-to-major dimension layout and the value in the cell at any given
   // logical index (i0, i1) will be the same.
   //
+  // For tuple shaped literals, shape_index should be used to select the inner
+  // array that the new layout applies to.
+  //
   // Note: this is useful when the client wants to ensure that a value placed in
   // the XLA allocation tracker has a particular layout; for efficiency
   // purposes or avoiding unimplemented operation/layout combinations.
-  std::unique_ptr<Literal> Relayout(const Layout& new_layout) const;
+  std::unique_ptr<Literal> Relayout(const Layout& new_layout,
+                                    const ShapeIndex& shape_index = {}) const;
 
   // Creates a new literal by reshaping this literal to have 'shape'. Both the
   // original shape and 'shape' must contain the same number of elements. The
@@ -469,6 +403,11 @@ class Literal {
   // into text.
   string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index) const;
 
+  // As Get(), but determines the correct type and converts the value into
+  // int64.
+  StatusOr<int64> GetIntegralAsS64(
+      tensorflow::gtl::ArraySlice<int64> multi_index) const;
+
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
   static std::unique_ptr<Literal> MakeIdentityR2(int64 size);
@@ -476,6 +415,16 @@ class Literal {
   // Returns a tuple literal composed of given literals.
   static std::unique_ptr<Literal> MakeTuple(
       tensorflow::gtl::ArraySlice<const Literal*> elements);
+
+  // As above, but intended to be invoked with move semantics; i.e.
+  //
+  //  std::vector<std::unique_ptr<Literal>> elements = ...;
+  //  auto result = Literal::MakeTupleOwned(std::move(elements));
+  //
+  // This would have been declared as an overload, but there is ambiguity
+  // in invocation between the above signature and this one.
+  static std::unique_ptr<Literal> MakeTupleOwned(
+      std::vector<std::unique_ptr<Literal>> elements);
 
   // Validates that the data payload of the literal matches the literal shape;
   // if it does not, an appropriate status is returned.
@@ -539,10 +488,11 @@ class Literal {
 
   // Populates literal values by calling the generator function for every cell
   // in this literal object.
-  template <typename NativeT>
-  Status Populate(
-      const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-          generator);
+  //
+  // generator must be a callable of the type
+  // NativeT(tensorflow::gtl::ArraySlice<int64> indexes) or compatible.
+  template <typename NativeT, typename FnType>
+  Status Populate(const FnType& generator);
 
   // Creates a Literal of the given dimensions with all elements set to the
   // given value.
@@ -634,10 +584,11 @@ class Literal {
   };
 
   Shape shape_;
-  BoolVector preds_;
   std::vector<uint8> u8s_;
+  std::vector<int16> s16s_;
   std::vector<int32> s32s_;
   std::vector<int64> s64s_;
+  std::vector<uint16> u16s_;
   std::vector<uint32> u32s_;
   std::vector<uint64> u64s_;
   std::vector<half> f16s_;
@@ -657,6 +608,12 @@ tensorflow::gtl::ArraySlice<uint8> Literal::GetArraySlice<uint8>() const;
 
 template <>
 tensorflow::gtl::ArraySlice<int8> Literal::GetArraySlice<int8>() const;
+
+template <>
+tensorflow::gtl::ArraySlice<uint16> Literal::GetArraySlice<uint16>() const;
+
+template <>
+tensorflow::gtl::ArraySlice<int16> Literal::GetArraySlice<int16>() const;
 
 template <>
 tensorflow::gtl::ArraySlice<uint32> Literal::GetArraySlice<uint32>() const;
@@ -691,6 +648,12 @@ tensorflow::gtl::MutableArraySlice<int8> Literal::GetMutableArraySlice();
 
 template <>
 tensorflow::gtl::MutableArraySlice<uint8> Literal::GetMutableArraySlice();
+
+template <>
+tensorflow::gtl::MutableArraySlice<int16> Literal::GetMutableArraySlice();
+
+template <>
+tensorflow::gtl::MutableArraySlice<uint16> Literal::GetMutableArraySlice();
 
 template <>
 tensorflow::gtl::MutableArraySlice<int32> Literal::GetMutableArraySlice();
@@ -1177,12 +1140,10 @@ void Literal::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateR4FromArray4DWithLayout(values, LayoutUtil::GetDefaultLayoutForR4());
 }
 
-template <typename NativeT>
-Status Literal::Populate(
-    const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-        generator) {
+template <typename NativeT, typename FnType>
+Status Literal::Populate(const FnType& generator) {
   const Shape& this_shape = shape();
-  int64 rank = ShapeUtil::Rank(this_shape);
+  const int64 rank = ShapeUtil::Rank(this_shape);
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
   tensorflow::gtl::MutableArraySlice<NativeT> data =
@@ -1195,7 +1156,7 @@ Status Literal::Populate(
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
     auto init_function = [&](const std::vector<int64>& indexes) {
-      int64 index = LinearIndex(indexes);
+      const int64 index = LinearIndex(indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       for (int64 i = 0; i < minor_dimension_size; ++i) {
         minor_scan_indexes[stride_config.minor_dimension] = i;

@@ -68,10 +68,10 @@ REGISTER_OP("VarHandleOp")
       c->set_output(0, c->Scalar());
       DataType t;
       TF_RETURN_IF_ERROR(c->GetAttr("dtype", &t));
-      TensorShapeProto p;
+      PartialTensorShape p;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &p));
       ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(p, &s));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
       c->set_output_handle_shapes_and_types(0,
                                             std::vector<ShapeAndType>{{s, t}});
 
@@ -101,23 +101,6 @@ The value returned by this operation is guaranteed to be influenced by all the
 writes on which this operation depends directly or indirectly, and to not be
 influenced by any of the writes which depend directly or indirectly on this
 operation.
-
-resource: handle to the resource in which to store the variable.
-dtype: the dtype of the value.
-)");
-
-REGISTER_OP("_UnsafeReadVariable")
-    .Input("resource: resource")
-    .Output("value: dtype")
-    .Attr("dtype: type")
-    .SetShapeFn(ReadVariableShapeFn)
-    .Doc(R"(
-Reads the value of a variable without any memory model.
-
-The tensor returned by this operation aliases a mutable Tensor, and its value
-can be observed to be different by different ops.
-
-Internal and private to the tensorflow implementation.
 
 resource: handle to the resource in which to store the variable.
 dtype: the dtype of the value.
@@ -214,6 +197,34 @@ Checks whether a resource handle-based variable has been initialized.
 resource: the input resource handle.
 is_initialized: a scalar boolean which is true if the variable has been
 initialized.
+)doc");
+
+Status VariableShapeShapeFn(InferenceContext* c) {
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data == nullptr || handle_data->empty()) {
+    return errors::InvalidArgument("Handle doesn't have shape information.");
+  }
+  c->set_output(0, (*handle_data)[0].shape);
+  return Status::OK();
+}
+
+REGISTER_OP("VariableShape")
+    .Input("input: resource")
+    .Output("output: out_type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
+    .SetShapeFn(VariableShapeShapeFn)
+    .Doc(R"doc(
+Returns the shape of the variable pointed to by `resource`.
+
+This operation returns a 1-D integer tensor representing the shape of `input`.
+
+For example:
+
+```
+# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+shape(t) ==> [2, 2, 3]
+```
+
 )doc");
 
 REGISTER_OP("ResourceGather")

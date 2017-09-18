@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
@@ -33,19 +34,33 @@ Status SparsifyGather(const GraphDef& input_graph_def,
 
 class SparsifyGatherTest : public ::testing::Test {
  protected:
-  NodeDef* CreateNode(const string& name, const string& op,
+  NodeDef* CreateNode(const StringPiece name, const StringPiece op,
                       const std::vector<NodeDef*>& inputs,
                       GraphDef* graph_def) {
     NodeDef* node_def = graph_def->add_node();
-    node_def->set_name(name);
-    node_def->set_op(op);
+    node_def->set_name(name.ToString());
+    node_def->set_op(op.ToString());
     std::for_each(inputs.begin(), inputs.end(), [&node_def](NodeDef* input) {
       node_def->add_input(input->name());
     });
     return node_def;
   }
 
-  void TestSinglePartitionConst() {
+  void MakeGather(StringPiece name, bool gather_v2, NodeDef* params,
+                  NodeDef* indices, GraphDef* graph_def) {
+    if (gather_v2) {
+      NodeDef* axis_node =
+          CreateNode(strings::StrCat(name, "_axis"), "Const", {}, graph_def);
+      Tensor axis_t(DT_INT32, TensorShape({}));
+      axis_t.scalar<int32>()() = 0;
+      SetNodeTensorAttr<int32>("value", axis_t, axis_node);
+      CreateNode(name, "GatherV2", {params, indices, axis_node}, graph_def);
+    } else {
+      CreateNode(name, "Gather", {params, indices}, graph_def);
+    }
+  }
+
+  void TestSinglePartitionConst(bool gather_v2, bool include_group_deps) {
     GraphDef graph_def;
 
     // Build the graph.
@@ -59,8 +74,10 @@ class SparsifyGatherTest : public ::testing::Test {
 
     NodeDef* identity_node =
         CreateNode("const/read", "Identity", {const_node}, &graph_def);
-    CreateNode("gather", "Gather", {identity_node, input_node}, &graph_def);
-    CreateNode("group_deps", "NoOp", {}, &graph_def);
+    MakeGather("gather", gather_v2, identity_node, input_node, &graph_def);
+    if (include_group_deps) {
+      CreateNode("group_deps", "NoOp", {}, &graph_def);
+    }
 
     // Run the op.
     GraphDef result;
@@ -151,7 +168,7 @@ class SparsifyGatherTest : public ::testing::Test {
               node_lookup.at("group_deps")->input().end());
   }
 
-  void TestMultiPartitionConst() {
+  void TestMultiPartitionConst(bool gather_v2, bool include_group_deps) {
     // The 'ids' node is served input for two 'Gather's.
     GraphDef graph_def;
 
@@ -159,7 +176,9 @@ class SparsifyGatherTest : public ::testing::Test {
     // Shared input node
     NodeDef* input_node = CreateNode("ids", "Const", {}, &graph_def);
     // Shared init node
-    CreateNode("group_deps", "NoOp", {}, &graph_def);
+    if (include_group_deps) {
+      CreateNode("group_deps", "NoOp", {}, &graph_def);
+    }
 
     // Two partitions
     NodeDef* const_node1 = CreateNode("const1", "Const", {}, &graph_def);
@@ -177,8 +196,8 @@ class SparsifyGatherTest : public ::testing::Test {
         CreateNode("const1/read", "Identity", {const_node1}, &graph_def);
     NodeDef* identity_node2 =
         CreateNode("const2/read", "Identity", {const_node2}, &graph_def);
-    CreateNode("gather1", "Gather", {identity_node1, input_node}, &graph_def);
-    CreateNode("gather2", "Gather", {identity_node2, input_node}, &graph_def);
+    MakeGather("gather1", gather_v2, identity_node1, input_node, &graph_def);
+    MakeGather("gather2", gather_v2, identity_node2, input_node, &graph_def);
 
     // Run the op.
     GraphDef result;
@@ -341,11 +360,17 @@ class SparsifyGatherTest : public ::testing::Test {
 };
 
 TEST_F(SparsifyGatherTest, TestSinglePartitionConst) {
-  TestSinglePartitionConst();
+  TestSinglePartitionConst(false, false);
+  TestSinglePartitionConst(false, true);
+  TestSinglePartitionConst(true, false);
+  TestSinglePartitionConst(true, true);
 }
 
 TEST_F(SparsifyGatherTest, TestMultiPartitionConst) {
-  TestMultiPartitionConst();
+  TestMultiPartitionConst(false, false);
+  TestMultiPartitionConst(false, true);
+  TestMultiPartitionConst(true, false);
+  TestMultiPartitionConst(true, true);
 }
 
 }  // namespace graph_transforms

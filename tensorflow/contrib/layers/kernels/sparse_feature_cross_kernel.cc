@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -176,7 +177,7 @@ class StringCrosser {
     static const auto k_feature_separator = "_X_";
 
     gtl::InlinedVector<InternalType, 6> cross_vec(columns_.size());
-    for (int i = 0; i < permutation.size(); i++) {
+    for (size_t i = 0; i < permutation.size(); i++) {
       cross_vec[i] = columns_[i]->Feature(batch_index, permutation[i]);
     }
     // TODO(zakaria): this will copy the string twice, might effect
@@ -266,7 +267,7 @@ class ProductIterator {
     next_permutation_.resize(columns_.size(), 0);
     // Sets has_next_ to false if any feature column has 0 features.
     has_next_ = true;
-    for (int i = 0; i < columns_.size(); i++) {
+    for (size_t i = 0; i < columns_.size(); i++) {
       if (columns_[i]->FeatureCount(batch_index_) == 0) {
         has_next_ = false;
         break;
@@ -580,7 +581,7 @@ class SparseFeatureCrossOp : public OpKernel {
           columns,
       int batch_index) {
     int64 cross_count = 1;
-    for (int i = 0; i < columns.size(); i++) {
+    for (size_t i = 0; i < columns.size(); i++) {
       const auto feature_count = columns[i]->FeatureCount(batch_index);
       // If one column is missing any feature, there won't be any cross.
       if (feature_count == 0) {

@@ -73,6 +73,10 @@ See the @{$python/contrib.learn} guide.
 @@read_batch_examples
 @@read_batch_features
 @@read_batch_record_features
+@@read_keyed_batch_examples
+@@read_keyed_batch_examples_shared_queue
+@@read_keyed_batch_features
+@@read_keyed_batch_features_shared_queue
 
 @@InputFnOps
 @@ProblemType

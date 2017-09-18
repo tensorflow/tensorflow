@@ -59,6 +59,9 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
       backend_args += ["--test_device=" + plugins[backend]["device"],
                        "--types=" + plugins[backend]["types"]]
       backend_tags += plugins[backend]["tags"]
+      backend_args += plugins[backend]["args"]
+      backend_deps += plugins[backend]["deps"]
+      backend_data += plugins[backend]["data"]
     else:
       fail("Unknown backend {}".format(backend))
 

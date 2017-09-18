@@ -115,30 +115,29 @@ class Poisson(distribution.Distribution):
     return self._log_unnormalized_prob(x) - self._log_normalization()
 
   @distribution_util.AppendDocstring(_poisson_sample_note)
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
-  @distribution_util.AppendDocstring(_poisson_sample_note)
   def _log_cdf(self, x):
     return math_ops.log(self.cdf(x))
 
   @distribution_util.AppendDocstring(_poisson_sample_note)
   def _cdf(self, x):
     if self.validate_args:
-      # We set `check_integer=False` since the CDF is defined on whole real
-      # line.
-      x = distribution_util.embed_check_nonnegative_discrete(
-          x, check_integer=False)
-    return math_ops.igammac(math_ops.floor(x + 1), self.rate)
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    else:
+      # Whether or not x is integer-form, the following is well-defined.
+      # However, scipy takes the floor, so we do too.
+      x = math_ops.floor(x)
+    return math_ops.igammac(1. + x, self.rate)
 
   def _log_normalization(self):
     return self.rate
 
   def _log_unnormalized_prob(self, x):
     if self.validate_args:
-      x = distribution_util.embed_check_nonnegative_discrete(
-          x, check_integer=True)
-    return x * math_ops.log(self.rate) - math_ops.lgamma(x + 1)
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    else:
+      # For consistency with cdf, we take the floor.
+      x = math_ops.floor(x)
+    return x * math_ops.log(self.rate) - math_ops.lgamma(1. + x)
 
   def _mean(self):
     return array_ops.identity(self.rate)

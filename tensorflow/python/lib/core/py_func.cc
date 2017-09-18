@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 
 #include "numpy/arrayobject.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -78,6 +79,9 @@ Status MakeArgTuple(PyCall* call, PyObject** tuple) {
 // module.
 Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   switch (np) {
+    case NPY_FLOAT16:
+      *tf = DT_HALF;
+      break;
     case NPY_FLOAT32:
       *tf = DT_FLOAT;
       break;

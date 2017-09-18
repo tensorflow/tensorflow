@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/ADT/APInt.h"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Type.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -211,6 +211,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
     case HloOpcode::kLog:
       return EmitLibdeviceMathCall("__nv_log", {operand_value}, {input_type},
                                    output_type);
+    case HloOpcode::kCos:
+      return EmitLibdeviceMathCall("__nv_cos", {operand_value}, {input_type},
+                                   output_type);
+    case HloOpcode::kSin:
+      return EmitLibdeviceMathCall("__nv_sin", {operand_value}, {input_type},
+                                   output_type);
     case HloOpcode::kTanh:
       return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
                                    output_type);
@@ -328,7 +334,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder_);
 
         IrArray::Index input_index(index.size());
-        llvm::Value* in_bounds = ir_builder_->getInt1(1);
+        llvm::Value* in_bounds = ir_builder_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = ir_builder_->CreateNSWMul(
               index[i], ir_builder_->getInt64(window.dimensions(i).stride()));

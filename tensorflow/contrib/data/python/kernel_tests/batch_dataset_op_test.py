@@ -271,21 +271,116 @@ class BatchDatasetTest(test.TestCase):
                                    "larger than the row shape"):
         sess.run(get_next)
 
-  def testUnbatchDataset(self):
-    data = [math_ops.range(10) for _ in range(3)]
+  def testUnbatchScalarDataset(self):
+    data = tuple([math_ops.range(10) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
+    expected_types = (dtypes.int32,) * 3
     data = data.batch(2)
+    self.assertEqual(expected_types, data.output_types)
     data = data.unbatch()
+    self.assertEqual(expected_types, data.output_types)
 
-    iter = data.make_one_shot_iterator()
-    op = iter.get_next()
+    iterator = data.make_one_shot_iterator()
+    op = iterator.get_next()
 
     with self.test_session() as sess:
-      for i in range(3):
-        self.assertAllClose([range(10)], sess.run(op))
+      for i in range(10):
+        self.assertEqual((i,) * 3, sess.run(op))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
+
+  def testUnbatchSingleElementTupleDataset(self):
+    data = tuple([(math_ops.range(10),) for _ in range(3)])
+    data = dataset_ops.Dataset.from_tensor_slices(data)
+    expected_types = ((dtypes.int32,),) * 3
+    data = data.batch(2)
+    self.assertEqual(expected_types, data.output_types)
+    data = data.unbatch()
+    self.assertEqual(expected_types, data.output_types)
+
+    iterator = data.make_one_shot_iterator()
+    op = iterator.get_next()
+
+    with self.test_session() as sess:
+      for i in range(10):
+        self.assertEqual(((i,),) * 3, sess.run(op))
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(op)
+
+  def testUnbatchMultiElementTupleDataset(self):
+    data = tuple([(math_ops.range(10 * i, 10 * i + 10),
+                   array_ops.fill([10], "hi"))
+                  for i in range(3)])
+    data = dataset_ops.Dataset.from_tensor_slices(data)
+    expected_types = ((dtypes.int32, dtypes.string),) * 3
+    data = data.batch(2)
+    self.assertAllEqual(expected_types, data.output_types)
+    data = data.unbatch()
+    self.assertAllEqual(expected_types, data.output_types)
+
+    iterator = data.make_one_shot_iterator()
+    op = iterator.get_next()
+
+    with self.test_session() as sess:
+      for i in range(10):
+        self.assertEqual(((i, b"hi"),
+                          (10 + i, b"hi"),
+                          (20 + i, b"hi")),
+                         sess.run(op))
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(op)
+
+  def testBatchAndDropRemainder(self):
+    components = (np.arange(7),
+                  np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
+                  np.array(37.0) * np.arange(7))
+
+    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components)
+                .apply(dataset_ops.batch_and_drop_remainder(batch_size))
+                .make_initializable_iterator())
+
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      for test_batch_size in [1, 3, 7, 10]:
+        sess.run(iterator.initializer, feed_dict={batch_size: test_batch_size})
+        num_batches = 7 // test_batch_size
+        for i in range(num_batches):
+          result = sess.run(next_element)
+          for component, result_component in zip(components, result):
+            for j in range(test_batch_size):
+              self.assertAllEqual(component[(i * test_batch_size + j)],
+                                  result_component[j])
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(next_element)
+
+  def testBatchAndDropRemainderShapeInference(self):
+    components = (array_ops.placeholder(dtypes.int32), (array_ops.placeholder(
+        dtypes.int32, shape=[None]), array_ops.placeholder(
+            dtypes.int32, shape=[20, 30])))
+
+    # Test with a statically known batch size.
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .apply(dataset_ops.batch_and_drop_remainder(128)))
+
+    self.assertIs(None, dataset.output_shapes[0].ndims)
+    self.assertEqual([128], dataset.output_shapes[1][0].as_list())
+    self.assertEqual([128, 30], dataset.output_shapes[1][1].as_list())
+
+    # Test with a dynamic batch size: the static shape will be unknown, because
+    # `batch_size` is a placeholder.
+    batch_size = array_ops.placeholder(dtypes.int64)
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .apply(dataset_ops.batch_and_drop_remainder(batch_size)))
+
+    self.assertIs(None, dataset.output_shapes[0].ndims)
+    self.assertEqual([None], dataset.output_shapes[1][0].as_list())
+    self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
 
 
 if __name__ == "__main__":

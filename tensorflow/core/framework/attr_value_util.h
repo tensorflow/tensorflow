@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
 #define TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
 
+#include <functional>
 #include <string>
 #include <vector>
-#include "tensorflow/core/framework/attr_value.pb.h"
+
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +29,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
+
+// Forward declare protos so their symbols can be removed from .so exports
+class AttrValue;
+class NameAttrList;
 
 // A human-readable rendering of attr_value, that is more concise than a
 // text-format proto.
@@ -80,9 +85,7 @@ void SetAttrValue(gtl::ArraySlice<Tensor> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorProto> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 
-inline void SetAttrValue(const AttrValue& value, AttrValue* out) {
-  *out = value;
-}
+void SetAttrValue(const AttrValue& value, AttrValue* out);
 
 // Returns true if a and b have the same value.
 // NOTE: May return false negatives for tensor values.
@@ -98,8 +101,8 @@ bool HasPlaceHolder(const AttrValue& val);
 // SubstituteFunc is given a placeholder string. If the placeholder is
 // unknown, SubstituteFunc returns false. Otherwise, overwrites the
 // attr value and returns true.
-typedef std::function<bool(const string&, AttrValue*)> SubstituteFunc;
-bool SubstitutePlaceholders(SubstituteFunc substitute, AttrValue* value);
+using SubstituteFunc = std::function<bool(const string&, AttrValue*)>;
+bool SubstitutePlaceholders(const SubstituteFunc& substitute, AttrValue* value);
 
 }  // namespace tensorflow
 

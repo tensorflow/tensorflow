@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
@@ -83,6 +84,22 @@ class TensordotTest(test_lib.TestCase):
               [output], feed_dict={a_ph: a,
                                    b_ph: b,
                                    axes_ph: axes_value})
+
+  # Test case for 11950
+  def test_valid_axis(self):
+    for axes_value in [1, 2], [[1], [2]]:
+      with self.test_session() as sess:
+        np_a = np.ones((3,3))
+        np_b = np.array([2, 3, 1])[None, None]
+        np_ans = np.tensordot(np_a, np_b, axes_value)
+
+        tf_a = array_ops.ones((3,3), dtype=dtypes.float32)
+        tf_b = constant_op.constant([2, 3, 1], dtype=dtypes.float32)[None, None]
+        tf_ans = math_ops.tensordot(tf_a, tf_b, axes_value).eval()
+
+        self.assertAllEqual(tf_ans.shape, np_ans.shape)
+        self.assertAllEqual(tf_ans, np_ans)
+
 
   def test_partial_shape_inference(self):
     a = array_ops.placeholder(dtypes.float32)

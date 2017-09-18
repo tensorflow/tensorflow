@@ -70,6 +70,7 @@ Status ShapeOfMergeNode(const Node* node, InferenceContext* c) {
 Status UpdateEnter(ShapeRefiner* shape_refiner, const Node* node, bool relax,
                    std::queue<const Node*>* new_shapes) {
   auto enter_ctx = shape_refiner->GetContext(node);
+  CHECK_NE(enter_ctx, nullptr);
   for (int i = 0; i < enter_ctx->num_outputs(); i++) {
     TF_RETURN_IF_ERROR(shape_refiner->SetShape(node, i, enter_ctx->input(0)));
   }
@@ -82,7 +83,7 @@ Status UpdateEnter(ShapeRefiner* shape_refiner, const Node* node, bool relax,
         continue;
       }
       InferenceContext* merge_ctx = shape_refiner->GetContext(dst);
-      DCHECK_NE(merge_ctx, nullptr);
+      CHECK_NE(merge_ctx, nullptr);
       TF_RETURN_IF_ERROR(ShapeOfMergeNode(dst, merge_ctx));
       new_shapes->push(dst);
     }
@@ -141,7 +142,7 @@ Status GraphProperties::MergeEnqueueShapesAndTypes(
         "Enqueue nodes mixed number of tensors: ", shapes_and_types.size(),
         "  vs ", queue_shapes_and_types->size());
   }
-  for (int i = 0; i < shapes_and_types.size(); ++i) {
+  for (size_t i = 0; i < shapes_and_types.size(); ++i) {
     const ShapeAndType& a = shapes_and_types[i];
     ShapeAndType& b = (*queue_shapes_and_types)[i];
     if (a.dtype != b.dtype) {
@@ -163,7 +164,7 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
         "Enqueue nodes mixed number of tensors: ", shapes_and_types.size(),
         "  vs ", queue_shapes_and_types->size());
   }
-  for (int i = 0; i < shapes_and_types.size(); ++i) {
+  for (size_t i = 0; i < shapes_and_types.size(); ++i) {
     const ShapeAndType& a = shapes_and_types[i];
     ShapeAndType& b = (*queue_shapes_and_types)[i];
     if (a.dtype != b.dtype) {
@@ -179,8 +180,9 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
 
 Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
+  shape_refiner.set_disable_constant_propagation(true);
   ImportGraphDefOptions options;
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
@@ -200,8 +202,44 @@ Status GraphProperties::InferStatically() {
     }
     if (node->IsEnter()) {
       enter_nodes.insert(node);
-    } else if (node->IsMerge()) {
-      merge_nodes.insert(node);
+    } else if (node->IsNextIteration()) {
+      for (const Node* output : node->out_nodes()) {
+        if (output->IsMerge()) {
+          merge_nodes.insert(output);
+        }
+      }
+    }
+
+    // Infer output shape for Restore op.
+    if (node->op_def().name() == "Restore" ||
+        node->op_def().name() == "RestoreV2" ||
+        node->op_def().name() == "RestoreSlice") {
+      auto ctx = shape_refiner.GetContext(node);
+      for (const Edge* out_edge : node->out_edges()) {
+        const Node* output = out_edge->dst();
+        int output_idx = out_edge->src_output();
+        if (!ctx->FullyDefined(ctx->output(output_idx)) &&
+            output->op_def().name() == "Assign") {
+          if (!output->attrs().Find("validate_shape") ||
+              !output->attrs().Find("validate_shape")->b()) {
+            continue;
+          }
+          auto output_ctx = shape_refiner.GetContext(output);
+          if (output_ctx->FullyDefined(output_ctx->output(0))) {
+            ctx->set_output(output_idx, output_ctx->output(0));
+            output_ctx->MergeInput(1, output_ctx->output(0));
+          } else {
+            const Node* var;
+            TF_CHECK_OK(node->input_node(0, &var));
+            if (node->IsVariable()) {
+              auto var_ctx = shape_refiner.GetContext(var);
+              CHECK(var_ctx->FullyDefined(var_ctx->output(0)));
+              ctx->set_output(output_idx, var_ctx->output(0));
+              output_ctx->MergeInput(1, var_ctx->output(0));
+            }
+          }
+        }
+      }
     }
   }
 
@@ -358,6 +396,18 @@ Status GraphProperties::InferStatically() {
       }
       input_properties.push_back(properties);
     }
+    for (const auto& edge : node->in_edges()) {
+      if (!edge->src()->IsConstant()) {
+        continue;
+      }
+      const int input_id = edge->dst_input();
+      if (input_id >= input_properties.size()) {
+        continue;
+      }
+      const NodeDef& node = edge->src()->def();
+      const TensorProto& raw_val = node.attr().at("value").tensor();
+      *input_properties[input_id].mutable_value() = raw_val;
+    }
     input_properties_[node->name()] = input_properties;
 
     // TODO(bsteiner): share this code with the input processing above.
@@ -428,26 +478,30 @@ Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
   return Status::OK();
 }
 
+bool GraphProperties::HasInputProperties(const string& name) const {
+  return input_properties_.find(name) != input_properties_.end();
+}
+
 bool GraphProperties::HasOutputProperties(const string& name) const {
   return output_properties_.find(name) != output_properties_.end();
 }
 
-std::vector<OpInfo::TensorProperties> GraphProperties::GetInputProperties(
-    const string& node_name) const {
+const std::vector<OpInfo::TensorProperties>&
+GraphProperties::GetInputProperties(const string& node_name) const {
   auto it = input_properties_.find(node_name);
   if (it != input_properties_.end()) {
     return it->second;
   }
-  return std::vector<OpInfo::TensorProperties>();
+  return missing_properties_;
 }
 
-std::vector<OpInfo::TensorProperties> GraphProperties::GetOutputProperties(
-    const string& node_name) const {
+const std::vector<OpInfo::TensorProperties>&
+GraphProperties::GetOutputProperties(const string& node_name) const {
   auto it = output_properties_.find(node_name);
   if (it != output_properties_.end()) {
     return it->second;
   }
-  return std::vector<OpInfo::TensorProperties>();
+  return missing_properties_;
 }
 
 }  // end namespace grappler

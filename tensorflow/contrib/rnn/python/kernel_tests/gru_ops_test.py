@@ -357,7 +357,7 @@ def training_gru_block_vs_gru_cell(batch_size,
   ops.reset_default_graph()
   with session.Session(graph=ops.Graph()) as sess:
     # Specify the device which is been used.
-    with ops.device("/cpu:0" if not use_gpu else "/gpu:0"):
+    with ops.device("/cpu:0" if not use_gpu else "/device:GPU:0"):
 
       # Random initializers.
       seed = 1994
@@ -429,7 +429,7 @@ def inference_gru_block_vs_gru_cell(batch_size,
   """Benchmark inference speed between GRUBlockCell vs GRUCell."""
   ops.reset_default_graph()
   with session.Session(graph=ops.Graph()) as sess:
-    with ops.device("/cpu:0" if not use_gpu else "/gpu:0"):
+    with ops.device("/cpu:0" if not use_gpu else "/device:GPU:0"):
 
       # Random initializers.
       seed = 1994
@@ -484,7 +484,7 @@ def single_bprop_step_gru_block_vs_gru_cell(batch_size,
   """Benchmark single bprop step speed between GRUBlockCell vs GRUCell."""
   ops.reset_default_graph()
   with session.Session(graph=ops.Graph()) as sess:
-    with ops.device("/cpu:0" if not use_gpu else "/gpu:0"):
+    with ops.device("/cpu:0" if not use_gpu else "/device:GPU:0"):
       initializer = init_ops.random_uniform_initializer(-1, 1, seed=1989)
       # Inputs
       x = vs.get_variable("x", [batch_size, input_size])

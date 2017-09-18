@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#     https://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,15 +14,20 @@
 # ==============================================================================
 """Non-core alias for the deprecated tf.X_summary ops.
 
-For TensorFlow 1.0, we have re-organized the TensorFlow summary ops into a
+For TensorFlow 1.0, we have reorganized the TensorFlow summary ops into a
 submodule, and made some semantic tweaks. The first thing to note is that we
 moved the APIs around as follows:
 
-tf.scalar_summary      -> tf.summary.scalar
-tf.histogram_summary   -> tf.summary.histogram
-tf.audio_summary       -> tf.summary.audio
-tf.image_summary       -> tf.summary.image
-tf.merge_summary       -> tf.summary.merge
+tf.scalar_summary -> tf.summary.scalar
+
+tf.histogram_summary -> tf.summary.histogram
+
+tf.audio_summary -> tf.summary.audio
+
+tf.image_summary -> tf.summary.image
+
+tf.merge_summary -> tf.summary.merge
+
 tf.merge_all_summaries -> tf.summary.merge_all
 
 We think this is a cleaner API and will improve long-term discoverability and
@@ -35,14 +40,14 @@ Previously, the tag was allowed to be any unique string, and had no relation
 to the summary op generating it, and no relation to the TensorFlow name system.
 This made it very difficult to write re-usable code that would add summary
 ops to the graph. If you had a function that would add summary ops, you would
-need to manually pass in a name scope to that function to create de-duplicated
+need to manually pass in a name scope to that function to create deduplicated
 tags, otherwise your program would fail with a runtime error due to tag
 collision.
 
 The new summary APIs under tf.summary throw away the "tag" as an independent
-concept; instead, the first argument is the node name. This means that summary
-tags now automatically inherit the surrounding TF name scope, and automatically
-are deduplicated if there is a conflict. However, now the only allowed
+concept; instead, the first argument is the node name. So summary tags now 
+automatically inherit the surrounding TF name scope, and automatically
+are deduplicated if there is a conflict. Now however, the only allowed
 characters are alphanumerics, underscores, and forward slashes. To make
 migration easier, the new APIs automatically convert illegal characters to
 underscores.
@@ -75,7 +80,7 @@ to the new summary ops:
   tf.summary.scalar requires a single scalar name and scalar value. In most
   cases, you can create tf.summary.scalars in a loop to get the same behavior
 
-As before, TensorBoard will group charts by the top-level name scope. This may
+As before, TensorBoard groups charts by the top-level name scope. This may
 be inconvenient, since in the new summary ops the summary will inherit that
 name scope without user control. We plan to add more grouping mechanisms to
 TensorBoard, so it will be possible to specify the TensorBoard group for

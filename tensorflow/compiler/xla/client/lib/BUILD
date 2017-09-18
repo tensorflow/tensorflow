@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:lib",
     ],
 )
 

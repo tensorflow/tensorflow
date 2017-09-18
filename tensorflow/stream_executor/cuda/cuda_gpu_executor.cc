@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/cuda/cuda_timer.h"
-#include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/lib/env.h"

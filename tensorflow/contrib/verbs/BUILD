@@ -108,6 +108,7 @@ cc_library(
         ":rdma_mgr",
         ":verbs_util",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",

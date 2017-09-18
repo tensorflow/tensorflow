@@ -22,89 +22,110 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from sklearn import metrics
 import tensorflow as tf
 
-layers = tf.contrib.layers
-learn = tf.contrib.learn
+
+N_DIGITS = 10  # Number of digits.
+X_FEATURE = 'x'  # Name of the input feature.
 
 
-def max_pool_2x2(tensor_in):
-  return tf.nn.max_pool(
-      tensor_in, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
-
-
-def conv_model(feature, target, mode):
+def conv_model(features, labels, mode):
   """2-layer convolution model."""
-  # Convert the target to a one-hot tensor of shape (batch_size, 10) and
-  # with a on-value of 1 for each one-hot vector of length 10.
-  target = tf.one_hot(tf.cast(target, tf.int32), 10, 1, 0)
-
   # Reshape feature to 4d tensor with 2nd and 3rd dimensions being
   # image width and height final dimension being the number of color channels.
-  feature = tf.reshape(feature, [-1, 28, 28, 1])
+  feature = tf.reshape(features[X_FEATURE], [-1, 28, 28, 1])
 
   # First conv layer will compute 32 features for each 5x5 patch
   with tf.variable_scope('conv_layer1'):
-    h_conv1 = layers.convolution2d(
-        feature, 32, kernel_size=[5, 5], activation_fn=tf.nn.relu)
-    h_pool1 = max_pool_2x2(h_conv1)
+    h_conv1 = tf.layers.conv2d(
+        feature,
+        filters=32,
+        kernel_size=[5, 5],
+        padding='same',
+        activation=tf.nn.relu)
+    h_pool1 = tf.layers.max_pooling2d(
+        h_conv1, pool_size=2, strides=2, padding='same')
 
   # Second conv layer will compute 64 features for each 5x5 patch.
   with tf.variable_scope('conv_layer2'):
-    h_conv2 = layers.convolution2d(
-        h_pool1, 64, kernel_size=[5, 5], activation_fn=tf.nn.relu)
-    h_pool2 = max_pool_2x2(h_conv2)
+    h_conv2 = tf.layers.conv2d(
+        h_pool1,
+        filters=64,
+        kernel_size=[5, 5],
+        padding='same',
+        activation=tf.nn.relu)
+    h_pool2 = tf.layers.max_pooling2d(
+        h_conv2, pool_size=2, strides=2, padding='same')
     # reshape tensor into a batch of vectors
     h_pool2_flat = tf.reshape(h_pool2, [-1, 7 * 7 * 64])
 
   # Densely connected layer with 1024 neurons.
-  h_fc1 = layers.dropout(
-      layers.fully_connected(
-          h_pool2_flat, 1024, activation_fn=tf.nn.relu),
-      keep_prob=0.5,
-      is_training=mode == tf.contrib.learn.ModeKeys.TRAIN)
+  h_fc1 = tf.layers.dense(h_pool2_flat, 1024, activation=tf.nn.relu)
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    h_fc1 = tf.layers.dropout(h_fc1, rate=0.5)
 
   # Compute logits (1 per class) and compute loss.
-  logits = layers.fully_connected(h_fc1, 10, activation_fn=None)
-  loss = tf.losses.softmax_cross_entropy(target, logits)
+  logits = tf.layers.dense(h_fc1, N_DIGITS, activation=None)
 
-  # Create a tensor for training op.
-  train_op = layers.optimize_loss(
-      loss,
-      tf.contrib.framework.get_global_step(),
-      optimizer='SGD',
-      learning_rate=0.001)
+  # Compute predictions.
+  predicted_classes = tf.argmax(logits, 1)
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    predictions = {
+        'class': predicted_classes,
+        'prob': tf.nn.softmax(logits)
+    }
+    return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
-  return tf.argmax(logits, 1), loss, train_op
+  # Compute loss.
+  onehot_labels = tf.one_hot(tf.cast(labels, tf.int32), N_DIGITS, 1, 0)
+  loss = tf.losses.softmax_cross_entropy(
+      onehot_labels=onehot_labels, logits=logits)
+
+  # Create training op.
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+    train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
+
+  # Compute evaluation metrics.
+  eval_metric_ops = {
+      'accuracy': tf.metrics.accuracy(
+          labels=labels, predictions=predicted_classes)
+  }
+  return tf.estimator.EstimatorSpec(
+      mode, loss=loss, eval_metric_ops=eval_metric_ops)
 
 
 def main(unused_args):
   ### Download and load MNIST dataset.
-  mnist = learn.datasets.load_dataset('mnist')
+  mnist = tf.contrib.learn.datasets.DATASETS['mnist']('/tmp/mnist')
+  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={X_FEATURE: mnist.train.images},
+      y=mnist.train.labels.astype(np.int32),
+      batch_size=100,
+      num_epochs=None,
+      shuffle=True)
+  test_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={X_FEATURE: mnist.train.images},
+      y=mnist.train.labels.astype(np.int32),
+      num_epochs=1,
+      shuffle=False)
 
   ### Linear classifier.
-  feature_columns = learn.infer_real_valued_columns_from_input(
-      mnist.train.images)
-  classifier = learn.LinearClassifier(
-      feature_columns=feature_columns, n_classes=10)
-  classifier.fit(mnist.train.images,
-                 mnist.train.labels.astype(np.int32),
-                 batch_size=100,
-                 steps=1000)
-  score = metrics.accuracy_score(mnist.test.labels,
-                                 list(classifier.predict(mnist.test.images)))
-  print('Accuracy: {0:f}'.format(score))
+  feature_columns = [
+      tf.feature_column.numeric_column(
+          X_FEATURE, shape=mnist.train.images.shape[1:])]
+  classifier = tf.estimator.LinearClassifier(
+      feature_columns=feature_columns, n_classes=N_DIGITS)
+  classifier.train(input_fn=train_input_fn, steps=200)
+  scores = classifier.evaluate(input_fn=test_input_fn)
+  print('Accuracy (LinearClassifier): {0:f}'.format(scores['accuracy']))
 
   ### Convolutional network
-  classifier = learn.Estimator(model_fn=conv_model)
-  classifier.fit(mnist.train.images,
-                 mnist.train.labels,
-                 batch_size=100,
-                 steps=20000)
-  score = metrics.accuracy_score(mnist.test.labels,
-                                 list(classifier.predict(mnist.test.images)))
-  print('Accuracy: {0:f}'.format(score))
+  classifier = tf.estimator.Estimator(model_fn=conv_model)
+  classifier.train(input_fn=train_input_fn, steps=200)
+  scores = classifier.evaluate(input_fn=test_input_fn)
+  print('Accuracy (conv_model): {0:f}'.format(scores['accuracy']))
 
 
 if __name__ == '__main__':

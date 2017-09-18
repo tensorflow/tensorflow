@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+import six
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.platform import googletest
 
 
@@ -45,6 +49,25 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(and_result, [0, 0, 3, 10])
         self.assertAllEqual(or_result, [5, 5, 7, 15])
         self.assertAllEqual(xor_result, [5, 5, 4, 5])
+
+  def testPopulationCountOp(self):
+    dtype_list = [dtypes.int8, dtypes.int16,
+                  dtypes.int32, dtypes.int64,
+                  dtypes.uint8, dtypes.uint16]
+    raw_inputs = [0, 1, -1, 3, -3, 5, -5, 14, -14,
+                  127, 128, 255, 256, 65535, 65536,
+                  2**31 - 1, 2**31, 2**32 - 1, 2**32, -2**32 + 1, -2**32,
+                  -2**63 + 1, 2**63 - 1]
+    def count_bits(x):
+      return sum([bin(z).count("1") for z in six.iterbytes(x.tobytes())])
+    for dtype in dtype_list:
+      with self.test_session(use_gpu=True) as sess:
+        print("PopulationCount test: ", dtype)
+        inputs = np.array(raw_inputs, dtype=dtype.as_numpy_dtype)
+        truth = [count_bits(x) for x in inputs]
+        input_tensor = constant_op.constant(inputs, dtype=dtype)
+        popcnt_result = sess.run(gen_bitwise_ops.population_count(input_tensor))
+        self.assertAllEqual(truth, popcnt_result)
 
   def testInvertOp(self):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,

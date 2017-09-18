@@ -23,6 +23,13 @@ limitations under the License.
 
 namespace xla {
 
+LocalClientOptions::LocalClientOptions(perftools::gputools::Platform* platform,
+                                       int number_of_replicas,
+                                       int intra_op_parallelism_threads)
+    : platform_(platform),
+      number_of_replicas_(number_of_replicas),
+      intra_op_parallelism_threads_(intra_op_parallelism_threads) {}
+
 LocalClientOptions& LocalClientOptions::set_platform(
     perftools::gputools::Platform* platform) {
   platform_ = platform;
@@ -140,6 +147,14 @@ ClientLibrary::GetOrCreateCompileOnlyClient(
   client_library.compile_only_instances_.insert(
       std::make_pair(platform->id(), std::move(instance)));
   return cl;
+}
+
+/* static */ void ClientLibrary::DestroyLocalInstances() {
+  ClientLibrary& client_library = Singleton();
+  tensorflow::mutex_lock lock(client_library.service_mutex_);
+
+  client_library.local_instances_.clear();
+  client_library.compile_only_instances_.clear();
 }
 
 }  // namespace xla

@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
@@ -41,9 +41,9 @@ class MklIdentityOp : public OpKernel {
     bool input_in_mkl_format = mkl_shape_input.IsMklTensor();
 
     if (input_in_mkl_format) {
-      ForwarMklTensorInToOut(context, 0, 0);
+      ForwardMklTensorInToOut(context, 0, 0);
     } else {
-      FowardTfTensorInToOut(context, 0, 0);
+      ForwardTfTensorInToOut(context, 0, 0);
     }
   }
 

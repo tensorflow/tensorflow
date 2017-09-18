@@ -38,17 +38,9 @@ from tensorflow.python.training import session_run_hook
 class _SweepHook(session_run_hook.SessionRunHook):
   """Keeps track of row/col sweeps, and runs prep ops before each sweep."""
 
-  def __init__(self,
-               is_row_sweep_var,
-               train_op,
-               num_rows,
-               num_cols,
-               processed_row_indices,
-               processed_col_indices,
-               row_prep_ops,
-               col_prep_ops,
-               cache_init_ops,
-               completed_sweeps_var):
+  def __init__(self, is_row_sweep_var, train_op, num_rows, num_cols,
+               processed_row_indices, processed_col_indices, row_prep_ops,
+               col_prep_ops, cache_init_ops, completed_sweeps_var):
     """Initializes SweepHook.
 
     Args:
@@ -90,12 +82,9 @@ class _SweepHook(session_run_hook.SessionRunHook):
     # _is_row_sweep_var and incrementing the global_step and completed_sweeps
     # counters. They have control_dependencies on train_op.
     self._fetches = self._create_switch_ops(processed_row_indices,
-                                            processed_col_indices,
-                                            train_op)
+                                            processed_col_indices, train_op)
 
-  def _create_switch_ops(self,
-                         processed_row_indices,
-                         processed_col_indices,
+  def _create_switch_ops(self, processed_row_indices, processed_col_indices,
                          train_op):
     """Creates ops to update is_row_sweep_var, global_step and completed_sweeps.
 
@@ -147,17 +136,20 @@ class _SweepHook(session_run_hook.SessionRunHook):
     # After running the train_op, update processed_rows or processed_cols
     # tensors, depending on whether we are currently doing a row or a col sweep
     with ops.control_dependencies([train_op]):
+
       def get_row_update_op():
         with ops.colocate_with(processed_rows):
-          return state_ops.scatter_update(
-              processed_rows, processed_row_indices,
-              array_ops.ones_like(processed_row_indices, dtype=dtypes.bool))
+          return state_ops.scatter_update(processed_rows, processed_row_indices,
+                                          array_ops.ones_like(
+                                              processed_row_indices,
+                                              dtype=dtypes.bool))
 
       def get_col_update_op():
         with ops.colocate_with(processed_cols):
-          return state_ops.scatter_update(
-              processed_cols, processed_col_indices,
-              array_ops.ones_like(processed_col_indices, dtype=dtypes.bool))
+          return state_ops.scatter_update(processed_cols, processed_col_indices,
+                                          array_ops.ones_like(
+                                              processed_col_indices,
+                                              dtype=dtypes.bool))
 
       update_processed_op = control_flow_ops.cond(
           self._is_row_sweep_var, get_row_update_op, get_col_update_op)
@@ -166,6 +158,7 @@ class _SweepHook(session_run_hook.SessionRunHook):
       # If this is the case, flip the is_row_sweep_var and reset processed_rows
       # and processed_cols tensors.
       with ops.control_dependencies([update_processed_op]):
+
         def get_switch_op():
           return state_ops.assign(
               self._is_row_sweep_var,
@@ -182,13 +175,17 @@ class _SweepHook(session_run_hook.SessionRunHook):
             lambda: math_ops.reduce_all(processed_cols),
             name="sweep_hook_is_sweep_done")
         switch_op = control_flow_ops.cond(
-            is_sweep_done, get_switch_op, control_flow_ops.no_op,
+            is_sweep_done,
+            get_switch_op,
+            control_flow_ops.no_op,
             name="sweep_hook_switch_op")
         reset_op = control_flow_ops.cond(
-            is_sweep_done, get_reset_op, control_flow_ops.no_op,
+            is_sweep_done,
+            get_reset_op,
+            control_flow_ops.no_op,
             name="sweep_hook_reset_op")
-        switch_ops = control_flow_ops.group(switch_op, reset_op,
-                                            name="sweep_hook_switch_ops")
+        switch_ops = control_flow_ops.group(
+            switch_op, reset_op, name="sweep_hook_switch_ops")
 
         with ops.control_dependencies([switch_ops]):
           # Op to increment the completed_sweeps counter.
@@ -208,7 +205,8 @@ class _SweepHook(session_run_hook.SessionRunHook):
                 name="global_step_incr")
 
           incr_ops = control_flow_ops.group(
-              completed_sweeps_incr_op, global_step_incr_op,
+              completed_sweeps_incr_op,
+              global_step_incr_op,
               name="counter_incr_ops")
 
     return [is_sweep_done, switch_ops, incr_ops]
@@ -260,7 +258,7 @@ class _StopAtSweepHook(session_run_hook.SessionRunHook):
   def begin(self):
     try:
       self._completed_sweeps_var = ops.get_default_graph().get_tensor_by_name(
-          WALSMatrixFactorization.COMPLETED_SWEEPS+":0")
+          WALSMatrixFactorization.COMPLETED_SWEEPS + ":0")
     except KeyError:
       raise RuntimeError(WALSMatrixFactorization.COMPLETED_SWEEPS +
                          " counter should be created to use StopAtSweepHook.")
@@ -288,12 +286,10 @@ def _wals_factorization_model_function(features, labels, mode, params):
     A ModelFnOps object.
   """
   assert labels is None
-  use_factors_weights_cache = (
-      params["use_factors_weights_cache_for_training"]
-      and mode == model_fn.ModeKeys.TRAIN)
-  use_gramian_cache = (
-      params["use_gramian_cache_for_training"]
-      and mode == model_fn.ModeKeys.TRAIN)
+  use_factors_weights_cache = (params["use_factors_weights_cache_for_training"]
+                               and mode == model_fn.ModeKeys.TRAIN)
+  use_gramian_cache = (params["use_gramian_cache_for_training"] and
+                       mode == model_fn.ModeKeys.TRAIN)
   max_sweeps = params["max_sweeps"]
   model = factorization_ops.WALSModel(
       params["num_rows"],
@@ -348,15 +344,22 @@ def _wals_factorization_model_function(features, labels, mode, params):
 
   def update_row_factors():
     return model.update_row_factors(sp_input=input_rows, transpose_input=False)
+
   def update_col_factors():
     return model.update_col_factors(sp_input=input_cols, transpose_input=True)
-  _, train_op, loss = control_flow_ops.cond(
-      is_row_sweep, update_row_factors, update_col_factors)
 
-  row_prep_ops = [model.row_update_prep_gramian_op,
-                  model.initialize_row_update_op]
-  col_prep_ops = [model.col_update_prep_gramian_op,
-                  model.initialize_col_update_op]
+  (_, train_op,
+   unregularized_loss, regularization, sum_weights) = control_flow_ops.cond(
+       is_row_sweep, update_row_factors, update_col_factors)
+  loss = unregularized_loss + regularization
+  root_weighted_squared_error = math_ops.sqrt(unregularized_loss / sum_weights)
+
+  row_prep_ops = [
+      model.row_update_prep_gramian_op, model.initialize_row_update_op
+  ]
+  col_prep_ops = [
+      model.col_update_prep_gramian_op, model.initialize_col_update_op
+  ]
   cache_init_ops = [model.worker_init]
 
   sweep_hook = _SweepHook(
@@ -369,13 +372,15 @@ def _wals_factorization_model_function(features, labels, mode, params):
       row_prep_ops,
       col_prep_ops,
       cache_init_ops,
-      completed_sweeps_var,
-  )
+      completed_sweeps_var,)
   training_hooks = [sweep_hook]
   if max_sweeps is not None:
     training_hooks.append(_StopAtSweepHook(max_sweeps))
 
-  summary.scalar("loss", loss)
+  # The root weighted squared error =
+  #   \sqrt( \sum_{i,j} w_ij * (a_ij - r_ij)^2 / \sum_{i,j} w_ij )
+  summary.scalar("loss", loss)  # the estimated total training loss
+  summary.scalar("root_weighted_squared_error", root_weighted_squared_error)
   summary.scalar("completed_sweeps", completed_sweeps_var)
 
   # Prediction ops (only return predictions in INFER mode)
@@ -384,11 +389,13 @@ def _wals_factorization_model_function(features, labels, mode, params):
     project_row = features[WALSMatrixFactorization.PROJECT_ROW]
     projection_weights = features.get(
         WALSMatrixFactorization.PROJECTION_WEIGHTS)
+
     def get_row_projection():
       return model.project_row_factors(
           sp_input=input_rows,
           projection_weights=projection_weights,
           transpose_input=False)
+
     def get_col_projection():
       return model.project_col_factors(
           sp_input=input_cols,
@@ -396,8 +403,8 @@ def _wals_factorization_model_function(features, labels, mode, params):
           transpose_input=True)
 
     predictions[WALSMatrixFactorization.PROJECTION_RESULT] = (
-        control_flow_ops.cond(
-            project_row, get_row_projection, get_col_projection))
+        control_flow_ops.cond(project_row, get_row_projection,
+                              get_col_projection))
 
   return model_fn.ModelFnOps(
       mode=mode,
@@ -556,26 +563,41 @@ class WALSMatrixFactorization(estimator.Estimator):
     # TODO(walidk): Provide input pipelines that handle missing rows.
 
     params = {
-        "num_rows": num_rows,
-        "num_cols": num_cols,
-        "embedding_dimension": embedding_dimension,
-        "unobserved_weight": unobserved_weight,
-        "regularization_coeff": regularization_coeff,
-        "row_init": row_init,
-        "col_init": col_init,
-        "num_row_shards": num_row_shards,
-        "num_col_shards": num_col_shards,
-        "row_weights": row_weights,
-        "col_weights": col_weights,
-        "max_sweeps": max_sweeps,
+        "num_rows":
+            num_rows,
+        "num_cols":
+            num_cols,
+        "embedding_dimension":
+            embedding_dimension,
+        "unobserved_weight":
+            unobserved_weight,
+        "regularization_coeff":
+            regularization_coeff,
+        "row_init":
+            row_init,
+        "col_init":
+            col_init,
+        "num_row_shards":
+            num_row_shards,
+        "num_col_shards":
+            num_col_shards,
+        "row_weights":
+            row_weights,
+        "col_weights":
+            col_weights,
+        "max_sweeps":
+            max_sweeps,
         "use_factors_weights_cache_for_training":
             use_factors_weights_cache_for_training,
-        "use_gramian_cache_for_training": use_gramian_cache_for_training
+        "use_gramian_cache_for_training":
+            use_gramian_cache_for_training
     }
-    self._row_factors_names = ["row_factors_shard_%d" % i
-                               for i in range(num_row_shards)]
-    self._col_factors_names = ["col_factors_shard_%d" % i
-                               for i in range(num_col_shards)]
+    self._row_factors_names = [
+        "row_factors_shard_%d" % i for i in range(num_row_shards)
+    ]
+    self._col_factors_names = [
+        "col_factors_shard_%d" % i for i in range(num_col_shards)
+    ]
 
     super(WALSMatrixFactorization, self).__init__(
         model_fn=_wals_factorization_model_function,

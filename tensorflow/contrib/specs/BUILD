@@ -32,6 +32,7 @@ py_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "@six_archive//:six",
     ],
 )
 
@@ -50,7 +51,6 @@ tf_py_test(
 
 tf_py_test(
     name = "summaries_test",
-    size = "small",
     srcs = ["python/summaries_test.py"],
     additional_deps = [
         ":specs",

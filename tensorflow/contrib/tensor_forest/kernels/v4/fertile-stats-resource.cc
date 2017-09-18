@@ -20,14 +20,8 @@ namespace tensorflow {
 namespace tensorforest {
 
 void FertileStatsResource::AddExampleToStatsAndInitialize(
-    const std::unique_ptr<TensorDataSet>& input_data,
-    const InputTarget* target, const std::vector<int>& examples,
-    int32 node_id, int32 node_depth, bool* is_finished) {
-  // Set leaf's counts for calculating probabilities.
-  for (int example : examples) {
-    model_op_->UpdateModel(&leaf_stats_[node_id], target, example);
-  }
-
+    const std::unique_ptr<TensorDataSet>& input_data, const InputTarget* target,
+    const std::vector<int>& examples, int32 node_id, bool* is_finished) {
   // Update stats or initialize if needed.
   if (collection_op_->IsInitialized(node_id)) {
     collection_op_->AddExample(input_data, target, examples, node_id);
@@ -36,7 +30,7 @@ void FertileStatsResource::AddExampleToStatsAndInitialize(
     // the top but gradually becomes less of an issue as the tree grows.
     for (int example : examples) {
       collection_op_->CreateAndInitializeCandidateWithExample(
-          input_data, example, node_id);
+          input_data, target, example, node_id);
       if (collection_op_->IsInitialized(node_id)) {
         break;
       }
@@ -47,8 +41,6 @@ void FertileStatsResource::AddExampleToStatsAndInitialize(
 }
 
 void FertileStatsResource::AllocateNode(int32 node_id, int32 depth) {
-  leaf_stats_[node_id] = LeafStat();
-  model_op_->InitModel(&leaf_stats_[node_id]);
   collection_op_->InitializeSlot(node_id, depth);
 }
 
@@ -62,7 +54,6 @@ void FertileStatsResource::Allocate(int32 parent_depth,
 
 void FertileStatsResource::Clear(int32 node) {
   collection_op_->ClearSlot(node);
-  leaf_stats_.erase(node);
 }
 
 bool FertileStatsResource::BestSplit(int32 node_id, SplitCandidate* best,
@@ -71,27 +62,16 @@ bool FertileStatsResource::BestSplit(int32 node_id, SplitCandidate* best,
 }
 
 void FertileStatsResource::MaybeInitialize() {
-  if (leaf_stats_.empty()) {
-    AllocateNode(0, 0);
-  }
+  collection_op_->MaybeInitialize();
 }
 
 void FertileStatsResource::ExtractFromProto(const FertileStats& stats) {
   collection_op_ =
       SplitCollectionOperatorFactory::CreateSplitCollectionOperator(params_);
   collection_op_->ExtractFromProto(stats);
-  for (int i = 0; i < stats.node_to_slot_size(); ++i) {
-    const auto& slot = stats.node_to_slot(i);
-    leaf_stats_[slot.node_id()] = slot.leaf_stats();
-  }
 }
 
 void FertileStatsResource::PackToProto(FertileStats* stats) const {
-  for (const auto& entry : leaf_stats_) {
-    auto* slot = stats->add_node_to_slot();
-    *slot->mutable_leaf_stats() = entry.second;
-    slot->set_node_id(entry.first);
-  }
   collection_op_->PackToProto(stats);
 }
 }  // namespace tensorforest

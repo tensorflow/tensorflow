@@ -17,10 +17,9 @@ limitations under the License.
 
 #include <utility>
 
-#include "external/llvm/include/llvm/ADT/Triple.h"
+#include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 

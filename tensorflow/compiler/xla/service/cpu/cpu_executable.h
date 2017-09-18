@@ -78,7 +78,14 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
+  const Status EqualOrFail(const Executable& executable) {
+    // TODO(b/62952745) Implement equality test on CPU executable.
+    return Unimplemented("Equality test on CPU executable is not implemented.");
+  }
+
   static int64 ShapeSizeBytes(const Shape& shape);
+
+  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
  private:
   // Allocate buffers required for execution and assign them to the elements of

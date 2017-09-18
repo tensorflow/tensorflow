@@ -24,14 +24,15 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py
 
 RUN pip --no-cache-dir install \
+        Pillow \
+        h5py \
         ipykernel \
         jupyter \
         matplotlib \
         numpy \
+        pandas \
         scipy \
         sklearn \
-        pandas \
-        Pillow \
         && \
     python -m ipykernel.kernelspec
 

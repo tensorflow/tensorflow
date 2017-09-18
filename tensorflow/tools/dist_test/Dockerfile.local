@@ -23,7 +23,6 @@ MAINTAINER Shanqing Cai <cais@google.com>
 
 # Pick up some TF dependencies.
 RUN apt-get update && apt-get install -y \
-        python-numpy \
         python-pip \
         && \
     apt-get clean && \

@@ -63,6 +63,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import input as input_lib
@@ -505,7 +506,7 @@ class EstimatorModelFnTest(test.TestCase):
       return input_fn_utils.InputFnOps(
           features, labels, {'examples': serialized_tf_example})
 
-    est.export_savedmodel(est.model_dir + '/export', serving_input_fn)
+    est.export_savedmodel(os.path.join(est.model_dir, 'export'), serving_input_fn)
     self.assertTrue(self.mock_saver.restore.called)
 
 
@@ -851,6 +852,38 @@ class EstimatorTest(test.TestCase):
         util_test.latest_events(est.model_dir), ['OptimizeLoss/loss'])
     self.assertEqual(1, len(loss_summary))
 
+  def testSummaryWritingWithSummaryProto(self):
+
+    def _streaming_mean_squared_error_histogram(predictions,
+                                                labels,
+                                                weights=None,
+                                                metrics_collections=None,
+                                                updates_collections=None,
+                                                name=None):
+      metrics, update_ops = metric_ops.streaming_mean_squared_error(
+          predictions,
+          labels,
+          weights=weights,
+          metrics_collections=metrics_collections,
+          updates_collections=updates_collections,
+          name=name)
+      return summary.histogram('histogram', metrics), update_ops
+
+    est = estimator.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=200)
+    est.evaluate(
+        input_fn=boston_input_fn,
+        steps=200,
+        metrics={'MSE': _streaming_mean_squared_error_histogram})
+    events = util_test.latest_events(est.model_dir + '/eval')
+    output_values = {}
+    for e in events:
+      if e.HasField('summary'):
+        for v in e.summary.value:
+          output_values[v.tag] = v
+    self.assertTrue('MSE' in output_values)
+    self.assertTrue(output_values['MSE'].HasField('histo'))
+
   def testLossInGraphCollection(self):
 
     class _LossCheckerHook(session_run_hook.SessionRunHook):
@@ -955,10 +988,11 @@ class EstimatorTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         self.assertTrue('linear/linear/feature/matmul' in graph_ops)
-        self.assertSameElements(
-            ['bogus_lookup', 'feature'],
-            graph.get_collection(
-                constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS))
+        self.assertItemsEqual(
+          ['bogus_lookup', 'feature'],
+          [compat.as_str_any(x) for x in graph.get_collection(
+            constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS)])
+
 
     # cleanup
     gfile.DeleteRecursively(tmpdir)
@@ -1002,6 +1036,130 @@ class EstimatorTest(test.TestCase):
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         self.assertTrue('LookupTableModel' in graph_ops)
         self.assertFalse('LookupTableTrainingState' in graph_ops)
+
+    # cleanup
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_with_graph_transforms(self):
+    tmpdir = tempfile.mkdtemp()
+    est, serving_input_fn = _build_estimator_for_export_tests(tmpdir)
+
+    extra_file_name = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('my_extra_file'))
+    extra_file = gfile.GFile(extra_file_name, mode='w')
+    extra_file.write(EXTRA_FILE_CONTENT)
+    extra_file.close()
+    assets_extra = {'some/sub/directory/my_extra_file': extra_file_name}
+
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, serving_input_fn, assets_extra=assets_extra,
+        graph_rewrite_specs=[
+            estimator.GraphRewriteSpec(['tag_1'], []),
+            estimator.GraphRewriteSpec(['tag_2', 'tag_3'],
+                                       ['strip_unused_nodes'])])
+
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self.assertTrue(gfile.Exists(export_dir))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir), compat.as_bytes(
+                    'saved_model.pb'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir), compat.as_bytes('variables'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir),
+                compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir),
+                compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir), compat.as_bytes('assets'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir),
+                compat.as_bytes('assets/my_vocab_file'))))
+    self.assertEqual(
+        compat.as_bytes(VOCAB_FILE_CONTENT),
+        compat.as_bytes(
+            gfile.GFile(
+                os.path.join(
+                    compat.as_bytes(export_dir),
+                    compat.as_bytes('assets/my_vocab_file'))).read()))
+
+    expected_extra_path = os.path.join(
+        compat.as_bytes(export_dir),
+        compat.as_bytes('assets.extra/some/sub/directory/my_extra_file'))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir), compat.as_bytes('assets.extra'))))
+    self.assertTrue(gfile.Exists(expected_extra_path))
+    self.assertEqual(
+        compat.as_bytes(EXTRA_FILE_CONTENT),
+        compat.as_bytes(gfile.GFile(expected_extra_path).read()))
+
+    expected_vocab_file = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('my_vocab_file'))
+
+    # Restore, to validate that the export was well-formed.
+    # tag_1 is untransformed.
+    tags = ['tag_1']
+    with ops.Graph().as_default() as graph:
+      with session_lib.Session(graph=graph) as sess:
+        loader.load(sess, tags, export_dir)
+        assets = [
+            x.eval()
+            for x in graph.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
+        ]
+        self.assertItemsEqual([expected_vocab_file], assets)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('linear/linear/feature/matmul' in graph_ops)
+        # Since there were no transforms, both save ops are still present.
+        self.assertTrue('save/SaveV2/tensor_names' in graph_ops)
+        self.assertTrue('save_1/SaveV2/tensor_names' in graph_ops)
+        # Since there were no transforms, the hash table lookup is still there.
+        self.assertTrue('hash_table_Lookup' in graph_ops)
+
+    # Restore, to validate that the export was well-formed.
+    # tag_2, tag_3 was subjected to strip_unused_nodes.
+    tags = ['tag_2', 'tag_3']
+    with ops.Graph().as_default() as graph:
+      with session_lib.Session(graph=graph) as sess:
+        loader.load(sess, tags, export_dir)
+        assets = [
+            x.eval()
+            for x in graph.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
+        ]
+        self.assertItemsEqual([expected_vocab_file], assets)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('linear/linear/feature/matmul' in graph_ops)
+        # The Saver used to restore the checkpoint into the export Session
+        # was not added to the SAVERS collection, so strip_unused_nodes removes
+        # it.  The one explicitly created in export_savedmodel is tracked in
+        # the MetaGraphDef saver_def field, so that one is retained.
+        # TODO(soergel): Make Savers sane again.  I understand this is all a bit
+        # nuts but for now the test demonstrates what actually happens.
+        self.assertFalse('save/SaveV2/tensor_names' in graph_ops)
+        self.assertTrue('save_1/SaveV2/tensor_names' in graph_ops)
+        # The fake hash table lookup wasn't connected to anything; stripped.
+        self.assertFalse('hash_table_Lookup' in graph_ops)
 
     # cleanup
     gfile.DeleteRecursively(tmpdir)

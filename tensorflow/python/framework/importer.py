@@ -495,13 +495,21 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       if coloc_device:
         op._set_device(coloc_device)  # pylint: disable=protected-access
 
-    # Treat unused input mappings as an error, because they are likely to be
-    # due to a typo.
-    unused_input_keys = frozenset(input_map.keys()).difference(used_input_keys)
-    if unused_input_keys:
+    # Treat input mappings that don't appear in the graph as an error,
+    # because they are likely to be due to a typo.
+    def _IsImportedNodeOutput(tensor_name):
+      operation_name, output_index = _ParseTensorName(tensor_name)
+      try:
+        return output_index < len(name_to_op[operation_name].outputs)
+      except KeyError:
+        return False
+    absent_input_keys = [
+        k for k in frozenset(input_map.keys()).difference(used_input_keys)
+        if not _IsImportedNodeOutput(k)]
+    if absent_input_keys:
       raise ValueError(
           'Attempted to map inputs that were not found in graph_def: [%s]'
-          % ', '.join(unused_input_keys))
+          % ', '.join(absent_input_keys))
 
     if return_elements is None:
       return None

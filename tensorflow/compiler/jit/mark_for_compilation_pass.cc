@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -162,10 +163,12 @@ Status DeviceTypeOfDevice(const string& device, DeviceType* device_type) {
   return Status::OK();
 }
 
-// Does `node` have a DT_RESOURCE typed argument?
-bool HasResourceArgument(const Node& node) {
+// Tests whether `node` has a DT_RESOURCE typed input or output.
+bool HasResourceInputOrOutput(const Node& node) {
   return std::find(node.input_types().begin(), node.input_types().end(),
-                   DT_RESOURCE) != node.input_types().end();
+                   DT_RESOURCE) != node.input_types().end() ||
+         std::find(node.output_types().begin(), node.output_types().end(),
+                   DT_RESOURCE) != node.output_types().end();
 }
 
 Status FindCompilationCandidates(
@@ -173,8 +176,11 @@ Status FindCompilationCandidates(
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
     std::unordered_set<Node*>* candidates) {
   OptimizerOptions opts;
-  std::unique_ptr<FunctionLibraryRuntime> lib_runtime(NewFunctionLibraryRuntime(
-      nullptr, env, nullptr, TF_GRAPH_DEF_VERSION, flib_def, opts));
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
+                                        flib_def, opts));
+  FunctionLibraryRuntime* lib_runtime =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
 
   for (Node* node : graph.op_nodes()) {
     DeviceType device_type("");
@@ -188,18 +194,19 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime.get())) {
+        !IsCompilableCall(node->def(), jit_device_type, 0, lib_runtime)) {
       VLOG(2) << "Compilation rejected node: unsupported op " << node->name()
               << ": " << node->type_string();
       continue;
     }
-    if (!registration->compile_resource_ops && HasResourceArgument(*node)) {
-      VLOG(2) << "Compilation rejected node: resource argument " << node->name()
-              << ": " << node->type_string();
+    if (!registration->compile_resource_ops &&
+        HasResourceInputOrOutput(*node)) {
+      VLOG(2) << "Compilation rejected node: resource input/output "
+              << node->name() << ": " << node->type_string();
       continue;
     }
     if (node->type_string() == "While" &&
-        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime.get())) {
+        !IsCompilableWhile(*node, jit_device_type, 0, lib_runtime)) {
       continue;
     }
     candidates->insert(node);
@@ -253,6 +260,11 @@ Status MarkForCompilationPass::Run(
                                              &registration)) {
       return false;
     }
+
+    // Don't compile control trigger nodes. We won't preserve their deadness
+    // semantics correctly, so it's safest not to compile them.
+    if (node->IsControlTrigger()) return false;
+
     // If this device requires a JIT, we must say yes.
     if (registration->requires_compilation) return true;
 

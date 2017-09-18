@@ -227,6 +227,7 @@ var types = []struct {
 	{reflect.TypeOf(uint16(0)), C.TF_UINT16},
 	{reflect.TypeOf(complex(float64(0), float64(0))), C.TF_COMPLEX128},
 	// TODO(apassos): support DT_RESOURCE representation in go.
+	// TODO(keveman): support DT_VARIANT representation in go.
 }
 
 // shapeAndDataTypeOf returns the data type and shape of the Tensor

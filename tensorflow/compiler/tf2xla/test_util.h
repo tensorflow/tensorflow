@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 

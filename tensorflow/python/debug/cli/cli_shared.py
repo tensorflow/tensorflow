@@ -138,12 +138,20 @@ def parse_ranges_highlight(ranges_string):
     return None
 
 
+def numpy_printoptions_from_screen_info(screen_info):
+  if screen_info and "cols" in screen_info:
+    return {"linewidth": screen_info["cols"]}
+  else:
+    return {}
+
+
 def format_tensor(tensor,
                   tensor_name,
                   np_printoptions,
                   print_all=False,
                   tensor_slicing=None,
-                  highlight_options=None):
+                  highlight_options=None,
+                  include_numeric_summary=False):
   """Generate formatted str to represent a tensor or its slices.
 
   Args:
@@ -161,9 +169,12 @@ def format_tensor(tensor,
     highlight_options: (tensor_format.HighlightOptions) options to highlight
       elements of the tensor. See the doc of tensor_format.format_tensor()
       for more details.
+    include_numeric_summary: Whether a text summary of the numeric values (if
+      applicable) will be included.
 
   Returns:
-    (str) Formatted str representing the (potentially sliced) tensor.
+    An instance of `debugger_cli_common.RichTextLines` representing the
+    (potentially sliced) tensor.
   """
 
   if tensor_slicing:
@@ -183,6 +194,7 @@ def format_tensor(tensor,
       value,
       sliced_name,
       include_metadata=True,
+      include_numeric_summary=include_numeric_summary,
       np_printoptions=np_printoptions,
       highlight_options=highlight_options)
 
@@ -286,10 +298,14 @@ def get_tfdbg_logo():
   return debugger_cli_common.RichTextLines(lines)
 
 
+_HORIZONTAL_BAR = "======================================"
+
+
 def get_run_start_intro(run_call_count,
                         fetches,
                         feed_dict,
-                        tensor_filters):
+                        tensor_filters,
+                        is_callable_runner=False):
   """Generate formatted intro for run-start UI.
 
   Args:
@@ -300,6 +316,8 @@ def get_run_start_intro(run_call_count,
       for more details.
     tensor_filters: (dict) A dict from tensor-filter name to tensor-filter
       callable.
+    is_callable_runner: (bool) whether a runner returned by
+        Session.make_callable is being run.
 
   Returns:
     (RichTextLines) Formatted intro message about the `Session.run()` call.
@@ -308,29 +326,39 @@ def get_run_start_intro(run_call_count,
   fetch_lines = _get_fetch_names(fetches)
 
   if not feed_dict:
-    feed_dict_lines = ["(Empty)"]
+    feed_dict_lines = [debugger_cli_common.RichLine("  (Empty)")]
   else:
     feed_dict_lines = []
     for feed_key in feed_dict:
       if isinstance(feed_key, six.string_types):
-        feed_dict_lines.append(feed_key)
+        feed_key_name = feed_key
+      elif hasattr(feed_key, "name"):
+        feed_key_name = feed_key.name
       else:
-        feed_dict_lines.append(feed_key.name)
+        feed_key_name = str(feed_key)
+      feed_dict_line = debugger_cli_common.RichLine("  ")
+      feed_dict_line += debugger_cli_common.RichLine(
+          feed_key_name,
+          debugger_cli_common.MenuItem(None, "pf %s" % feed_key_name))
+      feed_dict_lines.append(feed_dict_line)
+  feed_dict_lines = debugger_cli_common.rich_text_lines_from_rich_line_list(
+      feed_dict_lines)
 
-  intro_lines = [
-      "======================================",
-      "Session.run() call #%d:" % run_call_count,
-      "", "Fetch(es):"
-  ]
-  intro_lines.extend(["  " + line for line in fetch_lines])
-  intro_lines.extend(["", "Feed dict(s):"])
-  intro_lines.extend(["  " + line for line in feed_dict_lines])
-  intro_lines.extend([
-      "======================================", "",
-      "Select one of the following commands to proceed ---->"
-  ])
-
-  out = debugger_cli_common.RichTextLines(intro_lines)
+  out = debugger_cli_common.RichTextLines(_HORIZONTAL_BAR)
+  if is_callable_runner:
+    out.append("Running a runner returned by Session.make_callabe()")
+  else:
+    out.append("Session.run() call #%d:" % run_call_count)
+    out.append("")
+    out.append("Fetch(es):")
+    out.extend(debugger_cli_common.RichTextLines(
+        ["  " + line for line in fetch_lines]))
+    out.append("")
+    out.append("Feed dict:")
+    out.extend(feed_dict_lines)
+  out.append(_HORIZONTAL_BAR)
+  out.append("")
+  out.append("Select one of the following commands to proceed ---->")
 
   out.extend(
       _recommend_command(
@@ -392,7 +420,10 @@ def get_run_start_intro(run_call_count,
   return out
 
 
-def get_run_short_description(run_call_count, fetches, feed_dict):
+def get_run_short_description(run_call_count,
+                              fetches,
+                              feed_dict,
+                              is_callable_runner=False):
   """Get a short description of the run() call.
 
   Args:
@@ -401,11 +432,15 @@ def get_run_short_description(run_call_count, fetches, feed_dict):
       for more details.
     feed_dict: Feeds to the `Session.run()` call. See doc of `Session.run()`
       for more details.
+    is_callable_runner: (bool) whether a runner returned by
+        Session.make_callable is being run.
 
   Returns:
     (str) A short description of the run() call, including information about
       the fetche(s) and feed(s).
   """
+  if is_callable_runner:
+    return "runner from make_callable()"
 
   description = "run #%d: " % run_call_count
 
@@ -425,7 +460,8 @@ def get_run_short_description(run_call_count, fetches, feed_dict):
     if len(feed_dict) == 1:
       for key in feed_dict:
         description += "1 feed (%s)" % (
-            key if isinstance(key, six.string_types) else key.name)
+            key if isinstance(key, six.string_types) or not hasattr(key, "name")
+            else key.name)
     else:
       description += "%d feeds" % len(feed_dict)
 

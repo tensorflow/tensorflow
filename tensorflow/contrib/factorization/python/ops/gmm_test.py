@@ -28,9 +28,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed as random_seed_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
+from tensorflow.python.training import queue_runner
 
 FLAGS = flags.FLAGS
 
@@ -102,7 +104,7 @@ class GMMTest(test.TestCase):
                          np.linalg.inv(covs[assignments[r]])), points[r, :] -
                   means[assignments[r]])))
     return (points, assignments, scores)
-  
+
   def test_weights(self):
     """Tests the shape of the weights."""
     gmm = gmm_lib.GMM(self.num_centers,
@@ -221,6 +223,28 @@ class GMMTest(test.TestCase):
 
     gmm.fit(input_fn=get_input_fn(x), steps=iterations)
     self.assertFalse(np.isnan(gmm.clusters()).any())
+
+
+class GMMTestQueues(test.TestCase):
+
+  def input_fn(self):
+    def _fn():
+      queue = data_flow_ops.FIFOQueue(capacity=10,
+                                      dtypes=dtypes.float32,
+                                      shapes=[10, 3])
+      enqueue_op = queue.enqueue(array_ops.zeros([10, 3], dtype=dtypes.float32))
+      queue_runner.add_queue_runner(queue_runner.QueueRunner(queue,
+                                                             [enqueue_op]))
+      return queue.dequeue(), None
+    return _fn
+
+  # This test makes sure that there are no deadlocks when using a QueueRunner.
+  # Note that since cluster initialization is dependendent on inputs, if input
+  # is generated using a QueueRunner, one has to make sure that these runners
+  # are started before the initialization.
+  def test_queues(self):
+    gmm = gmm_lib.GMM(2, covariance_type='diag')
+    gmm.fit(input_fn=self.input_fn(), steps=1)
 
 
 if __name__ == '__main__':

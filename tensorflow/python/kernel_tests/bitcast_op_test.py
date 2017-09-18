@@ -76,6 +76,12 @@ class BitcastTest(test.TestCase):
     datatype = dtypes.int8
     array_ops.bitcast(x, datatype, None)
 
+  def testQuantizeType(self):
+    shape = [3, 4]
+    x = np.zeros(shape, np.uint16)
+    datatype = dtypes.quint16
+    self._testBitcast(x, datatype, shape)
+
 
 if __name__ == "__main__":
   test.main()

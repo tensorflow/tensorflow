@@ -40,6 +40,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.framework import test_util
 
 
 # pylint: enable=protected-access
@@ -210,7 +211,7 @@ class RNNCellTest(test.TestCase):
           sess.run([variables_lib.global_variables_initializer()])
           sess.run([g, out_m],
                    {x.name: 1 * np.ones([batch_size, input_size]),
-               m.name: 0.1 * np.ones([batch_size - 1, state_size])})
+                    m.name: 0.1 * np.ones([batch_size - 1, state_size])})
 
   def testBasicLSTMCellStateSizeError(self):
     """Tests that state_size must be num_units * 2."""
@@ -218,7 +219,7 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         num_units = 2
-        state_size = num_units * 3 # state_size must be num_units * 2
+        state_size = num_units * 3  # state_size must be num_units * 2
         batch_size = 3
         input_size = 4
         x = array_ops.zeros([batch_size, input_size])
@@ -406,6 +407,31 @@ class RNNCellTest(test.TestCase):
         # States are left untouched
         self.assertAllClose(res[2], res[3])
 
+  def testResidualWrapperWithSlice(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 5])
+        m = array_ops.zeros([1, 3])
+        base_cell = rnn_cell_impl.GRUCell(3)
+        g, m_new = base_cell(x, m)
+        variable_scope.get_variable_scope().reuse_variables()
+        def residual_with_slice_fn(inp, out):
+          inp_sliced = array_ops.slice(inp, [0, 0], [-1, 3])
+          return inp_sliced + out
+        g_res, m_new_res = rnn_cell_impl.ResidualWrapper(
+            base_cell, residual_with_slice_fn)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res_g, res_g_res, res_m_new, res_m_new_res = sess.run(
+            [g, g_res, m_new, m_new_res], {
+                x: np.array([[1., 1., 1., 1., 1.]]),
+                m: np.array([[0.1, 0.1, 0.1]])
+            })
+        # Residual connections
+        self.assertAllClose(res_g_res, res_g + [1., 1., 1.])
+        # States are left untouched
+        self.assertAllClose(res_m_new, res_m_new_res)
+
   def testDeviceWrapper(self):
     with variable_scope.variable_scope(
         "root", initializer=init_ops.constant_initializer(0.5)):
@@ -420,11 +446,12 @@ class RNNCellTest(test.TestCase):
       # Can't perform this test w/o a GPU
       return
 
+    gpu_dev = test.gpu_device_name()
     with self.test_session(use_gpu=True) as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 1, 3])
-        cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), "/gpu:0")
+        cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), gpu_dev)
         with ops.device("/cpu:0"):
           outputs, _ = rnn.dynamic_rnn(
               cell=cell, inputs=x, dtype=dtypes.float32)
@@ -436,7 +463,7 @@ class RNNCellTest(test.TestCase):
         _ = sess.run(outputs, options=opts, run_metadata=run_metadata)
 
       step_stats = run_metadata.step_stats
-      ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+      ix = 0 if gpu_dev in step_stats.dev_stats[0].device else 1
       gpu_stats = step_stats.dev_stats[ix].node_stats
       cpu_stats = step_stats.dev_stats[1 - ix].node_stats
       self.assertFalse([s for s in cpu_stats if "gru_cell" in s.node_name])
@@ -629,20 +656,26 @@ class DropoutWrapperTest(test.TestCase):
     self.assertAllClose(true_full_output[1], res[1].h)
     self.assertAllClose(true_full_final_c, res[1].c)
 
-  def testDropoutWrapperKeepNoState(self):
+  def testDropoutWrapperKeepNoStateExceptLSTMCellMemory(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
     keep_none = variable_scope.get_variable("none", initializer=1e-10)
+    # Even though we dropout state, by default DropoutWrapper never
+    # drops out the memory ("c") term of an LSTMStateTuple.
     res = self._testDropoutWrapper(
         input_keep_prob=keep_all, output_keep_prob=keep_all,
         state_keep_prob=keep_none)
+    true_c_state = np.array(
+        [[1.713925, 1.713925, 1.713925]], dtype=np.float32)
     true_full_output = np.array(
         [[[0.751109, 0.751109, 0.751109]],
          [[0.895509, 0.895509, 0.895509]]], dtype=np.float32)
     self.assertAllClose(true_full_output[0], res[0][0])
     # Second output is modified by zero input state
     self.assertGreater(np.linalg.norm(true_full_output[1] - res[0][1]), 1e-4)
+    # h state has been set to zero
     self.assertAllClose(np.zeros(res[1].h.shape), res[1].h)
-    self.assertAllClose(np.zeros(res[1].c.shape), res[1].c)
+    # c state of an LSTMStateTuple is NEVER modified.
+    self.assertAllClose(true_c_state, res[1].c)
 
   def testDropoutWrapperKeepNoInput(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)

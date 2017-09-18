@@ -1,4 +1,4 @@
-# Building Input Functions with tf.contrib.learn
+# Building Input Functions with tf.estimator
 
 This tutorial introduces you to creating input functions in tf.estimator.
 You'll get an overview of how to construct an `input_fn` to preprocess and feed
@@ -249,7 +249,7 @@ here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/input_fn/bos
 
 ### Importing the Housing Data
 
-To start, set up your imports (including `pandas` and `tensorflow`) and @{$monitors#enabling-logging-with-tensorflow$set logging verbosity} to
+To start, set up your imports (including `pandas` and `tensorflow`) and set logging verbosity to
 `INFO` for more detailed log output:
 
 ```python

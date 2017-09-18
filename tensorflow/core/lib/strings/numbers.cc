@@ -234,7 +234,7 @@ bool safe_strtou64(StringPiece str, uint64* value) {
   SkipSpaces(&str);
   if (!isdigit(SafeFirstChar(str))) return false;
 
-  int64 result = 0;
+  uint64 result = 0;
   do {
     int digit = SafeFirstChar(str) - '0';
     if ((kuint64max - digit) / 10 < result) {

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -36,19 +37,11 @@ OpDef MakeOpDefWithLists() {
   return op_reg_data.op_def;
 }
 
-TensorShapeProto S(std::initializer_list<int64> dims) {
-  PartialTensorShape shape(dims);
-  TensorShapeProto ret;
-  shape.AsProto(&ret);
-  return ret;
+PartialTensorShape S(std::initializer_list<int64> dims) {
+  return PartialTensorShape(dims);
 }
 
-TensorShapeProto Unknown() {
-  PartialTensorShape shape;
-  TensorShapeProto ret;
-  shape.AsProto(&ret);
-  return ret;
-}
+PartialTensorShape Unknown() { return PartialTensorShape(); }
 
 }  // namespace
 
@@ -1537,7 +1530,7 @@ void ShapeInferenceTest::TestMergeHandles(bool input_not_output) {
                      {});
   auto make_shape = [&c](std::initializer_list<int64> dim_sizes) {
     ShapeHandle s;
-    TF_CHECK_OK(c.MakeShapeFromShapeProto(S(dim_sizes), &s));
+    TF_CHECK_OK(c.MakeShapeFromPartialTensorShape(S(dim_sizes), &s));
     return s;
   };
   auto get_shapes_and_types_from_context = [&](int idx) {
@@ -1648,7 +1641,7 @@ void ShapeInferenceTest::TestRelaxHandles(bool input_not_output) {
                      {});
   auto make_shape = [&c](std::initializer_list<int64> dim_sizes) {
     ShapeHandle s;
-    TF_CHECK_OK(c.MakeShapeFromShapeProto(S(dim_sizes), &s));
+    TF_CHECK_OK(c.MakeShapeFromPartialTensorShape(S(dim_sizes), &s));
     return s;
   };
   auto get_shapes_and_types_from_context = [&](int idx) {

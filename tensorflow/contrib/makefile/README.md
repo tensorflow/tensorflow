@@ -104,6 +104,9 @@ Then, execute the following:
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
 tensorflow/contrib/makefile/compile_android_protobuf.sh -c
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB=`CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
+	tensorflow/contrib/makefile/compile_nsync.sh -t android -a armeabi-v7a`
 make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID
 ```
 
@@ -130,7 +133,7 @@ For more details, see the [benchmark documentation](../../tools/benchmark).
 ## iOS
 
 _Note: To use this library in an iOS application, see related instructions in
-the [iOS examples](../ios_examples/) directory._
+the [iOS examples](../../examples/ios/) directory._
 
 Install XCode 7.3 or more recent. If you have not already, you will need to
 install the command-line tools using `xcode-select`:
@@ -176,7 +179,7 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app.
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
+[tensorflow/examples/ios](../../examples/ios/) shows how to use the static
 library in a simple app.
 
 ### Building by hand
@@ -194,6 +197,13 @@ Next, you will need to compile protobufs for iOS:
 
 ```bash
 tensorflow/contrib/makefile/compile_ios_protobuf.sh 
+```
+
+Then, you will need to compile the nsync library for iOS:
+
+```bash
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
 ```
 
 Then, you can run the makefile specifying iOS as the target, along with the
@@ -214,13 +224,14 @@ benchmark program. Although successfully compiling the benchmark program is a
 sign of success, the program is not a complete iOS app. 
 
 To see TensorFlow running on iOS, the example Xcode project in
-[tensorflow/contrib/ios_examples](../ios_examples) shows how to use the static
+[tensorflow/examples/ios](../../examples/ios/) shows how to use the static
 library in a simple app.
 
 #### Universal binaries
 
 In some situations, you will need a universal library.  In that case, you will
-still need to run `compile_ios_protobuf.sh`, but this time follow it with:
+still need to run `compile_ios_protobuf.sh` and `compile_nsync.sh`, but this
+time follow it with:
 
 ```bash
 compile_ios_tensorflow.sh
@@ -258,6 +269,8 @@ make
 sudo make install
 sudo ldconfig  # refresh shared library cache
 cd ../../../../..
+export HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+export TARGET_NSYNC_LIB="$HOST_NSYNC_LIB"
 ```
 
 Once that's done, you can use make to build the library and example:

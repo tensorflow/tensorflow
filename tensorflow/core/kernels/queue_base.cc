@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/queue_base.h"
 
 #include <vector>
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"

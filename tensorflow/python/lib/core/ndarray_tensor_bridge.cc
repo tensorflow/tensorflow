@@ -49,11 +49,14 @@ void DelayedNumpyDecref(void* data, size_t len, void* obj) {
 // Actually dereferences cached numpy arrays. REQUIRES being called while
 // holding the GIL.
 void ClearDecrefCache() {
-  mutex_lock ml(*DelayedDecrefLock());
-  for (void* obj : *DecrefCache()) {
+  std::vector<void*> cache_copy;
+  {
+    mutex_lock ml(*DelayedDecrefLock());
+    cache_copy.swap(*DecrefCache());
+  }
+  for (void* obj : cache_copy) {
     Py_DECREF(reinterpret_cast<PyObject*>(obj));
   }
-  DecrefCache()->clear();
 }
 
 // Structure which keeps a reference to a Tensor alive while numpy has a pointer

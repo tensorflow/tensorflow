@@ -61,7 +61,7 @@ void MPIUtils::InitMPI() {
     MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &number_of_procs));
     MPI_CHECK(MPI_Get_processor_name(my_host_name, &len));
     fprintf(stderr,
-            "MPI Environment initialised. Process id: %d Total processes: %d "
+            "MPI Environment initialized. Process id: %d Total processes: %d "
             "|| Hostname: %s \n",
             proc_id, number_of_procs, my_host_name);
   }

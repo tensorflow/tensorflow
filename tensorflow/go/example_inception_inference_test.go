@@ -63,7 +63,7 @@ func Example() {
 	// this example:
 	// - Constructs another TensorFlow graph to normalize the image into a
 	//   form suitable for the model (for example, resizing the image)
-	// - Creates an executes a Session to obtain a Tensor in this normalized form.
+	// - Creates and executes a Session to obtain a Tensor in this normalized form.
 	modeldir := flag.String("dir", "", "Directory containing the trained model files. The directory will be created and the model downloaded into it if necessary")
 	imagefile := flag.String("image", "", "Path of a JPEG-image to extract labels for")
 	flag.Parse()

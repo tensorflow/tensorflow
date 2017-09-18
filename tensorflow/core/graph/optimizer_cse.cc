@@ -42,6 +42,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -188,8 +189,9 @@ bool OptimizerCSE::Optimize(
     if (!n->IsOp()) continue;
 
     // Don't prune placeholder nodes.
-    if (n->def().op() == "Placeholder" || n->def().op() == "PlaceholderV2" ||
-        n->def().op() == "PlaceholderWithDefault") {
+    if (n->type_string() == "Placeholder" ||
+        n->type_string() == "PlaceholderV2" ||
+        n->type_string() == "PlaceholderWithDefault") {
       continue;
     }
 

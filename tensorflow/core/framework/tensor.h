@@ -17,10 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -35,8 +32,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-class TensorBuffer;  // Forward declaration.
+// Forward declarations.  In particular, we forward declare protos so that their
+// symbols can be removed from .so exports.
+class AllocationDescription;
+class Allocator;
+class OpKernelContext;
+class TensorBuffer;
 class TensorCApi;
+class TensorDescription;
+class TensorProto;
+class VariantTensorData;
 
 /// @ingroup core
 /// Represents an n-dimensional array of values.
@@ -185,7 +190,7 @@ class Tensor {
   /// The returned tensor shares the underlying tensor buffer with this
   /// tensor.
   ///
-  /// NOTE: The returned tensor may not satisfies the same alignment
+  /// NOTE: The returned tensor may not satisfy the same alignment
   /// requirement as this tensor depending on the shape. The caller
   /// must check the returned tensor's alignment before calling certain
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
@@ -250,6 +255,16 @@ class Tensor {
   /// NOTE: this is the same as `tensor()` except a bitcast is allowed.
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::Tensor bit_casted_tensor();
+
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the
+  /// last dimension elements converted into single elements of a larger type.
+  ///
+  /// For example, this is useful for kernels that can treat NCHW_VECT_C int8
+  /// tensors as NCHW int32 tensors. The sizeof(T) should equal the size of
+  /// the original element type * num elements in the original last dimension.
+  /// NDIMS should be 1 less than the original number of dimensions.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::Tensor reinterpret_last_dimension();
 
   /// \brief Return the tensor data as an `Eigen::Tensor` of the data type and a
   /// specified shape.
@@ -359,6 +374,16 @@ class Tensor {
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::ConstTensor bit_casted_tensor() const;
 
+  /// \brief Return the tensor data to an `Eigen::Tensor` with the
+  /// last dimension elements converted into single elements of a larger type.
+  ///
+  /// For example, this is useful for kernels that can treat NCHW_VECT_C int8
+  /// tensors as NCHW int32 tensors. The sizeof(T) should equal the size of
+  /// the original element type * num elements in the original last dimension.
+  /// NDIMS should be 1 less than the original number of dimensions.
+  template <typename T, size_t NDIMS>
+  typename TTypes<T, NDIMS>::ConstTensor reinterpret_last_dimension() const;
+
   template <typename T>
   typename TTypes<T>::ConstFlat flat() const {
     return shaped<T, 1>({NumElements()});
@@ -456,9 +481,12 @@ class Tensor {
   friend class VariableOp;            // For access to set_shape
   friend class AutoReloadVariableOp;  // For access to set_shape
   friend class TensorTestHelper;      // For access to set_shape
+  friend class OpKernelContext;       // For access to RefCountIsOne().
   template <typename Device, typename T>
-  friend class CreateVariableOp;
-  friend class OpKernelContext;  // For access to RefCountIsOne().
+  friend class AssignVariableOp;  // For access to RefCountIsOne().
+  template <typename Device, typename T>
+  friend Status PrepareToUpdateVariable(
+      OpKernelContext* ctx, Tensor* tensor);  // For access to RefCountIsOne().
   friend class NumpyTensorBuffer;  // For access to the private constructor
                                    // taking the buffer.
 
@@ -551,6 +579,37 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_tensor() const {
   CHECK(IsAligned());
   return typename TTypes<T, NDIMS>::ConstTensor(base<const T>(),
                                                 shape().AsEigenDSizes<NDIMS>());
+}
+
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::Tensor Tensor::reinterpret_last_dimension() {
+  if (NDIMS == dims()) {
+    return tensor<T, NDIMS>();
+  }
+  CHECK(IsAligned());
+  CHECK_EQ(NDIMS, dims() - 1);
+  CHECK_EQ(sizeof(T), shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
+  Eigen::array<Eigen::DenseIndex, NDIMS> dims;
+  for (int d = 0; d < NDIMS; ++d) {
+    dims[d] = shape_.dim_sizes()[d];
+  }
+  return typename TTypes<T, NDIMS>::Tensor(base<T>(), dims);
+}
+
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::ConstTensor Tensor::reinterpret_last_dimension()
+    const {
+  if (NDIMS == dims()) {
+    return tensor<T, NDIMS>();
+  }
+  CHECK(IsAligned());
+  CHECK_EQ(NDIMS, dims() - 1);
+  CHECK_EQ(sizeof(T), shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
+  Eigen::array<Eigen::DenseIndex, NDIMS> dims;
+  for (int d = 0; d < NDIMS; ++d) {
+    dims[d] = shape_.dim_sizes()[d];
+  }
+  return typename TTypes<T, NDIMS>::ConstTensor(base<const T>(), dims);
 }
 
 template <size_t NDIMS>

@@ -53,7 +53,7 @@ class CopyInsertionTest : public HloTestBase {
     EXPECT_TRUE(points_to.IsDistinct());
     EXPECT_TRUE(!points_to.IsAmbiguous());
 
-    tensorflow::gtl::FlatSet<const LogicalBuffer*> maybe_live_out_buffers =
+    auto maybe_live_out_buffers =
         points_to_analysis
             ->GetPointsToSet(module->entry_computation()->root_instruction())
             .CreateFlattenedSet();
@@ -1121,7 +1121,3 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinctUsedByTwoWhileLoops) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

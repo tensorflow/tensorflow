@@ -550,12 +550,17 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapStage")
 #endif // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapStage").HostMemory("key").Device(DEVICE_SYCL),
+REGISTER_KERNEL_BUILDER(Name("MapStage")
+                            .HostMemory("key")
+                            .HostMemory("indices")
+                            .Device(DEVICE_SYCL),
                         MapStageOp<false>);
-REGISTER_KERNEL_BUILDER(
-    Name("OrderedMapStage").HostMemory("key").Device(DEVICE_SYCL),
-    MapStageOp<true>);
-#endif // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("OrderedMapStage")
+                            .HostMemory("key")
+                            .HostMemory("indices")
+                            .Device(DEVICE_SYCL),
+                        MapStageOp<true>);
+#endif  // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
 class MapUnstageOp : public OpKernel {

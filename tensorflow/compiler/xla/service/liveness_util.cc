@@ -80,7 +80,7 @@ std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
     HloInstruction* instruction, const ShapeIndex& index,
     const TuplePointsToAnalysis& points_to_analysis) {
   std::vector<std::pair<HloInstruction*, int64>> uses;
-  const std::vector<const LogicalBuffer*>& points_to =
+  const PointsToSet::BufferList& points_to =
       points_to_analysis.GetPointsToSet(instruction).element(index);
   for (const LogicalBuffer* buffer : points_to) {
     for (const BufferAlias& alias :
@@ -156,9 +156,10 @@ bool CanShareOperandBufferWithUser(
     const TuplePointsToAnalysis* points_to_analysis) {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
-  Shape operand_subshape =
+  const Shape& operand_subshape =
       ShapeUtil::GetSubshape(operand->shape(), operand_index);
-  Shape user_subshape = ShapeUtil::GetSubshape(user->shape(), user_index);
+  const Shape& user_subshape =
+      ShapeUtil::GetSubshape(user->shape(), user_index);
   // Check that operand and user emit the same shape and layout.
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
     return false;

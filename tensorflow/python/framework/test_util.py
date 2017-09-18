@@ -42,15 +42,18 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -62,7 +65,7 @@ def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU" or x.device_type == "SYCL":
-      return x.name
+      return compat.as_str(x.name)
   return ""
 
 
@@ -205,6 +208,71 @@ def NHWCToNCHW(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+def NHWCToNCHW_VECT_C(input_shape_or_tensor):
+  """Transforms the input from the NHWC layout to NCHW_VECT_C layout.
+
+  Note: Does not include quantization or type conversion steps, which should
+  be applied afterwards.
+
+  Args:
+    input_shape_or_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NCHW_VECT_C
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not evenly
+        divisible by 4.
+  """
+  permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  temp_shape = (input_shape_or_tensor.shape.as_list()
+                if is_tensor else input_shape_or_tensor)
+  if temp_shape[-1] % 4 != 0:
+    raise ValueError(
+        "Last dimension of input must be evenly divisible by 4 to convert to "
+        "NCHW_VECT_C.")
+  temp_shape[-1] //= 4
+  temp_shape.append(4)
+  permutation = permutations[len(temp_shape)]
+  if is_tensor:
+    t = array_ops.reshape(input_shape_or_tensor, temp_shape)
+    return array_ops.transpose(t, permutation)
+  else:
+    return [temp_shape[a] for a in permutation]
+
+
+def NCHW_VECT_CToNHWC(input_shape_or_tensor):
+  """Transforms the input from the NCHW_VECT_C layout to NHWC layout.
+
+  Note: Does not include de-quantization or type conversion steps, which should
+  be applied beforehand.
+
+  Args:
+    input_shape_or_tensor: a 5- or 6-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NHWC
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not 4.
+  """
+  permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  input_shape = (input_shape_or_tensor.shape.as_list()
+                 if is_tensor else input_shape_or_tensor)
+  if input_shape[-1] != 4:
+    raise ValueError("Last dimension of NCHW_VECT_C must be 4.")
+  permutation = permutations[len(input_shape)]
+  nhwc_shape = [input_shape[a] for a in permutation[:-1]]
+  nhwc_shape[-1] *= input_shape[-1]
+  if is_tensor:
+    t = array_ops.transpose(input_shape_or_tensor, permutation)
+    return array_ops.reshape(t, nhwc_shape)
+  else:
+    return nhwc_shape
+
+
 def NCHWToNHWC(input_tensor):
   """Converts the input from the NCHW format to NHWC.
 
@@ -228,6 +296,19 @@ def NCHWToNHWC(input_tensor):
 
 
 # TODO(skyewm): remove this eventually
+# pylint: disable=protected-access
+def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
+  prev_value = ops._USE_C_API
+  ops._USE_C_API = use_c_api
+  try:
+    with ops.Graph().as_default():
+      fn(*args, **kwargs)
+  finally:
+    ops._USE_C_API = prev_value
+# pylint: disable=protected-access
+
+
+# TODO(skyewm): remove this eventually
 def disable_c_api(fn):
   """Decorator for disabling the C API on a test.
 
@@ -240,16 +321,129 @@ def disable_c_api(fn):
   Returns:
     The wrapped function
   """
-  # pylint: disable=protected-access
-  def disable_c_api_wrapper(*args, **kwargs):
-    prev_value = ops._USE_C_API
-    ops._USE_C_API = False
-    try:
-      fn(*args, **kwargs)
-    finally:
-      ops._USE_C_API = prev_value
-  # pylint: disable=protected-access
-  return disable_c_api_wrapper
+  return lambda *args, **kwargs: _use_c_api_wrapper(fn, False, *args, **kwargs)
+
+
+# TODO(skyewm): remove this eventually
+def enable_c_api(fn):
+  """Decorator for enabling the C API on a test.
+
+  Note this enables the C API after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+  return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
+
+
+def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
+                                 use_gpu=False, force_gpu=False,
+                                 reset_test=True):
+  """Runs the test in both graph and eager modes.
+
+  Args:
+    __unused__: Prevents sliently skipping tests.
+    graph: Optional graph to use during the returned session.
+    config: An optional config_pb2.ConfigProto to use to configure the
+      session.
+    use_gpu: If True, attempt to run as many ops as possible on GPU.
+    force_gpu: If True, pin all ops to `/device:GPU:0`.
+    reset_test: If True, tearDown and SetUp the test case again.
+
+  Returns:
+    Returns a decorator that will run the decorated test function
+        using both a graph and using eager execution.
+  """
+
+  assert not __unused__, "Add () after run_in_graph_and_eager_modes."
+
+  def decorator(f):
+    """Test method decorator."""
+    def decorated(self, **kwargs):
+      """Decorated the test method."""
+      with context.graph_mode():
+        with self.test_session(graph, config, use_gpu, force_gpu):
+          f(self, **kwargs)
+
+      if reset_test:
+        # This decorator runs the wrapped test twice.
+        # Reset the test environment between runs.
+        self.tearDown()
+        self.setUp()
+
+      def run_eager_mode():
+        if force_gpu:
+          gpu_name = gpu_device_name()
+          if not gpu_name:
+            gpu_name = "/device:GPU:0"
+          with context.device(gpu_name):
+            f(self)
+        elif use_gpu:
+          # TODO(xpan): Support softplacement and gpu by default when available.
+          f(self, **kwargs)
+        else:
+          with context.device("/device:CPU:0"):
+            f(self, **kwargs)
+
+      eager_graph = graph or ops.Graph()
+      with context.eager_mode():
+        with eager_graph.as_default():
+          run_eager_mode()
+
+    return decorated
+  return decorator
+
+
+def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
+  """Returns whether TensorFlow can access a GPU.
+
+  Args:
+    cuda_only: limit the search to CUDA gpus.
+    min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
+      CUDA compute capability required, or None if no requirement.
+
+  Returns:
+    True iff a gpu device of the requested kind is available.
+  """
+
+  def compute_capability_from_device_desc(device_desc):
+    # TODO(jingyue): The device description generator has to be in sync with
+    # this file. Another option is to put compute capability in
+    # DeviceAttributes, but I avoided that to keep DeviceAttributes
+    # target-independent. Reconsider this option when we have more things like
+    # this to keep in sync.
+    # LINT.IfChange
+    match = re.search(r"compute capability: (\d+)\.(\d+)", device_desc)
+    # LINT.ThenChange(//tensorflow/core/\
+    #                 common_runtime/gpu/gpu_device.cc)
+    if not match:
+      return 0, 0
+    return int(match.group(1)), int(match.group(2))
+
+  for local_device in device_lib.list_local_devices():
+    if local_device.device_type == "GPU":
+      if (min_cuda_compute_capability is None or
+          compute_capability_from_device_desc(local_device.physical_device_desc)
+          >= min_cuda_compute_capability):
+        return True
+    if local_device.device_type == "SYCL" and not cuda_only:
+      return True
+  return False
+
+
+@contextlib.contextmanager
+def device(use_gpu):
+  """Uses gpu when requested and available."""
+  if use_gpu and is_gpu_available():
+    dev = "/device:GPU:0"
+  else:
+    dev = "/device:CPU:0"
+  with ops.device(dev):
+    yield
 
 
 class TensorFlowTestCase(googletest.TestCase):
@@ -266,12 +460,19 @@ class TensorFlowTestCase(googletest.TestCase):
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
+    # Note: The following line is necessary because some test methods may error
+    # out from within nested graph contexts (e.g., via assertRaises and
+    # assertRaisesRegexp), which may leave ops._default_graph_stack non-empty
+    # under certain versions of Python. That would cause
+    # ops.reset_default_graph() to throw an exception if the stack were not
+    # cleared first.
+    ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
     ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
 
   def tearDown(self):
     for thread in self._threads:
-      self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+      thread.check_termination()
 
     self._ClearCachedSession()
 
@@ -358,6 +559,37 @@ class TensorFlowTestCase(googletest.TestCase):
       fail_msg += " : %r" % (msg) if msg else ""
       self.fail(fail_msg)
 
+  def _eval_helper(self, tensors):
+    if isinstance(tensors, ops.EagerTensor):
+      return tensors.numpy()
+    if isinstance(tensors, resource_variable_ops.ResourceVariable):
+      return tensors.read_value().numpy()
+
+    if isinstance(tensors, tuple):
+      return tuple([self._eval_helper(t) for t in tensors])
+    elif isinstance(tensors, list):
+      return [self._eval_helper(t) for t in tensors]
+    elif isinstance(tensors, dict):
+      assert not tensors, "Only support empty dict now."
+      return dict()
+    else:
+      raise ValueError("Unsupported type.")
+
+  def evaluate(self, tensors):
+    """Evaluates tensors and returns numpy values.
+
+    Args:
+      tensors: A Tensor or a nested list/tuple of Tensors.
+
+    Returns:
+      tensors numpy values.
+    """
+    if context.in_eager_mode():
+      return self._eval_helper(tensors)
+    else:
+      sess = ops.get_default_session()
+      return sess.run(tensors)
+
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def test_session(self,
@@ -377,28 +609,29 @@ class TensorFlowTestCase(googletest.TestCase):
     trigger the creation of a new session.
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
-    `force_gpu` is True, all ops are pinned to `/gpu:0`. Otherwise, if `use_gpu`
+    `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if `use_gpu`
     is True, TensorFlow tries to run as many ops on the GPU as possible. If both
     `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
 
     Example:
-
-      class MyOperatorTest(test_util.TensorFlowTestCase):
-        def testMyOperator(self):
-          with self.test_session(use_gpu=True):
-            valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
-            result = MyOperator(valid_input).eval()
-            self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
-            invalid_input = [-1.0, 2.0, 7.0]
-            with self.assertRaisesOpError("negative input not supported"):
-              MyOperator(invalid_input).eval()
+    ```python
+    class MyOperatorTest(test_util.TensorFlowTestCase):
+      def testMyOperator(self):
+        with self.test_session(use_gpu=True):
+          valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
+          result = MyOperator(valid_input).eval()
+          self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
+          invalid_input = [-1.0, 2.0, 7.0]
+          with self.assertRaisesOpError("negative input not supported"):
+            MyOperator(invalid_input).eval()
+    ```
 
     Args:
       graph: Optional graph to use during the returned session.
       config: An optional config_pb2.ConfigProto to use to configure the
         session.
       use_gpu: If True, attempt to run as many ops as possible on GPU.
-      force_gpu: If True, pin all ops to `/gpu:0`.
+      force_gpu: If True, pin all ops to `/device:GPU:0`.
 
     Returns:
       A Session object that should be used as a context manager to surround
@@ -426,6 +659,10 @@ class TensorFlowTestCase(googletest.TestCase):
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
+      config.graph_options.rewrite_options.constant_folding = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.arithmetic_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
     if graph is None:
@@ -435,11 +672,11 @@ class TensorFlowTestCase(googletest.TestCase):
       sess = self._cached_session
       with sess.graph.as_default(), sess.as_default():
         if force_gpu:
-          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # Use the name of an actual device if one is detected, or '/device:GPU:0'
           # otherwise
           gpu_name = gpu_device_name()
           if not gpu_name:
-            gpu_name = "/gpu:0"
+            gpu_name = "/device:GPU:0"
           with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
@@ -450,11 +687,11 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
         if force_gpu:
-          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # Use the name of an actual device if one is detected, or '/device:GPU:0'
           # otherwise
           gpu_name = gpu_device_name()
           if not gpu_name:
-            gpu_name = "/gpu:0"
+            gpu_name = "/device:GPU:0"
           with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
@@ -489,6 +726,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self._thread = threading.Thread(target=self._protected_run)
       self._exception = None
 
+      self._is_thread_joined = False
+
     def _protected_run(self):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
@@ -511,6 +750,7 @@ class TensorFlowTestCase(googletest.TestCase):
         self._testcase.failureException: If the thread terminates with due to
           an exception.
       """
+      self._is_thread_joined = True
       self._thread.join()
       if self._exception is not None:
         self._testcase.fail("Error in checkedThread: %s" % str(self._exception))
@@ -525,6 +765,28 @@ class TensorFlowTestCase(googletest.TestCase):
         True if the thread is alive, otherwise False.
       """
       return self._thread.is_alive()
+
+    def check_termination(self):
+      """Returns whether the checked thread was properly used and did terminate.
+
+      Every checked thread should be "join"ed after starting, and before the
+      test tears down. If it is not joined, it is possible the thread will hang
+      and cause flaky failures in tests.
+
+      Raises:
+        self._testcase.failureException: If check_termination was called before
+        thread was joined.
+
+        RuntimeError: If the thread is not terminated. This means thread was not
+        joined with the main thread.
+      """
+      if self._is_thread_joined:
+        if self.is_alive():
+          raise RuntimeError(
+              "Thread was not joined with main thread, and is still running "
+              "when the test finished.")
+      else:
+        self._testcase.fail("A checked thread was not joined.")
 
   def checkedThread(self, target, args=None, kwargs=None):
     """Returns a Thread wrapper that asserts 'target' completes successfully.
@@ -634,10 +896,10 @@ class TensorFlowTestCase(googletest.TestCase):
     This does not support nested dicts.
 
     Args:
-      a: A numpy ndarray (or anything can be converted to one), or dict of same.
-        Must be a dict iff `b` is a dict.
-      b: A numpy ndarray (or anything can be converted to one), or dict of same.
-        Must be a dict iff `a` is a dict.
+      a: The expected numpy ndarray (or anything can be converted to one), or
+        dict of same. Must be a dict iff `b` is a dict.
+      b: The actual numpy ndarray (or anything can be converted to one), or
+        dict of same. Must be a dict iff `a` is a dict.
       rtol: relative tolerance.
       atol: absolute tolerance.
 
@@ -673,8 +935,8 @@ class TensorFlowTestCase(googletest.TestCase):
     one of the arguments is of type float16.
 
     Args:
-      a: a numpy ndarray or anything can be converted to one.
-      b: a numpy ndarray or anything can be converted to one.
+      a: the expected numpy ndarray or anything can be converted to one.
+      b: the actual numpy ndarray or anything can be converted to one.
       rtol: relative tolerance.
       atol: absolute tolerance.
       float_rtol: relative tolerance for float32.
@@ -698,8 +960,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """Asserts that two numpy arrays have the same values.
 
     Args:
-      a: a numpy ndarray or anything can be converted to one.
-      b: a numpy ndarray or anything can be converted to one.
+      a: the expected numpy ndarray or anything can be converted to one.
+      b: the actual numpy ndarray or anything can be converted to one.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -812,7 +1074,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # pylint: enable=invalid-name
 
 
-def create_local_cluster(num_workers, num_ps, protocol="grpc"):
+def create_local_cluster(num_workers, num_ps, protocol="grpc",
+                         worker_config=None, ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
   Example:
@@ -838,6 +1101,9 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
     num_ps: Number of PS servers to start.
     protocol: Communication protocol.  Allowed values are documented in
       the documentation of `tf.train.Server`.
+    worker_config: (optional) ConfigProto to initialize workers. Can be used
+      to instantiate multiple devices etc.
+    ps_config: (optional) ConfigProto to initialize PS servers.
 
   Returns:
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
@@ -859,12 +1125,14 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
 
   workers = [
       server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
+          cs, job_name="worker", protocol=protocol, task_index=ix,
+          config=worker_config, start=True)
       for ix in range(num_workers)
   ]
   ps_servers = [
       server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
+          cs, job_name="ps", protocol=protocol, task_index=ix,
+          config=ps_config, start=True)
       for ix in range(num_ps)
   ]
 

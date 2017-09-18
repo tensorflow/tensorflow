@@ -47,9 +47,9 @@ def initialize_system(embedding_config=None, job=None):
     Op which, when executed, will initialize the system.
   """
   if job is None:
-    device_name = "/replica:0/task:0/device:TPU_SYSTEM:0"
+    device_name = "/device:TPU_SYSTEM:0"
   else:
-    device_name = "/job:%s/replica:0/task:0/device:TPU_SYSTEM:0" % job
+    device_name = "/job:%s/device:TPU_SYSTEM:0" % job
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
   with ops.device(device_name):
@@ -61,9 +61,9 @@ def initialize_system(embedding_config=None, job=None):
 def shutdown_system(job=None):
   """Shuts down a running a distributed TPU system."""
   if job is None:
-    device_name = "/replica:0/task:0/device:TPU_SYSTEM:0"
+    device_name = "/device:TPU_SYSTEM:0"
   else:
-    device_name = "/job:%s/replica:0/task:0/device:TPU_SYSTEM:0" % job
+    device_name = "/job:%s/device:TPU_SYSTEM:0" % job
   with ops.device(device_name):
     shutdown_distributed_tpu = tpu_ops.shutdown_distributed_tpu()
   return shutdown_distributed_tpu
@@ -480,8 +480,11 @@ def shard(computation,
   for (axis, all_shards, x) in zip(output_shard_axes, outputs_from_all_shards,
                                    zip(*outputs)):
     if all_shards:
-      # Concatenate all of the outputs together.
-      results.append(array_ops.concat(list(x), axis=axis))
+      # Concatenate all of the outputs together (use stack for scalars).
+      shape = x[0].shape
+      is_scalar = shape is not None and (shape.ndims == 0)
+      results.append((array_ops.stack(list(x)) if is_scalar
+                      else array_ops.concat(list(x), axis=axis)))
     else:
       # TODO(phawkins): use a smarter policy, e.g., round-robin across shards.
       results.append(x[0])

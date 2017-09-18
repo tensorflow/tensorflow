@@ -56,7 +56,6 @@ tensorflow/core/platform/posix/test.cc
 
 QUANTIZATION_TEST_SRCS := \
 $(GRAPH_TRANSFER_SRCS) \
-tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc \
 tensorflow/core/kernels/hexagon/graph_transferer_test.cc \
 tensorflow/contrib/makefile/test/test_main.cc
 

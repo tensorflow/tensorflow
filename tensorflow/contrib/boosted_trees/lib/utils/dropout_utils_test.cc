@@ -17,7 +17,6 @@
 #include <sys/types.h>
 #include <algorithm>
 #include <cstdlib>
-#include <ctime>
 #include <functional>
 #include <iterator>
 #include <unordered_set>
@@ -25,6 +24,7 @@
 
 #include "tensorflow/contrib/boosted_trees/proto/tree_config.pb.h"  // NOLINT
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/env.h"
 
 using tensorflow::boosted_trees::learner::LearningRateDropoutDrivenConfig;
 using tensorflow::boosted_trees::trees::DecisionTreeEnsembleConfig;
@@ -95,7 +95,8 @@ TEST_F(DropoutUtilsTest, DropoutProbabilityTest) {
     int32 total_num_trees = 0;
     for (int i = 0; i < kNumRuns; ++i) {
       // draw random seeds
-      uint random_generator_seed = static_cast<uint>(std::clock());
+      uint random_generator_seed =
+          static_cast<uint>(Env::Default()->NowMicros());
       uint32 seed = rand_r(&random_generator_seed) % 100 + i;
       TF_EXPECT_OK(DropoutUtils::DropOutTrees(seed, config, trees_not_to_drop,
                                               weights_, &dropped_trees,

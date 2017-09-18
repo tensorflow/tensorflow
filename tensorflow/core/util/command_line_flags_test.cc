@@ -36,32 +36,85 @@ std::vector<char *> CharPointerVectorFromStrings(
 }  // namespace
 
 TEST(CommandLineFlagsTest, BasicUsage) {
-  int some_int = 10;
-  int64 some_int64 = 21474836470;  // max int32 is 2147483647
-  bool some_switch = false;
-  string some_name = "something";
-  float some_float = -23.23f;
-  int argc = 6;
+  int some_int32_set_directly = 10;
+  int some_int32_set_via_hook = 20;
+  int64 some_int64_set_directly = 21474836470;  // max int32 is 2147483647
+  int64 some_int64_set_via_hook = 21474836479;  // max int32 is 2147483647
+  bool some_switch_set_directly = false;
+  bool some_switch_set_via_hook = true;
+  string some_name_set_directly = "something_a";
+  string some_name_set_via_hook = "something_b";
+  float some_float_set_directly = -23.23f;
+  float some_float_set_via_hook = -25.23f;
   std::vector<string> argv_strings = {"program_name",
-                                      "--some_int=20",
-                                      "--some_int64=214748364700",
-                                      "--some_switch",
-                                      "--some_name=somethingelse",
-                                      "--some_float=42.0"};
+                                      "--some_int32_set_directly=20",
+                                      "--some_int32_set_via_hook=50",
+                                      "--some_int64_set_directly=214748364700",
+                                      "--some_int64_set_via_hook=214748364710",
+                                      "--some_switch_set_directly",
+                                      "--some_switch_set_via_hook=false",
+                                      "--some_name_set_directly=somethingelse",
+                                      "--some_name_set_via_hook=anythingelse",
+                                      "--some_float_set_directly=42.0",
+                                      "--some_float_set_via_hook=43.0"};
+  int argc = argv_strings.size();
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
-  bool parsed_ok =
-      Flags::Parse(&argc, argv_array.data(),
-                   {Flag("some_int", &some_int, "some int"),
-                    Flag("some_int64", &some_int64, "some int64"),
-                    Flag("some_switch", &some_switch, "some switch"),
-                    Flag("some_name", &some_name, "some name"),
-                    Flag("some_float", &some_float, "some float")});
+  bool parsed_ok = Flags::Parse(
+      &argc, argv_array.data(),
+      {
+          Flag("some_int32_set_directly", &some_int32_set_directly,
+               "some int32 set directly"),
+          Flag("some_int32_set_via_hook",
+               [&](int32 value) {
+                 some_int32_set_via_hook = value;
+                 return true;
+               },
+               some_int32_set_via_hook, "some int32 set via hook"),
+          Flag("some_int64_set_directly", &some_int64_set_directly,
+               "some int64 set directly"),
+          Flag("some_int64_set_via_hook",
+               [&](int64 value) {
+                 some_int64_set_via_hook = value;
+                 return true;
+               },
+               some_int64_set_via_hook, "some int64 set via hook"),
+          Flag("some_switch_set_directly", &some_switch_set_directly,
+               "some switch set directly"),
+          Flag("some_switch_set_via_hook",
+               [&](bool value) {
+                 some_switch_set_via_hook = value;
+                 return true;
+               },
+               some_switch_set_via_hook, "some switch set via hook"),
+          Flag("some_name_set_directly", &some_name_set_directly,
+               "some name set directly"),
+          Flag("some_name_set_via_hook",
+               [&](string value) {
+                 some_name_set_via_hook = std::move(value);
+                 return true;
+               },
+               some_name_set_via_hook, "some name set via hook"),
+          Flag("some_float_set_directly", &some_float_set_directly,
+               "some float set directly"),
+          Flag("some_float_set_via_hook",
+               [&](float value) {
+                 some_float_set_via_hook = value;
+                 return true;
+               },
+               some_float_set_via_hook, "some float set via hook"),
+      });
+
   EXPECT_EQ(true, parsed_ok);
-  EXPECT_EQ(20, some_int);
-  EXPECT_EQ(214748364700, some_int64);
-  EXPECT_EQ(true, some_switch);
-  EXPECT_EQ("somethingelse", some_name);
-  EXPECT_NEAR(42.0f, some_float, 1e-5f);
+  EXPECT_EQ(20, some_int32_set_directly);
+  EXPECT_EQ(50, some_int32_set_via_hook);
+  EXPECT_EQ(214748364700, some_int64_set_directly);
+  EXPECT_EQ(214748364710, some_int64_set_via_hook);
+  EXPECT_EQ(true, some_switch_set_directly);
+  EXPECT_EQ(false, some_switch_set_via_hook);
+  EXPECT_EQ("somethingelse", some_name_set_directly);
+  EXPECT_EQ("anythingelse", some_name_set_via_hook);
+  EXPECT_NEAR(42.0f, some_float_set_directly, 1e-5f);
+  EXPECT_NEAR(43.0f, some_float_set_via_hook, 1e-5f);
   EXPECT_EQ(argc, 1);
 }
 
@@ -105,6 +158,89 @@ TEST(CommandLineFlagsTest, BadFloatValue) {
   EXPECT_EQ(false, parsed_ok);
   EXPECT_NEAR(-23.23f, some_float, 1e-5f);
   EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, FailedInt32Hook) {
+  int argc = 2;
+  std::vector<string> argv_strings = {"program_name", "--some_int32=200"};
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+  bool parsed_ok =
+      Flags::Parse(&argc, argv_array.data(),
+                   {Flag("some_int32", [](int32 value) { return false; }, 30,
+                         "some int32")});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, FailedInt64Hook) {
+  int argc = 2;
+  std::vector<string> argv_strings = {"program_name", "--some_int64=200"};
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+  bool parsed_ok =
+      Flags::Parse(&argc, argv_array.data(),
+                   {Flag("some_int64", [](int64 value) { return false; }, 30,
+                         "some int64")});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, FailedFloatHook) {
+  int argc = 2;
+  std::vector<string> argv_strings = {"program_name", "--some_float=200.0"};
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+  bool parsed_ok =
+      Flags::Parse(&argc, argv_array.data(),
+                   {Flag("some_float", [](float value) { return false; }, 30.0f,
+                         "some float")});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, FailedBoolHook) {
+  int argc = 2;
+  std::vector<string> argv_strings = {"program_name", "--some_switch=true"};
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+  bool parsed_ok =
+      Flags::Parse(&argc, argv_array.data(),
+                   {Flag("some_switch", [](bool value) { return false; }, false,
+                         "some switch")});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, FailedStringHook) {
+  int argc = 2;
+  std::vector<string> argv_strings = {"program_name", "--some_name=true"};
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+  bool parsed_ok = Flags::Parse(
+      &argc, argv_array.data(),
+      {Flag("some_name", [](string value) { return false; }, "", "some name")});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, RepeatedStringHook) {
+  int argc = 3;
+  std::vector<string> argv_strings = {"program_name", "--some_name=this",
+                                      "--some_name=that"};
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+  int call_count = 0;
+  bool parsed_ok = Flags::Parse(&argc, argv_array.data(),
+                                {Flag("some_name",
+                                      [&call_count](string value) {
+                                        call_count++;
+                                        return true;
+                                      },
+                                      "", "some name")});
+
+  EXPECT_EQ(true, parsed_ok);
+  EXPECT_EQ(argc, 1);
+  EXPECT_EQ(call_count, 2);
 }
 
 // Return whether str==pat, but allowing any whitespace in pat

@@ -112,7 +112,6 @@ struct FusedBatchNorm<CPUDevice, T> {
       batch_var.device(d) = variance * rest_size_adjust;
       saved_var.device(d) = variance;
     } else {
-      mean.device(d) = estimated_mean;
       variance.device(d) = estimated_variance;
     }
 
@@ -149,7 +148,7 @@ struct FusedBatchNormGrad<CPUDevice, T> {
     typename TTypes<T>::Vec scale_backprop(scale_backprop_output->vec<T>());
     typename TTypes<T>::Vec offset_backprop(offset_backprop_output->vec<T>());
 
-    // Note: the following formulas are used to to compute the gradients for
+    // Note: the following formulas are used to compute the gradients for
     // back propagation.
     // x_backprop = scale * rsqrt(variance + epsilon) *
     //              [y_backprop - mean(y_backprop) - (x - mean(x)) *

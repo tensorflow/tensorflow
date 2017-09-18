@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
