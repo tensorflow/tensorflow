@@ -175,8 +175,14 @@ Status SymbolicGradientBuilder::Initialize() {
         "Must specify a gradient input for each output.");
   }
   std::vector<bool> reachable_nodes = GetReachableNodes();
-  // TODO(theflofly) Check that inputs_ are reachable from
-  // outputs_ using reachable_nodes
+  for (const Output& input : inputs_) {
+    if (!reachable_nodes[input.node()->id()]) {
+      return errors::InvalidArgument(
+        "Cannot compute the partial derivative for node '",
+        input.node()->name(),
+        "' as it's unreachable from the output node(s).");
+    }
+  }
   grad_outputs_->clear();
   grad_outputs_->resize(inputs_.size());
   // Populate `output_nodes_` from node ids in `outputs_`.
