@@ -721,6 +721,7 @@ tf_cuda_library(
         "graph/graph_def_builder.h",
         "graph/node_builder.h",
         "graph/validate.h",
+        "graph/while_context.h",
         "public/session.h",
         "public/session_options.h",
     ],
@@ -1584,6 +1585,8 @@ tf_cuda_library(
             "graph/edgeset.cc",
             "graph/graph.h",
             "graph/graph.cc",
+            "graph/while_context.h",
+            "graph/while_context.cc",
         ],
         exclude = [
             "**/*test*",
@@ -1720,6 +1723,7 @@ CORE_CPU_BASE_HDRS = [
     "graph/testlib.h",
     "graph/types.h",
     "graph/validate.h",
+    "graph/while_context.h",
 ]
 
 tf_cuda_library(
@@ -1789,7 +1793,6 @@ tf_cuda_library(
         "common_runtime/renamed_device.cc",
         "common_runtime/rendezvous_mgr.cc",
         "common_runtime/rendezvous_util.cc",
-        "common_runtime/resource_variable_read_optimizer.cc",
         "common_runtime/session.cc",
         "common_runtime/session_factory.cc",
         "common_runtime/session_options.cc",
@@ -2327,7 +2330,6 @@ tf_cc_tests(
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
         "common_runtime/placer_test.cc",
-        "common_runtime/resource_variable_read_optimizer_test.cc",
         "common_runtime/session_test.cc",
         "example/feature_util_test.cc",
         "framework/allocator_test.cc",

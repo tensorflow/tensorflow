@@ -48,7 +48,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
   
   # The gpu version returns results that are much less precise
   precision_factor = 100 if use_gpu_ else 1
-  tol = precision_factor * (1e-4 if is_single else 1e-12)
+  tol = precision_factor * (3e-4 if is_single else 1e-12)
 
   def CompareSingularValues(self, x, y):
     self.assertAllClose(x, y, atol=(x[0] + y[0]) * tol)
@@ -68,7 +68,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, use_gpu_):
     sum_of_ratios = np.sum(np.divide(y, x), -2, keepdims=True)
     phases = np.divide(sum_of_ratios, np.abs(sum_of_ratios))
     x *= phases
-    self.assertAllClose(x, y, atol=tol)
+    self.assertAllClose(x, y, atol=2 * tol)
 
   def CheckApproximation(self, a, u, s, v, full_matrices):
     # Tests that a ~= u*diag(s)*transpose(v).

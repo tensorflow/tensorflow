@@ -44,6 +44,8 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@seterr
 
 @@Saver
+
+@@Variable
 """
 
 from __future__ import absolute_import
@@ -70,6 +72,7 @@ from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
+from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 
 defun = function.defun
 implicit_gradients = backprop.implicit_grad

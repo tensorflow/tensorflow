@@ -1024,7 +1024,7 @@ __device__ __forceinline__ T WarpSumReduce(T val) {
   assert(__popc(kWidth) == 1);
   int sub_warp = cub::LaneId() / kWidth;
   int zeros = sub_warp * kWidth;
-  unsigned mask = ((1U << kWidth) - 1) << zeros;
+  unsigned mask = ((1UL << kWidth) - 1) << zeros;
   for (int delta = kWidth / 2; delta > 0; delta /= 2) {
     val += CudaShuffleXor(mask, val, delta);
   }

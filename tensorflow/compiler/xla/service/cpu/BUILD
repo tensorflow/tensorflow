@@ -180,15 +180,18 @@ cc_library(
 
 cc_library(
     name = "ir_emitter",
-    srcs = ["ir_emitter.cc"],
+    srcs = [
+        "elemental_ir_emitter.cc",
+        "ir_emitter.cc",
+    ],
     hdrs = [
+        "elemental_ir_emitter.h",
         "ir_emitter.h",
     ],
     deps = [
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
-        ":elemental_ir_emitter",
         ":ir_emission_utils",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:shape_util",
@@ -373,6 +376,7 @@ cc_library(
         "llvm_ir_runtime.h",
     ],
     deps = [
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:transform_utils",
@@ -461,23 +465,23 @@ cc_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//third_party/eigen3",
     ],
 )
 
 cc_test(
     name = "cpu_instruction_fusion_test",
-    size = "small",
     srcs = ["cpu_instruction_fusion_test.cc"],
     deps = [
         ":cpu_instruction_fusion",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
     ],
 )
@@ -489,9 +493,9 @@ cc_test(
     deps = [
         ":cpu_runtime",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -500,6 +504,7 @@ cc_library(
     srcs = ["cpu_instruction_fusion.cc"],
     hdrs = ["cpu_instruction_fusion.h"],
     deps = [
+        ":ir_emission_utils",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
     ],
@@ -519,25 +524,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:logical_buffer",
-        "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
         "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "elemental_ir_emitter",
-    srcs = ["elemental_ir_emitter.cc"],
-    hdrs = ["elemental_ir_emitter.h"],
-    deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:elemental_ir_emitter",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "@llvm//:core",
     ],
 )
 
@@ -559,8 +546,32 @@ cc_library(
     hdrs = ["layout_assignment.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:layout_assignment",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "layout_assignment_test",
+    size = "small",
+    srcs = ["layout_assignment_test.cc"],
+    deps = [
+        ":layout_assignment",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_layout",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:computation_layout",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
     ],
 )
@@ -583,7 +594,6 @@ cc_library(
 
 cc_test(
     name = "conv_canonicalization_test",
-    size = "small",
     srcs = ["conv_canonicalization_test.cc"],
     deps = [
         ":conv_canonicalization",
@@ -592,6 +602,7 @@ cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -612,7 +623,7 @@ cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test_main",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 

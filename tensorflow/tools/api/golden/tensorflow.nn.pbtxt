@@ -169,6 +169,10 @@ tf_module {
     argspec: "args=[\'x\', \'dim\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'1e-12\', \'None\'], "
   }
   member_method {
+    name: "leaky_relu"
+    argspec: "args=[\'features\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.2\', \'None\'], "
+  }
+  member_method {
     name: "learned_unigram_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }

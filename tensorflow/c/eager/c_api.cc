@@ -101,7 +101,7 @@ struct TFE_Op {
   bool const is_function() const { return attr_types == nullptr; }
 
   TFE_Context* ctx;  // Must outlive the TFE_Op.
-  const char* name;
+  const string name;
   tensorflow::AttrBuilder attrs;
   const tensorflow::AttrTypeMap* attr_types;
   std::vector<tensorflow::Tensor> inputs;
@@ -222,6 +222,15 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   tensorflow::Tensor* src = &(h->t);
+  if (!dst_cpu && !tensorflow::DataTypeCanUseMemcpy(src->dtype())) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        tensorflow::strings::StrCat("Can't copy Tensor with type ",
+                                    tensorflow::DataTypeString(src->dtype()),
+                                    " to device ", DeviceName(dstd), ".")
+            .c_str());
+    return nullptr;
+  }
   if (src_cpu) {
     tensorflow::Tensor dst(
         dstd->GetAllocator(tensorflow::AllocatorAttributes()), src->dtype(),
@@ -289,11 +298,11 @@ static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
   }
 }
 
-void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx, const char* device_name,
-                     TF_Status* status) {
+void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
+    status->status =
+        op->ctx->session->device_mgr->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
   TFE_OpSetDeviceHelper(op, d, status);
@@ -361,6 +370,15 @@ void TFE_OpSetAttrShape(TFE_Op* op, const char* attr_name, const int64_t* dims,
     }
   }
   op->attrs.Set(attr_name, proto);
+}
+
+void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
+                           const TFE_Op* value) {
+  tensorflow::AttrValue attr_value;
+  tensorflow::NameAttrList* func = attr_value.mutable_func();
+  func->set_name(value->name);
+  value->attrs.FillAttrValueMap(func->mutable_attr());
+  op->attrs.Set(attr_name, attr_value);
 }
 
 #define TFE_OP_SET_ATTR_LIST(fn, type)                                \

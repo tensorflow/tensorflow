@@ -283,7 +283,6 @@ filegroup(
         "//tensorflow/contrib/crf:all_files",
         "//tensorflow/contrib/cudnn_rnn:all_files",
         "//tensorflow/contrib/data:all_files",
-        "//tensorflow/contrib/data/python/framework:all_files",
         "//tensorflow/contrib/data/python/kernel_tests:all_files",
         "//tensorflow/contrib/data/python/ops:all_files",
         "//tensorflow/contrib/data/python/util:all_files",
@@ -298,12 +297,12 @@ filegroup(
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/fused_conv:all_files",
         "//tensorflow/contrib/gan:all_files",
+        "//tensorflow/contrib/gdr:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/hooks:all_files",
         "//tensorflow/contrib/hvx/hvx_ops_support_checker:all_files",
         "//tensorflow/contrib/image:all_files",
-        "//tensorflow/contrib/imperative:all_files",
         "//tensorflow/contrib/input_pipeline:all_files",
         "//tensorflow/contrib/input_pipeline/kernels:all_files",
         "//tensorflow/contrib/integrate:all_files",
@@ -359,6 +358,7 @@ filegroup(
         "//tensorflow/contrib/timeseries/python/timeseries:all_files",
         "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:all_files",
         "//tensorflow/contrib/tpu:all_files",
+        "//tensorflow/contrib/tpu/profiler:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/contrib/verbs:all_files",
@@ -416,9 +416,11 @@ filegroup(
         "//tensorflow/python/profiler/internal:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
+        "//tensorflow/tools/api/generator:all_files",
         "//tensorflow/tools/api/golden:all_files",
         "//tensorflow/tools/api/lib:all_files",
         "//tensorflow/tools/api/tests:all_files",
+        "//tensorflow/tools/build_info:all_files",
         "//tensorflow/tools/common:all_files",
         "//tensorflow/tools/compatibility:all_files",
         "//tensorflow/tools/dist_test/server:all_files",
@@ -460,6 +462,17 @@ filegroup(
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
+
+# TensorFlow uses several libraries that may also be used by applications
+# linking against the C and C++ APIs (such as libjpeg).  When we create
+# the shared library, only export the core TF API functions to avoid
+# causing library conflicts (e.g., those reported in github issue 1924).
+# On Linux, tell the linker (-Wl,<option>) to use a version script that
+# excludes all but a subset of function names.
+# On MacOS, the linker does not support version_script, but has an
+# an "-exported_symbols_list" command.  -z defs disallows undefined
+# symbols in object files and -s strips the output.
+
 cc_binary(
     name = "libtensorflow.so",
     linkopts = select({
@@ -489,8 +502,24 @@ cc_binary(
 
 cc_binary(
     name = "libtensorflow_cc.so",
+    linkopts = select({
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
+            "//tensorflow:tf_exported_symbols.lds",
+        ],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//conditions:default": [
+            "-z defs",
+            "-s",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "//tensorflow:tf_version_script.lds",
+        ],
+    }),
     linkshared = 1,
     deps = [
+        "//tensorflow:tf_exported_symbols.lds",
+        "//tensorflow:tf_version_script.lds",
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/cc:cc_ops",

@@ -134,6 +134,7 @@ op { name: "WholeFileReaderV2" rename_to: "WholeFileReader" }
 # image_ops
 op { name: "AdjustContrastv2" rename_to: "AdjustContrast" }
 op { name: "ResizeBilinearGrad" hide: true }
+op { name: "ResizeBicubicGrad" hide: true }
 op { name: "ResizeNearestNeighborGrad" hide: true }
 
 # io_ops

@@ -359,7 +359,7 @@ def get_var(environ_cp,
 
 
 def set_build_var(environ_cp, var_name, query_item, option_name,
-                  enabled_by_default):
+                  enabled_by_default, bazel_config_name=None):
   """Set if query_item will be enabled for the build.
 
   Ask user if query_item will be enabled. Default is used if no input is given.
@@ -372,12 +372,18 @@ def set_build_var(environ_cp, var_name, query_item, option_name,
       System".
     option_name: string for option to define in .bazelrc.
     enabled_by_default: boolean for default behavior.
+    bazel_config_name: Name for Bazel --config argument to enable build feature.
   """
 
   var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
   environ_cp[var_name] = var
   if var == '1':
     write_to_bazelrc('build --define %s=true' % option_name)
+  elif bazel_config_name is not None:
+    # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
+    # options and not to set build configs through environment variables.
+    write_to_bazelrc('build:%s --define %s=true'
+                     % (bazel_config_name, option_name))
 
 
 def set_action_env_var(environ_cp,
@@ -978,15 +984,15 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
   set_build_var(environ_cp, 'TF_NEED_GCP', 'Google Cloud Platform',
-                'with_gcp_support', False)
+                'with_gcp_support', False, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
-                'with_hdfs_support', False)
+                'with_hdfs_support', False, 'hdfs')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                False)
+                False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
-                False)
+                False, 'gdr')
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
-                False)
+                False, 'verbs')
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL', 'OpenCL', False)
   if environ_cp.get('TF_NEED_OPENCL') == '1':

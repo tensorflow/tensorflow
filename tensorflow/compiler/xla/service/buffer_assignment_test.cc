@@ -86,7 +86,7 @@ class BufferAssignmentTest : public HloTestBase {
                                                         int64 alignment = 1) {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
-               backend_->compiler()->BufferSizeBytesFunction(),
+               backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
   }
@@ -95,7 +95,7 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
-               backend_->compiler()->BufferSizeBytesFunction(),
+               backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; }, false,
                std::move(colorer))
         .ConsumeValueOrDie();
@@ -1766,7 +1766,3 @@ TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

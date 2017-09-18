@@ -811,13 +811,25 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
 }
 
 string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
-  if (!show_metadata_ || instr->metadata().op_name().empty()) {
+  if (!show_metadata_) {
     return "";
   }
 
-  return Printf(R"(%s<br/>op_type: %s)",
-                HtmlLikeStringSanitize(instr->metadata().op_name()),
-                HtmlLikeStringSanitize(instr->metadata().op_type()));
+  std::vector<string> lines;
+  if (!instr->metadata().op_name().empty()) {
+    lines.push_back(HtmlLikeStringSanitize(instr->metadata().op_name()));
+  }
+  if (!instr->metadata().op_type().empty()) {
+    lines.push_back(Printf(
+        "op_type: %s", HtmlLikeStringSanitize(instr->metadata().op_type())));
+  }
+  if (!instr->metadata().source_file().empty() &&
+      instr->metadata().source_line() != 0) {
+    lines.push_back(Printf("op_type: %s", instr->metadata().source_file(),
+                           instr->metadata().source_line()));
+  }
+
+  return Join(lines, "<br/>");
 }
 
 string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {

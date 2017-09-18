@@ -1396,6 +1396,8 @@ def global_variables_initializer():
   Returns:
     An Op that initializes global variables in the graph.
   """
+  if context.in_eager_mode():
+    return control_flow_ops.no_op(name="global_variables_initializer")
   return variables_initializer(global_variables())
 
 

@@ -431,7 +431,7 @@ def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
 
   Args:
     tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
-    ord: Order of the norm. Supported values are 'fro', 'euclidean', `0`,
+    ord: Order of the norm. Supported values are 'fro', 'euclidean',
       `1`, `2`, `np.inf` and any positive real number yielding the corresponding
       p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
       `tensor` is a matrix and equivalent to 2-norm for vectors.
