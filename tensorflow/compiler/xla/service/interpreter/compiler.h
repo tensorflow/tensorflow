@@ -13,38 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_EXECUTOR_COMPILER_H_
-#define TENSORFLOW_COMPILER_EXECUTOR_COMPILER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_COMPILER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_COMPILER_H_
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-
-#include "tensorflow/compiler/plugin/executor/platform_id.h"
+#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
-namespace executorplugin {
+namespace interpreter {
 
-class ExecutorCompiler : public Compiler {
+// Despite the inherited "compiler" naming, InterpreterCompiler does not
+// perform any lowering as other backends do. It operates at HLO-level for
+// and is responsible for generating an InterpreterExecutable.
+// Refer to interpreter/README.md for more.
+class InterpreterCompiler : public Compiler {
  public:
-  ExecutorCompiler() {}
-  ~ExecutorCompiler() override {}
+  InterpreterCompiler() {}
+  ~InterpreterCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<HloModule> hlo_modules,
       perftools::gputools::StreamExecutor* stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> hlo_module,
+      std::vector<std::unique_ptr<HloModule>> hlo_modules,
       std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      std::vector<std::unique_ptr<HloModule>> module,
-      const AotCompilationOptions& options) override;
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> hlo_modules,
+                     const AotCompilationOptions& aot_options) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
@@ -53,10 +62,10 @@ class ExecutorCompiler : public Compiler {
  private:
   Status RunHloOptimization(HloModule* hlo_module);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorCompiler);
+  TF_DISALLOW_COPY_AND_ASSIGN(InterpreterCompiler);
 };
 
-}  // namespace executorplugin
+}  // namespace interpreter
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_EXECUTOR_COMPILER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_COMPILER_H_

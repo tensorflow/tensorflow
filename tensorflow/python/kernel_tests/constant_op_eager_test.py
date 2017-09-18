@@ -64,23 +64,71 @@ class ConstantTest(test.TestCase):
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float32))
     self._testAll(np.empty((2, 0, 5)).astype(np.float32))
 
+    orig = [-1.0, 2.0, 0.0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Mix floats and ints
+    orig = [-1.5, 2, 0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    orig = [-5, 2.5, 0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Mix floats and ints that don't fit in int32
+    orig = [1, 2**42, 0.5]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
   def testDouble(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float64))
     self._testAll(
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float64))
     self._testAll(np.empty((2, 0, 5)).astype(np.float64))
 
+    orig = [-5, 2.5, 0]
+    tf_ans = constant_op.constant(orig, dtypes_lib.float64)
+    self.assertEqual(dtypes_lib.float64, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # This integer is not exactly representable as a double, gets rounded.
+    tf_ans = constant_op.constant(2**54 + 1, dtypes_lib.float64)
+    self.assertEqual(2**54, tf_ans.numpy())
+
+    # This integer is larger than all non-infinite numbers representable
+    # by a double, raises an exception.
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                 "out-of-range integer"):
+      constant_op.constant(10**310, dtypes_lib.float64)
+
   def testInt32(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.int32))
     self._testAll(
         (100 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(np.int32))
     self._testAll(np.empty((2, 0, 5)).astype(np.int32))
+    self._testAll([-1, 2])
 
   def testInt64(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.int64))
     self._testAll(
         (100 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(np.int64))
     self._testAll(np.empty((2, 0, 5)).astype(np.int64))
+    # Should detect out of range for int32 and use int64 instead.
+    orig = [2, 2**48, -2**48]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.int64, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Out of range for an int64
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                 "out-of-range integer"):
+      constant_op.constant([2**72])
 
   def testComplex64(self):
     self._testAll(
@@ -171,8 +219,8 @@ class ConstantTest(test.TestCase):
       constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
   def testSparseValuesRaiseErrors(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "setting an array element with a sequence"):
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                 "non-rectangular Python sequence"):
       constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
     with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):

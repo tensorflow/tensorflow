@@ -13,25 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/executor/executable.h"
-#include "tensorflow/compiler/plugin/executor/executor.h"
+#include "tensorflow/compiler/xla/service/interpreter/executable.h"
+
+#include <algorithm>
+#include <cstring>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/interpreter/executor.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
-namespace executorplugin {
+namespace interpreter {
 
 namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::executorplugin;
+namespace sep = ::perftools::gputools::interpreter;
 
-ExecutorExecutable::ExecutorExecutable(std::unique_ptr<HloModule> hlo_module)
+InterpreterExecutable::InterpreterExecutable(
+    std::unique_ptr<HloModule> hlo_module)
     : Executable(std::move(hlo_module)) {}
 
-ExecutorExecutable::~ExecutorExecutable() {}
+InterpreterExecutable::~InterpreterExecutable() {}
 
 static se::DeviceMemoryBase AllocateSingleOutput(
-    sep::ExecutorExecutor* executor, const Literal& literal) {
+    sep::InterpreterExecutor* executor, const Literal& literal) {
   int64 size(xla::ShapeUtil::ByteSizeOf(literal.shape()));
   void* buf = executor->Allocate(size);
   const void* src = literal.InternalData();
@@ -40,7 +56,7 @@ static se::DeviceMemoryBase AllocateSingleOutput(
 }
 
 static se::DeviceMemoryBase AllocateOutputBuffer(
-    sep::ExecutorExecutor* executor, const Literal& literal) {
+    sep::InterpreterExecutor* executor, const Literal& literal) {
   const Shape& shape = literal.shape();
   if (shape.element_type() != xla::TUPLE) {
     return AllocateSingleOutput(executor, literal);
@@ -58,7 +74,7 @@ static se::DeviceMemoryBase AllocateOutputBuffer(
   }
 }
 
-StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
+StatusOr<se::DeviceMemoryBase> InterpreterExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -82,7 +98,7 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
   // Create the arguments as an vector of XLA literals
   std::vector<std::unique_ptr<Literal>> arg_literals;
   std::vector<Literal*> arg_literals_ptrs;
-  for (int64 p = 0; p < computation->num_parameters(); p++) {
+  for (int64 p = 0; p < computation->num_parameters(); ++p) {
     // Create the input literal for the parameter
     HloInstruction* param = computation->parameter_instruction(p);
     arg_literals.emplace_back(Literal::CreateFromShape(param->shape()));
@@ -94,18 +110,18 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
            ShapeUtil::ByteSizeOf(param->shape()));
   }
 
-  // Execute the graph using the evaluator
+  // Execute the graph using the HloEvaluator.
   HloEvaluator evaluator;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> output,
                       evaluator.Evaluate(*computation, arg_literals_ptrs));
 
   // Copy the result into the return buffer
   perftools::gputools::StreamExecutor* executor(stream->parent());
-  sep::ExecutorExecutor* executorExecutor(
-      static_cast<sep::ExecutorExecutor*>(executor->implementation()));
+  sep::InterpreterExecutor* interpreter_executor(
+      static_cast<sep::InterpreterExecutor*>(executor->implementation()));
 
   se::DeviceMemoryBase ret =
-      AllocateOutputBuffer(executorExecutor, *(output.get()));
+      AllocateOutputBuffer(interpreter_executor, *(output.get()));
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -118,32 +134,32 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
   return ret;
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> ExecutorExecutable::ExecuteOnStream(
+StatusOr<std::unique_ptr<ShapedBuffer>> InterpreterExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   return tensorflow::errors::Unimplemented(
-      "ExecuteOnStream is not yet supported on Executor.");
+      "ExecuteOnStream is not yet supported on Interpreter.");
 }
 
-StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteAsyncOnStream(
+StatusOr<se::DeviceMemoryBase> InterpreterExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   return tensorflow::errors::Unimplemented(
-      "ExecuteAsyncOnStream is not yet supported on Executor.");
+      "ExecuteAsyncOnStream is not yet supported on Interpreter.");
 }
 
-/*static*/ int64 ExecutorExecutable::ShapeSizeBytes(const Shape& shape) {
+/*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {
   if (ShapeUtil::IsOpaque(shape)) {
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
-std::unique_ptr<HloCostAnalysis> ExecutorExecutable::CreateCostAnalysis()
+std::unique_ptr<HloCostAnalysis> InterpreterExecutable::CreateCostAnalysis()
     const {
   return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
-}  // namespace executorplugin
+}  // namespace interpreter
 }  // namespace xla

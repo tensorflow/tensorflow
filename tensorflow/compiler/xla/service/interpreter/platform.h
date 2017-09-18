@@ -12,38 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#ifndef TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_PLATFORM_H_
-#define TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_PLATFORM_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_H_
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "tensorflow/stream_executor/executor_cache.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
-#include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/stream_executor/plugin.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
 namespace perftools {
 namespace gputools {
-namespace executorplugin {
+namespace interpreter {
 
-class ExecutorPlatform : public Platform {
+class InterpreterPlatform : public Platform {
  public:
-  ExecutorPlatform();
-  ~ExecutorPlatform() override;
+  InterpreterPlatform();
+  ~InterpreterPlatform() override;
 
   Platform::Id id() const override;
 
-  // Device count is less clear-cut for CPUs than accelerators. This call
-  // currently returns the number of thread units in the host, as reported by
-  // base::NumCPUs().
   int VisibleDeviceCount() const override;
 
   const string& Name() const override;
@@ -70,11 +60,11 @@ class ExecutorPlatform : public Platform {
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ExecutorPlatform);
+  SE_DISALLOW_COPY_AND_ASSIGN(InterpreterPlatform);
 };
 
-}  // namespace executorplugin
+}  // namespace interpreter
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_PLATFORM_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_H_

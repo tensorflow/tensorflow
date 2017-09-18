@@ -67,7 +67,7 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
       message = e.message + " name: " + name
     else:
       message = e.message
-    raise core._status_to_exception(e.code, message)
+    six.raise_from(core._status_to_exception(e.code, message), None)
   # pylint: enable=protected-access
 
   tensors = [ops._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access

@@ -36,14 +36,13 @@ namespace tensorflow {
 
 namespace {
 
-Status BuildCompilationCache(ResourceMgr* rm, XlaCompilationCache** cache) {
-  XlaDevice::Metadata* metadata;
-  Status s = rm->Lookup<XlaDevice::Metadata>(rm->default_container(),
-                                             "xla_metadata", &metadata);
+Status BuildCompilationCache(OpKernelContext* ctx,
+                             XlaCompilationCache** cache) {
+  const XlaDevice::Metadata* metadata;
+  Status s = XlaDevice::GetMetadata(ctx, &metadata);
   if (!s.ok()) {
     return s;
   }
-  core::ScopedUnref metadata_ref(metadata);
   *cache =
       new XlaCompilationCache(metadata->client(), metadata->jit_device_type());
   return Status::OK();
@@ -92,8 +91,8 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
   XlaCompilationCache* cache;
   OP_REQUIRES_OK(ctx, rm->LookupOrCreate<XlaCompilationCache>(
                           rm->default_container(), "xla_compiler", &cache,
-                          [rm](XlaCompilationCache** cache) {
-                            return BuildCompilationCache(rm, cache);
+                          [ctx](XlaCompilationCache** cache) {
+                            return BuildCompilationCache(ctx, cache);
                           }));
   // Holds the reference to the JIT during evaluation. (We could probably
   // free it sooner because the ResourceMgr will retain a reference, but

@@ -205,10 +205,11 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
   llvm::Function::LinkageTypes linkage =
       is_top_level_computation_ ? llvm::GlobalValue::ExternalLinkage
                                 : llvm::GlobalValue::InternalLinkage;
-  compute_function_ = llvm::Function::Create(/*Ty=*/compute_function_type,
-                                             /*Linkage=*/linkage,
-                                             /*Name=*/function_name.c_str(),
-                                             /*Module=*/module_);
+  compute_function_ =
+      llvm::Function::Create(/*Ty=*/compute_function_type,
+                             /*Linkage=*/linkage,
+                             /*Name=*/AsStringRef(function_name),
+                             /*Module=*/module_);
   compute_function_->setCallingConv(llvm::CallingConv::C);
 
   // Set meaningful names for the function's arguments: useful for debugging.
@@ -261,9 +262,10 @@ IrEmitter::~IrEmitter() {}
 
 Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   VLOG(2) << "HandleBitcast: " << bitcast->ToString();
-  emitted_value_[bitcast] = ir_builder_.CreateBitCast(
-      GetEmittedValueFor(bitcast->operand(0)),
-      IrShapeType(bitcast->shape())->getPointerTo(), bitcast->name().c_str());
+  emitted_value_[bitcast] =
+      ir_builder_.CreateBitCast(GetEmittedValueFor(bitcast->operand(0)),
+                                IrShapeType(bitcast->shape())->getPointerTo(),
+                                AsStringRef(IrName(bitcast)));
   return Status::OK();
 }
 
@@ -635,7 +637,8 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window,
                                     reduce_window->operand(1))),
                                 accumulator_address);
 
-        llvm_ir::ForLoopNest loops(&ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(reduce_window, "inner"),
+                                   &ir_builder_);
         std::vector<int64> window_size;
         for (const auto& dim : window.dimensions()) {
           window_size.push_back(dim.size());
@@ -764,7 +767,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   ir_builder_.CreateStore(ir_builder_.getInt1(false), initialized_flag_address);
 
   // Create the inner loop to iterate over the window.
-  llvm_ir::ForLoopNest window_loops(&ir_builder_);
+  llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "window"),
+                                    &ir_builder_);
   std::vector<int64> window_size;
   for (const auto& dim : window.dimensions()) {
     window_size.push_back(dim.size());
@@ -1075,7 +1079,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
         ir_builder_.CreateStore(
             llvm::ConstantFP::get(ir_builder_.getFloatTy(), 0.0), sum_address);
 
-        llvm_ir::ForLoopNest loops(&ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(convolution, "inner"), &ir_builder_);
         std::vector<llvm::Value*> kernel_spatial(num_spatial_dims);
         for (int i = 0; i < num_spatial_dims; ++i) {
           kernel_spatial[i] =
@@ -1280,8 +1284,7 @@ Status IrEmitter::HandleBatchNormTraining(HloInstruction* batch_norm_training) {
   // computation into the same loop to calculate mean: Var=E(X^2) - E(X)^2.
   TF_RETURN_IF_ERROR(
       llvm_ir::LoopEmitter(
-          [this, operand, dimensions_to_reduce, feature_shape, var_array,
-           elements_per_feature](const llvm_ir::IrArray::Index& index) {
+          [&](const llvm_ir::IrArray::Index& index) {
             PrimitiveType element_type = operand->shape().element_type();
             // Used to calculate E(X).
             llvm::Value* sum_address = llvm_ir::EmitAllocaAtFunctionEntry(
@@ -1304,7 +1307,8 @@ Status IrEmitter::HandleBatchNormTraining(HloInstruction* batch_norm_training) {
                 llvm::ConstantFP::get(ir_builder_.getFloatTy(), 0.0),
                 sum_square_address);
 
-            llvm_ir::ForLoopNest loops(&ir_builder_);
+            llvm_ir::ForLoopNest loops(IrName(batch_norm_training, "inner"),
+                                       &ir_builder_);
 
             const llvm_ir::IrArray::Index reduced_dims_index =
                 loops.AddLoopsForShapeOnDimensions(
@@ -1648,7 +1652,8 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
                                    element_alignment);
   }
 
-  llvm_ir::ForLoopNest reduction_loop_nest(&ir_builder_);
+  llvm_ir::ForLoopNest reduction_loop_nest(IrName(arg, "vectorized_inner"),
+                                           &ir_builder_);
   llvm_ir::IrArray::Index reduced_dims_index =
       reduction_loop_nest.AddLoopsForShapeOnDimensions(arg->shape(), dimensions,
                                                        "reduction_dim");
@@ -1928,7 +1933,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
         // AddLoopsForShapeOnDimensions will return an Index where induction
         // Value*s are placed for each dimension in dimensions, and all the rest
         // are nullptrs.
-        llvm_ir::ForLoopNest loops(&ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(reduce, "inner"), &ir_builder_);
         const llvm_ir::IrArray::Index reduced_dims_index =
             loops.AddLoopsForShapeOnDimensions(arg->shape(), dimensions,
                                                "reduction_dim");
@@ -2256,7 +2261,8 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
 
   // First, fill in the padding value to all output elements.
   TF_RETURN_IF_ERROR(EmitTargetElementLoop(
-      pad, [this, pad](const llvm_ir::IrArray::Index& target_index) {
+      pad, "initialize",
+      [this, pad](const llvm_ir::IrArray::Index& target_index) {
         const HloInstruction* padding_value = pad->operand(1);
         llvm::Value* padding_value_addr = GetEmittedValueFor(padding_value);
         return ir_builder_.CreateLoad(padding_value_addr);
@@ -2264,7 +2270,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
 
   // Create a loop to iterate over the operand elements and update the output
   // locations where the operand elements should be stored.
-  llvm_ir::ForLoopNest loops(&ir_builder_);
+  llvm_ir::ForLoopNest loops(IrName(pad, "assign"), &ir_builder_);
   const HloInstruction* operand = pad->operand(0);
   const llvm_ir::IrArray::Index operand_index =
       loops.AddLoopsForShape(operand->shape(), "operand");
@@ -3057,7 +3063,7 @@ Status IrEmitter::EmitTargetElementLoop(
     }
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, output_arrays, &ir_builder_)
-            .EmitLoop());
+            .EmitLoop(IrName(target_op)));
 
     std::vector<llvm::Value*> tuple_operand_ptrs;
     for (int64 i = 0; i < output_arrays.size(); ++i) {
@@ -3072,11 +3078,11 @@ Status IrEmitter::EmitTargetElementLoop(
 
     if (ShouldEmitParallelLoopFor(*target_op)) {
       TF_RETURN_IF_ERROR(EmitParallelTargetElementLoop(
-          target_shape, element_generator, &target_array));
+          target_shape, element_generator, IrName(target_op), &target_array));
     } else {
       TF_RETURN_IF_ERROR(
           llvm_ir::LoopEmitter(element_generator, target_array, &ir_builder_)
-              .EmitLoop());
+              .EmitLoop(IrName(target_op)));
     }
   }
 
@@ -3087,7 +3093,7 @@ Status IrEmitter::EmitTargetElementLoop(
 Status IrEmitter::EmitParallelTargetElementLoop(
     const Shape& target_shape,
     const llvm_ir::ElementGenerator& element_generator,
-    llvm_ir::IrArray* target_array) {
+    tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array) {
   CHECK(!ShapeUtil::IsTuple(target_shape));
   CHECK(!ShapeUtil::IsScalar(target_shape));
 
@@ -3097,7 +3103,7 @@ Status IrEmitter::EmitParallelTargetElementLoop(
     dynamic_loop_bounds[i] = GetDynamicLoopBound(i);
   }
 
-  llvm_ir::ForLoopNest loop_nest(&ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(loop_name, &ir_builder_);
   const int64 num_dims = target_shape.dimensions_size();
   llvm_ir::IrArray::Index array_index(num_dims);
 
