@@ -173,7 +173,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   JDIMENSION target_output_width = cinfo.output_width;
   JDIMENSION target_output_height = cinfo.output_height;
   JDIMENSION skipped_scanlines = 0;
-#if !defined(WIN32)
+#if defined(LIBJPEG_TURBO_VERSION)
   if (flags.crop) {
     // Update target output height and width based on crop window.
     target_output_height = flags.crop_height;
@@ -219,7 +219,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   argball->height_ = target_output_height;
   argball->stride_ = stride;
 
-#if defined(WIN32)
+#if !defined(LIBJPEG_TURBO_VERSION)
   uint8* dstdata = nullptr;
   if (flags.crop) {
     dstdata = new JSAMPLE[stride * target_output_height];
@@ -336,7 +336,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   delete[] tempdata;
   tempdata = nullptr;
 
-#if !defined(WIN32)
+#if defined(LIBJPEG_TURBO_VERSION)
   if (flags.crop && cinfo.output_scanline < cinfo.output_height) {
     // Skip the rest of scanlines, required by jpeg_destroy_decompress.
     jpeg_skip_scanlines(&cinfo,
@@ -418,7 +418,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
       break;
   }
 
-#if defined(WIN32)
+#if !defined(LIBJPEG_TURBO_VERSION)
   // TODO(tanmingxing): delete all these code after migrating to libjpeg_turbo
   // for Windows.
   if (flags.crop) {
