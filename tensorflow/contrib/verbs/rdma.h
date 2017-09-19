@@ -40,6 +40,7 @@ namespace tensorflow {
 struct RdmaParams{
   ibv_device* ibv_dev;
   uint8_t port_num;
+  uint8_t sgid_index;
   uint8_t pkey_index;
   uint32_t queue_depth;
   uint8_t timeout;
