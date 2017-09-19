@@ -28,6 +28,7 @@ py_library(
         ":dnn",
         ":extenders",
         ":head",
+        ":multi_head",
     ],
 )
 
@@ -139,6 +140,45 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/estimator:metric_keys",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "multi_head",
+    srcs = [
+        "python/estimator/multi_head.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/estimator:head",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/saved_model:signature_constants",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "multi_head_test",
+    size = "small",
+    srcs = ["python/estimator/multi_head_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":head",
+        ":multi_head",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:string_ops",
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
