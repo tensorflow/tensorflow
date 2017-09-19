@@ -17,7 +17,6 @@ package_group(
 package(
     default_visibility = [
         ":internal",
-        "//tensorflow/compiler/plugin/executor:__pkg__",
     ],
 )
 
@@ -33,7 +32,6 @@ cc_library(
     deps = [
         ":xla_cpu_device",
         ":xla_cpu_jit",
-        "//tensorflow/compiler/plugin",
     ] + if_cuda_is_configured([
         ":xla_gpu_device",
         ":xla_gpu_jit",
@@ -97,6 +95,17 @@ cc_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_interpreter_device",
+    srcs = ["xla_interpreter_device.cc"],
+    deps = [
+        ":xla_device",
+        "//tensorflow/compiler/jit/kernels:xla_device_launch_op",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+    ],
+    alwayslink = True,
 )
 
 # Internal targets below this point.

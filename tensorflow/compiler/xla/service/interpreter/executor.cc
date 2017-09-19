@@ -13,117 +13,110 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/executor/executor.h"
+#include "tensorflow/compiler/xla/service/interpreter/executor.h"
 
-#include <stdlib.h>
-#include <string.h>
+#include <cstring>
 
-#include "tensorflow/compiler/plugin/executor/platform_id.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace perftools {
 namespace gputools {
-namespace executorplugin {
+namespace interpreter {
 
 host::HostStream *AsExecutorStream(Stream *stream) {
   DCHECK(stream != nullptr);
   return dynamic_cast<host::HostStream *>(stream->implementation());
 }
 
-ExecutorExecutor::ExecutorExecutor(const PluginConfig &plugin_config)
+InterpreterExecutor::InterpreterExecutor(const PluginConfig &plugin_config)
     : plugin_config_(plugin_config) {}
 
-ExecutorExecutor::~ExecutorExecutor() {}
+InterpreterExecutor::~InterpreterExecutor() {}
 
-void *ExecutorExecutor::Allocate(uint64 size) { return new char[size]; }
+void *InterpreterExecutor::Allocate(uint64 size) { return new char[size]; }
 
-void *ExecutorExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
-                                         uint64 offset_bytes,
-                                         uint64 size_bytes) {
+void *InterpreterExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
+                                             uint64 offset_bytes,
+                                             uint64 /*size_bytes*/) {
   return parent + offset_bytes;
 }
 
-void ExecutorExecutor::Deallocate(DeviceMemoryBase *mem) {
+void InterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
   if (!mem->is_sub_buffer()) {
     delete[] static_cast<char *>(mem->opaque());
   }
 }
 
-bool ExecutorExecutor::Memcpy(Stream *stream, void *host_dst,
-                             const DeviceMemoryBase &dev_src, uint64 size) {
+bool InterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
+                                 const DeviceMemoryBase &dev_src, uint64 size) {
   AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
     port::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
   });
   return true;
 }
 
-bool ExecutorExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
-                             const void *host_src, uint64 size) {
+bool InterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
+                                 const void *host_src, uint64 size) {
   AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
     port::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
   });
   return true;
 }
 
-port::Status ExecutorExecutor::SynchronousMemcpy(DeviceMemoryBase *dev_dst,
-                                                const void *host_src,
-                                                uint64 size) {
+port::Status InterpreterExecutor::SynchronousMemcpy(DeviceMemoryBase *dev_dst,
+                                                    const void *host_src,
+                                                    uint64 size) {
   memcpy(dev_dst->opaque(), host_src, size);
   return port::Status::OK();
 }
 
-port::Status ExecutorExecutor::SynchronousMemcpy(void *host_dst,
-                                                const DeviceMemoryBase &dev_src,
-                                                uint64 size) {
+port::Status InterpreterExecutor::SynchronousMemcpy(
+    void *host_dst, const DeviceMemoryBase &dev_src, uint64 size) {
   memcpy(host_dst, dev_src.opaque(), size);
   return port::Status::OK();
 }
 
-bool ExecutorExecutor::HostCallback(Stream *stream,
-                                   std::function<void()> callback) {
+bool InterpreterExecutor::HostCallback(Stream *stream,
+                                       std::function<void()> callback) {
   AsExecutorStream(stream)->EnqueueTask(callback);
   return true;
 }
 
-bool ExecutorExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
+bool InterpreterExecutor::CreateStreamDependency(Stream *dependent,
+                                                 Stream *other) {
   AsExecutorStream(dependent)->EnqueueTask(
       [other]() { other->BlockHostUntilDone(); });
   AsExecutorStream(dependent)->BlockUntilDone();
   return true;
 }
 
-bool ExecutorExecutor::StartTimer(Stream *stream, Timer *timer) {
+bool InterpreterExecutor::StartTimer(Stream *stream, Timer *timer) {
   dynamic_cast<host::HostTimer *>(timer->implementation())->Start(stream);
   return true;
 }
 
-bool ExecutorExecutor::StopTimer(Stream *stream, Timer *timer) {
+bool InterpreterExecutor::StopTimer(Stream *stream, Timer *timer) {
   dynamic_cast<host::HostTimer *>(timer->implementation())->Stop(stream);
   return true;
 }
 
-bool ExecutorExecutor::BlockHostUntilDone(Stream *stream) {
+bool InterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   AsExecutorStream(stream)->BlockUntilDone();
   return true;
 }
 
-DeviceDescription *ExecutorExecutor::PopulateDeviceDescription() const {
+DeviceDescription *InterpreterExecutor::PopulateDeviceDescription() const {
   internal::DeviceDescriptionBuilder builder;
 
   builder.set_device_address_bits(64);
 
-  builder.set_name("Executor");
-  builder.set_device_vendor("VectorName");
-  builder.set_platform_version("1.0");
-  builder.set_driver_version("1.0");
-  builder.set_runtime_version("1.0");
-  builder.set_pci_bus_id("1");
+  builder.set_name("Interpreter");
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
   builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
 
   return builder.Build().release();
 }
 
-}  // namespace executorplugin
+}  // namespace interpreter
 }  // namespace gputools
 }  // namespace perftools

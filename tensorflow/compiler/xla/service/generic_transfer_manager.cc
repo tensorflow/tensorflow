@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -36,19 +37,16 @@ namespace xla {
 
 GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id)
     : platform_id_(platform_id) {
-  // We currently only support kHostPlatformId for CPU and kCudaPlatformId for
-  // GPU. Before supporting other platforms, we need to test this transfer
-  // manager on them.
+  // We currently only support kHostPlatformId for CPU, kCudaPlatformId for
+  // GPU and kInterpreterPlatformId for Interpreter. Before supporting other
+  // platforms, we need to test this transfer manager on them.
   CHECK(platform_id_ == se::host::kHostPlatformId ||
+        platform_id_ == se::interpreter::kInterpreterPlatformId ||
         platform_id_ == se::cuda::kCudaPlatformId);
 }
 
 se::Platform::Id GenericTransferManager::PlatformId() const {
-  if (platform_id_ == se::cuda::kCudaPlatformId ||
-      platform_id_ == se::host::kHostPlatformId) {
-    return platform_id_;
-  }
-  CHECK(false) << "GenericTransferManager::platform_id_ is invalid";
+  return platform_id_;
 }
 
 Status GenericTransferManager::TransferLiteralFromDevice(
