@@ -314,6 +314,32 @@ class NumpyIoTest(test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  def testNumpyInputFnWhenLabelIsEmptyDictionary(self):
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = {}
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+        x, y, batch_size=2, shuffle=False, num_epochs=1)
+      features_tensor = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      features = session.run([features_tensor])
+      self.assertEqual(len(features), 2)
+      self.assertAllEqual(features['a'], [0, 1])
+      self.assertAllEqual(features['b'], [32, 33])
+
+      session.run([features_tensor])
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features_tensor])
+
+      coord.request_stop()
+      coord.join(threads)
+
   def testNumpyInputFnWithDuplicateKeysInXandY(self):
     a = np.arange(4) * 1.0
     b = np.arange(32, 36)
