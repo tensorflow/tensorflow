@@ -304,7 +304,7 @@ def absolute_difference(predictions, labels=None, weights=1.0, scope=None):
             "Use tf.losses.sigmoid_cross_entropy instead. Note that the order "
             "of the predictions and labels arguments has been changed.")
 def sigmoid_cross_entropy(
-        logits, multi_class_labels, weights=1.0, label_smoothing=0, scope=None):
+    logits, multi_class_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
@@ -353,7 +353,7 @@ def sigmoid_cross_entropy(
             "Use tf.losses.softmax_cross_entropy instead. Note that the order "
             "of the logits and labels arguments has been changed.")
 def softmax_cross_entropy(
-        logits, onehot_labels, weights=1.0, label_smoothing=0, scope=None):
+    logits, onehot_labels, weights=1.0, label_smoothing=0, scope=None):
   """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
@@ -545,7 +545,7 @@ def mean_squared_error(predictions, labels=None, weights=1.0, scope=None):
             "Use tf.losses.mean_pairwise_squared_error instead. Note that the "
             "order of the predictions and labels arguments has been changed.")
 def mean_pairwise_squared_error(
-        predictions, labels=None, weights=1.0, scope=None):
+    predictions, labels=None, weights=1.0, scope=None):
   """Adds a pairwise-errors-squared loss to the training procedure.
 
   Unlike `mean_squared_error`, which is a measure of the differences between
@@ -625,7 +625,7 @@ def mean_pairwise_squared_error(
 
 @deprecated("2016-12-30", "Use tf.losses.cosine_distance instead.")
 def cosine_distance(
-        predictions, labels=None, dim=None, weights=1.0, scope=None):
+    predictions, labels=None, dim=None, weights=1.0, scope=None):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
