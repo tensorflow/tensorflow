@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
@@ -265,6 +266,11 @@ void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
   if (sev == tensorflow::FATAL) {
     sev = tensorflow::ERROR;
   }
+
+  // Protect calls with a mutex so we don't interleave calls to LogLines from
+  // multiple threads.
+  static tensorflow::mutex log_lines_mu(tensorflow::LINKER_INITIALIZED);
+  tensorflow::mutex_lock lock(log_lines_mu);
 
   size_t cur = 0;
   while (cur < text.size()) {

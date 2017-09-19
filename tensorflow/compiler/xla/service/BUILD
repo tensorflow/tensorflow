@@ -528,6 +528,17 @@ cc_library(
 )
 
 cc_library(
+    name = "interpreter_plugin",
+    deps = [
+        ":interpreter_transfer_manager",
+        ":service",
+        "//tensorflow/compiler/xla/service/interpreter:compiler",
+        "//tensorflow/compiler/xla/service/interpreter:platform",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
     name = "shaped_buffer",
     srcs = ["shaped_buffer.cc"],
     hdrs = ["shaped_buffer.h"],
@@ -1150,6 +1161,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/interpreter:platform_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
@@ -1192,6 +1204,27 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/gpu:infeed_manager",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+    alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
+cc_library(
+    name = "interpreter_transfer_manager",
+    srcs = ["interpreter_transfer_manager.cc"],
+    hdrs = ["interpreter_transfer_manager.h"],
+    deps = [
+        ":generic_transfer_manager",
+        ":transfer_manager",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/interpreter:platform_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],

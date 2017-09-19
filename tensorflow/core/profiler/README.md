@@ -36,7 +36,7 @@ bazel-bin/tensorflow/core/profiler/profiler \
 tfprof> op -select micros,bytes,occurrence -order_by micros
 
 # To be open sourced...
-bazel-bin/third_party/tensorflow/python/profiler/profiler_ui \
+bazel-bin/tensorflow/python/profiler/profiler_ui \
     --profile_path=/tmp/profiles/profile_1
 ```
 ![ProfilerUI](g3doc/profiler_ui.jpg)

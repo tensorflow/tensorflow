@@ -137,7 +137,7 @@ def _initial_gradients(target, output_gradients, tensor_usage_counts):
         assert output_gradients is None or output_gradients[i] is None
       else:
         if output_gradients is None or output_gradients[i] is None:
-          out_grad = ops.ones_like(t)
+          out_grad = array_ops.ones_like(t)
         else:
           out_grad = output_gradients[i]
         gradients[ops.tensor_id(t)].append(out_grad)
@@ -520,18 +520,24 @@ def implicit_val_and_grad(f):
   is not known ahead of time.
 
   Example:
+  ```python
+  dense_layer = tf.layers.Dense(1)
+  def loss(x, y):
+    return tf.reduce_sum(tf.square(dense_layer(x) - y))
 
-    ```python
-    def train(model, inputs, labels, optimizer):
+  # Obtain the gradient function.
+  val_grad_fn = tfe.implicit_value_and_gradients(loss)
 
-      def forward_fn():
-        prediction = model(inputs)
-        return loss_fn(labels, prediction)
+  # Invoke the gradient function with concrete values of x and y.
+  x = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+  y = tf.constant([[10.0], [20.0]])
+  value, grads_and_vars = val_grad_fn(x, y)
+  print('Value of loss: %s' % value)
 
-      loss, grads_and_vars = implicit_val_and_grad(forward_fn)()
-      optimizer.apply_gradients(grads_and_vars)
-      return loss
-    ```
+  # Apply the gradients to Variables.
+  optimizer = tf.train.GradientDescentOptimizer(0.1)
+  optimizer.apply_gradients(grads_and_vars)
+  ```
 
   Args:
     f: The function to be differentiated.
@@ -541,6 +547,8 @@ def implicit_val_and_grad(f):
     Its first element is the value to which the function evaluates.
     Its second element is list of (gradient, variable) pairs.
   """
+  # TODO(cais): Remove calls to tf.constant() once the gradients functions
+  # accept lists and np.ndarrays.
 
   def grad_fn(*args):
     """Computes the gradient of the wrapped function."""
@@ -564,12 +572,33 @@ def implicit_grad(f):
   This function is useful when the exact set of variables to differentiate with
   is not known ahead of time.
 
+  Example:
+  ```python
+  dense_layer = tf.layers.Dense(1)
+  def loss(x, y):
+    return tf.reduce_sum(tf.square(dense_layer(x) - y))
+
+  # Obtain the gradient function.
+  grad_fn = tfe.implicit_gradients(loss)
+
+  # Invoke the gradient function with concrete values of x and y.
+  x = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+  y = tf.constant([[10.0], [20.0]])
+  grads_and_vars = grad_fn(x, y)
+
+  # Apply the gradients to Variables.
+  optimizer = tf.train.GradientDescentOptimizer(0.1)
+  optimizer.apply_gradients(grads_and_vars)
+  ```
+
   Args:
     f: The function to be differentiated.
 
   Returns:
     A function which, when called, returns a list of (gradient, variable) pairs.
   """
+  # TODO(cais): Remove calls to tf.constant() once the gradients functions
+  # accept lists and np.ndarrays.
 
   def grad_fn(*args, **kwds):
     """Computes the gradient of the wrapped function."""
@@ -597,6 +626,44 @@ def _get_arg_spec(f, params):
 def gradients_function(f, params=None):
   """Returns a function which differentiates f with respect to params.
 
+  Example:
+  ```python
+  # f(x, y) = (x ^ 3) * y - x * (y ^ 2)
+  # Therefore, the 1st order derivatives are:
+  #   df / dx = 3 * (x ^ 2) * y - y ^ 2
+  #   df / dy = x ^ 3 - 2 * x * y
+  # The 2nd order derivatives with respect to x is:
+  #   d^2 f / (dx)^2 = 6 * x * y
+  def f(x, y):
+    return x * x * x * y - x * y * y
+
+  # Obtain a function that returns 1st order gradients.
+  grad_fn = tfe.gradients_function(f)
+
+  x = 2.0
+  y = 3.0
+
+  # Invoke the 1st order gradient function.
+  x_grad, y_grad = grad_fn(x, y)
+  assert x_grad.numpy() == 3 * (2 ** 2) * 3 - 3 ** 2
+  assert y_grad.numpy() == (2 ** 3) - 2 * 2 * 3
+
+  # Obtain a function that returns the 2nd order gradient with respect to x.
+  gradgrad_fn = tfe.gradients_function(lambda x, y: grad_fn(x, y)[0])
+
+  # Invoke the 2nd order gradient function.
+  x_gradgrad = gradgrad_fn(x, y)[0]
+  assert x_gradgrad.numpy() == 6 * 2 * 3
+
+  # To obtain a callable that returns the gradient(s) of `f` with respect to a
+  # subset of its inputs, use the `params` keyword argument with
+  # `gradients_function()`.
+  ygrad_fn = tfe.gradients_function(f, params=[1])
+
+  grads = ygrad_fn(x, y)
+  assert grads[0].numpy() == (2 ** 3) - 2 * 2 * 3
+  ```
+
   Args:
    f: function to be differentiated.
    params: list of parameter names of f or list of integers indexing the
@@ -616,19 +683,51 @@ def gradients_function(f, params=None):
   def decorated(*args, **kwds):
     """Computes the gradient of the decorated function."""
 
-    _, grad = val_and_grad_function(f, params)(*args, **kwds)
+    _, grad = val_and_grad_function(f, params=params)(*args, **kwds)
     return grad
 
   return decorated
 
 
-def val_and_grad_function(f, params):
+def val_and_grad_function(f, params=None):
   """Returns a function that computes f and is derivative w.r.t. params.
+
+  Example:
+  ```python
+  # f(x, y) = (x ^ 3) * y - x * (y ^ 2)
+  # Therefore, the 1st order derivatives are:
+  #   df / dx = 3 * (x ^ 2) * y - y ^ 2
+  #   df / dy = x ^ 3 - 2 * x * y
+  def f(x, y):
+    return x * x * x * y - x * y * y
+
+  # Obtain a function that returns the function value and the 1st order
+  # gradients.
+  val_grads_fn = tfe.value_and_gradients_function(f)
+
+  x = 2.0
+  y = 3.0
+
+  # Invoke the value-and-gradients function.
+  f_val, (x_grad, y_grad) = val_grads_fn(x, y)
+  assert f_val.numpy() == (2 ** 3) * 3 - 2 * (3 ** 2)
+  assert x_grad.numpy() == 3 * (2 ** 2) * 3 - 3 ** 2
+  assert y_grad.numpy() == (2 ** 3) - 2 * 2 * 3
+
+  # To obtain a callable that returns the value of `f` and the gradient(s) of
+  # `f` with respect to a subset of its inputs, use the `params` keyword
+  # argument with `value_and_gradients_function()`.
+  val_ygrad_fn = tfe.value_and_gradients_function(f, params=[1])
+
+  f_val, grads = val_ygrad_fn(x, y)
+  assert f_val.numpy() == (2 ** 3) * 3 - 2 * (3 ** 2)
+  assert grads[0].numpy() == (2 ** 3) - 2 * 2 * 3
+  ```
 
   Args:
    f: function to be differentiated.
    params: list of parameter names of f or list of integers indexing the
-     parameters with respect to which we'll differentiate. Passing None
+     parameters with respect to which we'll differentiate. Passing `None`
      differentiates with respect to all parameters.
 
   Returns: function which, when called, returns the value of f and the gradient
@@ -639,6 +738,7 @@ def val_and_grad_function(f, params):
   Raises:
    ValueError: if the params are not all strings or all integers.
   """
+
   parameter_positions = _get_arg_spec(f, params)
 
   def decorated(*args, **kwds):
@@ -649,7 +749,10 @@ def val_and_grad_function(f, params):
     assert not kwds, "The gradient function can't take keyword arguments."
     tape.push_new_tape()
     sources = []
-    args = [ops.convert_to_tensor(x) for x in args]
+    args = [
+        ops.convert_to_tensor(args[i]) if i in parameter_positions else args[i]
+        for i in range(len(args))
+    ]
     for i in parameter_positions:
       sources.append(args[i])
       tape.watch(args[i])

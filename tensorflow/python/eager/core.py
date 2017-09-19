@@ -55,6 +55,7 @@ def enable_tracing():
 
   WARNING: tracing is not thread-safe.
   """
+  # TODO(alive): Add code example in doc string.
   global _active_trace
   _active_trace = memory_trace.MemoryTrace()
 
@@ -64,6 +65,7 @@ def flush_trace():
 
   WARNING: tracing is not thread-safe.
   """
+  # TODO(alive): Add code example in doc string.
   if _active_trace is not None:
     _active_trace.flush_trace()
 

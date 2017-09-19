@@ -451,7 +451,7 @@ def named_defun(func, name):
 def defun(func):
   """Decorator to compile func into graph_mode.
 
-  defun converts a function that constructs a TensorFlow graph into a function
+  `defun` converts a function that constructs a TensorFlow graph into a function
   that executes the graph. TensorFlow graphs typically execute faster and with a
   lower memory-footprint than executing each of the operations that make up the
   function individually as the TensorFlow runtime can optimize the graph and
@@ -465,10 +465,31 @@ def defun(func):
   definitions are created internally based on their values.
 
   func must return a tf.Tensor (NOT a Tensor) or a list of tf.Tensor (NOT a
-  Tensor). TODO(apassos) make the wrapped tfe ops return tf.Tensors when in
-  graph mode.
+  Tensor).
 
-  TODO(apassos): deal with captured global state. Deal with control flow.
+  Control flow constructs (e.g., `if`, `while`) are not yet compatible with
+  `defun`.
+
+  Example:
+  ```python
+  def f(x, y):
+    return tf.reduce_mean(tf.multiply(x ** 2, 3) + y)
+
+  @tfe.defun
+  def g(x, y):
+    return tf.reduce_mean(tf.multiply(x ** 2, 3) + y)
+
+  x = tf.constant([[2.0, 3.0]])
+  y = tf.constant([[3.0, -2.0]])
+  # The plain function and defun-compiled function should return the same value.
+  assert f(x, y).numpy() == g(x, y).numpy()
+
+  # After the first invocation, the defun-compiled (graph) function runs faster
+  # than the plain function because the defun-compiled function does not involve
+  # Python interpreter overhead during the execution.
+  %time print(f(x, y))
+  %time print(g(x, y))
+  ```
 
   Args:
     func: function to be compiled.
@@ -477,4 +498,5 @@ def defun(func):
      A callable that will execute the compiled function (and return zero
      or more Tensor objects).
   """
+  # TODO(apassos): deal with captured global state. Deal with control flow.
   return named_defun(func, func.__name__)

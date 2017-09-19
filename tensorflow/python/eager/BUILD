@@ -14,6 +14,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:numpy_lib",
+        "//tensorflow/python:py_seq_tensor",
         "//util/python:python_headers",
     ],
 )
