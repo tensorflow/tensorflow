@@ -9,7 +9,10 @@ dependencies:
     $eval: as_slugid(b)
 created: { $fromNow: '0 sec' }
 deadline: { $fromNow: '1 day' }
-expires: { $fromNow: '7 days' }
+expires:
+  $if: 'event.event == "push"'
+  then: { $fromNow: '6 months' }
+  else: { $fromNow: '7 days' }
 
 extra:
   github:
