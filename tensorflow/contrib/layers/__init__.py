@@ -96,6 +96,8 @@ See the @{$python/contrib.layers} guide.
 @@weighted_sum_from_feature_columns
 @@infer_real_valued_columns
 @@sequence_input_from_feature_columns
+
+@@instance_norm
 """
 
 from __future__ import absolute_import
@@ -113,6 +115,7 @@ _allowed_symbols = ['bias_add',
                     'conv3d',
                     'elu',
                     'feature_column',
+                    'instance_norm',
                     'legacy_fully_connected',
                     'legacy_linear',
                     'legacy_relu',

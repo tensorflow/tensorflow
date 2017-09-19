@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
+using tensorflow::errors::InvalidArgument;
+
 namespace tensorflow {
 namespace {
 
@@ -46,6 +48,10 @@ class NodeNameMapping {
 
   // Make the node name unique.
   string Uniquify(const string& name);
+
+  // Records name as a used name. If this name is already used,
+  // returns an error status.
+  Status UseOutputName(const string& name);
 
   // Look up how a node name was previously normalized/uniquified.
   // Returns empty if name was never seen.
@@ -115,6 +121,16 @@ string NodeNameMapping::Uniquify(const string& name) {
   return uniqued;
 }
 
+Status NodeNameMapping::UseOutputName(const string& name) {
+  const auto& iter = used_names_.find(name);
+  if (iter != used_names_.end()) {
+    return InvalidArgument("Cannot have duplicate output names. Name '", name,
+                           "' appears more than once in 'output_names' array.");
+  }
+  used_names_.insert(iter, name);
+  return Status::OK();
+}
+
 string NodeNameMapping::Lookup(const string& name) const {
   const auto iter = name_mapping_.find(name);
   if (iter == name_mapping_.end()) return string();
@@ -125,10 +141,10 @@ Status ValidateNoRefOutputs(const Node* node) {
   for (int i = 0; i < node->num_outputs(); ++i) {
     const DataType& dt = node->output_type(i);
     if (IsRefType(dt)) {
-      return errors::InvalidArgument("Output ", i, " of node '", node->name(),
-                                     "' has a reference "
-                                     "type ",
-                                     DataTypeString(dt));
+      return InvalidArgument("Output ", i, " of node '", node->name(),
+                             "' has a reference "
+                             "type ",
+                             DataTypeString(dt));
     }
   }
   return Status::OK();
@@ -178,7 +194,7 @@ Status FillFunctionBody(
         // A backedge might not appear as a regular Edge, but be only present
         // in the node_def. Such edges are referred to as requested_inputs().
         if (i >= node->requested_inputs().size()) {
-          return errors::InvalidArgument(
+          return InvalidArgument(
               "Graph to be converted to function appears to be malformed. ",
               "Node ", node->name(), " is missing input edge ", i);
         }
@@ -191,7 +207,7 @@ Status FillFunctionBody(
 
       const auto iter = tensor_renaming.find(original_input_name);
       if (iter == tensor_renaming.end()) {
-        return errors::InvalidArgument(
+        return InvalidArgument(
             "Input ", i, ", '", original_input_name, "', of node '",
             node->name(), "' in function '", fn_name,
             "' is not available. You might need to include it in inputs "
@@ -207,7 +223,7 @@ Status FillFunctionBody(
       // If we did not find a name for the source of control edge, this
       // source must be outside of the body. Raise an error.
       if (normalized.empty()) {
-        return errors::InvalidArgument(
+        return InvalidArgument(
             "The source of control edge ", edge->DebugString(),
             " is not in the body. Encountered while creating function '",
             fn_name, "'");
@@ -226,6 +242,10 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           const std::vector<OutputTensor>& outputs,
                           const std::vector<string>& output_names,
                           FunctionDef* fdef) {
+  if (!output_names.empty()) {
+    DCHECK_EQ(output_names.size(), outputs.size());
+  }
+
   fdef->mutable_signature()->set_name(fn_name);
 
   // Keep track of names we used and how we normalized them.
@@ -241,6 +261,24 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
   //    e.g. {Add:3 -> add_0:z:1}
   std::unordered_map<string, string> tensor_renaming;
 
+  // Fill outputs in function's signature.
+  // We fill the outputs first to prevent output_names from colliding
+  // with the input names we pick below. With this order, no names are used in
+  // node_names yet, and output_names won't collide with anything (except
+  // potentially with themselves).
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    const Node* node = outputs[i].node;
+    int idx = outputs[i].index;
+    OpDef::ArgDef* argdef = fdef->mutable_signature()->add_output_arg();
+    argdef->set_type(node->output_type(idx));
+    if (!output_names.empty()) {
+      TF_RETURN_IF_ERROR(node_names.UseOutputName(output_names[i]));
+      argdef->set_name(output_names[i]);
+    } else {
+      argdef->set_name(node_names.GetIOName(node->name()));
+    }
+  }
+
   // Fill inputs in function's signature.
   for (size_t i = 0; i < inputs.size(); ++i) {
     const Node* node = inputs[i].node;
@@ -250,15 +288,6 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     const string& input_name = node_names.GetIOName(node->name());
     argdef->set_name(input_name);
     tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
-  }
-
-  // Fill outputs in function's signature.
-  for (size_t i = 0; i < outputs.size(); ++i) {
-    const Node* node = outputs[i].node;
-    int idx = outputs[i].index;
-    OpDef::ArgDef* argdef = fdef->mutable_signature()->add_output_arg();
-    argdef->set_type(node->output_type(idx));
-    argdef->set_name(node_names.GetIOName(node->name()));
   }
 
   // Populate tensor_renaming and node_names.
@@ -308,7 +337,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
         strings::StrCat(outputs[r].node->name(), ":", outputs[r].index);
     const auto iter = tensor_renaming.find(return_value);
     if (iter == tensor_renaming.end()) {
-      return errors::InvalidArgument(
+      return InvalidArgument(
           "TF_Output ", return_value, " is neither in the function body ",
           "nor among function inputs. Encountered while creating function '",
           fn_name, "'");
@@ -349,9 +378,8 @@ Status ProcessInputs(
     } else {
       auto& indices = iter->second;
       if (std::find(indices.begin(), indices.end(), idx) != indices.end()) {
-        return errors::InvalidArgument(
-            "TF_Output ", node.name(), ":", idx,
-            " appears more than once in the input list");
+        return InvalidArgument("TF_Output ", node.name(), ":", idx,
+                               " appears more than once in the input list");
       }
       indices.push_back(idx);
     }
@@ -400,7 +428,7 @@ Status ComputeBodyNodes(
         // artificial restriction and require that when num_opers=-1, such
         // nodes must have a single output.
         if (node->num_outputs() != 1) {
-          return errors::InvalidArgument(
+          return InvalidArgument(
               "When `num_opers` is set to -1, nodes referenced in `inputs` "
               "must have a single output. Node ",
               node->name(), " has ", node->num_outputs(),
@@ -468,7 +496,7 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
   TF_Function* tf_function = new TF_Function();
   status->status = tensorflow::GraphToFunctionDef(
       fn_body->graph, fn_name, body_nodes, input_tensors, output_tensors,
-      output_names_vec, tf_function->fdef_lib.add_function());
+      output_names_vec, &tf_function->fdef);
   if (!status->status.ok()) {
     TF_DeleteFunction(tf_function);
     return nullptr;
@@ -476,21 +504,32 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
   return tf_function;
 }
 
-void TF_GraphAddFunction(TF_Graph* g, const TF_Function* function,
-                         TF_Status* status) {
-  tensorflow::mutex_lock l(g->mu);
+void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
+                          const TF_Function* grad, TF_Status* status) {
+  if (func == nullptr) {
+    status->status = InvalidArgument(
+        "'func' argument to TF_GraphCopyFunction cannot be null");
+    return;
+  }
 
-  // At the moment, we have only one function and no gradients in fdef_lib.
-  // This makes the following operation atomic.
-  // TODO(iga): Add an atomic version of AddFunctionLibrary when we support
-  // gradients
-  status->status = g->graph.AddFunctionLibrary(function->fdef_lib);
+  // TODO(iga): Add AddFunctionDef() and AddGradientDef() methods to graph
+  // to avoid the extra copy here.
+  tensorflow::FunctionDefLibrary fdef_lib;
+  *fdef_lib.add_function() = func->fdef;
+  if (grad) {
+    *fdef_lib.add_function() = grad->fdef;
+    tensorflow::GradientDef* gdef = fdef_lib.add_gradient();
+    gdef->set_function_name(func->fdef.signature().name());
+    gdef->set_gradient_func(grad->fdef.signature().name());
+  }
+
+  tensorflow::mutex_lock l(g->mu);
+  status->status = g->graph.AddFunctionLibrary(fdef_lib);
 }
 
 void TF_FunctionToFunctionDef(TF_Function* func, TF_Buffer* output_func_def,
                               TF_Status* status) {
-  DCHECK_EQ(1, func->fdef_lib.function_size());
-  status->status = MessageToBuffer(func->fdef_lib.function(0), output_func_def);
+  status->status = MessageToBuffer(func->fdef, output_func_def);
 }
 
-void TF_DeleteFunction(TF_Function* function) { delete function; }
+void TF_DeleteFunction(TF_Function* func) { delete func; }

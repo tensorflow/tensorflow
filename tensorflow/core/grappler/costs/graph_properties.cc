@@ -379,56 +379,48 @@ Status GraphProperties::InferStatically() {
     if (!ctx) {
       continue;
     }
-    CHECK_EQ(ctx->num_inputs(), node->num_inputs());
-    std::vector<OpInfo::TensorProperties> input_properties;
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OpInfo::TensorProperties properties;
-      properties.set_dtype(node->input_type(i));
-      ShapeHandle shp = ctx->input(i);
-      if (!ctx->RankKnown(shp)) {
-        properties.mutable_shape()->set_unknown_rank(true);
-      } else {
-        for (int j = 0; j < ctx->Rank(shp); ++j) {
-          shape_inference::DimensionHandle dim = ctx->Dim(shp, j);
-          int64 d = ctx->Value(dim);
-          properties.mutable_shape()->add_dim()->set_size(d);
-        }
-      }
-      input_properties.push_back(properties);
-    }
-    for (const auto& edge : node->in_edges()) {
-      if (!edge->src()->IsConstant()) {
-        continue;
-      }
-      const int input_id = edge->dst_input();
-      if (input_id >= input_properties.size()) {
-        continue;
-      }
-      const NodeDef& node = edge->src()->def();
-      const TensorProto& raw_val = node.attr().at("value").tensor();
-      *input_properties[input_id].mutable_value() = raw_val;
-    }
-    input_properties_[node->name()] = input_properties;
 
-    // TODO(bsteiner): share this code with the input processing above.
-    CHECK_EQ(ctx->num_outputs(), node->num_outputs());
-    std::vector<OpInfo::TensorProperties> output_properties;
-    for (int i = 0; i < ctx->num_outputs(); ++i) {
-      OpInfo::TensorProperties properties;
-      properties.set_dtype(node->output_type(i));
-      ShapeHandle shp = ctx->output(i);
-      if (!ctx->RankKnown(shp)) {
-        properties.mutable_shape()->set_unknown_rank(true);
-      } else {
-        for (int j = 0; j < ctx->Rank(shp); ++j) {
-          shape_inference::DimensionHandle dim = ctx->Dim(shp, j);
-          int64 d = ctx->Value(dim);
-          properties.mutable_shape()->add_dim()->set_size(d);
-        }
+    // Fill input properties.
+    {
+      CHECK_EQ(ctx->num_inputs(), node->num_inputs());
+      auto& input_properties = input_properties_[node->name()];
+
+      // Should always be empty, node names in graph are supposed to be unique.
+      CHECK_EQ(input_properties.size(), 0);
+
+      input_properties.resize(ctx->num_inputs());
+      for (int i = 0; i < ctx->num_inputs(); ++i) {
+        FillTensorPropertiesFromContext(ctx->input(i), node->input_type(i), ctx,
+                                        &input_properties[i]);
       }
-      output_properties.push_back(properties);
+      for (const auto& edge : node->in_edges()) {
+        if (!edge->src()->IsConstant()) {
+          continue;
+        }
+        const int input_id = edge->dst_input();
+        if (input_id >= input_properties.size()) {
+          continue;
+        }
+        const NodeDef& node = edge->src()->def();
+        const TensorProto& raw_val = node.attr().at("value").tensor();
+        *input_properties[input_id].mutable_value() = raw_val;
+      }
     }
-    output_properties_[node->name()] = output_properties;
+
+    // Fill output properties.
+    {
+      CHECK_EQ(ctx->num_outputs(), node->num_outputs());
+      auto& output_properties = output_properties_[node->name()];
+
+      // Should always be empty, node names in graph are supposed to be unique.
+      CHECK_EQ(output_properties.size(), 0);
+
+      output_properties.resize(ctx->num_outputs());
+      for (int i = 0; i < ctx->num_outputs(); ++i) {
+        FillTensorPropertiesFromContext(ctx->output(i), node->output_type(i),
+                                        ctx, &output_properties[i]);
+      }
+    }
   }
 
   return Status::OK();
@@ -502,6 +494,21 @@ GraphProperties::GetOutputProperties(const string& node_name) const {
     return it->second;
   }
   return missing_properties_;
+}
+
+void GraphProperties::FillTensorPropertiesFromContext(
+    const ShapeHandle& shape, const DataType& type, InferenceContext* ctx,
+    OpInfo::TensorProperties* properties) {
+  properties->set_dtype(type);
+  if (!ctx->RankKnown(shape)) {
+    properties->mutable_shape()->set_unknown_rank(true);
+  } else {
+    for (int j = 0; j < ctx->Rank(shape); ++j) {
+      shape_inference::DimensionHandle dim = ctx->Dim(shape, j);
+      int64 d = ctx->Value(dim);
+      properties->mutable_shape()->add_dim()->set_size(d);
+    }
+  }
 }
 
 }  // end namespace grappler

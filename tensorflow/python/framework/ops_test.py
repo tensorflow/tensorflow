@@ -298,7 +298,7 @@ class OperationTest(test_util.TensorFlowTestCase):
 
   def testConvertToTensorEager(self):
     with context.eager_mode():
-      t = ops.EagerTensor(1)
+      t = ops.EagerTensor(1, context.context())
       converted = ops.convert_to_tensor(t)
       self.assertTrue(isinstance(converted, ops.EagerTensor))
 
