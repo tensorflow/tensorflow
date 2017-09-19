@@ -1401,6 +1401,32 @@ class FIFOQueueTest(test.TestCase):
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
 
+  def testTooManyComponents(self):
+    dtypes = [dtypes_lib.float32]
+    shape = (32, 4, 128)
+    q = data_flow_ops.FIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))
+
+    np_array = np.random.randint(-10, 10, shape)
+    input_tuple = [np_array.astype(np.float32)] * 2
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"1 component\(s\) but enqueue attempted with 2 tensor\(s\)"):
+      q.enqueue_many(input_tuple).run()
+
+  def testTooFewComponents(self):
+    dtypes = [dtypes_lib.float32] * 2
+    shape = (32, 4, 128)
+    q = data_flow_ops.FIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))
+
+    np_array = np.random.randint(-10, 10, shape)
+    input_tuple = [np_array.astype(np.float32)]
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"2 component\(s\) but enqueue attempted with 1 tensor\(s\)"):
+      q.enqueue_many(input_tuple).run()
+
   def testDequeueEnqueueFail(self):
     with self.test_session() as session:
       q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])

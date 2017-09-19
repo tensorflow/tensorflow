@@ -267,6 +267,11 @@ class QueueBase(object):
       if not isinstance(vals, (list, tuple)):
         vals = [vals]
 
+    if len(vals) != len(self._dtypes):
+      raise ValueError(
+          "Queue contains %d component(s) but enqueue attempted with %d "
+          "tensor(s)" % (len(self._dtypes), len(vals)))
+
     tensors = []
     for i, (val, dtype) in enumerate(zip(vals, self._dtypes)):
       tensors.append(ops.convert_to_tensor(val, dtype=dtype,
