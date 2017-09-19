@@ -237,7 +237,11 @@ def imperative_grad(
     for i in range(len(out_gradients)):
       if out_gradients[i] is None:
         # TODO(apassos) this should be in the right device
-        out_gradients[i] = array_ops.zeros(*op_trace.output_shape_and_dtype[i])
+        none_indices = _grad_fn_accepts_none_for_indices.get(
+            op_trace.op_type, None)
+        if none_indices is None or i not in none_indices:
+          out_gradients[i] = array_ops.zeros(
+              *op_trace.output_shape_and_dtype[i])
       else:
         out_gradients[i] = _aggregate_grads(out_gradients[i])
 
@@ -335,8 +339,11 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs,
   grad_fn = ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
   if grad_fn is None:
     return [None] * num_inputs
+
+  none_indices = _grad_fn_accepts_none_for_indices.get(op_name, [])
   out_grads = [
-      o if (o is not None) else array_ops.zeros_like(outputs[i])
+      o if (o is not None or i in none_indices)
+      else array_ops.zeros_like(outputs[i])
       for i, o in enumerate(out_grads)
   ]
   return grad_fn(mock_op, *out_grads)
@@ -452,6 +459,24 @@ _ops_which_dont_need_inputs = set([
 ])
 
 
+# TODO(agarwal): use an automatic mechanism for handling None arguments to
+# gradient functions.
+# Some gradient functions can accept None arguments for gradients. The following
+# maps the operation name to the indices at which the corresponding gradient
+# function can accept None values.
+# e.g. FusedBatchNorm outputs 5 values and hence receives 5 gradient values
+# during backprop. However the gradient function uses only the first of those
+# values and ignores the rest. The entry, "FusedBatchNorm": [1, 2, 3, 4],
+# indicates that only the gradient corresponding to index 0 is used, and the
+# gradient values at indices 1-4 are ignored (and hence can be None). The
+# backprop algorithm can then leverage this by not constructing zeros to
+# pass for those indices.
+_grad_fn_accepts_none_for_indices = {
+    "SoftmaxCrossEntropyWithLogits": [1],
+    "FusedBatchNorm": [1, 2, 3, 4]
+}
+
+
 def _record_gradient(op_name, inputs, attrs, results, name):
   """Records gradients for a TensorFlow operation.
 
@@ -500,7 +525,7 @@ def _record_gradient(op_name, inputs, attrs, results, name):
     return result
 
   inputs = [ops.convert_to_tensor(x) for x in inputs]
-  tape.record_operation(results, inputs, [], grad_fn)
+  tape.record_operation(op_name, results, inputs, [], grad_fn)
   if _tracing:
     print("Computed op", (name if name else op_name), "inputs", inputs,
           "outputs", results)

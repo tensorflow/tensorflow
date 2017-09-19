@@ -769,7 +769,7 @@ class EagerTensor(Tensor):
           grad_h = c_api.TFE_TensorHandleCopyToDevice(
               dresult._handle, ctx._handle, self_device, status)
         return _tensor_from_handle(grad_h)
-      tape.record_operation([new_tensor], [self], [], grad_fun)
+      tape.record_operation("_copy", [new_tensor], [self], [], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
 
