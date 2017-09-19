@@ -2690,7 +2690,6 @@ def spatial_softmax(features,
     else:
       attention = features/temperature
 
-    attention = nn.softmax(features/temperature)
     expected_x = math_ops.reduce_sum(
         pos_x * attention, [1], keep_dims=True)
     expected_y = math_ops.reduce_sum(
