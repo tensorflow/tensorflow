@@ -425,7 +425,6 @@ cc_library(
         ":device_memory_allocator",
         ":executable",
         ":execution_tracker",
-        ":gpu_transfer_manager",
         ":hlo",
         ":hlo_cost_analysis",
         ":hlo_evaluator",
