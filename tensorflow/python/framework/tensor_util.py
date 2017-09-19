@@ -626,7 +626,7 @@ def _ConstantValue(tensor, partial):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims]),
+      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims], dtype=np.int32),
                         dtype=np.int32)
     else:
       return None

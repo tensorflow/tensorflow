@@ -13,37 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/executor/platform.h"
-#include "tensorflow/compiler/plugin/executor/executor.h"
-#include "tensorflow/compiler/plugin/executor/platform_id.h"
+#include "tensorflow/compiler/xla/service/interpreter/platform.h"
 
-#include "tensorflow/stream_executor/lib/error.h"
+#include <utility>
+
+#include "tensorflow/compiler/xla/service/interpreter/executor.h"
+#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
+#include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "tensorflow/stream_executor/multi_platform_manager.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::executorplugin;
+namespace sep = ::perftools::gputools::interpreter;
 
 namespace perftools {
 namespace gputools {
-namespace executorplugin {
+namespace interpreter {
 
-PLATFORM_DEFINE_ID(kExecutorPlatformId);
+InterpreterPlatform::InterpreterPlatform() : name_("Interpreter") {}
 
-ExecutorPlatform::ExecutorPlatform() : name_("Executor") {}
+InterpreterPlatform::~InterpreterPlatform() {}
 
-ExecutorPlatform::~ExecutorPlatform() {}
+Platform::Id InterpreterPlatform::id() const { return kInterpreterPlatformId; }
 
-Platform::Id ExecutorPlatform::id() const { return kExecutorPlatformId; }
+int InterpreterPlatform::VisibleDeviceCount() const { return 1; }
 
-int ExecutorPlatform::VisibleDeviceCount() const { return 1; }
+const string& InterpreterPlatform::Name() const { return name_; }
 
-const string& ExecutorPlatform::Name() const { return name_; }
-
-port::StatusOr<StreamExecutor*> ExecutorPlatform::ExecutorForDevice(
+port::StatusOr<StreamExecutor*> InterpreterPlatform::ExecutorForDevice(
     int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
@@ -53,7 +55,7 @@ port::StatusOr<StreamExecutor*> ExecutorPlatform::ExecutorForDevice(
 }
 
 port::StatusOr<StreamExecutor*>
-ExecutorPlatform::ExecutorForDeviceWithPluginConfig(
+InterpreterPlatform::ExecutorForDeviceWithPluginConfig(
     int device_ordinal, const PluginConfig& plugin_config) {
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
@@ -62,16 +64,16 @@ ExecutorPlatform::ExecutorForDeviceWithPluginConfig(
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> ExecutorPlatform::GetExecutor(
+port::StatusOr<StreamExecutor*> InterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
-ExecutorPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
+InterpreterPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<ExecutorExecutor>(config.plugin_config));
+      this, port::MakeUnique<InterpreterExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
@@ -84,27 +86,30 @@ ExecutorPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   return std::move(executor);
 }
 
-void ExecutorPlatform::RegisterTraceListener(
+void InterpreterPlatform::RegisterTraceListener(
     std::unique_ptr<TraceListener> listener) {
   LOG(FATAL) << "not yet implemented: register executor trace listener";
 }
 
-void ExecutorPlatform::UnregisterTraceListener(TraceListener* listener) {
+void InterpreterPlatform::UnregisterTraceListener(TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister executor trace listener";
 }
 
-static void InitializeExecutorPlatform() {
-  std::unique_ptr<se::Platform> platform(new sep::ExecutorPlatform);
+static void InitializeInterpreterPlatform() {
+  std::unique_ptr<se::Platform> platform(new sep::InterpreterPlatform);
   SE_CHECK_OK(se::MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
-}  // namespace executorplugin
+}  // namespace interpreter
 }  // namespace gputools
 }  // namespace perftools
 
-REGISTER_MODULE_INITIALIZER(executor_platform, sep::InitializeExecutorPlatform());
+REGISTER_MODULE_INITIALIZER(interpreter_platform,
+                            sep::InitializeInterpreterPlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
+
 // Note that module initialization sequencing is not supported in the
 // open-source project, so this will be a no-op there.
-REGISTER_MODULE_INITIALIZER_SEQUENCE(executor_platform, multi_platform_manager);
+REGISTER_MODULE_INITIALIZER_SEQUENCE(interpreter_platform,
+                                     multi_platform_manager);

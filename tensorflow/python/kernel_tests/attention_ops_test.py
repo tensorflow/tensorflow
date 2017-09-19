@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
@@ -196,6 +197,18 @@ class ExtractGlimpseTest(test.TestCase):
         expected_rows=[None, None, None, 1, 2, 3, 4],
         expected_cols=[56, 57, 58, 59, 60])
 
+  def testGlimpseNonNormalizedNonCentered(self):
+    img = constant_op.constant(np.arange(25).reshape((1, 5, 5, 1)),
+                               dtype=dtypes.float32)
+    with self.test_session():
+      result1 = image_ops.extract_glimpse(img, [3, 3], [[0, 0]],
+                                          centered=False, normalized=False)
+      result2 = image_ops.extract_glimpse(img, [3, 3], [[1, 0]],
+                                          centered=False, normalized=False)
+      self.assertAllEqual(np.asarray([[0, 1, 2], [5, 6, 7], [10, 11, 12]]),
+                          result1.eval()[0, :, :, 0])
+      self.assertAllEqual(np.asarray([[5, 6, 7], [10, 11, 12], [15, 16, 17]]),
+                          result2.eval()[0, :, :, 0])
 
 if __name__ == '__main__':
   test.main()

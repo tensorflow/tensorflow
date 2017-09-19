@@ -2613,7 +2613,7 @@ def spatial_softmax(features,
 
   Read more here:
   "Learning visual feature spaces for robotic manipulation with
-  deep spatial autoencoders." Finn et. al, http://arxiv.org/abs/1509.06113.
+  deep spatial autoencoders." Finn et al., http://arxiv.org/abs/1509.06113.
 
   Args:
     features: A `Tensor` of size [batch_size, W, H, num_channels]; the

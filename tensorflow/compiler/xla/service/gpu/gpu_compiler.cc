@@ -284,7 +284,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
     diag_info.print(*printer);
   };
-  llvm_context.setDiagnosticHandler(DiagnosticHandler, &printer);
+  llvm_context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
   llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.

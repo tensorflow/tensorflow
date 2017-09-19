@@ -237,7 +237,7 @@ class _TrainingExecutorTrainingTest(object):
         config=test.mock.ANY,
         start=False)
 
-    mock_server_instance.start.assert_called()
+    self.assertTrue(mock_server_instance.start.called)
 
     mock_est.train.assert_called_with(input_fn=train_spec.input_fn,
                                       max_steps=train_spec.max_steps,
@@ -349,7 +349,7 @@ class TrainingExecutorRunWorkerTest(_TrainingExecutorTrainingTest,
     with test.mock.patch.object(time, 'sleep') as mock_sleep:
       mock_sleep.side_effect = lambda s: self.assertEqual(expected_secs, s)
       self._run_task(executor)
-      mock_sleep.assert_called()
+      self.assertTrue(mock_sleep.called)
 
 
 class TrainingExecutorRunChiefTest(_TrainingExecutorTrainingTest,

@@ -43,14 +43,12 @@ namespace tensorflow {
 
 class XlaDevice : public LocalDevice {
  public:
-  // Wrapper class to store metadata about the XlaDevice in the
-  // resource manager, where it can be looked up e.g., when lazily
-  // creating the XlaCompilationCache device.
-  class Metadata : public ResourceBase {
+  // Wrapper class to store metadata about the XlaDevice, where it can be
+  // retrieved e.g., when lazily creating the XlaCompilationCache device.
+  class Metadata {
    public:
     Metadata(int device_ordinal, perftools::gputools::Platform* platform,
              const DeviceType& device_type);
-    ~Metadata() override;
 
     // The index of the device on this host.
     int device_ordinal() const;
@@ -59,17 +57,16 @@ class XlaDevice : public LocalDevice {
     xla::LocalClient* client() const;
     const DeviceType& jit_device_type() const;
 
-    string DebugString() override;
-
    private:
     const int device_ordinal_;
     const DeviceType device_type_;
     perftools::gputools::Platform* platform_;  // Not owned.
+
+    TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
   };
 
-  // Sets `*metadata` to the XlaDevice Metadata in the resource manager of
-  // `ctx`.
-  static Status GetMetadata(OpKernelContext* ctx, Metadata** metadata);
+  // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
+  static Status GetMetadata(OpKernelContext* ctx, const Metadata** metadata);
 
   // Factory function. 'platform_name' is the name of the XLA platform.
   // 'device_name' is the name of the Tensorflow device to create.
@@ -101,6 +98,8 @@ class XlaDevice : public LocalDevice {
   xla::LocalClient* client() const;
 
  private:
+  // The metadata of this XlaDevice.
+  const Metadata xla_metadata_;
   // Which hardware device in the client's platform this XlaDevice controls.
   const int device_ordinal_;
   // The name of the device that is used to compile Ops for this XlaDevice.
