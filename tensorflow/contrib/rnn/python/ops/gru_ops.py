@@ -27,6 +27,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.util.deprecation import deprecated_args
 
 _gru_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_gru_ops.so"))
@@ -129,6 +130,8 @@ class GRUBlockCell(rnn_cell_impl.RNNCell):
 
   """
 
+  @deprecated_args(None, "cell_size is deprecated, use num_units instead",
+                   "cell_size")
   def __init__(self, num_units=None, cell_size=None):
     """Initialize the Block GRU cell.
 
