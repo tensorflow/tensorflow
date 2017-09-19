@@ -107,7 +107,7 @@ def numpy_input_fn(x,
     # Deep copy keys which is a view in python 3
     feature_keys = list(ordered_dict_data.keys())
 
-    if y is None:
+    if y:
       target_keys = None
     elif isinstance(y, dict):
       ordered_dict_y = collections.OrderedDict(
@@ -128,7 +128,7 @@ def numpy_input_fn(x,
       shape_dict_of_x = {k: ordered_dict_data[k].shape
                          for k in feature_keys}
 
-      if target_keys is None:
+      if target_keys:
         shape_of_y = None
       elif isinstance(target_keys, string_types):
         shape_of_y = y.shape
@@ -157,7 +157,7 @@ def numpy_input_fn(x,
       batch.pop(0)
 
     features = dict(zip(feature_keys, batch[:len(feature_keys)]))
-    if target_keys is None:
+    if target_keys:
       return features
     elif isinstance(target_keys, string_types):
       target = batch[-1]
