@@ -262,22 +262,15 @@ class XlaCompiler {
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 
-  // Takes `result` which has been compiled from a Tensorflow subgraph to a
-  // XLA computation already, and generates an XLA LocalExecutable `executable`.
-  Status BuildExecutable(const CompilationResult& result,
-                         std::unique_ptr<xla::LocalExecutable>* executable);
-
-  const Options& options() const { return options_; }
-  xla::Client* client() const { return options_.client; }
-  XlaCompilationDevice* device() const { return device_; }
-  const DeviceMgr* device_mgr() const { return &device_mgr_; }
-  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
-
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
   // Channel handles can be used to communicate between different computations.
   // Computations that communicate should be compiled with the same XlaCompiler.
   Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
+
+  const Options& options() const { return options_; }
+  xla::Client* client() const { return options_.client; }
+  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
 
  private:
   Options options_;
