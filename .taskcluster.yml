@@ -21,6 +21,7 @@ tasks:
     scopes: [
       "queue:create-task:lowest:{{ taskcluster.docker.provisionerId }}/deepspeech-worker",
       "queue:create-task:lowest:localprovisioner/deepspeech-macos",
+      "queue:route:index.project.deepspeech.*",
       "queue:scheduler-id:taskcluster-github"
     ]
     payload:
