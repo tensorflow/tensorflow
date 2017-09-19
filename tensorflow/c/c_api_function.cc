@@ -532,4 +532,17 @@ void TF_FunctionToFunctionDef(TF_Function* func, TF_Buffer* output_func_def,
   status->status = MessageToBuffer(func->fdef, output_func_def);
 }
 
+TF_Function* TF_FunctionImportFunctionDef(const TF_Buffer* func_def,
+                                          TF_Status* status) {
+  TF_Function* func = new TF_Function();
+  if (!func->fdef.ParseFromArray(func_def->data, func_def->length)) {
+    status->status = InvalidArgument(
+        "Invalid FunctionDef given to TF_FunctionImportFunctionDef");
+    TF_DeleteFunction(func);
+    return nullptr;
+  }
+  status->status = tensorflow::Status::OK();
+  return func;
+}
+
 void TF_DeleteFunction(TF_Function* func) { delete func; }

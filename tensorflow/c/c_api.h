@@ -1107,7 +1107,7 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 //   included in explicitly specified body).
 //
 // Returns:
-//  On successful, a newly created TF_Function instance. It must be deleted by
+//  On success, a newly created TF_Function instance. It must be deleted by
 //  calling TF_DeleteFunction.
 //
 //  On failure, null.
@@ -1126,6 +1126,15 @@ TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
 TF_CAPI_EXPORT extern void TF_FunctionToFunctionDef(TF_Function* func,
                                                     TF_Buffer* output_func_def,
                                                     TF_Status* status);
+
+// Construct and return the function serialized in `func_def`.
+// Returns:
+//  On success, a newly created TF_Function instance. It must be deleted by
+//  calling TF_DeleteFunction.
+//
+//  On failure, null.
+TF_CAPI_EXPORT extern TF_Function* TF_FunctionImportFunctionDef(
+    const TF_Buffer* func_def, TF_Status* status);
 
 // Frees the memory used by the `func` struct.
 // TF_DeleteFunction is a noop if `func` is null.
