@@ -2346,16 +2346,10 @@ bool CudnnSupport::DoFusedConvolveImpl(
 #endif  // CUDNN_VERSION < 6000
 }
 
-// A helper class to decide whether to enable the WINOGRAD_NONFUSED algorithms.
-// By default it is turned on, users can explicitly disable them through an
-// env-var "TF_ENABLE_WINOGRAD_NONFUSED=0".
-// https://github.com/tensorflow/tensorflow/pull/4901
-// TODO(yangzihao): winograd_nonfused bug will only be fixed in cuDNNv7, for
-// cuDNN with smaller version, we are setting the default flag to false due to
-// b/62635189. Need to root cause this and figure out a workaround or file a bug
-// against NVIDIA.
-template <bool DefaultFlag>
-class WinogradNonfused {
+// A helper class to set env-vars and choose options for cudnn-related
+// algorithms.
+template <typename EnvVar>
+class CudnnEnvVar {
  public:
   static bool IsEnabled() {
     static bool is_enabled = IsEnabledImpl();
@@ -2364,7 +2358,7 @@ class WinogradNonfused {
 
  private:
   static bool IsEnabledImpl() {
-    const char* tf_env_var_val = getenv("TF_ENABLE_WINOGRAD_NONFUSED");
+    const char* tf_env_var_val = getenv(EnvVar::kName);
     if (tf_env_var_val != nullptr) {
       port::StringPiece tf_env_var_val_str(tf_env_var_val);
       if (tf_env_var_val_str == "0") {
@@ -2372,10 +2366,33 @@ class WinogradNonfused {
       }
       return true;
     }
-    // TODO(zhengxq): turn the default to True when the test failure is
-    // resolved.
-    return DefaultFlag;
+    return EnvVar::kDefaultFlag;
   }
+};
+
+// A helper struct to decide whether to enable the FFT_TILING algorithms for
+// forward convolution. Before cudnn v5.1 it works fine but since cudnn v5.1
+// it is turned off due to memory corruption caused by some shapes with this
+// algorithm.
+// Before NVIDIA fixes the memory corruption bug, users can explicitly
+// enable the algorithm through an env-var "TF_ENABLE_FFT_TILING_FORWARD=1".
+struct FftTilingForward {
+  static constexpr const char* kName = "TF_ENABLE_FFT_TILING_FORWARD";
+  // TODO(yangzihao): turn the default to True when the memory corruption bug
+  // is fixed.
+  static constexpr bool kDefaultFlag = CUDNN_VERSION < 5100;
+};
+
+// A helper struct to decide whether to enable the WINOGRAD_NONFUSED algorithms.
+// By default it is turned on, users can explicitly disable them through an
+// env-var "TF_ENABLE_WINOGRAD_NONFUSED=0".
+// https://github.com/tensorflow/tensorflow/pull/4901
+struct WinogradNonfused {
+  static constexpr const char* kName = "TF_ENABLE_WINOGRAD_NONFUSED";
+  // NVIDIA has fixed winograd nonfused bug for cudnn v>=7.
+  // For cudnn v>=5.1, we have a workaround and for any lower version, we
+  // disable it by default.
+  static constexpr bool kDefaultFlag = CUDNN_VERSION >= 5100;
 };
 
 bool CudnnSupport::GetConvolveAlgorithms(
@@ -2388,14 +2405,16 @@ bool CudnnSupport::GetConvolveAlgorithms(
       CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
       CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
       CUDNN_CONVOLUTION_FWD_ALGO_FFT,
-      CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING,
 #if CUDNN_VERSION >= 5000
       CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
 #endif
       // clang-format on
   });
+  if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
+    out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
+  }
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused<true>::IsEnabled() && with_winograd_nonfused) {
+  if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
@@ -2417,7 +2436,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused<true>::IsEnabled() && with_winograd_nonfused) {
+  if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     out_algorithms->push_back(
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
@@ -2434,19 +2453,13 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT,
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3,
+      // Based on cudnn.h, the following is not implemented.
+      // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
       // clang-format on
   });
-#if CUDNN_VERSION >= 5100
 #if CUDNN_VERSION >= 5110
-  static constexpr bool kDefaultFlagWinogradNonfused = true;
-#else
-  static constexpr bool kDefaultFlagWinogradNonfused = false;
-#endif
-  if (WinogradNonfused<kDefaultFlagWinogradNonfused>::IsEnabled() &&
-      with_winograd_nonfused) {
+  if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
     out_algorithms->push_back(
-        // Based on cudnn.h, the following is not implemented.
-        // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
         CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
