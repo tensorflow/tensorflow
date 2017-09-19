@@ -1273,6 +1273,8 @@ class TPUEstimator(estimator_lib.Estimator):
                                        eval_batch_size, use_tpu,
                                        batch_axis)
 
+    # Passing non-None params as wrapped model_fn has it.
+    params = params or {}
     super(TPUEstimator, self).__init__(
         model_fn=model_function,
         model_dir=model_dir,
