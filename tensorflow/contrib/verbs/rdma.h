@@ -38,13 +38,14 @@ limitations under the License.
 namespace tensorflow {
 
 struct RdmaParams{
-    ibv_device* ibv_dev;
-    uint8_t port_num;
-    uint8_t pkey_index;
-    uint32_t queue_depth;
-    uint8_t timeout;
-    uint8_t retry_cnt;
-    uint8_t sl;
+  ibv_device* ibv_dev;
+  uint8_t port_num;
+  uint8_t pkey_index;
+  uint32_t queue_depth;
+  uint8_t timeout;
+  uint8_t retry_cnt;
+  uint8_t sl;
+  uint8_t mtu;
 };
 // structure to save the address of remote channels.
 struct RdmaAddress {

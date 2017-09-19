@@ -68,25 +68,25 @@ string MessageTypeToString(RdmaMessageType rmt) {
 
 int get_dev_active_port_num(ibv_device *device)
 {
-	ibv_device_attr device_att;
-	ibv_port_attr port_attr;
-	ibv_context* context = NULL;
-	int rc, port_index, active_ports = 0;
+  ibv_device_attr device_att;
+  ibv_port_attr port_attr;
+  ibv_context* context = NULL;
+  int rc, port_index, active_ports = 0;
 
-	context = ibv_open_device(device);
-	CHECK(context) << "Open context failed for " << ibv_get_device_name(device);
-	rc = ibv_query_device(context,&device_att);
-	CHECK(!rc) << "Failed to query the device";
+  context = ibv_open_device(device);
+  CHECK(context) << "Open context failed for " << ibv_get_device_name(device);
+  rc = ibv_query_device(context,&device_att);
+  CHECK(!rc) << "Failed to query the device";
 
-	for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
-		rc = ibv_query_port(context, port_index, &port_attr);
-		CHECK(!rc) << "Failed to query the port" << port_index;
-		if (port_attr.state == 4/*IBV_PORT_ACTIVE*/) {
-			active_ports++;
-		}
-	}
-	ibv_close_device(context);
-	return active_ports;
+  for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
+    rc = ibv_query_port(context, port_index, &port_attr);
+    CHECK(!rc) << "Failed to query the port" << port_index;
+    if (port_attr.state == 4/*IBV_PORT_ACTIVE*/) {
+      active_ports++;
+    }
+  }
+  ibv_close_device(context);
+  return active_ports;
 }
 
 ibv_device* set_device() {
@@ -105,191 +105,223 @@ ibv_device* set_device() {
   env_p_rdma_device = (env_p_rdma_device_temp == NULL)?string(): string(env_p_rdma_device_temp);
 
   if (!env_p_rdma_device.empty()) {
-	  for (device_index = 0; device_index < dev_num; device_index++) {
-		  if (!env_p_rdma_device.compare(ibv_get_device_name(dev_list[device_index]))) {
-			  CHECK(get_dev_active_port_num(dev_list[device_index]) != 0) << "Device " << ibv_get_device_name(dev_list[device_index]) << " has no active ports";
-		      return dev_list[device_index];
-			  }
-		  }
-	  //check validity of input device
-	  CHECK(false) <<  "The device " << env_p_rdma_device << " wasn't found";
+    for (device_index = 0; device_index < dev_num; device_index++) {
+      if (!env_p_rdma_device.compare(ibv_get_device_name(dev_list[device_index]))) {
+        CHECK(get_dev_active_port_num(dev_list[device_index]) != 0) << "Device " << ibv_get_device_name(dev_list[device_index]) << " has no active ports";
+          return dev_list[device_index];
+        }
+      }
+    //check validity of input device
+    CHECK(false) <<  "The device " << env_p_rdma_device << " wasn't found";
   }
   else {
-	  for (device_index = 0; device_index < dev_num; device_index++) {
-		  //get port_num
-		  if (get_dev_active_port_num(dev_list[device_index]) > 0){
-			  CHECK(found_active_port != true)  << "More than one device with active port in the system. Please enter RDMA_DEVICE";
-		  }
-		  else {
-			  //found device with at least 1 active port
-			  found_active_port = true;
-			  device_to_open = device_index;
-		  }
-	  }
-	  CHECK(found_active_port) << "There is no active port in the system";
-	  return dev_list[device_to_open];
+    for (device_index = 0; device_index < dev_num; device_index++) {
+      //get port_num
+      if (get_dev_active_port_num(dev_list[device_index]) > 0){
+        CHECK(found_active_port != true)  << "More than one device with active port in the system. Please enter RDMA_DEVICE";
+      }
+      else {
+        //found device with at least 1 active port
+        found_active_port = true;
+        device_to_open = device_index;
+      }
+    }
+    CHECK(found_active_port) << "There is no active port in the system";
+    return dev_list[device_to_open];
   }
   CHECK(false) << "No device was set!";
   return NULL;
 }
 
 ibv_context* open_device(ibv_device *ibv_dev) {
-	ibv_context* context = ibv_open_device(ibv_dev);
+  ibv_context* context = ibv_open_device(ibv_dev);
 
-	CHECK(context) << "Open context failed for " << ibv_get_device_name(ibv_dev);
-	return context;
+  CHECK(context) << "Open context failed for " << ibv_get_device_name(ibv_dev);
+  return context;
 }
 
 uint8_t set_port(ibv_device *ibv_dev) {
-	uint8_t port_num = 1;
-	string str_port_num;
-	char const* str_port_num_temp;
-	ibv_device_attr device_att;
-	ibv_context* context;
-	ibv_port_attr port_attr;
-	int rc, port_index;
+  uint8_t port_num = 1;
+  string str_port_num;
+  char const* str_port_num_temp;
+  ibv_device_attr device_att;
+  ibv_context* context;
+  ibv_port_attr port_attr;
+  int rc, port_index;
 
-	context = open_device(ibv_dev);
-	rc = ibv_query_device(context, &device_att);
-	CHECK (!rc) << "Failed to query the device\n";
+  context = open_device(ibv_dev);
+  rc = ibv_query_device(context, &device_att);
+  CHECK (!rc) << "Failed to query the device\n";
 
-	str_port_num_temp = getenv("RDMA_DEVICE_PORT");
-	str_port_num = str_port_num_temp == NULL ? string() : string(str_port_num_temp);
-	//user defined port
-	if (!str_port_num.empty()) {
-		port_num = stoi(str_port_num);
-		CHECK(port_num > 0) << "RDMA_DEVICE_PORT should be positive";
-		CHECK(port_num <= device_att.phys_port_cnt) << "RDMA_DEVICE_PORT should be less or equal to amount of available ports";
-		rc = ibv_query_port(context, port_num, &port_attr);
+  str_port_num_temp = getenv("RDMA_DEVICE_PORT");
+  str_port_num = str_port_num_temp == NULL ? string() : string(str_port_num_temp);
+  //user defined port
+  if (!str_port_num.empty()) {
+    port_num = stoi(str_port_num);
+    CHECK(port_num > 0) << "RDMA_DEVICE_PORT should be positive";
+    CHECK(port_num <= device_att.phys_port_cnt) << "RDMA_DEVICE_PORT should be less or equal to amount of available ports";
+    rc = ibv_query_port(context, port_num, &port_attr);
         CHECK(!rc) << "Failed to query the port" << port_num;
-		//check if port id active
-		CHECK(port_attr.state == 4/*IBV_PORT_ACTIVE*/) << "Selected RDMA_DEVICE_PORT is not active";
-	}
-	// set default port
-	else {
-		for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
-			rc = ibv_query_port(context, port_index, &port_attr);
-			CHECK(!rc) << "Failed to query the port" << port_index;
-			if (port_attr.state == 4/*IBV_PORT_ACTIVE*/) {
-				port_num = port_index;
-				break;
-			}
-			CHECK(port_index != device_att.phys_port_cnt) << "No active ports";
-		}
-	}
-	ibv_close_device(context);
-	return port_num;
+    //check if port id active
+    CHECK(port_attr.state == 4/*IBV_PORT_ACTIVE*/) << "Selected RDMA_DEVICE_PORT is not active";
+  }
+  // set default port
+  else {
+    for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
+      rc = ibv_query_port(context, port_index, &port_attr);
+      CHECK(!rc) << "Failed to query the port" << port_index;
+      if (port_attr.state == 4/*IBV_PORT_ACTIVE*/) {
+        port_num = port_index;
+        break;
+      }
+      CHECK(port_index != device_att.phys_port_cnt) << "No active ports";
+    }
+  }
+  ibv_close_device(context);
+  return port_num;
 }
 
 uint8_t set_pkey() {
-	uint8_t pkey_index = 0;
-	string pkey_index_s;
-	char const* pkey_index_s_temp;
+  uint8_t pkey_index = 0;
+  string pkey_index_s;
+  char const* pkey_index_s_temp;
 
-	pkey_index_s_temp = getenv("RDMA_PKEY");
-	pkey_index_s = pkey_index_s_temp == NULL ? string() : string(pkey_index_s_temp);
+  pkey_index_s_temp = getenv("RDMA_PKEY");
+  pkey_index_s = pkey_index_s_temp == NULL ? string() : string(pkey_index_s_temp);
 
-	if (!pkey_index_s.empty()) {
-		pkey_index = stoi(pkey_index_s);
-	}
-	else {
-		pkey_index = 0;
-	}
+  if (!pkey_index_s.empty()) {
+    pkey_index = stoi(pkey_index_s);
+  }
+  else {
+    pkey_index = 0;
+  }
 
-	return pkey_index;
+  return pkey_index;
 }
 
 uint32_t set_queue_depth() {
-	uint32_t queue_depth = 0;
-	string queue_depth_s;
-	char const* queue_depth_s_temp;
+  uint32_t queue_depth = 0;
+  string queue_depth_s;
+  char const* queue_depth_s_temp;
 
-	queue_depth_s_temp = getenv("RDMA_QUEUE_DEPTH");
-	queue_depth_s = queue_depth_s_temp == NULL ? string() : string(queue_depth_s_temp);
+  queue_depth_s_temp = getenv("RDMA_QUEUE_DEPTH");
+  queue_depth_s = queue_depth_s_temp == NULL ? string() : string(queue_depth_s_temp);
 
-	if (!queue_depth_s.empty()) {
-		queue_depth = stoi(queue_depth_s);
-	}
-	else {
-		queue_depth = 1024;
-	}
+  if (!queue_depth_s.empty()) {
+    queue_depth = stoi(queue_depth_s);
+  }
+  else {
+    queue_depth = 1024;
+  }
 
-	return queue_depth;
+  return queue_depth;
 }
 
 uint8_t set_timeout() {
-	uint8_t timeout = 0;
-	string timeout_s;
-	char const* timeout_s_temp;
+  uint8_t timeout = 0;
+  string timeout_s;
+  char const* timeout_s_temp;
 
-	timeout_s_temp = getenv("RDMA_TIMEOUT");
-	timeout_s = timeout_s_temp == NULL ? string() : string(timeout_s_temp);
+  timeout_s_temp = getenv("RDMA_TIMEOUT");
+  timeout_s = timeout_s_temp == NULL ? string() : string(timeout_s_temp);
 
-	if (!timeout_s.empty()) {
-		timeout = stoi(timeout_s);
-	}
-	else {
-		timeout = 14;
-	}
+  if (!timeout_s.empty()) {
+    timeout = stoi(timeout_s);
+  }
+  else {
+    timeout = 14;
+  }
 
-	return timeout;
+  return timeout;
 }
 
 uint8_t set_retry_cnt() {
-	uint8_t retry_cnt = 0;
-	string retry_cnt_s;
-	char const* retry_cnt_s_temp;
+  uint8_t retry_cnt = 0;
+  string retry_cnt_s;
+  char const* retry_cnt_s_temp;
 
-	retry_cnt_s_temp = getenv("RDMA_RETRY_CNT");
-	retry_cnt_s = retry_cnt_s_temp == NULL ? string() : string(retry_cnt_s_temp);
+  retry_cnt_s_temp = getenv("RDMA_RETRY_CNT");
+  retry_cnt_s = retry_cnt_s_temp == NULL ? string() : string(retry_cnt_s_temp);
 
-	if (!retry_cnt_s.empty()) {
-		retry_cnt = stoi(retry_cnt_s);
-	}
-	else {
-		retry_cnt = 7;
-	}
+  if (!retry_cnt_s.empty()) {
+    retry_cnt = stoi(retry_cnt_s);
+  }
+  else {
+    retry_cnt = 7;
+  }
 
-	return retry_cnt;
+  return retry_cnt;
 }
 
 uint8_t set_sl() {
-	uint8_t sl = 0;
-	string sl_s;
-	char const* sl_s_temp;
+  uint8_t sl = 0;
+  string sl_s;
+  char const* sl_s_temp;
 
-	sl_s_temp = getenv("RDMA_SL");
-	sl_s = sl_s_temp == NULL ? string() : string(sl_s_temp);
+  sl_s_temp = getenv("RDMA_SL");
+  sl_s = sl_s_temp == NULL ? string() : string(sl_s_temp);
 
-	if (!sl_s.empty()) {
-		sl = stoi(sl_s);
-	}
-	else {
-		sl = 0;
-	}
+  if (!sl_s.empty()) {
+    sl = stoi(sl_s);
+  }
+  else {
+    sl = 0;
+  }
 
-	return sl;
+  return sl;
+}
+
+uint8_t set_mtu() {
+  uint32_t mtu = 0;
+  string mtu_s;
+  char const* mtu_s_temp;
+
+  mtu_s_temp = getenv("RDMA_MTU");
+  mtu_s = mtu_s_temp == NULL ? string() : string(mtu_s_temp);
+
+  if (!mtu_s.empty()) {
+    mtu = stoi(mtu_s);
+    switch (mtu) {
+    case 256:
+      return IBV_MTU_256;
+      break;
+    case 512:
+      return IBV_MTU_512;
+      break;
+    case 1024:
+      return IBV_MTU_1024;
+      break;
+    case 2048:
+      return IBV_MTU_2048;
+      break;
+    case 4096:
+      return IBV_MTU_4096;
+      break;
+    default:
+      CHECK(0) << "Error: MTU input value must be one of the following: 256, 512, 1024, 2048, 4096. MTU " << mtu << " is invalid\n";
+      break;
+    }
+  }
+  else {
+    mtu = 0;
+  }
+  return mtu;
 }
 
 RdmaParams params_init(){
 
-	RdmaParams params;
+  RdmaParams params;
 
-	params.ibv_dev = set_device();
-	CHECK(params.ibv_dev)  << "Params_init set_device failed";
-	params.port_num = set_port(params.ibv_dev);
-	CHECK(params.ibv_dev)  << "Params_init set_port failed";
-	params.pkey_index = set_pkey();
-	CHECK(params.ibv_dev)  << "Params_init set_pkey failed";
-	params.queue_depth = set_queue_depth();
-	CHECK(params.ibv_dev)  << "Params_init set_queue_depth failed";
-	params.timeout = set_timeout();
-	CHECK(params.ibv_dev)  << "Params_init set_timeout failed";
-	params.retry_cnt = set_retry_cnt();
-	CHECK(params.ibv_dev)  << "Params_init set_retry_cnt failed";
-	params.sl = set_sl();
-	CHECK(params.ibv_dev)  << "Params_init set_sl failed";
-	return params;
+  params.ibv_dev = set_device();
+  CHECK(params.ibv_dev)  << "Params_init set_device failed";
+  params.port_num = set_port(params.ibv_dev);
+  params.pkey_index = set_pkey();
+  params.queue_depth = set_queue_depth();
+  params.timeout = set_timeout();
+  params.retry_cnt = set_retry_cnt();
+  params.sl = set_sl();
+  params.mtu = set_mtu();
+  return params;
 }
 
 ibv_pd* alloc_protection_domain(ibv_context* context) {
@@ -303,7 +335,7 @@ RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
       context_(open_device(params_.ibv_dev)),
       pd_(alloc_protection_domain(context_)),
       worker_env_(worker_env) {
-	// check params
+  // check params
   event_channel_ = ibv_create_comp_channel(context_);
   CHECK(event_channel_) << "Failed to create completion channel";
   cq_ = ibv_create_cq(context_, MAX_CONCURRENT_WRITES * 2, NULL, event_channel_,
@@ -699,7 +731,15 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     CHECK(!ibv_query_port(adapter_->context_, (uint8_t)1, &port_attr))
         << "Query port failed";
     // This assumes both QP's ports are configured with the same MTU
-    attr.path_mtu = port_attr.active_mtu;
+    if (adapter_->params_.mtu == 0)
+    {
+      attr.path_mtu = port_attr.active_mtu;
+    }
+    else
+    {
+      CHECK(adapter_->params_.mtu<port_attr.active_mtu) <<"MTU configuration for the QPs is larger than active MTU";
+      attr.path_mtu = (ibv_mtu)adapter_->params_.mtu;
+    }
     attr.dest_qp_num = remoteAddr.qpn;
     attr.rq_psn = remoteAddr.psn;
     attr.max_dest_rd_atomic = 1;
