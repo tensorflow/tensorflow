@@ -190,7 +190,6 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
   }
 };
 
-// Instantiate implementations for the 4 numeric types.
 template struct DeterminantFromPivotedLUFunctor<GPUDevice, float>;
 template struct DeterminantFromPivotedLUFunctor<GPUDevice, double>;
 template struct DeterminantFromPivotedLUFunctor<GPUDevice, std::complex<float>>;
@@ -202,7 +201,6 @@ __global__ void EyeKernel(Cuda3DLaunchConfig config, int batch_size, int m,
                           int n, Scalar* matrix_batch_ptr) {
   const int matrix_size = m * n;
   const Scalar one = Const<Scalar>::make_const(1.0);
-  const Scalar zero = Const<Scalar>::make_const(0.0);
   CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count, x) {
     if (batch >= batch_size) {
       break;
@@ -216,7 +214,7 @@ __global__ void EyeKernel(Cuda3DLaunchConfig config, int batch_size, int m,
         if (col >= n) {
           break;
         }
-        matrix_batch_ptr[row_start + col] = row == col ? one : zero;
+        matrix_batch_ptr[row_start + col] = row == col ? one : Scalar();
       }
     }
   }
@@ -239,7 +237,6 @@ struct EyeFunctor<GPUDevice, Scalar> {
   }
 };
 
-// Instantiate implementations for the 4 numeric types.
 template struct EyeFunctor<GPUDevice, float>;
 template struct EyeFunctor<GPUDevice, double>;
 template struct EyeFunctor<GPUDevice, std::complex<float>>;

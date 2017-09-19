@@ -55,6 +55,7 @@ def custom_gradient(f):
 
     flat_result = nest.flatten(result)
     tape.record_operation(
+        f.__name__,
         flat_result,
         input_tensors,
         [],

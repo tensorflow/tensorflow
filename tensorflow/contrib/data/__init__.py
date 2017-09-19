@@ -25,7 +25,6 @@
 @@rejection_resample
 @@group_by_window
 @@sloppy_interleave
-@@sloppy_map
 """
 
 from __future__ import absolute_import

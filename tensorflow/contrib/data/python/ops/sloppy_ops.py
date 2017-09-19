@@ -82,21 +82,24 @@ class SloppyInterleaveDataset(dataset_ops.Dataset):
     return self._output_types
 
 
-def sloppy_interleave(dataset, map_func, cycle_length, block_length):
-  """Maps `map_func` across `dataset`, and interleaves the results.
+def sloppy_interleave(map_func, cycle_length, block_length):
+  """A non-deterministic version of the `Dataset.interleave()` transformation.
+
+  `sloppy_interleave()` maps `map_func` across `dataset`, and
+  non-deterministically interleaves the results.
 
   The resulting dataset is almost identical to `interleave`. The key
-  difference being that if retrieving a value from a given output iterator would
+  difference is that if retrieving a value from a given output iterator would
   cause `get_next` to block, that iterator will be skipped, and consumed
   when next available. If consuming from all iterators would cause the
   `get_next` call to block, the `get_next` call blocks until the first value is
   available.
 
   If the underlying datasets produce elements as fast as they are consumed, the
-  `sloppy_interleave` dataset behaves identically to the `interleave` dataset.
-  However, if an underlying dataset would block the consumer, the
-  `sloppy_interleave` dataset can violate to the round-robin order (respected by
-  the `interleave` dataset), producing an element from a different underlying
+  `sloppy_interleave` transformation behaves identically to `interleave`.
+  However, if an underlying dataset would block the consumer,
+  `sloppy_interleave` can violate the round-robin order (that `interleave`
+  strictly obeys), producing an element from a different underlying
   dataset instead.
 
   WARNING: The order of elements in the resulting dataset is not
@@ -104,7 +107,6 @@ def sloppy_interleave(dataset, map_func, cycle_length, block_length):
   deterministic order.
 
   Args:
-    dataset: A `Dataset` that produces elements to feed to `map_func`.
     map_func: A function mapping a nested structure of tensors (having shapes
       and types defined by `self.output_shapes` and `self.output_types`) to a
       `Dataset`.
@@ -115,6 +117,10 @@ def sloppy_interleave(dataset, map_func, cycle_length, block_length):
       blocking.
 
   Returns:
-    A `Dataset`.
+    A `Dataset` transformation function, which can be passed to
+    @{tf.contrib.data.Dataset.apply}.
   """
-  return SloppyInterleaveDataset(dataset, map_func, cycle_length, block_length)
+  def _apply_fn(dataset):
+    return SloppyInterleaveDataset(
+        dataset, map_func, cycle_length, block_length)
+  return _apply_fn

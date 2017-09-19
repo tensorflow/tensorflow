@@ -80,7 +80,11 @@ class ShapeVerifier : public DfsHloVisitor {
 
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override {
-    return tensorflow::Status::OK();
+    TF_ASSIGN_OR_RETURN(const Shape expected,
+                        ShapeInference::InferConvolveShape(
+                            lhs->shape(), rhs->shape(), window,
+                            convolution->convolution_dimension_numbers()));
+    return CheckShape(convolution, expected);
   }
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override {

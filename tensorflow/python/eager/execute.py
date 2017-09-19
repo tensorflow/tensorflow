@@ -23,7 +23,6 @@ import six
 from google.protobuf import text_format
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,7 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 
-def execute(op_name, num_outputs, inputs, attrs=None, name=None):
+def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Execute a TensorFlow operation.
 
   Args:
@@ -44,6 +43,7 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
       a value which can be passed to the Tensor constructor to create one.
     attrs: A tuple with alternating string attr names and attr values for this
       operation.
+    ctx: The value of context.context().
     name: Customized name for the operation.
 
   Returns:
@@ -53,7 +53,6 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
   Raises:
     An exception on error.
   """
-  ctx = context.get_default_context()
   # TODO(apassos) move this to convert_to_tensor
   # pylint: disable=protected-access
   input_handles = [c._handle for c in inputs]
@@ -90,7 +89,7 @@ def execute(op_name, num_outputs, inputs, attrs=None, name=None):
 
 
 def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
-                    unused_name):
+                    unused_ctx, unused_name):
   """Import backprop if you want gradients recorded."""
   pass
 
@@ -172,7 +171,7 @@ def make_tensor(v, arg_name):
       (repr(v), arg_name))
 
 
-def args_to_matching_eager(l, default_dtype=None):
+def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
   # TODO(josh11b): Could we do a better job if we also passed in the
   # allowed dtypes when that was known?
@@ -189,23 +188,24 @@ def args_to_matching_eager(l, default_dtype=None):
     # remaining values.
     ret = []
     for t in l:
-      ret.append(ops.convert_to_tensor(t, dtype, preferred_dtype=default_dtype))
+      ret.append(ops.internal_convert_to_tensor(
+          t, dtype, preferred_dtype=default_dtype, ctx=ctx))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
-    ret = [ops.convert_to_tensor(t, dtype) for t in l]
+    ret = [ops.internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
   return dtype, ret
 
 
-def convert_to_mixed_eager_tensors(values):
-  v = [t if isinstance(t, ops.EagerTensor) else ops.EagerTensor(t)
+def convert_to_mixed_eager_tensors(values, ctx):
+  v = [t if isinstance(t, ops.EagerTensor) else ops.EagerTensor(t, ctx)
        for t in values]
   types = [t.dtype for t in v]
   return types, v
 
 
-def args_to_mixed_eager_tensors(lists):
+def args_to_mixed_eager_tensors(lists, ctx):
   """Converts a list of same-length lists of values to eager tensors."""
   assert len(lists) > 1
 
@@ -229,15 +229,15 @@ def args_to_mixed_eager_tensors(lists):
         break
     if dtype is None:
       # Convert the first one and use its dtype.
-      lists_ret[0].append(ops.convert_to_tensor(lists[0][i]))
+      lists_ret[0].append(ops.internal_convert_to_tensor(lists[0][i], ctx=ctx))
       dtype = lists_ret[0][i].dtype
       for j in range(1, len(lists)):
         lists_ret[j].append(
-            ops.convert_to_tensor(lists[j][i], dtype=dtype))
+            ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
     else:
       # Convert everything to the found dtype.
       for j in range(len(lists)):
         lists_ret[j].append(
-            ops.convert_to_tensor(lists[j][i], dtype=dtype))
+            ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
     types.append(dtype)
   return types, lists_ret
