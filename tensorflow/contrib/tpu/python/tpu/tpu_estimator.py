@@ -72,7 +72,7 @@ def _create_global_step(graph):
     return variable_scope.get_variable(
         ops.GraphKeys.GLOBAL_STEP,
         shape=[],
-        dtype=dtypes.int32,
+        dtype=dtypes.int64,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
         use_resource=True,
