@@ -53,6 +53,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -64,7 +65,7 @@ def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
     if x.device_type == "GPU" or x.device_type == "SYCL":
-      return x.name
+      return compat.as_str(x.name)
   return ""
 
 
@@ -207,6 +208,71 @@ def NHWCToNCHW(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+def NHWCToNCHW_VECT_C(input_shape_or_tensor):
+  """Transforms the input from the NHWC layout to NCHW_VECT_C layout.
+
+  Note: Does not include quantization or type conversion steps, which should
+  be applied afterwards.
+
+  Args:
+    input_shape_or_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NCHW_VECT_C
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not evenly
+        divisible by 4.
+  """
+  permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  temp_shape = (input_shape_or_tensor.shape.as_list()
+                if is_tensor else input_shape_or_tensor)
+  if temp_shape[-1] % 4 != 0:
+    raise ValueError(
+        "Last dimension of input must be evenly divisible by 4 to convert to "
+        "NCHW_VECT_C.")
+  temp_shape[-1] //= 4
+  temp_shape.append(4)
+  permutation = permutations[len(temp_shape)]
+  if is_tensor:
+    t = array_ops.reshape(input_shape_or_tensor, temp_shape)
+    return array_ops.transpose(t, permutation)
+  else:
+    return [temp_shape[a] for a in permutation]
+
+
+def NCHW_VECT_CToNHWC(input_shape_or_tensor):
+  """Transforms the input from the NCHW_VECT_C layout to NHWC layout.
+
+  Note: Does not include de-quantization or type conversion steps, which should
+  be applied beforehand.
+
+  Args:
+    input_shape_or_tensor: a 5- or 6-D tensor, or an array representing shape
+
+  Returns:
+    tensor or shape array transformed into NHWC
+
+  Raises:
+    ValueError: if last dimension of `input_shape_or_tensor` is not 4.
+  """
+  permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
+  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  input_shape = (input_shape_or_tensor.shape.as_list()
+                 if is_tensor else input_shape_or_tensor)
+  if input_shape[-1] != 4:
+    raise ValueError("Last dimension of NCHW_VECT_C must be 4.")
+  permutation = permutations[len(input_shape)]
+  nhwc_shape = [input_shape[a] for a in permutation[:-1]]
+  nhwc_shape[-1] *= input_shape[-1]
+  if is_tensor:
+    t = array_ops.transpose(input_shape_or_tensor, permutation)
+    return array_ops.reshape(t, nhwc_shape)
+  else:
+    return nhwc_shape
+
+
 def NCHWToNHWC(input_tensor):
   """Converts the input from the NCHW format to NHWC.
 
@@ -275,7 +341,8 @@ def enable_c_api(fn):
 
 
 def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
-                                 use_gpu=False, force_gpu=False):
+                                 use_gpu=False, force_gpu=False,
+                                 reset_test=True):
   """Runs the test in both graph and eager modes.
 
   Args:
@@ -285,6 +352,7 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
       session.
     use_gpu: If True, attempt to run as many ops as possible on GPU.
     force_gpu: If True, pin all ops to `/device:GPU:0`.
+    reset_test: If True, tearDown and SetUp the test case again.
 
   Returns:
     Returns a decorator that will run the decorated test function
@@ -295,11 +363,17 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
 
   def decorator(f):
     """Test method decorator."""
-    def decorated(self):
+    def decorated(self, **kwargs):
       """Decorated the test method."""
       with context.graph_mode():
         with self.test_session(graph, config, use_gpu, force_gpu):
-          f(self)
+          f(self, **kwargs)
+
+      if reset_test:
+        # This decorator runs the wrapped test twice.
+        # Reset the test environment between runs.
+        self.tearDown()
+        self.setUp()
 
       def run_eager_mode():
         if force_gpu:
@@ -310,17 +384,15 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
             f(self)
         elif use_gpu:
           # TODO(xpan): Support softplacement and gpu by default when available.
-          f(self)
+          f(self, **kwargs)
         else:
           with context.device("/device:CPU:0"):
-            f(self)
+            f(self, **kwargs)
 
+      eager_graph = graph or ops.Graph()
       with context.eager_mode():
-        if graph is None:
+        with eager_graph.as_default():
           run_eager_mode()
-        else:
-          with graph.as_default():
-            run_eager_mode()
 
     return decorated
   return decorator
@@ -400,7 +472,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def tearDown(self):
     for thread in self._threads:
-      self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+      thread.check_termination()
 
     self._ClearCachedSession()
 
@@ -487,21 +559,33 @@ class TensorFlowTestCase(googletest.TestCase):
       fail_msg += " : %r" % (msg) if msg else ""
       self.fail(fail_msg)
 
+  def _eval_helper(self, tensors):
+    if isinstance(tensors, ops.EagerTensor):
+      return tensors.numpy()
+    if isinstance(tensors, resource_variable_ops.ResourceVariable):
+      return tensors.read_value().numpy()
+
+    if isinstance(tensors, tuple):
+      return tuple([self._eval_helper(t) for t in tensors])
+    elif isinstance(tensors, list):
+      return [self._eval_helper(t) for t in tensors]
+    elif isinstance(tensors, dict):
+      assert not tensors, "Only support empty dict now."
+      return dict()
+    else:
+      raise ValueError("Unsupported type.")
+
   def evaluate(self, tensors):
     """Evaluates tensors and returns numpy values.
 
     Args:
-      tensors: A Tensor or a list of Tensors.
+      tensors: A Tensor or a nested list/tuple of Tensors.
 
     Returns:
       tensors numpy values.
     """
     if context.in_eager_mode():
-      if isinstance(tensors, list):
-        assert all(isinstance(t, ops.EagerTensor) for t in tensors)
-        return [t.numpy() for t in tensors]
-      assert isinstance(tensors, ops.EagerTensor), "Must be list or EagerTensor"
-      return tensors.numpy()
+      return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
       return sess.run(tensors)
@@ -577,6 +661,8 @@ class TensorFlowTestCase(googletest.TestCase):
       config.graph_options.optimizer_options.opt_level = -1
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.arithmetic_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
     if graph is None:
@@ -640,6 +726,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self._thread = threading.Thread(target=self._protected_run)
       self._exception = None
 
+      self._is_thread_joined = False
+
     def _protected_run(self):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
@@ -662,6 +750,7 @@ class TensorFlowTestCase(googletest.TestCase):
         self._testcase.failureException: If the thread terminates with due to
           an exception.
       """
+      self._is_thread_joined = True
       self._thread.join()
       if self._exception is not None:
         self._testcase.fail("Error in checkedThread: %s" % str(self._exception))
@@ -676,6 +765,28 @@ class TensorFlowTestCase(googletest.TestCase):
         True if the thread is alive, otherwise False.
       """
       return self._thread.is_alive()
+
+    def check_termination(self):
+      """Returns whether the checked thread was properly used and did terminate.
+
+      Every checked thread should be "join"ed after starting, and before the
+      test tears down. If it is not joined, it is possible the thread will hang
+      and cause flaky failures in tests.
+
+      Raises:
+        self._testcase.failureException: If check_termination was called before
+        thread was joined.
+
+        RuntimeError: If the thread is not terminated. This means thread was not
+        joined with the main thread.
+      """
+      if self._is_thread_joined:
+        if self.is_alive():
+          raise RuntimeError(
+              "Thread was not joined with main thread, and is still running "
+              "when the test finished.")
+      else:
+        self._testcase.fail("A checked thread was not joined.")
 
   def checkedThread(self, target, args=None, kwargs=None):
     """Returns a Thread wrapper that asserts 'target' completes successfully.

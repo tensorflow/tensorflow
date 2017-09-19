@@ -205,7 +205,7 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
 
   AssignLayouts(module.get(), &computation_layout);
 
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       LayoutUtil::LayoutsInShapesEqual(constant0->shape(), constant1->shape()));
 
   EXPECT_TRUE(LayoutUtil::HasLayout(tuple->shape()));
@@ -589,7 +589,3 @@ TEST_F(LayoutAssignmentTest, TransposeToBitcastToUser) {
 }
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

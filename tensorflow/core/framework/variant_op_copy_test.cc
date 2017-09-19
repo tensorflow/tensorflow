@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -47,6 +48,8 @@ struct StoredTensorValue {
     return true;
   }
 };
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(StoredTensorValue, "StoredTensorValue");
 
 REGISTER_OP("CreateTestVariant")
     .Output("output: variant")
@@ -112,16 +115,12 @@ TEST(VariantOpCopyTest, CreateCopyCPUToCPU) {
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({create_op, identity}, &outputs));
   EXPECT_EQ(2, outputs.size());
-  Variant& r1 = outputs[1].scalar<Variant>()();
+  const Variant& r1 = outputs[1].scalar<Variant>()();
 
-  // Accessing the object more than once does not change its behavior (even
-  // though the first access performed a deserialization step).
   EXPECT_EQ("StoredTensorValue", r1.TypeName());
-  EXPECT_EQ(42, CHECK_NOTNULL(r1.MaybeDecodeAndGet<StoredTensorValue>())
-                    ->stored.scalar<int32>()());
-  EXPECT_EQ("StoredTensorValue", r1.TypeName());
-  EXPECT_EQ(42, CHECK_NOTNULL(r1.MaybeDecodeAndGet<StoredTensorValue>())
-                    ->stored.scalar<int32>()());
+  const StoredTensorValue* v1 = r1.get<StoredTensorValue>();
+  EXPECT_NE(v1, nullptr);
+  EXPECT_EQ(42, v1->stored.scalar<int32>()());
 }
 
 }  // end namespace tensorflow

@@ -75,8 +75,7 @@ Status ExecutorTransferManager::TransferLiteralFromDevice(
       executor, source, ShapeUtil::ByteSizeOf(device_shape),
       literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    literal->Swap(
-        literal->Relayout(literal_shape.layout()).get());
+    *literal = std::move(*literal->Relayout(literal_shape.layout()));
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();

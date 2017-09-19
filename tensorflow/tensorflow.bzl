@@ -172,6 +172,8 @@ def tf_copts():
               "-std=c++11",
               "-DTF_LEAN_BINARY",
               "-O2",
+              "-Wno-narrowing",
+              "-fomit-frame-pointer",
           ],
           clean_dep("//tensorflow:darwin"): [],
           clean_dep("//tensorflow:windows"): WIN_COPTS,
@@ -978,6 +980,7 @@ check_deps = rule(
 def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
   cuda_deps = [
       clean_dep("//tensorflow/core:stream_executor_headers_lib"),
+      "@local_config_cuda//cuda:cuda_headers",
       "@local_config_cuda//cuda:cudart_static",
   ]
   deps = deps + tf_custom_op_library_additional_deps()
@@ -1290,6 +1293,16 @@ def tf_version_info_genrule():
       "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\"",
       local=1,
       tools=[clean_dep("//tensorflow/tools/git:gen_git_source.py")],)
+
+
+def tf_py_build_info_genrule():
+  native.genrule(
+      name="py_build_info_gen",
+      outs=["platform/build_info.py"],
+      cmd=
+      "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
+      local=1,
+      tools=[clean_dep("//tensorflow/tools/build_info:gen_build_info.py")],)
 
 
 def cc_library_with_android_deps(deps,

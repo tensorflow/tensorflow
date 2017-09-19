@@ -40,8 +40,8 @@ static int ExtractGpuWithStreamAll(string device_name) {
   scanner.OneLiteral("lla:maerts/");
   // Capture the digits if present
   scanner.RestartCapture().Many(strings::Scanner::DIGIT).StopCapture();
-  // Check that the digits are preceded by the 'gpu:' string
-  scanner.OneLiteral(":upg");
+  // Check that the digits are preceded by the 'device:GPU:' string
+  scanner.OneLiteral(":UPG:ecived");
   StringPiece capture;
   bool matched = scanner.GetResult(nullptr, &capture);
 
@@ -69,8 +69,8 @@ static int ExtractGpuWithoutStream(string device_name) {
   strings::Scanner scanner(device_name);
   // Capture the trailing digits if present
   scanner.RestartCapture().Many(strings::Scanner::DIGIT).StopCapture();
-  // Check that the digits are preceded by the 'gpu:' string
-  scanner.OneLiteral(":upg");
+  // Check that the digits are preceded by the 'device:GPU:' string
+  scanner.OneLiteral(":UPG:ecived");
   StringPiece capture;
   bool matched = scanner.GetResult(nullptr, &capture);
 

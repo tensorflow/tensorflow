@@ -73,12 +73,14 @@ from tensorflow.python.ops.standard_ops import *
 
 # Namespaces
 from tensorflow.python.ops import initializers_ns as initializers
+from tensorflow.python.ops import linalg_ns as linalg
 
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
 from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.feature_column import feature_column_lib as feature_column
+from tensorflow.python import keras
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import image_ops as image
@@ -228,6 +230,8 @@ _allowed_symbols.extend([
     'gfile',
     'graph_util',
     'image',
+    'initializers',
+    'linalg',
     'logging',
     'losses',
     'metrics',
@@ -245,7 +249,7 @@ _allowed_symbols.extend([
     'user_ops',
     'layers',
     'profiler',
-    'initializers',
+    'keras',
 ])
 
 # Variables framework.versions:
@@ -263,7 +267,7 @@ remove_undocumented(__name__, _allowed_symbols, [
     functional_ops, histogram_ops, io_ops,
     losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
     session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
-    train, layers, profiler
+    train, layers, profiler, keras
 ])
 
 # Special dunders that we choose to export:

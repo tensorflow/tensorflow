@@ -26,7 +26,7 @@ namespace grappler {
 // Kahn's algorithm is implemented.
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
 void TopologicalSort(GraphDef* graph) {
-  NodeMap node_map(graph);
+  OutputMap output_map(graph);
   std::vector<NodeDef*> ready_nodes;
   ready_nodes.reserve(graph->node_size());
   int front = 0;
@@ -41,7 +41,7 @@ void TopologicalSort(GraphDef* graph) {
     if (IsMerge(*node)) {
       ready_inputs[node] = 0;
       for (const auto& input : node->input()) {
-        if (IsNextIteration(*node_map.GetNode(input))) {
+        if (IsNextIteration(*output_map.GetNode(input))) {
           ready_inputs[node]++;
         }
       }
@@ -52,8 +52,9 @@ void TopologicalSort(GraphDef* graph) {
 
   while (front != back) {
     auto ready_node = ready_nodes[front];
-    for (const auto& fanout : node_map.GetOutputs(ready_node->name())) {
-      ready_inputs[fanout]++;
+    for (const auto& fanout_pair : output_map.GetOutputs(ready_node->name())) {
+      auto fanout = fanout_pair.first;
+      ready_inputs[fanout] += fanout_pair.second;
       if (ready_inputs[fanout] == fanout->input_size()) {
         ready_nodes.push_back(fanout);
         back++;
@@ -70,6 +71,8 @@ void TopologicalSort(GraphDef* graph) {
       new_node->Swap(ready_nodes[i]);
     }
     graph->mutable_node()->Swap(new_graph.mutable_node());
+  } else {
+    LOG(ERROR) << "The graph couldn't be sorted in topological order.";
   }
 }
 

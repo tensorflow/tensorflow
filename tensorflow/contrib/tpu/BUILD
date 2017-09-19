@@ -39,7 +39,6 @@ py_library(
     deps = [
         ":tpu_lib",
         ":tpu_py",
-        "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",

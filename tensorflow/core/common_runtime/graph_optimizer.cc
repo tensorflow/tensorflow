@@ -36,7 +36,7 @@ GraphOptimizer::~GraphOptimizer() {}
 void GraphOptimizer::Optimize(
     FunctionLibraryRuntime* runtime, Env* env, Device* device,
     std::unique_ptr<Graph>* graph,
-    const std::unordered_map<const Node*, std::vector<PartialTensorShape>>*
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);

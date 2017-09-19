@@ -104,7 +104,12 @@ def _MeanGrad(op, grad):
     factor = _safe_shape_div(
         math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
   if context.in_eager_mode():
-    factor = factor._copy(device_name=sum_grad.device)  # pylint: disable=protected-access
+    # Note that we go through numpy here just so we use the eager per-device
+    # scalar cache. We know the factor is a host memory tensor because it's a
+    # shape, and we also know that converting a scalar into a tensor triggers a
+    # per-device cache.
+    factor = factor.numpy()
+    factor = constant_op.constant(factor, dtype=sum_grad.dtype)
   return sum_grad / math_ops.cast(factor, sum_grad.dtype), None
 
 
@@ -750,6 +755,12 @@ def _FloorDivGrad(_, unused_grad):
   return None, None
 
 
+@ops.RegisterGradient("FloorMod")
+def _FloorModGrad(_, unused_grad):
+  """The gradient for the FloorMod operator."""
+  return None, None
+
+
 @ops.RegisterGradient("TruncateDiv")
 def _TruncateDivGrad(_, unused_grad):
   return None, None
@@ -903,7 +914,7 @@ def _SparseMatMulGrad(op, grad):
       op.inputs[0]: op.get_attr("a_is_sparse"),
       op.inputs[1]: op.get_attr("b_is_sparse"),
       # Use heuristic to figure out if grad might be sparse
-      grad: (grad.op.type == "ReluGrad")
+      grad: context.in_graph_mode() and (grad.op.type == "ReluGrad")
   }
 
   def _SparseMatMul(t1, t2, out_dtype, transpose_a=False, transpose_b=False):
@@ -1027,7 +1038,7 @@ def _ImagGrad(_, grad):
 def _AngleGrad(op, grad):
   """Returns -grad / (Im(x) + iRe(x))"""
   x = op.inputs[0]
-  with ops.control_dependencies([grad.op]):
+  with ops.control_dependencies([grad]):
     re = math_ops.real(x)
     im = math_ops.imag(x)
     z = math_ops.reciprocal(math_ops.complex(im, re))

@@ -1033,7 +1033,6 @@ class BaseEstimator(
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
-      core_summary.FileWriterCache.clear()
       return loss
 
 

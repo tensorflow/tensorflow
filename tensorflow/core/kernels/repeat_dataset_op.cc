@@ -107,7 +107,25 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
           input_impl_ = dataset()->input_->MakeIterator(prefix());
         }
         *end_of_sequence = true;
+        is_exhausted_ = true;
         input_impl_.reset();
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveStateInternal(OpKernelContext* ctx,
+                               IteratorBundleWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar<int64>(i_, full_name("i")));
+        TF_RETURN_IF_ERROR(writer->SaveParentState(ctx, input_impl_));
+        return Status::OK();
+      }
+
+      Status RestoreStateInternal(OpKernelContext* ctx,
+                                  IteratorBundleReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(reader->ReadScalar<int64>(&i_, full_name("i")));
+        TF_RETURN_IF_ERROR(reader->RestoreParentState(ctx, input_impl_));
         return Status::OK();
       }
 

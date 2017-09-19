@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -100,7 +101,7 @@ struct TFE_Op {
   bool const is_function() const { return attr_types == nullptr; }
 
   TFE_Context* ctx;  // Must outlive the TFE_Op.
-  const char* name;
+  const string name;
   tensorflow::AttrBuilder attrs;
   const tensorflow::AttrTypeMap* attr_types;
   std::vector<tensorflow::Tensor> inputs;
@@ -150,10 +151,11 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return TF_SessionListDevices(ctx->session, status);
 }
 
-TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t) {
-  return new TFE_TensorHandle(
-      tensorflow::TensorCApi::MakeTensor(t->dtype, t->shape, t->buffer),
-      nullptr);
+TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
+  tensorflow::Tensor tensor;
+  status->status = tensorflow::TF_TensorToTensor(t, &tensor);
+  if (!status->status.ok()) return nullptr;
+  return new TFE_TensorHandle(tensor, nullptr);
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) { delete h; }
@@ -220,10 +222,22 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   tensorflow::Tensor* src = &(h->t);
+  if (!dst_cpu && !tensorflow::DataTypeCanUseMemcpy(src->dtype())) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        tensorflow::strings::StrCat("Can't copy Tensor with type ",
+                                    tensorflow::DataTypeString(src->dtype()),
+                                    " to device ", DeviceName(dstd), ".")
+            .c_str());
+    return nullptr;
+  }
   if (src_cpu) {
     tensorflow::Tensor dst(
         dstd->GetAllocator(tensorflow::AllocatorAttributes()), src->dtype(),
         src->shape());
+    if (src->shape().num_elements() == 0) {
+      return new TFE_TensorHandle(dst, dstd);
+    }
     tensorflow::Notification n;
     dstd->tensorflow_gpu_device_info()->default_context->CopyCPUTensorToDevice(
         src, dstd, &dst, [status, &n](const tensorflow::Status& s) {
@@ -284,11 +298,11 @@ static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
   }
 }
 
-void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx, const char* device_name,
-                     TF_Status* status) {
+void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
-    status->status = ctx->session->device_mgr->LookupDevice(device_name, &d);
+    status->status =
+        op->ctx->session->device_mgr->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
   TFE_OpSetDeviceHelper(op, d, status);
@@ -356,6 +370,15 @@ void TFE_OpSetAttrShape(TFE_Op* op, const char* attr_name, const int64_t* dims,
     }
   }
   op->attrs.Set(attr_name, proto);
+}
+
+void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
+                           const TFE_Op* value) {
+  tensorflow::AttrValue attr_value;
+  tensorflow::NameAttrList* func = attr_value.mutable_func();
+  func->set_name(value->name);
+  value->attrs.FillAttrValueMap(func->mutable_attr());
+  op->attrs.Set(attr_name, attr_value);
 }
 
 #define TFE_OP_SET_ATTR_LIST(fn, type)                                \
@@ -451,8 +474,9 @@ tensorflow::Status ValidateInputTypeAndPlacement(
       return tensorflow::errors::InvalidArgument(
           "cannot compute ", op->name, " as input #", i,
           " was expected to be a ",
-          tensorflow::DataType_Name(kernel->input_type(i)), " tensor but is a ",
-          tensorflow::DataType_Name(op->inputs[i].dtype()), " tensor");
+          tensorflow::DataTypeString(kernel->input_type(i)),
+          " tensor but is a ",
+          tensorflow::DataTypeString(op->inputs[i].dtype()), " tensor");
     }
   }
   return tensorflow::Status::OK();
@@ -473,20 +497,16 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   if (kernel == nullptr) {
     const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
     kernel = new tensorflow::KernelAndDevice(ctx->rendezvous);
-    if (!op->is_function()) {
-      status->status =
-          tensorflow::KernelAndDevice::InitOp(device, ndef, kernel);
-    } else {
-      // Knowledge of the implementation of InitFn (and in-turn
-      // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
-      // will be accessed, so grab on to the lock.
-      // See WARNING comment below - would be nice to rework to avoid this
-      // subtlety.
-      tensorflow::mutex_lock l(ctx->functions_mu);
-      status->status = tensorflow::KernelAndDevice::InitFn(
-          ndef, ctx->func_lib(device), kernel);
-    }
+    // Knowledge of the implementation of Init (and in-turn
+    // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
+    // will be accessed, so grab on to the lock.
+    // See WARNING comment below - would be nice to rework to avoid this
+    // subtlety.
+    tensorflow::tf_shared_lock l(ctx->functions_mu);
+    status->status =
+        tensorflow::KernelAndDevice::Init(ndef, ctx->func_lib(device), kernel);
     if (!status->status.ok()) {
+      delete kernel;
       return;
     }
     tensorflow::gtl::InsertOrUpdate(&(ctx->kernel_cache), cache_key, kernel);

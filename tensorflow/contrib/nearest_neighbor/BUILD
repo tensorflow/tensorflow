@@ -61,6 +61,7 @@ tf_kernel_library(
     srcs = ["kernels/hyperplane_lsh_probes.cc"],
     deps = [
         ":hyperplane_lsh_probes",
+        ":nearest_neighbor_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",

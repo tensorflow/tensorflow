@@ -270,7 +270,7 @@ The `padding` argument specifies one of two enumerated values
 (case-insensitive): `valid` (default value) or `same`. To specify that the
 output tensor should have the same width and height values as the input tensor,
 we set `padding=same` here, which instructs TensorFlow to add 0 values to the
-edges of the output tensor to preserve width and height of 28. (Without padding,
+edges of the input tensor to preserve width and height of 28. (Without padding,
 a 5x5 convolution over a 28x28 tensor will produce a 24x24 tensor, as there are
 24x24 locations to extract a 5x5 tile from a 28x28 grid.)
 

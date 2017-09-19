@@ -169,11 +169,6 @@ class GraphMgr {
   void BuildCostModel(Item* item, StepStatsCollector* collector,
                       CostGraphDef* cost_graph);
 
-  Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
-  Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);
-  void RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous, NamedTensors* out,
-                                      const StatusCallback& done);
-
   Status InitItem(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options,
                   const DebugOptions& debug_options, Item* item);

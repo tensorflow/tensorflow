@@ -459,8 +459,13 @@ def _make_specific_exception(node_def, op, message, error_code):
 def raise_exception_on_not_ok_status():
   status = c_api_util.ScopedTFStatus()
   yield status.status
-  if c_api.TF_GetCode(status) != 0:
-    raise _make_specific_exception(
-        None, None,
-        compat.as_text(c_api.TF_Message(status)),
-        c_api.TF_GetCode(status))
+  try:
+    if c_api.TF_GetCode(status.status) != 0:
+      raise _make_specific_exception(
+          None, None,
+          compat.as_text(c_api.TF_Message(status.status)),
+          c_api.TF_GetCode(status.status))
+  # Delete the underlying status object from memory otherwise it stays alive
+  # as there is a reference to status from this from the traceback due to raise.
+  finally:
+    del status

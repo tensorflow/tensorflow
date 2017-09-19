@@ -69,6 +69,14 @@ class TFProfStatsTest : public ::testing::Test {
     tf_stats_->BuildAllViews();
   }
 
+  string TestToFromProto(const string& cmd, const Options& opts) {
+    string profile_file = io::JoinPath(testing::TmpDir(), "profile");
+    tf_stats_->WriteProfile(profile_file);
+    TFStats new_stats(profile_file, nullptr);
+    new_stats.BuildAllViews();
+    return new_stats.ShowGraphNode(cmd, opts).DebugString();
+  }
+
   std::unique_ptr<TFStats> tf_stats_;
 };
 
@@ -98,6 +106,8 @@ TEST_F(TFProfStatsTest, CustomOpType) {
       "2\ntotal_definition_count: 3\ntotal_output_bytes: 2560\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfStatsTest, CheckPointOpType) {
@@ -126,6 +136,8 @@ TEST_F(TFProfStatsTest, CheckPointOpType) {
       "2\ntotal_definition_count: 3\ntotal_output_bytes: 2560\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfStatsTest, TestGraph) {
@@ -157,6 +169,8 @@ TEST_F(TFProfStatsTest, TestGraph) {
       "9984\ntotal_residual_bytes: 1280\ntotal_output_bytes: 4864\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("graph", opts));
 }
 
 TEST_F(TFProfStatsTest, TestFloatOps) {
@@ -203,6 +217,8 @@ TEST_F(TFProfStatsTest, TestFloatOps) {
       "9984\ntotal_residual_bytes: 1280\ntotal_output_bytes: 4864\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
@@ -236,6 +252,8 @@ TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
       "4096\ntotal_residual_bytes: 512\ntotal_output_bytes: 512\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
+
+  EXPECT_EQ(root.DebugString(), TestToFromProto("scope", opts));
 }
 
 TEST_F(TFProfStatsTest, TestShowTensorValue) {

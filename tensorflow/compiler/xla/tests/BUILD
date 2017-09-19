@@ -179,24 +179,45 @@ cc_library(
 )
 
 cc_library(
+    name = "llvm_irgen_test_base",
+    testonly = True,
+    srcs = ["llvm_irgen_test_base.cc"],
+    hdrs = ["llvm_irgen_test_base.h"],
+    deps = [
+        ":codegen_test_base",
+        ":filecheck",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "codegen_test_base",
     testonly = True,
     srcs = ["codegen_test_base.cc"],
     hdrs = ["codegen_test_base.h"],
+    deps = [
+        ":hlo_test_base",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo",
+    ],
+)
+
+cc_library(
+    name = "filecheck",
+    testonly = True,
+    srcs = ["filecheck.cc"],
+    hdrs = ["filecheck.h"],
     data = [
         "@llvm//:FileCheck",
     ],
     deps = [
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/service:backend",
-        "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
     ],
 )
 
@@ -349,6 +370,7 @@ xla_test(
 xla_test(
     name = "params_test",
     srcs = ["params_test.cc"],
+    shard_count = 30,
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
@@ -417,7 +439,7 @@ xla_test(
 xla_test(
     name = "scalar_computations_test",
     srcs = ["scalar_computations_test.cc"],
-    shard_count = 16,
+    shard_count = 32,
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -878,6 +900,7 @@ xla_test_library(
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
@@ -1327,6 +1350,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "@llvm//:core",
     ],
 )
 
@@ -1424,6 +1448,7 @@ cc_test(
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:computation_tracker",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/core:test_main",
     ],

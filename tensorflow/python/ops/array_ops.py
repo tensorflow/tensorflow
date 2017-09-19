@@ -291,10 +291,11 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
                           sparse_tensor.SparseTensorValue)):
       return gen_math_ops.cast(input.dense_shape, out_type)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
-      if optimize and input_shape.is_fully_defined():
-        return constant(input_shape.as_list(), out_type, name=name)
+      if context.in_graph_mode():
+        input_tensor = ops.convert_to_tensor(input)
+        input_shape = input_tensor.get_shape()
+        if optimize and input_shape.is_fully_defined():
+          return constant(input_shape.as_list(), out_type, name=name)
       return gen_array_ops.shape(input, name=name, out_type=out_type)
 
 
@@ -1428,6 +1429,10 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = ""
     else:
       zero = 0
+    # Checking for boolean dtype to prevent attempting to run fill on the GPU
+    # which does not have a boolean kernel registered.
+    if context.in_eager_mode() and dtype != dtypes.bool:
+      return fill(shape, constant(zero, dtype=dtype), name=name)
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(zero, shape=shape, dtype=dtype, name=name)
@@ -1466,12 +1471,23 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
 
-    if tensor.shape.is_fully_defined():
+    if context.in_eager_mode():
+      if dtype is not None and dtype != tensor.dtype:
+        return zeros(
+            shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
+      with ops.device(tensor.device):
+        return gen_array_ops._zeros_like(tensor, name=name)
+
+    # For now, variant types must be created via zeros_like; as we need to
+    # pass the input variant object to the proper zeros callback.
+
+    if optimize and tensor.shape.is_fully_defined() and \
+        tensor.dtype != dtypes.variant:
       # We can produce a zeros tensor independent of the value of 'tensor',
       # since the shape is known statically.
       return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
 
-    if dtype is not None and dtype != tensor.dtype:
+    if dtype is not None and dtype != tensor.dtype and dtype != dtypes.variant:
       return zeros(
           shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
     else:
@@ -1726,18 +1742,19 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     raise ValueError("Unknown padding mode: %s" % mode)
 
   # Restore shape information where possible.
-  paddings_constant = tensor_util.constant_value(
-      result.op.inputs[1], partial=True)
-  input_shape = result.op.inputs[0].shape
-  if (input_shape.ndims is not None and not result.shape.is_fully_defined() and
-      paddings_constant is not None):
-    new_shape = []
-    for padding, dim in zip(paddings_constant, input_shape.as_list()):
-      if padding is None or dim is None or not all(padding):
-        new_shape.append(None)
-      else:
-        new_shape.append(sum(padding) + dim)
-    result.set_shape(new_shape)
+  if context.in_graph_mode():
+    paddings_constant = tensor_util.constant_value(
+        result.op.inputs[1], partial=True)
+    input_shape = result.op.inputs[0].shape
+    if (input_shape.ndims is not None and not result.shape.is_fully_defined()
+        and paddings_constant is not None):
+      new_shape = []
+      for padding, dim in zip(paddings_constant, input_shape.as_list()):
+        if padding is None or dim is None or not all(padding):
+          new_shape.append(None)
+        else:
+          new_shape.append(sum(padding) + dim)
+      result.set_shape(new_shape)
 
   return result
 

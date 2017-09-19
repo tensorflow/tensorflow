@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -117,8 +118,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // not unique among already emitted functions then a suffix is appended to
   // make the name unique.
   //
-  // is_entry_computation indicates that this is the entry computation of the
-  // HLO module.
+  // 'is_top_level_computation' has the following meanings for each CPU backend:
+  // *) sequential: indicates that this is the entry computation of the HLO
+  //    module.
+  // *) parallel: indices that this is the callee of a kCall HLO in the entry
+  //    computation of the HLO module.
   //
   // If 'instruction_order' is not NULL, then the HLO instructions are emitted
   // in the given order.  In this case, 'instruction_order' must be a
@@ -126,8 +130,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // computation.
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const string& function_name_prefix,
-      bool is_entry_computation,
+      bool is_top_level_computation,
       std::vector<const HloInstruction*>* instruction_order);
+
+  llvm::IRBuilder<>* ir_builder() { return &ir_builder_; }
+
+  // Emits a call to `computation` with scalar arguments `arguments`.
+  StatusOr<llvm::Value*> EmitScalarCall(
+      PrimitiveType return_type, HloComputation* computation,
+      const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name);
 
  protected:
   //
@@ -201,8 +212,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
  private:
   // Private helper to initialize an IR function for the computation.
-  void InitializeIrFunction(const string& function_name,
-                            bool is_entry_computation);
+  void InitializeIrFunction(const string& function_name);
 
   // Convenience function to generate a GEP into the profile counter parameter
   // which would correspond to the index for a given HLO.
@@ -311,9 +321,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // shape). The body of the inner-most loop is provided by the body_emitter
   // function.
   //
+  // desc is an optional human-readable string that's added to the loop name in
+  // IR.  Regardless of whether desc is provided, target_op->name() is included
+  // in the loop name.
+  //
   // TODO(jingyue): target_op should be a `const HloInstruction*`.
   Status EmitTargetElementLoop(
       HloInstruction* target_op,
+      const llvm_ir::ElementGenerator& element_generator);
+  Status EmitTargetElementLoop(
+      HloInstruction* target_op, tensorflow::StringPiece desc,
       const llvm_ir::ElementGenerator& element_generator);
 
   // Emit IR to perform a computation for every element in a partition/slice of
@@ -480,12 +497,12 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   class ProfilingState {
    public:
     ProfilingState()
-        : is_entry_computation_(false),
+        : is_top_level_computation_(false),
           use_rdtscp_(false),
           prof_counters_(nullptr) {}
-    ProfilingState(bool is_entry_computation, bool use_rdtscp,
+    ProfilingState(bool is_top_level_computation, bool use_rdtscp,
                    llvm::Argument* prof_counters)
-        : is_entry_computation_(is_entry_computation),
+        : is_top_level_computation_(is_top_level_computation),
           use_rdtscp_(use_rdtscp),
           prof_counters_(prof_counters) {}
 
@@ -510,7 +527,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
    private:
     // Is this IrEmitter for a top-level computation?
-    bool is_entry_computation_;
+    bool is_top_level_computation_;
 
     // Should we use the x86-specific rdtscp or the generic readcyclecounter
     // intrinsic?
@@ -570,7 +587,17 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                            llvm::Value* program_buffer_address);
 
+  // Returns true if the current function being emitted is called in a
+  // parallel context (returns false otherwise).
+  bool IsParallelContext() {
+    return parallel_cpu_backend_ && is_top_level_computation_;
+  }
+
   const HloModuleConfig& hlo_module_config_;
+
+  const bool parallel_cpu_backend_;
+
+  bool is_top_level_computation_;
 
   TargetMachineFeatures target_machine_features_;
 

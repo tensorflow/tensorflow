@@ -4,14 +4,42 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_cc")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 tf_proto_library_cc(
     name = "tpu_profiler_proto",
     srcs = ["tpu_profiler.proto"],
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [":op_profile_proto"] + tf_additional_all_protos(),
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "dump_tpu_profile",
+    srcs = ["dump_tpu_profile.cc"],
+    hdrs = ["dump_tpu_profile.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":op_profile_proto_cc",
+        ":tpu_profiler_proto_cc",
+        ":trace_events_proto_cc",
+        ":trace_events_to_json",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 cc_binary(
@@ -19,14 +47,12 @@ cc_binary(
     srcs = ["capture_tpu_profile.cc"],
     visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
     deps = [
+        ":dump_tpu_profile",
         ":tpu_profiler_proto_cc",
-        ":trace_events_proto_cc",
-        ":trace_events_to_json",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/platform/cloud:gcs_file_system",
         "@grpc//:grpc++_unsecure",
     ],
 )
@@ -59,4 +85,11 @@ cc_test(
         "//tensorflow/core:test_main",
         "@jsoncpp_git//:jsoncpp",
     ],
+)
+
+tf_proto_library_cc(
+    name = "op_profile_proto",
+    srcs = ["op_profile.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
 )

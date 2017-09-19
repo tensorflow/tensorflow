@@ -18,6 +18,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <numeric>
+
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"

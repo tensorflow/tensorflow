@@ -55,7 +55,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// MasterSession wraps SimpleClientGraph in a reference counted object.
+// MasterSession wraps ClientGraph in a reference counted object.
 // This way, MasterSession can clear up the cache mapping Run requests to
 // compiled graphs while the compiled graph is still being used.
 //
@@ -63,10 +63,10 @@ namespace tensorflow {
 class MasterSession::ReffedClientGraph : public core::RefCounted {
  public:
   ReffedClientGraph(const string& handle, const BuildGraphOptions& bopts,
-                    std::unique_ptr<SimpleClientGraph> cg,
+                    std::unique_ptr<ClientGraph> cg,
                     const SessionOptions& session_opts,
                     const StatsPublisherFactory& stats_publisher_factory,
-                    SimpleGraphExecutionState* execution_state, bool is_partial,
+                    GraphExecutionState* execution_state, bool is_partial,
                     WorkerCacheInterface* worker_cache)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
@@ -87,7 +87,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   ~ReffedClientGraph() override { DeregisterPartitions(); }
 
-  const SimpleClientGraph* client_graph() { return client_graph_.get(); }
+  const ClientGraph* client_graph() { return client_graph_.get(); }
 
   std::unique_ptr<ProfileHandler> GetProfileHandler(uint64 step,
                                                     int64 execution_count,
@@ -186,7 +186,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Checks that the requested fetches can be computed from the provided feeds.
   Status CheckFetches(const RunStepRequestWrapper& req,
                       const RunState* run_state,
-                      SimpleGraphExecutionState* execution_state);
+                      GraphExecutionState* execution_state);
 
   string DetailText(const Node& node, const NodeExecStats& ns) {
     int64 tot = 0;
@@ -203,7 +203,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
  private:
   const string session_handle_;
-  const std::unique_ptr<SimpleClientGraph> client_graph_;
+  const std::unique_ptr<ClientGraph> client_graph_;
   const SessionOptions session_opts_;
   const bool is_partial_;
   const DebugOptions& debug_opts_;
@@ -813,7 +813,7 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
 // contention.
 Status MasterSession::ReffedClientGraph::CheckFetches(
     const RunStepRequestWrapper& req, const RunState* run_state,
-    SimpleGraphExecutionState* execution_state) {
+    GraphExecutionState* execution_state) {
   // Build the set of pending feeds that we haven't seen.
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
   for (const auto& input : run_state->pending_inputs) {
@@ -1028,12 +1028,12 @@ Status MasterSession::Create(GraphDef* graph_def,
     session_opts_.config.mutable_graph_options()->set_place_pruned_graph(false);
   }
 
-  SimpleGraphExecutionStateOptions execution_options;
+  GraphExecutionStateOptions execution_options;
   execution_options.device_set = devices_.get();
   execution_options.session_options = &session_opts_;
   {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
+    TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
         graph_def, execution_options, &execution_state_));
   }
   if (options.cluster_def != nullptr) {
@@ -1142,7 +1142,7 @@ Status MasterSession::ListDevices(ListDevicesResponse* resp) const {
 Status MasterSession::Extend(const ExtendSessionRequest* req,
                              ExtendSessionResponse* resp) {
   UpdateLastAccessTime();
-  std::unique_ptr<SimpleGraphExecutionState> extended_execution_state;
+  std::unique_ptr<GraphExecutionState> extended_execution_state;
   {
     mutex_lock l(mu_);
     if (closed_) {
@@ -1195,7 +1195,7 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
       VLOG(1) << "Unseen hash " << hash << " for "
               << BuildGraphOptionsString(opts) << " is_partial = " << is_partial
               << "\n";
-      std::unique_ptr<SimpleClientGraph> client_graph;
+      std::unique_ptr<ClientGraph> client_graph;
       TF_RETURN_IF_ERROR(execution_state_->BuildGraph(opts, &client_graph));
       WorkerCacheInterface* worker_cache = get_worker_cache();
       auto entry = new ReffedClientGraph(

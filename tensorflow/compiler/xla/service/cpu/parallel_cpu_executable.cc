@@ -241,7 +241,7 @@ Status Executor::Run() {
         completion_queue_.pop_front();
         break;
       }
-    } while (1);
+    } while (true);
     TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
                         assignment_->GetUniqueTopLevelSlice(instruction));
     void* result_buffer =

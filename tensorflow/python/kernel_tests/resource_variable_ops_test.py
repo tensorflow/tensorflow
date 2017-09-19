@@ -53,97 +53,111 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
-  def testDtypeSurvivesIdentity(self):
-    with self.test_session():
-      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
-      id_handle = array_ops.identity(handle)
-      resource_variable_ops.assign_variable_op(id_handle,
-                                               constant_op.constant(
-                                                   0,
-                                                   dtype=dtypes.int32)).run()
-
-  def testCreateRead(self):
-    with self.test_session():
-      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
-      resource_variable_ops.assign_variable_op(handle,
-                                               constant_op.constant(
-                                                   1,
-                                                   dtype=dtypes.int32)).run()
-      value = resource_variable_ops.read_variable_op(
-          handle, dtype=dtypes.int32).eval()
-      self.assertAllEqual(1, value)
-
-  def testManyAssigns(self):
-    with self.test_session() as session:
-      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
-      create = resource_variable_ops.assign_variable_op(handle,
-                                                        constant_op.constant(
-                                                            1,
-                                                            dtype=dtypes.int32))
-      with ops.control_dependencies([create]):
-        first_read = resource_variable_ops.read_variable_op(
-            handle, dtype=dtypes.int32)
-      with ops.control_dependencies([first_read]):
-        write = resource_variable_ops.assign_variable_op(
-            handle, constant_op.constant(2, dtype=dtypes.int32))
-      with ops.control_dependencies([write]):
-        second_read = resource_variable_ops.read_variable_op(
-            handle, dtype=dtypes.int32)
-      f, s = session.run([first_read, second_read])
-      self.assertEqual(f, 1)
-      self.assertEqual(s, 2)
-
-  def testAssignAdd(self):
-    with self.test_session():
-      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
-      resource_variable_ops.assign_variable_op(handle,
-                                               constant_op.constant(
-                                                   1,
-                                                   dtype=dtypes.int32)).run()
-      resource_variable_ops.assign_add_variable_op(
-          handle, constant_op.constant(1, dtype=dtypes.int32)).run()
-      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(read.eval(), 2)
-
-  def testScatterAdd(self):
-    with self.test_session(use_gpu=True):
+  def testReadVariableDtypeMismatchEager(self):
+    with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
-          dtype=dtypes.int32, shape=[1, 1])
-      resource_variable_ops.assign_variable_op(handle,
-                                               constant_op.constant(
-                                                   [[1]],
-                                                   dtype=dtypes.int32)).run()
-      resource_variable_ops.resource_scatter_add(handle, [0],
-                                                 constant_op.constant(
-                                                     [[2]],
-                                                     dtype=dtypes.int32)).run()
-      read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(read.eval(), [[3]])
+          dtype=dtypes.int32, shape=[1], name="foo")
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Trying to read variable with wrong dtype. "
+                                   "Expected float got int32."):
+        _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
 
+  def testAssignVariableDtypeMismatchEager(self):
+    with context.eager_mode():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1], name="foo")
+      resource_variable_ops.assign_variable_op(
+          handle, constant_op.constant([1]))
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Trying to assign variable with wrong "
+                                   "dtype. Expected int32 got float."):
+        resource_variable_ops.assign_variable_op(
+            handle, constant_op.constant([1.], dtype=dtypes.float32))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testDtypeSurvivesIdentity(self):
+    handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+    id_handle = array_ops.identity(handle)
+    self.evaluate(resource_variable_ops.assign_variable_op(
+        id_handle, constant_op.constant(0, dtype=dtypes.int32)))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testCreateRead(self):
+    handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+    self.evaluate(resource_variable_ops.assign_variable_op(
+        handle, constant_op.constant(1, dtype=dtypes.int32)))
+    value = self.evaluate(
+        resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32))
+    self.assertAllEqual(1, value)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testManyAssigns(self):
+    handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+    create = resource_variable_ops.assign_variable_op(
+        handle, constant_op.constant(1, dtype=dtypes.int32))
+    with ops.control_dependencies([create]):
+      first_read = resource_variable_ops.read_variable_op(
+          handle, dtype=dtypes.int32)
+    with ops.control_dependencies([first_read]):
+      write = resource_variable_ops.assign_variable_op(
+          handle, constant_op.constant(2, dtype=dtypes.int32))
+    with ops.control_dependencies([write]):
+      second_read = resource_variable_ops.read_variable_op(
+          handle, dtype=dtypes.int32)
+    f, s = self.evaluate([first_read, second_read])
+    self.assertEqual(f, 1)
+    self.assertEqual(s, 2)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testAssignAdd(self):
+    handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+    self.evaluate(resource_variable_ops.assign_variable_op(
+        handle, constant_op.constant(1, dtype=dtypes.int32)))
+    self.evaluate(resource_variable_ops.assign_add_variable_op(
+        handle, constant_op.constant(1, dtype=dtypes.int32)))
+    read = self.evaluate(
+        resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32))
+    self.assertEqual(read, 2)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testScatterAdd(self):
+    handle = resource_variable_ops.var_handle_op(
+        dtype=dtypes.int32, shape=[1, 1])
+    self.evaluate(resource_variable_ops.assign_variable_op(
+        handle, constant_op.constant([[1]], dtype=dtypes.int32)))
+    self.evaluate(resource_variable_ops.resource_scatter_add(
+        handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
+    read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
+    self.assertEqual(self.evaluate(read), [[3]])
+
+  # TODO(alive): get this to work in Eager mode.
   def testGPU(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session(use_gpu=True):
       abc = variable_scope.get_variable(
           "abc",
           shape=[1],
           initializer=init_ops.ones_initializer(),
           use_resource=True)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       self.assertEqual(
-          resource_variable_ops.var_is_initialized_op(abc.handle).eval(), True)
-      print(sess.run(abc))
+          self.evaluate(
+              resource_variable_ops.var_is_initialized_op(abc.handle)),
+          True)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConstraintArg(self):
     constraint = lambda x: x
     v = resource_variable_ops.ResourceVariable(
-        initial_value=lambda: 1, constraint=constraint)
+        initial_value=lambda: 1, constraint=constraint, name="var0")
     self.assertEqual(v.constraint, constraint)
 
     constraint = 0
     with self.assertRaises(ValueError):
       v = resource_variable_ops.ResourceVariable(
-          initial_value=lambda: 1, constraint=constraint)
+          initial_value=lambda: 1, constraint=constraint, name="var1")
 
+  # TODO(alive): how should this work in Eager mode?
   def testInitFn(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(
@@ -151,53 +165,53 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(v.handle.op.colocation_groups(),
                        v.initializer.inputs[1].op.colocation_groups())
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInitFnDtype(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(
-          initial_value=lambda: 1, dtype=dtypes.float32)
-      self.assertEqual(dtypes.float32, v.value().dtype)
+    v = resource_variable_ops.ResourceVariable(
+        initial_value=lambda: 1, dtype=dtypes.float32)
+    self.assertEqual(dtypes.float32, v.value().dtype)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInitFnNoDtype(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1)
-      self.assertEqual(dtypes.int32, v.value().dtype)
+    v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
+                                               name="var2")
+    self.assertEqual(dtypes.int32, v.value().dtype)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testInitializeAllVariables(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.float32)
-      with self.assertRaises(errors.NotFoundError):
-        v.value().eval()
-      variables.global_variables_initializer().run()
-      self.assertEqual(1.0, v.value().eval())
+    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.float32)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(1.0, self.evaluate(v.value()))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testOperatorOverload(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      self.assertEqual(2.0, (v + v).eval())
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(2.0, self.evaluate(v + v))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAssignMethod(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      v.assign(2.0).eval()
-      self.assertEqual(2.0, v.value().eval())
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(v.assign(2.0))
+    self.assertEqual(2.0, self.evaluate(v.value()))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testLoad(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      v.load(2.0)
-      self.assertEqual(2.0, v.value().eval())
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.evaluate(variables.global_variables_initializer())
+    v.load(2.0)
+    self.assertEqual(2.0, self.evaluate(v.value()))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSparseRead(self):
     with self.test_session():
       init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
       v = resource_variable_ops.ResourceVariable(
-          constant_op.constant(init_value, dtype=dtypes.int32))
-      variables.global_variables_initializer().run()
+          constant_op.constant(init_value, dtype=dtypes.int32), name="var3")
+      self.evaluate(variables.global_variables_initializer())
 
-      value = v.sparse_read([0, 3, 1, 2]).eval()
+      value = self.evaluate(v.sparse_read([0, 3, 1, 2]))
       self.assertAllEqual(init_value[[0, 3, 1, 2], ...], value)
 
   def testToFromProto(self):
@@ -208,34 +222,33 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
       self.assertEquals(2, math_ops.add(w, 1).eval())
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAssignAddMethod(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
-      v.assign_add(1.0).eval()
-      self.assertEqual(2.0, v.value().eval())
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(v.assign_add(1.0))
+    self.assertEqual(2.0, self.evaluate(v.value()))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testAssignSubMethod(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(3.0)
-      variables.global_variables_initializer().run()
-      v.assign_sub(1.0).eval()
-      self.assertEqual(2.0, v.value().eval())
+    v = resource_variable_ops.ResourceVariable(3.0)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(v.assign_sub(1.0))
+    self.assertEqual(2.0, self.evaluate(v.value()))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testDestroyResource(self):
-    with self.test_session() as sess:
-      v = resource_variable_ops.ResourceVariable(3.0)
-      variables.global_variables_initializer().run()
-      self.assertEqual(3.0, v.value().eval())
-      sess.run(resource_variable_ops.destroy_resource_op(v.handle))
-      with self.assertRaises(errors.NotFoundError):
-        v.value().eval()
-      # Handle to a resource not actually created.
-      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
-      # Should raise no exception
-      sess.run(
-          resource_variable_ops.destroy_resource_op(
-              handle, ignore_lookup_error=True))
+    v = resource_variable_ops.ResourceVariable(3.0)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(3.0, self.evaluate(v.value()))
+    self.evaluate(resource_variable_ops.destroy_resource_op(v.handle))
+    with self.assertRaises(errors.NotFoundError):
+      self.evaluate(v.value())
+    # Handle to a resource not actually created.
+    handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+    # Should raise no exception
+    self.evaluate(resource_variable_ops.destroy_resource_op(
+        handle, ignore_lookup_error=True))
 
   def testAssignDifferentShapes(self):
     with self.test_session() as sess, variable_scope.variable_scope(
@@ -247,12 +260,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           [assign],
           feed_dict={placeholder: np.zeros(shape=[2, 2], dtype=np.float32)})
 
+  def testAssignDifferentShapesEager(self):
+    with context.eager_mode():
+      with variable_scope.variable_scope("foo"):
+        var = variable_scope.get_variable("x", shape=[1, 1],
+                                          dtype=dtypes.float32)
+        assign = var.assign(np.zeros(shape=[2, 2]))
+        self.evaluate(assign)
+
   def testDtypeAfterFromProto(self):
     v = resource_variable_ops.ResourceVariable(2.0)
     w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
     self.assertIsInstance(w.dtype, dtypes.DType)
     self.assertEqual(v.dtype, w.dtype)
 
+  # TODO(alive): get caching to work in eager mode.
   def testCachingDevice(self):
     with ops.device("/job:server/task:1"):
       v = resource_variable_ops.ResourceVariable(
@@ -268,41 +290,44 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
         _ = w.value().op.get_attr("_class")
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSharedName(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(300.0, name="var1")
-      v.initializer.run()
+    v = resource_variable_ops.ResourceVariable(300.0, name="var4")
+    self.evaluate(variables.global_variables_initializer())
 
-      w = resource_variable_ops.var_handle_op(
-          dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var1")
-      w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
-      self.assertEqual(300.0, w_read.eval())
+    w = resource_variable_ops.var_handle_op(
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var4")
+    w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
+    self.assertEqual(300.0, self.evaluate(w_read))
 
-      x = resource_variable_ops.var_handle_op(
-          dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var1/")
+    x = resource_variable_ops.var_handle_op(
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5")
+    with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
       x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
-      with self.assertRaisesOpError("Resource .*/var1//.* does not exist"):
-        _ = x_read.eval()
+      self.evaluate(x_read)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSharedNameWithNamescope(self):
-    with self.test_session():
-      with ops.name_scope("foo"):
-        v = resource_variable_ops.ResourceVariable(300.0, name="var1")
-        v.initializer.run()
+    with ops.name_scope("foo"):
+      v = resource_variable_ops.ResourceVariable(300.0, name="var6")
+      self.assertEqual("foo/var6", v._shared_name)  # pylint: disable=protected-access
+      self.assertEqual("foo/var6:0", v.name)
+      self.evaluate(variables.global_variables_initializer())
 
-      w = resource_variable_ops.var_handle_op(
-          dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var1")
-      w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
-      self.assertEqual(300.0, w_read.eval())
+    w = resource_variable_ops.var_handle_op(
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var6")
+    w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
+    self.assertEqual(300.0, self.evaluate(w_read))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testShape(self):
-    with self.test_session():
-      v = resource_variable_ops.ResourceVariable(
-          name="var1", initial_value=array_ops.ones(shape=[10, 20, 35]))
-      self.assertEqual("(10, 20, 35)", str(v.shape))
-      self.assertEqual("(10, 20, 35)", str(v.get_shape()))
-      self.assertEqual("(10, 20, 35)", str(v.value().shape))
-      self.assertEqual("(3, 20, 35)", str(v.sparse_read([0, 1, 2]).shape))
+    v = resource_variable_ops.ResourceVariable(
+        name="var4", initial_value=array_ops.ones(shape=[10, 20, 35]))
+    self.assertEqual("(10, 20, 35)", str(v.shape))
+    self.assertEqual("(10, 20, 35)", str(v.get_shape()))
+    self.assertEqual("(10, 20, 35)", str(v.value().shape))
+    self.assertEqual("(3, 20, 35)", str(v.sparse_read([0, 1, 2]).shape))
+    if context.in_graph_mode():
       self.assertEqual(
           "<unknown>",
           str(v.sparse_read(array_ops.placeholder(dtypes.int32)).shape))
@@ -329,27 +354,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
-
-# TODO(agarwal,apassos): Add more comprehensive tests and/or translate the above
-# tests to work in both GRAPH and EAGER modes.
-# TODO(agarwal): Add tests for sparse_read, scatter_sub
-class ResourceVariableOpsEagerTest(test_util.TensorFlowTestCase):
-
-  def testVariable(self):
+  def testVariableEager(self):
     with context.eager_mode():
       init = array_ops.ones(shape=[10, 20, 35], dtype=dtypes.int32)
       constraint = lambda x: x
       with ops.name_scope("foo"):
         v = resource_variable_ops.ResourceVariable(
-            name="var1",
+            name="var7",
             initial_value=init,
             caching_device="cpu:0",
             constraint=constraint)
       # Test properties
       self.assertEqual(dtypes.int32, v.dtype)
-      self.assertEqual("foo/var1:0", v.name)
+      self.assertEqual("foo/var7:0", v.name)
       self.assertAllEqual([10, 20, 35], v.shape.as_list())
-      self.assertAllEqual(init.device, v.device)
+      self.assertEqual(context.get_default_context().device_name, v.device)
       self.assertTrue(isinstance(v.handle, ops.EagerTensor))
       self.assertEqual(constraint, v.constraint)
       self.assertAllEqual(init.numpy(), v.read_value().numpy())
@@ -358,8 +377,8 @@ class ResourceVariableOpsEagerTest(test_util.TensorFlowTestCase):
       # Callable init.
       callable_init = lambda: init * 2
       v2 = resource_variable_ops.ResourceVariable(
-          initial_value=callable_init, name="v2")
-      self.assertEqual("v2:0", v2.name)
+          initial_value=callable_init, name="var7")
+      self.assertEqual("var7:0", v2.name)
       self.assertAllEqual(2 * init.numpy(), v2.read_value().numpy())
 
       # Test assign_add.

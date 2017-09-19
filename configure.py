@@ -143,7 +143,7 @@ def run_shell(cmd, allow_non_zero=False):
 
 def cygpath(path):
   """Convert path from posix to windows."""
-  return run_shell(['cygpath', '-m', path])
+  return os.path.abspath(path).replace('\\', '/')
 
 
 def get_python_path(environ_cp, python_bin_path):
@@ -196,7 +196,7 @@ def setup_python(environ_cp, bazel_version):
     environ_cp['PYTHON_BIN_PATH'] = ''
 
   # Convert python path to Windows style before checking lib and version
-  if is_cygwin():
+  if is_windows() or is_cygwin():
     python_bin_path = cygpath(python_bin_path)
 
   # Get PYTHON_LIB_PATH
@@ -219,7 +219,7 @@ def setup_python(environ_cp, bazel_version):
   python_major_version = get_python_major_version(python_bin_path)
 
   # Convert python path to Windows style before writing into bazel.rc
-  if is_cygwin():
+  if is_windows() or is_cygwin():
     python_lib_path = cygpath(python_lib_path)
 
   # Set-up env variables used by python_configure.bzl
@@ -359,7 +359,7 @@ def get_var(environ_cp,
 
 
 def set_build_var(environ_cp, var_name, query_item, option_name,
-                  enabled_by_default):
+                  enabled_by_default, bazel_config_name=None):
   """Set if query_item will be enabled for the build.
 
   Ask user if query_item will be enabled. Default is used if no input is given.
@@ -372,12 +372,18 @@ def set_build_var(environ_cp, var_name, query_item, option_name,
       System".
     option_name: string for option to define in .bazelrc.
     enabled_by_default: boolean for default behavior.
+    bazel_config_name: Name for Bazel --config argument to enable build feature.
   """
 
   var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
   environ_cp[var_name] = var
   if var == '1':
     write_to_bazelrc('build --define %s=true' % option_name)
+  elif bazel_config_name is not None:
+    # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
+    # options and not to set build configs through environment variables.
+    write_to_bazelrc('build:%s --define %s=true'
+                     % (bazel_config_name, option_name))
 
 
 def set_action_env_var(environ_cp,
@@ -600,7 +606,7 @@ def set_tf_cuda_version(environ_cp):
 
     # Find out where the CUDA toolkit is installed
     default_cuda_path = _DEFAULT_CUDA_PATH
-    if is_cygwin():
+    if is_windows() or is_cygwin():
       default_cuda_path = cygpath(
           environ_cp.get('CUDA_PATH', _DEFAULT_CUDA_PATH_WIN))
     elif is_linux():
@@ -660,7 +666,7 @@ def set_tf_cunn_version(environ_cp):
     # unusable. Going through one more level of expansion to handle that.
     cudnn_install_path = os.path.realpath(
         os.path.expanduser(cudnn_install_path))
-    if is_cygwin():
+    if is_windows() or is_cygwin():
       cudnn_install_path = cygpath(cudnn_install_path)
 
     if is_windows():
@@ -685,10 +691,13 @@ def set_tf_cunn_version(environ_cp):
       ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
       cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
       cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
-                                           cudnn_path_from_ldconfig).group(1)
-      if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
-        cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
-        break
+                                           cudnn_path_from_ldconfig)
+      if cudnn_path_from_ldconfig:
+        cudnn_path_from_ldconfig = cudnn_path_from_ldconfig.group(1)
+        if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig,
+                                     tf_cudnn_version)):
+          cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
+          break
 
     # Reset and Retry
     print(
@@ -975,15 +984,15 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
   set_build_var(environ_cp, 'TF_NEED_GCP', 'Google Cloud Platform',
-                'with_gcp_support', False)
+                'with_gcp_support', False, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
-                'with_hdfs_support', False)
+                'with_hdfs_support', False, 'hdfs')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                False)
+                False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
-                False)
+                False, 'gdr')
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
-                False)
+                False, 'verbs')
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL', 'OpenCL', False)
   if environ_cp.get('TF_NEED_OPENCL') == '1':
@@ -992,7 +1001,8 @@ def main():
     set_computecpp_toolkit_path(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
-  if environ_cp.get('TF_NEED_CUDA') == '1':
+  if (environ_cp.get('TF_NEED_CUDA') == '1' and
+      'TF_CUDA_CONFIG_REPO' not in environ_cp):
     set_tf_cuda_version(environ_cp)
     set_tf_cunn_version(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)

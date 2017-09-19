@@ -9,6 +9,9 @@
   for LSTMs and stacked LSTMs.  This bug fix follows recommendations from
   published literature, but is a behavioral change.  State dropout behavior
   may be customized via the new `dropout_state_filter_visitor` argument.
+* Removed `tf.contrib.training.python_input`.  The same behavior, in a more
+  flexible and reproducible package, is available via the new
+  `tf.contrib.data.Dataset.from_generator` method!
 
 # Release 1.3.0
 
@@ -43,7 +46,7 @@ See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/
   * Display feed values with the `print_feed` or `pf` command and clickable links in the curses UI.
   * Runtime profiler at the op level and the Python source line level with the `run -p` command.
 * Initial release of the statistical distribution library `tf.distributions`.
-* GPU kernels and speed improvements for for unary `tf.where` and `tf.nn.top_k`.
+* GPU kernels and speed improvements for unary `tf.where` and `tf.nn.top_k`.
 * Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
 * Added `tf.contrib.signal`, a library for signal processing primitives.
 * Added `tf.contrib.resampler`, containing CPU and GPU ops for differentiable resampling of images.

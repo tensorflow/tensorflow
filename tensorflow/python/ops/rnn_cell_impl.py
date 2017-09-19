@@ -28,6 +28,7 @@ import collections
 import hashlib
 import numbers
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -124,9 +125,10 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   def get_state_shape(s):
     """Combine s with batch_size to get a proper tensor shape."""
     c = _concat(batch_size, s)
-    c_static = _concat(batch_size, s, static=True)
     size = array_ops.zeros(c, dtype=dtype)
-    size.set_shape(c_static)
+    if context.in_graph_mode():
+      c_static = _concat(batch_size, s, static=True)
+      size.set_shape(c_static)
     return size
   return nest.map_structure(get_state_shape, state_size)
 
@@ -182,9 +184,12 @@ class RNNCell(base_layer.Layer):
 
   def _rnn_get_variable(self, getter, *args, **kwargs):
     variable = getter(*args, **kwargs)
-    trainable = (variable in tf_variables.trainable_variables() or
-                 (isinstance(variable, tf_variables.PartitionedVariable) and
-                  list(variable)[0] in tf_variables.trainable_variables()))
+    if context.in_graph_mode():
+      trainable = (variable in tf_variables.trainable_variables() or
+                   (isinstance(variable, tf_variables.PartitionedVariable) and
+                    list(variable)[0] in tf_variables.trainable_variables()))
+    else:
+      trainable = variable._trainable  # pylint: disable=protected-access
     if trainable and variable not in self._trainable_weights:
       self._trainable_weights.append(variable)
     elif not trainable and variable not in self._non_trainable_weights:

@@ -61,6 +61,22 @@ using MatrixMap = BasicMatrixMap<float>;
 using CPUDevice = Eigen::ThreadPoolDevice;
 using DSizes = Eigen::DSizes<Eigen::DenseIndex, 2>;
 
+// Two commonly used static dsizes. We use Eigen::type2index to allow as much
+// compile time optimization as possible.
+#ifdef EIGEN_HAS_INDEX_LIST
+inline Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<0>>
+dsizes_00() {
+  return Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<0>>();
+}
+inline Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<0>>
+dsizes_10() {
+  return Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<0>>();
+}
+#else
+inline DSizes dsizes_00() { return DSizes(0, 0); }
+inline DSizes dsizes_10() { return DSizes(1, 0); }
+#endif
+
 // Blocksizes
 // TODO(agarwal): compute these sizes based on cache sizes.
 const int K = 64;
@@ -1020,7 +1036,7 @@ class SparseMatMulOp : public OpKernel {
           new Tensor(right->dtype(),
                      TensorShape({right->dim_size(1), right->dim_size(0)})));
 
-      Eigen::array<int, 2> perm({1, 0});
+      const auto perm = dsizes_10();
       if (transpose_output) {
         right_tr->matrix<TL>().device(ctx->template eigen_device<CPUDevice>()) =
             right->matrix<TL>().shuffle(perm);
@@ -1064,7 +1080,7 @@ inline void SparseMatMul<TL, TR>::ComputeOutputBlock(
     const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right, int num_cols,
     int output_row_offset, int output_col_offset, bool assign,
     bool transpose_output, MatrixMap* output) {
-  static const Eigen::array<int, 2> perm({1, 0});
+  const auto perm = dsizes_10();
   int num_rows = left[0]->num_rows;
   const int rhs_num_cols = right.dimension(1);
   DCHECK_LE(num_cols, rhs_num_cols);
@@ -1076,20 +1092,20 @@ inline void SparseMatMul<TL, TR>::ComputeOutputBlock(
     GEPP<TL, TR, -1>(left, right, num_cols, &out);
   }
   if (!assign) {
-    const Eigen::array<int, 2> begin = {output_row_offset, output_col_offset};
-    const Eigen::array<int, 2> sizes = {num_rows, num_cols};
+    const DSizes begin(output_row_offset, output_col_offset);
+    const DSizes sizes(num_rows, num_cols);
     if (transpose_output) {
       if (num_cols == rhs_num_cols) {
         output->shuffle(perm).slice(begin, sizes) += out;
       } else {
-        static const Eigen::array<int, 2> zero = {0, 0};
+        const auto zero = dsizes_00();
         output->shuffle(perm).slice(begin, sizes) += out.slice(zero, sizes);
       }
     } else {
       if (num_cols == rhs_num_cols) {
         output->slice(begin, sizes) += out;
       } else {
-        static const Eigen::array<int, 2> zero = {0, 0};
+        const auto zero = dsizes_00();
         output->slice(begin, sizes) += out.slice(zero, sizes);
       }
     }

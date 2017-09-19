@@ -5,6 +5,8 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//third_party/mpi:mpi.bzl", "if_mpi")
+
 py_library(
     name = "contrib_py",
     srcs = glob(["**/*.py"]),
@@ -24,16 +26,18 @@ py_library(
         "//tensorflow/contrib/deprecated:deprecated_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/eager/python:tfe",
+        "//tensorflow/contrib/estimator:estimator_py",
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/fused_conv:fused_conv_py",
+        "//tensorflow/contrib/gan",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/hooks",
+        "//tensorflow/contrib/image:distort_image_py",
         "//tensorflow/contrib/image:image_py",
         "//tensorflow/contrib/image:single_image_random_dot_stereograms_py",
-        "//tensorflow/contrib/imperative",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/keras",
@@ -72,6 +76,7 @@ py_library(
         "//tensorflow/contrib/staging",
         "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",
         "//tensorflow/contrib/stateless",
+        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/contrib/tensor_forest:init_py",
         "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
@@ -81,7 +86,7 @@ py_library(
         "//tensorflow/contrib/tpu",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
-    ],
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_py"]),
 )
 
 cc_library(

@@ -74,20 +74,20 @@ bool DecodeVariant(const string& buf, T* value);
 // Here are some typical usage patterns:
 //
 //   Variant x = 10;
-//   EXPECT_EQ(*x.MaybeDecodeAndGet<int>(), 10);
+//   EXPECT_EQ(*x.get<int>(), 10);
 //
 //   Tensor t(DT_FLOAT, TensorShape({}));
 //   t.flat<float>()(0) = 42.0f;
 //   Variant x = t;
-//   EXPECT_EQ(x.MaybeDecodeAndGet<Tensor>()->flat<float>()(0), 42.0f);
+//   EXPECT_EQ(x.get<Tensor>()->flat<float>()(0), 42.0f);
 //
 // Accessing the stored object:
 //
-// The MaybeDecodeAndGet<T> function is the main mechanism to access the object
+// The get<T> function is the main mechanism to access the object
 // stored in the container. It is type-safe, that is, calling
-// MaybeDecodeAndGet<T> when the stored object's type is not T, returns a
+// get<T> when the stored object's type is not T, returns a
 // nullptr. A raw pointer to the stored object can be obtained by calling
-// MaybeDecodeAndGet<void>().
+// get<void>().
 //
 // Serializing/deserializing Variant object:
 //
@@ -122,7 +122,7 @@ bool DecodeVariant(const string& buf, T* value);
 //
 //   Variant y = Foo(); // default constructed Foo.
 //   y.Decode(&serialized_f);
-//   EXPECT_EQ(*x.MaybeDecodeAndGet<Foo>(), *y.MaybeDecodeAndGet<Foo>());
+//   EXPECT_EQ(*x.get<Foo>(), *y.get<Foo>());
 //
 //
 // A Variant storing serialized Variant data (a value of type
@@ -130,7 +130,7 @@ bool DecodeVariant(const string& buf, T* value);
 // Namely, its TypeName matches the TypeName of the original Variant;
 // and its non-const get method performs lazy deserialization.
 //
-// Serialization with lazy decoding example:
+// Decode and copy example:
 //
 //   Foo f = Foo {...};
 //   Variant x = f;
@@ -146,31 +146,19 @@ bool DecodeVariant(const string& buf, T* value);
 //   EXPECT_EQ(MakeTypeIndex<VariantTensorDataProto>(),
 //             y_type_unknown.TypeId());
 //   // Decode and get y_type_unknown; compare to value in x.
-//   EXPECT_EQ(*x.MaybeDecodeAndGet<Foo>(),
-//   *y_type_unknown.MaybeDecodeAndGet<Foo>());
-//
-// The deserializing MaybeDecodeAndGet() call updates the internal
-// representation:
-//
-//   EXPECT_EQ(MakeTypeIndex<Foo>(), y_type_unknown.TypeId());
+//   Foo f_decoded;
+//   EXPECT_TRUE(x.MaybeDecodeAndCopy(&f_decoded));
+//   EXPECT_EQ(f_decoded, f);
 //
 class Variant {
  public:
-  Variant() noexcept {}
+  constexpr Variant() noexcept = default;
 
-  Variant(const Variant& other) {
-    mutex_lock other_lock(other.mu_);
-    if (other.IsEmptyLocked()) {
-      value_ = std::unique_ptr<ValueInterface>();
-    } else {
-      value_ = other.value_->Clone();
-    }
-  }
+  Variant(const Variant& other)
+      : value_(other.is_empty() ? std::unique_ptr<ValueInterface>()
+                                : other.value_->Clone()) {}
 
-  Variant(Variant&& other) noexcept {
-    mutex_lock other_lock(other.mu_);
-    value_ = std::move(other.value_);
-  }
+  Variant(Variant&& other) noexcept = default;
 
   // Make sure that the type is CopyConstructible and not a tensorflow::Variant
   // object itself. We want the copy constructor to be chosen for the
@@ -192,87 +180,43 @@ class Variant {
     return *this;
   }
 
-  bool is_empty() const {
-    mutex_lock lock(mu_);
-    return IsEmptyLocked();
-  }
+  bool is_empty() const { return value_ == nullptr; }
 
-  void clear() noexcept {
-    mutex_lock lock(mu_);
-    value_.reset();
-  }
+  void clear() noexcept { value_.reset(); }
 
-  void swap(Variant& other) noexcept NO_THREAD_SAFETY_ANALYSIS {
-    if (this == &other) return;
-    mutex_lock lock0(this < &other ? mu_ : other.mu_);
-    mutex_lock lock1(this < &other ? other.mu_ : mu_);
-    value_.swap(other.value_);
-  }
+  void swap(Variant& other) noexcept { value_.swap(other.value_); }
 
   // Note, unlike TypeName(), TypeId() does not return the TypeIndex
   // of the original type when a TensorValueDataProto is stored as the
   // value.  In this case, it returns the TypeIndex of TensorValueDataProto.
   TypeIndex TypeId() const {
-    mutex_lock lock(mu_);
-    return TypeIdLocked();
+    const TypeIndex VoidTypeIndex = MakeTypeIndex<void>();
+    if (is_empty()) {
+      return VoidTypeIndex;
+    }
+    return value_->TypeId();
   }
 
   string DebugString() const {
-    mutex_lock lock(mu_);
-    return strings::StrCat("Variant<type: ", TypeNameLocked(),
+    return strings::StrCat("Variant<type: ", TypeName(),
                            " value: ", value_->DebugString(), ">");
   }
 
   // Returns a pointer to the stored value if it is type T, or nullptr
   // otherwise.
-  //
-  // In the special case that a serialized Variant is stored (the
-  // value is a VariantTensorDataProto),
-  // MaybeDecodeAndGet<VariantTensorDataProto>() is disallowed.  Instead, the
-  // original pre-serialized type must be used to access the data:
-  // MaybeDecodeAndGet<ORIGINAL_TYPE>().  This in turn performs a decode of the
-  // serialized data and mutates the variant to hold the deserialized form.  A
-  // pointer to this instance is returned.
   template <typename T>
-  T* MaybeDecodeAndGet() {
-    static_assert(
-        !std::is_same<typename std::decay<T>::type,
-                      VariantTensorDataProto>::value,
-        "MaybeDecodeAndGet<VariantTensorDataProto> is disallowed due to the "
-        "possibility of race conditions when other threads call a "
-        "mutating MaybeDecodeAndGet<ORIGINAL_TYPE>.  Please access the the "
-        "value via MaybeDecodeAndGet<ORIGINAL_TYPE>.");
-    mutex_lock lock(mu_);
-    return GetLocked<T>();
+  T* get() {
+    const TypeIndex TTypeIndex = MakeTypeIndex<T>();
+    if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
+    return std::addressof(static_cast<Variant::Value<T>*>(value_.get())->value);
   }
 
   // Returns a pointer to the stored value if it is type T, or nullptr
   // otherwise.
-  //
-  // In the special case that a serialized Variant is stored (the
-  // value is a VariantTensorDataProto), access to the data is not
-  // permitted.
   template <typename T>
-  const T* MaybeDecodeAndGet() const {
-    static_assert(
-        !std::is_same<typename std::decay<T>::type,
-                      VariantTensorDataProto>::value,
-        "MaybeDecodeAndGet<VariantTensorDataProto> is disallowed due to the "
-        "possibility of race conditions when other threads call a "
-        "mutating MaybeDecodeAndGet<ORIGINAL_TYPE>.  Please access the the "
-        "value via MaybeDecodeAndGet<ORIGINAL_TYPE>.");
-    mutex_lock lock(mu_);
-    if (IsEmptyLocked()) {
-      return nullptr;
-    }
+  const T* get() const {
     const TypeIndex TTypeIndex = MakeTypeIndex<T>();
-    if (TTypeIndex != TypeIdLocked()) {
-      CHECK(TypeIdLocked() != MakeTypeIndex<VariantTensorDataProto>())
-          << ": Cannot call MaybeDecodeAndGet on const Variant holding "
-             "serialized data. Access a non-const version of this object if "
-             "you wish to access data stored inside it.";
-      return nullptr;
-    }
+    if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
     return std::addressof(
         static_cast<const Variant::Value<T>*>(value_.get())->value);
   }
@@ -283,95 +227,59 @@ class Variant {
   // is a VariantTensorDataProto), returns value.TypeName(), the
   // TypeName field stored in the VariantTensorDataProto buffer.
   string TypeName() const {
-    mutex_lock lock(mu_);
-    return TypeNameLocked();
+    if (is_empty()) {
+      return "";
+    }
+    return value_->TypeName();
   }
 
   // Serialize the contents of the stored object into `data`.
   void Encode(VariantTensorData* data) const {
-    mutex_lock lock(mu_);
-    if (!IsEmptyLocked()) {
+    if (!is_empty()) {
       value_->Encode(data);
     }
   }
 
   // Deserialize `data` and update the stored object.
   bool Decode(const VariantTensorData& data) {
-    mutex_lock lock(mu_);
-    return DecodeLocked(data);
-  }
-
-  // Helper methods to directly serialize/deserialize from strings.
-  void Encode(string* buf) const {
-    mutex_lock lock(mu_);
-    if (!IsEmptyLocked()) {
-      value_->Encode(buf);
-    }
-  }
-  bool Decode(const string& buf) {
-    mutex_lock lock(mu_);
-    if (!IsEmptyLocked()) {
-      return value_->Decode(buf);
-    }
-    return true;
-  }
-
- private:
-  bool IsEmptyLocked() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return value_ == nullptr;
-  }
-
-  TypeIndex TypeIdLocked() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    const TypeIndex VoidTypeIndex = MakeTypeIndex<void>();
-    if (IsEmptyLocked()) {
-      return VoidTypeIndex;
-    }
-    return value_->TypeId();
-  }
-
-  template <typename T, typename VT = typename std::decay<T>::type>
-  T* GetLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (IsEmptyLocked()) {
-      return nullptr;
-    }
-    const TypeIndex TTypeIndex = MakeTypeIndex<T>();
-    if (TTypeIndex != TypeIdLocked()) {
-      if (TypeIdLocked() == MakeTypeIndex<VariantTensorDataProto>()) {
-        if (!OverrideAssignDecodeFromTensorDataLocked<VT>()) return nullptr;
-      } else {
-        return nullptr;
-      }
-    }
-    return std::addressof(static_cast<Variant::Value<T>*>(value_.get())->value);
-  }
-
-  string TypeNameLocked() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (IsEmptyLocked()) {
-      return "";
-    }
-    return value_->TypeName();
-  }
-
-  bool DecodeLocked(const VariantTensorData& data)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (!IsEmptyLocked()) {
+    if (!is_empty()) {
       return value_->Decode(data);
     }
     return true;
   }
 
-  // Accesses the VariantTensorDataProto object stored in value_.
-  // If TypeNameVariant(VT()) == value_.TypeName() then attempts to
-  // decode the VariantTensorDataProto and store the result in value_.
-  // If the Decode succeeds, returns true.  Otherwise returns false.
-  // If TypeNameVariant(VT()) != value_.TypeName() returns false.
-  //
-  // Requires:
-  //   value_ is not empty and contains a VariantTensorDataProto.
-  template <typename VT>
-  bool OverrideAssignDecodeFromTensorDataLocked()
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+  // Helper methods to directly serialize/deserialize from strings.
+  void Encode(string* buf) const {
+    if (!is_empty()) {
+      value_->Encode(buf);
+    }
+  }
+  bool Decode(const string& buf) {
+    if (!is_empty()) {
+      return value_->Decode(buf);
+    }
+    return true;
+  }
 
+  template <typename T>
+  bool MaybeDecodeAndCopy(T* out) const {
+    const T* ret = get<T>();
+    if (ret != nullptr) {
+      *out = std::move(*ret);
+      return true;
+    };
+    Variant decoded = T();
+    if (!TryDecode(&decoded)) return false;
+    T* decoded_ret = decoded.get<T>();
+    CHECK_NOTNULL(decoded_ret);
+    *out = std::move(*decoded_ret);
+    return true;
+  }
+
+ private:
+  bool TryDecode(Variant* out) const;
+
+ private:
   struct in_place_t {};
   static constexpr in_place_t in_place{};
 
@@ -430,43 +338,16 @@ class Variant {
     T value;
   };
 
-  mutable mutex mu_;
-
   // value_ can point to any type T as wrapped by a ValueInterface.
   // The only real requirement is that T is default-constructible.
-  // Note: if T is a VariantTensorDataProto, then the behavior of
-  // Variant is slightly altered (see discussion at the top).
-  std::unique_ptr<ValueInterface> value_ GUARDED_BY(mu_);
+  std::unique_ptr<ValueInterface> value_;
 };
 
 template <>
-void* Variant::MaybeDecodeAndGet();
+void* Variant::get();
 
 template <>
-const void* Variant::MaybeDecodeAndGet() const;
-
-template <typename VT>
-bool Variant::OverrideAssignDecodeFromTensorDataLocked() {
-  // Attempt to decode the value.
-  const VariantTensorDataProto* data_proto =
-      GetLocked<VariantTensorDataProto>();
-  CHECK_NOTNULL(data_proto);
-  const VariantTensorData data(*data_proto);
-  std::unique_ptr<ValueInterface> candidate_value(
-      new Value<VT>(in_place, VT()));
-  if (value_->TypeName() != TypeNameLocked()) {
-    return false;
-  }
-  if (!candidate_value->Decode(data)) {
-    return false;
-  }
-  // This deletes the pointer to the original VariantTensorDataProto
-  // and is the reason users are not allowed to call
-  // MaybeDecodeAndGet<VariantTensorDataProto> directly (as it may result in a
-  // race condition where they are left with a hanging pointer).
-  value_ = std::move(candidate_value);
-  return true;
-}
+const void* Variant::get() const;
 
 }  // end namespace tensorflow
 

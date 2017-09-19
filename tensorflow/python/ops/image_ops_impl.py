@@ -397,9 +397,10 @@ def central_crop(image, central_fraction):
 
   img_shape = array_ops.shape(image)
   depth = image.get_shape()[2]
-  fraction_offset = int(1 / ((1 - central_fraction) / 2.0))
-  bbox_h_start = math_ops.div(img_shape[0], fraction_offset)
-  bbox_w_start = math_ops.div(img_shape[1], fraction_offset)
+  img_h = math_ops.to_double(img_shape[0])
+  img_w = math_ops.to_double(img_shape[1])
+  bbox_h_start = math_ops.to_int32((img_h - img_h * central_fraction) / 2)
+  bbox_w_start = math_ops.to_int32((img_w - img_w * central_fraction) / 2)
 
   bbox_h_size = img_shape[0] - bbox_h_start * 2
   bbox_w_size = img_shape[1] - bbox_w_start * 2
