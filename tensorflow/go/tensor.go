@@ -100,7 +100,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		}
 	} else {
 		e := stringEncoder{offsets: buf, data: raw[nflattened*8 : len(raw)], status: newStatus()}
-		if err := e.encode(reflect.ValueOf(value)); err != nil {
+		if err := e.encode(reflect.ValueOf(value), shape); err != nil {
 			return nil, err
 		}
 		if int64(buf.Len()) != nflattened*8 {
@@ -317,7 +317,7 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 		if v.Kind() == reflect.Slice {
 			expected := int(shape[0])
 			if v.Len() != expected {
-				return fmt.Errorf("invalid tensor: mismatched slice lengths: %d and %d", v.Len(), expected)
+				return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
 			}
 		}
 
@@ -372,7 +372,7 @@ type stringEncoder struct {
 	status  *status
 }
 
-func (e *stringEncoder) encode(v reflect.Value) error {
+func (e *stringEncoder) encode(v reflect.Value, shape []int64) error {
 	if v.Kind() == reflect.String {
 		if err := binary.Write(e.offsets, nativeEndian, e.offset); err != nil {
 			return err
@@ -388,8 +388,17 @@ func (e *stringEncoder) encode(v reflect.Value) error {
 		C.free(unsafe.Pointer(src))
 		return e.status.Err()
 	}
+
+	if v.Kind() == reflect.Slice {
+		expected := int(shape[0])
+		if v.Len() != expected {
+			return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
+		}
+	}
+
+	subShape := shape[1:]
 	for i := 0; i < v.Len(); i++ {
-		if err := e.encode(v.Index(i)); err != nil {
+		if err := e.encode(v.Index(i), subShape); err != nil {
 			return err
 		}
 	}

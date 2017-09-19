@@ -82,6 +82,8 @@ func TestNewTensor(t *testing.T) {
 		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}},
 		// Mismatched dimensions. Should return error instead of valid tensor
 		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}, {{1, 2, 3}, {2, 3, 4}}},
+		// Mismatched dimensions for strings
+		[][]string{{"abc"}, {"abcd", "abcd"}},
 	}
 
 	for _, test := range tests {
