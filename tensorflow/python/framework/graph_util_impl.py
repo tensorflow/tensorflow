@@ -123,10 +123,8 @@ def extract_sub_graph(graph_def, dest_nodes):
   if not isinstance(graph_def, graph_pb2.GraphDef):
     raise TypeError("graph_def must be a graph_pb2.GraphDef proto.")
 
-  # Github 13047, cast single string to list
-  if isinstance(dest_nodes, str):
-    dest_nodes = [dest_nodes]
-    logging.warning("dest_nodes should be a list.")
+  if not isinstance(dest_nodes, list):
+    raise TypeError("dest_nodes must be a list.")
 
   edges = {}  # Keyed by the dest node name.
   name_to_node_map = {}  # Keyed by node name.
