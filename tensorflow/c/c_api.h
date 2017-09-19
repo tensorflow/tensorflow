@@ -1111,9 +1111,6 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 //  calling TF_DeleteFunction.
 //
 //  On failure, null.
-//
-// TODO(iga): Add input_names argument and get output_names working (they are
-// currently ignored)
 TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
     const TF_Graph* fn_body, const char* fn_name, int num_opers,
     const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,

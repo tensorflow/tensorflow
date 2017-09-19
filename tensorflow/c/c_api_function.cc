@@ -49,6 +49,10 @@ class NodeNameMapping {
   // Make the node name unique.
   string Uniquify(const string& name);
 
+  // Records name as a used name. If this name is already used,
+  // returns an error status.
+  Status UseOutputName(const string& name);
+
   // Look up how a node name was previously normalized/uniquified.
   // Returns empty if name was never seen.
   string Lookup(const string& name) const;
@@ -115,6 +119,16 @@ string NodeNameMapping::Uniquify(const string& name) {
   name_mapping_[name] = uniqued;
   used_names_.insert(uniqued);
   return uniqued;
+}
+
+Status NodeNameMapping::UseOutputName(const string& name) {
+  const auto& iter = used_names_.find(name);
+  if (iter != used_names_.end()) {
+    return InvalidArgument("Cannot have duplicate output names. Name '", name,
+                           "' appears more than once in 'output_names' array.");
+  }
+  used_names_.insert(iter, name);
+  return Status::OK();
 }
 
 string NodeNameMapping::Lookup(const string& name) const {
@@ -228,6 +242,10 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           const std::vector<OutputTensor>& outputs,
                           const std::vector<string>& output_names,
                           FunctionDef* fdef) {
+  if (!output_names.empty()) {
+    DCHECK_EQ(output_names.size(), outputs.size());
+  }
+
   fdef->mutable_signature()->set_name(fn_name);
 
   // Keep track of names we used and how we normalized them.
@@ -243,6 +261,24 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
   //    e.g. {Add:3 -> add_0:z:1}
   std::unordered_map<string, string> tensor_renaming;
 
+  // Fill outputs in function's signature.
+  // We fill the outputs first to prevent output_names from colliding
+  // with the input names we pick below. With this order, no names are used in
+  // node_names yet, and output_names won't collide with anything (except
+  // potentially with themselves).
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    const Node* node = outputs[i].node;
+    int idx = outputs[i].index;
+    OpDef::ArgDef* argdef = fdef->mutable_signature()->add_output_arg();
+    argdef->set_type(node->output_type(idx));
+    if (!output_names.empty()) {
+      TF_RETURN_IF_ERROR(node_names.UseOutputName(output_names[i]));
+      argdef->set_name(output_names[i]);
+    } else {
+      argdef->set_name(node_names.GetIOName(node->name()));
+    }
+  }
+
   // Fill inputs in function's signature.
   for (size_t i = 0; i < inputs.size(); ++i) {
     const Node* node = inputs[i].node;
@@ -252,15 +288,6 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     const string& input_name = node_names.GetIOName(node->name());
     argdef->set_name(input_name);
     tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
-  }
-
-  // Fill outputs in function's signature.
-  for (size_t i = 0; i < outputs.size(); ++i) {
-    const Node* node = outputs[i].node;
-    int idx = outputs[i].index;
-    OpDef::ArgDef* argdef = fdef->mutable_signature()->add_output_arg();
-    argdef->set_type(node->output_type(idx));
-    argdef->set_name(node_names.GetIOName(node->name()));
   }
 
   // Populate tensor_renaming and node_names.

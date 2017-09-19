@@ -168,9 +168,9 @@ TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
   return TF_FinishOperation(desc, s);
 }
 
-void NegHelper(TF_Operation* n, TF_Graph* graph, TF_Status* s,
+void NegHelper(TF_Operation* n, TF_Graph* graph, TF_Status* s, const char* name,
                TF_Operation** op) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "Neg", "neg");
+  TF_OperationDescription* desc = TF_NewOperation(graph, "Neg", name);
   TF_Output neg_input = {n, 0};
   TF_AddInput(desc, neg_input);
   *op = TF_FinishOperation(desc, s);
@@ -178,9 +178,10 @@ void NegHelper(TF_Operation* n, TF_Graph* graph, TF_Status* s,
   ASSERT_NE(*op, nullptr);
 }
 
-TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s) {
+TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
+                  const char* name) {
   TF_Operation* op;
-  NegHelper(n, graph, s, &op);
+  NegHelper(n, graph, s, name, &op);
   return op;
 }
 
