@@ -720,6 +720,7 @@ cc_library(
     hdrs = ["liveness_util.h"],
     deps = [
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -838,6 +839,7 @@ cc_library(
     deps = [
         ":call_graph",
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":hlo_proto",
         ":hlo_value",
         ":liveness_util",
@@ -1391,9 +1393,7 @@ cc_library(
     deps = [
         ":call_graph",
         ":hlo",
-        ":hlo_ordering",
         ":hlo_value",
-        ":liveness_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -1412,6 +1412,7 @@ cc_test(
         ":hlo_dataflow_analysis",
         ":hlo_graph_dumper",
         ":hlo_matchers",
+        ":hlo_ordering",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1470,6 +1471,7 @@ cc_test(
         ":hlo_alias_analysis",
         ":hlo_graph_dumper",
         ":hlo_matchers",
+        ":hlo_ordering",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
