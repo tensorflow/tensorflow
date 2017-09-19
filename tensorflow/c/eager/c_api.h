@@ -100,11 +100,8 @@ TF_CAPI_EXPORT extern TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_func
                                         TF_Status* status);
 TF_CAPI_EXPORT extern void TFE_DeleteOp(TFE_Op* op);
 
-// TODO(ashankar): TFE_OpSetDevice and TFE_Execute should not have a TFE_Context
-// parameter. Instead, the TFE_Context should be captured when creating the
-// TFE_Op.
-TF_CAPI_EXPORT extern void TFE_OpSetDevice(TFE_Op* op, TFE_Context* ctx,
-                                           const char* device_name, TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_OpSetDevice(TFE_Op* op, const char* device_name,
+                                           TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status);
 
@@ -125,6 +122,14 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrType(TFE_Op* op, const char* attr_name,
 TF_CAPI_EXPORT extern void TFE_OpSetAttrShape(TFE_Op* op, const char* attr_name,
                                               const int64_t* dims, const int num_dims,
                                               TF_Status* out_status);
+
+// Sets the attribute attr_name to be a function specified by 'function'.
+//
+// TODO(ashankar,iga): Add this functionality to the C API for graph
+// construction. Perhaps we want an AttrValueMap equivalent in the C API?
+TF_CAPI_EXPORT extern void TFE_OpSetAttrFunction(TFE_Op* op,
+                                                 const char* attr_name,
+                                                 const TFE_Op* value);
 
 TF_CAPI_EXPORT extern void TFE_OpSetAttrStringList(TFE_Op* op, const char* attr_name,
                                                    const char** value, int num_values);

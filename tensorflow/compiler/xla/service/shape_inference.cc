@@ -924,8 +924,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormTrainingShape(
-    const Shape& operand_shape, const Shape& offset_shape,
-    const Shape& scale_shape, int64 feature_index) {
+    const Shape& operand_shape, const Shape& scale_shape,
+    const Shape& offset_shape, int64 feature_index) {
   TF_RETURN_IF_ERROR(
       ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm training"));
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
@@ -1027,8 +1027,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormInferenceShape(
-    const Shape& operand_shape, const Shape& offset_shape,
-    const Shape& scale_shape, const Shape& mean_shape,
+    const Shape& operand_shape, const Shape& scale_shape,
+    const Shape& offset_shape, const Shape& mean_shape,
     const Shape& variance_shape, int64 feature_index) {
   TF_RETURN_IF_ERROR(
       ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm inference"));
@@ -1816,14 +1816,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                            body.parameters_size());
   }
 
-  string shape_string = tensorflow::strings::Printf(
-      "condition: %s; body: %s; init: %s", condition.ShortDebugString().c_str(),
-      body.ShortDebugString().c_str(), init.ShortDebugString().c_str());
+  auto shape_string = [&]() {
+    return tensorflow::strings::Printf(
+        "condition: %s; body: %s; init: %s",
+        ShapeUtil::HumanString(condition).c_str(),
+        ShapeUtil::HumanString(body).c_str(),
+        ShapeUtil::HumanString(init).c_str());
+  };
 
   // Check the shapes of computation parameters and return types.
   if (!ShapeUtil::ShapeIs(condition.result(), PRED, {})) {
     return InvalidArgument("condition must return a boolean; got %s",
-                           shape_string.c_str());
+                           shape_string().c_str());
   }
   if (!ShapeUtil::Compatible(body.result(), condition.parameters(0)) ||
       !ShapeUtil::Compatible(body.result(), body.parameters(0)) ||
@@ -1831,7 +1835,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "the parameter of condition and body, the result of the body, and init "
         "must all have the same shape; got %s",
-        shape_string.c_str());
+        shape_string().c_str());
   }
 
   return init;

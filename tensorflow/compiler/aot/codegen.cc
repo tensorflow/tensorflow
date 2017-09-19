@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/aot/runtime.h"
-#include "tensorflow/compiler/aot/tfcompile_util.h"
 #include "tensorflow/compiler/tf2xla/str_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,6 +34,12 @@ namespace tensorflow {
 namespace tfcompile {
 
 namespace {
+
+bool IsAlpha(char c) {
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
+bool IsAlphaNum(char c) { return IsAlpha(c) || (c >= '0' && c <= '9'); }
 
 // Convert an XLA type into a C++ type.
 Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
@@ -156,7 +162,7 @@ string RewriteWithName(const string& name, string code,
 }
 
 // Generate methods for args (inputs).
-Status GenArgMethods(const Config& config, const xla::ProgramShape& ps,
+Status GenArgMethods(const tf2xla::Config& config, const xla::ProgramShape& ps,
                      const CompileResult& compile_result, string* methods) {
   *methods += R"(
   void** args()                   { return args_; }
@@ -204,8 +210,8 @@ Status GenArgMethods(const Config& config, const xla::ProgramShape& ps,
 }
 
 // Generate methods for results (outputs).
-Status GenResultMethods(const Config& config, const xla::ProgramShape& ps,
-                        string* methods) {
+Status GenResultMethods(const tf2xla::Config& config,
+                        const xla::ProgramShape& ps, string* methods) {
   if (ps.result().element_type() != xla::TUPLE) {
     // Non-tuple (i.e. single-result) case.
     if (config.fetch_size() != 1) {
@@ -285,11 +291,26 @@ Status GenResultMethods(const Config& config, const xla::ProgramShape& ps,
   return Status::OK();
 }
 
+Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
+  for (const tf2xla::Feed& feed : config.feed()) {
+    if (!feed.name().empty()) {
+      TF_RETURN_IF_ERROR(ValidateCppIdent(feed.name(), "feed name"));
+    }
+  }
+  for (const tf2xla::Fetch& fetch : config.fetch()) {
+    if (!fetch.name().empty()) {
+      TF_RETURN_IF_ERROR(ValidateCppIdent(fetch.name(), "fetch name"));
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
-Status GenerateHeader(const HeaderOpts& opts, const Config& config,
+Status GenerateHeader(const HeaderOpts& opts, const tf2xla::Config& config,
                       const CompileResult& compile_result, string* header) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
+  TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
   const int64 result_index = compile_result.aot->result_buffer_index();
   const xla::BufferSizes& temp_sizes = compile_result.aot->buffer_sizes();
   if (result_index < 0 || result_index > temp_sizes.size()) {
@@ -571,6 +592,30 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
   TF_RETURN_IF_ERROR(
       ValidateCppIdent(name, "in class name of cpp_class: " + cpp_class));
   *class_name = name;
+  return Status::OK();
+}
+
+Status ValidateCppIdent(StringPiece ident, StringPiece msg) {
+  if (ident.empty()) {
+    return errors::InvalidArgument("empty identifier: ", msg);
+  }
+  // Require that the identifier starts with a nondigit, and is composed of
+  // nondigits and digits, as specified in section [2.11 Identifiers] of the
+  // C++11 Standard.  Note that nondigit is defined as [_a-zA-Z] and digit is
+  // defined as [0-9].
+  //
+  // Technically the standard also allows for `universal-character-name`, with a
+  // table of allowed unicode ranges, as well as `other implementation-defined
+  // characters`.  We disallow those here to give better error messages, at the
+  // expensive of being more restrictive than the standard.
+  if (ident[0] != '_' && !IsAlpha(ident[0])) {
+    return errors::InvalidArgument("illegal leading char: ", msg);
+  }
+  for (size_t pos = 1; pos < ident.size(); ++pos) {
+    if (ident[pos] != '_' && !IsAlphaNum(ident[pos])) {
+      return errors::InvalidArgument("illegal char: ", msg);
+    }
+  }
   return Status::OK();
 }
 

@@ -29,7 +29,6 @@ cc_library(
 
 cc_test(
     name = "utils_test",
-    size = "small",
     srcs = [
         "utils_test.cc",
     ],

@@ -77,7 +77,7 @@ class HloOrdering {
   // Precondition: 'a' and 'b' are in the same computation.
   //
   // Derived classes should implement this method for determining order of
-  // instructions in the same comptuation. ExecutesBefore() analyzes the
+  // instructions in the same computation. ExecutesBefore() analyzes the
   // callgraph and uses this method to determine ordering of instructions in
   // different computations.
   virtual bool ExecutesBeforeInSameComputation(

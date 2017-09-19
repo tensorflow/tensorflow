@@ -36,8 +36,8 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.eager import tensor
 from tensorflow.python.eager import test
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -67,7 +67,7 @@ def benchmark_create_tensor(n):
 
   with timer(label("Tensor([[3]])"), iters=n) as iters:
     for _ in iters:
-      tensor.Tensor([[3]])
+      ops.EagerTensor([[3]])
 
 
 def benchmark_matmul(shape, n, use_gpu=False):

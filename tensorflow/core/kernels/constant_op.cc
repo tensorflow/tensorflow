@@ -279,13 +279,15 @@ class ZerosLikeOp : public OpKernel {
     const Tensor& input = ctx->input(0);
     const Device& d = ctx->eigen_device<Device>();
     if (std::is_same<T, Variant>::value) {
-      OP_REQUIRES(ctx, input.dims() == 0,
-                  errors::InvalidArgument(
-                      "ZerosLike of non-unary Variant not supported."));
+      OP_REQUIRES(
+          ctx, input.dims() == 0,
+          errors::InvalidArgument("ZerosLike non-scalar Tensor with "
+                                  "dtype=DT_VARIANT is not supported."));
       const Variant& v = input.scalar<Variant>()();
       Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
       Variant* out_v = &(out.scalar<Variant>()());
-      OP_REQUIRES_OK(ctx, CreateZerosLikeVariant<Device>(ctx, v, out_v));
+      OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(
+                              ctx, ZEROS_LIKE_VARIANT_UNARY_OP, v, out_v));
       ctx->set_output(0, out);
     } else {
       Tensor* out = nullptr;

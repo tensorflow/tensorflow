@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import copy
 import threading
+import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
@@ -50,10 +51,13 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
+from tensorflow.python.training import training_util
 
 
 _INITIAL_LOSS = 1e7
 _ZERO_LOSS = 0.
+_DEFAULT_NAME_SCOPE = 'tpu_estimator'
+_ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
@@ -68,11 +72,25 @@ def _create_global_step(graph):
     return variable_scope.get_variable(
         ops.GraphKeys.GLOBAL_STEP,
         shape=[],
-        dtype=dtypes.int64,
+        dtype=dtypes.int32,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
         use_resource=True,
-        collections=[ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP])
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                     ops.GraphKeys.GLOBAL_STEP])
+
+
+def _create_iterations_per_loop():
+  with variable_scope.variable_scope(_DEFAULT_NAME_SCOPE,
+                                     reuse=variable_scope.AUTO_REUSE):
+    return variable_scope.get_variable(
+        _ITERATIONS_PER_LOOP_VAR,
+        initializer=init_ops.zeros_initializer(),
+        shape=[],
+        dtype=dtypes.int32,
+        trainable=False,
+        collections=[],
+        use_resource=True)
 
 
 def _sync_variables_ops():
@@ -89,7 +107,7 @@ def _increase_eval_step_op(iterations_per_loop):
   """Returns an op to increase the eval step for TPU evaluation.
 
   Args:
-    iterations_per_loop: Int. The number of eval steps runnining in TPU
+    iterations_per_loop: Tensor. The number of eval steps runnining in TPU
         system before returning to CPU host for each `Session.run`.
 
   Returns:
@@ -97,8 +115,10 @@ def _increase_eval_step_op(iterations_per_loop):
   """
   eval_step = evaluation._get_or_create_eval_step()  # pylint: disable=protected-access
   # Estimator evaluate increases 1 by default. So, we increase the difference.
-  return state_ops.assign_add(eval_step, iterations_per_loop - 1,
-                              use_locking=True)
+  return state_ops.assign_add(
+      eval_step,
+      math_ops.cast(iterations_per_loop - 1, dtype=eval_step.dtype),
+      use_locking=True)
 
 
 def _tpu_job(run_config, mode):
@@ -124,9 +144,13 @@ def _per_shard_batch_size(global_batch_size, run_config, use_tpu):
 
 
 class _SIGNAL(object):
-  """Signal used to control the input thread of infeed."""
-  NEXT_BATCH = 1
-  STOP = 2
+  """Signal used to control the thread of infeed/outfeed.
+
+  All preserved signals must be negative numbers. Positive numbers are used to
+  indicate the number of iterations for next training/evaluation loop.
+  """
+  NEXT_BATCH = -1
+  STOP = -2
 
 
 class TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
@@ -143,14 +167,16 @@ class TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
 
   TPU evaluation expects a slightly different signature from the
   ${tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
-  dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and a tensor
-  list.  The tensor list specifies the list of tensors, usually model logits,
-  which are transferred back from TPU system to CPU host. All tensors must have
-  be batch-major, i.e., the batch size is the first dimension. Once all tensors
-  are available at CPU host, they are joined and passed as positional arguments
-  to the `metric_fn`. `metric_fn` takes the tensor list (concatenated on CPU
-  from all shards) and returns a dict from metric string name to the result of
-  calling a metric function, namely a `(metric_tensor, update_op)` tuple.
+  dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`.
+  The `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. The
+  `tensors` usually specify the model logits, which are transferred back from
+  TPU system to CPU host. All tensors must have be batch-major, i.e., the batch
+  size is the first dimension. Once all tensors are available at CPU host from
+  all shards, they are concatenated (on CPU) and passed as positional arguments
+  to the `metric_fn` if `tensors` is list or keyword arguments if `tensors` is
+  dict. `metric_fn` takes the `tensors` and returns a dict from metric string
+  name to the result of calling a metric function, namely a `(metric_tensor,
+  update_op)` tuple.
 
   See `TPUEstimator` for MNIST example how to specify the `eval_metrics`.
   """
@@ -197,8 +223,8 @@ class _InfeedOutfeedThreadBaseController(object):
   def block_and_get_signal(self):
     return self._signal_queue.get()
 
-  def send_next_batch_signal(self):
-    self._signal_queue.put(_SIGNAL.NEXT_BATCH)
+  def send_next_batch_signal(self, signal=_SIGNAL.NEXT_BATCH):
+    self._signal_queue.put(signal)
 
   def join(self):
     self._signal_queue.put(_SIGNAL.STOP)
@@ -208,12 +234,12 @@ class _InfeedOutfeedThreadBaseController(object):
 class _OutfeedThreadController(_InfeedOutfeedThreadBaseController):
   """This wraps the outfeed thread and stops when Estimator finishes."""
 
-  def __init__(self, session, dequeue_ops, iterations):
+  def __init__(self, session, dequeue_ops):
     super(_OutfeedThreadController, self).__init__(
         threading.Thread(target=self._execute_dequeue_ops,
-                         args=(session, dequeue_ops, iterations)))
+                         args=(session, dequeue_ops)))
 
-  def _execute_dequeue_ops(self, session, dequeue_ops, iterations):
+  def _execute_dequeue_ops(self, session, dequeue_ops):
     count = 0
     while True:
       signal = self.block_and_get_signal()
@@ -221,6 +247,7 @@ class _OutfeedThreadController(_InfeedOutfeedThreadBaseController):
         logging.info('Stop outfeed thread.')
         return
 
+      iterations = signal
       for i in range(iterations):
         logging.debug('Outfeed dequeue for iteration (%d, %d)', count, i)
         session.run(dequeue_ops)
@@ -234,12 +261,12 @@ class _OutfeedThreadController(_InfeedOutfeedThreadBaseController):
 class _InfeedThreadController(_InfeedOutfeedThreadBaseController):
   """This wraps the infeed thread and stops when Estimator finishes."""
 
-  def __init__(self, session, enqueue_ops, iterations):
+  def __init__(self, session, enqueue_ops):
     super(_InfeedThreadController, self).__init__(
         threading.Thread(target=self._input_thread_fn_for_loading,
-                         args=(session, enqueue_ops, iterations)))
+                         args=(session, enqueue_ops)))
 
-  def _input_thread_fn_for_loading(self, session, enqueue_ops, iterations):
+  def _input_thread_fn_for_loading(self, session, enqueue_ops):
     count = 0
     while True:
       signal = self._signal_queue.get()
@@ -247,6 +274,7 @@ class _InfeedThreadController(_InfeedOutfeedThreadBaseController):
         logging.info('Stop Infeed input thread.')
         return
 
+      iterations = signal
       for i in range(iterations):
         logging.debug('Infeed enqueue for iteration (%d, %d)', count, i)
         session.run(enqueue_ops)
@@ -267,13 +295,13 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   """
 
   def __init__(self, run_config, mode, enqueue_fn, dequeue_ops=None):
-    self._iterations = run_config.tpu_config.iterations_per_loop
     self._tpu_job = _tpu_job(run_config, mode)
     self._enqueue_fn = enqueue_fn
     self._dequeue_ops = dequeue_ops
 
   def begin(self):
     self._enqueue_ops = self._enqueue_fn()
+    self._iterations_per_loop_var = _create_iterations_per_loop()
     logging.info('TPU job name %s', self._tpu_job)
     self._init_op = [tpu.initialize_system(job=self._tpu_job)]
     self._finalize_op = [tpu.shutdown_system(job=self._tpu_job)]
@@ -285,19 +313,21 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     logging.info('Start infeed thread controller')
     self._infeed_thd_controller = _InfeedThreadController(
-        session, self._enqueue_ops, self._iterations)
+        session, self._enqueue_ops)
 
     if self._dequeue_ops is not None:
       logging.info('Start outfeed thread controller')
       self._outfeed_thd_controller = _OutfeedThreadController(
-          session, self._dequeue_ops, self._iterations)
+          session, self._dequeue_ops)
 
   def before_run(self, run_context):
     logging.info('Enqueue next batch of data to infeed.')
-    self._infeed_thd_controller.send_next_batch_signal()
+
+    iterations = run_context.session.run(self._iterations_per_loop_var)
+    self._infeed_thd_controller.send_next_batch_signal(iterations)
     if self._dequeue_ops is not None:
       logging.info('Dequeue next batch of data from outfeed.')
-      self._outfeed_thd_controller.send_next_batch_signal()
+      self._outfeed_thd_controller.send_next_batch_signal(iterations)
 
   def end(self, session):
     logging.info('Stop infeed thread controller')
@@ -309,6 +339,93 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     logging.info('Shutdown TPU system.')
     session.run(self._finalize_op)
+
+
+class _TPUStopAtStepHook(session_run_hook.SessionRunHook):
+  """Hook that requests stop at a specified step.
+
+  This hook is similar to the `session_run_hook._StopAfterNEvalsHook` with
+  following differences for TPU training:
+
+  1. This hook sets the variable for iterations_per_loop, which is used by
+     `TPUInfeedOutfeedSessionHook` to control the iterations for infeed/outfeed.
+     As the hook execution order is not guaranteed, the variable update is
+     handled in `after_create_session` and `after_run` as
+     `TPUInfeedOutfeedSessionHook` reads the variable value in `before_run`.
+
+  2. For each training loop (session.run), the global step could be increased
+     multiple times on TPU. The global step tensor value will be explicitly read
+     again in `after_run` to ensure the latest value is retrieved to avoid race
+     condition.
+  """
+
+  def __init__(self, iterations, num_steps=None, last_step=None):
+    """Initializes a `StopAtStepHook`.
+
+    Args:
+      iterations: The number of iterations to run optimizer per training loop.
+      num_steps: Number of steps to execute.
+      last_step: Step after which to stop.
+
+    Raises:
+      ValueError: If one of the arguments is invalid.
+    """
+    if num_steps is None and last_step is None:
+      raise ValueError('One of num_steps or last_step must be specified.')
+    if num_steps is not None and last_step is not None:
+      raise ValueError('Only one of num_steps or last_step can be specified.')
+    self._num_steps = num_steps
+    self._last_step = last_step
+    self._iterations = iterations
+
+  def _next_iterations(self, global_step, last_step):
+    gap = last_step - global_step
+    return min(gap, self._iterations)
+
+  def begin(self):
+    self._global_step_tensor = training_util.get_global_step()
+    if self._global_step_tensor is None:
+      raise RuntimeError('Global step should be created.')
+
+    self._iterations_per_loop_var = _create_iterations_per_loop()
+
+  def after_create_session(self, session, coord):
+    global_step = session.run(self._global_step_tensor)
+    if self._last_step is None:
+      self._last_step = global_step + self._num_steps
+
+    iterations = self._next_iterations(global_step, self._last_step)
+
+    self._iterations_per_loop_var.load(iterations, session=session)
+
+  def after_run(self, run_context, run_values):
+    # Global step cannot be retrieved via SessionRunArgs and before_run due to
+    # race condition.
+    global_step = run_context.session.run(self._global_step_tensor)
+    if global_step >= self._last_step:
+      run_context.request_stop()
+    else:
+      iterations = self._next_iterations(global_step, self._last_step)
+      self._iterations_per_loop_var.load(iterations,
+                                         session=run_context.session)
+
+
+class _SetEvalIterationsHook(session_run_hook.SessionRunHook):
+  """Hook that requests stop at a specified step."""
+
+  def __init__(self, num_steps):
+    """Initializes a `_SetEvalIterationsHook`.
+
+    Args:
+      num_steps: Number of steps to execute.
+    """
+    self._num_steps = num_steps
+
+  def begin(self):
+    self._iterations_per_loop_var = _create_iterations_per_loop()
+
+  def after_create_session(self, session, coord):
+    self._iterations_per_loop_var.load(self._num_steps, session=session)
 
 
 class _PerShardOutput(object):
@@ -831,6 +948,8 @@ class _EvalMetrics(object):
 
   def __init__(self):
     self._metric_fn = None
+    self._is_dict = False
+    self._tensor_keys = []
     self._tensors = []
     self._tensor_dtypes = []
     self._tensor_shapes = []
@@ -846,30 +965,62 @@ class _EvalMetrics(object):
       raise ValueError('eval_metrics should have two elements.')
     if not callable(eval_metrics[0]):
       raise TypeError('eval_metrics[0] should be callable.')
-    if not isinstance(eval_metrics[1], (tuple, list)):
-      raise ValueError('eval_metrics[1] should be tuple or list.')
+    if not isinstance(eval_metrics[1], (tuple, list, dict)):
+      raise ValueError('eval_metrics[1] should be tuple or list, or dict.')
 
-    fn_args = util.fn_args(eval_metrics[0])
-    if len(eval_metrics[1]) != len(fn_args):
-      raise RuntimeError(
-          'In TPUEstimatorSpec.eval_metrics, length of tensors does not '
-          'match method args of metric_fn.')
+    if isinstance(eval_metrics[1], (tuple, list)):
+      fn_args = util.fn_args(eval_metrics[0])
+      if 'self' in fn_args:
+        fn_args = tuple([arg for arg in fn_args if arg != 'self'])
+      if len(eval_metrics[1]) != len(fn_args):
+        raise RuntimeError(
+            'In TPUEstimatorSpec.eval_metrics, length of tensors does not '
+            'match method args of metric_fn.')
 
   @staticmethod
   def to_metric_metric_ops_for_cpu(eval_metrics):
     """Converts `TPUEstimatorSpec.eval_metrics` to `eval_metric_ops` for CPU."""
-    return (eval_metrics[0](*eval_metrics[1]) if eval_metrics is not None
-            else None)
+    if not eval_metrics:
+      return None
+
+    _EvalMetrics.validate(eval_metrics)
+
+    metric_fn, tensors = eval_metrics
+
+    if isinstance(tensors, (tuple, list)):
+      return metric_fn(*tensors)
+    else:
+      # Must be dict.
+      try:
+        return metric_fn(**tensors)
+      except TypeError as e:
+        logging.warning(
+            'Exception while calling metric_fn for evalution: %s. '
+            'It is likely the tensors (eval_metrics[1]) do not match the '
+            'metric_fn arguments', e)
+        raise e
 
   def record(self, spec):
+    """Records the eval_metrics structure in `spec`."""
     if self._recorded:
       raise RuntimeError('Eval metrics have been recorded already.')
 
-    self._metric_fn, self._tensors = spec.eval_metrics
+    self._metric_fn, tensor_list_or_dict = spec.eval_metrics
 
-    for tensor in self._tensors:
-      self._tensor_dtypes.append(tensor.dtype)
-      self._tensor_shapes.append(tensor.shape)
+    if isinstance(tensor_list_or_dict, dict):
+      self._is_dict = True
+      for (key, tensor) in six.iteritems(tensor_list_or_dict):
+        self._tensor_keys.append(key)
+        self._tensors.append(tensor)
+        self._tensor_dtypes.append(tensor.dtype)
+        self._tensor_shapes.append(tensor.shape)
+    else:
+      # List or tuple.
+      self._is_dict = False
+      self._tensors = tensor_list_or_dict
+      for tensor in tensor_list_or_dict:
+        self._tensor_dtypes.append(tensor.dtype)
+        self._tensor_shapes.append(tensor.shape)
     self._recorded = True
 
   @property
@@ -927,7 +1078,19 @@ class _EvalMetrics(object):
               'dimension, but got scalar {}'.format(dequeue_ops[i][0]))
         # TODO(xiejw): Allow users to specify the axis for batch size dimension.
         dequeue_ops[i] = array_ops.concat(dequeue_ops[i], axis=0)
-      eval_metric_ops = self._metric_fn(*dequeue_ops)
+
+      if self._is_dict:
+        dequeue_ops = dict(zip(self._tensor_keys, dequeue_ops))
+        try:
+          eval_metric_ops = self._metric_fn(**dequeue_ops)
+        except TypeError as e:
+          logging.warning(
+              'Exception while calling metric_fn for evalution: %s. '
+              'It is likely the tensors (eval_metrics[1]) do not match the '
+              'metric_fn arguments', e)
+          raise e
+      else:
+        eval_metric_ops = self._metric_fn(*dequeue_ops)
 
     eval_update_ops = []
     for k, v in eval_metric_ops.items():
@@ -962,14 +1125,11 @@ class TPUEstimator(estimator_lib.Estimator):
   `TPUEstimatorSpec` instead of `EstimatorSpec`, which expects the
   `eval_metrics` for TPU evaluation.
 
-  `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and a tensor list.
-  The tensor list specifies the list of tensors, usually model logits, which are
-  transferred back from TPU system to CPU host. All tensors must have be
-  batch-major, i.e., the batch size is the first dimension. Once all tensors are
-  available at CPU host, they are joined and passed as positional arguments to
-  the `metric_fn`. `metric_fn` takes the tensor list (concatenated on CPU from
-  all shards) and returns a dict from metric string name to the result of
-  calling a metric function, namely a `(metric_tensor, update_op)` tuple.
+  `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`, where
+  `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. (See
+  `TPUEstimatorSpec` for details).  `metric_fn` takes the `tensors` and returns
+  a dict from metric string name to the result of calling a metric function,
+  namely a `(metric_tensor, update_op)` tuple.
 
   Current limitations:
 
@@ -987,7 +1147,7 @@ class TPUEstimator(estimator_lib.Estimator):
           labels=labels, predictions=predictions),
     }
 
-  # Your model Fn which runs on TPU.
+  # Your model Fn which runs on TPU (eval_metrics is list in this example)
   def model_fn(features, labels, mode, config, params):
     ...
     logits = ...
@@ -997,6 +1157,20 @@ class TPUEstimator(estimator_lib.Estimator):
           mode=mode,
           loss=loss,
           eval_metrics=(metric_fn, [labels, logits]))
+
+  # or specify the eval_metrics tensors as dict.
+  def model_fn(features, labels, mode, config, params):
+    ...
+    final_layer_output = ...
+
+    if mode = tf.estimator.ModeKeys.EVAL:
+      return tpu_estimator.TPUEstimatorSpec(
+          mode=mode,
+          loss=loss,
+          eval_metrics=(metric_fn, {
+              'labels': labels,
+              'logits': final_layer_output,
+          }))
   ```
 
   Predict support on TPU is not yet implemented. So, `predict` and
@@ -1107,6 +1281,8 @@ class TPUEstimator(estimator_lib.Estimator):
     self._use_tpu = use_tpu
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
+    self._iterations_per_training_loop = (
+        self._config.tpu_config.iterations_per_loop)
 
   def _create_global_step(self, graph):
     """Creates a global step suitable for TPUs.
@@ -1121,6 +1297,37 @@ class TPUEstimator(estimator_lib.Estimator):
       ValueError: if the global step tensor is already defined.
     """
     return _create_global_step(graph)
+
+  def _convert_train_steps_to_hooks(self, steps, max_steps):
+    if _is_running_on_cpu(self._use_tpu, model_fn_lib.ModeKeys.TRAIN,
+                          self._eval_batch_size):
+      return super(TPUEstimator, self)._convert_train_steps_to_hooks(
+          steps, max_steps)
+
+    # On TPU.
+    if steps is None and max_steps is None:
+      raise ValueError(
+          'For TPU training, one of `steps` or `max_steps` must be set. '
+          'Cannot be both `None`.')
+
+    return [_TPUStopAtStepHook(self._iterations_per_training_loop,
+                               steps, max_steps)]
+
+  def _convert_eval_steps_to_hooks(self, steps):
+    if _is_running_on_cpu(self._use_tpu, model_fn_lib.ModeKeys.EVAL,
+                          self._eval_batch_size):
+      return super(TPUEstimator, self)._convert_eval_steps_to_hooks(steps)
+
+    if steps is None:
+      raise ValueError('Evaluate `steps` must be set on TPU. Cannot be `None`.')
+    if steps <= 0:
+      raise ValueError('Must specify steps > 0, given: {}'.format(steps))
+
+    hooks = []
+    hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
+        num_evals=steps))
+    hooks.append(_SetEvalIterationsHook(steps))
+    return hooks
 
   def _call_input_fn(self, input_fn, mode):
     """Calls the input function.
@@ -1302,8 +1509,10 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
     # Now eval.
     total_loss, eval_metric_ops = _eval_on_tpu_system(
         model_fn_wrapper, dequeue_fn)
-    mean_loss = math_ops.div(total_loss,
-                             config.tpu_config.iterations_per_loop)
+    iterations_per_loop_var = _create_iterations_per_loop()
+    mean_loss = math_ops.div(
+        total_loss,
+        math_ops.cast(iterations_per_loop_var, dtype=total_loss.dtype))
 
     # Creates a dummy metric update_op for all metrics. Estimator expects all
     # metrics in eval_metric_ops have update_op and calls them one by one. The
@@ -1314,7 +1523,7 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
       # all variables back from TPU and updates the eval step counter properly.
       internal_ops_to_run = _sync_variables_ops()
       internal_ops_to_run.append(
-          _increase_eval_step_op(config.tpu_config.iterations_per_loop))
+          _increase_eval_step_op(iterations_per_loop_var))
       with ops.control_dependencies(internal_ops_to_run):
         dummy_update_op = control_flow_ops.no_op()
 
@@ -1336,14 +1545,17 @@ def _augment_model_fn(model_fn, train_batch_size, eval_batch_size, use_tpu,
 def _eval_on_tpu_system(model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
   config = model_fn_wrapper.config.tpu_config
-  iterations_per_loop = config.iterations_per_loop
   num_shards = config.num_shards
+  iterations_per_loop_var = _create_iterations_per_loop()
 
   single_tpu_eval_step, eval_metric_ops = (
       model_fn_wrapper.convert_to_single_tpu_eval_step(dequeue_fn))
 
-  multi_tpu_eval_steps_on_single_shard = (lambda: training_loop.repeat(  # pylint: disable=g-long-lambda
-      iterations_per_loop, single_tpu_eval_step, [_ZERO_LOSS], name='loop'))
+  def multi_tpu_eval_steps_on_single_shard():
+    return training_loop.repeat(iterations_per_loop_var,
+                                single_tpu_eval_step,
+                                [_ZERO_LOSS],
+                                name='loop')
 
   (loss,) = tpu.shard(multi_tpu_eval_steps_on_single_shard,
                       inputs=[],
@@ -1354,16 +1566,18 @@ def _eval_on_tpu_system(model_fn_wrapper, dequeue_fn):
 
 def _train_on_tpu_system(model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
-  config = model_fn_wrapper.config.tpu_config
-  iterations_per_loop = config.iterations_per_loop
-  num_shards = config.num_shards
+  num_shards = model_fn_wrapper.config.tpu_config.num_shards
+  iterations_per_loop_var = _create_iterations_per_loop()
 
   single_tpu_train_step = model_fn_wrapper.convert_to_single_tpu_train_step(
       dequeue_fn)
 
-  multi_tpu_train_steps_on_single_shard = (lambda: training_loop.repeat(  # pylint: disable=g-long-lambda
-      iterations_per_loop, single_tpu_train_step, [_INITIAL_LOSS],
-      name=b'loop'))
+  def multi_tpu_train_steps_on_single_shard():
+    return training_loop.repeat(
+        iterations_per_loop_var,
+        single_tpu_train_step,
+        [_INITIAL_LOSS],
+        name=b'loop')
 
   (loss,) = tpu.shard(multi_tpu_train_steps_on_single_shard,
                       inputs=[],

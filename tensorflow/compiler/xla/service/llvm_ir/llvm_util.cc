@@ -69,6 +69,28 @@ llvm::Value* EmitCallToIntrinsic(
   return ir_builder->CreateCall(intrinsic, operands_vec);
 }
 
+llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder) {
+  if (ir_builder->getFastMathFlags().noNaNs()) {
+    auto cmp = ir_builder->CreateFCmpUGE(lhs_value, rhs_value);
+    return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    return EmitCallToIntrinsic(llvm::Intrinsic::maxnum, {lhs_value, rhs_value},
+                               {lhs_value->getType()}, ir_builder);
+  }
+}
+
+llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder) {
+  if (ir_builder->getFastMathFlags().noNaNs()) {
+    auto cmp = ir_builder->CreateFCmpULE(lhs_value, rhs_value);
+    return ir_builder->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    return EmitCallToIntrinsic(llvm::Intrinsic::minnum, {lhs_value, rhs_value},
+                               {lhs_value->getType()}, ir_builder);
+  }
+}
+
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
                                    llvm::IRBuilder<>* ir_builder) {
   llvm::Type* array_type = array->getType();
@@ -418,11 +440,56 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
   return inst;
 }
 
-string SanitizeIrName(string function_name) {
-  // Replace some characters that cannot occur in LLVM names with '_'
-  std::replace(function_name.begin(), function_name.end(), '.', '_');
-  std::replace(function_name.begin(), function_name.end(), '%', '_');
-  std::replace(function_name.begin(), function_name.end(), '-', '_');
+string IrName(string a) {
+  a.erase(std::remove(a.begin(), a.end(), '%'), a.end());
+  return a;
+}
+
+string IrName(tensorflow::StringPiece a, tensorflow::StringPiece b) {
+  if (!a.empty() && !b.empty()) {
+    return IrName(tensorflow::strings::StrCat(a, ".", b));
+  }
+  return IrName(tensorflow::strings::StrCat(a, b));
+}
+
+string IrName(const HloInstruction* a, tensorflow::StringPiece b) {
+  return IrName(a->name(), b);
+}
+
+string SanitizeFunctionName(string function_name) {
+  // The backend with the strictest requirements on function names is NVPTX, so
+  // we sanitize to its requirements.
+  //
+  // A slightly stricter version of the NVPTX requirements is that names match
+  // /[a-zA-Z_$][a-zA-Z0-9_$]*/, with the exception that the names "_" and "$"
+  // are illegal.
+
+  // Sanitize chars in function_name.
+  std::transform(function_name.begin(), function_name.end(),
+                 function_name.begin(), [](char c) {
+                   if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
+                       ('0' <= c && c <= '9') || c == '_' || c == '$') {
+                     return c;
+                   }
+                   return '_';
+                 });
+
+  // Ensure the name isn't empty.
+  if (function_name.empty()) {
+    function_name = "__unnamed";
+  }
+
+  // Ensure the name doesn't start with a number.
+  if (!function_name.empty() && function_name[0] >= '0' &&
+      function_name[0] <= '9') {
+    function_name.insert(function_name.begin(), '_');
+  }
+
+  // Ensure the name isn't "_" or "$".
+  if (function_name == "_" || function_name == "$") {
+    function_name += '_';
+  }
+
   return function_name;
 }
 

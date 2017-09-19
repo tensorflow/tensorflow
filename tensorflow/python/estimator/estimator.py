@@ -211,17 +211,17 @@ class Estimator(object):
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the training loop.
       steps: Number of steps for which to train model. If `None`, train forever
-        or train until input_fn generates the `OutOfRange` or `StopIteration`
-        error. 'steps' works incrementally. If you call two times
-        train(steps=10) then training occurs in total 20 steps. If `OutOfRange`
-        or `StopIteration` error occurs in the middle, training stops before 20
-        steps. If you don't want to have incremental behavior please set
-        `max_steps` instead. If set, `max_steps` must be `None`.
+        or train until input_fn generates the `OutOfRange` error or
+        `StopIteration` exception. 'steps' works incrementally. If you call two
+        times train(steps=10) then training occurs in total 20 steps. If
+        `OutOfRange` or `StopIteration` occurs in the middle, training stops
+        before 20 steps. If you don't want to have incremental behavior please
+        set `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
-        train forever or train until input_fn generates the `OutOfRange` or
-        `StopIteration` error. If set, `steps` must be `None`. If `OutOfRange`
-        or `StopIteration` error occurs in the middle, training stops before
-        `max_steps` steps.
+        train forever or train until input_fn generates the `OutOfRange` error
+        or `StopIteration` exception. If set, `steps` must be `None`. If
+        `OutOfRange` or `StopIteration` occurs in the middle, training stops
+        before `max_steps` steps.
 
         Two calls to `train(steps=100)` means 200 training
         iterations. On the other hand, two calls to `train(max_steps=100)` means
@@ -250,12 +250,17 @@ class Estimator(object):
         return self
 
     hooks = _check_hooks_type(hooks)
-    if steps is not None or max_steps is not None:
-      hooks.append(training.StopAtStepHook(steps, max_steps))
+    hooks.extend(self._convert_train_steps_to_hooks(steps, max_steps))
 
     loss = self._train_model(input_fn=input_fn, hooks=hooks)
     logging.info('Loss for final step: %s.', loss)
     return self
+
+  def _convert_train_steps_to_hooks(self, steps, max_steps):
+    if steps is not None or max_steps is not None:
+      return [training.StopAtStepHook(steps, max_steps)]
+    else:
+      return []
 
   def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
                name=None):
@@ -294,17 +299,21 @@ class Estimator(object):
         given `checkpoint_path` is empty.
     """
     hooks = _check_hooks_type(hooks)
-    if steps is not None:
-      if steps <= 0:
-        raise ValueError('Must specify steps > 0, given: {}'.format(steps))
-      hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
-          num_evals=steps))
+    hooks.extend(self._convert_eval_steps_to_hooks(steps))
 
     return self._evaluate_model(
         input_fn=input_fn,
         hooks=hooks,
         checkpoint_path=checkpoint_path,
         name=name)
+
+  def _convert_eval_steps_to_hooks(self, steps):
+    if steps is None:
+      return []
+
+    if steps <= 0:
+      raise ValueError('Must specify steps > 0, given: {}'.format(steps))
+    return [evaluation._StopAfterNEvalsHook(num_evals=steps)]  # pylint: disable=protected-access
 
   def predict(self,
               input_fn,
@@ -373,7 +382,10 @@ class Estimator(object):
               }
 
   def _assert_members_are_not_overridden(self):
-    allowed_overrides = set(['_call_input_fn', '_create_global_step'])
+    """Asserts members of `Estimator` are not overridden."""
+    allowed_overrides = set(['_call_input_fn', '_create_global_step',
+                             '_convert_train_steps_to_hooks',
+                             '_convert_eval_steps_to_hooks'])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
     subclass_members = set(self.__class__.__dict__.keys())

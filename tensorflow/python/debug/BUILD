@@ -28,6 +28,7 @@ py_library(
     deps = [
         ":debug_data",
         ":debug_gradients",
+        ":debug_graphs",
         ":debug_utils",
         ":grpc_debug_server",
         ":hooks",
@@ -679,6 +680,23 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "debug_graph_reconstruction_test",
+    size = "small",
+    srcs = ["lib/debug_graph_reconstruction_test.py"],
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
     name = "session_debug_multi_gpu_test",
     size = "small",
     srcs = ["lib/session_debug_multi_gpu_test.py"],
@@ -782,6 +800,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",

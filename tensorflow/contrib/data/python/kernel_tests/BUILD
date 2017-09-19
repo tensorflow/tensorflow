@@ -24,6 +24,8 @@ py_test(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -262,6 +264,7 @@ py_test(
     srcs = ["resample_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
+    tags = ["noasan"],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
