@@ -686,8 +686,8 @@ def gradients_function(f, params=None):
   # `gradients_function()`.
   ygrad_fn = tfe.gradients_function(f, params=[1])
 
-  grads = ygrad_fn(x, y)
-  assert grads[0].numpy() == (2 ** 3) - 2 * 2 * 3
+  (y_grad,) = ygrad_fn(x, y)
+  assert y_grad.numpy() == (2 ** 3) - 2 * 2 * 3
   ```
 
   Args:
@@ -745,9 +745,9 @@ def val_and_grad_function(f, params=None):
   # argument with `value_and_gradients_function()`.
   val_ygrad_fn = tfe.value_and_gradients_function(f, params=[1])
 
-  f_val, grads = val_ygrad_fn(x, y)
+  f_val, (y_grad,) = val_ygrad_fn(x, y)
   assert f_val.numpy() == (2 ** 3) * 3 - 2 * (3 ** 2)
-  assert grads[0].numpy() == (2 ** 3) - 2 * 2 * 3
+  assert y_grad.numpy() == (2 ** 3) - 2 * 2 * 3
   ```
 
   Args:
