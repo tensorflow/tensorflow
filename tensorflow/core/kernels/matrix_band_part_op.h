@@ -26,7 +26,7 @@ namespace functor {
 template <typename Device, typename Scalar>
 struct MatrixBandPartFunctor {
   void operator()(OpKernelContext* context, const Device& device,
-                  int num_upper_diags, int num_lower_diags, bool transpose,
+                  int num_upper_diags, int num_lower_diags,
                   typename TTypes<Scalar, 3>::ConstTensor input,
                   typename TTypes<Scalar, 3>::Tensor output);
 };

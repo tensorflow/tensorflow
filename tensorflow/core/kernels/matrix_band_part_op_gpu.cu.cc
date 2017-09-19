@@ -28,41 +28,22 @@ namespace tensorflow {
 namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
-template <bool transpose, typename Scalar>
+template <typename Scalar>
 __global__ void MatrixBandPartKernel(const int num_threads,
                                      const int batch_size, const int m,
                                      const int n, const int num_lower_diags,
                                      const int num_upper_diags,
                                      const Scalar* input_ptr,
                                      Scalar* output_ptr) {
-  if (!transpose) {
-    CUDA_1D_KERNEL_LOOP(index, num_threads) {
-      const int col = index % n;
-      const int row = (index / n) % m;
-      const int band_start = (num_lower_diags < 0 ? 0 : row - num_lower_diags);
-      const int band_end =
-          (num_upper_diags < 0 ? n : row + num_upper_diags + 1);
-      if (col < band_start || col >= band_end) {
-        output_ptr[index] = Scalar();
-      } else {
-        output_ptr[index] = input_ptr[index];
-      }
-    }
-  } else {
-    const int matrix_size = m * n;
-    CUDA_1D_KERNEL_LOOP(index, num_threads) {
-      const int col = index % n;
-      const int row = (index / n) % m;
-      const int batch = index / matrix_size;
-      const int transpose_index = batch * matrix_size + n * col + row;
-      const int band_start = (num_lower_diags < 0 ? 0 : row - num_lower_diags);
-      const int band_end =
-          (num_upper_diags < 0 ? n : row + num_upper_diags + 1);
-      if (col < band_start || col >= band_end) {
-        output_ptr[transpose_index] = Scalar();
-      } else {
-        output_ptr[transpose_index] = input_ptr[index];
-      }
+  CUDA_1D_KERNEL_LOOP(index, num_threads) {
+    const int col = index % n;
+    const int row = (index / n) % m;
+    const int band_start = (num_lower_diags < 0 ? 0 : row - num_lower_diags);
+    const int band_end = (num_upper_diags < 0 ? n : row + num_upper_diags + 1);
+    if (col < band_start || col >= band_end) {
+      output_ptr[index] = Scalar();
+    } else {
+      output_ptr[index] = input_ptr[index];
     }
   }
 }
@@ -70,7 +51,7 @@ __global__ void MatrixBandPartKernel(const int num_threads,
 template <typename Scalar>
 struct MatrixBandPartFunctor<GPUDevice, Scalar> {
   void operator()(OpKernelContext* context, const GPUDevice& device,
-                  int num_lower_diags, int num_upper_diags, bool transpose,
+                  int num_lower_diags, int num_upper_diags,
                   typename TTypes<Scalar, 3>::ConstTensor input,
                   typename TTypes<Scalar, 3>::Tensor output) {
     using CudaType = typename CUDAComplexT<Scalar>::type;
@@ -80,17 +61,10 @@ struct MatrixBandPartFunctor<GPUDevice, Scalar> {
     const CudaType* input_ptr = reinterpret_cast<const CudaType*>(input.data());
     CudaType* output_ptr = reinterpret_cast<CudaType*>(output.data());
     CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
-    if (transpose) {
-      MatrixBandPartKernel<true>
-          <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-              config.virtual_thread_count, batch_size, m, n, num_lower_diags,
-              num_upper_diags, input_ptr, output_ptr);
-    } else {
-      MatrixBandPartKernel<false>
-          <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-              config.virtual_thread_count, batch_size, m, n, num_lower_diags,
-              num_upper_diags, input_ptr, output_ptr);
-    }
+    MatrixBandPartKernel<<<config.block_count, config.thread_per_block, 0,
+                           device.stream()>>>(
+        config.virtual_thread_count, batch_size, m, n, num_lower_diags,
+        num_upper_diags, input_ptr, output_ptr);
   }
 };
 
