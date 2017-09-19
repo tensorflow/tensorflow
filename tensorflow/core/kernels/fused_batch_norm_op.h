@@ -22,6 +22,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
+
+#if GOOGLE_CUDA
+
 // There is a behavior difference between cuDNN v4 and v5 with regard to the
 // scaling factor for function cudnnBatchNormalizationForwardInference.
 // This function corrects the scaling factor if cuDNN v4 is used, so that
@@ -46,6 +49,7 @@ struct InvVarianceToVariance {
                   int channels, T* variance);
 };
 
+#endif  // GOOGLE_CUDA
 
 // Functor used by FusedBatchNormGradOp to do the computations when is_training=False.
 // Both CPU and GPU will use this functor.
