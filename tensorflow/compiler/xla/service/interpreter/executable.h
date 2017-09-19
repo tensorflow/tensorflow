@@ -13,29 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_EXECUTABLE_H_
-#define TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_EXECUTABLE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_H_
 
-#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
-#include <vector>
 
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace xla {
-namespace executorplugin {
+namespace interpreter {
 
-class ExecutorExecutable : public Executable {
+// Responsible for running a HLO graph through the HloEvaluator and output
+// buffer allocation. Refer to interpreter/README.md for more.
+class InterpreterExecutable : public Executable {
  public:
-  ExecutorExecutable(std::unique_ptr<HloModule> hlo_module);
-  ~ExecutorExecutable() override;
+  InterpreterExecutable(std::unique_ptr<HloModule> hlo_module);
+  ~InterpreterExecutable() override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
@@ -58,10 +64,10 @@ class ExecutorExecutable : public Executable {
   std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorExecutable);
+  TF_DISALLOW_COPY_AND_ASSIGN(InterpreterExecutable);
 };
 
-}  // namespace executorplugin
+}  // namespace interpreter
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_EXECUTABLE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_H_

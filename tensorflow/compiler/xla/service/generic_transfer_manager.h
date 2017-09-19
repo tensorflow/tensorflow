@@ -75,7 +75,7 @@ class GenericTransferManager : public TransferManager {
 
  private:
   // The platform this transfer manager targets.
-  perftools::gputools::Platform::Id platform_id_;
+  const perftools::gputools::Platform::Id platform_id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GenericTransferManager);
 };

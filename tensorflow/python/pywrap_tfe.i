@@ -17,6 +17,8 @@ limitations under the License.
 
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_NumpyToTensorHandle;
+%rename("%s") TFE_Py_SequenceToTensorHandle;
+%rename("%s") TFE_Py_AllEqualInt64;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
@@ -62,19 +64,19 @@ limitations under the License.
 }
 
 %typemap(in) const char* serialized_function_def {
-  $1 = TFE_GetPyThonString($input);
+  $1 = TFE_GetPythonString($input);
 }
 
 %typemap(in) const char* device_name {
   if ($input == Py_None) {
     $1 = nullptr;
   } else {
-    $1 = TFE_GetPyThonString($input);
+    $1 = TFE_GetPythonString($input);
   }
 }
 
 %typemap(in) const char* op_name {
-  $1 = TFE_GetPyThonString($input);
+  $1 = TFE_GetPythonString($input);
 }
 
 %include "tensorflow/c/eager/c_api.h"
@@ -127,7 +129,7 @@ limitations under the License.
 }
 
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status) {
-  if (TFE_Py_MayBeRaiseException($2)) {
+  if (TFE_Py_MaybeRaiseException($2)) {
     SWIG_fail;
   } else {
     int num_outputs = $1->size();

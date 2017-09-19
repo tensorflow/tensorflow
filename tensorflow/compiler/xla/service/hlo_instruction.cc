@@ -1665,9 +1665,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
     bounds.reserve(slice_starts_.size());
+    const bool omit_stride =
+        std::all_of(slice_strides_.begin(), slice_strides_.end(),
+                    [](int64 stride) { return stride == 1; });
     for (int i = 0; i < slice_starts_.size(); ++i) {
-      bounds.push_back(
-          StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
+      string stride_str = omit_stride ? "" : StrCat(":", slice_strides_[i]);
+      bounds.push_back(StrCat("[", slice_starts_[i], ":", slice_limits_[i],
+                              stride_str, "]"));
     }
     extra.push_back(StrCat("slice={", Join(bounds, ", "), "}"));
   }

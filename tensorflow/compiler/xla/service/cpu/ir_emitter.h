@@ -340,7 +340,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitParallelTargetElementLoop(
       const Shape& target_shape,
       const llvm_ir::ElementGenerator& element_generator,
-      llvm_ir::IrArray* target_array);
+      tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the

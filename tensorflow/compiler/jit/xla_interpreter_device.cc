@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Registers the XLA_INTERPRETER device which exposes the XLA Interpreter.
+
 #include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -20,46 +22,47 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char* const DEVICE_XLA_EXEC = "XLA_EXEC";
-const char* const DEVICE_EXEC_XLA_JIT = "XLA_EXEC_JIT";
+const char* const DEVICE_XLA_INTERPRETER = "XLA_INTERPRETER";
+const char* const DEVICE_INTERPRETER_XLA_JIT = "XLA_INTERPRETER_JIT";
 
 constexpr std::array<DataType, 5> kExecAllTypes = {
     {DT_INT32, DT_FLOAT, DT_BOOL, DT_DOUBLE, DT_INT64}};
 
-class XlaExaDeviceFactory : public DeviceFactory {
+class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<Device*>* devices) override;
 };
 
-Status XlaExaDeviceFactory::CreateDevices(const SessionOptions& options,
-                                          const string& name_prefix,
-                                          std::vector<Device*>* devices) {
-  static XlaDeviceOpRegistrations* registrations =
-      RegisterXlaDeviceKernels(DEVICE_XLA_EXEC, DEVICE_EXEC_XLA_JIT);
+Status XlaInterpreterDeviceFactory::CreateDevices(
+    const SessionOptions& options, const string& name_prefix,
+    std::vector<Device*>* devices) {
+  static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
+      DEVICE_XLA_INTERPRETER, DEVICE_INTERPRETER_XLA_JIT);
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Executor", DEVICE_XLA_EXEC, 0,
-                                       DEVICE_EXEC_XLA_JIT, options,
+  TF_RETURN_IF_ERROR(XlaDevice::Create("Interpreter", DEVICE_XLA_INTERPRETER, 0,
+                                       DEVICE_INTERPRETER_XLA_JIT, options,
                                        name_prefix, &device));
   devices->push_back(device.release());
   return Status::OK();
 }
 
-// Set priority to be below the default priority (50), so that Executor is not
-// selected as a high priority device over other default devices.
-// See constructor comments for Registrar in
+// Set priority to be below the default priority (50), so that Interpreter is
+// not selected as a high priority device over other default devices. See
+// constructor comments for Registrar in
 // tensorflow/core/common_runtime/device_factory.h for a list of priority for
 // devices.
-REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_EXEC, XlaExaDeviceFactory, 40);
+REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_INTERPRETER,
+                              XlaInterpreterDeviceFactory, 40);
 
 // Kernel registrations
-
 static bool OpFilter(KernelDef* kdef) { return true; }
 
-REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_EXEC, XlaDeviceLaunchOp, kExecAllTypes);
-REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_EXEC, kExecAllTypes);
-REGISTER_XLA_BACKEND(DEVICE_EXEC_XLA_JIT, kExecAllTypes, OpFilter);
+REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_INTERPRETER, XlaDeviceLaunchOp,
+                           kExecAllTypes);
+REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_INTERPRETER, kExecAllTypes);
+REGISTER_XLA_BACKEND(DEVICE_INTERPRETER_XLA_JIT, kExecAllTypes, OpFilter);
 
 }  // namespace tensorflow

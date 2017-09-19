@@ -20,6 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 
+import re
+
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.python.client import session as _session
@@ -32,7 +34,8 @@ from tensorflow.python.util import compat
 from tensorflow.tools import graph_transforms as _graph_transforms
 
 
-_FREEZE_GRAPH_TRANSFORM_NAME = 'freeze_graph'
+_FREEZE_GRAPH_TRANSFORM = 'freeze_graph'
+_SPARSIFY_GATHER_TRANSFORM = 'sparsify_gather'
 
 
 def _op_name(tensor_name):
@@ -46,11 +49,218 @@ def _op_name(tensor_name):
   return tensor_name
 
 
-def _do_transforms(graph_def, input_names, output_names, initializer_names,
-                   transforms, saver_def=None, checkpoint_path=None):
-  """Apply requested transforms to a GraphDef, including freezing.
+def _get_shared_init_op(initializer_names):
+  """Obtain the shared init op name, if it exists.
 
-  This applies the Graph Transform Tool interleaved with graph freezing.
+  Args:
+   initializer_names: Dictionary of the "infrastructural" nodes (initializers,
+     save and restore ops, etc.). The keys in this dictionary
+     indicate the collection where these nodes were obtained from.
+
+  Returns:
+    A string indicating the shared init op name or none if None if none exists.
+  """
+  return_value = initializer_names.get(_saved_model_constants.MAIN_OP_KEY, None)
+  if not return_value:
+    return_value = initializer_names.get(
+        _saved_model_constants.LEGACY_INIT_OP_KEY, None)
+  return str(return_value[0]) if return_value else None
+
+
+def _gtt_transforms(graph_def, input_names, output_names, initializer_names,
+                    transforms):
+  """Pass through gtt transforms, applying them to the graph_def.
+
+  Args:
+    graph_def: A GraphDef proto to be transformed.
+    input_names: Names of input nodes.
+    output_names: Names of output nodes.
+    initializer_names: Dictionary of the "infrastructural" nodes (initializers,
+      save and restore ops, etc.) that should be retained even if they are not
+      transitively reachable from output nodes. The keys in this dictionary
+      indicate the collection where these nodes were obtained from.
+    transforms: A list of strings naming the graph transforms to be applied in
+      order.
+  Returns:
+    The transformed GraphDef.
+  """
+  if not transforms:
+    transformed_graph_def = _graph_pb2.GraphDef()
+    transformed_graph_def.CopyFrom(graph_def)
+    return transformed_graph_def
+
+  initializer_names_flat = sorted(
+      [k for l in initializer_names.values() for k in l])
+  all_output_names = output_names + initializer_names_flat
+  return _graph_transforms.TransformGraph(graph_def, input_names,
+                                          all_output_names, transforms)
+
+
+def _freeze_transform(graph_def, output_names, initializer_names, saver_def,
+                      checkpoint_path):
+  """Handle the freeze transform.
+
+  Determine which initializer nodes should be retained by the freeze transform.
+  Retain those nodes and return an updated dictionary containing them.
+
+  Args:
+    graph_def: A GraphDef proto to be transformed.
+    output_names: Names of output nodes.
+    initializer_names: Dictionary of the "infrastructural" nodes (initializers,
+      save and restore ops, etc.). The keys in this dictionary
+      indicate the collection where these nodes were obtained from.
+    saver_def: A SaverDef proto used for restoring a checkpoint during freezing,
+      if needed (default None).
+    checkpoint_path:  A path to a checkpoint to restore during freezing,
+      if needed (default None).
+
+  Returns:
+    A tuple containing the GraphDef and a Dict of pruned initializer nodes.
+  """
+  table_initializers = initializer_names.get(_ops.GraphKeys.TABLE_INITIALIZERS,
+                                             [])
+  shared_init_op = _get_shared_init_op(initializer_names)
+
+  graph_def = _freeze_graph_with_def_protos(graph_def, output_names,
+                                            table_initializers, shared_init_op,
+                                            saver_def, checkpoint_path)
+  pruned_initializer_names = {}
+  # Freeze graph prunes all initializers and shared init nodes that are not
+  # explicitly maintained. Create new initializer_names dictionary to reflect
+  # this.
+  if table_initializers:
+    pruned_initializer_names[_ops.GraphKeys.TABLE_INITIALIZERS] = (
+        table_initializers)
+    if _saved_model_constants.LEGACY_INIT_OP_KEY in initializer_names:
+      pruned_initializer_names[_saved_model_constants.LEGACY_INIT_OP_KEY] = (
+          initializer_names[_saved_model_constants.LEGACY_INIT_OP_KEY])
+    if _saved_model_constants.MAIN_OP_KEY in initializer_names:
+      pruned_initializer_names[_saved_model_constants.MAIN_OP_KEY] = (
+          initializer_names[_saved_model_constants.MAIN_OP_KEY])
+  return (graph_def, pruned_initializer_names)
+
+
+def _clean_save_and_restore(graph_def, op, removed_op_names):
+  """Clean the specified save and restore op.
+
+  Updates the dtypes attribute of the save / restore op and the associated name
+  and shape tensors to remove entries for variables that have been removed.
+
+  Args:
+    graph_def: A GraphDef proto to be transformed.
+    op: The save or restore op to update.
+    removed_op_names: List of op names that have been removed.
+  """
+  name = op.name + '/tensor_names'
+  shape = op.name + '/shape_and_slices'
+  name_op = _find_op(graph_def, name)
+  shape_op = _find_op(graph_def, shape)
+  name_op_value_tensor = name_op.attr['value'].tensor
+  shape_op_value_tensor = shape_op.attr['value'].tensor
+  names = []
+  shapes = []
+  dtypes = []
+  for index, value in enumerate(name_op_value_tensor.string_val):
+    if not _is_removed(compat.as_str(value), removed_op_names):
+      names.append(value)
+      shapes.append(shape_op_value_tensor.string_val[index])
+      dtypes.append(op.attr['dtypes'].list.type[index])
+  name_op_value_tensor.string_val[:] = names
+  name_op_value_tensor.tensor_shape.dim[0].size = len(names)
+  shape_op_value_tensor.string_val[:] = shapes
+  shape_op_value_tensor.tensor_shape.dim[0].size = len(shapes)
+  op.attr['dtypes'].list.type[:] = dtypes
+
+  name_op.attr['_output_shapes'].list.shape[0].dim[0].size = len(names)
+  shape_op.attr['_output_shapes'].list.shape[0].dim[0].size = len(shapes)
+
+
+def _sparsify_gather_transform(graph_def, input_names, output_names,
+                               initializer_names, checkpoint_path):
+  """Handle the sparsify gather transform.
+
+  Provides the transform the checkpoint and keeps track of the newly created
+  initializer nodes.
+
+  Args:
+    graph_def: A GraphDef proto to be transformed.
+    input_names: Names of input nodes.
+    output_names: Names of output nodes.
+    initializer_names: Dictionary of the "infrastructural" nodes (initializers,
+      save and restore ops, etc.). The keys in this dictionary
+      indicate the collection where these nodes were obtained from.
+    checkpoint_path:  A path to a checkpoint.
+
+  Returns:
+    A tuple containing the GraphDef and a Dict of updated initializer nodes.
+  Raises:
+    ValueError: if the restore_op_name does not have the expected format.
+  """
+  # Ensure that sparsify_shared_init_op is unique.
+  sparsify_shared_init_op = 'sparify_gather_init_op'
+  while _find_op(graph_def, sparsify_shared_init_op):
+    sparsify_shared_init_op += '_1'
+
+  input_flag = ''
+  if checkpoint_path:
+    input_flag = 'input_checkpoint="%s", ' % checkpoint_path
+
+  sparsify_cmd = [
+      'sparsify_gather(%sgroup_init_node="%s")' % (input_flag,
+                                                   sparsify_shared_init_op)
+  ]
+
+  starting_op_names = [node.name for node in graph_def.node]
+
+  graph_def = _gtt_transforms(graph_def, input_names, output_names,
+                              initializer_names, sparsify_cmd)
+  ending_op_names = [node.name for node in graph_def.node]
+  removed_op_names = list(set(starting_op_names) - set(ending_op_names))
+  removed_op_names.sort()
+
+  for op_index, op_name in enumerate(removed_op_names):
+    op_name_parts = op_name.rsplit('/', 1)
+    # Remove part to get the checkpoint names used by the saver.
+    if len(op_name_parts) == 2 and op_name_parts[1].startswith('part_'):
+      removed_op_names[op_index] = op_name_parts[0]
+    else:
+      removed_op_names[op_index] = op_name
+
+  # Obtain newly created table inits from gtt sparsify transform.
+  added_table_inits = []
+  for index, node in enumerate(graph_def.node):
+    if node.name == sparsify_shared_init_op:
+      added_table_inits = [n.lstrip('^') for n in node.input]
+
+      table_initializers = initializer_names.get(
+          _ops.GraphKeys.TABLE_INITIALIZERS, [])
+      table_initializers.extend(added_table_inits)
+      initializer_names[_ops.GraphKeys.TABLE_INITIALIZERS] = table_initializers
+
+      del graph_def.node[index]
+      break
+
+  # Add inits to existing shared init op.
+  node = _find_op(graph_def, _get_shared_init_op(initializer_names))
+  for init in added_table_inits:
+    node.input.append('^' + init)
+
+  # Update saver.
+  for node in graph_def.node:
+    if node.name.endswith('SaveV2'):
+      _clean_save_and_restore(graph_def, node, removed_op_names)
+
+  return (graph_def, initializer_names)
+
+
+def _do_transforms(graph_def,
+                   input_names,
+                   output_names,
+                   initializer_names,
+                   transforms,
+                   saver_def=None,
+                   checkpoint_path=None):
+  """Apply requested transforms to a GraphDef, including freezing.
 
   Args:
     graph_def: A GraphDef proto to be transformed.
@@ -62,54 +272,49 @@ def _do_transforms(graph_def, input_names, output_names, initializer_names,
       indicate the collection where these nodes were obtained from.
     transforms: A list of strings naming the graph transforms to be applied in
       order.  These transform names are exactly those supported by the Graph
-      Transform Tool, with the addition of the 'freeze_graph' transform.
+      Transform Tool, with the addition of the 'freeze_graph' and
+      'sparsify_gather' transforms.
     saver_def: A SaverDef proto used for restoring a checkpoint during freezing,
       if needed (default None).
     checkpoint_path:  A path to a checkpoint to restore during freezing,
       if needed (default None).
   Returns:
-    The transformed GraphDef.
+     A tuple containing the GraphDef and a Dict of updated initializer nodes.
   """
+  transformed_graph_def = _graph_pb2.GraphDef()
+  transformed_graph_def.CopyFrom(graph_def)
+  transformed_initializer_names = initializer_names.copy()
+
   if not transforms:
-    transformed_graph_def = _graph_pb2.GraphDef()
-    transformed_graph_def.CopyFrom(graph_def)
-    return transformed_graph_def
-  else:
-    try:
-      freeze_index = transforms.index(_FREEZE_GRAPH_TRANSFORM_NAME)
-    except ValueError:
-      # No freeze_graph requested, so do all transforms in one go.
-      initializer_names_flat = sorted(
-          [k for l in initializer_names.values() for k in l])
-      all_output_names = output_names + initializer_names_flat
-      return _graph_transforms.TransformGraph(
-          graph_def, input_names, all_output_names, transforms)
+    return transformed_graph_def, transformed_initializer_names
 
-    # freeze_graph requested, possibly with transforms before and after.
-    phase_1_transforms = transforms[:freeze_index]
-    phase_2_transforms = transforms[freeze_index+1:]
+  current_gtt_transforms = []
+  for t in transforms:
+    if t == _FREEZE_GRAPH_TRANSFORM:
+      transformed_graph_def = _gtt_transforms(
+          transformed_graph_def, input_names, output_names,
+          transformed_initializer_names, current_gtt_transforms)
+      output_node_names = [_op_name(x) for x in output_names]
+      transformed_graph_def, transformed_initializer_names = _freeze_transform(
+          transformed_graph_def, output_node_names,
+          transformed_initializer_names, saver_def, checkpoint_path)
+      current_gtt_transforms = []
+    elif t == _SPARSIFY_GATHER_TRANSFORM:
+      transformed_graph_def = _gtt_transforms(
+          transformed_graph_def, input_names, output_names,
+          transformed_initializer_names, current_gtt_transforms)
+      transformed_graph_def, transformed_initializer_names = (
+          _sparsify_gather_transform(
+              transformed_graph_def, input_names, output_names,
+              transformed_initializer_names, checkpoint_path))
+      current_gtt_transforms = []
+    else:
+      current_gtt_transforms.append(t)
 
-    graph_def = _do_transforms(
-        graph_def, input_names, output_names, initializer_names,
-        phase_1_transforms, saver_def, checkpoint_path)
-    output_node_names = [_op_name(x) for x in output_names]
-    graph_def = _freeze_graph_with_def_protos(
-        graph_def, output_node_names,
-        initializer_names[_ops.GraphKeys.TABLE_INITIALIZERS],
-        initializer_names[_saved_model_constants.LEGACY_INIT_OP_KEY][0],
-        saver_def, checkpoint_path)
-    # No need for saver or checkpoint anymore
-    pruned_initializer_names = {}
-    # Freeze graph will prune all initializers and shared init nodes if table
-    # initializers are not present. Handle this case in future GTT transforms.
-    if initializer_names[_ops.GraphKeys.TABLE_INITIALIZERS]:
-      pruned_initializer_names[_ops.GraphKeys.TABLE_INITIALIZERS] = (
-          initializer_names[_ops.GraphKeys.TABLE_INITIALIZERS])
-      pruned_initializer_names[_saved_model_constants.LEGACY_INIT_OP_KEY] = (
-          initializer_names[_saved_model_constants.LEGACY_INIT_OP_KEY])
-
-    return _do_transforms(graph_def, input_names, output_names,
-                          pruned_initializer_names, phase_2_transforms)
+  transformed_graph_def = _gtt_transforms(
+      transformed_graph_def, input_names, output_names,
+      transformed_initializer_names, current_gtt_transforms)
+  return transformed_graph_def, transformed_initializer_names
 
 
 def _connect_to_shared_init_op(graph_def, shared_init_op_name,
@@ -296,7 +501,8 @@ def _add_pruned_saver(base_meta_graph_def, meta_graph_def, removed_op_names):
 
     # TODO(b/63447631): Once we strip unused variables, remove references to
     # them from save and restore ops.  Retain those ops only if they also refer
-    # to retained Variables.
+    # to retained Variables. See if we can use _clean_save_and_restore() for
+    # this.
 
     # saver_name, restore_all = restore_op_name.rsplit('/', 1)
     # if restore_all != 'restore_all':
@@ -412,7 +618,7 @@ def _get_all_protos_from_collection(meta_graph_def, collection_key):
 def _is_removed(tensor_name, removed_op_names):
   """Determine whether the named tensor is an output of a removed op."""
   for removed_op_name in removed_op_names:
-    if tensor_name.startswith(removed_op_name):
+    if tensor_name.split(':')[0] == removed_op_name:
       return True
   return False
 
@@ -432,9 +638,17 @@ def _is_removed_mentioned(s, removed_op_names):
   Returns:
     True if any removed op is mentioned in the given object, False otherwise.
   """
+  # A common approach taken by some of the transforms in gtt is to add new nodes
+  # that have the same prefix as the node they are removing. For example, if
+  # the original node name was /foo, they may remove that node and add in
+  # /foo/bar. This regex ensures that we handle these two nodes
+  # as separate entities.  It matches on nodes having names in the form of
+  # '/foo/bar_x' as well as nodes having names in the form of 'foo.'
+  s_names = re.findall(r'((?:[\/]?[a-zA-Z]+[0-9\_]*)*)', compat.as_str_any(s))
   for removed_op_name in removed_op_names:
-    if removed_op_name in compat.as_str_any(s):
-      return True
+    for s_name in s_names:
+      if s_name.endswith(removed_op_name):
+        return True
   return False
 
 
@@ -453,6 +667,32 @@ def _check_tensor_not_removed(tensor_name, removed_op_names):
   if _is_removed(tensor_name, removed_op_names):
     raise ValueError(
         'Expected Tensor, but it was removed: {}'.format(tensor_name))
+
+
+def _add_new_inits_to_collection(meta_graph_def, updated_initializer_names):
+  """Add new inits to collection.
+
+  Args:
+    meta_graph_def: The MetaGraphDef protocol buffer to update.
+    updated_initializer_names: Dictionary of the updated "infrastructural" nodes
+      (initializers, save and restore ops, etc.). The keys in this dictionary
+      indicate the collection where these nodes were obtained from.
+
+  Raises:
+    ValueError: if the tensor was removed.
+  """
+  # TODO(dzats): Extend this to support all collections.
+  if _ops.GraphKeys.TABLE_INITIALIZERS in updated_initializer_names:
+    orig_table_inits = _get_all_node_names_from_collection(
+        meta_graph_def, _ops.GraphKeys.TABLE_INITIALIZERS)
+    orig_table_inits = orig_table_inits if orig_table_inits else []
+    updated_table_inits = updated_initializer_names[
+        _ops.GraphKeys.TABLE_INITIALIZERS]
+    new_table_inits = list(set(updated_table_inits) - set(orig_table_inits))
+    new_table_inits.sort()
+    meta_graph_def.collection_def[
+        _ops.GraphKeys.TABLE_INITIALIZERS].node_list.value.extend(
+            new_table_inits)
 
 
 def meta_graph_transform(
@@ -478,13 +718,9 @@ def meta_graph_transform(
 
   initializer_names = _find_all_mandatory_retain_ops(base_meta_graph_def)
 
-  transformed_graph_def = _do_transforms(
-      base_meta_graph_def.graph_def,
-      input_names,
-      output_names,
-      initializer_names,
-      transforms,
-      base_meta_graph_def.saver_def,
+  transformed_graph_def, updated_initializer_names = _do_transforms(
+      base_meta_graph_def.graph_def, input_names, output_names,
+      initializer_names, transforms, base_meta_graph_def.saver_def,
       checkpoint_path)
 
   meta_graph_def.graph_def.CopyFrom(transformed_graph_def)
@@ -503,7 +739,7 @@ def meta_graph_transform(
   # TODO(b/63447631): Revisit this once the problem is addressed. Currently
   # _add_pruned_saver assumes that the save and restore nodes have not been
   # removed but freeze_graph (correctly) removes them.
-  if _FREEZE_GRAPH_TRANSFORM_NAME not in transforms:
+  if _FREEZE_GRAPH_TRANSFORM not in transforms:
     _add_pruned_saver(base_meta_graph_def, meta_graph_def, removed_op_names)
 
   # Copy collections, excluding any pruned nodes
@@ -511,6 +747,9 @@ def meta_graph_transform(
     _add_pruned_collection(
         base_meta_graph_def, meta_graph_def, collection_name,
         removed_op_names)
+
+  # Append newly added initalizers to collection.
+  _add_new_inits_to_collection(meta_graph_def, updated_initializer_names)
 
   # Copy signature_defs, excluding any pruned nodes
   for signature_name in base_meta_graph_def.signature_def:
