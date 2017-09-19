@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/rdma.h"
 #include <cstdlib>
+#include <fcntl.h>
 #include "tensorflow/contrib/verbs/verbs_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -181,6 +182,99 @@ uint8_t set_port(ibv_device *ibv_dev) {
   return port_num;
 }
 
+int null_gid(union ibv_gid *gid) {
+  return !(gid->raw[8] | gid->raw[9] | gid->raw[10] | gid->raw[11] |
+    gid->raw[12] | gid->raw[13] | gid->raw[14] | gid->raw[15]);
+}
+
+int read_sysfs_file(const char *dir, const char *file, char *buf, size_t size) {
+  char *path;
+  int fd;
+  int len;
+
+  if (asprintf(&path, "%s/%s", dir, file) < 0)
+    return -1;
+
+  fd = open(path, O_RDONLY);
+  if (fd < 0) {
+    free(path);
+    return -1;
+  }
+
+  len = read(fd, buf, size);
+
+  close(fd);
+  free(path);
+
+  if (len > 0 && buf[len - 1] == '\n')
+    buf[--len] = '\0';
+
+  return len;
+}
+
+bool is_gid_type_rocev2(ibv_context* context,uint8_t port_num, uint8_t index) {
+  char name[32];
+  char buff[41];
+
+  snprintf(name, sizeof(name), "ports/%d/gid_attrs/types/%d",  port_num, index);
+  if (read_sysfs_file(context->device->ibdev_path, name, buff, sizeof(buff)) <= 0) {
+      return false;
+  }
+  return !strcmp(buff, "RoCE v2");
+}
+
+uint8_t set_gid(RdmaParams *params) {
+  ibv_port_attr port_attr;
+  ibv_context* context;
+  char const *gid_temp;
+  string gid_str;
+  int rc, i, default_gid, gids_num = 0, v2_ip_num = 0;
+  union ibv_gid gid;
+  uint8_t gid_index = 0;
+
+  context = open_device(params->ibv_dev);
+  rc = ibv_query_port(context, params->port_num, &port_attr);
+  CHECK(!rc) << "Failed to query the port" << params->port_num;
+
+  for (i = 0; i < port_attr.gid_tbl_len; i++) {
+    rc = ibv_query_gid(context, params->port_num, i, &gid);
+    CHECK(!rc) << "Failed to query gid to port " << (int)params->port_num << " index " <<  i;
+    if (!null_gid(&gid)) {
+      gids_num++;
+      if (gid.raw[0] == 0 && gid.raw[1] == 0 && is_gid_type_rocev2(context, params->port_num, i)) {
+        if (v2_ip_num == 0) {
+        //can be overwritten by RDMA_GID_INDEX later
+        gid_index = i;
+        }
+        v2_ip_num++;
+      }
+    }
+  }
+  switch(port_attr.link_layer){
+    case (IBV_LINK_LAYER_ETHERNET):
+      if (v2_ip_num == 0) {
+        LOG(INFO) << "RoCE v2 is not configured";
+      }
+      gid_temp = getenv("RDMA_GID_INDEX");
+      gid_str = gid_temp == NULL ? string() : string(gid_temp);
+      if (!gid_str.empty()) {
+        gid_index = stoi(gid_str);
+        CHECK(gid_index < gids_num) << "RDMA_GID_INDEX should be less than GIDs amount" << gids_num;
+        CHECK(is_gid_type_rocev2(context, params->port_num, gid_index)) << "RoCE v2 is not available for GID_INDEX " << (int)gid_index;
+      }
+      else {
+        CHECK(v2_ip_num <= 1) << "More then one IP is available, please specify GID_INDEX";
+      }
+      break;
+    case (IBV_LINK_LAYER_INFINIBAND): //no need in GID index
+      break;
+    default:
+      CHECK(false) << "Unknown port link layer!";
+  }
+  LOG(INFO) << "GID index is set to " << (int)gid_index;
+  return gid_index;
+}
+
 uint8_t set_pkey() {
   uint8_t pkey_index = 0;
   string pkey_index_s;
@@ -309,12 +403,12 @@ uint8_t set_mtu() {
 }
 
 RdmaParams params_init(){
-
   RdmaParams params;
 
   params.ibv_dev = set_device();
   CHECK(params.ibv_dev)  << "Params_init set_device failed";
   params.port_num = set_port(params.ibv_dev);
+  params.sgid_index = set_gid(&params);
   params.pkey_index = set_pkey();
   params.queue_depth = set_queue_depth();
   params.timeout = set_timeout();
@@ -517,13 +611,13 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
   // Local address
   {
     struct ibv_port_attr attr;
-    CHECK(!ibv_query_port(adapter_->context_, (uint8_t)1, &attr))
+    CHECK(!ibv_query_port(adapter_->context_, adapter_->params_.port_num , &attr))
         << "Query port";
     self_.lid = attr.lid;
     self_.qpn = qp_->qp_num;
     self_.psn = static_cast<uint32_t>(random::New64()) & 0xffffff;
     union ibv_gid gid;
-    CHECK(!ibv_query_gid(adapter_->context_, (uint8_t)1, 0, &gid))
+    CHECK(!ibv_query_gid(adapter_->context_, adapter_->params_.port_num, adapter_->params_.sgid_index, &gid))
         << "Query gid";
     self_.snp = gid.global.subnet_prefix;
     self_.iid = gid.global.interface_id;
@@ -728,7 +822,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     memset(&attr, 0, sizeof(ibv_qp_attr));
     attr.qp_state = IBV_QPS_RTR;
     struct ibv_port_attr port_attr;
-    CHECK(!ibv_query_port(adapter_->context_, (uint8_t)1, &port_attr))
+    CHECK(!ibv_query_port(adapter_->context_, adapter_->params_.port_num, &port_attr))
         << "Query port failed";
     // This assumes both QP's ports are configured with the same MTU
     if (adapter_->params_.mtu == 0)
@@ -752,7 +846,8 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.ah_attr.dlid = remoteAddr.lid;
     attr.ah_attr.sl = adapter_->params_.sl;
     attr.ah_attr.src_path_bits = 0;
-    attr.ah_attr.port_num = 1;
+    attr.ah_attr.port_num = adapter_->params_.port_num;
+    attr.ah_attr.grh.sgid_index = adapter_->params_.sgid_index;
 
     int r;
     CHECK(!(r = ibv_modify_qp(qp_, &attr,
