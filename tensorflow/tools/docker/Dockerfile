@@ -23,10 +23,11 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     python get-pip.py && \
     rm get-pip.py
 
+RUN python2 -m pip install ipykernel
+RUN python2 -m ipykernel install --user
 RUN pip --no-cache-dir install \
         Pillow \
         h5py \
-        ipykernel \
         jupyter \
         matplotlib \
         numpy \
@@ -44,7 +45,7 @@ RUN pip --no-cache-dir install \
 
 # Install TensorFlow CPU version from central repo
 RUN pip --no-cache-dir install \
-    http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.0.0-cp27-none-linux_x86_64.whl
+    http://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.3.0rc2-cp27-none-linux_x86_64.whl
 # --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 
 # RUN ln -s /usr/bin/python3 /usr/bin/python#
