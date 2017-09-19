@@ -2958,7 +2958,9 @@ class Graph(object):
           "Cannot add function created without C API support to graph "
           "created with C API support")
       with errors.raise_exception_on_not_ok_status() as status:
-        c_api.TF_GraphAddFunction(self._c_graph, function._c_func, status)
+        gradient = function._grad_func._c_func if function._grad_func else None
+        c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient,
+                                   status)
       # pylint: enable=protected-access
 
   @property

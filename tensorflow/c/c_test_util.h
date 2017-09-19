@@ -94,6 +94,14 @@ bool GetFunctionDef(TF_Function* func, tensorflow::FunctionDef* func_def);
 bool GetAttrValue(TF_Operation* oper, const char* attr_name,
                   tensorflow::AttrValue* attr_value, TF_Status* s);
 
+// Returns a sorted vector of std::pair<function_name, gradient_func> from
+// graph_def.library().gradient()
+std::vector<std::pair<string, string>> GetGradDefs(
+    const tensorflow::GraphDef& graph_def);
+
+// Returns a sorted vector of names contained in `grad_def`
+std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def);
+
 class CSession {
  public:
   CSession(TF_Graph* graph, TF_Status* s);

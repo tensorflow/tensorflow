@@ -922,14 +922,29 @@ TF_CAPI_EXPORT extern void TF_GraphImportGraphDef(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status);
 
-// Add `function` to graph `g`. Once `function` is added to `g`,
-// it can be called by creating an operation using the function's name.
+// Adds a copy of function `func` and optionally its gradient function `grad`
+// to `g`. Once `func`/`grad` is added to `g`, it can be called by creating
+// an operation using the function's name.
+// Any changes to `func`/`grad` (including deleting it) done after this method
+// returns, won't affect the copy of `func`/`grad` in `g`.
+// If `func` or `grad` are already in `g`, TF_GraphCopyFunction has no
+// effect on them, but can establish the function->gradient relationship
+// between them if `func` does not already have a gradient. If `func` already
+// has a gradient different from `grad`, an error is returned.
 //
-// If successful, status is set to OK and function is added to g
-// Otherwise, status is set to the encountered error and g is unmodified
-TF_CAPI_EXPORT extern void TF_GraphAddFunction(TF_Graph* g,
-                                               const TF_Function* function,
-                                               TF_Status* status);
+// `func` must not be null.
+// If `grad` is null and `func` is not in `g`, `func` is added without a
+// gradient.
+// If `grad` is null and `func` is in `g`, TF_GraphCopyFunction is a noop.
+// `grad` must have appropriate signature as described in the doc of
+// GradientDef in tensorflow/core/framework/function.proto.
+//
+// If successful, status is set to OK and `func` and `grad` are added to `g`.
+// Otherwise, status is set to the encountered error and `g` is unmodified.
+TF_CAPI_EXPORT extern void TF_GraphCopyFunction(TF_Graph* g,
+                                                const TF_Function* func,
+                                                const TF_Function* grad,
+                                                TF_Status* status);
 
 // Note: The following function may fail on very large protos in the future.
 
@@ -1115,7 +1130,10 @@ TF_CAPI_EXPORT extern void TF_FunctionToFunctionDef(TF_Function* func,
                                                     TF_Buffer* output_func_def,
                                                     TF_Status* status);
 
-TF_CAPI_EXPORT extern void TF_DeleteFunction(TF_Function*);
+// Frees the memory used by the `func` struct.
+// TF_DeleteFunction is a noop if `func` is null.
+// Deleting a function does not remove it from any graphs it was copied to.
+TF_CAPI_EXPORT extern void TF_DeleteFunction(TF_Function* func);
 
 // TODO(josh11b): Register OpDef, available to all operations added
 // to this graph.
