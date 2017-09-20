@@ -667,9 +667,26 @@ class PoolingDescriptor {
   std::vector<int64> strides_;
 };
 
-typedef int64 AlgorithmType;
-constexpr AlgorithmType kDefaultAlgorithm = -1;
-constexpr AlgorithmType kNoSuitableAlgorithmFound = -2;
+// Collects parameters for DNN algorithms
+class AlgorithmDesc {
+ public:
+  typedef int64 Index;
+  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(false) {}
+  AlgorithmDesc(Index a, bool use_tensor_ops)
+      : algo_(a), tensor_ops_enabled_(use_tensor_ops) {}
+  bool is_default() const { return algo_ == kDefaultAlgorithm; }
+  bool tensor_ops_enabled() const { return tensor_ops_enabled_; }
+  Index algo_id() const { return algo_; }
+  bool operator==(const AlgorithmDesc& other) const {
+    return this->algo_ == other.algo_ &&
+           this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
+  }
+
+ private:
+  enum { kDefaultAlgorithm = -1 };
+  Index algo_;
+  bool tensor_ops_enabled_;
+};
 
 // Describes the result from a perf experiment.
 //
@@ -679,16 +696,16 @@ constexpr AlgorithmType kNoSuitableAlgorithmFound = -2;
 class ProfileResult {
  public:
   bool is_valid() const {
-    return (algorithm_ != kDefaultAlgorithm &&
+    return (!algorithm_.is_default() &&
             elapsed_time_in_ms_ != std::numeric_limits<float>::max());
   }
-  AlgorithmType algorithm() const { return algorithm_; }
-  void set_algorithm(AlgorithmType val) { algorithm_ = val; }
+  AlgorithmDesc algorithm() const { return algorithm_; }
+  void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
  private:
-  AlgorithmType algorithm_ = kDefaultAlgorithm;
+  AlgorithmDesc algorithm_;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
 
@@ -700,17 +717,14 @@ class ProfileResult {
 //    the allocation for the scratch memory fails.
 class AlgorithmConfig {
  public:
-  AlgorithmConfig()
-      : algorithm_(kDefaultAlgorithm),
-        algorithm_no_scratch_(kDefaultAlgorithm) {}
-  explicit AlgorithmConfig(AlgorithmType algorithm)
-      : algorithm_(algorithm), algorithm_no_scratch_(kDefaultAlgorithm) {}
-  AlgorithmConfig(AlgorithmType algorithm, AlgorithmType algorithm_no_scratch)
+  AlgorithmConfig() {}
+  explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
+  AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
-  AlgorithmType algorithm() const { return algorithm_; }
-  void set_algorithm(AlgorithmType val) { algorithm_ = val; }
-  AlgorithmType algorithm_no_scratch() const { return algorithm_no_scratch_; }
-  void set_algorithm_no_scratch(AlgorithmType val) {
+  AlgorithmDesc algorithm() const { return algorithm_; }
+  void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
+  AlgorithmDesc algorithm_no_scratch() const { return algorithm_no_scratch_; }
+  void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
   bool operator==(const AlgorithmConfig& other) const {
@@ -723,8 +737,8 @@ class AlgorithmConfig {
   string ToString() const;
 
  private:
-  AlgorithmType algorithm_;
-  AlgorithmType algorithm_no_scratch_;
+  AlgorithmDesc algorithm_;
+  AlgorithmDesc algorithm_no_scratch_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -944,8 +958,8 @@ class DnnSupport {
   //    convolution result.
   //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
   //    space in order to speed up the convolution operation.
-  //  algorithm: an integer to specify which algorithm should be used for the
-  //    operation. kDefaultAlgorithm means the system will pick an algorithm
+  //  algorithm: specifies which algorithm should be used for the
+  //    operation. If algorithm.is_default(), the system will pick an algorithm
   //    by default. The coding of the algorithm is be interpretted by the
   //    underlying implementation.
   //  output_profile_result: the output profile result for this call. The
@@ -1112,7 +1126,8 @@ class DnnSupport {
 
   // Return a list of algorithms supported by the forward convolution pass.
   virtual bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused,
+      std::vector<AlgorithmDesc::Index>* out_algorithms);
 
   // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
   // coefficient_scales specifies the scaling of each column of coefficients:
@@ -1191,7 +1206,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused,
+      std::vector<AlgorithmDesc::Index>* out_algorithms);
 
   virtual bool DoConvolveBackwardData(
       Stream* stream, const FilterDescriptor& filter_descriptor,
@@ -1239,7 +1255,8 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused,
+      std::vector<AlgorithmDesc::Index>* out_algorithms);
 
   virtual bool DoConvolveBackwardFilter(
       Stream* stream, const BatchDescriptor& input_descriptor,

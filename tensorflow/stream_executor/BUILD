@@ -58,6 +58,7 @@ cc_library(
     deps = [
         ":stream_executor",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:ops_util",
         "@local_config_cuda//cuda:cuda_headers",
     ] + if_cuda_is_configured([
         "//tensorflow/core:cuda",
