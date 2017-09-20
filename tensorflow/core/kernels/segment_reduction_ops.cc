@@ -243,7 +243,8 @@ class SegmentSumGPUOp : public AsyncOpKernel {
     }
 
     perftools::gputools::DeviceMemoryBase output_rows_device(
-        (void*)(segment_ids.template flat<Index>().data() + (num_indices - 1)));
+        const_cast<Tensor&>(segment_ids).template flat<Index>().data() +
+        (num_indices - 1));
     ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
 
     auto stream = context->op_device_context()->stream();
