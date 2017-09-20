@@ -151,7 +151,7 @@ class XlaCompilerTest : public ::testing::Test {
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 };
 
-// Tests compilation of an empty graph.
+// Tests compilation and execution of an empty graph.
 TEST_F(XlaCompilerTest, EmptyReturnValues) {
   XlaCompiler compiler(DefaultOptions());
 
@@ -161,8 +161,7 @@ TEST_F(XlaCompilerTest, EmptyReturnValues) {
                                      std::move(graph),
                                      /*args=*/{}, &result));
 
-  // No computation should be generated.
-  EXPECT_EQ(0, result.computation->handle().handle());
+  TF_ASSERT_OK(client_->Execute(*result.computation, {}).status());
 }
 
 // Tests compilation and execution of a graph that adds two tensors.

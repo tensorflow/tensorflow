@@ -259,72 +259,70 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   XlaLocalRuntimeContext local_runtime_context;
 
   std::unique_ptr<xla::ShapedBuffer> output;
-  if (!kernel->computation->IsNull()) {
-    // Build xla::ShapedBuffers that point directly to the Tensor buffers.
-    std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers;
-    arg_buffers.reserve(kernel->xla_input_shapes.size() + 1);
-    arg_buffers.resize(kernel->xla_input_shapes.size());
-    std::vector<xla::ShapedBuffer*> arg_ptrs(arg_buffers.size());
+  // Build xla::ShapedBuffers that point directly to the Tensor buffers.
+  std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers;
+  arg_buffers.reserve(kernel->xla_input_shapes.size() + 1);
+  arg_buffers.resize(kernel->xla_input_shapes.size());
+  std::vector<xla::ShapedBuffer*> arg_ptrs(arg_buffers.size());
 
-    const int first_variable_arg = ctx->num_inputs() - num_resource_args_;
-    // Pass remaining parameters.
-    const Tensor* t;
-    for (int i = 0; i < kernel->xla_input_shapes.size(); ++i) {
-      int arg_num = kernel->input_mapping[i];
-      const xla::Shape& shape = kernel->xla_input_shapes[i];
-      if (arg_num >= first_variable_arg) {
-        t = &(variables[arg_num - first_variable_arg].value);
-      } else {
-        t = &(ctx->input(arg_num));
-      }
-
-      gpu::DeviceMemoryBase dmem = gpu::DeviceMemoryBase(
-          const_cast<char*>(t->tensor_data().data()), t->tensor_data().size());
-
-      arg_buffers[i] =
-          xla::ShapedBuffer::MakeArrayShapedBuffer(
-              shape, client->platform(), client->default_device_ordinal(), dmem)
-              .ConsumeValueOrDie();
-      arg_ptrs[i] = arg_buffers[i].get();
+  const int first_variable_arg = ctx->num_inputs() - num_resource_args_;
+  // Pass remaining parameters.
+  const Tensor* t;
+  for (int i = 0; i < kernel->xla_input_shapes.size(); ++i) {
+    int arg_num = kernel->input_mapping[i];
+    const xla::Shape& shape = kernel->xla_input_shapes[i];
+    if (arg_num >= first_variable_arg) {
+      t = &(variables[arg_num - first_variable_arg].value);
+    } else {
+      t = &(ctx->input(arg_num));
     }
 
-    // Make the final parameter point at local_runtime_context.
-    if (kernel->requires_runtime_context) {
-      gpu::DeviceMemoryBase local_runtime_context_dmem(
-          &local_runtime_context, sizeof(local_runtime_context));
-      arg_buffers.push_back(
-          xla::ShapedBuffer::MakeArrayShapedBuffer(
-              xla::ShapeUtil::MakeOpaqueShape(), client->platform(),
-              client->default_device_ordinal(), local_runtime_context_dmem)
-              .ConsumeValueOrDie());
-      arg_ptrs.push_back(arg_buffers.back().get());
-    }
+    gpu::DeviceMemoryBase dmem = gpu::DeviceMemoryBase(
+        const_cast<char*>(t->tensor_data().data()), t->tensor_data().size());
 
-    // Execute the computation.
-    VLOG(2) << "Executing computation.";
-    xla::ExecutableRunOptions run_options;
-    run_options.set_stream(stream);
-    run_options.set_allocator(&xla_allocator);
-    run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
-    Env* env = Env::Default();
-    auto start_time = env->NowMicros();
-    auto run_result = executable->Run(arg_ptrs, run_options);
-    OP_REQUIRES(ctx, run_result.ok(), run_result.status());
+    arg_buffers[i] =
+        xla::ShapedBuffer::MakeArrayShapedBuffer(
+            shape, client->platform(), client->default_device_ordinal(), dmem)
+            .ConsumeValueOrDie();
+    arg_ptrs[i] = arg_buffers[i].get();
+  }
 
-    if (local_runtime_context.error) {
-      ctx->CtxFailure(errors::InvalidArgument(
-          "Compiled kernel returned error: ", local_runtime_context.error_msg));
-      return;
-    }
+  // Make the final parameter point at local_runtime_context.
+  if (kernel->requires_runtime_context) {
+    gpu::DeviceMemoryBase local_runtime_context_dmem(
+        &local_runtime_context, sizeof(local_runtime_context));
+    arg_buffers.push_back(
+        xla::ShapedBuffer::MakeArrayShapedBuffer(
+            xla::ShapeUtil::MakeOpaqueShape(), client->platform(),
+            client->default_device_ordinal(), local_runtime_context_dmem)
+            .ConsumeValueOrDie());
+    arg_ptrs.push_back(arg_buffers.back().get());
+  }
 
-    output = std::move(run_result.ValueOrDie());
-    auto elapsed = env->NowMicros() - start_time;
-    VLOG(2) << "Elapsed time: " << elapsed << "us";
+  // Execute the computation.
+  VLOG(2) << "Executing computation.";
+  xla::ExecutableRunOptions run_options;
+  run_options.set_stream(stream);
+  run_options.set_allocator(&xla_allocator);
+  run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
+  Env* env = Env::Default();
+  auto start_time = env->NowMicros();
+  auto run_result = executable->Run(arg_ptrs, run_options);
+  OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
-    // Computation output should always be a tuple.
-    if (VLOG_IS_ON(2)) {
-      VLOG(2) << "Result tuple shape: " << output->shape().DebugString();
-    }
+  if (local_runtime_context.error) {
+    ctx->CtxFailure(errors::InvalidArgument("Compiled kernel returned error: ",
+                                            local_runtime_context.error_msg));
+    return;
+  }
+
+  output = std::move(run_result.ValueOrDie());
+  auto elapsed = env->NowMicros() - start_time;
+  VLOG(2) << "Elapsed time: " << elapsed << "us";
+
+  // Computation output should always be a tuple.
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Result tuple shape: " << output->shape().DebugString();
   }
   CHECK_EQ(ctx->num_outputs(), kernel->outputs.size());
 

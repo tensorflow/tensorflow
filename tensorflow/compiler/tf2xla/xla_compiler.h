@@ -194,8 +194,7 @@ class XlaCompiler {
     // results in the outputs of XLA computation.
     std::vector<ResourceUpdate> resource_updates;
 
-    // The XLA computation built from the tensorflow subgraph. May be null
-    // if the output consists solely of compile-time constants.
+    // The XLA computation built from the tensorflow subgraph.
     std::shared_ptr<xla::Computation> computation;
   };
 
