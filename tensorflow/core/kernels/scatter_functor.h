@@ -157,7 +157,7 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
 
     // store the result.
     mutex mu;
-    Index result = -1 GUARDED_BY(mu);
+    Index result = -1;
     auto work = [&params, &updates, &indices, &flags, flags_size, limit, &mu, &result]
             (int64 start, int64 end) {
       std::function<void(Index index, Index i)> assign_func;
