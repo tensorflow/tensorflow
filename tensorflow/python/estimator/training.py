@@ -29,7 +29,9 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import run_config as run_config_lib
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 
@@ -241,7 +243,8 @@ class _TrainingExecutor(object):
 
   def run_evaluator(self):
     """Runs task evaluator."""
-    raise UnimplementedError('Method run_evaluator has not been implemented.')
+    # TODO(xiejw): To allow execution framework to add continuous eval listener.
+    return self._start_continuous_evaluation()
 
   def run_ps(self):
     """Runs task parameter server (in training cluster spec)."""
@@ -293,3 +296,88 @@ class _TrainingExecutor(object):
     self._estimator.train(input_fn=self._train_spec.input_fn,
                           max_steps=self._train_spec.max_steps,
                           hooks=self._train_spec.hooks)
+
+  def _start_continuous_evaluation(self):
+    """Repeatedly calls `Estimator` evaluate and export until training ends."""
+    delay_secs = self._eval_spec.delay_secs
+    if delay_secs:
+      logging.info('Waiting %f secs before starting eval.', delay_secs)
+      time.sleep(delay_secs)
+
+    latest_eval_result = None
+    evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec)
+
+    while True:
+      if latest_eval_result:
+        global_step = latest_eval_result.get(ops.GraphKeys.GLOBAL_STEP)
+        if (global_step and self._train_spec.max_steps and
+            global_step >= self._train_spec.max_steps):
+          logging.info(
+              'Exiting evaluation, global_step=%s >= train max_steps=%s',
+              global_step,
+              self._train_spec.max_steps)
+          return
+
+      start = time.time()
+      latest_eval_result = evaluator.evaluate_and_export()
+
+      # Throttle if necessary.
+      elapsed_time = time.time() - start
+      difference = self._eval_spec.throttle_secs  - elapsed_time
+      if difference > 0:
+        logging.info('Waiting %f secs before starting next eval run.',
+                     difference)
+        time.sleep(difference)
+
+  class _Evaluator(object):
+    """A helper class to call `Estimator.evaluate` and export model."""
+
+    def __init__(self, estimator, eval_spec):
+      self._estimator = estimator
+      self._eval_spec = eval_spec
+      self._previous_ckpt_path = None
+      self._last_warning_time = 0
+
+    def evaluate_and_export(self):
+      """Evaluate and (maybe) export the current model.
+
+      Returns:
+        Evaluation results. Returns `None` if current round of evaluation is
+        skipped.
+      """
+      latest_ckpt_path = saver.latest_checkpoint(self._estimator.model_dir)
+      if not latest_ckpt_path:
+        self._log_err_msg('Estimator is not trained yet. Will start an '
+                          'evaluation when a checkpoint is ready.')
+        return None
+
+      if latest_ckpt_path == self._previous_ckpt_path:
+        self._log_err_msg(
+            'No new checkpoint ready for evaluation. Skip the current '
+            'evaluation pass as evaluation results are expected to be same '
+            'for the same checkpoint.')
+        return None
+
+      eval_result = self._estimator.evaluate(
+          input_fn=self._eval_spec.input_fn,
+          steps=self._eval_spec.steps,
+          name=self._eval_spec.name,
+          checkpoint_path=latest_ckpt_path,
+          hooks=self._eval_spec.hooks)
+
+      if not eval_result:
+        self._log_err_msg('Estimator evaluate returns empty result.')
+        return None
+
+      # TODO(b/65169058): Adds export once export strategies are moved.
+
+      self._last_warning_time = 0
+      self._previous_ckpt_path = latest_ckpt_path
+      return eval_result
+
+    def _log_err_msg(self, message):
+      """Prints warning `message` every 10 mins."""
+      current_time = time.time()
+      if current_time - self._last_warning_time > 600:
+        logging.warning(message)
+        self._last_warning_time = current_time

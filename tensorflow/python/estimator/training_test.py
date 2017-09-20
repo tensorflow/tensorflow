@@ -26,7 +26,10 @@ import time
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator import training
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 
@@ -34,6 +37,7 @@ _DEFAULT_EVAL_STEPS = 100
 _DEFAULT_EVAL_DELAY_SECS = 120
 _DEFAULT_EVAL_THROTTLE_SECS = 600
 _DELAY_SECS_PER_WORKER = 5
+_GLOBAL_STEP_KEY = ops.GraphKeys.GLOBAL_STEP
 _INVALID_INPUT_FN_MSG = '`input_fn` must be callable'
 _INVALID_HOOK_MSG = 'All hooks must be `SessionRunHook` instances'
 _INVALID_MAX_STEPS_MSG = 'Must specify max_steps > 0'
@@ -375,6 +379,135 @@ class TrainingExecutorRunChiefTest(_TrainingExecutorTrainingTest,
     with test.mock.patch.object(time, 'sleep') as mock_sleep:
       self._run_task(executor)
       mock_sleep.assert_not_called()
+
+
+class TrainingExecutorRunEvaluatorTest(test.TestCase):
+  """Tests run_evaluator of _TrainingExecutor."""
+
+  def _set_up_mock_est_to_train_and_evaluate_once(self, mock_est,
+                                                  mock_train_spec):
+    """Sets global step in eval result to end the while True eval loop."""
+    training_max_step = 200
+    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: training_max_step}
+    mock_train_spec.max_steps = training_max_step
+
+  @test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_evaluate_with_evaluate_spec(self, mock_latest_ckpt):
+    latest_ckpt_path = mock_latest_ckpt.return_value
+
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, steps=2, hooks=[_FakeHook()], name='cont_eval',
+        delay_secs=0, throttle_secs=0)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    executor.run_evaluator()
+
+    mock_est.evaluate.assert_called_with(
+        name='cont_eval',
+        input_fn=eval_spec.input_fn,
+        steps=eval_spec.steps,
+        checkpoint_path=latest_ckpt_path,
+        hooks=eval_spec.hooks)
+    self.assertFalse(mock_est.train.called)
+
+  @test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_evaluate_multiple_times(self, mock_latest_ckpt):
+    training_max_step = 200
+
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.evaluate.side_effect = [
+        {_GLOBAL_STEP_KEY: training_max_step // 2},
+        {_GLOBAL_STEP_KEY: training_max_step}
+    ]
+    mock_latest_ckpt.side_effect = ['path_1', 'path_2']
+
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_train_spec.max_steps = training_max_step
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, delay_secs=0, throttle_secs=0)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    executor.run_evaluator()
+    self.assertEqual(2, mock_est.evaluate.call_count)
+
+  @test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_skip_evaluation_due_to_ckpt(self, mock_latest_ckpt):
+    training_max_step = 200
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.evaluate.side_effect = [
+        {_GLOBAL_STEP_KEY: training_max_step // 2},
+        {_GLOBAL_STEP_KEY: training_max_step}
+    ]
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_train_spec.max_steps = training_max_step
+
+    self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
+
+    # First two items are invalid, next two items are same.
+    mock_latest_ckpt.side_effect = [None, '', 'same', 'same', 'path_2']
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, delay_secs=0, throttle_secs=0)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      executor.run_evaluator()
+
+    # Three checkpoint paths are invalid.
+    self.assertEqual(5, mock_latest_ckpt.call_count)
+    self.assertEqual(2, mock_est.evaluate.call_count)
+
+    # Two warning logs are expected (last warning time is reset after a
+    # successuful evaluation)
+    self.assertEqual(2, mock_log.call_count)
+
+  @test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_sleep_delay_secs(self, mock_latest_ckpt):
+    training_max_step = 200
+    delay_secs = 123
+
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: training_max_step}
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_train_spec.max_steps = training_max_step
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, steps=2, hooks=[_FakeHook()], name='cont_eval',
+        delay_secs=delay_secs, throttle_secs=0)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    with test.mock.patch.object(time, 'sleep') as mock_sleep:
+      executor.run_evaluator()
+      mock_sleep.assert_called_with(delay_secs)
+      self.assertTrue(mock_est.evaluate.called)
+
+  @test.mock.patch.object(time, 'time')
+  @test.mock.patch.object(time, 'sleep')
+  @test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_throttle_secs(self, mock_latest_ckpt, mock_sleep, mock_time):
+    throttle_secs = 123
+    operation_secs = 12
+
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, delay_secs=0, throttle_secs=throttle_secs)
+
+    mock_time.side_effect = [921, 921 + operation_secs]
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    # Disable logging as it calls time.time also.
+    with test.mock.patch.object(logging, 'info'):
+      executor.run_evaluator()
+    mock_sleep.assert_called_with(throttle_secs - operation_secs)
+    self.assertTrue(mock_est.evaluate.called)
 
 
 if __name__ == '__main__':
