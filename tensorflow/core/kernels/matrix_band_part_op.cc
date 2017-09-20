@@ -93,7 +93,7 @@ class MatrixBandPartOp : public OpKernel {
     auto output_reshaped = output->flat_inner_dims<T, 3>();
     functor::MatrixBandPartFunctor<Device, T> fn;
     fn(context, context->eigen_device<Device>(), num_lower, num_upper,
-       false /* transpose */, input_reshaped, output_reshaped);
+       input_reshaped, output_reshaped);
   }
 
  private:
@@ -126,7 +126,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename Scalar>
 struct MatrixBandPartFunctor<CPUDevice, Scalar> {
   void operator()(OpKernelContext* context, const CPUDevice& device,
-                  int num_lower_diags, int num_upper_diags, bool transpose,
+                  int num_lower_diags, int num_upper_diags,
                   typename TTypes<Scalar, 3>::ConstTensor input,
                   typename TTypes<Scalar, 3>::Tensor output) {
     const int64 b = input.dimension(0);
@@ -137,72 +137,46 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
     const int64 total_rows = b * m;
     const int64 row_cost = 10 * n;
     const bool in_place = input.data() == output.data();
-    CHECK(!(transpose && in_place));
-    if (!transpose) {
-      auto compute_shard = [=, &input, &output](int64 begin, int64 end) {
-        if (!in_place) {
-          std::fill(output.data() + begin * n, output.data() + end * n,
-                    Scalar());
-        }
-        const int64 batch_begin = begin / m;
-        const int64 batch_end = (end + m - 1) / m;
-        for (int64 batch = batch_begin; batch < batch_end; ++batch) {
-          const int64 row_begin = begin > batch * m ? begin % m : 0;
-          const int64 row_end = end < (batch + 1) * m ? end % m : m;
-          for (int64 row = row_begin; row < row_end; ++row) {
-            const int64 band_start =
-                num_lower_diags < 0
-                    ? 0
-                    : std::min(n, std::max(0ll, row - num_lower_diags));
-            const int64 band_end = num_upper_diags < 0
-                                       ? n
-                                       : std::min(static_cast<int64>(n),
-                                                  row + num_upper_diags + 1);
-            if (in_place) {
-              if (band_start > 0) {
-                std::fill(&output(batch, row, 0),
-                          &output(batch, row, band_start), Scalar());
-              }
-              if (band_end < n) {
-                std::fill(&output(batch, row, band_end), &output(batch, row, n),
-                          Scalar());
-              }
-            } else {
-              if (band_start < band_end) {
-                const Eigen::DSizes<Eigen::DenseIndex, 3> indices(batch, row,
-                                                                  band_start);
-                const Eigen::DSizes<Eigen::DenseIndex, 3> sizes(
-                    1, 1, band_end - band_start);
-                output.slice(indices, sizes) = input.slice(indices, sizes);
-              }
+    auto compute_shard = [=, &input, &output](int64 begin, int64 end) {
+      if (!in_place) {
+        std::fill(output.data() + begin * n, output.data() + end * n, Scalar());
+      }
+      const int64 batch_begin = begin / m;
+      const int64 batch_end = (end + m - 1) / m;
+      for (int64 batch = batch_begin; batch < batch_end; ++batch) {
+        const int64 row_begin = begin > batch * m ? begin % m : 0;
+        const int64 row_end = end < (batch + 1) * m ? end % m : m;
+        for (int64 row = row_begin; row < row_end; ++row) {
+          const int64 band_start =
+              num_lower_diags < 0
+                  ? 0
+                  : std::min(n, std::max(0ll, row - num_lower_diags));
+          const int64 band_end =
+              num_upper_diags < 0
+                  ? n
+                  : std::min(static_cast<int64>(n), row + num_upper_diags + 1);
+          if (in_place) {
+            if (band_start > 0) {
+              std::fill(&output(batch, row, 0), &output(batch, row, band_start),
+                        Scalar());
+            }
+            if (band_end < n) {
+              std::fill(&output(batch, row, band_end), &output(batch, row, n),
+                        Scalar());
+            }
+          } else {
+            if (band_start < band_end) {
+              const Eigen::DSizes<Eigen::DenseIndex, 3> indices(batch, row,
+                                                                band_start);
+              const Eigen::DSizes<Eigen::DenseIndex, 3> sizes(
+                  1, 1, band_end - band_start);
+              output.slice(indices, sizes) = input.slice(indices, sizes);
             }
           }
         }
-      };
-      thread_pool->ParallelFor(total_rows, row_cost, std::move(compute_shard));
-    } else {
-      output.device(device) = output.constant(Scalar());
-      auto compute_shard = [=, &input, &output](int64 begin, int64 end) {
-        const int64 batch_begin = begin / m;
-        const int64 batch_end = (end + m - 1) / m;
-        for (int64 batch = batch_begin; batch < batch_end; ++batch) {
-          const int64 row_begin = begin > batch * m ? begin % m : 0;
-          const int64 row_end = end < (batch + 1) * m ? end % m : m;
-          for (int64 row = row_begin; row < row_end; ++row) {
-            const int64 band_start =
-                num_lower_diags < 0 ? 0 : std::max(0ll, row - num_lower_diags);
-            const int64 band_end = num_upper_diags < 0
-                                       ? n
-                                       : std::min(static_cast<int64>(n),
-                                                  row + num_upper_diags + 1);
-            for (int64 col = band_start; col < band_end; ++col) {
-              output(batch, col, row) = input(batch, row, col);
-            }
-          }
-        }
-      };
-      thread_pool->ParallelFor(total_rows, row_cost, std::move(compute_shard));
-    }
+      }
+    };
+    thread_pool->ParallelFor(total_rows, row_cost, std::move(compute_shard));
   }
 };
 
@@ -216,14 +190,14 @@ TF_CALL_POD_TYPES(DEFINE_CPU_SPEC);
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                   \
-  template <>                                                                 \
-  struct MatrixBandPartFunctor<GPUDevice, T> {                                \
-    void operator()(OpKernelContext* context, const GPUDevice& device,        \
-                    int num_upper_diags, int num_lower_diags, bool transpose, \
-                    typename TTypes<T, 3>::ConstTensor input,                 \
-                    typename TTypes<T, 3>::Tensor output);                    \
-  };                                                                          \
+#define DECLARE_GPU_SPEC(T)                                            \
+  template <>                                                          \
+  struct MatrixBandPartFunctor<GPUDevice, T> {                         \
+    void operator()(OpKernelContext* context, const GPUDevice& device, \
+                    int num_upper_diags, int num_lower_diags,          \
+                    typename TTypes<T, 3>::ConstTensor input,          \
+                    typename TTypes<T, 3>::Tensor output);             \
+  };                                                                   \
   extern template struct MatrixBandPartFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);

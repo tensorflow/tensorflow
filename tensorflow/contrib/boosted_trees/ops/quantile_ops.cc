@@ -18,7 +18,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
+namespace boosted_trees {
 using shape_inference::InferenceContext;
 using shape_inference::DimensionHandle;
 using shape_inference::ShapeHandle;
@@ -314,5 +314,5 @@ of the buckets.
 output: Same shape as 'input', where each value of input is replaced with its corresponding bucket index.
 )doc");
 
-}  // namespace gtflow
+}  // namespace boosted_trees
 }  // namespace tensorflow

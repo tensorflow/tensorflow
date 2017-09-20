@@ -58,6 +58,7 @@ tf_custom_op_py_library(
         "python/layers/feature_column_ops.py",
         "python/layers/initializers.py",
         "python/layers/layers.py",
+        "python/layers/normalization.py",
         "python/layers/optimizers.py",
         "python/layers/regularizers.py",
         "python/layers/summaries.py",
@@ -171,6 +172,23 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "normalization_test",
+    size = "small",
+    srcs = ["python/layers/normalization_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

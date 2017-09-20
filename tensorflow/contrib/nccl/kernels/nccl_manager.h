@@ -82,8 +82,7 @@ class NcclManager {
                      perftools::gputools::StreamExecutor* executor,
                      int gpu_device_id, EventMgr* event_mgr,
                      perftools::gputools::Stream* tensor_stream,
-                     const Tensor* in_t, Tensor* temp_t,
-                     DoneCallback done_callback);
+                     const Tensor* in_t, DoneCallback done_callback);
   void AddReduceRecv(int num_devices, const string& key,
                      ncclRedOp_t reduction_op,
                      perftools::gputools::StreamExecutor* executor,

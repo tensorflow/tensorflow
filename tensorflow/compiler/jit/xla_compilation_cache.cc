@@ -37,7 +37,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-XlaCompilationCache::XlaCompilationCache(xla::Client* client,
+XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
                                          DeviceType device_type)
     : client_(client), device_type_(std::move(device_type)) {}
 XlaCompilationCache::~XlaCompilationCache() = default;
@@ -209,6 +209,38 @@ Status BuildArguments(int num_constant_args,
 
 }  // namespace
 
+Status XlaCompilationCache::BuildExecutable(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result,
+    std::unique_ptr<xla::LocalExecutable>* executable) {
+  VLOG(2) << "Compiling to local executable";
+  xla::Shape opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
+
+  std::vector<const xla::Shape*> argument_layouts(
+      result.xla_input_shapes.size());
+  for (int i = 0; i < result.xla_input_shapes.size(); ++i) {
+    argument_layouts[i] = &result.xla_input_shapes[i];
+  }
+  if (result.requires_runtime_context) {
+    // The final arg is the XlaLocalRuntimeContext*.
+    argument_layouts.push_back(&opaque_shape);
+  }
+  xla::ExecutableBuildOptions build_options;
+  build_options.set_device_ordinal(client_->default_device_ordinal());
+  build_options.set_platform(client_->platform());
+  build_options.set_result_layout(result.xla_output_shape);
+  build_options.set_has_hybrid_result(
+      options.local_executable_has_hybrid_result);
+
+  auto compile_result =
+      client_->Compile(*result.computation, argument_layouts, build_options);
+  if (!compile_result.ok()) {
+    return compile_result.status();
+  }
+  *executable = std::move(compile_result.ValueOrDie());
+  return Status::OK();
+}
+
 Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
     int num_constant_args, const std::vector<OptionalTensor>& variable_args,
@@ -280,8 +312,8 @@ Status XlaCompilationCache::Compile(
     if (entry->executable == nullptr &&
         !entry->compilation_result.computation->IsNull()) {
       XlaCompiler compiler(options);
-      entry->compilation_status = compiler.BuildExecutable(
-          entry->compilation_result, &entry->executable);
+      entry->compilation_status = BuildExecutable(
+          options, entry->compilation_result, &entry->executable);
     }
     *executable = entry->executable.get();
   }

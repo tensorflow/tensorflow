@@ -2334,7 +2334,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "qr_op",
     prefix = "qr_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_solvers",
+        ":transpose_functor",
+        ":matrix_band_part_op",
+    ]),
 )
 
 tf_kernel_library(

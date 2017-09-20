@@ -123,8 +123,9 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
 }
 
 /* static */
-bool HloOrdering::UseIsBeforeValueDefinition(const HloUse& use,
-                                             const HloValue& value) const {
+bool HloOrdering::UseIsBeforeValueDefinition(
+    const HloUse& use, const HloValue& value,
+    const HloDataflowAnalysis& dataflow) const {
   VLOG(4) << "UseIsBeforeValueDefinition(use=" << use
           << ", value=" << value.ToShortString() << ")";
   if (ExecutesBefore(use.instruction, value.defining_instruction())) {
@@ -139,7 +140,7 @@ bool HloOrdering::UseIsBeforeValueDefinition(const HloUse& use,
       CanShareOperandBufferWithUser(
           use.instruction->mutable_operand(use.operand_number),
           use.operand_index, value.defining_instruction(),
-          value.defining_index())) {
+          value.defining_index(), dataflow)) {
     VLOG(4) << "  use is value def, and instruction can share use buffer";
     return true;
   }
@@ -172,12 +173,13 @@ bool HloOrdering::UseIsBeforeValueDefinition(const HloUse& use,
       return true;
     }
   }
-  VLOG(4) << "  use is not before while";
+  VLOG(4) << "  use is not before value";
   return false;
 }
 
-bool HloOrdering::LiveRangeStrictlyBefore(const HloValue& a,
-                                          const HloValue& b) const {
+bool HloOrdering::LiveRangeStrictlyBefore(
+    const HloValue& a, const HloValue& b,
+    const HloDataflowAnalysis& dataflow) const {
   VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
           << ", b = " << b.ToShortString() << ")";
   if (!IsDefinedBefore(a, b)) {
@@ -204,7 +206,7 @@ bool HloOrdering::LiveRangeStrictlyBefore(const HloValue& a,
 
   // All uses of 'a' must be before 'b' is defined.
   for (const HloUse& use : a.uses()) {
-    if (!UseIsBeforeValueDefinition(use, b)) {
+    if (!UseIsBeforeValueDefinition(use, b, dataflow)) {
       VLOG(4) << "use of a (" << use << ") not before b is defined";
       return false;
     }
@@ -213,9 +215,11 @@ bool HloOrdering::LiveRangeStrictlyBefore(const HloValue& a,
   return true;
 }
 
-bool HloOrdering::MayInterfere(const HloValue& a, const HloValue& b) const {
+bool HloOrdering::MayInterfere(const HloValue& a, const HloValue& b,
+                               const HloDataflowAnalysis& dataflow) const {
   // Buffers without disjoint liveness may interfere.
-  return !LiveRangeStrictlyBefore(a, b) && !LiveRangeStrictlyBefore(b, a);
+  return !LiveRangeStrictlyBefore(a, b, dataflow) &&
+         !LiveRangeStrictlyBefore(b, a, dataflow);
 }
 
 HloOrderingProto HloOrdering::ToProto() const {

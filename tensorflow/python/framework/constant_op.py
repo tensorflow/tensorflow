@@ -52,35 +52,39 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 
 
-def _eager_reshape(tensor, shape):
+def _eager_reshape(tensor, shape, ctx):
   """Eager-only version of Reshape op; requires tensor is an eager Tensor."""
   attr_t = tensor.dtype.as_datatype_enum
-  attr_tshape, (shape,) = execute.args_to_matching_eager([shape], dtypes.int32)
+  attr_tshape, (shape,) = execute.args_to_matching_eager(
+      [shape], ctx, dtypes.int32)
   attr_tshape = attr_tshape.as_datatype_enum
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
-  result, = execute.execute(b"Reshape", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(
+      b"Reshape", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result
 
 
-def _eager_fill(dims, value):
+def _eager_fill(dims, value, ctx):
   """Eager-only version of Fill op; requires value is an eager Tensor."""
   attr_t = value.dtype.as_datatype_enum
-  dims = convert_to_eager_tensor(dims, dtypes.int32)
+  dims = convert_to_eager_tensor(dims, ctx, dtypes.int32)
   inputs_flat = [dims, value]
   attrs = ("T", attr_t)
-  result, = execute.execute(b"Fill", 1, inputs=inputs_flat, attrs=attrs)
+  result, = execute.execute(
+      b"Fill", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result
 
 
-def _eager_identity(tensor):
+def _eager_identity(tensor, ctx):
   """Eager-only version of Identity op; requires tensor is an eager Tensor."""
   attrs = ("T", tensor.dtype.as_datatype_enum)
-  result, = execute.execute(b"Identity", 1, inputs=[tensor], attrs=attrs)
+  result, = execute.execute(
+      b"Identity", 1, inputs=[tensor], attrs=attrs, ctx=ctx)
   return result
 
 
-def convert_to_eager_tensor(t, dtype=None):
+def convert_to_eager_tensor(t, ctx, dtype=None):
   """Converts the given `value` to an `EagerTensor`."""
   if isinstance(t, ops.EagerTensor):
     if dtype is not None and t.dtype != dtype:
@@ -90,17 +94,16 @@ def convert_to_eager_tensor(t, dtype=None):
     # Use a scalar cache. This will put each scalar of each type only once on
     # each device. Scalars don't use much device memory but copying scalars can
     # trigger memcpys which are slow.
-    ctx = context.context()
     device = ctx.device_name
     cache_key = device, t, dtype, type(t)
     scalar_cache = ctx.scalar_cache()
     tensor = scalar_cache.get(cache_key, None)
     if tensor is not None:
       return tensor
-    value = ops.EagerTensor(t, dtype=dtype)
+    value = ops.EagerTensor(t, ctx, dtype=dtype)
     scalar_cache[cache_key] = value
     return value
-  return ops.EagerTensor(t, dtype=dtype)
+  return ops.EagerTensor(t, ctx, dtype=dtype)
 
 
 def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
@@ -151,10 +154,11 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   Raises:
     TypeError if shape is incorrectly specified or unsupported.
   """
-  if not context.in_graph_mode():
+  ctx = context.context()
+  if not ctx.in_graph_mode():
     if shape is None:
-      return convert_to_eager_tensor(value, dtype)
-    t = convert_to_eager_tensor(value, dtype)
+      return convert_to_eager_tensor(value, ctx, dtype)
+    t = convert_to_eager_tensor(value, ctx, dtype)
     shape = tensor_shape.as_shape(shape)
     if shape == t.shape:
       return t
@@ -164,16 +168,16 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
     num_t = t.shape.num_elements()
     # TODO(josh11b): Implement shape -> eager tensor conversion.
     if num_t == shape.num_elements():
-      return _eager_reshape(t, shape.as_list())
+      return _eager_reshape(t, shape.as_list(), ctx)
     if num_t == 1:
       if t.dtype == dtypes.bool:
         # We don't have a Fill kernel for bool dtype on GPU. So we first run
         # Fill on CPU and then copy to GPU if needed.
         with ops.device("/device:CPU:0"):
-          x = _eager_fill(shape.as_list(), t.as_cpu_tensor())
-        return _eager_identity(x)
+          x = _eager_fill(shape.as_list(), t.as_cpu_tensor(), ctx)
+        return _eager_identity(x, ctx)
       else:
-        return _eager_fill(shape.as_list(), t)
+        return _eager_fill(shape.as_list(), t, ctx)
     raise TypeError("Eager execution of tf.constant with unsupported shape "
                     "(value has %d elements, shape is %s with %d elements)." %
                     (num_t, shape, shape.num_elements()))

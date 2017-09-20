@@ -28,9 +28,10 @@ cuda_py_test(
     srcs = ["tfe_test.py"],
     additional_deps = [
         ":tfe",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python/eager:test",
     ],
 )
 

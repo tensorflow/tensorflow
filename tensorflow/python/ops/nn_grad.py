@@ -429,7 +429,7 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
     const_fill_value = tensor_util.constant_value(g)
     return const_fill_value is not None and (const_fill_value == 0).all()
 
-  if not IsZero(grad_grad):
+  if grad_grad is not None and not IsZero(grad_grad):
     logits = op.inputs[0]
     softmax = nn_ops.softmax(logits)
 
