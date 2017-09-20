@@ -55,18 +55,16 @@ class MklAddNOp : public OpKernel {
     bool input2_in_mkl_format = mkl_context.input2_shape.IsMklTensor();
 
     // handle the case of a scalar
-    if (!input1_in_mkl_format && !input0.dims()) {
+    if (!input1_in_mkl_format && input0.dims() == 0) {
       const TensorShape& o_shape = input0.shape();
       Tensor* out_tensor = nullptr;
       mkl_context.output_shape.SetMklTensor(false);
       AllocateOutputSetMklShape(ctx, 0, &out_tensor, o_shape,
                                 mkl_context.output_shape);
-      void* out_o = const_cast<void*>(static_cast<const void*>(
-                                out_tensor->flat<T>().data()));
-      float* user_i1 = const_cast<float*>(input0.flat<T>().data());
-      float* user_i2 = const_cast<float*>(input1.flat<T>().data());
-      (static_cast<T*>(out_o))[0] =
-          std::plus<float>{}(user_i1[0], user_i2[0]);
+      float user_i1 = (input0.scalar<T>()());;
+      float user_i2 = (input1.scalar<T>()());;
+      out_tensor->scalar<T>()() =
+          std::plus<float>{}(user_i1, user_i2);
       return;
     }
 
@@ -81,11 +79,11 @@ class MklAddNOp : public OpKernel {
     if (!input1_in_mkl_format && !input2_in_mkl_format) {
       const TensorShape& o_shape = input0.shape();
       if (o_shape.num_elements() == 0) {
-       Tensor* out_tensor = nullptr;
-       mkl_context.output_shape.SetMklTensor(false);
-       AllocateOutputSetMklShape(ctx, 0, &out_tensor, o_shape,
+        Tensor* out_tensor = nullptr;
+        mkl_context.output_shape.SetMklTensor(false);
+        AllocateOutputSetMklShape(ctx, 0, &out_tensor, o_shape,
                                 mkl_context.output_shape);
-       return;
+        return;
       }
     }
 
@@ -162,8 +160,8 @@ class MklAddNOp : public OpKernel {
  private:
   typedef struct {
     int in_dims;
-    size_t* in_sizes;
-    size_t* in_strides;
+    size_t* in_sizes = nullptr;
+    size_t* in_strides = nullptr;
     dnnPrimitive_t Eltwise = nullptr;
     dnnPrimitiveAttributes_t attributes = nullptr;
     void* Eltwise_res[dnnResourceNumber];
