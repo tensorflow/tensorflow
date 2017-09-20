@@ -2172,7 +2172,7 @@ Equivalent to np.angle.
 REGISTER_OP("Conj")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {complex64, complex128} = DT_COMPLEX64")
+    .Attr("T: {complex64, complex128, variant} = DT_COMPLEX64")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns the complex conjugate of a complex number.
