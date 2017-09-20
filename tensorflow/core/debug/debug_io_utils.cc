@@ -29,6 +29,7 @@ limitations under the License.
 #pragma comment(lib, "Ws2_32.lib")
 #endif  // #ifndef PLATFORM_WINDOWS
 
+#include "tensorflow/core/debug/debug_callback_registry.h"
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
@@ -280,34 +281,11 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
 
 const char* const DebugIO::kDebuggerPluginName = "debugger";
 
-const char* const DebugIO::kMetadataFilePrefix = "_tfdbg_";
-
 const char* const DebugIO::kCoreMetadataTag = "core_metadata_";
-
-const char* const DebugIO::kDeviceTag = "device_";
 
 const char* const DebugIO::kGraphTag = "graph_";
 
 const char* const DebugIO::kHashTag = "hash";
-
-DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
-                           const int32 output_slot, const string& debug_op)
-    : device_name(device_name),
-      node_name(node_name),
-      output_slot(output_slot),
-      debug_op(debug_op),
-      debug_node_name(
-          strings::StrCat(node_name, ":", output_slot, ":", debug_op)),
-      device_path(DeviceNameToDevicePath(device_name)) {}
-
-bool DebugNodeKey::operator==(const DebugNodeKey& other) const {
-  return (device_name == other.device_name && node_name == other.node_name &&
-          output_slot == other.output_slot && debug_op == other.debug_op);
-}
-
-bool DebugNodeKey::operator!=(const DebugNodeKey& other) const {
-  return !((*this) == other);
-}
 
 Status ReadEventFromFile(const string& dump_file_path, Event* event) {
   Env* env(Env::Default());
@@ -338,16 +316,9 @@ Status ReadEventFromFile(const string& dump_file_path, Event* event) {
   return Status::OK();
 }
 
-const string DebugNodeKey::DeviceNameToDevicePath(const string& device_name) {
-  return strings::StrCat(
-      DebugIO::kMetadataFilePrefix, DebugIO::kDeviceTag,
-      str_util::StringReplace(
-          str_util::StringReplace(device_name, ":", "_", true), "/", ",",
-          true));
-}
-
 const char* const DebugIO::kFileURLScheme = "file://";
 const char* const DebugIO::kGrpcURLScheme = "grpc://";
+const char* const DebugIO::kMemoryURLScheme = "memcbk://";
 
 // Publishes debug metadata to a set of debug URLs.
 Status DebugIO::PublishDebugMetadata(
@@ -423,7 +394,7 @@ Status DebugIO::PublishDebugMetadata(
       const string core_metadata_path = AppendTimestampToFilePath(
           io::JoinPath(
               dump_root_dir,
-              strings::StrCat(DebugIO::kMetadataFilePrefix,
+              strings::StrCat(DebugNodeKey::kMetadataFilePrefix,
                               DebugIO::kCoreMetadataTag, "sessionrun",
                               strings::Printf("%.14lld", session_run_index))),
           Env::Default()->NowMicros());
@@ -465,6 +436,12 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
 #else
       GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR;
 #endif
+    } else if (str_util::Lowercase(url).find(kMemoryURLScheme) == 0) {
+      const string dump_root_dir = url.substr(strlen(kMemoryURLScheme));
+      auto* callback_registry = DebugCallbackRegistry::singleton();
+      auto* callback = callback_registry->GetCallback(dump_root_dir);
+      CHECK(callback) << "No callback registered for: " << dump_root_dir;
+      (*callback)(debug_node_key, tensor);
     } else {
       return Status(error::UNAVAILABLE,
                     strings::StrCat("Invalid debug target URL: ", url));
@@ -515,7 +492,7 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
                        DebugNodeKey::DeviceNameToDevicePath(device_name));
       const uint64 graph_hash = ::tensorflow::Hash64(buf);
       const string file_name =
-          strings::StrCat(DebugIO::kMetadataFilePrefix, DebugIO::kGraphTag,
+          strings::StrCat(DebugNodeKey::kMetadataFilePrefix, DebugIO::kGraphTag,
                           DebugIO::kHashTag, graph_hash, "_", now_micros);
 
       status.Update(

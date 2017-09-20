@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/debug/debug_node_key.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -45,39 +46,18 @@ struct DebugWatchAndURLSpec {
   const bool gated_grpc;
 };
 
-struct DebugNodeKey {
-  DebugNodeKey(const string& device_name, const string& node_name,
-               const int32 output_slot, const string& debug_op);
-
-  // Converts a device name string to a device path string.
-  // E.g., /job:localhost/replica:0/task:0/cpu:0 will be converted to
-  //   ,job_localhost,replica_0,task_0,cpu_0.
-  static const string DeviceNameToDevicePath(const string& device_name);
-
-  bool operator==(const DebugNodeKey& other) const;
-  bool operator!=(const DebugNodeKey& other) const;
-
-  const string device_name;
-  const string node_name;
-  const int32 output_slot;
-  const string debug_op;
-  const string debug_node_name;
-  const string device_path;
-};
-
 // TODO(cais): Put static functions and members in a namespace, not a class.
 class DebugIO {
  public:
   static const char* const kDebuggerPluginName;
 
-  static const char* const kMetadataFilePrefix;
   static const char* const kCoreMetadataTag;
-  static const char* const kDeviceTag;
   static const char* const kGraphTag;
   static const char* const kHashTag;
 
   static const char* const kFileURLScheme;
   static const char* const kGrpcURLScheme;
+  static const char* const kMemoryURLScheme;
 
   static Status PublishDebugMetadata(
       const int64 global_step, const int64 session_run_index,
