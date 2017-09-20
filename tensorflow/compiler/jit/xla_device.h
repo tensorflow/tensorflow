@@ -78,8 +78,7 @@ class XlaDevice : public LocalDevice {
 
   XlaDevice(const SessionOptions& options, const DeviceAttributes& attrs,
             int device_ordinal, const DeviceType& jit_device_name,
-            ::perftools::gputools::Platform* platform,
-            Allocator* xla_allocator);
+            ::perftools::gputools::Platform* platform);
   ~XlaDevice() override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
@@ -96,6 +95,7 @@ class XlaDevice : public LocalDevice {
                              Tensor* tensor) override;
 
   xla::LocalClient* client() const;
+  xla::StatusOr<::perftools::gputools::Stream*> GetStream();
 
  private:
   // The metadata of this XlaDevice.
@@ -104,8 +104,14 @@ class XlaDevice : public LocalDevice {
   const int device_ordinal_;
   // The name of the device that is used to compile Ops for this XlaDevice.
   const DeviceType& jit_device_name_;
+  // Memory allocator associated with this device.
   Allocator* xla_allocator_;                   // Not owned.
   ::perftools::gputools::Platform* platform_;  // Not owned.
+  // Stream associated with this device. Operations enqueued on this
+  // stream are executed on the device. Operations include data
+  // copying back and forth between CPU and the device, and
+  // computations enqueued by XLA.
+  xla::Backend::StreamPtr stream_;
 };
 
 // Builds dummy OpKernel registrations on 'device' for the JIT operators

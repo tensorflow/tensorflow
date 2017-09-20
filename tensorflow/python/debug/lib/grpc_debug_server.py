@@ -173,7 +173,6 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
                 maybe_graph_def, maybe_device_name, maybe_wall_time)
             yield self._process_debug_op_state_changes(reply)
         elif event.log_message.message:
-          yield self._process_debug_op_state_changes()
           # Core metadata-carrying Event.
           core_metadata_count += 1
           if core_metadata_count > 1:
@@ -207,7 +206,7 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
                      state_change.output_slot, state_change.debug_op)
         self._breakpoints.add(debug_node_key)
       elif (state_change.state ==
-            debug_service_pb2.EventReply.DebugOpStateChange.READ_WRITE):
+            debug_service_pb2.EventReply.DebugOpStateChange.READ_ONLY):
         logging.info("Adding watchpoint %s:%d:%s", state_change.node_name,
                      state_change.output_slot, state_change.debug_op)
         if debug_node_key in self._breakpoints:
@@ -414,8 +413,9 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     self._debug_ops_state_change_queue.put(
         _state_change(
             debug_service_pb2.EventReply.DebugOpStateChange.READ_WRITE
-            if breakpoint else debug_service_pb2.EventReply.DebugOpStateChange.
-            READ_ONLY, node_name, output_slot, debug_op))
+            if breakpoint
+            else debug_service_pb2.EventReply.DebugOpStateChange.READ_ONLY,
+            node_name, output_slot, debug_op))
 
   def request_unwatch(self, node_name, output_slot, debug_op):
     """Request disabling a debug tensor watchpoint or breakpoint.

@@ -86,20 +86,23 @@ HandleMap* GetHandleMapSingleton() {
 
 }  // namespace
 
-#define TF_RETURN_IF_CUSOLVER_ERROR(expr)                                      \
-  do {                                                                         \
-    auto status = (expr);                                                      \
-    if (TF_PREDICT_FALSE(status != CUSOLVER_STATUS_SUCCESS)) {                 \
-      return errors::Internal("cuSolverDN call failed with status =", status); \
-    }                                                                          \
+#define TF_RETURN_IF_CUSOLVER_ERROR(expr)                      \
+  do {                                                         \
+    auto status = (expr);                                      \
+    if (TF_PREDICT_FALSE(status != CUSOLVER_STATUS_SUCCESS)) { \
+      return errors::Internal(                                 \
+          __FILE__, ":", __LINE__,                             \
+          ": cuSolverDN call failed with status =", status);   \
+    }                                                          \
   } while (0)
 
-#define TF_RETURN_IF_CUBLAS_ERROR(expr)                                \
-  do {                                                                 \
-    auto status = (expr);                                              \
-    if (TF_PREDICT_FALSE(status != CUBLAS_STATUS_SUCCESS)) {           \
-      return errors::Internal("cuBlas call failed status = ", status); \
-    }                                                                  \
+#define TF_RETURN_IF_CUBLAS_ERROR(expr)                                  \
+  do {                                                                   \
+    auto status = (expr);                                                \
+    if (TF_PREDICT_FALSE(status != CUBLAS_STATUS_SUCCESS)) {             \
+      return errors::Internal(__FILE__, ":", __LINE__,                   \
+                              ": cuBlas call failed status = ", status); \
+    }                                                                    \
   } while (0)
 
 CudaSolver::CudaSolver(OpKernelContext* context) : context_(context) {

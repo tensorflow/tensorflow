@@ -175,7 +175,7 @@ def get_python_major_version(python_bin_path):
   return run_shell([python_bin_path, '-c', 'import sys; print(sys.version[0])'])
 
 
-def setup_python(environ_cp, bazel_version):
+def setup_python(environ_cp):
   """Setup python related env variables."""
   # Get PYTHON_BIN_PATH, default is the current running python.
   default_python_bin_path = sys.executable
@@ -229,17 +229,7 @@ def setup_python(environ_cp, bazel_version):
   write_to_bazelrc('build --define PYTHON_LIB_PATH="%s"' % python_lib_path)
   write_to_bazelrc('build --force_python=py%s' % python_major_version)
   write_to_bazelrc('build --host_force_python=py%s' % python_major_version)
-  bazel_version_int = convert_version_to_int(bazel_version)
-  version_0_5_3_int = convert_version_to_int('0.5.3')
-  # If bazel_version_int is None, we are testing a release Bazel, then the
-  # version should be higher than 0.5.3
-  # TODO(pcloudy): remove this after required min bazel version is higher
-  # than 0.5.3
-  if not bazel_version_int or bazel_version_int >= version_0_5_3_int:
-    write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
-  else:
-    write_to_bazelrc('build --python%s_path=\"%s"' % (python_major_version,
-                                                      python_bin_path))
+  write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
   write_to_bazelrc('test --force_python=py%s' % python_major_version)
   write_to_bazelrc('test --host_force_python=py%s' % python_major_version)
   write_to_bazelrc('test --define PYTHON_BIN_PATH="%s"' % python_bin_path)
@@ -964,11 +954,11 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  bazel_version = check_bazel_version('0.4.5')
+  check_bazel_version('0.5.4')
 
   reset_tf_configure_bazelrc()
   cleanup_makefile()
-  setup_python(environ_cp, bazel_version)
+  setup_python(environ_cp)
   run_gen_git_source(environ_cp)
 
   if is_windows():

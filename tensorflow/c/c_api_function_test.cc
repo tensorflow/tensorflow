@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -181,7 +183,7 @@ class CApiFunctionTest : public ::testing::Test {
                                num_opers == -1 ? nullptr : opers.data(),
                                inputs.size(), inputs.data(), outputs.size(),
                                outputs.data(), output_names_ptr,
-                               /*opts=*/nullptr, s_);
+                               /*opts=*/nullptr, /*description=*/nullptr, s_);
     delete[] output_names_ptr;
     if (expect_failure) {
       ASSERT_EQ(func_, nullptr);
@@ -352,6 +354,29 @@ class CApiFunctionTest : public ::testing::Test {
     VerifyFDefInputs(fdef, inputs);
     VerifyFDefOutputs(fdef, outputs);
     VerifyFDefEdges(fdef, e_edges, c_edges, is_exact_edges);
+  }
+
+  // Serialize func_ to fdef and import it back
+  void Reincarnate() {
+    // func_ -> fdef
+    tensorflow::FunctionDef fdef;
+    ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+    TF_DeleteFunction(func_);
+
+    // fdef -> func_
+    TF_Buffer* buf = TF_NewBuffer();
+    Status s = MessageToBuffer(fdef, buf);
+    ASSERT_EQ(Status::OK(), s) << s.error_message();
+    func_ = TF_FunctionImportFunctionDef(buf, s_);
+    ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+    TF_DeleteBuffer(buf);
+  }
+
+  void GetAttr(const char* attr_name, AttrValue* out_attr) {
+    TF_Buffer* attr_buf = TF_NewBuffer();
+    TF_FunctionGetAttrValueProto(func_, attr_name, attr_buf, s_);
+    ASSERT_TRUE(out_attr->ParseFromArray(attr_buf->data, attr_buf->length));
+    TF_DeleteBuffer(attr_buf);
   }
 
   const char* func_name_ = "MyFunc";
@@ -1174,7 +1199,8 @@ TEST_F(CApiFunctionTest, OutputOpNotInBody) {
             string(TF_Message(s_)));
 }
 
-void DefineFunction(const char* name, TF_Function** func) {
+void DefineFunction(const char* name, TF_Function** func,
+                    const char* description = nullptr) {
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
       TF_NewGraph(), TF_DeleteGraph);
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
@@ -1188,7 +1214,7 @@ void DefineFunction(const char* name, TF_Function** func) {
   *func = TF_GraphToFunction(func_graph.get(), name, -1,
                              /*opers=*/nullptr, 1, inputs, 1, outputs,
                              /*output_names=*/nullptr,
-                             /*opts=*/nullptr, s.get());
+                             /*opts=*/nullptr, description, s.get());
   ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
   ASSERT_NE(*func, nullptr);
 }
@@ -1329,6 +1355,102 @@ TEST_F(CApiFunctionTest, GradientErrorCases) {
 
   TF_DeleteFunction(grad_func1);
   TF_DeleteFunction(grad_func2);
+}
+
+TEST_F(CApiFunctionTest, ImportFunctionDef) {
+  /*
+   * Using a fairly complex function with output names
+   *
+   *                  |  |  |
+   *                  v  v  /
+   *                  add  /
+   *                   |  |
+   *            +------+  |
+   *            |      |  |
+   *            |      v  v
+   *            |      add
+   *            |       |
+   *            v       v
+   *    internal_out  final_out
+   */
+  // Define
+  TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
+  TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
+  TF_Operation* feed3 = Placeholder(func_graph_, s_, "feed3");
+  TF_Operation* add1 = Add(feed1, feed2, func_graph_, s_, "add1");
+  TF_Operation* add2 = Add(add1, feed3, func_graph_, s_, "add2");
+  Define(-1, {}, {feed1, feed2, feed3}, {add1, add2},
+         {"internal_out", "final_out"});
+
+  // Save func_ to FunctionDef and import it back
+  Reincarnate();
+
+  // Use, run, and verify
+  TF_Operation* two = ScalarConst(2, host_graph_, s_, "two");
+  TF_Operation* ten = ScalarConst(10, host_graph_, s_, "ten");
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({two, ten, func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, {{func_op, 0}, {func_op, 1}}, {12, 15});
+  VerifyFDef({"add1", "add2"}, M({{"feed1"}, {"feed2"}, {"feed3"}}),
+             M({{"internal_out"}, {"final_out"}}),
+             {{"feed1", "add1:0"},
+              {"feed2", "add1:1"},
+              {"add1:sum:0", "add2:0"},
+              {"feed3", "add2:1"},
+              {"add1:sum:0", "internal_out"},
+              {"add2:sum:0", "final_out"}},
+             {});
+}
+
+TEST_F(CApiFunctionTest, ImportFunctionDef_InvalidProto) {
+  // Invalid protobuf data (protos cannot start with 4 bytes of zeros)
+  char proto[] = {0x0, 0x0, 0x0, 0x0};
+  TF_Buffer* buf = TF_NewBufferFromString(proto, 4);
+  func_ = TF_FunctionImportFunctionDef(buf, s_);
+  TF_DeleteBuffer(buf);
+  EXPECT_TRUE(func_ == nullptr);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("Invalid FunctionDef given to TF_FunctionImportFunctionDef"),
+            string(TF_Message(s_)));
+}
+
+TEST_F(CApiFunctionTest, Attribute) {
+  DefineFunction(func_name_, &func_);
+
+  // Get non existent attribute
+  TF_Buffer* attr_buf = TF_NewBuffer();
+  TF_FunctionGetAttrValueProto(func_, "foo_attr", attr_buf, s_);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("Function 'MyFunc' has no attr named 'foo_attr'."),
+            string(TF_Message(s_)));
+  TF_DeleteBuffer(attr_buf);
+
+  // Set attr
+  tensorflow::AttrValue attr;
+  attr.set_s("test_attr_value");
+  string bytes;
+  attr.SerializeToString(&bytes);
+  TF_FunctionSetAttrValueProto(func_, "test_attr_name", bytes.data(),
+                               bytes.size(), s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Get attr
+  AttrValue read_attr;
+  GetAttr("test_attr_name", &read_attr);
+  ASSERT_EQ(attr.DebugString(), read_attr.DebugString());
+
+  // Retrieve the same attr after save/restore
+  Reincarnate();
+  AttrValue read_attr2;
+  GetAttr("test_attr_name", &read_attr2);
+  ASSERT_EQ(attr.DebugString(), read_attr2.DebugString());
+}
+
+TEST_F(CApiFunctionTest, Description) {
+  DefineFunction(func_name_, &func_, "Return something");
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+  ASSERT_EQ(string("Return something"), fdef.signature().description());
 }
 
 }  // namespace

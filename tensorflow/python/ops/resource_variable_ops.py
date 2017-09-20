@@ -686,9 +686,8 @@ class ResourceVariable(variables.Variable):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     del name
-    if dtype is not None and dtype != self.value().dtype:
-      print("trying to switch the dtype to ", dtype, " from ",
-            self.value().dtype)
+    if dtype is not None and dtype != self.dtype:
+      print("trying to switch the dtype to ", dtype, " from ", self.dtype)
       return NotImplemented
     if as_ref:
       return self.read_value().op.inputs[0]

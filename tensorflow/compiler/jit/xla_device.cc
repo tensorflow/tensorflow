@@ -48,7 +48,61 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
+namespace se = ::perftools::gputools;
+
 namespace tensorflow {
+
+// Caches a XlaDeviceAllocator per <backend, device ordinal> pair. A
+// XlaDeviceAllocator is created on demand and is associated with a
+// XlaDevice. It outlives the device itself (for instance, the buffer
+// backing a tensor holds a pointer to the allocator for book-keeping,
+// and this buffer can outlast the device).
+class XlaDeviceAllocatorState {
+ public:
+  // Creates or returns a cached XlaDeviceAllocator for a given
+  // backend and device_ordinal.
+  static XlaDeviceAllocator* GetOrCreateXlaDeviceAllocator(
+      const xla::Backend* backend, int device_ordinal);
+
+ private:
+  // Returns the singleton instance of XlaDeviceAllocatorState.
+  static XlaDeviceAllocatorState& Singleton();
+  XlaDeviceAllocatorState();
+  ~XlaDeviceAllocatorState();
+
+  mutex allocator_mutex_;  // Guards the singleton allocator state.
+  std::unordered_map<std::pair<const xla::Backend*, int>,
+                     std::unique_ptr<XlaDeviceAllocator>,
+                     hash<std::pair<const xla::Backend*, int>>>
+      allocators_ GUARDED_BY(allocator_mutex_);
+
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaDeviceAllocatorState);
+};
+
+/* static */ XlaDeviceAllocatorState& XlaDeviceAllocatorState::Singleton() {
+  static auto a = new XlaDeviceAllocatorState;
+  return *a;
+}
+
+XlaDeviceAllocatorState::XlaDeviceAllocatorState() = default;
+XlaDeviceAllocatorState::~XlaDeviceAllocatorState() = default;
+
+XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
+    const xla::Backend* backend, int device_ordinal) {
+  XlaDeviceAllocatorState& state = Singleton();
+  mutex_lock lock(state.allocator_mutex_);
+
+  auto it = state.allocators_.find({backend, device_ordinal});
+  if (it != state.allocators_.end()) {
+    return it->second.get();
+  }
+
+  std::unique_ptr<XlaDeviceAllocator> alloc =
+      xla::MakeUnique<XlaDeviceAllocator>(backend, device_ordinal);
+  XlaDeviceAllocator* alloc_ptr = alloc.get();
+  state.allocators_[{backend, device_ordinal}] = std::move(alloc);
+  return alloc_ptr;
+}
 
 /* static */ Status XlaDevice::Create(
     const string& platform_name, const string& device_name, int device_ordinal,
@@ -66,8 +120,7 @@ namespace tensorflow {
   registration.compile_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(device_name, registration);
 
-  auto platform = perftools::gputools::MultiPlatformManager::PlatformWithName(
-      platform_name);
+  auto platform = se::MultiPlatformManager::PlatformWithName(platform_name);
   if (!platform.ok()) {
     return StreamExecutorUtil::ConvertStatus(platform.status());
   }
@@ -78,15 +131,13 @@ namespace tensorflow {
       DeviceType(device_name), Bytes(16ULL << 30), DeviceLocality(),
       strings::StrCat("device: ", device_name, " device"));
 
-  static Allocator* allocator = new XlaDeviceAllocator;
   device->reset(new XlaDevice(options, attrs, device_ordinal,
                               DeviceType(jit_device_name),
-                              platform.ValueOrDie(), allocator));
+                              platform.ValueOrDie()));
   return Status::OK();
 }
 
-XlaDevice::Metadata::Metadata(int device_ordinal,
-                              perftools::gputools::Platform* platform,
+XlaDevice::Metadata::Metadata(int device_ordinal, se::Platform* platform,
                               const DeviceType& device_type)
     : device_ordinal_(device_ordinal),
       device_type_(device_type),
@@ -94,9 +145,7 @@ XlaDevice::Metadata::Metadata(int device_ordinal,
 
 int XlaDevice::Metadata::device_ordinal() const { return device_ordinal_; }
 
-perftools::gputools::Platform* XlaDevice::Metadata::platform() const {
-  return platform_;
-}
+se::Platform* XlaDevice::Metadata::platform() const { return platform_; }
 
 xla::LocalClient* XlaDevice::Metadata::client() const {
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(platform_);
@@ -121,14 +170,12 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
 
 XlaDevice::XlaDevice(const SessionOptions& options,
                      const DeviceAttributes& attrs, int device_ordinal,
-                     const DeviceType& jit_device_name,
-                     perftools::gputools::Platform* platform,
-                     Allocator* xla_allocator)
+                     const DeviceType& jit_device_name, se::Platform* platform)
     : LocalDevice(options, attrs),
       xla_metadata_(device_ordinal, platform, jit_device_name),
       device_ordinal_(device_ordinal),
       jit_device_name_(jit_device_name),
-      xla_allocator_(xla_allocator),
+      xla_allocator_(nullptr),
       platform_(platform) {}
 
 XlaDevice::~XlaDevice() {}
@@ -148,16 +195,30 @@ xla::LocalClient* XlaDevice::client() const {
 Allocator* XlaDevice::GetAllocator(AllocatorAttributes attr) {
   if (attr.on_host()) {
     return cpu_allocator();
-  } else {
-    return xla_allocator_;
   }
+
+  if (xla_allocator_ == nullptr) {
+    xla::Backend* backend = client()->mutable_backend();
+    xla_allocator_ = XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
+        backend, device_ordinal_);
+  }
+  return xla_allocator_;
+}
+
+xla::StatusOr<se::Stream*> XlaDevice::GetStream() {
+  if (!stream_) {
+    xla::Backend* backend = client()->mutable_backend();
+    TF_ASSIGN_OR_RETURN(stream_, backend->BorrowStream(device_ordinal_));
+  }
+  return stream_.get();
 }
 
 Status XlaDevice::FillContextMap(const Graph* graph,
                                  DeviceContextMap* device_context_map) {
   VLOG(1) << "XlaDevice::FillContextMap";
   device_context_map->resize(graph->num_node_ids());
-  XlaDeviceContext* ctx = new XlaDeviceContext(client());
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, GetStream());
+  auto ctx = new XlaDeviceContext(stream);
   for (Node* n : graph->nodes()) {
     VLOG(2) << n->id() << " : " << n->type_string() << " : " << n->name();
     ctx->Ref();
@@ -202,7 +263,8 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   } else {
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
     Notification n;
-    XlaTransferManager manager(client());
+    TF_ASSIGN_OR_RETURN(se::Stream * stream, GetStream());
+    XlaTransferManager manager(stream);
     manager.CopyCPUTensorToDevice(&parsed, this, &copy,
                                   [&n, &status](const Status& s) {
                                     status = s;
