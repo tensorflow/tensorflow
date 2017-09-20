@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Usage: ci_sanity.sh [options]
+# Usage: ci_sanity.sh [--pep8] [--incremental] [bazel flags]
 #
 # Options:
 #           run sanity checks: python 2&3 pylint checks and bazel nobuild
@@ -400,7 +400,7 @@ cmd_status(){
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_CMD="bazel build --nobuild ${BUILD_TARGET}"
+  BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} ${BUILD_TARGET}"
 
   ${BUILD_CMD}
 
@@ -409,7 +409,7 @@ do_bazel_nobuild() {
 }
 
 do_pip_smoke_test() {
-  BUILD_CMD="bazel build //tensorflow/tools/pip_package:pip_smoke_test"
+  BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:pip_smoke_test"
   ${BUILD_CMD}
   cmd_status \
     "Pip smoke test has failed. Please make sure any new TensorFlow are added to the tensorflow/tools/pip_package:build_pip_package dependencies."
@@ -425,7 +425,7 @@ do_code_link_check() {
 }
 
 do_check_load_py_test() {
-  BUILD_CMD="bazel build //tensorflow/tools/pip_package:check_load_py_test"
+  BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:check_load_py_test"
   ${BUILD_CMD}
   cmd_status \
     "check_load_py_test failed to build."
@@ -441,8 +441,10 @@ SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_
 SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links")
 
 INCREMENTAL_FLAG=""
+DEFAULT_BAZEL_CONFIGS="--config=hdfs --config=gcp"
 
 # Parse command-line arguments
+BAZEL_FLAGS=${DEFAULT_BAZEL_CONFIGS}
 for arg in "$@"; do
   if [[ "${arg}" == "--pep8" ]]; then
     # Only run pep8 test if "--pep8" option supplied
@@ -451,8 +453,7 @@ for arg in "$@"; do
   elif [[ "${arg}" == "--incremental" ]]; then
     INCREMENTAL_FLAG="--incremental"
   else
-    echo "ERROR: Unrecognized command-line flag: $1"
-    exit 1
+    BAZEL_FLAGS="${BAZEL_FLAGS} ${arg}"
   fi
 done
 
