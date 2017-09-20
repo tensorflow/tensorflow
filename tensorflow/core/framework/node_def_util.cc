@@ -287,6 +287,15 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 }
 
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   NameAttrList* value) {
+  const AttrValue* attr_value;
+  TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
+  TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "func"));
+  *value = attr_value->func();
+  return Status::OK();
+}
+
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<NameAttrList>* value) {
   const AttrValue* attr_value;
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
