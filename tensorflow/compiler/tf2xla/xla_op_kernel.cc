@@ -345,7 +345,6 @@ Status XlaOpKernelContext::GetResourceInput(int index, XlaResource** resource) {
 Status XlaOpKernelContext::AssignVariable(
     int input_index, DataType type, const xla::ComputationDataHandle& handle) {
   TF_RET_CHECK(handle.handle() != 0);
-  SetOpHasSideEffects();
 
   const XlaExpression* expression =
       CastExpressionFromTensor(context_->input(input_index));
@@ -361,10 +360,6 @@ Status XlaOpKernelContext::AssignVariable(
   variable->type = type;
   variable->value = handle;
   return Status::OK();
-}
-
-void XlaOpKernelContext::SetOpHasSideEffects() {
-  XlaContext::Get(context_).AddSideEffects();
 }
 
 XlaCompiler* XlaOpKernelContext::compiler() const {

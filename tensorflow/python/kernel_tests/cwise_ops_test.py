@@ -2015,7 +2015,8 @@ class ComplexMakeRealImagTest(test.TestCase):
 
   def testConjString(self):
     x = array_ops.placeholder(dtypes_lib.string)
-    with self.assertRaisesRegexp(TypeError, r"Expected numeric tensor"):
+    with self.assertRaisesRegexp(
+        TypeError, r"Expected numeric or variant tensor"):
       math_ops.conj(x)
 
   def _compareGradient(self, x):

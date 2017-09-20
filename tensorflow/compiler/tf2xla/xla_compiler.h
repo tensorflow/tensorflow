@@ -44,14 +44,14 @@ namespace tensorflow {
 //
 // The XlaCompiler requires one Argument struct for each _Arg index, that
 // describes each argument. Arguments can be compile-time constants
-// (kind kConstant), run-time parameters (kind kParameter), or resource
-// variables (kinds kVariable and kUninitializedVariable).
+// (kind kConstant), run-time parameters (kind kParameter), or resources
+// (kind kResource).
 //
-// Only kParameter and kVariable arguments become runtime parameters to the
-// generated XLA computation. The XLA computation will have run-time parameters
-// in the following order:
+// Only kParameter and initialized kResource arguments become runtime parameters
+// to the generated XLA computation. The XLA computation will have run-time
+// parameters in the following order:
 //   +---------------------+-----------------------------------------+
-//   |  kParameter values  |  Initial values of kVariable arguments  |
+//   |  kParameter values  |  Initial values of kResource arguments  |
 //   +---------------------+-----------------------------------------+
 // Within each block, the arguments are arranged by the _Arg index from which
 // they were derived.
@@ -61,18 +61,26 @@ namespace tensorflow {
 // The run-time outputs of the XLA computation are arranged in the following
 // order:
 //   +------------------+-----------------------------------------+
-//   |  _Retval values  |  Updated values of kVariable arguments  |
+//   |  _Retval values  |  Updated values of kResource arguments  |
 //   +------------------+-----------------------------------------+
-// _Retval values are ordered by _Retval index, whereas kVariable values are
+// _Retval values are ordered by _Retval index, whereas kResource values are
 // ordered by the original _Arg position of the variable.
 //
-// In both inputs and outputs, kVariable values are placed the end. When
+// In both inputs and outputs, kResource values are placed the end. When
 // emitting While loop bodies, we must ensure that the loop body has
 // identical input and output signatures. By moving variable values
 // to the end of the argument list and using the
 // `return_updated_values_for_all_variables` option, we can ensure that the
-// input and output values of variables appear at the same positions.
-
+// input and output values of resources appear at the same positions.
+//
+// Resources are passed as parameters or returned as resource updates in
+// "packed" form.
+// kStack resources are packed as (array, size of stack) XLA tuples.
+// kTensorArray resources without gradients are packed as the array that
+// backs the TensorArray. If gradients are present (`tensor_array_gradients`),
+// the packed representation is a (array, gradient0, gradient1, ...) tuple,
+// where gradient_k is the value of the k-th gradient in the
+// `tensor_array_gradients` ordered set.
 class XlaCompiler {
  public:
   // Describes how to derive the value of each _Arg node in the graph/function
@@ -120,6 +128,11 @@ class XlaCompiler {
     // (Used for lazy initialization.)
     int64 tensor_array_size = -1;
 
+    // TensorArray resource parameters are passed as (array, gradient array 0,
+    // ..., gradient array k), where the gradient arrays are in the same order
+    // as `tensor_array_gradients`.
+    std::set<string> tensor_array_gradients;
+
     bool operator==(const Argument& other) const;
   };
 
@@ -146,6 +159,9 @@ class XlaCompiler {
     // Was the value of the variable modified by the computation?
     // (Always true, unless `return_updated_values_for_all_resources` is true.)
     bool modified;
+
+    // If the resource is a TensorArray, the set of gradients read or written.
+    std::set<string> tensor_array_gradients_accessed;
   };
 
   struct CompilationResult {
@@ -165,8 +181,7 @@ class XlaCompiler {
     // Should the arguments be packed into a single tuple?
     bool tuple_arg;
 
-    // Output shape in XLA format. The output shape is a tuple if and only if
-    // the number of non-constant outputs is not equal to 1.
+    // Output shape in XLA format. The output shape is always a tuple.
     xla::Shape xla_output_shape;
 
     // TensorFlow shapes of outputs, together with the values of any
@@ -179,8 +194,7 @@ class XlaCompiler {
     // results in the outputs of XLA computation.
     std::vector<ResourceUpdate> resource_updates;
 
-    // The XLA computation built from the tensorflow subgraph. May be null
-    // if the output consists solely of compile-time constants.
+    // The XLA computation built from the tensorflow subgraph.
     std::shared_ptr<xla::Computation> computation;
   };
 

@@ -304,11 +304,6 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph, xla::Client* client,
         " constant results.  The configuration of "
         "the output args (i.e. fetch ids) is probably wrong.");
   }
-  if (computation->IsNull()) {
-    return errors::Aborted(
-        "Conversion from TensorFlow graph to XLA resulted in an empty "
-        "computation.");
-  }
   return Status::OK();
 }
 

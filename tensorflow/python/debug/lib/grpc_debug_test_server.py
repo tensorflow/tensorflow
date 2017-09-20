@@ -89,6 +89,8 @@ class EventListenerTestStreamHandler(
     self._cached_graph_def_wall_times = []
 
   def on_core_metadata_event(self, event):
+    self._event_listener_servicer.toggle_watch()
+
     core_metadata = json.loads(event.log_message.message)
 
     if not self._grpc_path:
@@ -215,7 +217,7 @@ class EventListenerTestStreamHandler(
 class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
   """An implementation of EventListenerBaseServicer for testing."""
 
-  def __init__(self, server_port, dump_dir):
+  def __init__(self, server_port, dump_dir, toggle_watch_on_core_metadata=None):
     """Constructor of EventListenerTestServicer.
 
     Args:
@@ -223,14 +225,35 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
       dump_dir: (str) The root directory to which the data files will be
         dumped. If empty or None, the received debug data will not be dumped
         to the file system: they will be stored in memory instead.
+      toggle_watch_on_core_metadata: A list of
+        (node_name, output_slot, debug_op) tuples to toggle the
+        watchpoint status during the on_core_metadata calls (optional).
     """
     self.core_metadata_json_strings = []
     self.partition_graph_defs = []
     self.debug_tensor_values = collections.defaultdict(list)
+    self._initialize_toggle_watch_state(toggle_watch_on_core_metadata)
 
     grpc_debug_server.EventListenerBaseServicer.__init__(
         self, server_port,
         functools.partial(EventListenerTestStreamHandler, dump_dir, self))
+
+  def _initialize_toggle_watch_state(self, toggle_watches):
+    self._toggle_watches = toggle_watches
+    self._toggle_watch_state = dict()
+    if self._toggle_watches:
+      for watch_key in self._toggle_watches:
+        self._toggle_watch_state[watch_key] = False
+
+  def toggle_watch(self):
+    for watch_key in self._toggle_watch_state:
+      node_name, output_slot, debug_op = watch_key
+      if self._toggle_watch_state[watch_key]:
+        self.request_unwatch(node_name, output_slot, debug_op)
+      else:
+        self.request_watch(node_name, output_slot, debug_op)
+      self._toggle_watch_state[watch_key] = (
+          not self._toggle_watch_state[watch_key])
 
   def clear_data(self):
     self.core_metadata_json_strings = []
@@ -241,7 +264,8 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
 def start_server_on_separate_thread(dump_to_filesystem=True,
                                     server_start_delay_sec=0.0,
                                     poll_server=False,
-                                    blocking=True):
+                                    blocking=True,
+                                    toggle_watch_on_core_metadata=None):
   """Create a test gRPC debug server and run on a separate thread.
 
   Args:
@@ -252,6 +276,9 @@ def start_server_on_separate_thread(dump_to_filesystem=True,
     poll_server: (bool) whether the server will be polled till success on
       startup.
     blocking: (bool) whether the server should be started in a blocking mode.
+    toggle_watch_on_core_metadata: A list of
+        (node_name, output_slot, debug_op) tuples to toggle the
+        watchpoint status during the on_core_metadata calls (optional).
 
   Returns:
     server_port: (int) Port on which the server runs.
@@ -268,8 +295,10 @@ def start_server_on_separate_thread(dump_to_filesystem=True,
   debug_server_url = "grpc://localhost:%d" % server_port
 
   server_dump_dir = tempfile.mkdtemp() if dump_to_filesystem else None
-  server = EventListenerTestServicer(server_port=server_port,
-                                     dump_dir=server_dump_dir)
+  server = EventListenerTestServicer(
+      server_port=server_port,
+      dump_dir=server_dump_dir,
+      toggle_watch_on_core_metadata=toggle_watch_on_core_metadata)
 
   def delay_then_run_server():
     time.sleep(server_start_delay_sec)
