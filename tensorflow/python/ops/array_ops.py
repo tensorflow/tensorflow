@@ -2265,7 +2265,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   ```
 
   Args:
-    lengths: 1D integer tensor, all its values < maxlen.
+    lengths: 1D integer tensor, all its values <= maxlen.
     maxlen: scalar integer tensor, maximum length of each row. Default: use
             maximum over lengths.
     dtype: output type of the resulting tensor.
