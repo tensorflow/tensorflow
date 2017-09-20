@@ -361,8 +361,21 @@ class DebugGrpcIO {
 
   // Returns a global map from grpc debug URLs to the corresponding
   // DebugGrpcChannels.
-  static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+  static std::unordered_map<string, std::unique_ptr<DebugGrpcChannel>>*
   GetStreamChannels();
+
+  // Get a DebugGrpcChannel object at a given URL, creating one if necessary.
+  //
+  // Args:
+  //   grpc_stream_url: grpc:// URL of the stream, e.g., "grpc://localhost:6064"
+  //   debug_grpc_channel: A pointer to the DebugGrpcChannel object, passed as a
+  //     a pointer to the pointer. The DebugGrpcChannel object is owned
+  //     statically elsewhere, not by the caller of this function.
+  //
+  // Returns:
+  //   Status of this operation.
+  static Status GetOrCreateDebugGrpcChannel(
+      const string& grpc_stream_url, DebugGrpcChannel** debug_grpc_channel);
 
   // Returns a map from debug URL to a map from debug op name to enabled state.
   static std::unordered_map<string, DebugNodeName2State>*
