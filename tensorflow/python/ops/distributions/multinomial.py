@@ -25,6 +25,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
 
@@ -230,16 +231,36 @@ class Multinomial(distribution.Distribution):
 
   def _sample_n(self, n, seed=None):
     n_draws = math_ops.cast(self.total_count, dtype=dtypes.int32)
-    if self.total_count.get_shape().ndims is not None:
-      if self.total_count.get_shape().ndims != 0:
-        raise NotImplementedError(
-            "Sample only supported for scalar number of draws.")
-    elif self.validate_args:
-      is_scalar = check_ops.assert_rank(
-          n_draws, 0,
-          message="Sample only supported for scalar number of draws.")
-      n_draws = control_flow_ops.with_dependencies([is_scalar], n_draws)
     k = self.event_shape_tensor()[0]
+
+    if self.total_count.get_shape().ndims > 0:
+
+      # n_draws should has shape [B1, B2, ... Bm], same as batch_shape
+      if self.validate_args:
+        n_draws = control_flow_ops.with_dependencies(
+            check_ops.assert_equal(
+                self.batch_shape, self.total_count.get_shape(),
+                message='The shape refered from logits should have the same shape with total_count')
+            , n_draws)
+
+      flat_logits = array_ops.reshape(self.logits, [-1, k])   # [B1*B2*...*Bm, k]
+      flat_total_count = n * array_ops.reshape(n_draws, [-1]) # [B1*B2*...*Bm]
+      
+      def _sample_single(args):
+        logits, n_draw = args[0], args[1] # [K], []
+        x = random_ops.multinomial(logits[array_ops.newaxis, ...], n_draw, seed) # [1, n*n_draw]
+        x = array_ops.reshape(x, shape=[n, -1]) # [n, n_draw]
+        x = math_ops.reduce_sum(array_ops.one_hot(x, depth=k), axis=-2) # [n, k]
+        return x
+
+      x = functional_ops.map_fn(_sample_single,
+              [flat_logits, flat_total_count],
+              dtype=self.dtype) # [B1*B2*...Bm, n, k]
+      x = array_ops.transpose(x, perm=[1, 0, 2])
+      final_shape = array_ops.concat([[n], self.batch_shape_tensor(), [k]], 0)
+      x = array_ops.reshape(x, final_shape) # [n, B1, B2,..., Bm, k]
+      return x
+
     # Flatten batch dims so logits has shape [B, k],
     # where B = reduce_prod(self.batch_shape_tensor()).
     x = random_ops.multinomial(
