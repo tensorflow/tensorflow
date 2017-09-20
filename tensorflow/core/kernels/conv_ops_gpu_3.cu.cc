@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <limits>
 
 #include "cuda/include/cuda.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -178,31 +179,35 @@ __global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
 // Use shared memory tiles to swap dimension-1 and dimension-2 of a 3D tensor,
 // where dimensions are zero-based: output[i][j][k] = input[i][k][j].
 //
-// Each thread block operates on a single tile, a square of dimensions TileSize
-// x TileSize.  We require that the thread block's X dimension equals TileSize,
-// and its Y dimension equals NumSubTiles.
+// Each thread block operates on a single tile, a rectangle of dimensions TileSizeI
+// x TileSizeJ.
 //
-// For best performance, you should probably set TileSize equal to the number of
-// threads in a warp (32 in nvidia GPUs).  With a TileSize of 32, NumSubTiles ==
-// 4 or 8 seems to get the best performance on K40 GPUs.
-template <typename T, int TileSize, int NumSubTiles>
-__global__ void SwapDimension1And2InTensor3UsingTiles(const T* input,
-                                                      Dimension<3> input_dims,
-                                                      T* output) {
-  // One extra line in the inner dimension to avoid share memory bank conflict.
-  __shared__ T shared_memory_tile[TileSize][TileSize + 1];
+// In general, for best performance, you should probably set TileSizeI,
+// TileSizeJ equal to the number of threads in a warp (32 in nvidia GPUs).
+// With a TileSizeI, TileSizeJ of 32, ThreadNum of 128 or 256 seems to get
+// the best performance on K40 GPUs.
+template <typename T, int ThreadNum, int TileSizeI, int TileSizeJ>
+__global__ void SwapDimension1And2InTensor3UsingTiles(
+    const T* __restrict__ input, Dimension<3> input_dims,
+    T* __restrict__ output) {
 
-  static_assert(TileSize % NumSubTiles == 0,
-                "TileSize must be divisible by NumSubTiles");
-  eigen_assert(blockDim.x == TileSize);
-  eigen_assert(blockDim.y == NumSubTiles);
+  eigen_assert(blockDim.x == ThreadNum);
+  eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
   eigen_assert(gridDim.y == 1);
   eigen_assert(gridDim.z == 1);
 
-  // We break down the tile into NumSubTiles groups, so each thread processes
-  // kSubTileSize elements (except at the edges of the input).
-  const int kSubTileSize = TileSize / NumSubTiles;
+  const int ReadRowPerPass = (ThreadNum / TileSizeJ);
+  const int WriteRowPerPass = (ThreadNum / TileSizeI);
+  // One extra line in the inner dimension to avoid share memory bank conflict.
+  __shared__ T shared_memory_tile[TileSizeI][TileSizeJ + 1];
+
+// Memory access macros:
+#define SHARED(i, j) shared_memory_tile[i][j]
+
+#define INPUT(i, j) input[input_origin_flat_index + (i)*input_dims[2] + (j)]
+
+#define OUTPUT(i, j) output[output_origin_flat_index + (i)*output_dims[2] + (j)]
 
   int x = threadIdx.x;
 
@@ -211,40 +216,49 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(const T* input,
   };
 
   Dimension<3> input_dims_in_tiles = {
-      input_dims[0], (input_dims[1] + TileSize - 1) / TileSize,
-      (input_dims[2] + TileSize - 1) / TileSize,
+      input_dims[0], (input_dims[1] + TileSizeI - 1) / TileSizeI,
+      (input_dims[2] + TileSizeJ - 1) / TileSizeJ,
   };
 
   Index<3> input_tile_index =
       FlatToTensorIndex(blockIdx.x, input_dims_in_tiles);
 
   Index<3> input_tile_origin = {
-      input_tile_index[0], input_tile_index[1] * TileSize,
-      input_tile_index[2] * TileSize,
+      input_tile_index[0], input_tile_index[1] * TileSizeI,
+      input_tile_index[2] * TileSizeJ,
   };
 
   int input_origin_flat_index =
       TensorIndexToFlat(input_tile_origin, input_dims);
 
-  int tile_width = TileSize;
+  int tile_width = TileSizeJ;
+
   // Only the last row or column may not have the full size.
   if (input_tile_index[2] == input_dims_in_tiles[2] - 1) {
-    tile_width = input_dims[2] - (input_dims_in_tiles[2] - 1) * TileSize;
+    tile_width = input_dims[2] - (input_dims_in_tiles[2] - 1) * TileSizeJ;
   }
-  int tile_height = TileSize;
+
+  int tile_height = TileSizeI;
+
   if (input_tile_index[1] == input_dims_in_tiles[1] - 1) {
-    tile_height = input_dims[1] - (input_dims_in_tiles[1] - 1) * TileSize;
+    tile_height = input_dims[1] - (input_dims_in_tiles[1] - 1) * TileSizeI;
   }
 
-  int input_flat_index = input_origin_flat_index + x;
-  int y_start = static_cast<int>(threadIdx.y) * kSubTileSize;
+  // Calculate effective thread number. This ensures that we use the largest
+  // number of threads available to form a regular thread block with no
+  // trailing incomplete lines.
+  int effective_thread_num = ThreadNum / TileSizeJ * TileSizeJ;
 
-  // Load the data from input memory to the shared memory tile.
-  if (x < tile_width) {
-    int y_end = min(y_start + kSubTileSize, tile_height);
-    for (int y = y_start; y < y_end; y++) {
-      shared_memory_tile[y][x] = input[input_flat_index + y * input_dims[2]];
-    }
+  if (x < effective_thread_num) {
+    // Orient the logical thread block with respect to the input array.
+    // ie. align the contiguous dimension of thread blocks with contiguous
+    // dimension of the input array.
+    int ti = x / TileSizeJ;
+    int tj = x % TileSizeJ;
+    if (tj < tile_width)
+      for (int i_loc = ti; i_loc < (tile_height); i_loc += ReadRowPerPass) {
+        SHARED(i_loc, tj) = INPUT(i_loc, tj);
+      }
   }
 
   __syncthreads();
@@ -254,21 +268,26 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(const T* input,
   };
 
   Index<3> output_tile_origin = {
-      output_tile_index[0], output_tile_index[1] * TileSize,
-      output_tile_index[2] * TileSize,
+      output_tile_index[0], output_tile_index[1] * TileSizeJ,
+      output_tile_index[2] * TileSizeI,
   };
 
   int output_origin_flat_index =
       TensorIndexToFlat(output_tile_origin, output_dims);
 
-  int output_flat_index = output_origin_flat_index + x;
+  effective_thread_num = ThreadNum / TileSizeI * TileSizeI;
 
-  // Load the data from the shared memory tile to the output memory.
-  if (x < tile_height) {
-    int y_end = min(y_start + kSubTileSize, tile_width);
-    for (int y = y_start; y < y_end; y++) {
-      output[output_flat_index + y * output_dims[2]] = shared_memory_tile[x][y];
-    }
+  if (x < effective_thread_num) {
+    // Re-oriente the logical thread block with respect to the output array.
+    // ie. align the contiguous dimension of thread blocks with contiguous
+    // dimension of the output array.
+    int ti = x / TileSizeI;
+    int tj = x % TileSizeI;
+
+    if (tj < tile_height)
+      for (int i_loc = ti; i_loc < (tile_width); i_loc += WriteRowPerPass) {
+        OUTPUT(i_loc, tj) = SHARED(tj, i_loc);
+      }
   }
 }
 
@@ -413,6 +432,160 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
   }
 };
 
+// Recursive template function to search for the minimum tile size configuration
+// satisfying the requested tile side lengths.
+template <typename T, int TileLongSide, int TileShortSide>
+struct BatchNarrowMatrixTransposeDispatcher {
+  static void DoBatchNarrowMatrixTranspose(const GPUDevice& d, int tile_size_i,
+                                           int tile_size_j,
+                                           int total_tiles_count,
+                                           const T* input,
+                                           const Dimension<3>& input_dims,
+                                           T* output) {
+    bool request_satisfied = (max(tile_size_i, tile_size_j) <= TileLongSide) &&
+                             (min(tile_size_i, tile_size_j) <= TileShortSide);
+
+    if (request_satisfied) {
+      const int ThreadNum = TileLongSide;
+      if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide)
+        SwapDimension1And2InTensor3UsingTiles<
+            T, ThreadNum, TileLongSide,
+            TileShortSide><<<total_tiles_count, ThreadNum, 0, d.stream()>>>(
+            input, input_dims, output);
+      else if (tile_size_j <= TileLongSide && tile_size_i <= TileShortSide)
+        SwapDimension1And2InTensor3UsingTiles<
+            T, ThreadNum, TileShortSide,
+            TileLongSide><<<total_tiles_count, ThreadNum, 0, d.stream()>>>(
+            input, input_dims, output);
+      return;
+    }
+
+    // Kernel is not launched, meaning the launch configuration is not
+    // satisfied.
+    const bool long_side_request_not_satisfied =
+        max(tile_size_i, tile_size_j) > TileLongSide;
+
+    // Increase launch parameters and try again.
+    if (long_side_request_not_satisfied) {
+      BatchNarrowMatrixTransposeDispatcher<T, TileLongSide * 2, TileShortSide>::
+          DoBatchNarrowMatrixTranspose(d, tile_size_i, tile_size_j,
+                                       total_tiles_count, input, input_dims,
+                                       output);
+    } else {
+      BatchNarrowMatrixTransposeDispatcher<T, TileLongSide, TileShortSide + 1>::
+          DoBatchNarrowMatrixTranspose(d, tile_size_i, tile_size_j,
+                                       total_tiles_count, input, input_dims,
+                                       output);
+    }
+  }
+};
+
+#define BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_OVERALL(TYPE, LONG_SIDE,           \
+                                                    SHORT_SIDE)                \
+  template <int TileSizeI>                                                     \
+  struct BatchNarrowMatrixTransposeDispatcher<TYPE, TileSizeI, SHORT_SIDE> {   \
+    static void DoBatchNarrowMatrixTranspose(const GPUDevice& d,               \
+                                             int tile_size_i, int tile_size_j, \
+                                             int total_tiles_count,            \
+                                             const TYPE* input,                \
+                                             const Dimension<3>& input_dims,   \
+                                             TYPE* output) {                   \
+      assert(                                                                  \
+          false &&                                                             \
+          "BatchNarrowMatrixTransposeDispatcher has requested an unexpected "  \
+          "launch configuration. ");                                           \
+    }                                                                          \
+  };                                                                           \
+  template <int TileSizeJ>                                                     \
+  struct BatchNarrowMatrixTransposeDispatcher<TYPE, LONG_SIDE, TileSizeJ> {    \
+    static void DoBatchNarrowMatrixTranspose(const GPUDevice& d,               \
+                                             int tile_size_i, int tile_size_j, \
+                                             int total_tiles_count,            \
+                                             const TYPE* input,                \
+                                             const Dimension<3>& input_dims,   \
+                                             TYPE* output) {                   \
+      assert(                                                                  \
+          false &&                                                             \
+          "BatchNarrowMatrixTransposeDispatcher has requested an unexpected "  \
+          "launch configuration. ");                                           \
+    }                                                                          \
+  };
+
+#define BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, LONG_SIDE, SHORT_SIDE)       \
+  template <>                                                                  \
+  struct BatchNarrowMatrixTransposeDispatcher<TYPE, LONG_SIDE, SHORT_SIDE> {   \
+    static void DoBatchNarrowMatrixTranspose(const GPUDevice& d,               \
+                                             int tile_size_i, int tile_size_j, \
+                                             int total_tiles_count,            \
+                                             const TYPE* input,                \
+                                             const Dimension<3>& input_dims,   \
+                                             TYPE* output) {                   \
+      const int ThreadNum = LONG_SIDE;                                         \
+      if (tile_size_i <= LONG_SIDE && tile_size_j <= SHORT_SIDE)               \
+        SwapDimension1And2InTensor3UsingTiles<                                 \
+            TYPE, ThreadNum, LONG_SIDE,                                        \
+            SHORT_SIDE><<<total_tiles_count, ThreadNum, 0, d.stream()>>>(      \
+            input, input_dims, output);                                        \
+      else if (tile_size_j <= LONG_SIDE && tile_size_i <= SHORT_SIDE)          \
+        SwapDimension1And2InTensor3UsingTiles<                                 \
+            TYPE, ThreadNum, SHORT_SIDE,                                       \
+            LONG_SIDE><<<total_tiles_count, ThreadNum, 0, d.stream()>>>(       \
+            input, input_dims, output);                                        \
+      return;                                                                  \
+    }                                                                          \
+  };
+
+#define BATCH_NARROW_MATRIX_TRANSPOSE_128(TYPE)               \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_OVERALL(TYPE, 256, 16); \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 32, 15);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 64, 15);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 128, 15);         \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 256, 2);
+
+#define BATCH_NARROW_MATRIX_TRANSPOSE_64(TYPE)                \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_OVERALL(TYPE, 512, 16); \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 32, 15);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 64, 15);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 128, 15);         \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 256, 8);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 512, 2);
+
+#define BATCH_NARROW_MATRIX_TRANSPOSE_32(TYPE)                 \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_OVERALL(TYPE, 1024, 16); \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 32, 15);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 64, 15);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 128, 15);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 256, 10);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 512, 4);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 1024, 2);
+
+#define BATCH_NARROW_MATRIX_TRANSPOSE_16(TYPE)                 \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_OVERALL(TYPE, 1024, 16); \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 32, 15);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 64, 15);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 128, 15);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 256, 10);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 512, 4);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 1024, 2);
+
+#define BATCH_NARROW_MATRIX_TRANSPOSE_8(TYPE)                  \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_OVERALL(TYPE, 1024, 16); \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 32, 15);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 64, 15);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 128, 15);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 256, 10);          \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 512, 4);           \
+  BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 1024, 2);
+
+BATCH_NARROW_MATRIX_TRANSPOSE_128(float4);
+BATCH_NARROW_MATRIX_TRANSPOSE_64(double);
+BATCH_NARROW_MATRIX_TRANSPOSE_64(uint64);
+BATCH_NARROW_MATRIX_TRANSPOSE_32(float);
+BATCH_NARROW_MATRIX_TRANSPOSE_32(uint32);
+BATCH_NARROW_MATRIX_TRANSPOSE_16(Eigen::half);
+BATCH_NARROW_MATRIX_TRANSPOSE_16(uint16);
+BATCH_NARROW_MATRIX_TRANSPOSE_8(uint8);
+
 // Launch the GPU kernel that would swap dimension-1 and dimension-2 in a
 // 3D tensor. It looks at the shape of the incoming data, and decides the best
 // strategy to launch.
@@ -422,29 +595,131 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
   // If both dimensions are not trivial, use tiles for the actual swapping.
   // Otherwise, the trivial swapping relying on the ldg cache is more efficient.
   static const int kMinDimensionToUseTiles = 16;
-  bool use_tiles = (input_dims[1] >= kMinDimensionToUseTiles &&
-                    input_dims[2] >= kMinDimensionToUseTiles);
-  if (use_tiles) {
+  static const int kMinDimensionToUseRectTiles = 96;
+
+  bool large_matrix = (input_dims[1] >= kMinDimensionToUseTiles &&
+                       input_dims[2] >= kMinDimensionToUseTiles);
+  bool narrow_matrix = (input_dims[1] >= kMinDimensionToUseRectTiles ||
+                      input_dims[2] >= kMinDimensionToUseRectTiles);
+  if (large_matrix) {
     // We get best performance when TileSize is the number of threads in a warp
     // (32 on our GPUs) and NumSubTiles is 8, so our block size is 8 * 32 = 256
     // threads.
     static const int TileSize = 32;
-    static const int NumSubTiles = 8;
+    static const int ThreadNum = 256;
+
     Dimension<3> input_dims_in_tiles = {
         input_dims[0], (input_dims[1] + TileSize - 1) / TileSize,
         (input_dims[2] + TileSize - 1) / TileSize,
     };
+
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
-    SwapDimension1And2InTensor3UsingTiles<T, TileSize, NumSubTiles><<<
-        total_tiles_count, dim3(TileSize, NumSubTiles), 0, d.stream()>>>(
+    SwapDimension1And2InTensor3UsingTiles<
+        T, ThreadNum, TileSize,
+        TileSize><<<total_tiles_count, ThreadNum, 0, d.stream()>>>(
         input, input_dims, output);
+
+  } else if (narrow_matrix) {
+    // Define available tile sizes here for each size of data type supported:
+    std::map<int, int> tile_spec_128 = {{32, 15}, {64, 15}, {128, 15},
+                                        {256, 2}};
+    std::map<int, int> tile_spec_64  = {{32, 15},  {64, 15}, {128, 15},
+                                        {256, 8},  {512, 2}};
+    std::map<int, int> tile_spec_32  = {{32, 15},  {64, 15}, {128, 15},
+                                        {256, 10}, {512, 4}, {1024, 2}};
+    std::map<int, int> tile_spec_16  = {{32, 15},  {64, 15}, {128, 15},
+                                        {256, 10}, {512, 4}, {1024, 2}};
+    std::map<int, int> tile_spec_8   = {{32, 15},  {64, 15}, {128, 15},
+                                        {256, 10}, {512, 4}, {1024, 2}};
+
+    // Organize these tile size specifications into a map that maps from data
+    // type sizes to their specifications.
+    std::map<int, std::map<int, int>> tile_spec_map = {{128, tile_spec_128},
+                                                       {64, tile_spec_64},
+                                                       {32, tile_spec_32},
+                                                       {16, tile_spec_16},
+                                                       {8, tile_spec_8}};
+
+    std::map<int, int> tile_spec = tile_spec_map[8 * sizeof(T)];
+
+    int tile_long_side_len = 0;
+    int tile_short_side_len = 0;
+    float lowest_cost = std::numeric_limits<float>::max();
+    int data_long_side = max(input_dims[1], input_dims[2]);
+
+    for (std::map<int, int>::iterator it = tile_spec.begin();
+         it != tile_spec.end(); ++it) {
+      int proposed_tile_long_side_len = it->first;
+
+      // Threads that will not be doing anything useful when reading the matrix
+      // because the thread block size is bigger than the data block size.
+      float wasted_threads = (data_long_side -
+                              data_long_side / proposed_tile_long_side_len *
+                                  proposed_tile_long_side_len);
+      int num_full_tiles = data_long_side / proposed_tile_long_side_len;
+
+      float cost = 0;
+
+      // However, if we can execute two or more full tiles, then we gladly
+      // accept any number of wasted thread and ignore its cost.
+      if (num_full_tiles <= 1) cost = wasted_threads;
+
+      // Using less and equal here because given the same cost, we would like to
+      // launch as many threads
+      // as possible.
+      if (cost <= lowest_cost) {
+        tile_long_side_len = proposed_tile_long_side_len;
+        tile_short_side_len = it->second;
+        lowest_cost = cost;
+      }
+    }
+
+    // Request tile sizes such that the longer side of threadblock align with
+    // the longer side of input data block to maximize read throughput.
+    // The ideal tile shape to request is one with its length of the shorter
+    // side of the tile being equal to the length of the shorter side of the
+    // input matrix.
+    int requested_tile_size_i = input_dims[1] >= kMinDimensionToUseTiles
+                                    ? tile_long_side_len
+                                    : input_dims[1];
+    int requested_tile_size_j = input_dims[1] >= kMinDimensionToUseTiles
+                                    ? input_dims[2]
+                                    : tile_long_side_len;
+
+    // Truncate the shorter size requested according to the manual limit set in
+    // tile_spec to make sure that we do not
+    // launch configurations violating hardware limits.
+    requested_tile_size_i =
+        requested_tile_size_i == tile_long_side_len
+            ? tile_long_side_len
+            : min(requested_tile_size_i, tile_short_side_len);
+    requested_tile_size_j =
+        requested_tile_size_j == tile_long_side_len
+            ? tile_long_side_len
+            : min(requested_tile_size_j, tile_short_side_len);
+
+    Dimension<3> input_dims_in_tiles = {
+        input_dims[0],
+        (input_dims[1] + requested_tile_size_i - 1) / requested_tile_size_i,
+        (input_dims[2] + requested_tile_size_j - 1) / requested_tile_size_j,
+    };
+
+    int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
+                            input_dims_in_tiles[2];
+
+    // We recusively search for the minimum pre-compiled configuration that
+    // satisfies the requested tile sizes.
+    BatchNarrowMatrixTransposeDispatcher<T, 32, 2>::DoBatchNarrowMatrixTranspose(
+        d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
+        input, input_dims, output);
+
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);
-    SwapDimension1And2InTensor3Simple<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            config.virtual_thread_count, input, input_dims, output);
+    SwapDimension1And2InTensor3Simple<
+        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+        config.virtual_thread_count, input, input_dims, output);
   }
 }
 
