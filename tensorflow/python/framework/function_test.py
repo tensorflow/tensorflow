@@ -211,7 +211,8 @@ class FunctionTestMethods(object):
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
+  # C API functions don't support all optimizer options on cuda yet
+  @test_util.skip_if(test_util.c_api_and_cuda_enabled)
   def testCustomGradient(self):
     dtype = dtypes.float32
 
@@ -244,7 +245,6 @@ class FunctionTestMethods(object):
         out, = sess.run(dlogits, {logits: x, labels: y})
       self.assertAllClose(out, np.exp(prob - y))
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testCustomGradientError(self):
     dtype = dtypes.float32
 
@@ -270,7 +270,6 @@ class FunctionTestMethods(object):
           "SymGrad expects to return 1.*but get 2.*instead"):
         _ = sess.run(dinp, {inp: x})
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testSymGradShape(self):
     g = ops.Graph()
     with g.as_default():
@@ -286,7 +285,9 @@ class FunctionTestMethods(object):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
+  # C API functions don't support attributes yet (i.e. noinline).
+  # This attribute is required to run sucessfully with cuda.
+  @test_util.skip_if(test_util.c_api_and_cuda_enabled)
   def testSymGradAttr(self):
 
     @function.Defun(noinline=True)

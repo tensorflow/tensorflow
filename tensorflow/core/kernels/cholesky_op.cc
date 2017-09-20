@@ -76,14 +76,14 @@ class CholeskyOp : public LinearAlgebraOp<Scalar> {
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                   \
-  template <>                                                                 \
-  struct MatrixBandPartFunctor<GPUDevice, T> {                                \
-    void operator()(OpKernelContext* context, const GPUDevice& device,        \
-                    int num_upper_diags, int num_lower_diags, bool transpose, \
-                    typename TTypes<T, 3>::ConstTensor input,                 \
-                    typename TTypes<T, 3>::Tensor output);                    \
-  };                                                                          \
+#define DECLARE_GPU_SPEC(T)                                            \
+  template <>                                                          \
+  struct MatrixBandPartFunctor<GPUDevice, T> {                         \
+    void operator()(OpKernelContext* context, const GPUDevice& device, \
+                    int num_upper_diags, int num_lower_diags,          \
+                    typename TTypes<T, 3>::ConstTensor input,          \
+                    typename TTypes<T, 3>::Tensor output);             \
+  };                                                                   \
   extern template struct MatrixBandPartFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
@@ -132,9 +132,10 @@ class CholeskyOpGpu : public AsyncOpKernel {
     // before we launch each of the Cholesky factorization kernels in paralle.
     auto input_reshaped = input.template flat_inner_dims<Scalar, 3>();
     auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
-    functor::MatrixBandPartFunctor<GPUDevice, Scalar> fn;
-    fn(context, context->eigen_device<GPUDevice>(), n, 0, false /* transpose */,
-       input_reshaped, output_reshaped);
+    functor::MatrixBandPartFunctor<GPUDevice, Scalar> band_part;
+    band_part(context, context->eigen_device<GPUDevice>(),
+              n /* num_lower_diags */, 0 /* num_upper_diags */, input_reshaped,
+              output_reshaped);
 
     // Launch a Cholesky kernel for each matrix in the batch.
     const int64 batch_size = input_reshaped.dimension(0);

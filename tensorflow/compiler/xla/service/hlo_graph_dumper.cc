@@ -348,6 +348,7 @@ class HloDotDumper {
   string DumpSubcomputation(const HloComputation* subcomp,
                             const HloInstruction* parent_instr);
   string DumpComputation(const HloComputation* comp);
+  string DumpRootTag();
   string DumpInstruction(const HloInstruction* instr);
   ColorScheme GetInstructionColor(const HloInstruction* instr);
   string GetInstructionNodeShape(const HloInstruction* instr);
@@ -373,6 +374,10 @@ class HloDotDumper {
   // must start at 1, because that's where graphviz's accounting starts.
   int64 next_node_id_ = 1;
   std::unordered_map<const HloInstruction*, int64> node_ids_;
+
+  // The "root" tag doesn't have an associated HloInstruction pointer, so we
+  // need to store it outside the map.
+  int64 root_node_id_;
 
   // Each (from, to) edge gets a monotonically-increasing ID.  This is a
   // multimap because it's possible for the same edge to appear multiple times
@@ -402,6 +407,7 @@ string HloDotDumper::Dump() {
     StrAppend(&body, DumpSubcomputation(subcomp, parent));
   }
   StrAppend(&body, DumpComputation(computation_));
+  StrAppend(&body, DumpRootTag());
 
   // By contract, Header() and Footer() have to be called after we've dumped all
   // our instructions, because they use state generated during that process.
@@ -434,7 +440,15 @@ stylesheet="
 
 )";
 
-  string graph_label = StrCat(label_, "<br/>", computation_->name());
+  VLOG(3) << "Generating Header";
+
+  string graph_label =
+      StrCat(label_, "<br/>Computation ", computation_->name());
+  if (computation_->IsFusionComputation()) {
+    StrAppend(&graph_label,
+              StrCat(" (in fusion instruction ",
+                     computation_->FusionInstruction()->name(), ")"));
+  }
   if (profile_ != nullptr) {
     auto cycles = profile_->total_cycles_executed(*computation_);
     Appendf(&graph_label, "<br/>total cycles = %lld (%s)", cycles,
@@ -462,33 +476,47 @@ stylesheet="
 
     auto add_hover_css_rule = [&](string elem_type, int64 elem_id,
                                   const char* color) {
-      // One could imagine other ways of writing this CSS rule that involve less
-      // duplication, but this way seems to be relatively performant.
-      edge_css_rules.push_back(Printf(
-          "  #%s%d:hover ~ #edge%lld text { fill: %s; }\n"
-          "  #%s%d:hover ~ #edge%lld path { stroke: %s; stroke-width: .2em; }\n"
-          "  #%s%d:hover ~ #edge%lld polygon { "
-          "fill: %s; stroke: %s; stroke-width: .2em; }\n",
-          elem_type, elem_id, edge_id, color,  //
-          elem_type, elem_id, edge_id, color,  //
-          elem_type, elem_id, edge_id, color, color));
+      // One could imagine other ways of writing this CSS rule that involve
+      // less duplication, but this way seems to be relatively performant.
+      edge_css_rules.push_back(
+          Printf("  #%s%d:hover ~ #edge%lld text { fill: %s; }\n"
+                 "  #%s%d:hover ~ #edge%lld path { "
+                 "stroke: %s; stroke-width: .2em; }\n"
+                 "  #%s%d:hover ~ #edge%lld polygon { "
+                 "fill: %s; stroke: %s; stroke-width: .2em; }\n",
+                 elem_type, elem_id, edge_id, color,  //
+                 elem_type, elem_id, edge_id, color,  //
+                 elem_type, elem_id, edge_id, color, color));
     };
 
+    // The "to_node" value may be a NULL, indicating that this points to the
+    // "root" tag rather than a normal node.
     int64 from_node_id = node_ids_.at(from_node);
-    int64 to_node_id = node_ids_.at(to_node);
+    int64 to_node_id = to_node ? node_ids_.at(to_node) : root_node_id_;
+
     add_hover_css_rule("node", from_node_id, kBlue);
     add_hover_css_rule("node", to_node_id, kRed);
 
+    if (to_node) {
+      VLOG(3) << "Adding css for edge " << edge_id << " from node "
+              << from_node->name() << " to node " << to_node->name();
+    } else {
+      VLOG(3) << "Adding css for edge " << edge_id << " from node "
+              << from_node->name() << " to root tag";
+    }
+
     // If this edge crosses a fusion cluster boundary, highlight it when the
     // cluster is hovered over.
-    if (from_node->IsFused() &&
-        from_node->parent()->root_instruction() == from_node) {
-      int64 cluster_id = cluster_ids_.at(from_node->parent());
-      add_hover_css_rule("clust", cluster_id, kBlue);
-    }
-    if (to_node->IsFused() && to_node->opcode() == HloOpcode::kParameter) {
-      int64 cluster_id = cluster_ids_.at(to_node->parent());
-      add_hover_css_rule("clust", cluster_id, kRed);
+    if (to_node) {
+      if (from_node->IsFused() &&
+          from_node->parent()->root_instruction() == from_node) {
+        int64 cluster_id = cluster_ids_.at(from_node->parent());
+        add_hover_css_rule("clust", cluster_id, kBlue);
+      }
+      if (to_node->IsFused() && to_node->opcode() == HloOpcode::kParameter) {
+        int64 cluster_id = cluster_ids_.at(to_node->parent());
+        add_hover_css_rule("clust", cluster_id, kRed);
+      }
     }
   }
 
@@ -579,6 +607,8 @@ tooltip = " ";
     // Add an edge from the subcomputation to its parent node.  If subcomp
     // belongs to a fusion node, it's drawn in place of the fusion instruction,
     // so there's no need to link those.
+    VLOG(2) << "Edge: from " << subcomp->root_instruction()->name() << " to "
+            << parent_instr->name() << " as " << next_edge_id_;
     edge_ids_.insert(
         {{subcomp->root_instruction(), parent_instr}, next_edge_id_++});
     const char* edge_fmt =
@@ -606,6 +636,39 @@ string HloDotDumper::DumpComputation(const HloComputation* comp) {
   return g;
 }
 
+string HloDotDumper::DumpRootTag() {
+  HloInstruction* from = computation_->root_instruction();
+  auto from_id = InstructionId(from);
+
+  if (!filter_.Show(from)) {
+    return "";
+  }
+
+  // The ID of the root computation is otherwise unused, so it makes a good ID
+  // to use for the root-tag node.  However, the edge_ids_ map requires a
+  // HloInstruction* pointer for the 'to' value, so we use a NULL value there
+  // (rather than a pointer type-cast) to make it obvious if it is erroneously
+  // dereferenced.
+  HloInstruction* to = nullptr;
+  auto to_id = SubcomputationId(computation_);
+
+  string node_body = "ROOT";
+  string node_shape = "circle";
+  ColorScheme color = kBrown;
+
+  VLOG(2) << "Adding root tag as node " << next_node_id_;
+  root_node_id_ = next_node_id_++;
+
+  VLOG(2) << "Adding edge from " << from->name() << " to root tag as "
+          << next_edge_id_;
+  edge_ids_.insert({{from, to}, next_edge_id_++});
+  edges_.push_back(Printf(R"(%s -> %s [tooltip=" "];)", from_id, to_id));
+
+  return Printf(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
+                "\n",
+                to_id, node_body, node_shape, NodeColorAttributes(color));
+}
+
 string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   // We don't display constants as separate nodes; they're merged into their
   // users.
@@ -619,6 +682,7 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
     return "";
   }
 
+  VLOG(2) << "Adding node " << instr->name() << " as " << next_node_id_;
   node_ids_[instr] = next_node_id_++;
 
   ColorScheme color = GetInstructionColor(instr);
@@ -924,6 +988,8 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant) {
       return;
     }
+    VLOG(2) << "Adding edge from " << from->name() << " to " << to->name()
+            << " as " << next_edge_id_;
     edge_ids_.insert({{from, to}, next_edge_id_++});
 
     string edge_label;
@@ -941,9 +1007,13 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   // expressions are handled specially -- we draw an edge from the corresponding
   // operand on the fusion node itself to the parameter.
   if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
-    const HloInstruction* fusion = instr->parent()->FusionInstruction();
-    add_edge(fusion->operand(instr->parameter_number()), instr,
-             /*operand_num=*/0);
+    // Only add the edge if this is not the outermost computation; otherwise it
+    // will lead from a node we're not drawing.
+    if (instr->parent() != computation_) {
+      const HloInstruction* fusion = instr->parent()->FusionInstruction();
+      add_edge(fusion->operand(instr->parameter_number()), instr,
+               /*operand_num=*/0);
+    }
   } else {
     for (int64 i = 0; i < instr->operand_count(); ++i) {
       add_edge(instr->operand(i), instr, i);

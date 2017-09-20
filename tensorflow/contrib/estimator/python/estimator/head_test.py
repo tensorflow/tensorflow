@@ -113,6 +113,19 @@ class MultiLabelHead(test.TestCase):
         r'thresholds must be in \(0, 1\) range\. Given: 1\.0'):
       head_lib.multi_label_head(n_classes=2, thresholds=[0.5, 1.0])
 
+  def test_label_vocabulary_dict(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'label_vocabulary must be a list or tuple\. '
+        r'Given type: <(type|class) \'dict\'>'):
+      head_lib.multi_label_head(n_classes=2, label_vocabulary={'foo': 'bar'})
+
+  def test_label_vocabulary_wrong_size(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'Length of label_vocabulary must be n_classes \(3\). Given: 2'):
+      head_lib.multi_label_head(n_classes=3, label_vocabulary=['foo', 'bar'])
+
   def test_predict(self):
     n_classes = 4
     head = head_lib.multi_label_head(n_classes)
@@ -219,35 +232,6 @@ class MultiLabelHead(test.TestCase):
       self.assertAllClose(
           expected_unweighted_loss, actual_unweighted_loss.eval(), atol=1e-4)
 
-  def test_eval_create_loss_sparse_labels(self):
-    """Tests head.create_loss for eval mode and sparse labels."""
-    n_classes = 2
-    head = head_lib.multi_label_head(n_classes)
-
-    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
-    labels = sparse_tensor.SparseTensor(
-        values=[0, 0, 1],
-        indices=[[0, 0], [1, 0], [1, 1]],
-        dense_shape=[2, 2])
-    expected_labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
-    # loss = labels * -log(sigmoid(logits)) +
-    #        (1 - labels) * -log(1 - sigmoid(logits))
-    # For large logits, this is approximated as:
-    # loss = labels * (logits < 0) * (-logits) +
-    #        (1 - labels) * (logits > 0) * logits
-    expected_unweighted_loss = np.array(
-        [[10., 10.], [15., 0.]], dtype=np.float32)
-    actual_unweighted_loss, actual_labels = head.create_loss(
-        features={'x': np.array(((42,),), dtype=np.int32)},
-        mode=model_fn.ModeKeys.EVAL,
-        logits=logits,
-        labels=labels)
-    with self.test_session():
-      _initialize_variables(self, monitored_session.Scaffold())
-      self.assertAllEqual(expected_labels, actual_labels.eval())
-      self.assertAllClose(
-          expected_unweighted_loss, actual_unweighted_loss.eval(), atol=1e-4)
-
   def test_eval_create_loss_labels_wrong_shape(self):
     """Tests head.create_loss for eval mode when labels has the wrong shape."""
     n_classes = 2
@@ -273,34 +257,12 @@ class MultiLabelHead(test.TestCase):
         actual_unweighted_loss.eval(
             {labels_placeholder: np.array([1, 1], dtype=np.int64)})
 
-  def test_eval(self):
-    n_classes = 2
-    head = head_lib.multi_label_head(n_classes)
-
-    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
-    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
-    # loss = labels * -log(sigmoid(logits)) +
-    #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
-    expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
-    )
-
+  def _test_eval(self, head, logits, labels, expected_loss, expected_metrics):
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels)
-
-    keys = metric_keys.MetricKeys
-    expected_metrics = {
-        # Average loss over examples.
-        keys.LOSS_MEAN: expected_loss / 2,
-        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
-        # this assert tests that the algorithm remains consistent.
-        keys.AUC: 0.3333,
-        keys.AUC_PR: 0.7639,
-    }
 
     # Assert spec contains expected tensors.
     self.assertIsNotNone(spec.loss)
@@ -325,6 +287,100 @@ class MultiLabelHead(test.TestCase):
           rtol=tol,
           atol=tol)
 
+  def test_eval(self):
+    n_classes = 2
+    head = head_lib.multi_label_head(n_classes)
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Average over classes, and sum over examples.
+    expected_loss = (
+        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
+    )
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss / 2,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+    }
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
+  def test_eval_sparse_labels(self):
+    n_classes = 2
+    head = head_lib.multi_label_head(n_classes)
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    # Equivalent to multi_hot = [[1, 0], [1, 1]]
+    labels = sparse_tensor.SparseTensor(
+        values=[0, 0, 1],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Average over classes, and sum over examples.
+    expected_loss = (
+        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits)) /
+        n_classes
+    )
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss / 2,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+    }
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
+  def test_eval_with_label_vocabulary(self):
+    n_classes = 2
+    head = head_lib.multi_label_head(
+        n_classes, label_vocabulary=['class0', 'class1'])
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    # Equivalent to multi_hot = [[1, 0], [1, 1]]
+    labels = sparse_tensor.SparseTensor(
+        values=['class0', 'class0', 'class1'],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Average over classes, and sum over examples.
+    expected_loss = (
+        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits)) /
+        n_classes
+    )
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss / 2,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+    }
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
   def test_eval_with_thresholds(self):
     n_classes = 2
     thresholds = [0.25, 0.5, 0.75]
@@ -338,12 +394,6 @@ class MultiLabelHead(test.TestCase):
     expected_loss = (
         np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
     )
-
-    spec = head.create_estimator_spec(
-        features={'x': np.array(((42,),), dtype=np.int32)},
-        mode=model_fn.ModeKeys.EVAL,
-        logits=logits,
-        labels=labels)
 
     keys = metric_keys.MetricKeys
     expected_metrics = {
@@ -364,28 +414,12 @@ class MultiLabelHead(test.TestCase):
         keys.RECALL_AT_THRESHOLD % thresholds[2]: 1. / 3.,
     }
 
-    # Assert spec contains expected tensors.
-    self.assertIsNotNone(spec.loss)
-    self.assertItemsEqual(expected_metrics.keys(), spec.eval_metric_ops.keys())
-    self.assertIsNone(spec.train_op)
-    self.assertIsNone(spec.export_outputs)
-    _assert_no_hooks(self, spec)
-
-    # Assert predictions, loss, and metrics.
-    tol = 1e-3
-    with self.test_session() as sess:
-      _initialize_variables(self, spec.scaffold)
-      self.assertIsNone(spec.scaffold.summary_op)
-      value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
-      update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
-      loss, metrics = sess.run((spec.loss, update_ops))
-      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
-      # Check results of both update (in `metrics`) and value ops.
-      self.assertAllClose(expected_metrics, metrics, rtol=tol, atol=tol)
-      self.assertAllClose(
-          expected_metrics, {k: value_ops[k].eval() for k in value_ops},
-          rtol=tol,
-          atol=tol)
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
 
   def test_eval_with_weights(self):
     n_classes = 2
@@ -466,18 +500,7 @@ class MultiLabelHead(test.TestCase):
       self.assertAllClose(
           expected_unweighted_loss, actual_unweighted_loss.eval(), atol=1e-4)
 
-  def test_train(self):
-    n_classes = 2
-    head = head_lib.multi_label_head(n_classes)
-
-    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
-    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
-    # For large logits, sigmoid cross entropy loss is approximated as:
-    # loss = labels * (logits < 0) * (-logits) +
-    #        (1 - labels) * (logits > 0) * logits =>
-    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
-    # Average over classes, sum over weights.
-    expected_loss = 17.5
+  def _test_train(self, head, logits, labels, expected_loss):
     expected_train_result = 'my_train_op'
     def _train_op_fn(loss):
       return string_ops.string_join(
@@ -513,6 +536,54 @@ class MultiLabelHead(test.TestCase):
           # Average loss over examples.
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
       }, summary_str, tol)
+
+  def test_train(self):
+    head = head_lib.multi_label_head(n_classes=2)
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # For large logits, sigmoid cross entropy loss is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits =>
+    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # Average over classes, sum over weights.
+    expected_loss = 17.5
+    self._test_train(
+        head=head, logits=logits, labels=labels, expected_loss=expected_loss)
+
+  def test_train_sparse_labels(self):
+    head = head_lib.multi_label_head(n_classes=2)
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    # Equivalent to multi_hot = [[1, 0], [1, 1]]
+    labels = sparse_tensor.SparseTensor(
+        values=[0, 0, 1],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    # For large logits, sigmoid cross entropy loss is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits =>
+    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # Average over classes, sum over weights.
+    expected_loss = 17.5
+    self._test_train(
+        head=head, logits=logits, labels=labels, expected_loss=expected_loss)
+
+  def test_train_with_label_vocabulary(self):
+    head = head_lib.multi_label_head(
+        n_classes=2, label_vocabulary=['class0', 'class1'])
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    # Equivalent to multi_hot = [[1, 0], [1, 1]]
+    labels = sparse_tensor.SparseTensor(
+        values=['class0', 'class0', 'class1'],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    # For large logits, sigmoid cross entropy loss is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits =>
+    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # Average over classes, sum over weights.
+    expected_loss = 17.5
+    self._test_train(
+        head=head, logits=logits, labels=labels, expected_loss=expected_loss)
 
   def test_train_with_weights(self):
     n_classes = 2

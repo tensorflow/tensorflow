@@ -410,9 +410,9 @@ class _DefinedFunction(object):
 
     # pylint: disable=protected-access
     if temp_graph._c_graph:
+      output_names = ([compat.as_bytes(x) for x in self._out_names]
+                      if self._out_names else [])
       with errors.raise_exception_on_not_ok_status() as status:
-        output_names = ([compat.as_bytes(x) for x in self._out_names]
-                        if self._out_names else [])
         self._c_func = c_api.TF_GraphToFunction_wrapper(
             temp_graph._c_graph,
             self._func_name,

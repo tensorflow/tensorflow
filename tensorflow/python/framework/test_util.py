@@ -308,6 +308,31 @@ def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
 # pylint: disable=protected-access
 
 
+def c_api_and_cuda_enabled():
+  return ops._USE_C_API and IsGoogleCudaEnabled()
+
+
+def skip_if(condition):
+  """Skips the decorated function if condition is or evaluates to True.
+
+  Args:
+    condition: Either an expression that can be used in "if not condition"
+               statement, or a callable whose result should be a boolean.
+  Returns:
+    The wrapped function
+  """
+  def real_skip_if(fn):
+    def wrapper(*args, **kwargs):
+      if callable(condition):
+        skip = condition()
+      else:
+        skip = condition
+      if not skip:
+        fn(*args, **kwargs)
+    return wrapper
+  return real_skip_if
+
+
 # TODO(skyewm): remove this eventually
 def disable_c_api(fn):
   """Decorator for disabling the C API on a test.
@@ -321,7 +346,9 @@ def disable_c_api(fn):
   Returns:
     The wrapped function
   """
-  return lambda *args, **kwargs: _use_c_api_wrapper(fn, False, *args, **kwargs)
+  def wrapper(*args, **kwargs):
+    _use_c_api_wrapper(fn, False, *args, **kwargs)
+  return wrapper
 
 
 # TODO(skyewm): remove this eventually
@@ -337,7 +364,9 @@ def enable_c_api(fn):
   Returns:
     The wrapped function
   """
-  return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
+  def wrapper(*args, **kwargs):
+    _use_c_api_wrapper(fn, True, *args, **kwargs)
+  return wrapper
 
 
 def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
