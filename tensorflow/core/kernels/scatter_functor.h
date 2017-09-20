@@ -139,7 +139,7 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
                    typename TTypes<Index>::ConstFlat indices) {
-    // indices and params sizes were validated in DoCompute().
+    // Indices and params sizes were validated in DoCompute().
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     auto worker_threads = c->device()->tensorflow_cpu_worker_threads();
@@ -148,14 +148,14 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
     // Based on the shard strategy in work_sharder.cc to limit the flags' size.
     // Assume each cost unit ues one flag, and the minCostPerShard is 10000,
     //   so limit the factor to 10000.
-    static const int64 maxFactorPerThread = 10000;
-    Index flags_size = static_cast<Index>(maxFactorPerThread * worker_threads->num_threads);
+    static constexpr int64 kMaxFactorPerThread = 10000;
+    Index flags_size = static_cast<Index>(kMaxFactorPerThread * worker_threads->num_threads);
     flags_size = N <= flags_size ? N : flags_size;
     // use atomic_flag and spin lock for multiple thread.
     auto flags = std::unique_ptr<std::atomic_flag[]>(
             new std::atomic_flag[flags_size]{ATOMIC_FLAG_INIT});
 
-    // store the result.
+    // Store the result.
     mutex mu;
     Index result = -1;
     auto work = [&params, &updates, &indices, &flags, flags_size, limit, &mu, &result]
@@ -184,10 +184,11 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
           result = i;
           return;
         }
-        // acquire lock
+        // Acquire lock:
         flags_idx = index % flags_size;
-        while (flags[flags_idx].test_and_set(std::memory_order_acquire)) ;
-        // Copy last Ndim-1 dimensions of updates[i] to params[index]
+        while (flags[flags_idx].test_and_set(std::memory_order_acquire))
+          ;
+        // Copy last Ndim-1 dimensions of updates[i] to params[index].
         assign_func(index, i);
         // release lock
         flags[flags_idx].clear(std::memory_order_release);
