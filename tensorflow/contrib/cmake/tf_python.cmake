@@ -329,7 +329,6 @@ add_python_module("tensorflow/contrib/cudnn_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/ops")
 add_python_module("tensorflow/contrib/data")
 add_python_module("tensorflow/contrib/data/python")
-add_python_module("tensorflow/contrib/data/python/framework")
 add_python_module("tensorflow/contrib/data/python/kernel_tests")
 add_python_module("tensorflow/contrib/data/python/ops")
 add_python_module("tensorflow/contrib/data/python/util")
@@ -362,6 +361,8 @@ add_python_module("tensorflow/contrib/framework/python/framework")
 add_python_module("tensorflow/contrib/framework/python/ops")
 add_python_module("tensorflow/contrib/gan")
 add_python_module("tensorflow/contrib/gan/python")
+add_python_module("tensorflow/contrib/gan/python/eval")
+add_python_module("tensorflow/contrib/gan/python/eval/python")
 add_python_module("tensorflow/contrib/gan/python/features")
 add_python_module("tensorflow/contrib/gan/python/features/python")
 add_python_module("tensorflow/contrib/gan/python/losses")
@@ -849,6 +850,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/safe_ptr.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/safe_ptr.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_reader.h"

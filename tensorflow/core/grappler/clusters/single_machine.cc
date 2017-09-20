@@ -282,7 +282,7 @@ Status SingleMachine::ResetSession() {
     // Make sure the session is properly closed
     TF_RETURN_IF_ERROR(Shutdown());
 
-    // Destroying the object deletes all its varibles as well. This is only true
+    // Destroying the object deletes all its variables as well. This is only true
     // for DirectSession.
     session_.reset();
   }

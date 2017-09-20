@@ -109,6 +109,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   }
 }
 
+/* static */ Shape LayoutUtil::GetWithDefaultLayout(const Shape& shape) {
+  Shape copy(shape);
+  LayoutUtil::SetToDefaultLayout(&copy);
+  return copy;
+}
+
 /* static */ void LayoutUtil::SetToDefaultLayout(ProgramShape* program_shape) {
   for (auto& parameter_shape : *program_shape->mutable_parameters()) {
     LayoutUtil::SetToDefaultLayout(&parameter_shape);

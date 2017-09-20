@@ -327,15 +327,20 @@ class Experiment(object):
     # Otherwise, the servers will wait to connect to each other before starting
     # to train. We might as well start as soon as we can.
     config = self._estimator.config
-    if (config.cluster_spec and config.master and
-        config.environment == run_config.Environment.LOCAL):
-      logging.warn("ClusterSpec and master are provided, but environment is "
-                   "set to 'local'. Set environment to 'cloud' if you intend "
-                   "to use the distributed runtime.")
-    if (config.environment != run_config.Environment.LOCAL and
-        config.environment != run_config.Environment.GOOGLE and
-        config.cluster_spec and config.master):
-      self._start_server()
+    if isinstance(config, run_config.RunConfig):
+      if (config.cluster_spec and config.master and
+          config.environment == run_config.Environment.LOCAL):
+        logging.warn("ClusterSpec and master are provided, but environment is "
+                     "set to 'local'. Set environment to 'cloud' if you intend "
+                     "to use the distributed runtime.")
+      if (config.environment != run_config.Environment.LOCAL and
+          config.environment != run_config.Environment.GOOGLE and
+          config.cluster_spec and config.master):
+        self._start_server()
+    elif config.cluster_spec and config.master:
+      raise ValueError('For distributed runtime, Experiment class only works with'
+                       'tf.contrib.learn.RunConfig for now, but provided {}'
+                       .format(type(config)))
 
     extra_hooks = []
     if delay_secs is None:

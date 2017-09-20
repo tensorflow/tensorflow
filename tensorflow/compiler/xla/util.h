@@ -274,6 +274,11 @@ string VectorString(const std::initializer_list<T>& c) {
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
 
+// Returns a PaddingConfig object where 'padding' contains
+// (low edge padding, high edge padding) pairs for each dimension.
+PaddingConfig MakeEdgePaddingConfig(
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+
 // Returns true if the padding configuration has at least one dimension with
 // non-zero interior padding.
 bool HasInteriorPadding(const PaddingConfig& config);

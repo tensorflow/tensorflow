@@ -1665,9 +1665,13 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
     bounds.reserve(slice_starts_.size());
+    const bool omit_stride =
+        std::all_of(slice_strides_.begin(), slice_strides_.end(),
+                    [](int64 stride) { return stride == 1; });
     for (int i = 0; i < slice_starts_.size(); ++i) {
-      bounds.push_back(
-          StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
+      string stride_str = omit_stride ? "" : StrCat(":", slice_strides_[i]);
+      bounds.push_back(StrCat("[", slice_starts_[i], ":", slice_limits_[i],
+                              stride_str, "]"));
     }
     extra.push_back(StrCat("slice={", Join(bounds, ", "), "}"));
   }
@@ -2618,6 +2622,23 @@ void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
 void HloInstruction::set_outer_dimension_partitions(
     const std::vector<int64>& outer_dimension_partitions) {
   outer_dimension_partitions_ = outer_dimension_partitions;
+}
+
+void HloInstruction::RelayoutConstant(const Layout& new_layout,
+                                      const ShapeIndex& shape_index) {
+  CHECK_EQ(opcode(), HloOpcode::kConstant);
+  Shape* mutable_array_subshape =
+      ShapeUtil::GetMutableSubshape(mutable_shape(), shape_index);
+  CHECK(ShapeUtil::IsArray(*mutable_array_subshape));
+
+  // Normally array_subshape will always have a layout, but this invariant is
+  // temporarily broken in LayoutAssignment::AssignLayouts.
+
+  if (!mutable_array_subshape->has_layout() ||
+      !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
+    literal_ = literal_->Relayout(new_layout, shape_index);
+    *mutable_array_subshape->mutable_layout() = new_layout;
+  }
 }
 
 }  // namespace xla

@@ -579,6 +579,15 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
     done(s);
     return;
   }
+  int64 src_incarnation, target_incarnation;
+  s = parent_->GetDeviceIncarnation(source_device, &src_incarnation);
+  s.Update(parent_->GetDeviceIncarnation(target_device, &target_incarnation));
+  if (!s.ok()) {
+    delete frame;
+    delete exec_args;
+    done(s);
+    return;
+  }
 
   // The ProcFLR sends the arguments to the function from the source_device to
   // the target_device. So here we receive those arguments. Similarly, when the
@@ -586,10 +595,11 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   // to the source_device (caller) so that the ProcFLR can receive them later.
   std::vector<Tensor>* remote_args = new std::vector<Tensor>;
   ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
-      source_device, target_device, "arg_", args.size(), rendez_args,
-      rendezvous, remote_args,
-      [frame, remote_args, item, source_device, target_device, rendezvous,
-       rendez_args, rets, done, exec_args](const Status& status) {
+      source_device, target_device, "arg_", src_incarnation, args.size(),
+      rendez_args, rendezvous, remote_args,
+      [frame, remote_args, item, source_device, target_device,
+       target_incarnation, rendezvous, rendez_args, rets, done,
+       exec_args](const Status& status) {
         Status s = status;
         s = frame->SetArgs(*remote_args);
         if (!s.ok()) {
@@ -600,9 +610,9 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
           return;
         }
         item->exec->RunAsync(
-            *exec_args,
-            [item, frame, rets, done, source_device, target_device, rendezvous,
-             rendez_args, remote_args, exec_args](const Status& status) {
+            *exec_args, [item, frame, rets, done, source_device, target_device,
+                         target_incarnation, rendezvous, rendez_args,
+                         remote_args, exec_args](const Status& status) {
               item->Unref();
               Status s = status;
               if (s.ok()) {
@@ -616,8 +626,8 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                 return;
               }
               s = ProcessFunctionLibraryRuntime::SendTensors(
-                  target_device, source_device, "ret_", *rets, rendez_args,
-                  rendezvous);
+                  target_device, source_device, "ret_", target_incarnation,
+                  *rets, rendez_args, rendezvous);
               delete remote_args;
               delete exec_args;
               done(s);

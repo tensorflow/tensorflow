@@ -9,7 +9,6 @@ py_library(
     srcs = ["dataset_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/data/python/framework:function",
         "//tensorflow/contrib/data/python/util:nest",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -17,6 +16,7 @@ py_library(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
@@ -38,11 +38,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_ops",
-        "//tensorflow/contrib/data/python/framework:function",
         "//tensorflow/contrib/data/python/util:nest",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
         "//tensorflow/python:platform",
     ],
 )

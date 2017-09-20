@@ -406,14 +406,17 @@ class Layer(object):
     # Note that we currently don't support variable regularization in Eager
     # mode. An alternative is for users to directly compute these losses before
     # performing a backward pass.
-    if regularizer is not None and context.in_eager_mode():
-      raise RuntimeError('Variable regularization not supported in Eager mode.')
+    if context.in_graph_mode():
+      existing_variables = set(tf_variables.global_variables())
+    else:
+      existing_variables = []
+      if regularizer is not None:
+        raise RuntimeError('Variable regularization not supported in Eager '
+                           'mode.')
     if dtype is None:
       dtype = self.dtype
-    existing_variables = set(tf_variables.global_variables())
 
     self._set_scope(None)
-
     vs_reuse = ((self.built or self._reuse)
                 if context.in_graph_mode() else vs.AUTO_REUSE)
     with vs.variable_scope(self._scope, reuse=vs_reuse) as scope:

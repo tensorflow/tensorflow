@@ -91,6 +91,7 @@ See the @{$python/contrib.layers} guide.
 @@sparse_column_with_hash_bucket
 @@sparse_column_with_integerized_feature
 @@sparse_column_with_keys
+@@sparse_column_with_vocabulary_file
 @@weighted_sparse_column
 @@weighted_sum_from_feature_columns
 @@infer_real_valued_columns

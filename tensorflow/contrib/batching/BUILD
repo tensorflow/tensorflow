@@ -24,7 +24,6 @@ cc_library(
 
 cc_test(
     name = "batch_scheduler_test",
-    size = "small",
     srcs = ["batch_scheduler_test.cc"],
     deps = [
         ":batch_scheduler",
@@ -57,7 +56,6 @@ cc_library(
 
 cc_test(
     name = "shared_batch_scheduler_test",
-    size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
         ":shared_batch_scheduler",
@@ -79,7 +77,6 @@ cc_library(
 
 cc_test(
     name = "basic_batch_scheduler_test",
-    size = "small",
     srcs = ["basic_batch_scheduler_test.cc"],
     deps = [
         ":basic_batch_scheduler",

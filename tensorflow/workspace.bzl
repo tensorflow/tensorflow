@@ -369,11 +369,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@six_archive//:six",
   )
 
+  # TODO(gunan): Add github mirror back if/when sha256sum issues are resolved.
+  #   See https://github.com/libgit2/libgit2/issues/4343 for contetxt.
   patched_http_archive(
       name = "protobuf_archive",
       urls = [
           "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
-          "https://github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
       ],
       sha256 = "6d43b9d223ce09e5d4ce8b0060cb8a7513577a35a64c7e3dad10f0703bf3ad93",
       strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
@@ -392,21 +393,21 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # We need to import the protobuf library under the names com_google_protobuf
   # and com_google_protobuf_cc to enable proto_library support in bazel.
   # Unfortunately there is no way to alias http_archives at the moment.
+  # TODO(gunan): Add github mirror back if/when sha256sum issues are resolved.
   native.http_archive(
       name = "com_google_protobuf",
       urls = [
           "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
-          "https://github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
       ],
       sha256 = "6d43b9d223ce09e5d4ce8b0060cb8a7513577a35a64c7e3dad10f0703bf3ad93",
       strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
   )
 
+  # TODO(gunan): Add github mirror back if/when sha256sum issues are resolved.
   native.http_archive(
       name = "com_google_protobuf_cc",
       urls = [
           "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
-          "https://github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
       ],
       sha256 = "6d43b9d223ce09e5d4ce8b0060cb8a7513577a35a64c7e3dad10f0703bf3ad93",
       strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
@@ -539,11 +540,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9aafb854cc7cb8df8338c50cb411a54ce1e09796.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/9aafb854cc7cb8df8338c50cb411a54ce1e09796.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/343595467c91e2db33e7e157adc87b2e53ddbe1a.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/343595467c91e2db33e7e157adc87b2e53ddbe1a.tar.gz",
       ],
-      sha256 = "2a6d4c23f6660d9130d8d5f16267db53a87f8d0104f9618b558c033570f110af",
-      strip_prefix = "llvm-9aafb854cc7cb8df8338c50cb411a54ce1e09796",
+      sha256 = "74a9b0a4dfd65082acb134ef865ee82f4e77dfbd33bb14458253a7937232ed7e",
+      strip_prefix = "llvm-343595467c91e2db33e7e157adc87b2e53ddbe1a",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )

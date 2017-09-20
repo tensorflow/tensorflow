@@ -15,6 +15,8 @@
 #include "tensorflow/contrib/boosted_trees/lib/trees/decision_tree.h"
 #include "tensorflow/core/platform/macros.h"
 
+#include <algorithm>
+
 namespace tensorflow {
 namespace boosted_trees {
 namespace trees {

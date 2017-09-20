@@ -536,6 +536,17 @@ Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
   return Status::OK();
 }
 
+Status Graph::IsValidInputTensor(const Node* node, int idx) const {
+  TF_RETURN_IF_ERROR(IsValidNode(node));
+  if (idx >= node->num_inputs()) {
+    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
+                                   node->op_def().name(),
+                                   "', num of inputs: ", node->num_inputs(),
+                                   ") does not have ", "input ", idx);
+  }
+  return Status::OK();
+}
+
 Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
                           const Node* cost_node) {
   Node* node = nullptr;

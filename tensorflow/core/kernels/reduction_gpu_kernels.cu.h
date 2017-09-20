@@ -38,6 +38,35 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
+struct Sum {
+  __host__ __device__ T operator()(const T& a, const T& b) const {
+    return a + b;
+  }
+};
+
+// needed to work around a compiler bug in nvcc - it doesn't seem to like
+// the overloaded addition op for std::complex
+template <>
+struct Sum<std::complex<float>> {
+  __host__ __device__ std::complex<float> operator()(
+      const std::complex<float>& a, const std::complex<float>& b) const {
+    auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
+                          make_cuComplex(b.real(), b.imag()));
+    return std::complex<float>(result.x, result.y);
+  }
+};
+
+template <>
+struct Sum<std::complex<double>> {
+  __host__ __device__ std::complex<double> operator()(
+      const std::complex<double>& a, const std::complex<double>& b) const {
+    auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
+                         make_cuDoubleComplex(b.real(), b.imag()));
+    return std::complex<double>(result.x, result.y);
+  }
+};
+
+template <typename T>
 struct Prod {
   __host__ __device__ T operator()(const T& a, const T& b) const {
     return a * b;
@@ -676,7 +705,8 @@ template <typename T, typename Op>
 struct IsSum {
   constexpr static bool value =
       (std::is_same<Op, cub::Sum>::value ||
-       std::is_same<Op, Eigen::internal::SumReducer<T>>::value);
+       std::is_same<Op, Eigen::internal::SumReducer<T>>::value ||
+       std::is_same<Op, Sum<T>>::value);
 };
 
 template <typename T, typename Op>
@@ -793,11 +823,11 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<T>> {
   static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Eigen::internal::SumReducer<T>& reducer) {
-    ReduceImpl<T, cub::Sum, T*, T*, ReductionAxes>(
+    ReduceImpl<T, Sum<T>, T*, T*, ReductionAxes>(
         ctx, (T*)out.data(), (T*)in.data(), in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,
         in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
-        cub::Sum());
+        Sum<T>());
   }
 
   template <typename OUT_T>
@@ -828,12 +858,12 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T>> {
 
     DividesBy<T> div_op(static_cast<T>(divisor));
     TransformOutputIterator<T, T, DividesBy<T>> itr((T*)out.data(), div_op);
-    ReduceImpl<T, cub::Sum, TransformOutputIterator<T, T, DividesBy<T>>, T*,
+    ReduceImpl<T, Sum<T>, TransformOutputIterator<T, T, DividesBy<T>>, T*,
                ReductionAxes>(ctx, itr, (T*)in.data(), in.rank(),
                               in.dimension(0),
                               in.rank() >= 2 ? in.dimension(1) : 1,
                               in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
-                              reduction_axes, cub::Sum());
+                              reduction_axes, Sum<T>());
   }
 
   template <typename OUT_T>

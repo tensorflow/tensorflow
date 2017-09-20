@@ -133,6 +133,13 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       bool is_top_level_computation,
       std::vector<const HloInstruction*>* instruction_order);
 
+  llvm::IRBuilder<>* ir_builder() { return &ir_builder_; }
+
+  // Emits a call to `computation` with scalar arguments `arguments`.
+  StatusOr<llvm::Value*> EmitScalarCall(
+      PrimitiveType return_type, HloComputation* computation,
+      const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name);
+
  protected:
   //
   // The following methods implement the DfsHloVisitor interface.
@@ -314,9 +321,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // shape). The body of the inner-most loop is provided by the body_emitter
   // function.
   //
+  // desc is an optional human-readable string that's added to the loop name in
+  // IR.  Regardless of whether desc is provided, target_op->name() is included
+  // in the loop name.
+  //
   // TODO(jingyue): target_op should be a `const HloInstruction*`.
   Status EmitTargetElementLoop(
       HloInstruction* target_op,
+      const llvm_ir::ElementGenerator& element_generator);
+  Status EmitTargetElementLoop(
+      HloInstruction* target_op, tensorflow::StringPiece desc,
       const llvm_ir::ElementGenerator& element_generator);
 
   // Emit IR to perform a computation for every element in a partition/slice of
@@ -326,7 +340,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitParallelTargetElementLoop(
       const Shape& target_shape,
       const llvm_ir::ElementGenerator& element_generator,
-      llvm_ir::IrArray* target_array);
+      tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the

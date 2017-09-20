@@ -44,6 +44,7 @@ py_library(
         "//tensorflow/contrib/learn/python/learn/datasets:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/tools/api/generator:__pkg__",
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
@@ -277,6 +278,19 @@ cc_library(
 )
 
 cc_library(
+    name = "py_seq_tensor",
+    srcs = ["lib/core/py_seq_tensor.cc"],
+    hdrs = ["lib/core/py_seq_tensor.h"],
+    deps = [
+        ":numpy_lib",
+        ":safe_ptr",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
     name = "py_record_reader_lib",
     srcs = ["lib/io/py_record_reader.cc"],
     hdrs = ["lib/io/py_record_reader.h"],
@@ -449,7 +463,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/eager:execute",
-        "//tensorflow/python/eager:tensor",
     ],
 )
 
@@ -489,6 +502,7 @@ py_library(
         ":sparse_tensor",
         ":tensor_util",
         ":util",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -572,6 +586,7 @@ py_library(
         ":util",
         ":variable_scope",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -1031,15 +1046,6 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
     ],
-)
-
-py_test(
-    name = "framework_pip_dependencies_test",
-    size = "small",
-    srcs = ["framework/pip_dependencies_test.py"],
-    main = "framework/pip_dependencies_test.py",
-    srcs_version = "PY2AND3",
-    deps = [":client_testlib"],
 )
 
 py_test(
@@ -3250,7 +3256,9 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
+        "no_oss",
         "no_pip_gpu",
+        "notap",
     ],
     deps = [
         ":array_ops",
