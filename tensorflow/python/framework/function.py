@@ -422,7 +422,24 @@ class _DefinedFunction(object):
             output_names,
             None,  # opts
             status)
+      self._set_c_attrs(kwargs_attr)
     # pylint: enable=protected-access
+
+  def _set_c_attrs(self, attrs):
+    """Sets `attrs` as attributes of self._c_func.
+
+    Requires that self._c_func is not None.
+
+    Args:
+      attrs: a dictionary from attribute name to attribute proto value
+    """
+    for name, attr_value in attrs.items():
+      serialized = attr_value.SerializeToString()
+      # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
+      # It might be worth creating a convenient way to re-use the same status.
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_FunctionSetAttrValueProto(self._c_func, compat.as_str(name),
+                                           serialized, status)
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
     """Creates an 8-character string unique to this input.

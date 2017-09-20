@@ -1136,6 +1136,24 @@ TF_CAPI_EXPORT extern void TF_FunctionToFunctionDef(TF_Function* func,
 TF_CAPI_EXPORT extern TF_Function* TF_FunctionImportFunctionDef(
     const TF_Buffer* func_def, TF_Status* status);
 
+// Sets function attribute named `attr_name` to value stored in `proto`.
+// If this attribute is already set to another value, it is overriden.
+// `proto` should point to a sequence of bytes of length `proto_len`
+// representing a binary serialization of an AttrValue protocol
+// buffer.
+TF_CAPI_EXPORT extern void TF_FunctionSetAttrValueProto(TF_Function* func,
+                                                        const char* attr_name,
+                                                        const void* proto,
+                                                        size_t proto_len,
+                                                        TF_Status* status);
+
+// Sets `output_attr_value` to the binary-serialized AttrValue proto
+// representation of the value of the `attr_name` attr of `func`.
+// If `attr_name` attribute is not present, status is set to an error.
+TF_CAPI_EXPORT extern void TF_FunctionGetAttrValueProto(
+    TF_Function* func, const char* attr_name, TF_Buffer* output_attr_value,
+    TF_Status* status);
+
 // Frees the memory used by the `func` struct.
 // TF_DeleteFunction is a noop if `func` is null.
 // Deleting a function does not remove it from any graphs it was copied to.

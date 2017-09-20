@@ -545,4 +545,31 @@ TF_Function* TF_FunctionImportFunctionDef(const TF_Buffer* func_def,
   return func;
 }
 
+void TF_FunctionSetAttrValueProto(TF_Function* func, const char* attr_name,
+                                  const void* proto, size_t proto_len,
+                                  TF_Status* status) {
+  tensorflow::AttrValue attr_value;
+  if (!attr_value.ParseFromArray(proto, proto_len)) {
+    status->status = InvalidArgument(
+        "Unparseable AttrValue proto passed to "
+        "TF_FunctionSetAttrValueProto");
+    return;
+  }
+  (*func->fdef.mutable_attr())[string(attr_name)] = attr_value;
+  status->status = tensorflow::Status::OK();
+}
+
+void TF_FunctionGetAttrValueProto(TF_Function* func, const char* attr_name,
+                                  TF_Buffer* output_attr_value,
+                                  TF_Status* status) {
+  const auto& it = func->fdef.attr().find(attr_name);
+  if (it == func->fdef.attr().end()) {
+    status->status =
+        InvalidArgument("Function '", func->fdef.signature().name(),
+                        "' has no attr named '", attr_name, "'.");
+    return;
+  }
+  status->status = MessageToBuffer(it->second, output_attr_value);
+}
+
 void TF_DeleteFunction(TF_Function* func) { delete func; }

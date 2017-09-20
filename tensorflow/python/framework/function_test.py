@@ -211,8 +211,6 @@ class FunctionTestMethods(object):
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
 
-  # C API functions don't support all optimizer options on cuda yet
-  @test_util.skip_if(test_util.c_api_and_cuda_enabled)
   def testCustomGradient(self):
     dtype = dtypes.float32
 
@@ -285,9 +283,6 @@ class FunctionTestMethods(object):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
-  # C API functions don't support attributes yet (i.e. noinline).
-  # This attribute is required to run sucessfully with cuda.
-  @test_util.skip_if(test_util.c_api_and_cuda_enabled)
   def testSymGradAttr(self):
 
     @function.Defun(noinline=True)
