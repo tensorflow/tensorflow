@@ -1094,9 +1094,10 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 // Callers must also satisfy the following constraints:
 // - `inputs` cannot refer to TF_Outputs within a control flow context. For
 //   example, one cannot use the output of "switch" node as input.
-// - No TF_Output of a function (inside any of `inputs`, `outputs`, `fn_body`)
-//   is allowed to have a reference type. Reference types are not exposed
-//   through C API and are being deprecated.
+// - `inputs` and `outputs` cannot have reference types. Reference types are
+//   not exposed through C API and are being replaced with Resources. We support
+//   reference types inside function's body to support legacy code. Do not
+//   use them in new code.
 // - Every node in the function's body must have all of its inputs (including
 //   control inputs). In other words, for every node in the body, each input
 //   must be either listed in `inputs` or must come from another node in

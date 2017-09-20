@@ -137,17 +137,12 @@ string NodeNameMapping::Lookup(const string& name) const {
   return iter->second;
 }
 
-Status ValidateNoRefOutputs(const Node* node) {
-  for (int i = 0; i < node->num_outputs(); ++i) {
-    const DataType& dt = node->output_type(i);
-    if (IsRefType(dt)) {
-      return InvalidArgument("Output ", i, " of node '", node->name(),
-                             "' has a reference "
-                             "type ",
-                             DataTypeString(dt));
-    }
-  }
-  return Status::OK();
+Status ValidateNonRefOutput(const Node* node, int idx) {
+  const DataType& dt = node->output_type(idx);
+  return IsRefType(dt)
+             ? InvalidArgument("Output ", idx, " of node '", node->name(),
+                               "' has a reference type ", DataTypeString(dt))
+             : Status::OK();
 }
 
 Status FillFunctionBody(
@@ -366,7 +361,7 @@ Status ProcessInputs(
         fn_body->graph.IsValidOutputTensor(&node, idx),
         "Encountered while processing input ", i, " into function '", fn_name,
         "'");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(&node),
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(&node, idx),
                                     "Encountered while processing input ", i,
                                     " into function '", fn_name, "'");
 
@@ -401,6 +396,9 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
         fn_body->graph.IsValidOutputTensor(&node, idx),
         "Encountered while processing output ", i, " from function '", fn_name,
         "'");
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(&node, idx),
+                                    "Encountered while creating function '",
+                                    fn_name, "'");
     output_tensors->emplace_back(&node, idx);
   }
   return Status::OK();
@@ -419,9 +417,6 @@ Status ComputeBodyNodes(
       const auto& iter = input_nodes.find(node);
       if (iter == input_nodes.end()) {
         // This node is not referenced in inputs. Add it to the body.
-        TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(node),
-                                        "Encountered while creating function '",
-                                        fn_name, "'");
         body_nodes->push_back(node);
       } else {
         // This node is referenced in inputs. Currently, we place an
@@ -440,9 +435,6 @@ Status ComputeBodyNodes(
     body_nodes->reserve(num_opers);
     for (int i = 0; i < num_opers; ++i) {
       const Node* node = &opers[i]->node;
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(node),
-                                      "Encountered while creating function '",
-                                      fn_name, "'");
       body_nodes->push_back(node);
     }
   }
