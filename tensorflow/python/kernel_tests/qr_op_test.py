@@ -102,13 +102,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    # TODO(rmlarsen): Debug failure due to invalid parameter to ORMQR.
-    rows_ = shape_[-2]
-    cols_ = shape_[-1]
-    use_gpu = False if rows_ < cols_ or (full_matrices_ and
-                                         rows_ != cols_) else True
-
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       if use_static_shape_:
         x_tf = constant_op.constant(x_np)
       else:

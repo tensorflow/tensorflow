@@ -16,8 +16,6 @@ import tensorflow as tf
 tfgan = tf.contrib.gan
 ```
 
-[TOC]
-
 ## Why TFGAN?
 
 * Easily train generator and discriminator networks with well-tested, flexible [library calls](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/train.py). You can

@@ -57,6 +57,12 @@ inline typename CUDAComplexT<T>::type* CUDAComplex(T* p) {
   return reinterpret_cast<typename CUDAComplexT<T>::type*>(p);
 }
 
+// Template to give the Cublas adjoint operation for real and complex types.
+template <typename T>
+cublasOperation_t CublasAdjointOp() {
+  return Eigen::NumTraits<T>::IsComplex ? CUBLAS_OP_C : CUBLAS_OP_T;
+}
+
 // Container of LAPACK info data (an array of int) generated on-device by
 // a CudaSolver call. One or more such objects can be passed to
 // CudaSolver::CopyLapackInfoToHostAsync() along with a callback to
@@ -239,6 +245,9 @@ class CudaSolver {
   // Overwrite matrix C by product of C and Householder matrix Q. The
   // Householder matrix Q is represented by the output from Geqrf in dev_a and
   // dev_tau.
+  // Notice: If Scalar is real, only trans=CUBLAS_OP_N or trans=CUBLAS_OP_T is
+  // supported. If Scalar is complex, trans=CUBLAS_OP_N or trans=CUBLAS_OP_C is
+  // supported.
   // Returns Status::OK() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-ormqr
   template <typename Scalar>
@@ -383,7 +392,7 @@ struct AdjointBatchFunctor {
 template <typename Device, typename Scalar>
 struct DeterminantFromPivotedLUFunctor {
   void operator()(const Device& device,
-                  typename TTypes<Scalar, 3>::Tensor lu_factor,
+                  typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
                   int* info);
 };

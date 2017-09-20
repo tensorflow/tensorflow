@@ -137,17 +137,12 @@ string NodeNameMapping::Lookup(const string& name) const {
   return iter->second;
 }
 
-Status ValidateNoRefOutputs(const Node* node) {
-  for (int i = 0; i < node->num_outputs(); ++i) {
-    const DataType& dt = node->output_type(i);
-    if (IsRefType(dt)) {
-      return InvalidArgument("Output ", i, " of node '", node->name(),
-                             "' has a reference "
-                             "type ",
-                             DataTypeString(dt));
-    }
-  }
-  return Status::OK();
+Status ValidateNonRefOutput(const Node* node, int idx) {
+  const DataType& dt = node->output_type(idx);
+  return IsRefType(dt)
+             ? InvalidArgument("Output ", idx, " of node '", node->name(),
+                               "' has a reference type ", DataTypeString(dt))
+             : Status::OK();
 }
 
 Status FillFunctionBody(
@@ -241,12 +236,15 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           const std::vector<OutputTensor>& inputs,
                           const std::vector<OutputTensor>& outputs,
                           const std::vector<string>& output_names,
-                          FunctionDef* fdef) {
+                          const char* description, FunctionDef* fdef) {
   if (!output_names.empty()) {
     DCHECK_EQ(output_names.size(), outputs.size());
   }
 
   fdef->mutable_signature()->set_name(fn_name);
+  if (description != nullptr) {
+    fdef->mutable_signature()->set_description(description);
+  }
 
   // Keep track of names we used and how we normalized them.
   NodeNameMapping node_names;
@@ -366,7 +364,7 @@ Status ProcessInputs(
         fn_body->graph.IsValidOutputTensor(&node, idx),
         "Encountered while processing input ", i, " into function '", fn_name,
         "'");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(&node),
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(&node, idx),
                                     "Encountered while processing input ", i,
                                     " into function '", fn_name, "'");
 
@@ -401,6 +399,9 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
         fn_body->graph.IsValidOutputTensor(&node, idx),
         "Encountered while processing output ", i, " from function '", fn_name,
         "'");
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(&node, idx),
+                                    "Encountered while creating function '",
+                                    fn_name, "'");
     output_tensors->emplace_back(&node, idx);
   }
   return Status::OK();
@@ -419,9 +420,6 @@ Status ComputeBodyNodes(
       const auto& iter = input_nodes.find(node);
       if (iter == input_nodes.end()) {
         // This node is not referenced in inputs. Add it to the body.
-        TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(node),
-                                        "Encountered while creating function '",
-                                        fn_name, "'");
         body_nodes->push_back(node);
       } else {
         // This node is referenced in inputs. Currently, we place an
@@ -440,9 +438,6 @@ Status ComputeBodyNodes(
     body_nodes->reserve(num_opers);
     for (int i = 0; i < num_opers; ++i) {
       const Node* node = &opers[i]->node;
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(node),
-                                      "Encountered while creating function '",
-                                      fn_name, "'");
       body_nodes->push_back(node);
     }
   }
@@ -461,7 +456,7 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
                                 int noutputs, const TF_Output* outputs,
                                 const char* const* output_names,
                                 const TF_FunctionOptions* opts,
-                                TF_Status* status) {
+                                const char* description, TF_Status* status) {
   tensorflow::mutex_lock l(*const_cast<tensorflow::mutex*>(&fn_body->mu));
 
   // Process inputs.
@@ -496,7 +491,7 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
   TF_Function* tf_function = new TF_Function();
   status->status = tensorflow::GraphToFunctionDef(
       fn_body->graph, fn_name, body_nodes, input_tensors, output_tensors,
-      output_names_vec, &tf_function->fdef);
+      output_names_vec, description, &tf_function->fdef);
   if (!status->status.ok()) {
     TF_DeleteFunction(tf_function);
     return nullptr;
@@ -530,6 +525,46 @@ void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
 void TF_FunctionToFunctionDef(TF_Function* func, TF_Buffer* output_func_def,
                               TF_Status* status) {
   status->status = MessageToBuffer(func->fdef, output_func_def);
+}
+
+TF_Function* TF_FunctionImportFunctionDef(const TF_Buffer* func_def,
+                                          TF_Status* status) {
+  TF_Function* func = new TF_Function();
+  if (!func->fdef.ParseFromArray(func_def->data, func_def->length)) {
+    status->status = InvalidArgument(
+        "Invalid FunctionDef given to TF_FunctionImportFunctionDef");
+    TF_DeleteFunction(func);
+    return nullptr;
+  }
+  status->status = tensorflow::Status::OK();
+  return func;
+}
+
+void TF_FunctionSetAttrValueProto(TF_Function* func, const char* attr_name,
+                                  const void* proto, size_t proto_len,
+                                  TF_Status* status) {
+  tensorflow::AttrValue attr_value;
+  if (!attr_value.ParseFromArray(proto, proto_len)) {
+    status->status = InvalidArgument(
+        "Unparseable AttrValue proto passed to "
+        "TF_FunctionSetAttrValueProto");
+    return;
+  }
+  (*func->fdef.mutable_attr())[string(attr_name)] = attr_value;
+  status->status = tensorflow::Status::OK();
+}
+
+void TF_FunctionGetAttrValueProto(TF_Function* func, const char* attr_name,
+                                  TF_Buffer* output_attr_value,
+                                  TF_Status* status) {
+  const auto& it = func->fdef.attr().find(attr_name);
+  if (it == func->fdef.attr().end()) {
+    status->status =
+        InvalidArgument("Function '", func->fdef.signature().name(),
+                        "' has no attr named '", attr_name, "'.");
+    return;
+  }
+  status->status = MessageToBuffer(it->second, output_attr_value);
 }
 
 void TF_DeleteFunction(TF_Function* func) { delete func; }

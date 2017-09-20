@@ -39,6 +39,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #endif
@@ -239,31 +240,30 @@ class QrOpGpu : public AsyncOpKernel {
 
     // Generate Q from the decomposition in input_transposed.
     if (m != n && (full_matrices_ || m < n)) {
-      context->CtxFailure(
-          errors::Unimplemented("The case m != n && (full_matrices_ || m < "
-                                "n) is not currently supported on GPU."));
-      done();
-      return;
-
-      /* TODO(rmlarsen): FIXME. This branch fails with info != 0 (both
-      positive and negative) error statuses from ORMQR.
-
-      // Generate full m x m matrix Q by computing the product Q^T * I
-      // (transpose to get back to row-major form).
+      // Generate full m x m matrix Q by computing the product Q^T * I,
+      // where the transpose is to get back to row-major form.
+      // In the complex case we actually form Q^H * I and conjugate it
+      // to get Q in row-major form.
       functor::EyeFunctor<GPUDevice, Scalar> eye;
       auto q_reshaped = q->flat_inner_dims<Scalar, 3>();
       eye(device, q_reshaped);
-      dev_info.emplace_back(context, batch_size, "ormqr");
       for (int batch = 0; batch < batch_size; ++batch) {
+        // Notice: It appears that Ormqr does not write a zero into *info upon
+        // success (probably a bug), so we simply re-use the info array already
+        // zeroed by Geqrf above.
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.Ormqr(CUBLAS_SIDE_LEFT, CUBLAS_OP_T, m, m, min_size,
-                         &input_transposed_reshaped(batch, 0, 0), m,
+            solver.Ormqr(CUBLAS_SIDE_LEFT, CublasAdjointOp<Scalar>(), m, m,
+                         min_size, &input_transposed_reshaped(batch, 0, 0), m,
                          &tau_matrix(batch, 0), &q_reshaped(batch, 0, 0), m,
                          dev_info.back().mutable_data() + batch),
             done);
       }
-      */
+      if (Eigen::NumTraits<Scalar>::IsComplex) {
+        functor::UnaryFunctor<GPUDevice, functor::conj<Scalar>> conj;
+        conj(device, q->flat<Scalar>() /*out*/,
+             const_cast<const Tensor*>(q)->flat<Scalar>() /*in*/);
+      }
     } else {
       // Generate m x n matrix Q. In this case we can use the more efficient
       // algorithm in Orgqr to generate Q in place.
