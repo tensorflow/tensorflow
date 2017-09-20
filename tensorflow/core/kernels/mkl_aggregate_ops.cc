@@ -82,7 +82,7 @@ class MklAddNOp : public OpKernel {
         Tensor* out_tensor = nullptr;
         mkl_context.output_shape.SetMklTensor(false);
         AllocateOutputSetMklShape(ctx, 0, &out_tensor, o_shape,
-                                mkl_context.output_shape);
+                                 mkl_context.output_shape);
         return;
       }
     }
