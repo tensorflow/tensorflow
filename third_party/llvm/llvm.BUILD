@@ -265,11 +265,19 @@ darwin_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 all_cmake_vars = select({
+<<<<<<< HEAD
     "@org_tensorflow//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
     ),
     "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
+=======
+    "@//tensorflow:darwin": cmake_var_string(
+        cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
+        darwin_cmake_vars,
+    ),
+    "@//tensorflow:linux_ppc64le": cmake_var_string(
+>>>>>>> Changes in bazel rules for building with jsoncpp_git instead of polly_json
         cmake_vars +
         llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
         linux_cmake_vars,
@@ -2461,8 +2469,6 @@ genrule(
         "#ifndef POLLY_CONFIG_H",
         "#define POLLY_CONFIG_H",
         "",
-        "#define CUDALIB_FOUND 0",
-        "#define GPU_CODEGEN 0",
         "",
         "#endif",
         "EOF",
@@ -2488,19 +2494,6 @@ cc_library(
     ]),
     hdrs = glob([
         "tools/polly/lib/External/isl/imath/*.h",
-    ]),
-)
-
-cc_library(
-    name = "imath_wrap",
-    srcs = glob([
-        "tools/polly/lib/External/isl/imath_wrap/*.c",
-        "tools/polly/lib/External/isl/imath_wrap/*.cpp",
-    ]),
-    hdrs = glob([
-        "tools/polly/lib/External/isl/imath_wrap/*.h",
-        "tools/polly/lib/External/isl/imath/*.h",
-        "tools/polly/lib/External/isl/imath/*.c",
     ]),
 )
 
@@ -2549,6 +2542,9 @@ cc_library(
 	    "tools/polly/lib/External/isl/polyhedron_sample.c",
 	    "tools/polly/lib/External/isl/polytope_scan.c",
 	    "tools/polly/lib/External/isl/schedule.c",
+	    "tools/polly/lib/External/isl/extract_key.c",
+	    "tools/polly/lib/External/isl/flow_cmp.c",
+	    "tools/polly/lib/External/isl/flow.c",
  
 	]),
     hdrs = glob([
@@ -2592,6 +2588,8 @@ cc_library(
 	"tools/polly/lib/External/isl/polyhedron_sample.c",
 	"tools/polly/lib/External/isl/polytope_scan.c",
 	"tools/polly/lib/External/isl/schedule.c",
+	"tools/polly/lib/External/isl/flow_cmp.c",
+	"tools/polly/lib/External/isl/flow.c",
 
         "tools/polly/lib/External/isl/include/**/*.h",
     ]) + [
@@ -2606,7 +2604,6 @@ cc_library(
     ],
     deps = [
         ":imath",
-        ":imath_wrap",
     ],
 )
 
@@ -2622,6 +2619,7 @@ cc_library(
 	"include/llvm/IR/Intrinsics.gen",
 	"include/llvm/Support/DataTypes.h",
 	"tools/polly/include/polly/Config/config.h",
+	"tools/polly/include/polly/ScopInfo.h",
         "tools/polly/lib/External/isl/include/isl/stdint.h",
     ],
     includes = [
@@ -2680,15 +2678,19 @@ cc_library(
         "tools/polly/lib/External/isl/include/isl/stdint.h",
     ],
     includes = [
-	"tools/polly/lib/JSON/include",
 	"tools/polly/include",
 	"tools/polly/lib/External/isl/include",
 	"include",
     ],
     copts = [
+	"-Iexternal/jsoncpp_git/include",
+	"-Iexternal/jsoncpp_git",
 	"-Iexternal/llvm/include",
 	"-Iexternal/llvm/tools/polly/include",
 	"-Iexternal/llvm/tools/polly/lib/External/isl/include",
+    ],
+    deps = [
+	"@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -2705,24 +2707,6 @@ cc_library(
 )
 
 cc_library(
-    name="polly_json",
-    srcs = glob ([
-	"tools/polly/lib/JSON/*.cpp",
-    ]),
-    hdrs = [
-	"tools/polly/lib/JSON/json_batchallocator.h",
-    ],
-    includes = [
-	"tools/polly/lib/JSON/include",
-	"tools/polly/lib/JSON",
-    ],
-    copts = [
-	"-Iexternal/llvm/tools/polly/lib/JSON/include",
-	"-Iexternal/llvm/tools/polly/lib/JSON",
-    ],
-)
-
-cc_library(
     name="polly_support",
     srcs = glob ([
 	"tools/polly/lib/Support/*.cpp"
@@ -2734,6 +2718,11 @@ cc_library(
 	"include/llvm/IR/Intrinsics.gen",
 	"include/llvm/Support/DataTypes.h",
 	"tools/polly/include/polly/Config/config.h",
+        "include/llvm/Config/Targets.def",
+        "include/llvm/Config/AsmPrinters.def",
+        "include/llvm/Config/AsmParsers.def",
+        "include/llvm/Config/Disassemblers.def",
+        "tools/polly/lib/Support/PollyPasses.def",
     ],
     includes = [
 	"tools/polly/include",
@@ -2797,7 +2786,6 @@ cc_library(
 	":polly_codegen",
 	":polly_exchange",
 	":pet",
-	":polly_json",
 	":polly_support",
 	":polly_transform",
     ],

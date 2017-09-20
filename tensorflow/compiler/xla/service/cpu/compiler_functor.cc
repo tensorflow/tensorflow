@@ -22,8 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "llvm/tools/polly/include/polly/LinkAllPasses.h"
-#include "llvm/tools/polly/include/polly/RegisterPasses.h"
+#include "external/llvm/tools/polly/include/polly/LinkAllPasses.h"
+#include "external/llvm/tools/polly/include/polly/RegisterPasses.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
