@@ -241,22 +241,24 @@ class Multinomial(distribution.Distribution):
         n_draws = control_flow_ops.with_dependencies(
             check_ops.assert_equal(
                 self.batch_shape, self.total_count.get_shape(),
-                message='The shape refered from logits should have the same shape with total_count')
+                message='The shape refered from logits should have '\
+                        'the same shape with total_count')
             , n_draws)
 
-      flat_logits = array_ops.reshape(self.logits, [-1, k])   # [B1*B2*...*Bm, k]
+      flat_logits = array_ops.reshape(self.logits, [-1, k]) # [B1*B2*...*Bm, k]
       flat_total_count = n * array_ops.reshape(n_draws, [-1]) # [B1*B2*...*Bm]
-      
+
       def _sample_single(args):
         logits, n_draw = args[0], args[1] # [K], []
-        x = random_ops.multinomial(logits[array_ops.newaxis, ...], n_draw, seed) # [1, n*n_draw]
+        x = random_ops.multinomial(logits[array_ops.newaxis, ...],
+                                   n_draw, seed) # [1, n*n_draw]
         x = array_ops.reshape(x, shape=[n, -1]) # [n, n_draw]
         x = math_ops.reduce_sum(array_ops.one_hot(x, depth=k), axis=-2) # [n, k]
         return x
 
       x = functional_ops.map_fn(_sample_single,
-              [flat_logits, flat_total_count],
-              dtype=self.dtype) # [B1*B2*...Bm, n, k]
+                                [flat_logits, flat_total_count],
+                                dtype=self.dtype) # [B1*B2*...Bm, n, k]
       x = array_ops.transpose(x, perm=[1, 0, 2])
       final_shape = array_ops.concat([[n], self.batch_shape_tensor(), [k]], 0)
       x = array_ops.reshape(x, final_shape) # [n, B1, B2,..., Bm, k]
