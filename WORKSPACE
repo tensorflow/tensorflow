@@ -22,7 +22,7 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 #    api_level = 23,
 #    # Ensure that you have the build_tools_version below installed in the
 #    # SDK manager as it updates periodically.
-#    build_tools_version = "25.0.2",
+#    build_tools_version = "26.0.1",
 #    # Replace with path to Android SDK on your system
 #    path = "<PATH_TO_SDK>",
 #)

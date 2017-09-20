@@ -338,14 +338,12 @@ std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
   return control_inputs;
 }
 
-TF_Function* TF_GraphToFunction_wrapper(const TF_Graph* fn_body,
-                                        const char* fn_name,
-                                        const std::vector<TF_Operation*>* opers,
-                                        const std::vector<TF_Output>& inputs,
-                                        const std::vector<TF_Output>& outputs,
-                                        const NameVector& output_names,
-                                        const TF_FunctionOptions* opts,
-                                        TF_Status* out_status) {
+TF_Function* TF_GraphToFunction_wrapper(
+    const TF_Graph* fn_body, const char* fn_name,
+    const std::vector<TF_Operation*>* opers,
+    const std::vector<TF_Output>& inputs, const std::vector<TF_Output>& outputs,
+    const NameVector& output_names, const TF_FunctionOptions* opts,
+    const char* description, TF_Status* out_status) {
   if (!output_names.empty() && output_names.size() != outputs.size()) {
     Set_TF_Status_from_Status(
         out_status,
@@ -369,7 +367,8 @@ TF_Function* TF_GraphToFunction_wrapper(const TF_Graph* fn_body,
 
   return TF_GraphToFunction(fn_body, fn_name, nopers, opers_array,
                             inputs.size(), inputs.data(), outputs.size(),
-                            outputs.data(), output_names_ptr, opts, out_status);
+                            outputs.data(), output_names_ptr, opts, description,
+                            out_status);
 }
 
 }  // namespace tensorflow

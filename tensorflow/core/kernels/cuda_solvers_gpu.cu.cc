@@ -44,8 +44,8 @@ struct AdjointBatchFunctor<GPUDevice, Scalar> {
 // Instantiate implementations for the 4 numeric types.
 template struct AdjointBatchFunctor<GPUDevice, float>;
 template struct AdjointBatchFunctor<GPUDevice, double>;
-template struct AdjointBatchFunctor<GPUDevice, std::complex<float>>;
-template struct AdjointBatchFunctor<GPUDevice, std::complex<double>>;
+template struct AdjointBatchFunctor<GPUDevice, complex64>;
+template struct AdjointBatchFunctor<GPUDevice, complex128>;
 
 namespace {
 
@@ -173,7 +173,7 @@ __global__ void DeterminantFromPivotedLUKernel(int nthreads, int n,
 template <typename Scalar>
 struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
   void operator()(const GPUDevice& device,
-                  typename TTypes<Scalar, 3>::Tensor lu_factor,
+                  typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
                   int* info) {
     using CudaType = typename CUDAComplexT<Scalar>::type;
@@ -192,9 +192,8 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
 
 template struct DeterminantFromPivotedLUFunctor<GPUDevice, float>;
 template struct DeterminantFromPivotedLUFunctor<GPUDevice, double>;
-template struct DeterminantFromPivotedLUFunctor<GPUDevice, std::complex<float>>;
-template struct DeterminantFromPivotedLUFunctor<GPUDevice,
-                                                std::complex<double>>;
+template struct DeterminantFromPivotedLUFunctor<GPUDevice, complex64>;
+template struct DeterminantFromPivotedLUFunctor<GPUDevice, complex128>;
 
 template <typename Scalar>
 __global__ void EyeKernel(Cuda3DLaunchConfig config, int batch_size, int m,
@@ -239,8 +238,8 @@ struct EyeFunctor<GPUDevice, Scalar> {
 
 template struct EyeFunctor<GPUDevice, float>;
 template struct EyeFunctor<GPUDevice, double>;
-template struct EyeFunctor<GPUDevice, std::complex<float>>;
-template struct EyeFunctor<GPUDevice, std::complex<double>>;
+template struct EyeFunctor<GPUDevice, complex64>;
+template struct EyeFunctor<GPUDevice, complex128>;
 
 }  // namespace functor
 }  // namespace tensorflow

@@ -2308,7 +2308,7 @@ def conj(x, name=None):
   If `x` is real, it is returned unchanged.
 
   Args:
-    x: `Tensor` to conjugate.  Must have numeric type.
+    x: `Tensor` to conjugate.  Must have numeric or variant type.
     name: A name for the operation (optional).
 
   Returns:
@@ -2319,12 +2319,13 @@ def conj(x, name=None):
   """
   with ops.name_scope(name, "Conj", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype.is_complex:
+    if x.dtype.is_complex or x.dtype == dtypes.variant:
       return gen_math_ops._conj(x, name=name)
     elif x.dtype.is_floating or x.dtype.is_integer:
       return x
     else:
-      raise TypeError("Expected numeric tensor, got dtype %r" % x.dtype)
+      raise TypeError(
+          "Expected numeric or variant tensor, got dtype %r" % x.dtype)
 
 
 def _BroadcastShape(op):

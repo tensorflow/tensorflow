@@ -76,11 +76,6 @@ class XlaContext : public ResourceBase {
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::Literal& literal);
 
-  // Mark the computation as having side effects (e.g., Send operators).
-  void AddSideEffects();
-
-  bool has_side_effects() const { return has_side_effects_; }
-
   // Creates a resource with resource `kind` and initial type `type` and
   // value `handle`. `name` is a descriptive name for use in error messages.
   // Fails if the resource already exists.
@@ -132,9 +127,6 @@ class XlaContext : public ResourceBase {
 
   // Return values of the Tensorflow graph, indexed by _Retval index.
   std::vector<XlaExpression> retvals_;
-
-  // Does the computation have side effects, i.e., Send() calls?
-  bool has_side_effects_ = false;
 
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;

@@ -45,7 +45,6 @@ void SendOp::Compile(XlaOpKernelContext* ctx) {
   xla::ChannelHandle channel;
   OP_REQUIRES_OK(ctx, compiler->GetChannelHandle(tensor_name_, &channel));
   ctx->builder()->Send(ctx->Input(0), channel);
-  ctx->SetOpHasSideEffects();
 }
 
 REGISTER_XLA_OP(Name("_XLASend"), SendOp);

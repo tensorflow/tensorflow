@@ -57,7 +57,7 @@ namespace cpu {
 // instance of llvm::TargetTransformInfo outside an LLVM pass pipeline without
 // super-ugly hacks is difficult.
 //
-// TODO(b/27457097): See if the LLVM community will be receptive to exposing an
+// TODO(b/66049221): See if the LLVM community will be receptive to exposing an
 // API that lets us directly create and use llvm::TargetTransformInfo instances
 // outside of a pass manager.
 class TargetMachineFeatures {
