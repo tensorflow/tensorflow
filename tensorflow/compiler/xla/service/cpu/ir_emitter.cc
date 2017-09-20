@@ -2231,7 +2231,7 @@ Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
 
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(loop_body_emitter, update->shape(), &ir_builder_)
-            .EmitLoop(IrName(dynamic_update_slice)));
+            .EmitLoop(IrName(dynamic_update_slice, "in_place")));
 
     TF_ASSIGN_OR_RETURN(llvm::Value * dynamic_update_slice_address,
                         EmitTargetAddressForOp(dynamic_update_slice));
