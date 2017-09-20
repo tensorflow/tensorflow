@@ -387,13 +387,6 @@ struct AdjointBatchFunctor {
                   typename TTypes<Scalar, 3>::Tensor output);
 };
 
-template <typename Device, typename Scalar>
-struct ConjugateFunctor {
-  // We assume that the tensor sizes are correct.
-  void operator()(const Device& device, typename TTypes<Scalar>::ConstVec input,
-                  typename TTypes<Scalar>::Vec output);
-};
-
 // Helper functor to compute the product of diagonal elements in all matrices
 // in a flattened batch.
 template <typename Device, typename Scalar>

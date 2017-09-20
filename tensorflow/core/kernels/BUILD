@@ -2337,8 +2337,9 @@ tf_kernel_library(
     prefix = "qr_op",
     deps = LINALG_DEPS + if_cuda([
         ":cuda_solvers",
-        ":transpose_functor",
+        ":cwise_op",
         ":matrix_band_part_op",
+        ":transpose_functor",
     ]),
 )
 

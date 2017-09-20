@@ -39,6 +39,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #endif
@@ -246,11 +247,10 @@ class QrOpGpu : public AsyncOpKernel {
       functor::EyeFunctor<GPUDevice, Scalar> eye;
       auto q_reshaped = q->flat_inner_dims<Scalar, 3>();
       eye(device, q_reshaped);
-      const bool is_complex = Eigen::NumTraits<Scalar>::IsComplex;
-      // Notice: It appears that Ormqr does not write a zero into *info upon
-      // success (probably a bug), so we simply re-use the info array already
-      // zeroed by Geqrf above.
       for (int batch = 0; batch < batch_size; ++batch) {
+        // Notice: It appears that Ormqr does not write a zero into *info upon
+        // success (probably a bug), so we simply re-use the info array already
+        // zeroed by Geqrf above.
         OP_REQUIRES_OK_ASYNC(
             context,
             solver.Ormqr(CUBLAS_SIDE_LEFT, CublasAdjointOp<Scalar>(), m, m,
@@ -259,10 +259,10 @@ class QrOpGpu : public AsyncOpKernel {
                          dev_info.back().mutable_data() + batch),
             done);
       }
-      if (is_complex) {
-        functor::ConjugateFunctor<GPUDevice, Scalar> conj;
-        conj(device, const_cast<const Tensor*>(q)->flat<Scalar>(),
-             q->flat<Scalar>());
+      if (Eigen::NumTraits<Scalar>::IsComplex) {
+        functor::UnaryFunctor<GPUDevice, functor::conj<Scalar>> conj;
+        conj(device, q->flat<Scalar>() /*out*/,
+             const_cast<const Tensor*>(q)->flat<Scalar>() /*in*/);
       }
     } else {
       // Generate m x n matrix Q. In this case we can use the more efficient

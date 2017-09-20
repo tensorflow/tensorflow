@@ -47,21 +47,6 @@ template struct AdjointBatchFunctor<GPUDevice, double>;
 template struct AdjointBatchFunctor<GPUDevice, complex64>;
 template struct AdjointBatchFunctor<GPUDevice, complex128>;
 
-template <typename Scalar>
-struct ConjugateFunctor<GPUDevice, Scalar> {
-  void operator()(const GPUDevice& device,
-                  typename TTypes<Scalar>::ConstVec input,
-                  typename TTypes<Scalar>::Vec output) {
-    To32Bit(output).device(device) = To32Bit(input).conjugate();
-  }
-};
-
-// Instantiate implementations for the 4 numeric types.
-template struct ConjugateFunctor<GPUDevice, float>;
-template struct ConjugateFunctor<GPUDevice, double>;
-template struct ConjugateFunctor<GPUDevice, complex64>;
-template struct ConjugateFunctor<GPUDevice, complex128>;
-
 namespace {
 
 // Hacks around missing support for complex arithmetic in nvcc.
