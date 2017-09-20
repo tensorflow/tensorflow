@@ -4,5 +4,5 @@ taskcluster:
     provisionerId: aws-provisioner-v1
     workerType: deepspeech-worker
   generic:
-    provisionerId: localprovisioner
-    workerType: deepspeech-macos
+    provisionerId: deepspeech-provisioner
+    workerType: ds-macos-heavy
