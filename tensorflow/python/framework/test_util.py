@@ -369,6 +369,28 @@ def enable_c_api(fn):
   return wrapper
 
 
+# This decorator is a hacky way to run all the test methods in a decorated
+# class with and without C API enabled.
+# TODO(iga): Remove this and its uses once we switch to using C API by default.
+def with_c_api(cls):
+  """Adds methods that call original methods but with C API enabled.
+
+  Note this enables the C API in new methods after running the test class's
+  setup method. This can be a problem if some objects are created in it
+  before the C API is enabled.
+
+  Args:
+    cls: class to decorate
+
+  Returns:
+    cls with new test methods added
+  """
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name + "WithCApi", enable_c_api(value))
+  return cls
+
+
 def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
                                  use_gpu=False, force_gpu=False,
                                  reset_test=True):

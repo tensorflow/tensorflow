@@ -328,9 +328,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  const NameAttrList* key_func_;
-  const NameAttrList* reduce_func_;
-  const NameAttrList* window_size_func_;
+  NameAttrList key_func_;
+  NameAttrList reduce_func_;
+  NameAttrList window_size_func_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),

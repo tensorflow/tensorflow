@@ -119,10 +119,6 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   return Status::OK();
 }
 
-void XlaContext::AddSideEffects() {
-  has_side_effects_ = true;
-}
-
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
 Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,

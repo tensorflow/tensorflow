@@ -181,7 +181,7 @@ suggested implementation is to:
 Here is an example implementation.
 
 ```c++
-// example.h
+// kernel_example.h
 #ifndef KERNEL_EXAMPLE_H_
 #define KERNEL_EXAMPLE_H_
 
@@ -190,12 +190,19 @@ struct ExampleFunctor {
   void operator()(const Device& d, int size, const T* in, T* out);
 };
 
+#if GOOGLE_CUDA
+// Partially specialize functor for GpuDevice.
+template <typename Eigen::GpuDevice, typename T>
+struct ExampleFunctor {
+  void operator()(const Eigen::GpuDevice& d, int size, const T* in, T* out);
+};
+#endif
+
 #endif KERNEL_EXAMPLE_H_
 ```
 
 ```c++
-// example.cc
-#define EIGEN_USE_THREADS
+// kernel_example.cc
 #include "example.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -252,6 +259,8 @@ REGISTER_CPU(int32);
 // Register the GPU kernels.
 #ifdef GOOGLE_CUDA
 #define REGISTER_GPU(T)                                          \
+  /* Declare explicit instantiations in kernel_example.cu.cc. */ \
+  extern template ExampleFunctor<GPUDevice, float>;              \
   REGISTER_KERNEL_BUILDER(                                       \
       Name("Example").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       ExampleOp<GPUDevice, T>);
@@ -261,17 +270,15 @@ REGISTER_GPU(int32);
 ```
 
 ```c++
+// kernel_example.cu.cc
 #ifdef GOOGLE_CUDA
-
 #define EIGEN_USE_GPU
-#define EIGEN_USE_THREADS
-
 #include "example.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 using namespace tensorflow;
 
-#define EIGEN_USE_GPU
+using GPUDevice = Eigen::GpuDevice;
 
 // Define the CUDA kernel.
 template <typename T>
@@ -284,21 +291,19 @@ __global__ void ExampleCudaKernel(const int size, const T* in, T* out) {
 
 // Define the GPU implementation that launches the CUDA kernel.
 template <typename T>
-struct ExampleFunctor<GPUDevice, T> {
-  void operator()(const GPUDevice& d, int size, const T* in, T* out) {
-    // Launch the cuda kernel.
-    //
-    // See core/util/cuda_kernel_helper.h for example of computing
-    // block count and thread_per_block count.
-    int block_count = 1024;
-    int thread_per_block = 20;
-    ExampleCudaKernel<T>
-        <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
-  }
-};
+void ExampleFunctor<GPUDevice, T>::operator()(
+    const GPUDevice& d, int size, const T* in, T* out) {
+  // Launch the cuda kernel.
+  //
+  // See core/util/cuda_kernel_helper.h for example of computing
+  // block count and thread_per_block count.
+  int block_count = 1024;
+  int thread_per_block = 20;
+  ExampleCudaKernel<T>
+      <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
+}
 
-// Instantiate functors for the types of OpKernels registered.
-typedef Eigen::GpuDevice GPUDevice;
+// Explicitly instantiate functors for the types of OpKernels registered.
 template struct ExampleFunctor<GPUDevice, float>;
 template struct ExampleFunctor<GPUDevice, int32>;
 

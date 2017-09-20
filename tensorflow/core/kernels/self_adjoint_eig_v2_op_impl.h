@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,9 +64,10 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
     Eigen::SelfAdjointEigenSolver<Matrix> eig(
         inputs[0],
         compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
+    // TODO(rmlarsen): Output more detailed error info on failure.
     OP_REQUIRES(
         context, eig.info() == Eigen::Success,
-        errors::InvalidArgument("Self Adjoint Eigen decomposition was not "
+        errors::InvalidArgument("Self-adjoint eigen decomposition was not "
                                 "successful. The input might not be valid."));
 
     outputs->at(0) = eig.eigenvalues().template cast<Scalar>();
@@ -79,17 +80,4 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
   bool compute_v_;
 };
 
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<float>), float);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<double>), double);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<complex64>),
-                   complex64);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<complex128>),
-                   complex128);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<float>), float);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<double>),
-                   double);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<complex64>),
-                   complex64);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<complex128>),
-                   complex128);
 }  // namespace tensorflow

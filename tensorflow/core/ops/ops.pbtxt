@@ -4758,6 +4758,7 @@ op {
       list {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+        type: DT_VARIANT
       }
     }
   }
