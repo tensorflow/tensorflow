@@ -266,6 +266,7 @@ darwin_cmake_vars = {
 # than hardcoding x86_64.
 all_cmake_vars = select({
 <<<<<<< HEAD
+<<<<<<< HEAD
     "@org_tensorflow//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
@@ -278,6 +279,13 @@ all_cmake_vars = select({
     ),
     "@//tensorflow:linux_ppc64le": cmake_var_string(
 >>>>>>> Changes in bazel rules for building with jsoncpp_git instead of polly_json
+=======
+    "@%ws%//tensorflow:darwin": cmake_var_string(
+        cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
+        darwin_cmake_vars,
+    ),
+    "@%ws%//tensorflow:linux_ppc64le": cmake_var_string(
+>>>>>>> Conditional build for Polly
         cmake_vars +
         llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
         linux_cmake_vars,
@@ -290,9 +298,14 @@ all_cmake_vars = select({
 })
 
 isl_all_cmake_vars = select({
-    "@//tensorflow:darwin": cmake_var_string(
+    "@%ws%//tensorflow:darwin": cmake_var_string(
         isl_cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
+    ),
+    "@%ws%//tensorflow:linux_ppc64le": cmake_var_string(
+        isl_cmake_vars +
+        llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
+        linux_cmake_vars,
     ),
     "//conditions:default": cmake_var_string(
         isl_cmake_vars +
