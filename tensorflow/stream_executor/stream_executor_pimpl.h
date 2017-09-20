@@ -343,22 +343,23 @@ class StreamExecutor {
   bool SupportsDnn() const;
 
   // Get the list of supported algorithms for the forward convolution opeartion.
-  bool GetConvolveAlgorithms(bool with_winograd_nonfused,
-                             std::vector<dnn::AlgorithmType> *out_algorithms);
+  bool GetConvolveAlgorithms(
+      bool with_winograd_nonfused,
+      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on data.
   bool GetConvolveBackwardDataAlgorithms(
       bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmType> *out_algorithms);
+      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on the
   // filter.
   bool GetConvolveBackwardFilterAlgorithms(
       bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmType> *out_algorithms);
+      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms);
 
   // Get the list of supported algorithms for BLAS gemm.
-  bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);
+  bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType>* out_algorithms);
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
