@@ -83,7 +83,7 @@ class ScatterAddSubTest(test.TestCase):
       else:
         p_init.reshape(shape[0], -1)[ind, :] -= (vals_init.reshape(
             vals_shape[0], -1)[i, :])
-    self.assertTrue(all((p_init == result).ravel()))
+    self.assertAllClose(p_init, result, rtol=0, atol=1e-5)
 
   def testNoRepetitions(self):
     self._TestCase([2, 2], [1])
