@@ -64,7 +64,8 @@ def _OptimizerOptions():
                 do_constant_folding=cfold)))
 
 
-class FunctionTestMethods(object):
+@test_util.with_c_api
+class FunctionTest(test.TestCase):
   """Test methods for verifying Function support.
 
   These test methods are used as mix-ins in two test cases: with
@@ -941,32 +942,7 @@ class FunctionTestMethods(object):
     self.assertEqual(len(f.signature.input_arg), 3)
 
 
-class FunctionTest(FunctionTestMethods, test.TestCase):
-  """Test case that invokes test methods with _USE_C_API=False."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = False
-    super(FunctionTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(FunctionTest, self).tearDown()
-
-
-class FunctionWithCApiTest(FunctionTestMethods, test.TestCase):
-  """Test case that invokes test methods with _USE_C_API=True."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = True
-    super(FunctionWithCApiTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(FunctionWithCApiTest, self).tearDown()
-
-
+@test_util.with_c_api
 class FunctionsFromProtos(test.TestCase):
 
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
@@ -1157,6 +1133,7 @@ class FunctionsFromProtos(test.TestCase):
       function._from_library(library)
 
 
+@test_util.with_c_api
 class FunctionOverloadTest(test.TestCase):
 
   def testBasic(self):
@@ -1209,6 +1186,7 @@ class FunctionOverloadTest(test.TestCase):
                      "Successor of x.")
 
 
+@test_util.with_c_api
 class FunctionCaptureByValueTest(test.TestCase):
 
   def testCaptureByValue(self):
@@ -1238,6 +1216,7 @@ class FunctionCaptureByValueTest(test.TestCase):
       self.assertAllEqual(y.eval(), [[12.0]])
 
 
+@test_util.with_c_api
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1373,6 +1352,7 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
+@test_util.with_c_api
 class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
@@ -1440,6 +1420,24 @@ def Linear2(w1, b1, w2, b2, x):
   return Linear(w2, b2, Linear(w1, b1, x))
 
 
+# Set C API before defining module level functions
+ops._USE_C_API = True
+
+
+@function.Defun(*[dtypes.float32] * 3)
+def LinearWithCApi(w, b, x):
+  return nn_ops.relu(math_ops.matmul(x, w) + b)
+
+
+@function.Defun(*[dtypes.float32] * 5)
+def Linear2WithCApi(w1, b1, w2, b2, x):
+  return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
+
+
+# Unset C API after defining module level functions
+ops._USE_C_API = False
+
+
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
@@ -1453,7 +1451,20 @@ class ModuleFunctionTest(test.TestCase):
         self.assertAllEqual([[1]], sess.run(y))
         self.assertAllEqual([[5]], sess.run(z))
 
+  @test_util.enable_c_api
+  def testBasicWithCApi(self):
+    with ops.Graph().as_default():
+      a, b, c, d, e = [
+          constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
+      ]
+      y = LinearWithCApi(a, b, c)
+      z = Linear2WithCApi(a, b, c, d, e)
+      with session.Session() as sess:
+        self.assertAllEqual([[1]], sess.run(y))
+        self.assertAllEqual([[5]], sess.run(z))
 
+
+@test_util.with_c_api
 class VariableHoistingTest(test.TestCase):
 
   def _testSimpleModel(self, use_forward_func, use_resource=False):
