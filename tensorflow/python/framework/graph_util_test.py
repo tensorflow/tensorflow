@@ -189,7 +189,6 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertEqual("n5", sub_graph.node[3].name)
 
   def testExtractSubGraphWithInvalidDestNodes(self):
-    # Github issue, 13047
     graph_def = graph_pb2.GraphDef()
     n1 = graph_def.node.add()
     n1.name = "n1"
