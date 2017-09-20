@@ -208,8 +208,10 @@ TEST_F(XlaCompilerTest, Simple) {
   std::unique_ptr<xla::Literal> actual_literal =
       client_->Transfer(*actual).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> expected_literal =
+  std::unique_ptr<xla::Literal> expected0 =
       xla::Literal::CreateR1<int32>({4, 143});
+  std::unique_ptr<xla::Literal> expected_literal =
+      xla::Literal::MakeTuple({expected0.get()});
   xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
 }
 
@@ -265,8 +267,10 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     std::unique_ptr<xla::Literal> actual_literal =
         client_->Transfer(*actual).ConsumeValueOrDie();
 
-    std::unique_ptr<xla::Literal> expected_literal =
+    std::unique_ptr<xla::Literal> expected0 =
         xla::Literal::CreateR1<int32>({-7, -42});
+    std::unique_ptr<xla::Literal> expected_literal =
+        xla::Literal::MakeTuple({expected0.get()});
     xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
   }
 

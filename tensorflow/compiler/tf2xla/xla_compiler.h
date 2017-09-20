@@ -165,8 +165,7 @@ class XlaCompiler {
     // Should the arguments be packed into a single tuple?
     bool tuple_arg;
 
-    // Output shape in XLA format. The output shape is a tuple if and only if
-    // the number of non-constant outputs is not equal to 1.
+    // Output shape in XLA format. The output shape is always a tuple.
     xla::Shape xla_output_shape;
 
     // TensorFlow shapes of outputs, together with the values of any

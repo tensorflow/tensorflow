@@ -259,7 +259,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   XlaLocalRuntimeContext local_runtime_context;
 
   std::unique_ptr<xla::ShapedBuffer> output;
-  bool output_is_tuple;
   if (!kernel->computation->IsNull()) {
     // Build xla::ShapedBuffers that point directly to the Tensor buffers.
     std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers;
@@ -326,7 +325,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "Result tuple shape: " << output->shape().DebugString();
     }
-    output_is_tuple = xla::ShapeUtil::IsTuple(output->shape());
   }
   CHECK_EQ(ctx->num_outputs(), kernel->outputs.size());
 
@@ -356,13 +354,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
       const TensorShape& shape = kernel->outputs[i].shape;
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString();
 
-      gpu::DeviceMemoryBase buffer;
-      if (output_is_tuple) {
-        buffer = output->buffer({output_num});
-      } else {
-        CHECK_EQ(0, output_num);
-        buffer = output->buffer({});
-      }
+      gpu::DeviceMemoryBase buffer = output->buffer({output_num});
       Tensor output_tensor;
       // Looks up the owning Tensor by buffer address.
       OP_REQUIRES_OK(ctx, xla_allocator.MakeTensorFromBuffer(
@@ -387,13 +379,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     TensorShape write_shape;
     OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(write.shape, &write_shape));
 
-    gpu::DeviceMemoryBase buffer;
-    if (output_is_tuple) {
-      buffer = output->buffer({output_num});
-    } else {
-      CHECK_EQ(0, output_num);
-      buffer = output->buffer({});
-    }
+    gpu::DeviceMemoryBase buffer = output->buffer({output_num});
 
     Var* variable = nullptr;
     // TODO(b/35625933): tensorflow::Var should contain a PersistentTensor, not

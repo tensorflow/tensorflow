@@ -385,14 +385,7 @@ Status BuildComputation(
   if (!elems.empty() || has_side_effects) {
     // Builds a empty tuple return value for computations that have side effects
     // but have no return values.
-    xla::ComputationDataHandle handle = builder->Tuple(elems);
-
-    // TODO(b/31775371): to workaround bug, we must build a no-op computation
-    // that is guaranteed to be constructed after all of the formal parameters
-    // to the computation. Once the bug is fixed, we could avoid tupling here.
-    if (elems.size() == 1) {
-      handle = builder->GetTupleElement(handle, 0);
-    }
+    builder->Tuple(elems);
 
     // Builds the XLA computation.
     xla::StatusOr<xla::Computation> computation_status = builder->Build();
@@ -512,28 +505,18 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       CHECK_LT(computation_output, num_computation_outputs);
       OutputDescription& output = result->outputs[i];
       output.is_constant = false;
-      if (num_computation_outputs > 1) {
-        TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
-            xla::ShapeUtil::GetTupleElementShape(result->xla_output_shape,
-                                                 computation_output),
-            &output.shape));
-      } else {
-        TF_RETURN_IF_ERROR(
-            XLAShapeToTensorShape(result->xla_output_shape, &output.shape));
-      }
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
+          xla::ShapeUtil::GetTupleElementShape(result->xla_output_shape,
+                                               computation_output),
+          &output.shape));
       ++computation_output;
     }
   }
 
   for (std::vector<ResourceUpdate>::size_type i = 0;
        i < result->resource_updates.size(); ++i) {
-    if (num_computation_outputs > 1) {
-      result->resource_updates[i].shape = xla::ShapeUtil::GetTupleElementShape(
-          result->xla_output_shape, computation_output);
-    } else {
-      CHECK_EQ(0, computation_output);
-      result->resource_updates[i].shape = result->xla_output_shape;
-    }
+    result->resource_updates[i].shape = xla::ShapeUtil::GetTupleElementShape(
+        result->xla_output_shape, computation_output);
     ++computation_output;
   }
   return Status::OK();

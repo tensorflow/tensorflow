@@ -96,8 +96,6 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, MakeXlaCompilerArgumentsFromInputs(
                           ctx, &arguments, &has_uninitialized_vars));
 
-  const bool use_tuple_arg = (arguments.size() != 1);
-
   xla::ComputationBuilder* builder = ctx->builder();
   XlaCompiler* compiler = ctx->compiler();
 
@@ -112,7 +110,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // TODO(phawkins): consider adding loop-invariant inputs to XLA's While()
   // operator.
   XlaCompiler::CompileOptions body_options;
-  body_options.use_tuple_arg = use_tuple_arg;
+  body_options.use_tuple_arg = true;
   body_options.return_updated_values_for_all_resources = true;
   body_options.resolve_compile_time_constants = false;
   XlaCompiler::CompilationResult body;
@@ -160,22 +158,16 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Compiling condition";
 
   XlaCompiler::CompileOptions cond_options;
-  cond_options.use_tuple_arg = use_tuple_arg;
+  cond_options.use_tuple_arg = true;
   cond_options.resolve_compile_time_constants = false;
   XlaCompiler::CompilationResult cond;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(cond_options, cond_name_attr_,
                                                 arguments, &cond));
 
-  xla::Shape body_input_shape, cond_input_shape;
-  if (use_tuple_arg) {
-    body_input_shape = xla::ShapeUtil::MakeTupleShape(body.xla_input_shapes);
-    cond_input_shape = xla::ShapeUtil::MakeTupleShape(cond.xla_input_shapes);
-  } else {
-    CHECK(!body.xla_input_shapes.empty());
-    body_input_shape = body.xla_input_shapes[0];
-    CHECK(!cond.xla_input_shapes.empty());
-    cond_input_shape = cond.xla_input_shapes[0];
-  }
+  xla::Shape body_input_shape =
+      xla::ShapeUtil::MakeTupleShape(body.xla_input_shapes);
+  xla::Shape cond_input_shape =
+      xla::ShapeUtil::MakeTupleShape(cond.xla_input_shapes);
 
   VLOG(2) << "Body shape: " << xla::ShapeUtil::HumanString(body_input_shape)
           << " -> " << xla::ShapeUtil::HumanString(body.xla_output_shape);
@@ -195,10 +187,16 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           xla::ShapeUtil::HumanString(body_input_shape), " vs. ",
           xla::ShapeUtil::HumanString(body.xla_output_shape)));
 
-  xla::ComputationDataHandle data;
+  xla::Shape expected_cond_output_shape = xla::ShapeUtil::MakeTupleShape(
+      {xla::ShapeUtil::MakeShape(xla::PRED, {})});
+  OP_REQUIRES(ctx,
+              xla::ShapeUtil::Compatible(cond.xla_output_shape,
+                                         expected_cond_output_shape),
+              errors::InvalidArgument(
+                  "Output shape of loop condition should be (pred[]), got: ",
+                  xla::ShapeUtil::HumanString(cond.xla_output_shape)));
 
   int num_inputs = body.input_mapping.size();
-
   std::vector<xla::ComputationDataHandle> inputs(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     int input_num = body.input_mapping[i];
@@ -211,30 +209,31 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  xla::ComputationDataHandle init;
-  if (use_tuple_arg) {
-    init = builder->Tuple(inputs);
-  } else {
-    init = inputs[0];
-  }
+  xla::ComputationDataHandle init = builder->Tuple(inputs);
 
   VLOG(1) << "Building while loop";
 
-  xla::ComputationDataHandle while_result =
-      builder->While(*cond.computation, *body.computation, init);
+  // Wraps the condition in a computation that unpacks the output tuple.
+  xla::Computation cond_wrapper;
+  {
+    std::unique_ptr<xla::ComputationBuilder> cb =
+        builder->CreateSubBuilder("cond_wrapper");
+    auto inputs = cb->Parameter(0, cond_input_shape, "inputs");
+    auto outputs = cb->Call(*cond.computation, {inputs});
+    cb->GetTupleElement(outputs, 0);
+    xla::StatusOr<xla::Computation> result = cb->Build();
+    OP_REQUIRES_OK(ctx, result.status());
+    cond_wrapper = std::move(result.ValueOrDie());
+  }
 
-  auto get_loop_output = [&](int i) {
-    if (use_tuple_arg) {
-      return builder->GetTupleElement(while_result, i);
-    } else {
-      return while_result;
-    }
-  };
+  xla::ComputationDataHandle while_result =
+      builder->While(cond_wrapper, *body.computation, init);
 
   // Sets non-variable outputs.
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
-      ctx->SetOutput(body.input_mapping[i], get_loop_output(i));
+      ctx->SetOutput(body.input_mapping[i],
+                     builder->GetTupleElement(while_result, i));
     }
   }
 
@@ -245,7 +244,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(update.input_index, &resource));
     if (update.modified) {
       int pos = body.outputs.size() + i;
-      resource->value = get_loop_output(pos);
+      resource->value = builder->GetTupleElement(while_result, pos);
     }
     VLOG(2) << "Loop-carried variable: pos: " << update.input_index
             << " name: " << resource->name << " modified: " << update.modified
