@@ -131,7 +131,6 @@ filegroup(
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
         "@mkl//:LICENSE",
-        "@mkl_dnn//:LICENSE",
     ]) + if_not_windows([
         "@nccl_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
