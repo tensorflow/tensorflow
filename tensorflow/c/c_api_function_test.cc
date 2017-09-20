@@ -183,7 +183,7 @@ class CApiFunctionTest : public ::testing::Test {
                                num_opers == -1 ? nullptr : opers.data(),
                                inputs.size(), inputs.data(), outputs.size(),
                                outputs.data(), output_names_ptr,
-                               /*opts=*/nullptr, s_);
+                               /*opts=*/nullptr, /*description=*/nullptr, s_);
     delete[] output_names_ptr;
     if (expect_failure) {
       ASSERT_EQ(func_, nullptr);
@@ -1199,7 +1199,8 @@ TEST_F(CApiFunctionTest, OutputOpNotInBody) {
             string(TF_Message(s_)));
 }
 
-void DefineFunction(const char* name, TF_Function** func) {
+void DefineFunction(const char* name, TF_Function** func,
+                    const char* description = nullptr) {
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
       TF_NewGraph(), TF_DeleteGraph);
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
@@ -1213,7 +1214,7 @@ void DefineFunction(const char* name, TF_Function** func) {
   *func = TF_GraphToFunction(func_graph.get(), name, -1,
                              /*opers=*/nullptr, 1, inputs, 1, outputs,
                              /*output_names=*/nullptr,
-                             /*opts=*/nullptr, s.get());
+                             /*opts=*/nullptr, description, s.get());
   ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
   ASSERT_NE(*func, nullptr);
 }
@@ -1443,6 +1444,13 @@ TEST_F(CApiFunctionTest, Attribute) {
   AttrValue read_attr2;
   GetAttr("test_attr_name", &read_attr2);
   ASSERT_EQ(attr.DebugString(), read_attr2.DebugString());
+}
+
+TEST_F(CApiFunctionTest, Description) {
+  DefineFunction(func_name_, &func_, "Return something");
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+  ASSERT_EQ(string("Return something"), fdef.signature().description());
 }
 
 }  // namespace

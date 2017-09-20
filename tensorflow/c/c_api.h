@@ -1085,6 +1085,7 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 //                 names - "[a-z][a-z0-9_]*". In the latter case,
 //                 names for outputs will be generated automatically.
 //  opts - various options for the function, e.g. XLA's inlining control.
+//  description - optional human-readable description of this function.
 //  status - Set to OK on success and an appropriate error on failure.
 //
 // Note that when the same TF_Output is listed as both an input and an output,
@@ -1116,7 +1117,7 @@ TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
     const TF_Graph* fn_body, const char* fn_name, int num_opers,
     const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,
     int noutputs, const TF_Output* outputs, const char* const* output_names,
-    const TF_FunctionOptions* opts, TF_Status* status);
+    const TF_FunctionOptions* opts, const char* description, TF_Status* status);
 
 // Write out a serialized representation of `func` (as a FunctionDef protocol
 // message) to `output_func_def` (allocated by TF_NewBuffer()).

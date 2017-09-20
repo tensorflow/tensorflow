@@ -236,12 +236,15 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           const std::vector<OutputTensor>& inputs,
                           const std::vector<OutputTensor>& outputs,
                           const std::vector<string>& output_names,
-                          FunctionDef* fdef) {
+                          const char* description, FunctionDef* fdef) {
   if (!output_names.empty()) {
     DCHECK_EQ(output_names.size(), outputs.size());
   }
 
   fdef->mutable_signature()->set_name(fn_name);
+  if (description != nullptr) {
+    fdef->mutable_signature()->set_description(description);
+  }
 
   // Keep track of names we used and how we normalized them.
   NodeNameMapping node_names;
@@ -453,7 +456,7 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
                                 int noutputs, const TF_Output* outputs,
                                 const char* const* output_names,
                                 const TF_FunctionOptions* opts,
-                                TF_Status* status) {
+                                const char* description, TF_Status* status) {
   tensorflow::mutex_lock l(*const_cast<tensorflow::mutex*>(&fn_body->mu));
 
   // Process inputs.
@@ -488,7 +491,7 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
   TF_Function* tf_function = new TF_Function();
   status->status = tensorflow::GraphToFunctionDef(
       fn_body->graph, fn_name, body_nodes, input_tensors, output_tensors,
-      output_names_vec, &tf_function->fdef);
+      output_names_vec, description, &tf_function->fdef);
   if (!status->status.ok()) {
     TF_DeleteFunction(tf_function);
     return nullptr;

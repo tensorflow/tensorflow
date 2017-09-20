@@ -412,6 +412,7 @@ class _DefinedFunction(object):
     if temp_graph._c_graph:
       output_names = ([compat.as_bytes(x) for x in self._out_names]
                       if self._out_names else [])
+      description = self._func.__doc__ or None
       with errors.raise_exception_on_not_ok_status() as status:
         self._c_func = c_api.TF_GraphToFunction_wrapper(
             temp_graph._c_graph,
@@ -421,6 +422,7 @@ class _DefinedFunction(object):
             [t._as_tf_output() for t in outputs],
             output_names,
             None,  # opts
+            description,
             status)
       self._set_c_attrs(kwargs_attr)
     # pylint: enable=protected-access
