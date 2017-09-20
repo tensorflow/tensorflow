@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -35,6 +37,7 @@ class OpKernelContext;
 enum VariantUnaryOp {
   INVALID_VARIANT_UNARY_OP = 0,
   ZEROS_LIKE_VARIANT_UNARY_OP = 1,
+  CONJ_VARIANT_UNARY_OP = 2,
 };
 
 enum VariantBinaryOp {

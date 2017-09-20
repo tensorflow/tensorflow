@@ -50,7 +50,7 @@ def _is_free_function(py_object, full_name, index):
   return True
 
 
-def write_docs(output_dir, parser_config, yaml_toc):
+def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -65,6 +65,7 @@ def write_docs(output_dir, parser_config, yaml_toc):
     parser_config: A `parser.ParserConfig` object, containing all the necessary
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
+    root_title: The title name for the root level index.md.
 
   Raises:
     ValueError: if `output_dir` is not an absolute path
@@ -168,7 +169,7 @@ def write_docs(output_dir, parser_config, yaml_toc):
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
     f.write(
-        parser.generate_global_index('TensorFlow', parser_config.index,
+        parser.generate_global_index(root_title, parser_config.index,
                                      parser_config.reference_resolver))
 
 

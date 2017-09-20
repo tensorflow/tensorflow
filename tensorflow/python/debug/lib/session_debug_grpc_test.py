@@ -462,13 +462,14 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
     (cls._server_port_2, cls._debug_server_url_2, _, cls._server_thread_2,
      cls._server_2) = grpc_debug_test_server.start_server_on_separate_thread(
          dump_to_filesystem=False)
+    cls._servers_and_threads = [(cls._server_1, cls._server_thread_1),
+                                (cls._server_2, cls._server_thread_2)]
 
   @classmethod
   def tearDownClass(cls):
-    cls._server_1.stop_server().wait()
-    cls._server_thread_1.join()
-    cls._server_2.stop_server().wait()
-    cls._server_thread_2.join()
+    for server, thread in cls._servers_and_threads:
+      server.stop_server().wait()
+      thread.join()
 
   def tearDown(self):
     ops.reset_default_graph()
@@ -477,11 +478,14 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
 
   def testToggleEnableTwoDebugWatchesNoCrosstalkBetweenDebugNodes(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
-      v = variables.Variable(50.0, name="v")
-      delta = constant_op.constant(5.0, name="delta")
-      inc_v = state_ops.assign_add(v, delta, name="inc_v")
+      v_1 = variables.Variable(50.0, name="v_1")
+      v_2 = variables.Variable(-50.0, name="v_1")
+      delta_1 = constant_op.constant(5.0, name="delta_1")
+      delta_2 = constant_op.constant(-5.0, name="delta_2")
+      inc_v_1 = state_ops.assign_add(v_1, delta_1, name="inc_v_1")
+      inc_v_2 = state_ops.assign_add(v_2, delta_2, name="inc_v_2")
 
-      sess.run(v.initializer)
+      sess.run([v_1.initializer, v_2.initializer])
 
       run_metadata = config_pb2.RunMetadata()
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -496,29 +500,89 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
         self._server_1.clear_data()
 
         if i % 2 == 0:
-          self._server_1.request_watch("delta", 0, "DebugIdentity")
-          self._server_1.request_unwatch("delta", 0, "DebugNumericSummary")
+          self._server_1.request_watch("delta_1", 0, "DebugIdentity")
+          self._server_1.request_watch("delta_2", 0, "DebugIdentity")
+          self._server_1.request_unwatch("delta_1", 0, "DebugNumericSummary")
+          self._server_1.request_unwatch("delta_2", 0, "DebugNumericSummary")
         else:
-          self._server_1.request_unwatch("delta", 0, "DebugIdentity")
-          self._server_1.request_watch("delta", 0, "DebugNumericSummary")
+          self._server_1.request_unwatch("delta_1", 0, "DebugIdentity")
+          self._server_1.request_unwatch("delta_2", 0, "DebugIdentity")
+          self._server_1.request_watch("delta_1", 0, "DebugNumericSummary")
+          self._server_1.request_watch("delta_2", 0, "DebugNumericSummary")
 
-        sess.run(inc_v, options=run_options, run_metadata=run_metadata)
+        sess.run([inc_v_1, inc_v_2],
+                 options=run_options, run_metadata=run_metadata)
 
         # Watched debug tensors are:
-        #   Run 0: delta:0:DebugIdentity
-        #   Run 1: delta:0:DebugNumericSummary
-        #   Run 2: delta:0:DebugIdentity
-        #   Run 3: delta:0:DebugNumericSummary
-        self.assertEqual(1, len(self._server_1.debug_tensor_values))
+        #   Run 0: delta_[1,2]:0:DebugIdentity
+        #   Run 1: delta_[1,2]:0:DebugNumericSummary
+        #   Run 2: delta_[1,2]:0:DebugIdentity
+        #   Run 3: delta_[1,2]:0:DebugNumericSummary
+        self.assertEqual(2, len(self._server_1.debug_tensor_values))
         if i % 2 == 0:
           self.assertAllClose(
               [5.0],
-              self._server_1.debug_tensor_values["delta:0:DebugIdentity"])
+              self._server_1.debug_tensor_values["delta_1:0:DebugIdentity"])
+          self.assertAllClose(
+              [-5.0],
+              self._server_1.debug_tensor_values["delta_2:0:DebugIdentity"])
         else:
           self.assertAllClose(
               [[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0,
                 0.0, 1.0, 0.0]],
-              self._server_1.debug_tensor_values["delta:0:DebugNumericSummary"])
+              self._server_1.debug_tensor_values[
+                  "delta_1:0:DebugNumericSummary"])
+          self.assertAllClose(
+              [[1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -5.0, -5.0, -5.0,
+                0.0, 1.0, 0.0]],
+              self._server_1.debug_tensor_values[
+                  "delta_2:0:DebugNumericSummary"])
+
+  def testToggleWatchesOnCoreMetadata(self):
+    (_, debug_server_url, _, server_thread,
+     server) = grpc_debug_test_server.start_server_on_separate_thread(
+         dump_to_filesystem=False,
+         toggle_watch_on_core_metadata=[("toggled_1", 0, "DebugIdentity"),
+                                        ("toggled_2", 0, "DebugIdentity")])
+    self._servers_and_threads.append((server, server_thread))
+
+    with session.Session(config=no_rewrite_session_config()) as sess:
+      v_1 = variables.Variable(50.0, name="v_1")
+      v_2 = variables.Variable(-50.0, name="v_1")
+      # These two nodes have names that match those in the
+      # toggle_watch_on_core_metadata argument used when calling
+      # start_server_on_separate_thread().
+      toggled_1 = constant_op.constant(5.0, name="toggled_1")
+      toggled_2 = constant_op.constant(-5.0, name="toggled_2")
+      inc_v_1 = state_ops.assign_add(v_1, toggled_1, name="inc_v_1")
+      inc_v_2 = state_ops.assign_add(v_2, toggled_2, name="inc_v_2")
+
+      sess.run([v_1.initializer, v_2.initializer])
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugIdentity(gated_grpc=true)"],
+          debug_urls=[debug_server_url])
+
+      for i in xrange(4):
+        server.clear_data()
+
+        sess.run([inc_v_1, inc_v_2],
+                 options=run_options, run_metadata=run_metadata)
+
+        if i % 2 == 0:
+          self.assertEqual(2, len(server.debug_tensor_values))
+          self.assertAllClose(
+              [5.0],
+              server.debug_tensor_values["toggled_1:0:DebugIdentity"])
+          self.assertAllClose(
+              [-5.0],
+              server.debug_tensor_values["toggled_2:0:DebugIdentity"])
+        else:
+          self.assertEqual(0, len(server.debug_tensor_values))
 
   def testToggleEnableTwoDebugWatchesNoCrosstalkBetweenServers(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
@@ -562,13 +626,16 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
           self.assertEqual(0, len(self._server_1.debug_tensor_values))
           self.assertEqual(0, len(self._server_2.debug_tensor_values))
 
-  def testToggleBreakpointWorks(self):
+  def testToggleBreakpointsWorks(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
-      v = variables.Variable(50.0, name="v")
-      delta = constant_op.constant(5.0, name="delta")
-      inc_v = state_ops.assign_add(v, delta, name="inc_v")
+      v_1 = variables.Variable(50.0, name="v_1")
+      v_2 = variables.Variable(-50.0, name="v_2")
+      delta_1 = constant_op.constant(5.0, name="delta_1")
+      delta_2 = constant_op.constant(-5.0, name="delta_2")
+      inc_v_1 = state_ops.assign_add(v_1, delta_1, name="inc_v_1")
+      inc_v_2 = state_ops.assign_add(v_2, delta_2, name="inc_v_2")
 
-      sess.run(v.initializer)
+      sess.run([v_1.initializer, v_2.initializer])
 
       run_metadata = config_pb2.RunMetadata()
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -582,15 +649,19 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
         self._server_1.clear_data()
 
         if i in (0, 2):
-          # Enable breakpoint at delta:0:DebugIdentity in runs 0 and 2.
+          # Enable breakpoint at delta_[1,2]:0:DebugIdentity in runs 0 and 2.
           self._server_1.request_watch(
-              "delta", 0, "DebugIdentity", breakpoint=True)
+              "delta_1", 0, "DebugIdentity", breakpoint=True)
+          self._server_1.request_watch(
+              "delta_2", 0, "DebugIdentity", breakpoint=True)
         else:
           # Disable the breakpoint in runs 1 and 3.
-          self._server_1.request_unwatch("delta", 0, "DebugIdentity")
+          self._server_1.request_unwatch("delta_1", 0, "DebugIdentity")
+          self._server_1.request_unwatch("delta_2", 0, "DebugIdentity")
 
-        output = sess.run(inc_v, options=run_options, run_metadata=run_metadata)
-        self.assertAllClose(50.0 + 5.0 * (i + 1), output)
+        output = sess.run([inc_v_1, inc_v_2],
+                          options=run_options, run_metadata=run_metadata)
+        self.assertAllClose([50.0 + 5.0 * (i + 1), -50 - 5.0 * (i + 1)], output)
 
         if i in (0, 2):
           # During runs 0 and 2, the server should have received the published
@@ -598,10 +669,14 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
           # unblocked by EventReply reponses from the server.
           self.assertAllClose(
               [5.0],
-              self._server_1.debug_tensor_values["delta:0:DebugIdentity"])
+              self._server_1.debug_tensor_values["delta_1:0:DebugIdentity"])
+          self.assertAllClose(
+              [-5.0],
+              self._server_1.debug_tensor_values["delta_2:0:DebugIdentity"])
           # After the runs, the server should have properly registered the
           # breakpoints due to the request_unwatch calls.
-          self.assertSetEqual({("delta", 0, "DebugIdentity")},
+          self.assertSetEqual({("delta_1", 0, "DebugIdentity"),
+                               ("delta_2", 0, "DebugIdentity")},
                               self._server_1.breakpoints)
         else:
           # After the end of runs 1 and 3, the server has received the requests

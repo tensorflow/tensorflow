@@ -26,6 +26,14 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Takes a snapshot of the values of resource variable arguments, which are
+// the last `num_variables` arguments. We snapshot tensors that back
+// resource variables since concurrent updates may modify the shape, and it is
+// important that the shapes used for compilation match the true shapes of the
+// buffers.
+std::vector<OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
+                                                      int num_variables);
+
 // XlaLocalLaunchOp is used to replace a region of the TensorFlow graph
 // which will be compiled and executed using XLA.  The XlaLocalLaunchOp is
 // responsible for handling interactions with the TensorFlow executor.
@@ -50,6 +58,8 @@ class XlaLocalLaunchOp : public OpKernel {
   DeviceType device_type_;
   NameAttrList function_;
   int num_constant_args_;
+  // Number of resource variable arguments.
+  int num_resource_args_;
 
   perftools::gputools::Platform::Id platform_id_;
 
