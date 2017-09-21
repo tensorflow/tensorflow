@@ -64,7 +64,7 @@ cd ..
 
 CROSSTOOL_CC=$(pwd)/toolchain/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
 
-rm -rf openblas
+sudo rm -rf openblas
 git clone https://github.com/xianyi/OpenBLAS openblas
 cd openblas
 make CC=${CROSSTOOL_CC} FC=${CROSSTOOL_CC} HOSTCC=gcc TARGET=ARMV6
