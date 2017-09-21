@@ -223,27 +223,29 @@ XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64>(GetParam()); }
 
-INSTANTIATE_TEST_CASE_P(                  //
-    SliceR1TestInstantiation,             //
-    SliceR1Test,                          //
-    ::testing::Values(                    //
-        R1Spec{10, 0, 0, 1},              //
-        R1Spec{10, 7, 7, 1},              //
-        R1Spec{10, 2, 4, 1},              //
-        R1Spec{10, 2, 4, 1},              //
-        R1Spec{10, 2, 4, 1},              //
-        R1Spec{10, 2, 4, 1},              //
-        R1Spec{10, 2, 4, 1},              //
-        R1Spec{10, 2, 4, 1},              //
-        R1Spec{10, 0, 10, 1},             //
-        R1Spec{1024, 1024 - 4, 1024, 1},  //
-        R1Spec{4096, 7, 7 + 1024, 1},     //
-        R1Spec{10, 0, 10, 2},             //
-        R1Spec{10, 0, 10, 3},             //
-        R1Spec{10, 0, 10, 4},             //
-        R1Spec{10, 0, 10, 5},             //
-        R1Spec{10, 0, 10, 10}             //
-        )                                 //
+INSTANTIATE_TEST_CASE_P(                          //
+    SliceR1TestInstantiation,                     //
+    SliceR1Test,                                  //
+    ::testing::Values(                            //
+        R1Spec{10, 0, 0, 1},                      //
+        R1Spec{10, 7, 7, 1},                      //
+        R1Spec{10, 2, 4, 1},                      //
+        R1Spec{10, 2, 4, 2},                      //
+        R1Spec{10, 0, 10, 1},                     //
+        R1Spec{1024, 1024 - 4, 1024, 1},          //
+        R1Spec{4096, 7, 7 + 1024, 1},             //
+        R1Spec{10, 0, 10, 2},                     //
+        R1Spec{10, 0, 10, 3},                     //
+        R1Spec{10, 0, 10, 4},                     //
+        R1Spec{10, 0, 10, 5},                     //
+        R1Spec{10, 0, 10, 10},                    //
+        R1Spec{500, 200, 400, 7},                 //
+        R1Spec{4096, 1, 4095, 3},                 //
+        R1Spec{2047, 1024 - 24, 1024 + 160, 31},  //
+        R1Spec{2047, 1, 2046, 3 * 128},           //
+        R1Spec{4096, 1024 + 3, 4095, 500},        //
+        R1Spec{8192, 0, 8192, 1024 * 3 + 400}     //
+        )                                         //
 );
 
 struct R2Spec {
