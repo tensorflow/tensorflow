@@ -326,6 +326,7 @@ filegroup(
         "//tensorflow/compiler/xla/tests:all_files",
         "//tensorflow/compiler/xla/tools:all_files",
         "//tensorflow/contrib:all_files",
+        "//tensorflow/contrib/all_reduce:all_files",
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/batching:all_files",
         "//tensorflow/contrib/batching/kernels:all_files",
