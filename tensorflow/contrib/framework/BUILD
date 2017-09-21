@@ -30,19 +30,25 @@ tf_custom_op_py_library(
         "python/ops/arg_scope.py",
         "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
+        "python/ops/math_grad.py",
+        "python/ops/math_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
         "python/ops/variables.py",
     ],
     dso = [
         ":python/ops/_variable_ops.so",
+        ":python/ops/_math_ops.so",
     ],
     kernels = [
+        ":math_ops_kernels",
+        ":math_ops_op_lib",
         ":variable_kernels",
         ":variable_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":gen_math_ops",
         ":gen_variable_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
@@ -98,9 +104,31 @@ tf_custom_op_library(
     ],
 )
 
+
+tf_kernel_library(
+    name = "math_ops_kernels",
+    srcs = [
+        "kernels/accumulate_n_optimizer.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:core",
+    ]
+)
+
+
+tf_custom_op_library(
+    name = "python/ops/_math_ops.so",
+    srcs = [
+        "ops/math_ops.cc",
+    ],
+)
+
+
 tf_gen_op_libs(
     op_lib_names = [
         "variable_ops",
+        "math_ops",
     ],
 )
 
@@ -108,6 +136,7 @@ cc_library(
     name = "all_ops",
     deps = [
         ":variable_ops_op_lib",
+        ":math_ops_op_lib",
     ],
 )
 
@@ -118,6 +147,15 @@ tf_gen_op_wrapper_py(
         ":variable_ops_op_lib",
     ],
 )
+
+tf_gen_op_wrapper_py(
+    name = "gen_math_ops",
+    out = "python/ops/gen_math_ops.py",
+    deps = [
+        ":math_ops_op_lib",
+    ],
+)
+
 
 py_test(
     name = "arg_scope_test",
@@ -148,6 +186,19 @@ py_test(
         "//tensorflow/python:variables",
     ],
 )
+
+py_test(
+    name = "math_ops_test",
+    size = "small",
+    srcs = ["python/ops/math_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
 
 py_test(
     name = "ops_test",
