@@ -57,7 +57,7 @@ def rotate(images, angles, interpolation="NEAREST", name="rotate"):
   Raises:
     TypeError: If `image` is an invalid type.
   """
-  with tf.name_scope(name):
+  with ops.name_scope(name):
     image_or_images = ops.convert_to_tensor(images)
     if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
       raise TypeError("Invalid dtype %s." % image_or_images.dtype)
@@ -107,7 +107,7 @@ def translate(images, translations, interpolation="NEAREST", name="translate"):
   Raises:
     TypeError: If `image` is an invalid type.
   """
-  with tf.name_scope(name):
+  with ops.name_scope(name):
     return transform(
         images,
         translations_to_projective_transforms(translations),
@@ -131,7 +131,7 @@ def angles_to_projective_transforms(angles,
     A tensor of shape (num_images, 8). Projective transforms which can be given
       to `tf.contrib.image.transform`.
   """
-  with tf.name_scope(name):
+  with ops.name_scope(name):
     angle_or_angles = ops.convert_to_tensor(
         angles, name="angles", dtype=dtypes.float32)
     if len(angle_or_angles.get_shape()) == 0:  # pylint: disable=g-explicit-length-test
@@ -175,7 +175,7 @@ def translations_to_projective_transforms(
       A tensor of shape (num_images, 8) projective transforms which can be given
           to `tf.contrib.image.transform`.
   """
-  with tf.name_scope(name):
+  with ops.name_scope(name):
     translation_or_translations = ops.convert_to_tensor(
         translations, name="translations", dtype=dtypes.float32)
     if len(translation_or_translations.get_shape()) == 1:
@@ -223,7 +223,7 @@ def transform(images, transforms, interpolation="NEAREST", name="transform"):
   Raises:
     TypeError: If `image` is an invalid type.
   """
-  with tf.name_scope(name):
+  with ops.name_scope(name):
     image_or_images = ops.convert_to_tensor(images, name="images")
     transform_or_transforms = ops.convert_to_tensor(
         transforms, name="transforms", dtype=dtypes.float32)
@@ -269,7 +269,7 @@ def compose_transforms(*transforms):
         order.
   """
   assert transforms, "transforms cannot be empty"
-  with tf.name_scope("compose_transforms"):
+  with ops.name_scope("compose_transforms"):
     composed = _flat_transforms_to_matrices(transforms[0])
     for tr in transforms[1:]:
       # Multiply batches of matrices.
