@@ -107,10 +107,10 @@ cc_binary(
 )
 
 cc_binary(
-    name = "replay_computation_hlo_evaluator",
+    name = "replay_computation_interpreter",
     deps = [
         ":replay_computation_library",
-        "//tensorflow/compiler/plugin/executor:plugin_lib",
+        "//tensorflow/compiler/xla/service:interpreter_plugin",
     ],
 )
 

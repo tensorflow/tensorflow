@@ -57,6 +57,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import control_flow_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -682,7 +683,7 @@ class GradLoopState(object):
     # The while loop context for backprop.
     self._grad_context = None
 
-    # The loop counter added by AddBackPropLoopCounter. It is the value
+    # The loop counter added by AddBackpropLoopCounter. It is the value
     # of the loop counter for the current iteration.
     self._grad_index = None
 
@@ -724,8 +725,8 @@ class GradLoopState(object):
                                         forward_ctxt.swap_memory,
                                         forward_ctxt.name,
                                         self)
-      real_cnt = outer_grad_state.AddBackPropAccumulatedValue(history_cnt, cnt)
-      self._grad_index = self._grad_context.AddBackPropLoopCounter(
+      real_cnt = outer_grad_state.AddBackpropAccumulatedValue(history_cnt, cnt)
+      self._grad_index = self._grad_context.AddBackpropLoopCounter(
           real_cnt, outer_grad_state)
       outer_grad_ctxt.Exit()
     else:
@@ -735,7 +736,7 @@ class GradLoopState(object):
                                         forward_ctxt.swap_memory,
                                         forward_ctxt.name,
                                         self)
-      self._grad_index = self._grad_context.AddBackPropLoopCounter(
+      self._grad_index = self._grad_context.AddBackpropLoopCounter(
           cnt, outer_grad_state)
       if outer_forward_ctxt: outer_forward_ctxt.Exit()
 
@@ -863,7 +864,8 @@ class GradLoopState(object):
       if curr_ctxt: curr_ctxt.Enter()
       with ops.colocate_with(value):
         # pylint: disable=protected-access
-        acc = gen_data_flow_ops._stack(value.dtype.base_dtype, name="f_acc")
+        acc = gen_data_flow_ops._stack_v2(-1, value.dtype.base_dtype,
+                                          name="f_acc")
         # pylint: enable=protected-access
       if curr_ctxt: curr_ctxt.Exit()
 
@@ -876,8 +878,10 @@ class GradLoopState(object):
       if value_ctxt == self.forward_context:
         # value is not nested in the forward context.
         self.forward_context.Enter()
-        push = gen_data_flow_ops._stack_push(
+        # pylint: disable=protected-access
+        push = gen_data_flow_ops._stack_push_v2(
             enter_acc, value, swap_memory=swap_enabled)
+        # pylint: enable=protected-access
         self.forward_context.Exit()
         # Protect stack push and order it before forward_index.
         self.forward_index.op._add_control_input(push.op)
@@ -890,14 +894,18 @@ class GradLoopState(object):
           # The special case for creating a zero tensor for a dead
           # branch of a switch. See ControlFlowState.ZerosLike().
           value_ctxt.outer_context.Enter()
-          push = gen_data_flow_ops._stack_push(
+          # pylint: disable=protected-access
+          push = gen_data_flow_ops._stack_push_v2(
               enter_acc, value, swap_memory=swap_enabled)
+          # pylint: enable=protected-access
           value_ctxt.outer_context.Exit()
           push.op._set_control_flow_context(value_ctxt)
         else:
           value_ctxt.Enter()
-          push = gen_data_flow_ops._stack_push(
+          # pylint: disable=protected-access
+          push = gen_data_flow_ops._stack_push_v2(
               enter_acc, value, swap_memory=swap_enabled)
+          # pylint: enable=protected-access
           value_ctxt.Exit()
         # Protect stack push and order it before forward_sync.
         self.forward_sync._add_control_input(push.op)
@@ -906,7 +914,7 @@ class GradLoopState(object):
       push.op._add_control_input(add_op)
       return acc
 
-  def AddBackPropAccumulatedValue(self, history_value, value,
+  def AddBackpropAccumulatedValue(self, history_value, value,
                                   dead_branch=False):
     """Add the getter for an accumulated value in the grad context.
 
@@ -944,7 +952,10 @@ class GradLoopState(object):
           pred = cond_ctxt.pred
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
         history_value = _SwitchRefOrTensor(history_value, pred)[branch]
-      pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
+      # pylint: disable=protected-access
+      pop = gen_data_flow_ops._stack_pop_v2(history_value,
+                                            value.dtype.base_dtype)
+      # pylint: enable=protected-access
       pop.set_shape(value.get_shape())
       self.grad_context.Exit()
     parallel_iterations = self.grad_context.parallel_iterations
@@ -1002,7 +1013,7 @@ class GradLoopState(object):
 
       if real_value is None:
         # Add the stack pop op in the grad context.
-        real_value = cur_grad_state.AddBackPropAccumulatedValue(history_value,
+        real_value = cur_grad_state.AddBackpropAccumulatedValue(history_value,
                                                                 cur_value)
         if cur_grad_state != self:
           real_value = self._grad_context.AddValue(real_value)
@@ -1159,7 +1170,7 @@ class ControlFlowState(object):
         # Get the shape back from the stack.
         outer_grad_ctxt = outer_grad_state.grad_context
         outer_grad_ctxt.Enter()
-        real_shape = outer_grad_state.AddBackPropAccumulatedValue(
+        real_shape = outer_grad_state.AddBackpropAccumulatedValue(
             history_shape, shape)
         result = array_ops.zeros(real_shape, val.dtype)
         outer_grad_ctxt.Exit()
@@ -1229,7 +1240,7 @@ class ControlFlowState(object):
       grad_state.grad_context.Enter()
 
       # Create a zero tensor with the right shape.
-      shape = grad_state.AddBackPropAccumulatedValue(
+      shape = grad_state.AddBackpropAccumulatedValue(
           history_zeros_shape, zeros_shape, dead_branch)
       result = array_ops.zeros(shape, val.dtype)
     return result
@@ -1812,6 +1823,11 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   if not callable(false_fn):
     raise TypeError("false_fn must be callable.")
 
+  if context.in_eager_mode():
+    if pred:
+      return true_fn()
+    return false_fn()
+
   with ops.name_scope(name, "cond", [pred]):
     # Add the Switch to the graph.
     if isinstance(pred, bool):
@@ -2266,7 +2282,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return total_iterations, next_n
 
-  def AddBackPropLoopCounter(self, count, outer_grad_state):
+  def AddBackpropLoopCounter(self, count, outer_grad_state):
     """Add the backprop loop that controls the iterations.
 
     This is added to the backprop loop. It is used to control the loop
@@ -2320,7 +2336,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return next_count
 
-  def AddBackPropAccumulator(self, op, grad):
+  def AddBackpropAccumulator(self, op, grad):
     """Add an accumulation loop for every loop invariant.
 
     This is added to the backprop loop. It is used to accumulate partial
@@ -2366,7 +2382,7 @@ class WhileContext(ControlFlowContext):
         history_zeros_shape = outer_grad_state.AddForwardAccumulator(
             zeros_shape)
         self.outer_context.Enter()
-        real_shape = outer_grad_state.AddBackPropAccumulatedValue(
+        real_shape = outer_grad_state.AddBackpropAccumulatedValue(
             history_zeros_shape, zeros_shape)
         acc = array_ops.zeros(real_shape, grad.dtype)
         self.outer_context.Exit()
@@ -2396,10 +2412,10 @@ class WhileContext(ControlFlowContext):
     self.ExitResult([result_acc])
     return result_acc
 
-  def AddBackPropIndexedSlicesAccumulator(self, op, grad):
+  def AddBackpropIndexedSlicesAccumulator(self, op, grad):
     """This is used for accumulating gradients that are IndexedSlices.
 
-    This is essentially the equavalent of AddBackPropAccumulator but optimized
+    This is essentially the equivalent of AddBackpropAccumulator but optimized
     for things like updating embeddings from within a while loop.
 
     Args:
@@ -2670,8 +2686,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   Note that `while_loop` calls `cond` and `body` *exactly once* (inside the
   call to `while_loop`, and not at all during `Session.run()`). `while_loop`
   stitches together the graph fragments created during the `cond` and `body`
-  calls with some additional graph nodes to make something the repeats
-  `body` until `cond` returns false.
+  calls with some additional graph nodes to create the graph flow that
+  repeats `body` until `cond` returns false.
 
   For correctness, `tf.while_loop()` strictly enforces shape invariants for
   the loop variables. A shape invariant is a (possibly partial) shape that
@@ -2707,11 +2723,11 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   memory consumption and execution order. For correct programs, `while_loop`
   should return the same result for any parallel_iterations > 0.
 
-  For training, TensorFlow remembers the tensors that are produced in the
-  forward inference but needed in back propagation. These tensors can be a
-  main source of memory consumption and often cause OOM problems when training
-  on GPUs.  When the flag swap_memory is true, we swap out these tensors from
-  GPU to CPU.  This for example allows us to train RNN models with very long
+  For training, TensorFlow stores the tensors that are produced in the
+  forward inference and are needed in back propagation. These tensors are a
+  main source of memory consumption and often cause OOM errors when training
+  on GPUs. When the flag swap_memory is true, we swap out these tensors from
+  GPU to CPU. This for example allows us to train RNN models with very long
   sequences and large batches.
 
   Args:
@@ -2778,12 +2794,17 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     if parallel_iterations < 1:
       raise TypeError("parallel_iterations must be a positive integer.")
 
+    if context.in_eager_mode():
+      while cond(*loop_vars):
+        loop_vars = body(*loop_vars)
+      return loop_vars
+
     if shape_invariants is not None:
       nest.assert_same_structure(loop_vars, shape_invariants)
 
-    context = WhileContext(parallel_iterations, back_prop, swap_memory)
-    ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, context)
-    result = context.BuildLoop(cond, body, loop_vars, shape_invariants)
+    loop_context = WhileContext(parallel_iterations, back_prop, swap_memory)  # pylint: disable=redefined-outer-name
+    ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
+    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
     return result
 
 
@@ -2849,6 +2870,8 @@ def with_dependencies(dependencies, output_tensor, name=None):
   Raises:
     TypeError: if `output_tensor` is not a `Tensor` or `IndexedSlices`.
   """
+  if context.in_eager_mode():
+    return output_tensor
   with ops.name_scope(name, "control_dependency",
                       list(dependencies) + [output_tensor]) as name:
     with ops.colocate_with(output_tensor):
@@ -2892,6 +2915,8 @@ def group(*inputs, **kwargs):
   Raises:
     ValueError: If an unknown keyword argument is provided.
   """
+  if context.in_eager_mode():
+    return None
   name = kwargs.pop("name", None)
   if kwargs:
     raise ValueError("Unknown keyword arguments: " + ", ".join(kwargs.keys()))
@@ -2959,6 +2984,8 @@ def tuple(tensors, name=None, control_inputs=None):
       objects.
 
   """
+  if context.in_eager_mode():
+    return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
     gating_ops = [t.op for t in tensors if t is not None]
     if control_inputs:
@@ -3084,12 +3111,18 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
     TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
+    ValueError: If in eager mode and all predicates are false and no
+               default is provided.
+    ValueError: If in eager mode and is passed a dictionary.
   """
   pfp = pred_fn_pairs  # For readability
   if not (isinstance(pfp, list) or isinstance(pfp, _basetuple)
           or isinstance(pfp, dict)):
     raise TypeError("fns must be a list, tuple, or dict")
   if isinstance(pfp, dict):
+    if context.in_eager_mode():
+      raise ValueError(
+          "In eager mode the predicates must be a list, not a dictionary.")
     if isinstance(pfp, collections.OrderedDict):
       pfp = pfp.items()
     else:
@@ -3109,6 +3142,14 @@ def case(pred_fn_pairs, default=None, exclusive=False, strict=False,
 
   if default is not None and not callable(default):
     raise TypeError("default must be callable.")
+
+  if context.in_eager_mode():
+    for pred, fn in pfp:
+      if pred:
+        return fn()
+    if default is None:
+      raise ValueError("tf.case received all false predicates and no default.")
+    return default()
 
   preds, fns = map(list, zip(*pfp))
   del pfp  # From now on, preds and fns form the source of truth.

@@ -16,8 +16,31 @@
 # pylint: disable=line-too-long
 """This library provides a set of high-level neural networks layers.
 
+@@Dense
+@@Dropout
+@@Flatten
+@@Conv1D
+@@Conv2D
+@@Conv3D
+@@SeparableConv2D
+@@Conv2DTranspose
+@@Conv3DTranspose
+@@AveragePooling1D
+@@MaxPooling1D
+@@AveragePooling2D
+@@MaxPooling2D
+@@AveragePooling3D
+@@MaxPooling3D
+@@BatchNormalization
+
+@@Layer
+@@Network
+@@Input
+@@InputSpec
+
 @@dense
 @@dropout
+@@flatten
 @@conv1d
 @@conv2d
 @@conv3d
@@ -50,9 +73,11 @@ from tensorflow.python.layers.base import InputSpec
 # Core layers.
 from tensorflow.python.layers.core import Dense
 from tensorflow.python.layers.core import Dropout
+from tensorflow.python.layers.core import Flatten
 
 from tensorflow.python.layers.core import dense
 from tensorflow.python.layers.core import dropout
+from tensorflow.python.layers.core import flatten
 
 # Convolutional layers.
 from tensorflow.python.layers.convolutional import SeparableConv2D

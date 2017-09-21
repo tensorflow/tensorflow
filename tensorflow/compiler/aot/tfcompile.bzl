@@ -41,7 +41,7 @@ def tf_library(name, graph, config,
     graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt' it
       is expected to be in the human-readable proto text format, otherwise it is
       expected to be in the proto binary format.
-    config: File containing tensorflow.tfcompile.Config proto.  If the file ends
+    config: File containing tensorflow.tf2xla.Config proto.  If the file ends
       in '.pbtxt' it is expected to be in the human-readable proto text format,
       otherwise it is expected to be in the proto binary format.
     freeze_checkpoint: If provided, run freeze_graph with this checkpoint to
@@ -178,6 +178,9 @@ def tf_library(name, graph, config,
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
           "//tensorflow/compiler/aot:runtime",
           "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_avx",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_neon",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_sse4_1",
           "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
           "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
           "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",

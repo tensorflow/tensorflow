@@ -24,7 +24,6 @@ limitations under the License.
 namespace tensorflow {
 
 // A class that stores all the FunctionLibraryRuntime objects, one per device.
-// This class is not thread safe.
 class ProcessFunctionLibraryRuntime {
  public:
   // Creates FunctionLibraryRuntime objects for each device in the provided
@@ -35,10 +34,101 @@ class ProcessFunctionLibraryRuntime {
                                 const FunctionLibraryDefinition* lib_def,
                                 const OptimizerOptions& optimizer_options);
 
+  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
+                                int graph_def_version,
+                                const FunctionLibraryDefinition* lib_def,
+                                const OptimizerOptions& optimizer_options,
+                                CustomKernelCreator custom_kernel_creator);
+
+  // Given a list of attrs on a function, extracts the "_target" attribute which
+  // indicates which device to run the function on. If it can't find the _target
+  // attribute, returns "". Canonicalizes the device name.
+  static string ObtainFunctionTarget(const AttrSlice& attrs);
+
+  // Sends `tensors_to_send` from `source_device` to `target_device` using
+  // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
+  // Rendezvous. Method takes references on each of the `tensors_to_send`.
+  // Method doesn't block.
+  static Status SendTensors(const string& source_device,
+                            const string& target_device,
+                            const string& key_prefix, int64 src_incarnation,
+                            gtl::ArraySlice<Tensor> tensors_to_send,
+                            const Rendezvous::Args& args,
+                            Rendezvous* rendezvous);
+
+  typedef std::function<void(const Status&)> StatusCallback;
+
+  // Receives `received_tensors` from `target_device` (originally sent from
+  // `source_device`) using `rendezvous`. Uses `key_prefix` to construct the
+  // keys to be retrieved. Method doesn't block and calls `done` when
+  // `num_tensors` are fetched.
+  static void ReceiveTensorsAsync(
+      const string& source_device, const string& target_device,
+      const string& key_prefix, int64 src_incarnation, int64 num_tensors,
+      const Rendezvous::Args& args, Rendezvous* rendezvous,
+      std::vector<Tensor>* received_tensors, const StatusCallback& done);
+
+  static const char kDefaultFLRDevice[];
   // Returns the FunctionLibraryRuntime for the corresponding device_name.
   FunctionLibraryRuntime* GetFLR(const string& device_name);
 
+  // Returns the device incarnation for the given device_name.
+  Status GetDeviceIncarnation(const string& device_name, int64* incarnation);
+
+  // For a given canonicalized key signature of the function instantiated
+  // on device `device_name` and a `local_handle`, creates a handle and returns
+  // that value. Use core/common_runtime/framework/function.h::Canonicalize
+  // to canonicalize the function signature.
+  FunctionLibraryRuntime::Handle AddHandle(
+      const string& function_key, const string& device_name,
+      FunctionLibraryRuntime::LocalHandle local_handle);
+
+  // Returns a handle if found for the given key, else returns kInvalidHandle.
+  FunctionLibraryRuntime::Handle GetHandle(const string& function_key) const;
+
+  // For the given handle instantiated on device `device_name` returns the local
+  // index of instantiation of that function. If the function was not
+  // instantiated on `device_name` returns kInvalidLocalHandle.
+  FunctionLibraryRuntime::LocalHandle GetHandleOnDevice(
+      const string& device_name, FunctionLibraryRuntime::Handle handle);
+
+  // Returns true if function with handle `handle` was instantiated on device
+  // `device_name`.
+  bool IsInstantiatedOnDevice(const string& device_name,
+                              FunctionLibraryRuntime::Handle handle);
+
+  // Instantiates the function. See framework/function.h for more details.
+  // Allows for function_name to be instantiated on different devices
+  // as specified in attrs.
+  Status Instantiate(const string& function_name, AttrSlice attrs,
+                     FunctionLibraryRuntime::Handle* handle);
+
+  // Runs the function with given `handle`. Function could have been
+  // instantiated on any device. More details in framework/function.h
+  void Run(const FunctionLibraryRuntime::Options& opts,
+           FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+           std::vector<Tensor>* rets,
+           FunctionLibraryRuntime::DoneCallback done);
+
  private:
+  // For a given device_name, returns a DeviceContext for copying
+  // tensors to/from the device.
+  Status GetDeviceContext(const string& device_name,
+                          DeviceContext** device_context);
+
+  // Looks up the information for the given `handle` and returns the name
+  // of the device where the function is registered.
+  string GetDeviceName(FunctionLibraryRuntime::Handle handle);
+
+  friend class FunctionLibraryRuntimeImpl;
+
+  mutable mutex mu_;
+
+  // Holds all the function invocations here.
+  std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
+      GUARDED_BY(mu_);
+  std::vector<std::pair<string, FunctionLibraryRuntime::LocalHandle>>
+      function_data_ GUARDED_BY(mu_);
   std::unordered_map<string, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
 };
 

@@ -31,6 +31,7 @@ from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.export import export_output
 from tensorflow.python.estimator.inputs import numpy_io
@@ -124,6 +125,12 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
         return input_fn()
 
       def _create_global_step(self, graph):
+        pass
+
+      def _convert_train_steps_to_hooks(self, steps, max_steps):
+        pass
+
+      def _convert_eval_steps_to_hooks(self, steps):
         pass
 
     _Estimator()
@@ -292,6 +299,26 @@ class EstimatorConstructorTest(test.TestCase):
         _, _, _ = features, labels, mode
 
     ModelFnClass()
+
+  def test_model_fn_property_binds_params(self):
+
+    def model_fn(features, labels, mode, config, params):
+      _, _, _, _, _ = features, labels, mode, config, params
+
+    est = estimator.Estimator(model_fn=model_fn)
+    model_fn_args = util.fn_args(est.model_fn)
+    self.assertEqual(
+        set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
+
+  def test_model_fn_property_returns_fixed_signature(self):
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(model_fn=model_fn)
+    model_fn_args = util.fn_args(est.model_fn)
+    self.assertEqual(
+        set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
 
 
 def dummy_input_fn():

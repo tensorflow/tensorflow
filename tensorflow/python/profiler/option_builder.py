@@ -177,7 +177,7 @@ class ProfileOptionBuilder(object):
             'min_params': 0,
             'min_float_ops': 0,
             'min_occurrence': 0,
-            'order_by': 'name',
+            'order_by': 'micros',
             'account_type_regexes': ['.*'],
             'start_name_regexes': ['.*'],
             'trim_name_regexes': [],
@@ -406,7 +406,7 @@ class ProfileOptionBuilder(object):
     """Generate a pprof profile gzip file.
 
     To use the pprof file:
-      pprof -png --nodecount=20 --sample_index=1 <pprof_file>
+      pprof -png --nodecount=100 --sample_index=1 <pprof_file>
 
     Args:
       pprof_file: filename for output, usually suffixed with .pb.gz.

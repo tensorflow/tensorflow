@@ -367,6 +367,7 @@ class ScipyOptimizerInterface(ExternalOptimizerInterface):
       loss, gradient = loss_grad_func(x)
       return loss, gradient.astype('float64')
 
+    optimizer_kwargs = dict(optimizer_kwargs.items())
     method = optimizer_kwargs.pop('method', self._DEFAULT_METHOD)
 
     constraints = []

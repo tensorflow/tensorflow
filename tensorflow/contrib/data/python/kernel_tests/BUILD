@@ -21,8 +21,32 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "iterator_ops_cluster_test",
+    size = "small",
+    srcs = ["iterator_ops_cluster_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -125,6 +149,25 @@ py_test(
 )
 
 py_test(
+    name = "sloppy_transformation_dataset_op_test",
+    size = "small",
+    srcs = ["sloppy_transformation_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:sloppy_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "list_files_dataset_op_test",
     size = "small",
     srcs = ["list_files_dataset_op_test.py"],
@@ -201,10 +244,27 @@ py_test(
 )
 
 py_test(
+    name = "sql_dataset_op_test",
+    size = "small",
+    srcs = ["sql_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "resample_test",
     size = "medium",
     srcs = ["resample_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
+    tags = ["noasan"],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
@@ -244,6 +304,18 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "shard_dataset_op_test",
+    size = "small",
+    srcs = ["shard_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
     ],
 )
 

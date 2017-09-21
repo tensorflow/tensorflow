@@ -126,7 +126,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
         "Error evaluating ", context_->op_kernel().name(), " input ", index,
         ": ", computed.status().error_message());
   }
-  constant_literal->Swap(computed.ValueOrDie().get());
+  *constant_literal = std::move(*computed.ValueOrDie());
 
   return Status::OK();
 }
@@ -195,7 +195,7 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
       return Status::OK();
 
     case xla::S64:
-      out->Swap(&literal);
+      *out = std::move(literal);
       return Status::OK();
 
     default:
@@ -345,7 +345,6 @@ Status XlaOpKernelContext::GetResourceInput(int index, XlaResource** resource) {
 Status XlaOpKernelContext::AssignVariable(
     int input_index, DataType type, const xla::ComputationDataHandle& handle) {
   TF_RET_CHECK(handle.handle() != 0);
-  SetOpHasSideEffects();
 
   const XlaExpression* expression =
       CastExpressionFromTensor(context_->input(input_index));
@@ -361,10 +360,6 @@ Status XlaOpKernelContext::AssignVariable(
   variable->type = type;
   variable->value = handle;
   return Status::OK();
-}
-
-void XlaOpKernelContext::SetOpHasSideEffects() {
-  XlaContext::Get(context_).AddSideEffects();
 }
 
 XlaCompiler* XlaOpKernelContext::compiler() const {

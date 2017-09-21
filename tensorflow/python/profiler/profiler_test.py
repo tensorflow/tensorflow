@@ -49,17 +49,6 @@ class ProfilerTest(test.TestCase):
     r = lib.BuildFullModel()
     sess.run(variables.global_variables_initializer())
 
-    profiler = model_analyzer.Profiler(sess.graph)
-    profiler.profile_name_scope(opts)
-    with gfile.Open(outfile, 'r') as f:
-      profiler_str = f.read()
-
-    model_analyzer.profile(
-        sess.graph, cmd='scope', options=opts)
-    with gfile.Open(outfile, 'r') as f:
-      pma_str = f.read()
-    self.assertEqual(pma_str, profiler_str)
-
     # Test the output with run_meta.
     run_meta = config_pb2.RunMetadata()
     _ = sess.run(r,
@@ -67,6 +56,7 @@ class ProfilerTest(test.TestCase):
                      trace_level=config_pb2.RunOptions.FULL_TRACE),
                  run_metadata=run_meta)
 
+    profiler = model_analyzer.Profiler(sess.graph)
     profiler.add_step(1, run_meta)
     profiler.profile_graph(opts)
     with gfile.Open(outfile, 'r') as f:
@@ -74,6 +64,16 @@ class ProfilerTest(test.TestCase):
 
     model_analyzer.profile(
         sess.graph, cmd='graph', run_meta=run_meta, options=opts)
+    with gfile.Open(outfile, 'r') as f:
+      pma_str = f.read()
+    self.assertEqual(pma_str, profiler_str)
+
+    profiler.profile_name_scope(opts)
+    with gfile.Open(outfile, 'r') as f:
+      profiler_str = f.read()
+
+    model_analyzer.profile(
+        sess.graph, cmd='scope', run_meta=run_meta, options=opts)
     with gfile.Open(outfile, 'r') as f:
       pma_str = f.read()
     self.assertEqual(pma_str, profiler_str)
@@ -103,18 +103,6 @@ class ProfilerTest(test.TestCase):
     with gfile.Open(outfile, 'r') as f:
       pma_str = f.read()
     self.assertNotEqual(pma_str, profiler_str)
-
-    opts2 = opts.copy()
-    opts2['select'] = ['params', 'float_ops']
-    profiler.profile_name_scope(opts2)
-    with gfile.Open(outfile, 'r') as f:
-      profiler_str = f.read()
-
-    model_analyzer.profile(
-        sess.graph, cmd='scope', run_meta=run_meta, options=opts2)
-    with gfile.Open(outfile, 'r') as f:
-      pma_str = f.read()
-    self.assertEqual(pma_str, profiler_str)
 
   def testMultiStepProfile(self):
     ops.reset_default_graph()
@@ -182,6 +170,51 @@ class ProfilerTest(test.TestCase):
         self.assertEqual(len(checker.reports), 0)
       checker = advice_pb.checkers['ExpensiveOperationChecker']
       self.assertGreater(len(checker.reports), 0)
+
+  def testMultipleProfilePerStep(self):
+    ops.reset_default_graph()
+    opts = (builder(builder.trainable_variables_parameter())
+            .with_empty_output()
+            .with_accounted_types(['.*'])
+            .select(['micros', 'bytes', 'peak_bytes',
+                     'residual_bytes', 'output_bytes']).build())
+
+    r = lib.BuildSmallModel()
+    sess = session.Session()
+    profiler = model_analyzer.Profiler(sess.graph)
+
+    init_var_run_meta = config_pb2.RunMetadata()
+    sess.run(variables.global_variables_initializer(),
+             options=config_pb2.RunOptions(
+                 trace_level=config_pb2.RunOptions.FULL_TRACE),
+             run_metadata=init_var_run_meta)
+
+    train_run_meta = config_pb2.RunMetadata()
+    sess.run(r,
+             options=config_pb2.RunOptions(
+                 trace_level=config_pb2.RunOptions.FULL_TRACE),
+             run_metadata=train_run_meta)
+
+    profiler.add_step(0, train_run_meta)
+    ret1 = profiler.profile_name_scope(opts)
+    n1 = lib.SearchTFProfNode(
+        ret1, 'DW/Initializer/random_normal/RandomStandardNormal')
+    # Without the var initialization run_meta, it doesn't have the
+    # information of var_initialization.
+    self.assertEqual(n1.exec_micros, 0)
+    self.assertEqual(n1.requested_bytes, 0)
+    self.assertEqual(n1.peak_bytes, 0)
+    self.assertEqual(n1.residual_bytes, 0)
+
+    profiler.add_step(0, init_var_run_meta)
+    ret2 = profiler.profile_name_scope(opts)
+    n2 = lib.SearchTFProfNode(
+        ret2, 'DW/Initializer/random_normal/RandomStandardNormal')
+    # After adding the var initialization run_meta.
+    self.assertGreater(n2.exec_micros, 0)
+    self.assertGreater(n2.requested_bytes, 0)
+    self.assertGreater(n2.peak_bytes, 0)
+    self.assertGreater(n2.residual_bytes, 0)
 
 
 if __name__ == '__main__':

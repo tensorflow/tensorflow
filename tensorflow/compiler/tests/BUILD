@@ -41,6 +41,7 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:session",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -486,6 +487,23 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "gather_test",
+    size = "small",
+    srcs = ["gather_test.py"],
+    # Gather needs CustomCall on CPU, which is not available in normal
+    # (not precompiled) TensorFlow. The flag below excludes the CPU
+    # backend.
+    disabled_backends = "cpu",
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
     ],
 )
 

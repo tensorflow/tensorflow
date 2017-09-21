@@ -54,7 +54,7 @@ Status ReduceSliceShapeFn(InferenceContext* c) {
   if (nullptr == _axis) {
     c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
   } else {
-    int64 axis = _axis->scalar<int64>()(0);
+    int64 axis = _axis->scalar<int64>()();
     TF_RETURN_IF_ERROR(c->ReplaceDim(handle, axis, dim_axis, &handle));
     c->set_output(0, handle);
   }

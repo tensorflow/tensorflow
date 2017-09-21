@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {

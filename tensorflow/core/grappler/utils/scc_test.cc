@@ -406,5 +406,28 @@ versions {
   }
 }
 
+TEST_F(SCCTest, NestedLoops) {
+  GrapplerItem item;
+  string filename = io::JoinPath(
+      testing::TensorFlowSrcRoot(),
+      "core/grappler/costs/graph_properties_testdata/nested_loop.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+
+  for (const auto& node : item.graph.node()) {
+    std::cout << node.DebugString() << std::endl;
+  }
+
+  std::unordered_map<const NodeDef*, std::vector<int>> loops;
+  int num_loops = IdentifyLoops(item.graph, &loops);
+  EXPECT_EQ(4, num_loops);
+  for (const auto& node_info : loops) {
+    std::cout << node_info.first->name() << " [";
+    for (int i : node_info.second) {
+      std::cout << "  " << i;
+    }
+    std::cout << "]" << std::endl;
+  }
+}
+
 }  // namespace grappler
 }  // namespace tensorflow

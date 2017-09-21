@@ -30,9 +30,12 @@
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+
+using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
 
 namespace tensorflow {
 namespace {
@@ -83,20 +86,23 @@ HandleMap* GetHandleMapSingleton() {
 
 }  // namespace
 
-#define TF_RETURN_IF_CUSOLVER_ERROR(expr)                                      \
-  do {                                                                         \
-    auto status = (expr);                                                      \
-    if (TF_PREDICT_FALSE(status != CUSOLVER_STATUS_SUCCESS)) {                 \
-      return errors::Internal("cuSolverDN call failed with status =", status); \
-    }                                                                          \
+#define TF_RETURN_IF_CUSOLVER_ERROR(expr)                      \
+  do {                                                         \
+    auto status = (expr);                                      \
+    if (TF_PREDICT_FALSE(status != CUSOLVER_STATUS_SUCCESS)) { \
+      return errors::Internal(                                 \
+          __FILE__, ":", __LINE__,                             \
+          ": cuSolverDN call failed with status =", status);   \
+    }                                                          \
   } while (0)
 
-#define TF_RETURN_IF_CUBLAS_ERROR(expr)                                \
-  do {                                                                 \
-    auto status = (expr);                                              \
-    if (TF_PREDICT_FALSE(status != CUBLAS_STATUS_SUCCESS)) {           \
-      return errors::Internal("cuBlas call failed status = ", status); \
-    }                                                                  \
+#define TF_RETURN_IF_CUBLAS_ERROR(expr)                                  \
+  do {                                                                   \
+    auto status = (expr);                                                \
+    if (TF_PREDICT_FALSE(status != CUBLAS_STATUS_SUCCESS)) {             \
+      return errors::Internal(__FILE__, ":", __LINE__,                   \
+                              ": cuBlas call failed status = ", status); \
+    }                                                                    \
   } while (0)
 
 CudaSolver::CudaSolver(OpKernelContext* context) : context_(context) {
@@ -148,7 +154,12 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
   // This callback checks that all batch items in all calls were processed
   // successfully and passes status to the info_checker_callback accordingly.
   auto wrapped_info_checker_callback =
-      [info_checker_callback](std::vector<HostLapackInfo> host_lapack_infos) {
+      [](OpKernelContext* context,
+         std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
+             info_checker_callback,
+         std::vector<HostLapackInfo> host_lapack_infos) {
+        auto stream = context->op_device_context()->stream();
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
         Status status;
         for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
@@ -156,7 +167,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
             if (info_value != 0) {
               status = errors::InvalidArgument(
                   "Got info = ", info_value, " for batch index ", i,
-                  ", expected info = 0. Debug_info =",
+                  ", expected info = 0. Debug_info = ",
                   host_lapack_info.debug_info());
             }
           }
@@ -166,8 +177,10 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
         }
         info_checker_callback(status, host_lapack_infos);
       };
+
   auto cb =
-      std::bind(wrapped_info_checker_callback, std::move(host_lapack_infos));
+      std::bind(wrapped_info_checker_callback, context_,
+                std::move(info_checker_callback), std::move(host_lapack_infos));
   auto stream = context_->op_device_context()->stream();
   context_->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
       stream, std::move(cb));
@@ -178,6 +191,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
 // numeric types.
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
+#define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, S) m(double, D)
 
 // Macros to construct cusolverDn method names.
 #define DN_SOLVER_FN(method, lapack_prefix) cusolverDn##lapack_prefix##method
@@ -317,6 +331,191 @@ static inline Status GetrsImpl(SolverFnT solver, OpKernelContext* context,
 
 TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
 
+template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
+static inline Status GesvdImpl(BufSizeFnT bufsize, SolverFnT solver,
+                               OpKernelContext* context,
+                               cusolverDnHandle_t cusolver_dn_handle,
+                               signed char jobu, signed char jobvt, int m,
+                               int n, Scalar* A, int lda, Scalar* S, Scalar* U,
+                               int ldu, Scalar* VT, int ldvt,
+                               int* dev_lapack_info) {
+  /* Get amount of workspace memory required. */
+  int lwork;
+  TF_RETURN_IF_CUSOLVER_ERROR(bufsize(cusolver_dn_handle, m, n, &lwork));
+  /* Allocate device memory for workspace. */
+  ScratchSpace<Scalar> dev_workspace(context, lwork, /* on_host */ false);
+  /* Launch the solver kernel. */
+  TF_RETURN_IF_CUSOLVER_ERROR(solver(
+      cusolver_dn_handle, jobu, jobvt, m, n, CUDAComplex(A), lda, S,
+      CUDAComplex(U), ldu, CUDAComplex(VT), ldvt,
+      CUDAComplex(dev_workspace.mutable_data()), lwork, NULL, dev_lapack_info));
+  return Status::OK();
+}
+
+#define GESVD_INSTANCE(Scalar, lapack_prefix)                            \
+  template <>                                                            \
+  Status CudaSolver::Gesvd<Scalar>(                                      \
+      signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,  \
+      int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,    \
+      int ldvt, int* dev_lapack_info) const {                            \
+    return GesvdImpl(DN_BUFSIZE_FN(gesvd, lapack_prefix),                \
+                     DN_SOLVER_FN(gesvd, lapack_prefix), context_,       \
+                     cusolver_dn_handle_, jobu, jobvt, m, n, dev_A, lda, \
+                     dev_S, dev_U, ldu, dev_VT, ldvt, dev_lapack_info);  \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_COMPLEX(GESVD_INSTANCE);
+
+template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
+static inline Status GeqrfImpl(BufSizeFnT bufsize, SolverFnT solver,
+                               OpKernelContext* context,
+                               cusolverDnHandle_t cusolver_dn_handle, int m,
+                               int n, Scalar* A, int lda, Scalar* tau,
+                               int* dev_lapack_info) {
+  /* Get amount of workspace memory required. */
+  int lwork;
+  TF_RETURN_IF_CUSOLVER_ERROR(
+      bufsize(cusolver_dn_handle, m, n, CUDAComplex(A), lda, &lwork));
+  /* Allocate device memory for workspace. */
+  ScratchSpace<Scalar> dev_workspace(context, lwork, /* on_host */ false);
+  /* Launch the solver kernel. */
+  TF_RETURN_IF_CUSOLVER_ERROR(solver(
+      cusolver_dn_handle, m, n, CUDAComplex(A), lda, CUDAComplex(tau),
+      CUDAComplex(dev_workspace.mutable_data()), lwork, dev_lapack_info));
+  return Status::OK();
+}
+
+#define GEQRF_INSTANCE(Scalar, lapack_prefix)                                  \
+  template <>                                                                  \
+  Status CudaSolver::Geqrf<Scalar>(int m, int n, Scalar* A, int lda,           \
+                                   Scalar* tau, int* dev_lapack_info) const {  \
+    return GeqrfImpl(DN_BUFSIZE_FN(geqrf, lapack_prefix),                      \
+                     DN_SOLVER_FN(geqrf, lapack_prefix), context_,             \
+                     cusolver_dn_handle_, m, n, A, lda, tau, dev_lapack_info); \
+  }
+
+TF_CALL_LAPACK_TYPES(GEQRF_INSTANCE);
+
+template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
+static inline Status OrmqrImpl(BufSizeFnT bufsize, SolverFnT solver,
+                               OpKernelContext* context,
+                               cusolverDnHandle_t cusolver_dn_handle,
+                               cublasSideMode_t side, cublasOperation_t trans,
+                               int m, int n, int k, const Scalar* dev_a,
+                               int lda, const Scalar* dev_tau, Scalar* dev_c,
+                               int ldc, int* dev_lapack_info) {
+  /* Get amount of workspace memory required. */
+  int lwork;
+  TF_RETURN_IF_CUSOLVER_ERROR(
+      bufsize(cusolver_dn_handle, side, trans, m, n, k, CUDAComplex(dev_a), lda,
+              CUDAComplex(dev_tau), CUDAComplex(dev_c), ldc, &lwork));
+  /* Allocate device memory for workspace. */
+  ScratchSpace<Scalar> dev_workspace(context, lwork, /* on_host */ false);
+  /* Launch the solver kernel. */
+  TF_RETURN_IF_CUSOLVER_ERROR(solver(
+      cusolver_dn_handle, side, trans, m, n, k, CUDAComplex(dev_a), lda,
+      CUDAComplex(dev_tau), CUDAComplex(dev_c), ldc,
+      CUDAComplex(dev_workspace.mutable_data()), lwork, dev_lapack_info));
+  return Status::OK();
+}
+
+// Unfortunately the LAPACK function name differs for the real and complex case
+// (complex ones are prefixed with "UN" for "unitary"), so we instantiate each
+// one separately.
+template <>
+Status CudaSolver::Ormqr(cublasSideMode_t side, cublasOperation_t trans, int m,
+                         int n, int k, const float* dev_a, int lda,
+                         const float* dev_tau, float* dev_c, int ldc,
+                         int* dev_lapack_info) const {
+  return OrmqrImpl(DN_BUFSIZE_FN(ormqr, S), DN_SOLVER_FN(ormqr, S), context_,
+                   cusolver_dn_handle_, side, trans, m, n, k, dev_a, lda,
+                   dev_tau, dev_c, ldc, dev_lapack_info);
+}
+template <>
+Status CudaSolver::Ormqr(cublasSideMode_t side, cublasOperation_t trans, int m,
+                         int n, int k, const double* dev_a, int lda,
+                         const double* dev_tau, double* dev_c, int ldc,
+                         int* dev_lapack_info) const {
+  return OrmqrImpl(DN_BUFSIZE_FN(ormqr, D), DN_SOLVER_FN(ormqr, D), context_,
+                   cusolver_dn_handle_, side, trans, m, n, k, dev_a, lda,
+                   dev_tau, dev_c, ldc, dev_lapack_info);
+}
+template <>
+Status CudaSolver::Ormqr(cublasSideMode_t side, cublasOperation_t trans, int m,
+                         int n, int k, const std::complex<float>* dev_a,
+                         int lda, const std::complex<float>* dev_tau,
+                         std::complex<float>* dev_c, int ldc,
+                         int* dev_lapack_info) const {
+  return OrmqrImpl(DN_BUFSIZE_FN(unmqr, C), DN_SOLVER_FN(unmqr, C), context_,
+                   cusolver_dn_handle_, side, trans, m, n, k, dev_a, lda,
+                   dev_tau, dev_c, ldc, dev_lapack_info);
+}
+template <>
+Status CudaSolver::Ormqr(cublasSideMode_t side, cublasOperation_t trans, int m,
+                         int n, int k, const std::complex<double>* dev_a,
+                         int lda, const std::complex<double>* dev_tau,
+                         std::complex<double>* dev_c, int ldc,
+                         int* dev_lapack_info) const {
+  return OrmqrImpl(DN_BUFSIZE_FN(unmqr, Z), DN_SOLVER_FN(unmqr, Z), context_,
+                   cusolver_dn_handle_, side, trans, m, n, k, dev_a, lda,
+                   dev_tau, dev_c, ldc, dev_lapack_info);
+}
+
+template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
+static inline Status OrgqrImpl(BufSizeFnT bufsize, SolverFnT solver,
+                               OpKernelContext* context,
+                               cusolverDnHandle_t cusolver_dn_handle, int m,
+                               int n, int k, Scalar* dev_a, int lda,
+                               const Scalar* dev_tau, int* dev_lapack_info) {
+  /* Get amount of workspace memory required. */
+  int lwork;
+  TF_RETURN_IF_CUSOLVER_ERROR(bufsize(cusolver_dn_handle, m, n, k,
+                                      CUDAComplex(dev_a), lda,
+                                      CUDAComplex(dev_tau), &lwork));
+  /* Allocate device memory for workspace. */
+  ScratchSpace<Scalar> dev_workspace(context, lwork, /* on_host */ false);
+  /* Launch the solver kernel. */
+  TF_RETURN_IF_CUSOLVER_ERROR(
+      solver(cusolver_dn_handle, m, n, k, CUDAComplex(dev_a), lda,
+             CUDAComplex(dev_tau), CUDAComplex(dev_workspace.mutable_data()),
+             lwork, dev_lapack_info));
+  return Status::OK();
+}
+
+// Unfortunately the LAPACK function name differs for the real and complex case
+// (complex ones are prefixed with "UN" for "unitary"), so we instantiate each
+// one separately.
+template <>
+Status CudaSolver::Orgqr(int m, int n, int k, float* dev_a, int lda,
+                         const float* dev_tau, int* dev_lapack_info) const {
+  return OrgqrImpl(DN_BUFSIZE_FN(orgqr, S), DN_SOLVER_FN(orgqr, S), context_,
+                   cusolver_dn_handle_, m, n, k, dev_a, lda, dev_tau,
+                   dev_lapack_info);
+}
+template <>
+Status CudaSolver::Orgqr(int m, int n, int k, double* dev_a, int lda,
+                         const double* dev_tau, int* dev_lapack_info) const {
+  return OrgqrImpl(DN_BUFSIZE_FN(orgqr, D), DN_SOLVER_FN(orgqr, D), context_,
+                   cusolver_dn_handle_, m, n, k, dev_a, lda, dev_tau,
+                   dev_lapack_info);
+}
+template <>
+Status CudaSolver::Orgqr(int m, int n, int k, std::complex<float>* dev_a,
+                         int lda, const std::complex<float>* dev_tau,
+                         int* dev_lapack_info) const {
+  return OrgqrImpl(DN_BUFSIZE_FN(ungqr, C), DN_SOLVER_FN(ungqr, C), context_,
+                   cusolver_dn_handle_, m, n, k, dev_a, lda, dev_tau,
+                   dev_lapack_info);
+}
+template <>
+Status CudaSolver::Orgqr(int m, int n, int k, std::complex<double>* dev_a,
+                         int lda, const std::complex<double>* dev_tau,
+                         int* dev_lapack_info) const {
+  return OrgqrImpl(DN_BUFSIZE_FN(ungqr, Z), DN_SOLVER_FN(ungqr, Z), context_,
+                   cusolver_dn_handle_, m, n, k, dev_a, lda, dev_tau,
+                   dev_lapack_info);
+}
+
 //=============================================================================
 // Wrappers of cuBlas computational methods begin here.
 //
@@ -354,6 +553,47 @@ static inline Status GetrfBatchedImpl(
   }
 
 TF_CALL_LAPACK_TYPES(GETRF_BATCHED_INSTANCE);
+
+template <typename Scalar, typename SolverFnT>
+static inline Status GetrsBatchedImpl(
+    SolverFnT solver, OpKernelContext* context, cublasHandle_t cublas_handle,
+    cublasOperation_t trans, int n, int nrhs, const Scalar* host_a_dev_ptrs[],
+    int lda, const int* dev_pivots, const Scalar* host_b_dev_ptrs[], int ldb,
+    DeviceLapackInfo* dev_lapack_info, int batch_size) {
+  using CudaScalar = typename CUDAComplexT<Scalar>::type;
+  ScratchSpace<uint8> dev_a_dev_ptrs(context, sizeof(CudaScalar*) * batch_size,
+                                     /* on_host */ false);
+  ScratchSpace<uint8> dev_b_dev_ptrs(context, sizeof(CudaScalar*) * batch_size,
+                                     /* on_host */ false);
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
+    return errors::Internal("GetrsBatched: failed to copy pointers to device");
+  }
+  if (!CopyHostToDevice(context, dev_b_dev_ptrs.mutable_data() /* dest */,
+                        host_b_dev_ptrs /* source */, dev_b_dev_ptrs.bytes())) {
+    return errors::Internal("GetrsBatched: failed to copy pointers to device");
+  }
+  TF_RETURN_IF_CUBLAS_ERROR(solver(
+      cublas_handle, trans, n, nrhs, (const CudaScalar**)dev_a_dev_ptrs.data(),
+      lda, dev_pivots, (CudaScalar**)dev_b_dev_ptrs.mutable_data(), ldb,
+      dev_lapack_info->mutable_data(), batch_size));
+  return Status::OK();
+}
+
+#define GETRS_BATCHED_INSTANCE(Scalar, lapack_prefix)                          \
+  template <>                                                                  \
+  Status CudaSolver::GetrsBatched(                                             \
+      cublasOperation_t trans, int n, int nrhs,                                \
+      const Scalar* host_a_dev_ptrs[], int lda, const int* dev_pivots,         \
+      const Scalar* host_b_dev_ptrs[], int ldb,                                \
+      DeviceLapackInfo* dev_lapack_info, int batch_size) const {               \
+    return GetrsBatchedImpl(BLAS_SOLVER_FN(getrsBatched, lapack_prefix),       \
+                            context_, cublas_handle_, trans, n, nrhs,          \
+                            host_a_dev_ptrs, lda, dev_pivots, host_b_dev_ptrs, \
+                            ldb, dev_lapack_info, batch_size);                 \
+  }
+
+TF_CALL_LAPACK_TYPES(GETRS_BATCHED_INSTANCE);
 
 template <typename Scalar, typename SolverFnT>
 static inline Status GetriBatchedImpl(

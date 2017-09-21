@@ -636,13 +636,5 @@ static void BM_TensorShape_Assign(int iters, int arg) {
 }
 BENCHMARK(BM_TensorShape_Assign)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
 
-static void BM_TensorShapeOld_Assign(int iters, int arg) {
-  TensorShapeOld sold(MakeSizes(arg));
-  while (--iters > 0) {
-    TensorShapeOld sold2 = sold;
-  }
-}
-BENCHMARK(BM_TensorShapeOld_Assign)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
-
 }  // namespace
 }  // namespace tensorflow

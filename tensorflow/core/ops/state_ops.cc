@@ -28,15 +28,7 @@ REGISTER_OP("VariableV2")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Holds state in the form of a tensor that persists across steps.
 
@@ -99,14 +91,7 @@ REGISTER_OP("TemporaryVariable")
     .Attr("dtype: type")
     .Attr("var_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
-      c->set_output(0, output);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Returns a tensor that may be mutated, but only persists within a single step.
 

@@ -33,7 +33,7 @@ from google.protobuf.message import Message as ProtoMessage
 from tensorflow.python.util import tf_inspect
 
 
-# A regular expression capturing a python indentifier.
+# A regular expression capturing a python identifier.
 IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
 
 
@@ -446,7 +446,7 @@ class _FunctionDetail(
     parts = [self.keyword + ':\n']
     parts.append(self.header)
     for key, value in self.items:
-      parts.append('  ' + key + ':')
+      parts.append('  ' + key + ': ')
       parts.append(value)
 
     return ''.join(parts)
@@ -507,7 +507,7 @@ def _parse_function_details(docstring):
   pairs = list(_gen_pairs(parts[1:]))
 
   function_details = []
-  item_re = re.compile(r'^  (\*?\*?\w+):', re.MULTILINE)
+  item_re = re.compile(r'^   ? ?(\*?\*?\w+\s*):\s', re.MULTILINE)
 
   for keyword, content in pairs:
     content = item_re.split(content)

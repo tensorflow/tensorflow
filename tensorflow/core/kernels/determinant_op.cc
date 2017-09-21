@@ -181,8 +181,10 @@ class DeterminantOpGpu : public AsyncOpKernel {
     // upper triangular factor of the LU factorization, which is written to
     // input_copy by the Getrf{Batched} kernel.
     functor::DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> functor;
-    functor(d, input_copy_reshaped, pivots.data(), output_reshaped,
-            dev_info.back().mutable_data());
+    functor(d,
+            const_cast<const Tensor*>(&input_copy)
+                ->template flat_inner_dims<Scalar, 3>(),
+            pivots.data(), output_reshaped, dev_info.back().mutable_data());
 
     // Register callback to check info after kernels finish. Also capture the
     // temporary Tensors/ScratchSpace so they don't get deallocated before the

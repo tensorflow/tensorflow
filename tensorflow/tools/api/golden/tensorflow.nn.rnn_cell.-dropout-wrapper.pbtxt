@@ -70,7 +70,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'cell\', \'input_keep_prob\', \'output_keep_prob\', \'state_keep_prob\', \'variational_recurrent\', \'input_size\', \'dtype\', \'seed\'], varargs=None, keywords=None, defaults=[\'1.0\', \'1.0\', \'1.0\', \'False\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'cell\', \'input_keep_prob\', \'output_keep_prob\', \'state_keep_prob\', \'variational_recurrent\', \'input_size\', \'dtype\', \'seed\', \'dropout_state_filter_visitor\'], varargs=None, keywords=None, defaults=[\'1.0\', \'1.0\', \'1.0\', \'False\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -95,6 +95,10 @@ tf_class {
   member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "count_params"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_input_at"

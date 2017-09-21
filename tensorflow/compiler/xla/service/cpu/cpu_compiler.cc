@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
@@ -198,8 +199,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx);
-    TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
-        &profile_candidates_for_computation));
+    TF_RETURN_IF_ERROR(
+        computation->Accept(&profile_candidates_for_computation));
     return hlo_to_profile_idx;
   }
 
@@ -212,6 +213,14 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     hlo_to_profile_idx_->insert({hlo_instruction, hlo_to_profile_idx_->size()});
     return Status::OK();
   }
+
+  Status HandleCall(HloInstruction* call) override {
+    TF_RETURN_IF_ERROR(DefaultAction(call));
+    CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
+    TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
+    return Status::OK();
+  }
+
   // Skip constants, there is nothing to profile.
   Status HandleConstant(HloInstruction* /*constant*/,
                         const Literal& /*literal*/) override {
@@ -227,12 +236,11 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_condition()->root_instruction()->Accept(
-        &candidates_for_condition));
+    TF_RETURN_IF_ERROR(
+        xla_while->while_condition()->Accept(&candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_body()->root_instruction()->Accept(
-        &candidates_for_body));
+    TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
     return Status::OK();
   }
@@ -244,15 +252,19 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 Status CpuCompiler::RunHloPasses(HloModule* module) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
-  pipeline.AddInvariantChecker<HloVerifier>();
+  pipeline.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
-      HloReducePrecisionOptions::BEFORE_OP_FUSION);
+      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
   // where we will take this pass in future.
   // pipeline.AddPass<Inliner>();
+
+  // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
+  // pass.
+  pipeline.AddPass<CallInliner>();
 
   pipeline.AddPass<ConvCanonicalization>();
   {
@@ -260,6 +272,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
     pass.AddPass<BatchNormRewriter>(
         /*rewrite_training_op=*/true,
+        /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true,
         /*use_fusion=*/false);
     pass.AddPass<AlgebraicSimplifier>(
@@ -282,7 +295,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
-      HloReducePrecisionOptions::AFTER_OP_FUSION);
+      ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout());
@@ -355,7 +368,7 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
 Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(ir_module_string));
   TF_RETURN_IF_ERROR(f->Close());
   return Status::OK();
@@ -423,6 +436,10 @@ Status InitializeModuleHooks(
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  const string timer_message =
+      "Compiling [" + module->name() + "] for CPU using JIT";
+  ScopedLoggingTimer compiling_timer(timer_message, 1);
+
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
@@ -438,11 +455,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
+
   auto jit = MakeUnique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
       module->config().debug_options().xla_enable_fast_math(),
+      module->config().debug_options().xla_llvm_disable_expensive_passes(),
       pre_optimization_ir_hook, post_optimization_ir_hook);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
@@ -796,6 +815,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         target_machine.get(), &disassembler, opt_level,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_enable_fast_math(),
+        module->config().debug_options().xla_llvm_disable_expensive_passes(),
         CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
         post_optimization_ir_dump_hook);
     llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =

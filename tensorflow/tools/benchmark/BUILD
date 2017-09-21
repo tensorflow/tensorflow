@@ -74,6 +74,7 @@ cc_binary(
             "-pie",
             "-s",
             "-landroid",
+            "-latomic",
             "-ljnigraphics",
             "-llog",
             "-lm",

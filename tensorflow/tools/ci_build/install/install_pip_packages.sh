@@ -90,6 +90,3 @@ pip3 install portpicker
 pip2 install grpcio
 pip3 install grpcio
 
-# Eager execution needs autograd:
-pip2 install --upgrade autograd
-pip3 install --upgrade autograd

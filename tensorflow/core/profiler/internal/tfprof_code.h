@@ -57,8 +57,11 @@ class TFCode : public TFMultiShow {
   TFCode() {}
   ~TFCode() override {}
 
+  // Add nodes to the code view. Called before Build()
   void AddNode(TFGraphNode* node) override;
 
+  // Build the code view structure. Called after all nodes
+  // are added via AddNode().
   void Build() override;
 
  private:
@@ -82,9 +85,14 @@ class TFCode : public TFMultiShow {
   string FormatNode(CodeNode* node, const Options& opts, int64 indent) const;
   string FormatNodeMemory(CodeNode* node, int64 bytes, int64 total_bytes) const;
 
+  // Common traces track the code path that all traces share. Such as
+  // "main()", "create_op", etc.
+  std::set<string> common_traces_;
   std::unique_ptr<CodeNode> root_;
   std::unique_ptr<TFMultiGraphNode> graph_root_;
   std::unique_ptr<PprofProfile> pprof_profile_;
+  std::map<string, std::vector<TFGraphNode*>> grad_nodes_;
+  std::map<string, TFGraphNode*> forward_nodes_;
 };
 }  // namespace tfprof
 }  // namespace tensorflow

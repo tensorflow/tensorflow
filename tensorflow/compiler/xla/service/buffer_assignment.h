@@ -306,7 +306,7 @@ class BufferAssignment {
 
   // Returns the set LogicalBuffers which may be the source of the value at the
   // given index and instruction.
-  const std::vector<const LogicalBuffer*>& GetSourceBuffers(
+  const PointsToSet::BufferList& GetSourceBuffers(
       const HloInstruction* instruction, const ShapeIndex& index) const {
     return GetPointsToSet(instruction).element(index);
   }
