@@ -863,6 +863,7 @@ cc_library(
         ":shape_inference_testutil",
         ":tensor_testutil",
         ":test",
+        "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_util",
     ],
