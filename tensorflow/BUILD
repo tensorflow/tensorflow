@@ -14,6 +14,12 @@ exports_files([
     "leakr_badfiles.dic",
 ])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_binary_deps",
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
@@ -195,6 +201,70 @@ config_setting(
     name = "with_verbs_support",
     values = {"define": "with_verbs_support=true"},
     visibility = ["//visibility:public"],
+)
+
+# Crosses between framework_shared_object and a bunch of other configurations
+# due to limitations in nested select() statements.
+config_setting(
+    name = "framework_shared_object",
+    define_values = {
+        "framework_shared_object": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_jemalloc_linux_x86_64_dynamic",
+    define_values = {
+        "with_jemalloc": "true",
+        "framework_shared_object": "true",
+    },
+    values = {
+        "cpu": "k8",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_jemalloc_linux_ppc64le_dynamic",
+    define_values = {
+        "with_jemalloc": "true",
+        "framework_shared_object": "true",
+    },
+    values = {
+        "cpu": "ppc",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "using_cuda_clang",
+    define_values = {
+        "using_cuda_clang": "true",
+    },
+)
+
+config_setting(
+    name = "using_cuda_clang_with_dynamic_build",
+    define_values = {
+        "using_cuda_clang": "true",
+        "framework_shared_object": "true",
+    },
+)
+
+config_setting(
+    name = "using_cuda_nvcc",
+    define_values = {
+        "using_cuda_nvcc": "true",
+    },
+)
+
+config_setting(
+    name = "using_cuda_nvcc_with_dynamic_build",
+    define_values = {
+        "using_cuda_nvcc": "true",
+        "framework_shared_object": "true",
+    },
 )
 
 config_setting(
@@ -451,6 +521,44 @@ filegroup(
     data = glob(["docs_src/**/*.md"]),
 )
 
+# A shared object which includes registration mechanisms for ops and
+# kernels. Does not include the implementations of any ops or kernels. Instead,
+# the library which loads libtensorflow_framework.so
+# (e.g. _pywrap_tensorflow_internal.so for Python, libtensorflow.so for the C
+# API) is responsible for registering ops with libtensorflow_framework.so. In
+# addition to this core set of ops, user libraries which are loaded (via
+# TF_LoadLibrary/tf.load_op_library) register their ops and kernels with this
+# shared object directly.
+#
+# For example, from Python tf.load_op_library loads a custom op library (via
+# dlopen() on Linux), the library finds libtensorflow_framework.so (no
+# filesystem search takes place, since libtensorflow_framework.so has already
+# been loaded by pywrap_tensorflow) and registers its ops and kernels via
+# REGISTER_OP and REGISTER_KERNEL_BUILDER (which use symbols from
+# libtensorflow_framework.so), and pywrap_tensorflow can then use these
+# ops. Since other languages use the same libtensorflow_framework.so, op
+# libraries are language agnostic.
+#
+# This shared object is not used unless framework_shared_object=true (set in the
+# configure script unconditionally); otherwise if it is false or undefined, the
+# build is static and TensorFlow symbols (in Python only) are loaded into the
+# global symbol table in order to support op registration. This means that
+# projects building with Bazel and importing TensorFlow as a dependency will not
+# depend on libtensorflow_framework.so unless they opt in.
+tf_cc_shared_object(
+    name = "libtensorflow_framework.so",
+    framework_so = [],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/core:core_cpu_impl",
+        "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow/core:gpu_runtime_impl",
+    ] + tf_additional_binary_deps(),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
@@ -465,7 +573,7 @@ filegroup(
 # an "-exported_symbols_list" command.  -z defs disallows undefined
 # symbols in object files and -s strips the output.
 
-cc_binary(
+tf_cc_shared_object(
     name = "libtensorflow.so",
     linkopts = select({
         "//tensorflow:darwin": [
@@ -482,7 +590,6 @@ cc_binary(
             "//tensorflow/c:version_script.lds",
         ],
     }),
-    linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:exported_symbols.lds",
@@ -492,7 +599,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+tf_cc_shared_object(
     name = "libtensorflow_cc.so",
     linkopts = select({
         "//tensorflow:darwin": [
@@ -508,7 +615,6 @@ cc_binary(
             "//tensorflow:tf_version_script.lds",
         ],
     }),
-    linkshared = 1,
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
         "//tensorflow:tf_version_script.lds",

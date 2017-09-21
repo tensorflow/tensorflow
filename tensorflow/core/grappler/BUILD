@@ -1,5 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 filegroup(
@@ -36,7 +37,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
     deps = [
@@ -97,7 +98,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "grappler_item_test",
     srcs = ["grappler_item_test.cc"],
     deps = [
@@ -109,7 +110,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "grappler_item_builder_test",
     srcs = ["grappler_item_builder_test.cc"],
     deps = [
