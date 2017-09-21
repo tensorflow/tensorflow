@@ -38,6 +38,13 @@ END
 A `bool`. If `True`, skip the empty strings from the result.
 END
   }
+  attr {
+    name: "encoding"
+    description: <<END
+The type of encoding for the string. Currently 'utf8' or '' (ASCII)
+are supported. Defaults to ''.
+END
+  }
   summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
   description: <<END
 Let N be the size of source (typically N will be the batch size). Split each

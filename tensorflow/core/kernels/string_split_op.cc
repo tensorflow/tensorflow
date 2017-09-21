@@ -30,7 +30,7 @@ namespace {
 
 Status Split(const string& str, const string& delimiter, const bool skip_empty,
              const string& encoding, std::vector<string>* result) {
-  if (!delimiter.empty()) {
+  if (encoding == "" && !delimiter.empty()) {
     if (skip_empty) {
       *result = str_util::Split(str, delimiter, str_util::SkipEmpty());
       return Status::OK();
@@ -39,6 +39,14 @@ Status Split(const string& str, const string& delimiter, const bool skip_empty,
     return Status::OK();
   }
   if (encoding == "utf8") {
+    // We should verify that delimiter is UTF8 encoded (or an empty string "")
+    // here. However, as only one character is allowed in the ops, we just
+    // check to make sure the char is `0xxxxxxx`.
+    // TODO (yongtang): Should we modify the ops or create a new ops to allow
+    // multiple chars for UTF8 encoded strings?
+    if ((delimiter[0] & 0x80) != 0x00) {
+      return errors::InvalidArgument("Delimiter is not properly encoded");
+    }
     TF_RETURN_IF_ERROR(str_util::SplitUTF8(str, delimiter, result));
   } else {
     result->resize(str.size());

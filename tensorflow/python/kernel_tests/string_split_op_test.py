@@ -175,5 +175,14 @@ class StringSplitOpTest(test.TestCase):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens2)
 
+    # Invalid delimiter
+    strings3 = [b"\xE6\x82\xA8\xE5\xA5\xBD"]
+    tokens3 = string_ops.string_split(strings3, delimiter=b"\xE6",
+                                      encoding="utf8")
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Delimiter is not properly encoded"):
+      with self.test_session() as sess:
+        indices, values, shape = sess.run(tokens3)
+
 if __name__ == "__main__":
   test.main()
