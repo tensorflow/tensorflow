@@ -32,8 +32,6 @@ from tensorflow.contrib.learn.python.learn.estimators import dnn
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
 from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.utils import saved_model_export_utils
-from tensorflow.contrib.tpu.python.tpu import tpu_config
-from tensorflow.contrib.tpu.python.tpu import tpu_estimator
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as core_estimator
@@ -936,20 +934,6 @@ class ExperimentTest(test.TestCase):
         # is completed).
         self.assertEqual(ex._maybe_export.call_count, 4)
         self.assertEqual(ex._call_evaluate.call_count, 4)
-
-  def test_fail_with_tpu_estimator(self):
-    def dummy_model_fn(features, labels):
-      del features, labels  # unused
-
-    with self.assertRaisesRegexp(
-        ValueError,
-        '`Experiment` class cannot work with `tf.contrib.tpu.TPUEstimator`'):
-      experiment.Experiment(
-          tpu_estimator.TPUEstimator(model_fn=dummy_model_fn,
-                                     config=tpu_config.RunConfig(),
-                                     train_batch_size=256),
-          train_input_fn='train_input',
-          eval_input_fn='eval_input')
 
 
 if __name__ == '__main__':
