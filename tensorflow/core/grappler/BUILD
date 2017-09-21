@@ -31,6 +31,7 @@ cc_library(
     hdrs = ["utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -42,7 +43,9 @@ tf_cc_test(
     srcs = ["utils_test.cc"],
     deps = [
         ":utils",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
