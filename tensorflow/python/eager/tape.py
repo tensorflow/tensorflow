@@ -31,6 +31,7 @@ def tid(tensor):
 
 class TapeEntry(
     collections.namedtuple("TapeEntry", [
+        "op_type",
         "output_ids", "input_ids", "side_outputs", "backward_function",
         "output_shape_and_dtype",
     ])):
@@ -96,8 +97,8 @@ class Tape(object):
     self._watched_variables.add(v)
     self.watch(v.handle)
 
-  def record_operation(self, output_tensors, input_tensors, side_outputs,
-                       backward_function):
+  def record_operation(self, op_type, output_tensors, input_tensors,
+                       side_outputs, backward_function):
     """Records an operation in the tape."""
     if not self.should_record(input_tensors):
       return output_tensors
@@ -109,6 +110,7 @@ class Tape(object):
       i = tid(t)
       self._tensor_usage[i] = self._tensor_usage.get(i, 0) + 1
     self._op_tape[self._next_op_id] = TapeEntry(
+        op_type,
         [tid(t) for t in output_tensors],
         [tid(t) for t in input_tensors],
         side_outputs,
@@ -225,11 +227,11 @@ def should_record(tensors):
   return any(x.should_record(tensors) for x in _tape_stack.stack)
 
 
-def record_operation(output_tensors, input_tensors, side_outputs,
+def record_operation(op_type, output_tensors, input_tensors, side_outputs,
                      backward_function):
   """Records the operation on all tapes in the stack."""
   for t in _tape_stack.stack:
-    t.record_operation(output_tensors,
+    t.record_operation(op_type, output_tensors,
                        input_tensors,
                        side_outputs,
                        backward_function)

@@ -86,7 +86,8 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
     captured_value = captured_value[1]
-  tape.record_operation([captured_value], [value], [], lambda x: x)
+  tape.record_operation("captured_value", [captured_value], [value], [],
+                        lambda x: x)
   return captured_value
 
 
@@ -235,13 +236,14 @@ class _GraphModeFunction(object):
     """Calls the wrapped function and records the result on a tape."""
     all_args = args + self._extra_inputs
     signature = self._forward_fdef.definition.signature
-    if context.in_graph_mode():
+    ctx = context.context()
+    if ctx.in_graph_mode():
       g = ops.get_default_graph()
       g._add_function(self._forward_fdef)  # pylint: disable=protected-access
       def make_tensor(x):
         if isinstance(x, ops.Tensor):
           return x
-        return ops.convert_to_tensor(x)
+        return ops.internal_convert_to_tensor(x, ctx=ctx)
       op = g.create_op(
           signature.name, [make_tensor(x) for x in all_args],
           [dtypes.DType(x.type) for x in signature.output_arg],
@@ -257,11 +259,14 @@ class _GraphModeFunction(object):
       outputs = execute.execute(
           str(signature.name),
           num_outputs=len(signature.output_arg),
-          inputs=all_args)
+          inputs=all_args,
+          attrs=None,
+          ctx=ctx)
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
 
     tape.record_operation(
+        signature.name,
         real_outputs,
         (args + self._extra_inputs),
         side_outputs,
@@ -281,7 +286,8 @@ class _GraphModeFunction(object):
         self._compute_backprop()
       return self._backprop_call(tensor_inputs)
 
-    if context.in_graph_mode():
+    ctx = context.context()
+    if ctx.in_graph_mode():
       g = ops.get_default_graph()
       if self._fdef.name not in g._functions:  # pylint: disable=protected-access
         g._add_function(self._fdef)  # pylint: disable=protected-access
@@ -300,7 +306,9 @@ class _GraphModeFunction(object):
       result = execute.execute(
           str(self._func_name),
           num_outputs=self._num_outputs,
-          inputs=tensor_inputs + self._extra_inputs)
+          inputs=tensor_inputs + self._extra_inputs,
+          attrs=None,
+          ctx=ctx)
 
     return self._build_call_outputs(self._returns, result)
 

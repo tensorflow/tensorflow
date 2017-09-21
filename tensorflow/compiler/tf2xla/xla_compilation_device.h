@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -65,6 +66,7 @@ class XlaCompilationDevice : public LocalDevice {
 };
 
 // Represents a resource, such as a Variable or TensorArray.
+// TODO(phawkins): make this into a properly abstracted class.
 struct XlaResource {
   enum Kind {
     kInvalid,
@@ -103,8 +105,45 @@ struct XlaResource {
   // 'tensor_array_gradient' is a map from TensorArrayGradV3 'source' attributes
   // to an XlaResource containing the gradient TensorArrays. We store a pointer
   // here since there should only be one gradient TensorArray per 'source'
-  // string, irrespective of the number of calls to TensorArrayGrad.
-  std::unordered_map<string, XlaResource*> tensor_array_gradient;
+  // string, irrespective of the number of calls to TensorArrayGrad. The map
+  // is ordered since values are packed into tuples by Pack() sorted by name
+  // order.
+  std::map<string, std::unique_ptr<XlaResource>> tensor_array_gradients;
+
+  // Returns the shape of the resource as an xla::Shape.
+  Status GetXlaShape(xla::ComputationBuilder* builder, xla::Shape* shape) const;
+
+  // Returns the shape of the resource as an TensorShape. Fails if the shape is
+  // not representable as a TensorShape.
+  Status GetShape(xla::ComputationBuilder* builder, TensorShape* shape) const;
+
+  // Looks up the gradient for `source`, or creates it if it does not already
+  // exist. The call target must be an initialized TensorArray resource. A
+  // TensorArray can have multiple named gradients; see the operator
+  // documentation for TensorArrayGradV3 for details.
+  Status GetOrCreateTensorArrayGradient(const string& source,
+                                        xla::ComputationBuilder* builder,
+                                        XlaResource** gradient_out);
+
+  // Packs a resource into a single XLA value `pack`, suitable for use as
+  // an XlaCompiler::Argument. For non-TensorArrays or TensorArrays without
+  // gradients, sets `*pack` to `value`.
+  // For TensorArrays with gradients, packs the value and its gradient values in
+  // a tuple; the gradients values are packed in order by source name.
+  Status Pack(xla::ComputationDataHandle* pack,
+              xla::ComputationBuilder* builder) const;
+
+  // Returns the shape of the `pack` value computed by `Pack()`.
+  Status PackedShape(xla::ComputationBuilder* builder,
+                     xla::Shape* packed_shape) const;
+
+  // Updates the resource with values from `pack`. If `gradient_sources` is
+  // non-empty, treats `pack` as a tuple that represents a TensorArray and
+  // its gradients, and unpacks and updates the gradient resources. Opposite
+  // of Pack().
+  Status SetFromPack(const std::set<string>& gradient_sources,
+                     const xla::ComputationDataHandle& pack,
+                     xla::ComputationBuilder* builder);
 };
 
 // A XlaExpression wraps an XLA computation. Each Tensor on an

@@ -143,7 +143,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
-  check_version("0.4.5")
+  check_version("0.5.4")
   cuda_configure(name="local_config_cuda")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
@@ -629,13 +629,24 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "nccl_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/nvidia/nccl/archive/29a1a916dc14bb2c00feed3d4820d51fa85be1e6.tar.gz",
-          "https://github.com/nvidia/nccl/archive/29a1a916dc14bb2c00feed3d4820d51fa85be1e6.tar.gz",
+          "http://mirror.bazel.build/github.com/nvidia/nccl/archive/03d856977ecbaac87e598c0c4bafca96761b9ac7.tar.gz",
+          "https://github.com/nvidia/nccl/archive/03d856977ecbaac87e598c0c4bafca96761b9ac7.tar.gz",
       ],
-      sha256 = "6387030e37d14762f87eefbc86ee527293ec04745c66ccd820cf7fc0fdc23f92",
-      strip_prefix = "nccl-29a1a916dc14bb2c00feed3d4820d51fa85be1e6",
+      sha256 = "2ca86fb6179ecbff789cc67c836139c1bbc0324ed8c04643405a30bf26325176",
+      strip_prefix = "nccl-03d856977ecbaac87e598c0c4bafca96761b9ac7",
       build_file = str(Label("//third_party:nccl.BUILD")),
       repository = tf_repo_name,
+  )
+
+  temp_workaround_http_archive(
+      name = "aws",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/aws/aws-sdk-cpp/archive/1.0.90.tar.gz",
+          "https://github.com/aws/aws-sdk-cpp/archive/1.0.90.tar.gz",
+      ],
+      sha256 = "f599b57aec4f03ad696044dd430b2d201864113937353adc346f53ad47991319",
+      strip_prefix = "aws-sdk-cpp-1.0.90",
+      build_file = str(Label("//third_party:aws.BUILD")),
   )
 
   java_import_external(

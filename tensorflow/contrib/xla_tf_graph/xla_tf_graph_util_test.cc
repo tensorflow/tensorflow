@@ -112,7 +112,7 @@ TEST(XlaTfGraphUtil, ConvertTfGraphToSessionModule) {
       std::unique_ptr<xla::SessionModule> session_module,
       ConvertTfGraphToXlaSessionModule(args, std::move(graph)));
 
-  ASSERT_EQ(5, session_module->entry().requests_size());
+  ASSERT_EQ(4, session_module->entry().requests_size());
 
   VLOG(1) << "--- DUMP ---";
   VLOG(1) << session_module->DebugString();

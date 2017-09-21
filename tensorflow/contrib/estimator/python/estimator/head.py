@@ -23,10 +23,12 @@ from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export_output
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import sparse_ops
@@ -138,10 +140,10 @@ def regression_head(weight_column=None,
       head_name=head_name)
 
 
-# TODO(roumposg): Support label_vocabulary.
 def multi_label_head(n_classes,
                      weight_column=None,
                      thresholds=None,
+                     label_vocabulary=None,
                      head_name=None):
   """Creates a `_Head` for multi-label classification.
 
@@ -164,6 +166,11 @@ def multi_label_head(n_classes,
       and recall metrics are evaluated for each threshold value. The threshold
       is applied to the predicted probabilities, i.e. above the threshold is
       `true`, below is `false`.
+    label_vocabulary: A list of strings represents possible label values. If it
+      is not given, that means labels are already encoded as integer within
+      [0, n_classes) or multi-hot Tensor. If given, labels must be SparseTensor
+      string type and have any value in `label_vocabulary`. Also there will be
+      errors if vocabulary is not provided and labels are string.
     head_name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + head_name`.
 
@@ -182,9 +189,18 @@ def multi_label_head(n_classes,
     if (threshold <= 0.0) or (threshold >= 1.0):
       raise ValueError(
           'thresholds must be in (0, 1) range. Given: {}'.format(threshold))
+  if label_vocabulary is not None:
+    if not isinstance(label_vocabulary, (list, tuple)):
+      raise ValueError(
+          'label_vocabulary must be a list or tuple. '
+          'Given type: {}'.format(type(label_vocabulary)))
+    if len(label_vocabulary) != n_classes:
+      raise ValueError(
+          'Length of label_vocabulary must be n_classes ({}). '
+          'Given: {}'.format(n_classes, len(label_vocabulary)))
   return _MultiLabelHead(
       n_classes=n_classes, weight_column=weight_column, thresholds=thresholds,
-      head_name=head_name)
+      label_vocabulary=label_vocabulary, head_name=head_name)
 
 
 class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
@@ -194,10 +210,12 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                n_classes,
                weight_column=None,
                thresholds=None,
+               label_vocabulary=None,
                head_name=None):
     self._n_classes = n_classes
     self._weight_column = weight_column
     self._thresholds = thresholds
+    self._label_vocabulary = label_vocabulary
     self._head_name = head_name
 
   @property
@@ -206,8 +224,18 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
 
   def _process_labels(self, labels):
     if isinstance(labels, sparse_tensor.SparseTensor):
+      if labels.dtype == dtypes.string:
+        label_ids_values = lookup_ops.index_table_from_tensor(
+            vocabulary_list=tuple(self._label_vocabulary),
+            name='class_id_lookup').lookup(labels.values)
+        label_ids = sparse_tensor.SparseTensor(
+            indices=labels.indices,
+            values=label_ids_values,
+            dense_shape=labels.dense_shape)
+      else:
+        label_ids = labels
       return math_ops.to_int64(
-          sparse_ops.sparse_to_indicator(labels, self._n_classes))
+          sparse_ops.sparse_to_indicator(label_ids, self._n_classes))
     msg = ('labels shape must be [batch_size, {}]. '
            'Given: ').format(self._n_classes)
     labels_shape = array_ops.shape(labels)
@@ -254,7 +282,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
             })
 
       # Eval.
-      unweighted_loss, _ = self.create_loss(
+      unweighted_loss, processed_labels = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
       # Averages loss over classes.
       per_example_loss = math_ops.reduce_mean(
@@ -268,7 +296,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
             predictions=predictions,
             loss=training_loss,
             eval_metric_ops=self._eval_metric_ops(
-                labels=labels,
+                labels=processed_labels,
                 probabilities=probabilities,
                 weights=weights,
                 per_example_loss=per_example_loss))

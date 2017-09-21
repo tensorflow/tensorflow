@@ -967,6 +967,53 @@ XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
   ComputeAndCompareR0<int32>(&builder, 42, {});
 }
 
+// Tests a while node when the result type T is S32.
+// f = lambda result: tuple({result < 5})
+// int32 result = 0;
+// while (f(result).get<0>()) {
+//   result = result + 1;
+// }
+TEST_F(WhileTest, WhileWithCallInsideCondition) {
+  auto result_shape = ShapeUtil::MakeShape(S32, {});
+
+  // Create a computation for the condition: repeat for 5 iterations.
+  Computation condition_callee;
+  {
+    ComputationBuilder builder(client_, "condition_callee");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    builder.Tuple({builder.Gt(builder.ConstantR0<int32>(5), prev)});
+
+    condition_callee = builder.Build().ConsumeValueOrDie();
+  }
+
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto result = builder.Call(condition_callee, {prev});
+    builder.GetTupleElement(result, 0);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body: add 1 to the result variable.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto input = builder.ConstantR0<int32>(1);
+    auto result = builder.Add(input, prev);
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, TestName());
+  auto init = builder.ConstantR0<int32>(0);
+  auto result = builder.While(condition, body, init);
+  auto shape = builder.GetShape(result).ConsumeValueOrDie();
+
+  ComputeAndCompareR0<int32>(&builder, 5, {});
+}
+
 void BM_WhileLoop(int num_iters) {
   // Benchmark a simple kernel to measure while loop overheads.
   tensorflow::testing::StopTiming();
