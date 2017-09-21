@@ -53,9 +53,9 @@ struct FusedBatchNorm<CPUDevice, T> {
                   Tensor* batch_var_output, Tensor* saved_mean_output,
                   Tensor* saved_var_output, TensorFormat tensor_format,
                   bool is_training) {
-    CHECK(tensor_format == FORMAT_NHWC)
-        << "The CPU implementation of FusedBatchNorm only supports "
-        << "NHWC tensor format for now.";
+    OP_REQUIRES(context, tensor_format == FORMAT_NHWC,
+                errors::Internal("The CPU implementation of FusedBatchNorm "
+                                 "only supports NHWC tensor format for now."));
     typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
     typename TTypes<T>::ConstVec scale(scale_input.vec<T>());
     typename TTypes<T>::ConstVec offset(offset_input.vec<T>());
@@ -135,9 +135,9 @@ struct FusedBatchNormGrad<CPUDevice, T> {
                   T epsilon, Tensor* x_backprop_output,
                   Tensor* scale_backprop_output, Tensor* offset_backprop_output,
                   TensorFormat tensor_format) {
-    CHECK(tensor_format == FORMAT_NHWC)
-        << "The CPU implementation of FusedBatchNorm only support "
-        << "NHWC tensor format for now.";
+    OP_REQUIRES(context, tensor_format == FORMAT_NHWC,
+                errors::Internal("The CPU implementation of FusedBatchNormGrad "
+                                 "only supports NHWC tensor format for now."));
     typename TTypes<T, 4>::ConstTensor y_backprop(
         y_backprop_input.tensor<T, 4>());
     typename TTypes<T, 4>::ConstTensor x(x_input.tensor<T, 4>());
