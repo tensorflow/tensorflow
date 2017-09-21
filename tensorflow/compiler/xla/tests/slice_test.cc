@@ -254,7 +254,7 @@ struct R2Spec {
   std::array<int64, 2> slice_starts;
   std::array<int64, 2> slice_limits;
   std::array<int64, 2> slice_strides;
-  Layout layout;
+  std::array<int64, 2> layout;
 };
 
 // Parameterized test that generates patterned R2 values, slices them according
@@ -268,7 +268,8 @@ XLA_TEST_P(SliceR2Test, DoIt) {
   input.FillUnique();
 
   ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR2FromArray2DWithLayout<int32>(input, spec.layout);
+  auto a = builder.ConstantR2FromArray2DWithLayout<int32>(
+      input, LayoutUtil::MakeLayout(spec.layout));
   builder.Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
   std::unique_ptr<Array2D<int32>> expected = ReferenceUtil::Slice2D(
@@ -276,43 +277,57 @@ XLA_TEST_P(SliceR2Test, DoIt) {
   ComputeAndCompareR2<int32>(&builder, *expected, {});
 }
 
-// clang-format off
 INSTANTIATE_TEST_CASE_P(
     SliceR2TestInstantiation, SliceR2Test,
     ::testing::Values(
-        R2Spec {4, 12, {{0, 3}}, {{4, 6}}, {{1, 1}},
-          LayoutUtil::MakeLayout({0, 1})},
-        R2Spec {4, 12, {{0, 3}}, {{4, 6}}, {{1, 1}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {16, 4, {{0, 2}}, {{16, 4}}, {{1, 1}},
-          LayoutUtil::MakeLayout({0, 1})},
-        R2Spec {16, 4, {{0, 2}}, {{16, 4}}, {{1, 1}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {256, 400, {{0, 300}}, {{256, 400}}, {{1, 1}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {500, 400, {{111, 123}}, {{300, 257}}, {{1, 1}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {500, 400, {{111, 123}}, {{300, 400}}, {{1, 1}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {384, 512, {{128, 256}}, {{256, 384}}, {{1, 1}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {357, 512, {{111, 256}}, {{301, 384}}, {{1, 1}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{1, 2}},
-          LayoutUtil::MakeLayout({0, 1})},
-        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{1, 2}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{2, 1}},
-          LayoutUtil::MakeLayout({0, 1})},
-        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{2, 1}},
-          LayoutUtil::MakeLayout({1, 0})},
-        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{2, 2}},
-          LayoutUtil::MakeLayout({0, 1})},
-        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{2, 2}},
-          LayoutUtil::MakeLayout({1, 0})}
-    )
-);
-// clang-format on
+        R2Spec{4, 12, {{0, 3}}, {{4, 6}}, {{1, 1}}, {{0, 1}}},              //
+        R2Spec{4, 12, {{0, 3}}, {{4, 6}}, {{1, 1}}, {{1, 0}}},              //
+        R2Spec{16, 4, {{0, 2}}, {{16, 4}}, {{1, 1}}, {{0, 1}}},             //
+        R2Spec{16, 4, {{0, 2}}, {{16, 4}}, {{1, 1}}, {{1, 0}}},             //
+        R2Spec{256, 400, {{0, 300}}, {{256, 400}}, {{1, 1}}, {{1, 0}}},     //
+        R2Spec{500, 400, {{111, 123}}, {{300, 257}}, {{1, 1}}, {{1, 0}}},   //
+        R2Spec{500, 400, {{111, 123}}, {{300, 400}}, {{1, 1}}, {{1, 0}}},   //
+        R2Spec{384, 512, {{128, 256}}, {{256, 384}}, {{1, 1}}, {{1, 0}}},   //
+        R2Spec{357, 512, {{111, 256}}, {{301, 384}}, {{1, 1}}, {{1, 0}}},   //
+        R2Spec{10, 10, {{0, 0}}, {{10, 10}}, {{1, 2}}, {{0, 1}}},           //
+        R2Spec{10, 10, {{0, 0}}, {{10, 10}}, {{1, 2}}, {{1, 0}}},           //
+        R2Spec{10, 10, {{0, 0}}, {{10, 10}}, {{2, 1}}, {{0, 1}}},           //
+        R2Spec{10, 10, {{0, 0}}, {{10, 10}}, {{2, 1}}, {{1, 0}}},           //
+        R2Spec{10, 10, {{0, 0}}, {{10, 10}}, {{2, 2}}, {{0, 1}}},           //
+        R2Spec{10, 10, {{0, 0}}, {{10, 10}}, {{2, 2}}, {{1, 0}}},           //
+        R2Spec{256, 400, {{100, 129}}, {{256, 400}}, {{3, 5}}, {{1, 0}}},   //
+        R2Spec{256, 400, {{100, 129}}, {{256, 400}}, {{3, 5}}, {{0, 1}}},   //
+        R2Spec{256, 400, {{100, 129}}, {{256, 400}}, {{5, 3}}, {{1, 0}}},   //
+        R2Spec{256, 400, {{100, 129}}, {{256, 400}}, {{5, 3}}, {{0, 1}}},   //
+        R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{7, 11}}, {{1, 0}}},  //
+        R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{7, 11}}, {{0, 1}}},  //
+        R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{11, 7}}, {{1, 0}}},  //
+        R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{11, 7}}, {{0, 1}}},  //
+        R2Spec{
+            511, 513, {{129, 300}}, {{400, 500}}, {{101, 129}}, {{1, 0}}},  //
+        R2Spec{
+            511, 513, {{129, 300}}, {{400, 500}}, {{101, 129}}, {{0, 1}}},  //
+        R2Spec{
+            511, 513, {{129, 300}}, {{400, 500}}, {{129, 101}}, {{1, 0}}},  //
+        R2Spec{
+            511, 513, {{129, 300}}, {{400, 500}}, {{129, 101}}, {{0, 1}}},  //
+        R2Spec{
+            511, 1023, {{129, 257}}, {{500, 1000}}, {{129, 255}}, {{1, 0}}},  //
+        R2Spec{
+            511, 1023, {{129, 257}}, {{500, 1000}}, {{129, 255}}, {{0, 1}}},  //
+        R2Spec{511,
+               513,
+               {{129, 255}},
+               {{511 - 129, 513 - 140}},
+               {{13, 19}},
+               {{1, 0}}},  //
+        R2Spec{511,
+               513,
+               {{129, 255}},
+               {{511 - 129, 513 - 140}},
+               {{13, 19}},
+               {{0, 1}}}  //
+        ));
 
 struct R4Spec {
   std::array<int64, 4> input_dims;
