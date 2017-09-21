@@ -54,7 +54,7 @@ sudo mv /usr/include/openssl /usr/include/openssl.original
 # Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
 # TODO(petewarden) - It would be nicer to move this into the main Bazel build
 # process if we can maintain a build file for this.
-rm -rf toolchain
+sudo rm -rf toolchain
 mkdir toolchain
 cd toolchain
 curl -L https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz -o toolchain.tar.gz
