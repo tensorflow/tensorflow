@@ -163,11 +163,11 @@ def avg_pool3d(inputs,
   It is assumed that the pooling is done per image but not in batch or channels.
 
   Args:
-    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
-      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
-      `data_format` is `NCDHW`.
-    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
-      pooling kernel over which the op is computed. Can be an int if both
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]`
+      if `data_format` is `NDHWC`, and `[batch_size, channels, depth, height,
+      width]` if `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width]
+      of the pooling kernel over which the op is computed. Can be an int if both
       values are the same.
     stride: A list of length 3: [stride_depth, stride_height, stride_width].
       Can be an int if both strides are the same. Note that presently
@@ -437,8 +437,7 @@ def _fused_batch_norm(
       outputs = array_ops.reshape(outputs, array_ops.shape(original_inputs))
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -655,8 +654,7 @@ def batch_norm(inputs,
 
       if activation_fn is not None:
         outputs = activation_fn(outputs)
-      return utils.collect_named_outputs(outputs_collections,
-                                         sc.original_name_scope, outputs)
+      return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
     # Not supported by layer class: batch_weights argument,
     # and custom updates_collections. In that case, use the legacy BN
@@ -824,8 +822,7 @@ def batch_norm(inputs,
     outputs.set_shape(inputs_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -897,8 +894,7 @@ def bias_add(inputs,
     outputs = nn.bias_add(inputs, biases, data_format=data_format)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 # TODO(jbms): change `rate` parameter to `dilation_rate` for consistency with
@@ -1046,8 +1042,7 @@ def convolution(inputs,
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 convolution2d = convolution
 convolution3d = convolution
@@ -1152,8 +1147,7 @@ def convolution2d_in_plane(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1265,8 +1259,7 @@ def convolution2d_transpose(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1299,8 +1292,8 @@ def convolution3d_transpose(
       `[batch, depth, height, width, in_channels]` for `NDHWC` data format or
       `[batch, in_channels, depth, height, width]` for `NCDHW` data format.
     num_outputs: Integer, the number of output filters.
-    kernel_size: A list of length 3 holding the [kernel_depth, kernel_height, kernel_width] of
-      of the filters. Can be an int if both values are the same.
+    kernel_size: A list of length 3 holding the [kernel_depth, kernel_height,
+      kernel_width] of the filters. Can be an int if both values are the same.
     stride: A list of length 3: [stride_depth, stride_height, stride_width].
       Can be an int if both strides are the same.  Note that presently
       both strides must have the same value.
@@ -1375,8 +1368,7 @@ def convolution3d_transpose(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1415,8 +1407,7 @@ def dropout(inputs,
                                 name=sc.name,
                                 _scope=sc)
     outputs = layer.apply(inputs, training=is_training)
-    return utils.collect_named_outputs(
-        outputs_collections, sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1660,8 +1651,7 @@ def fully_connected(inputs,
     if activation_fn is not None:
       outputs = activation_fn(outputs)
 
-    return utils.collect_named_outputs(
-        outputs_collections, sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 class GDN(base.Layer):
@@ -2099,9 +2089,7 @@ def layer_norm(inputs,
     outputs.set_shape(inputs_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope,
-                                       outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -2166,11 +2154,11 @@ def max_pool3d(inputs,
   It is assumed that the pooling is done per image but not in batch or channels.
 
   Args:
-    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
-      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
-      `data_format` is `NCDHW`.
-    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
-      pooling kernel over which the op is computed. Can be an int if both
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]`
+      if `data_format` is `NDHWC`, and `[batch_size, channels, depth, height,
+      width]` if `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width]
+      of the pooling kernel over which the op is computed. Can be an int if both
       values are the same.
     stride: A list of length 3: [stride_depth, stride_height, stride_width].
       Can be an int if both strides are the same. Note that presently
@@ -2568,8 +2556,7 @@ def separable_convolution2d(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
