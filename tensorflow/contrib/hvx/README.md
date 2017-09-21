@@ -14,9 +14,8 @@ If you don’t need to build your own implementation of hexagon HVX, we provide 
 ```
 git clone https://github.com/tensorflow/tensorflow.git
 cd tensorflow
-NDK_ROOT="/path/to/ndk" ./tensorflow/contrib/makefile/build_all_android.sh -X
+NDK_ROOT="/path/to/ndk" ./tensorflow/contrib/makefile/samples/build_and_run_inception_hexagon.sh -b -p
 ```
-(-X downloads dependencies to hexagon HVX and graphs, and copy all dependencies to android and execute a test)
 
 #### All-in-one script to run inception model by building entire libraries from source code
  If you want to build your own implementation of hexagon HVX, we provide a sample all-in-one script to execute graphs which downloads source and build everything for hexagon.
