@@ -32,13 +32,13 @@ from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell_impl
-from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
@@ -919,9 +919,9 @@ class AttentionWrapperState(
     - `time`: int32 scalar containing the current time step.
     - `alignments`: A single or tuple of `Tensor`(s) containing the alignments
        emitted at the previous time step for each attention mechanism.
-    - `alignment_history`: (if enabled) a single or tuple of `TensorArray`(s)
-       containing alignment matrices from all time steps for each attention
-       mechanism. Call `stack()` on each to convert to a `Tensor`.
+    - `alignment_history`: (if enabled) a single or tuple of `Tensor`(s)
+       containing concatenated alignment matrices from all time steps for each
+       attention mechanism.
   """
 
   def clone(self, **kwargs):
@@ -993,6 +993,31 @@ def _compute_attention(attention_mechanism, cell_output, previous_alignments,
 
   return attention, alignments
 
+def _stack_alignments(step, previous_alignments, alignments):
+  """Stacks newly computed alignments on previous alignments.
+
+  Args:
+    step: A `int32` scalar containing the current time step.
+    previous_alignments: A `Tensor` of shape
+      `[batch_size, max(1, step), max_time]` containing previously
+      computed alignments.
+    alignements: A `Tensor` of shape `[batch_size, max_time]` containing the
+      alignments computed at time step `step`.
+
+  Returns:
+    A `Tensor` of shape `[batch_size, step + 1, max_time]` containing the
+    updated alignments history.
+  """
+  # Add a time dimension to the current step alignments.
+  alignments = array_ops.expand_dims(alignments, 1)
+
+  # Ignore the first one hot alignments that were used to initialize the
+  # cell state.
+  return control_flow_ops.cond(
+      math_ops.equal(step, 0),
+      lambda: alignments,
+      lambda: array_ops.concat([previous_alignments, alignments], 1))
+
 
 class AttentionWrapper(rnn_cell_impl.RNNCell):
   """Wraps another `RNNCell` with attention.
@@ -1020,8 +1045,7 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         attention at each time step. If attention_mechanism is a list,
         attention_layer_size must be a list of the same length.
       alignment_history: Python boolean, whether to store alignment history
-        from all time steps in the final output state (currently stored as a
-        time major `TensorArray` on which you must call `stack()`).
+        from all time steps in the final output state.
       cell_input_fn: (optional) A `callable`.  The default is:
         `lambda inputs, attention: array_ops.concat([inputs, attention], -1)`.
       output_attention: Python bool.  If `True` (default), the output at each
@@ -1162,9 +1186,11 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         time=tensor_shape.TensorShape([]),
         attention=self._attention_layer_size,
         alignments=self._item_or_tuple(
-            a.alignments_size for a in self._attention_mechanisms),
+            a.alignments_size
+            for a in self._attention_mechanisms),
         alignment_history=self._item_or_tuple(
-            () for _ in self._attention_mechanisms))  # sometimes a TensorArray
+            a.alignments_size if self._alignment_history else ()
+            for a in self._attention_mechanisms))
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
@@ -1185,19 +1211,31 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
         cell_state = nest.map_structure(
             lambda s: array_ops.identity(s, name="checked_cell_state"),
             cell_state)
+      initial_alignments = [
+          attention_mechanism.initial_alignments(batch_size, dtype)
+          for attention_mechanism in self._attention_mechanisms]
+      initial_alignments_history = []
+      for alignment in initial_alignments:
+        if self._alignment_history:
+          # Add a time dimension.
+          alignment = array_ops.identity(alignment)
+          alignment = array_ops.expand_dims(alignment, 1)
+
+          # To ensure shape invariance in the decoding loop, the time dimension
+          # must be set to None.
+          generalized_shape = list(alignment.shape)
+          generalized_shape[1] = None
+          alignment._shape = tensor_shape.TensorShape(generalized_shape)  # pylint: disable=protected-access
+        else:
+          alignment = ()
+        initial_alignments_history.append(alignment)
       return AttentionWrapperState(
           cell_state=cell_state,
           time=array_ops.zeros([], dtype=dtypes.int32),
           attention=_zero_state_tensors(self._attention_layer_size, batch_size,
                                         dtype),
-          alignments=self._item_or_tuple(
-              attention_mechanism.initial_alignments(batch_size, dtype)
-              for attention_mechanism in self._attention_mechanisms),
-          alignment_history=self._item_or_tuple(
-              tensor_array_ops.TensorArray(dtype=dtype, size=0,
-                                           dynamic_size=True)
-              if self._alignment_history else ()
-              for _ in self._attention_mechanisms))
+          alignments=self._item_or_tuple(initial_alignments),
+          alignment_history=self._item_or_tuple(initial_alignments_history))
 
   def call(self, inputs, state):
     """Perform a step of attention-wrapped RNN.
@@ -1267,8 +1305,12 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
       attention, alignments = _compute_attention(
           attention_mechanism, cell_output, previous_alignments[i],
           self._attention_layers[i] if self._attention_layers else None)
-      alignment_history = previous_alignment_history[i].write(
-          state.time, alignments) if self._alignment_history else ()
+
+      if self._alignment_history:
+        alignment_history = _stack_alignments(
+            state.time, previous_alignment_history[i], alignments)
+      else:
+        alignment_history = ()
 
       all_alignments.append(alignments)
       all_histories.append(alignment_history)
