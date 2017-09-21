@@ -49,7 +49,7 @@ sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g
 
 # The system-installed OpenSSL headers get pulled in by the latest BoringSSL
 # release on this configuration, so move them before we build:
-mv /usr/include/openssl /usr/include/openssl.original
+sudo mv /usr/include/openssl /usr/include/openssl.original
 
 # Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
 # TODO(petewarden) - It would be nicer to move this into the main Bazel build
