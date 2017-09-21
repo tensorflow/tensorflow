@@ -20,7 +20,6 @@ import static org.junit.Assert.assertEquals;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.tensorflow.types.TFFloat;
 
 /** Unit tests for {@link Shape}. */
 @RunWith(JUnit4.class)
@@ -62,7 +61,7 @@ public class ShapeTest {
   @Test
   public void nodesInAGraph() {
     try (Graph g = new Graph()) {
-      Output<TFFloat> n = TestUtil.placeholder(g, "feed", TFFloat.class);
+      Output<Float> n = TestUtil.placeholder(g, "feed", Float.class);
       assertEquals(-1, n.shape().numDimensions());
 
       n = TestUtil.constant(g, "scalar", 3);

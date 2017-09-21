@@ -12,11 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// GENERATED FILE. To update, edit tftypes.pl instead.
 
 package org.tensorflow.types;
 
-/** Represents a 64-bit double precision floating point number. */
-public class TFDouble implements TFType {
-  private TFDouble() {}
+/** Represents an 8-bit unsigned integer. */
+public class UInt8 {
+  private UInt8() {}
 }

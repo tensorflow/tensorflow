@@ -16,13 +16,11 @@ limitations under the License.
 package org.tensorflow;
 
 import java.lang.reflect.Array;
-import org.tensorflow.types.TFInt32;
-import org.tensorflow.types.TFType;
 
 /** Static utility functions. */
 public class TestUtil {
   @SuppressWarnings({"unchecked", "deprecation"})
-  public static <T extends TFType> Output<T> constant(Graph g, String name, Object value) {
+  public static <T> Output<T> constant(Graph g, String name, Object value) {
     try (Tensor<T> t = (Tensor<T>) Tensor.create(value)) {
       return g.opBuilder("Const", name)
           .setAttr("dtype", t.dataType())
@@ -32,7 +30,7 @@ public class TestUtil {
     }
   }
 
-  public static <T extends TFType> Output<T> placeholder(Graph g, String name, Class<T> type) {
+  public static <T> Output<T> placeholder(Graph g, String name, Class<T> type) {
     return g.opBuilder("Placeholder", name)
         .setAttr("dtype", DataType.fromClass(type))
         .build()
@@ -43,7 +41,7 @@ public class TestUtil {
     return g.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
   }
 
-  public static <T extends TFType> Output<T> matmul(
+  public static <T> Output<T> matmul(
       Graph g, String name, Output<T> a, Output<T> b, boolean transposeA, boolean transposeB) {
     return g.opBuilder("MatMul", name)
         .addInput(a)
@@ -63,8 +61,8 @@ public class TestUtil {
   }
 
   public static void transpose_A_times_X(Graph g, int[][] a) {
-    Output<TFInt32> aa = constant(g, "A", a);
-    matmul(g, "Y", aa, placeholder(g, "X", TFInt32.class), true, false);
+    Output<Integer> aa = constant(g, "A", a);
+    matmul(g, "Y", aa, placeholder(g, "X", Integer.class), true, false);
   }
 
   /**

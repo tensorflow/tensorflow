@@ -15,13 +15,14 @@ limitations under the License.
 
 /**
  * Defines classes that represent TensorFlow data types. For each possible data type
- * that can be used in a tensor, there is a corresponding class in this package that
+ * that can be used in a tensor, there is a corresponding class that
  * is used to represent it. For example, the TensorFlow int32 type is represented by
- * the type {@link TFInt32} and by the class object {@code TFInt32.class}. The former is used to
+ * the type {@link Integer} and by the class object {@code Integer.class}. The former is used to
  * support compile-time checking of tensor element types and the latter is used for
- * run-time checking of element types. All such classes implement the {@link TFType} interface.
+ * run-time checking of element types. Classes appearing in this package, such as
+ * UInt8, represent TensorFlow data types for which there is no existing Java equivalent.
  * TensorFlow element types are also separately represented by the {@link DataType} enum, with
  * one enum value per element type. The enum representation is not usually needed, but
- * the {@link Types} class can be used to obtain it from the class object representation.
+ * can be obtained using {@link DataType.fromClass}.
  */
 package org.tensorflow.types;
