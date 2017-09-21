@@ -754,8 +754,9 @@ class _OtherMemberInfo(
 _PropertyInfo = collections.namedtuple(
     '_PropertyInfo', ['short_name', 'full_name', 'obj', 'doc'])
 
-_MethodInfo = collections.namedtuple(
-    '_MethodInfo', ['short_name', 'full_name', 'obj', 'doc', 'signature'])
+_MethodInfo = collections.namedtuple('_MethodInfo', [
+    'short_name', 'full_name', 'obj', 'doc', 'signature', 'decorators'
+])
 
 
 class _FunctionPageInfo(object):
@@ -769,6 +770,7 @@ class _FunctionPageInfo(object):
     self._guides = None
 
     self._signature = None
+    self._decorators = []
 
   def for_function(self):
     return True
@@ -833,6 +835,13 @@ class _FunctionPageInfo(object):
 
     assert self.signature is None
     self._signature = _generate_signature(function, reverse_index)
+
+  @property
+  def decorators(self):
+    return list(self._decorators)
+
+  def add_decorator(self, dec):
+    self._decorators.append(dec)
 
 
 class _ClassPageInfo(object):
@@ -1004,7 +1013,7 @@ class _ClassPageInfo(object):
     """Returns a list of `_MethodInfo` describing the class' methods."""
     return self._methods
 
-  def _add_method(self, short_name, full_name, obj, doc, signature):
+  def _add_method(self, short_name, full_name, obj, doc, signature, decorators):
     """Adds a `_MethodInfo` entry to the `methods` list.
 
     Args:
@@ -1013,8 +1022,13 @@ class _ClassPageInfo(object):
       obj: The method object itself
       doc: The method's parsed docstring, a `_DocstringInfo`
       signature: The method's parsed signature (see: `_generate_signature`)
+      decorators: A list of strings describing the decorators that should be
+        mentioned on the object's docs page.
     """
-    method_info = _MethodInfo(short_name, full_name, obj, doc, signature)
+
+    method_info = _MethodInfo(short_name, full_name, obj, doc, signature,
+                              decorators)
+
     self._methods.append(method_info)
 
   @property
@@ -1131,8 +1145,21 @@ class _ClassPageInfo(object):
           # functions.
           continue
 
+        child_decorators = []
+        try:
+          if isinstance(py_class.__dict__[short_name], classmethod):
+            child_decorators.append('classmethod')
+        except KeyError:
+          pass
+
+        try:
+          if isinstance(py_class.__dict__[short_name], staticmethod):
+            child_decorators.append('staticmethod')
+        except KeyError:
+          pass
+
         self._add_method(short_name, child_name, child, child_doc,
-                         child_signature)
+                         child_signature, child_decorators)
       else:
         # Exclude members defined by protobuf that are useless
         if issubclass(py_class, ProtoMessage):
