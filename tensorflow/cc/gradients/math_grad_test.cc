@@ -65,7 +65,8 @@ class CWiseUnaryGradTest : public ::testing::Test {
     CONJ,
     COMPLEX,
     ANGLE,
-    LGAMMA
+    LGAMMA,
+    ERF
   };
 
   template <typename X_T, typename Y_T>
@@ -171,6 +172,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
         break;
       case LGAMMA:
         y = Lgamma(scope_, x);
+        break;
+      case ERF:
+        y = Erf(scope_, x);
         break;
     }
 
@@ -521,6 +525,20 @@ TEST_F(CWiseUnaryGradTest, Lgamma_Complex) {
   TestCWiseGrad<complex64, complex64>(LGAMMA, x_fn);
 }
 
+TEST_F(CWiseUnaryGradTest, Erf) {
+  auto x_fn = [this](const int i) {
+    return RV({-1.2, -1.0, -0.5, 0.3, 0.5, 1.3});
+  };
+  TestCWiseGrad<float, complex64>(ERF, x_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Erf_Complex) {
+  auto x_fn = [this](const int i) {
+    return CRV({{-1.2, 0.5}, {-0.5, -0.5}, {0.5, 0.5}, {1.2, -0.5}});
+  };
+  TestCWiseGrad<complex64, complex64>(ERF, x_fn);
+}
+
 class MathGradTest : public ::testing::Test {
  protected:
   MathGradTest() : root_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
@@ -837,18 +855,6 @@ TEST_F(NaryGradTest, Minimum) {
   Tensor x_init_value =
       test::AsTensor<float>({0.5f, 1.5f, -1.2f, 3.0f, 0.1f, 2.8f}, {3, 2});
   RunTest(x, x_init_value, y, shape);
-}
-
-TEST_F(NaryGradTest, Erf) {
-  TensorShape shape({3, 2});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto y = Erf(scope_, x);
-  // Ref: https://en.wikipedia.org/wiki/File:Error_Function.svg
-  Tensor x_init_value =
-      test::AsTensor<float>({-1.2f, -1.0f, -0.5f, 0.3f, 0.5f, 1.3f}, {3, 2});
-  RunTest(x, x_init_value, y, shape);
-  // TODO(suharshs): add test case for complex values
-  // Ref: https://en.wikipedia.org/wiki/Error_function#/media/File:ComplexErf.jpg
 }
 
 }  // namespace
