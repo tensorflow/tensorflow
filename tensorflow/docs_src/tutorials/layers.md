@@ -192,7 +192,8 @@ def cnn_model_fn(features, labels, mode):
 The following sections (with headings corresponding to each code block above)
 dive deeper into the `tf.layers` code used to create each layer, as well as how
 to calculate loss, configure the training op, and generate predictions. If
-you're already experienced with CNNs and @{$estimators$TensorFlow `Estimator`s},
+you're already experienced with CNNs and 
+@{$extend/estimators$TensorFlow `Estimator`s},
 and find the above code intuitive, you may want to skim these sections or just
 skip ahead to ["Training and Evaluating the CNN MNIST
 Classifier"](#training-and-evaluating-the-cnn-mnist-classifier).
