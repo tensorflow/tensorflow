@@ -250,11 +250,9 @@ class MultinomialTest(test.TestCase):
     theta = np.array([[1., 2, 3],
                       [2.5, 4, 0.01]], dtype=np.float32)
     theta /= np.sum(theta, 1)[..., array_ops.newaxis]
-    # Ideally we'd be able to test broadcasting but, the multinomial sampler
-    # doesn't support different total counts.
-    n = np.float32(5)
+    n = np.array([[10., 9.], [8., 7.], [6., 5.]], dtype=np.float32)
     with self.test_session() as sess:
-      # batch_shape=[2], event_shape=[3]
+      # batch_shape=[3, 2], event_shape=[3]
       dist = multinomial.Multinomial(n, theta)
       x = dist.sample(int(250e3), seed=1)
       sample_mean = math_ops.reduce_mean(x, 0)
@@ -291,7 +289,7 @@ class MultinomialTest(test.TestCase):
   def testSampleUnbiasedNonScalarBatch(self):
     with self.test_session() as sess:
       dist = multinomial.Multinomial(
-          total_count=5.,
+          total_count=[7., 6., 5.],
           logits=math_ops.log(2. * self._rng.rand(4, 3, 2).astype(np.float32)))
       n = int(3e3)
       x = dist.sample(n, seed=0)
