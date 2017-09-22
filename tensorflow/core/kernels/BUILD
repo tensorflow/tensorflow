@@ -4423,6 +4423,7 @@ filegroup(
         "depthtospace_op.h",
         "depthwise_conv_op.h",
         "fake_quant_ops_functor.h",
+        "fused_batch_norm_op.h",
         "gemm_functors.h",
         "image_resizer_state.h",
         "maxpooling_op.h",
