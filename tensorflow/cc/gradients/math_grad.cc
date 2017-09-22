@@ -200,8 +200,8 @@ Status TanhGrad(const Scope& scope, const Operation& op,
   // evaluated.
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto y = ConjugateHelper(grad_scope, op.output(0));
-  grad_outputs->push_back(internal::TanhGrad(scope, y, grad));
-  return scope.status();
+  grad_outputs->push_back(internal::TanhGrad(grad_scope, y, grad));
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Tanh", TanhGrad);
 
@@ -256,8 +256,8 @@ Status SigmoidGrad(const Scope& scope, const Operation& op,
   // evaluated.
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto y = ConjugateHelper(grad_scope, op.output(0));
-  grad_outputs->push_back(internal::SigmoidGrad(scope, y, grad));
-  return scope.status();
+  grad_outputs->push_back(internal::SigmoidGrad(grad_scope, y, grad));
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Sigmoid", SigmoidGrad);
 
