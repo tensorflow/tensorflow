@@ -702,13 +702,14 @@ Status ErfGrad(const Scope& scope, const Operation& op,
   auto grad = grad_inputs[0];
   auto two_over_root_pi = Cast(scope, Const(scope, 2 / std::sqrt(M_PI)),
                                grad.type());
-  auto x = ConjugateHelper(scope, op.input(0));
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
   // grad * 2/sqrt(pi) * exp(-x**2)
-  auto dx = Mul(scope,
-                Mul(scope, grad, two_over_root_pi),
-                Exp(scope, Neg(scope, Square(scope, x))));
+  auto dx = Mul(grad_scope,
+                Mul(grad_scope, grad, two_over_root_pi),
+                Exp(grad_scope, Neg(grad_scope, Square(grad_scope, x))));
   grad_outputs->push_back(dx);
-  return scope.status();
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Erf", ErfGrad);
 
@@ -716,10 +717,11 @@ Status LgammaGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
                   std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
-  auto x = ConjugateHelper(scope, op.input(0));
-  auto dx = Mul(scope, grad, Digamma(scope, x));
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
+  auto dx = Mul(grad_scope, grad, Digamma(grad_scope, x));
   grad_outputs->push_back(dx);
-  return scope.status();
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Lgamma", LgammaGrad);
 
