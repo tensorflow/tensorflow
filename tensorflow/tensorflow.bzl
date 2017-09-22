@@ -1026,7 +1026,11 @@ def tf_custom_op_py_library(name,
   kernels = kernels  # unused argument
   native.py_library(
       name=name,
-      data=dso,
+      data=select({
+        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows_msvc"): [],
+        "//conditions:default": dso,
+      }),
       srcs=srcs,
       srcs_version=srcs_version,
       visibility=visibility,

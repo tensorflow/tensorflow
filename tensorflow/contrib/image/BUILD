@@ -133,13 +133,13 @@ cc_library(
     alwayslink = 1,
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "distort_image_py",
     srcs = [
         "__init__.py",
         "python/ops/distort_image_ops.py",
     ],
-    data = [":python/ops/_distort_image_ops.so"],
+    dso = [":python/ops/_distort_image_ops.so"],
     srcs_version = "PY2AND3",
     deps = [
         ":distort_image_ops",
@@ -204,10 +204,10 @@ cc_library(
     alwayslink = 1,
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "single_image_random_dot_stereograms_py",
     srcs = glob(["python/ops/single*.py"]) + ["__init__.py"],
-    data = [":python/ops/_single_image_random_dot_stereograms.so"],
+    dso = [":python/ops/_single_image_random_dot_stereograms.so"],
     srcs_version = "PY2AND3",
     deps = [
         ":image_py",
