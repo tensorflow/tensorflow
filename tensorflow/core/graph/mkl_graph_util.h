@@ -18,6 +18,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include <string>
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
   // Since our ops are going to produce and also consume N addition tensors
