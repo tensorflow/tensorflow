@@ -74,6 +74,18 @@ _TF_CONFIG_FOR_WORKER = {
     }
 }
 
+_TF_CONFIG_FOR_PS = {
+    'cluster': {
+        run_config_lib.TaskType.CHIEF: ['host0:0'],
+        run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+        run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4']
+    },
+    'task': {
+        'type': run_config_lib.TaskType.PS,
+        'index': 1
+    }
+}
+
 _TF_CONFIG_FOR_GOOGLE = {'environment': 'google'}
 
 
@@ -508,6 +520,98 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
       executor.run_evaluator()
     mock_sleep.assert_called_with(throttle_secs - operation_secs)
     self.assertTrue(mock_est.evaluate.called)
+
+
+class TrainingExecutorRunPsTest(test.TestCase):
+  """Tests run_ps of _TrainingExecutor."""
+
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_std_server(self, mock_server):
+    mock_server_instance = test.mock.Mock()
+    mock_server.return_value = mock_server_instance
+
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = _create_run_config_with_cluster_spec(_TF_CONFIG_FOR_PS)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec,
+                                          mock_eval_spec)
+    executor.run_ps()
+
+    mock_server.assert_called_with(
+        mock_est.config.cluster_spec,
+        job_name=mock_est.config.task_type,
+        task_index=mock_est.config.task_id,
+        config=test.mock.ANY,
+        start=False)
+
+    mock_server_instance.start.assert_called()
+    mock_server_instance.join.assert_called()
+
+  def test_fail_with_empty_cluster_spec(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = None
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = 'gs'
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(mock_est, mock_train_spec,
+                                 mock_eval_spec).run_ps()
+
+  def test_fail_with_empty_master(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.master = ''
+    mock_est.config.task_type = 'gs'
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(mock_est, mock_train_spec,
+                                 mock_eval_spec).run_ps()
+
+  def test_fail_with_empty_task_type(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = ''
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(mock_est, mock_train_spec,
+                                 mock_eval_spec).run_ps()
+
+  def test_fail_with_none_task_id(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = 'gs'
+    mock_est.config.task_id = None
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(mock_est, mock_train_spec,
+                                 mock_eval_spec).run_ps()
 
 
 if __name__ == '__main__':

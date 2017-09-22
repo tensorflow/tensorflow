@@ -28,6 +28,8 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_test_macros")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()
@@ -125,7 +127,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
     deps = [
@@ -1422,7 +1424,7 @@ xla_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "local_client_aot_test",
     srcs = [
         "local_client_aot_test.cc",
@@ -1437,7 +1439,55 @@ cc_test(
     ],
 )
 
-cc_test(
+xla_test(
+    name = "local_client_allocation_test",
+    srcs = ["local_client_allocation_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:local_service",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:local_client_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "local_client_execute_test",
+    srcs = ["local_client_execute_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/service:local_service",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:local_client_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_cc_test(
     name = "hlo_metadata_test",
     srcs = [
         "hlo_metadata_test.cc",
@@ -1524,7 +1574,7 @@ xla_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "literal_test_util_test",
     srcs = ["literal_test_util_test.cc"],
     deps = [

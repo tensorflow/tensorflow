@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -33,7 +35,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "static_schedule_test",
     srcs = ["static_schedule_test.cc"],
     deps = [
@@ -68,7 +70,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "auto_parallel_test",
     srcs = ["auto_parallel_test.cc"],
     deps = [
@@ -103,7 +105,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "constant_folding_test",
     srcs = ["constant_folding_test.cc"],
     shard_count = 5,
@@ -169,7 +171,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "arithmetic_optimizer_test",
     size = "small",
     srcs = ["arithmetic_optimizer_test.cc"],
@@ -202,7 +204,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "model_pruner_test",
     srcs = ["model_pruner_test.cc"],
     deps = [
@@ -237,7 +239,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "memory_optimizer_test",
     srcs = ["memory_optimizer_test.cc"],
     deps = [
@@ -274,7 +276,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "layout_optimizer_test",
     srcs = ["layout_optimizer_test.cc"],
     deps = [

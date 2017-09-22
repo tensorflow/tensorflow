@@ -104,10 +104,14 @@ bool ExecuteWithTimeout(std::function<void()> fn, int64 timeout_in_ms,
 // Returns the node name prefixed with conventional symbol '^'
 // for control dependency, given a NodeDef.
 string AsControlDependency(const NodeDef& node);
-//
+
 // Returns the node name prefixed with conventional symbol '^'
 // for control dependency, given a node name
 string AsControlDependency(const string& node);
+
+// Returns the number of outputs of a node. Note that some of the outputs may be
+// unconnected.
+int NumOutputs(const NodeDef& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -14,7 +14,8 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
     "tf_sycl_tests_tags",
-    "tf_additional_xla_deps_py",)
+    "tf_additional_xla_deps_py",
+    "if_static",)
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "cuda_default_copts")
 
 load(
@@ -212,6 +213,86 @@ def tf_gen_op_libs(op_lib_names, deps=None):
         linkstatic=1,)
 
 
+def _make_search_paths(prefix, levels_to_root):
+  return ",".join(
+      ["-rpath,%s/%s" % (prefix, "/".join([".."] * search_level))
+       for search_level in range(levels_to_root + 1)])
+
+
+def _rpath_linkopts(name):
+  # Search parent directories up to the TensorFlow root directory for shared
+  # object dependencies, even if this op shared object is deeply nested
+  # (e.g. tensorflow/contrib/package:python/ops/_op_lib.so). tensorflow/ is then
+  # the root and tensorflow/libtensorflow_framework.so should exist when
+  # deployed. Other shared object dependencies (e.g. shared between contrib/
+  # ops) are picked up as long as they are in either the same or a parent
+  # directory in the tensorflow/ tree.
+  levels_to_root = PACKAGE_NAME.count("/") + name.count("/")
+  return select({
+      clean_dep("//tensorflow:darwin"): [
+          "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
+      ],
+      "//conditions:default": [
+          "-Wl,%s" % (_make_search_paths("$$ORIGIN", levels_to_root),),
+      ],
+  })
+
+
+def tf_cc_shared_object(
+    name,
+    srcs=[],
+    deps=[],
+    linkopts=[],
+    framework_so=if_static(
+        extra_deps=[],
+        otherwise=["//tensorflow:libtensorflow_framework.so"]),
+    **kwargs):
+  native.cc_binary(
+      name=name,
+      srcs=srcs + framework_so,
+      deps=deps,
+      linkshared = 1,
+      linkopts=linkopts + _rpath_linkopts(name) + select({
+          clean_dep("//tensorflow:darwin"): [
+              "-Wl,-install_name,@rpath/" + name.split("/")[-1],
+          ],
+          "//conditions:default": [
+          ],
+      }),
+      **kwargs)
+
+
+# Bazel-generated shared objects which must be linked into TensorFlow binaries
+# to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
+def _binary_additional_srcs():
+  return if_static(
+      extra_deps=[],
+      otherwise=[
+          clean_dep("//tensorflow:libtensorflow_framework.so"),
+      ])
+
+
+# Links in the framework shared object
+# (//third_party/tensorflow:libtensorflow_framework.so) when not building
+# statically. Also adds linker options (rpaths) so that the framework shared
+# object can be found.
+def tf_cc_binary(name,
+                 srcs=[],
+                 deps=[],
+                 linkopts=[],
+                 **kwargs):
+  native.cc_binary(
+      name=name,
+      srcs=srcs + _binary_additional_srcs(),
+      deps=deps + if_mkl(
+          [
+              "//third_party/mkl:intel_binary_blob",
+          ],
+      ),
+      linkopts=linkopts + _rpath_linkopts(name),
+      **kwargs)
+
+
 def tf_gen_op_wrapper_cc(name,
                          out_ops_file,
                          pkg="",
@@ -223,7 +304,7 @@ def tf_gen_op_wrapper_cc(name,
   tool = out_ops_file + "_gen_cc"
   if deps == None:
     deps = [pkg + ":" + name + "_op_lib"]
-  native.cc_binary(
+  tf_cc_binary(
       name=tool,
       copts=tf_copts(),
       linkopts=["-lm"],
@@ -243,7 +324,7 @@ def tf_gen_op_wrapper_cc(name,
           out_ops_file + "_internal.h", out_ops_file + "_internal.cc"
       ],
       srcs=srcs,
-      tools=[":" + tool],
+      tools=[":" + tool] + _binary_additional_srcs(),
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
            "$(location :" + out_ops_file + ".cc) " + override_arg + " " +
            str(include_internal_ops)))
@@ -375,7 +456,7 @@ def tf_gen_op_wrapper_py(name,
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
     deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
-  native.cc_binary(
+  tf_cc_binary(
       name=tool_name,
       linkopts=["-lm"],
       copts=tf_copts(),
@@ -433,29 +514,43 @@ def tf_gen_op_wrapper_py(name,
 
 
 # Define a bazel macro that creates cc_test for tensorflow.
+#
+# Links in the framework shared object
+# (//third_party/tensorflow:libtensorflow_framework.so) when not building
+# statically. Also adds linker options (rpaths) so that the framework shared
+# object can be found.
+#
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
 def tf_cc_test(name,
                srcs,
                deps,
                linkstatic=0,
-               tags=[],
-               data=[],
-               size="medium",
+               extra_copts=[],
                suffix="",
-               args=None,
-               linkopts=[]):
+               linkopts=[],
+               **kwargs):
   native.cc_test(
       name="%s%s" % (name, suffix),
-      srcs=srcs,
-      size=size,
-      args=args,
-      copts=tf_copts(),
-      data=data,
-      deps=deps,
-      linkopts=["-lpthread", "-lm"] + linkopts,
-      linkstatic=linkstatic,
-      tags=tags)
+      srcs=srcs + _binary_additional_srcs(),
+      copts=tf_copts() + extra_copts,
+      linkopts=["-lpthread", "-lm"] + linkopts + _rpath_linkopts(name),
+      deps=deps + if_mkl(
+          [
+              "//third_party/mkl:intel_binary_blob",
+          ],
+      ),
+      # Nested select() statements seem not to be supported when passed to
+      # linkstatic, and we already have a cuda select() passed in to this
+      # function.
+      linkstatic=linkstatic or select({
+          # cc_tests with ".so"s in srcs incorrectly link on Darwin unless
+          # linkstatic=1 (https://github.com/bazelbuild/bazel/issues/3450).
+          # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
+          clean_dep("//tensorflow:darwin"): 1,
+          "//conditions:default": 0,
+      }),
+      **kwargs)
 
 
 # Part of the testing workflow requires a distinguishable name for the build
@@ -504,8 +599,16 @@ def tf_cuda_cc_test(name,
       name=name,
       srcs=srcs,
       suffix="_gpu",
-      deps=deps + if_cuda([clean_dep("//tensorflow/core:gpu_runtime")]),
-      linkstatic=if_cuda(1, 0),
+      deps=deps + if_cuda([
+          clean_dep("//tensorflow/core:gpu_runtime"),
+      ]),
+      linkstatic=select({
+          # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
+          clean_dep("//tensorflow:darwin"): 1,
+          "@local_config_cuda//cuda:using_nvcc": 1,
+          "@local_config_cuda//cuda:using_clang": 1,
+          "//conditions:default": 0,
+      }),
       tags=tags + tf_cuda_tests_tags(),
       data=data,
       size=size,
@@ -522,19 +625,24 @@ def tf_cuda_only_cc_test(name,
                     args=[],
                     linkopts=[]):
   native.cc_test(
-    name="%s%s" % (name, "_gpu"),
-    srcs=srcs,
-    size=size,
-    args=args,
-    copts= _cuda_copts() + tf_copts(),
-    data=data,
-    deps=deps + if_cuda([
-        clean_dep("//tensorflow/core:cuda"),
-        clean_dep("//tensorflow/core:gpu_lib"),
-    ]),
-    linkopts=["-lpthread", "-lm"] + linkopts,
-    linkstatic=linkstatic,
-    tags=tags)
+      name="%s%s" % (name, "_gpu"),
+      srcs=srcs + _binary_additional_srcs(),
+      size=size,
+      args=args,
+      copts= _cuda_copts() + tf_copts(),
+      data=data,
+      deps=deps + if_cuda([
+          clean_dep("//tensorflow/core:cuda"),
+          clean_dep("//tensorflow/core:gpu_lib")]),
+      linkopts=["-lpthread", "-lm"] + linkopts + _rpath_linkopts(name),
+      linkstatic=linkstatic or select({
+          # cc_tests with ".so"s in srcs incorrectly link on Darwin
+          # unless linkstatic=1.
+          # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
+          clean_dep("//tensorflow:darwin"): 1,
+          "//conditions:default": 0,
+      }),
+      tags=tags)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
@@ -596,6 +704,17 @@ def tf_cuda_cc_tests(srcs,
         args=args,
         linkopts=linkopts)
 
+def tf_java_test(name,
+                 srcs=[],
+                 deps=[],
+                 *args,
+                 **kwargs):
+  native.java_test(
+      name=name,
+      srcs=srcs,
+      deps=deps + _binary_additional_srcs(),
+      *args,
+      **kwargs)
 
 def _cuda_copts():
   """Gets the appropriate set of copts for (maybe) CUDA compilation.
@@ -1000,14 +1119,12 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
           clean_dep("//tensorflow/core:framework"),
           clean_dep("//tensorflow/core:lib")
       ])
-
-  native.cc_binary(
+  tf_cc_shared_object(
       name=name,
       srcs=srcs,
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(),
-      linkshared=1,
       linkopts=select({
           "//conditions:default": [
               "-lm",
@@ -1085,7 +1202,7 @@ def tf_py_wrap_cc(name,
       ]
   })
 
-  native.cc_binary(
+  tf_cc_shared_object(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
       copts=(copts + if_not_windows([
@@ -1093,7 +1210,6 @@ def tf_py_wrap_cc(name,
       ]) + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,
-      linkshared=1,
       deps=deps + extra_deps)
   native.genrule(
       name="gen_" + cc_library_pyd_name,

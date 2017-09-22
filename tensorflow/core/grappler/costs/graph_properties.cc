@@ -218,6 +218,9 @@ Status GraphProperties::InferStatically() {
       for (const Edge* out_edge : node->out_edges()) {
         const Node* output = out_edge->dst();
         int output_idx = out_edge->src_output();
+        if (output_idx < 0) {
+          continue;
+        }
         if (!ctx->FullyDefined(ctx->output(output_idx)) &&
             output->op_def().name() == "Assign") {
           if (!output->attrs().Find("validate_shape") ||

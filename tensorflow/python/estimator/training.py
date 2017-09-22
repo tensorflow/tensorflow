@@ -248,7 +248,9 @@ class _TrainingExecutor(object):
 
   def run_ps(self):
     """Runs task parameter server (in training cluster spec)."""
-    raise UnimplementedError('Method run_ps has not been implemented.')
+    config = self._estimator.config
+    server = self._start_std_server(config)
+    server.join()
 
   def run_local(self):
     """Runs training and evaluation locally (non-distributed)."""

@@ -22,6 +22,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "signature_def_utils",
     srcs = ["signature_def_utils.cc"],
@@ -35,7 +37,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "signature_def_utils_test",
     srcs = ["signature_def_utils_test.cc"],
     deps = [
