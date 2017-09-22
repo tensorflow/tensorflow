@@ -546,8 +546,8 @@ class TrainingExecutorRunPsTest(test.TestCase):
         config=test.mock.ANY,
         start=False)
 
-    mock_server_instance.start.assert_called()
-    mock_server_instance.join.assert_called()
+    self.assertTrue(mock_server_instance.start.called)
+    self.assertTrue(mock_server_instance.join.called)
 
   def test_fail_with_empty_cluster_spec(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)

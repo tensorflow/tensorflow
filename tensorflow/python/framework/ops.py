@@ -578,6 +578,11 @@ class Tensor(_TensorLike):
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
+  def _dup(self):
+    ret = copy.copy(self)
+    ret._id = uid()  # pylint: disable=protected-access
+    return ret
+
 
 def _eager_cast(tensor_handle, src_type_enum, dest_type_enum, ctx):
   """Cast tensor_handle from src_type_enum to dest_type_enum."""
@@ -771,6 +776,9 @@ class EagerTensor(Tensor):
       tape.record_operation("_copy", [new_tensor], [self], [], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
+
+  def _dup(self):
+    return self._copy(device_name=self.device)
 
   @property
   def device(self):
