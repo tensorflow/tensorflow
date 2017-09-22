@@ -4,6 +4,7 @@
 package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
@@ -48,7 +49,7 @@ pkg_tar(
 # Shared objects that all TensorFlow libraries depend on.
 pkg_tar(
     name = "common_deps",
-    files = ["//tensorflow:libtensorflow_framework.so"],
+    files = tf_binary_additional_srcs(),
     tags = ["manual"],
 )
 

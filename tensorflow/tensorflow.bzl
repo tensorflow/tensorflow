@@ -238,14 +238,22 @@ def _rpath_linkopts(name):
   })
 
 
+# Bazel-generated shared objects which must be linked into TensorFlow binaries
+# to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
+def tf_binary_additional_srcs():
+  return if_static(
+      extra_deps=[],
+      otherwise=[
+          clean_dep("//tensorflow:libtensorflow_framework.so"),
+      ])
+
+
 def tf_cc_shared_object(
     name,
     srcs=[],
     deps=[],
     linkopts=[],
-    framework_so=if_static(
-        extra_deps=[],
-        otherwise=["//tensorflow:libtensorflow_framework.so"]),
+    framework_so=tf_binary_additional_srcs(),
     **kwargs):
   native.cc_binary(
       name=name,
@@ -262,16 +270,6 @@ def tf_cc_shared_object(
       **kwargs)
 
 
-# Bazel-generated shared objects which must be linked into TensorFlow binaries
-# to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
-def _binary_additional_srcs():
-  return if_static(
-      extra_deps=[],
-      otherwise=[
-          clean_dep("//tensorflow:libtensorflow_framework.so"),
-      ])
-
-
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
 # statically. Also adds linker options (rpaths) so that the framework shared
@@ -283,7 +281,7 @@ def tf_cc_binary(name,
                  **kwargs):
   native.cc_binary(
       name=name,
-      srcs=srcs + _binary_additional_srcs(),
+      srcs=srcs + tf_binary_additional_srcs(),
       deps=deps + if_mkl(
           [
               "//third_party/mkl:intel_binary_blob",
@@ -291,7 +289,6 @@ def tf_cc_binary(name,
       ),
       linkopts=linkopts + _rpath_linkopts(name),
       **kwargs)
-
 
 def tf_gen_op_wrapper_cc(name,
                          out_ops_file,
@@ -324,7 +321,7 @@ def tf_gen_op_wrapper_cc(name,
           out_ops_file + "_internal.h", out_ops_file + "_internal.cc"
       ],
       srcs=srcs,
-      tools=[":" + tool] + _binary_additional_srcs(),
+      tools=[":" + tool] + tf_binary_additional_srcs(),
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
            "$(location :" + out_ops_file + ".cc) " + override_arg + " " +
            str(include_internal_ops)))
@@ -488,14 +485,14 @@ def tf_gen_op_wrapper_py(name,
         name=name + "_pygenrule",
         outs=[out],
         srcs=[hidden_file],
-        tools=[tool_name],
+        tools=[tool_name] + tf_binary_additional_srcs(),
         cmd=("$(location " + tool_name + ") @$(location " + hidden_file + ") " +
              ("1" if require_shape_functions else "0") + " > $@"))
   else:
     native.genrule(
         name=name + "_pygenrule",
         outs=[out],
-        tools=[tool_name],
+        tools=[tool_name] + tf_binary_additional_srcs(),
         cmd=("$(location " + tool_name + ") " + op_list_arg + " " +
              ("1" if require_shape_functions else "0") + " " +
              ("1" if op_list_is_whitelist else "0") + " > $@"))
@@ -532,7 +529,7 @@ def tf_cc_test(name,
                **kwargs):
   native.cc_test(
       name="%s%s" % (name, suffix),
-      srcs=srcs + _binary_additional_srcs(),
+      srcs=srcs + tf_binary_additional_srcs(),
       copts=tf_copts() + extra_copts,
       linkopts=["-lpthread", "-lm"] + linkopts + _rpath_linkopts(name),
       deps=deps + if_mkl(
@@ -626,7 +623,7 @@ def tf_cuda_only_cc_test(name,
                     linkopts=[]):
   native.cc_test(
       name="%s%s" % (name, "_gpu"),
-      srcs=srcs + _binary_additional_srcs(),
+      srcs=srcs + tf_binary_additional_srcs(),
       size=size,
       args=args,
       copts= _cuda_copts() + tf_copts(),
@@ -712,7 +709,7 @@ def tf_java_test(name,
   native.java_test(
       name=name,
       srcs=srcs,
-      deps=deps + _binary_additional_srcs(),
+      deps=deps + tf_binary_additional_srcs(),
       *args,
       **kwargs)
 
