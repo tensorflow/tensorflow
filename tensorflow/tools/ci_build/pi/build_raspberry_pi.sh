@@ -36,20 +36,15 @@ set -e
 
 yes '' | ./configure
 
-# We need to update the Eigen version, because of compiler failures on ARM when
-# using the version currently (Aug 10th 2017) pulled by mainline TensorFlow. We
-# should be able to get rid of this hack once
-# https://github.com/tensorflow/tensorflow/issues/9697 is addressed.
-sed -i 's/f3a22f35b044/d781c1de9834/g' tensorflow/workspace.bzl
-sed -i 's/ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4/a34b208da6ec18fa8da963369e166e4a368612c14d956dd2f9d7072904675d9b/g' tensorflow/workspace.bzl
-
 # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
 sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
 sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
 
 # The system-installed OpenSSL headers get pulled in by the latest BoringSSL
 # release on this configuration, so move them before we build:
-sudo mv /usr/include/openssl /usr/include/openssl.original
+if [ -d /usr/include/openssl ]; then
+  sudo mv /usr/include/openssl /usr/include/openssl.original
+fi
 
 # Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
 # TODO(petewarden) - It would be nicer to move this into the main Bazel build
@@ -87,6 +82,7 @@ else
 fi
 
 bazel build -c opt ${PI_COPTS} \
+  --config=monolithic \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
