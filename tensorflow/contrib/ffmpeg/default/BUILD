@@ -8,6 +8,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "ffmpeg_lib",
     srcs = ["ffmpeg_lib.cc"],
@@ -21,7 +23,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "ffmpeg_lib_installed_test",
     srcs = ["ffmpeg_lib_test.cc"],
     args = [
@@ -42,7 +44,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "ffmpeg_lib_uninstalled_test",
     srcs = ["ffmpeg_lib_test.cc"],
     args = [

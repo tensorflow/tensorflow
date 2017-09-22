@@ -38,10 +38,10 @@ def multi_head(heads, head_weights=None):
   Specifically:
   * For training, sums losses of each head, calls `train_op_fn` with this
     final loss.
-  * For eval, merges metrics by adding `head_name` suffix to the keys in eval
+  * For eval, merges metrics by adding `head.name` suffix to the keys in eval
     metrics, such as `precision/head1`, `precision/head2`.
   * For prediction, merges predictions and updates keys in prediction dict to a
-    2-tuple, `(head_name, prediction_key)`. Merges `export_outputs` such that
+    2-tuple, `(head.name, prediction_key)`. Merges `export_outputs` such that
     by default the first head is served.
 
   Usage:
@@ -56,9 +56,9 @@ def multi_head(heads, head_weights=None):
 
   # In `model_fn`, specify logits as a dict keyed by head name:
   def model_fn(features, labels, mode):
-    # Create simple heads and specify head_name.
-    head1 = multi_class_head(n_classes=3, head_name='head1')
-    head2 = binary_classification_head(head_name='head2')
+    # Create simple heads and specify head name.
+    head1 = multi_class_head(n_classes=3, name='head1')
+    head2 = binary_classification_head(name='head2')
     # Create multi-head from two simple heads.
     head = multi_head([head1, head2])
     # Create logits for each head, and combine them into a dict.
@@ -74,7 +74,7 @@ def multi_head(heads, head_weights=None):
   ```
 
   Args:
-    heads: List or tuple of `_Head` instances. All heads must have `head_name`
+    heads: List or tuple of `_Head` instances. All heads must have `name`
       specified. The first head in the list is the default used at serving time.
     head_weights: Optional list of weights, same length as `heads`. Used when
       merging losses to calculate the weighted sum of losses from each head. If
@@ -85,7 +85,7 @@ def multi_head(heads, head_weights=None):
 
   Raises:
     ValueError: If `heads` is empty.
-    ValueError: If any of the `heads` does not have `head_name` specified.
+    ValueError: If any of the `heads` does not have `name` specified.
     ValueError: If `heads` and `head_weights` have different size.
   """
   if head_weights:
@@ -97,10 +97,9 @@ def multi_head(heads, head_weights=None):
   if not heads:
     raise ValueError('Must specify heads. Given: {}'.format(heads))
   for head in heads:
-    # TODO(roumposg): Add head_name as an abstract property of _Head.
-    if not head._head_name:  # pylint:disable=protected-access
+    if not head.name:
       raise ValueError(
-          'All given heads must have head_name specified. '
+          'All given heads must have name specified. '
           'Given: {}'.format(head))
 
   return _MultiHead(
@@ -154,6 +153,10 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
     self._head_weights = head_weights
 
   @property
+  def name(self):
+    return '_'.join([h.name for h in self._heads])
+
+  @property
   def logits_dimension(self):
     return self._logits_dimension
 
@@ -172,7 +175,7 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
 
     all_estimator_spec = []
     for head in self._heads:
-      head_name = head._head_name  # pylint:disable=protected-access
+      head_name = head.name
       all_estimator_spec.append(
           head.create_estimator_spec(
               features=features,
@@ -206,7 +209,7 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
     metrics = {}
     for spec in all_estimator_spec:
       losses.append(spec.loss)
-      # Metric keys already contain head_name.
+      # Metric keys already contain head.name.
       metrics.update(spec.eval_metric_ops or {})
     loss = _merge_losses(losses, self._head_weights)
 
@@ -229,10 +232,10 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
     export_outputs = {
         _DEFAULT_SERVING_KEY: _default_export_output(
             all_estimator_spec[0].export_outputs,
-            self._heads[0]._head_name),  # pylint:disable=protected-access
+            self._heads[0].name),
     }
     for head, spec in zip(self._heads, all_estimator_spec):
-      head_name = head._head_name  # pylint:disable=protected-access
+      head_name = head.name
       for k, v in six.iteritems(spec.export_outputs):
         key = '%s/%s' % (k, head_name) if k else head_name
         export_outputs[key] = v
@@ -258,8 +261,8 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
     losses = []
     for head, spec in zip(self._heads, all_estimator_spec):
       losses.append(spec.loss)
-      head_name = head._head_name  # pylint:disable=protected-access
-      # Metric keys already contain head_name.
+      head_name = head.name
+      # Metric keys already contain head.name.
       metrics.update(spec.eval_metric_ops or {})
       for k, v in six.iteritems(spec.predictions):
         predictions[(head_name, k)] = v

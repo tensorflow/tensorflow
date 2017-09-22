@@ -30,6 +30,7 @@
 @@SinhArcsinh
 @@SoftmaxCentered
 @@Softplus
+@@Weibull
 """
 
 from __future__ import absolute_import

@@ -29,6 +29,7 @@ py_library(
         ":extenders",
         ":head",
         ":multi_head",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -73,6 +74,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
@@ -89,9 +92,13 @@ py_test(
         ":extenders",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:metrics",
-        "//tensorflow/python/estimator",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//tensorflow/python/estimator:linear",
+        "//tensorflow/python/estimator:run_config",
         "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
     ],

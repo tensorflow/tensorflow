@@ -22,6 +22,7 @@ package(
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 
@@ -260,7 +261,7 @@ cc_library(
     hdrs = ["union_find.h"],
 )
 
-cc_test(
+tf_cc_test(
     name = "graph_to_functiondef_test",
     size = "small",
     srcs = [
@@ -282,7 +283,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "compilation_passes_test",
     size = "small",
     srcs = [

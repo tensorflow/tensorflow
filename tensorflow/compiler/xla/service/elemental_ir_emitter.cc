@@ -716,10 +716,10 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
           llvm::BasicBlock* out_block;
 
           if (ir_builder_->GetInsertPoint() == in_block->end()) {
-            body_block =
-                llvm_ir::CreateBasicBlock(nullptr, "rng_body", ir_builder_);
-            out_block =
-                llvm_ir::CreateBasicBlock(nullptr, "rng_out", ir_builder_);
+            body_block = llvm_ir::CreateBasicBlock(
+                nullptr, llvm_ir::IrName(hlo, "rng_body"), ir_builder_);
+            out_block = llvm_ir::CreateBasicBlock(
+                nullptr, llvm_ir::IrName(hlo, "rng_out"), ir_builder_);
             llvm::BranchInst::Create(body_block, in_block);
           } else {
             body_block = in_block->splitBasicBlock(

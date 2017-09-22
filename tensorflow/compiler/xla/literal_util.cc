@@ -36,6 +36,11 @@ limitations under the License.
 
 namespace xla {
 
+std::ostream& operator<<(std::ostream& out, const Literal& literal) {
+  out << literal.ToString();
+  return out;
+}
+
 Literal::StrideConfig::StrideConfig(
     const Shape& source_shape, const Shape& dest_shape,
     tensorflow::gtl::ArraySlice<int64> dimensions)
@@ -927,16 +932,16 @@ bool EqualElements(const Literal& literal1, const Literal& literal2,
 
 }  // namespace
 
-bool Literal::Equal(const Literal& literal2) const {
-  if (!ShapeUtil::Compatible(shape(), literal2.shape())) {
+bool Literal::operator==(const Literal& other) const {
+  if (!ShapeUtil::Compatible(shape(), other.shape())) {
     return false;
   }
   if (ShapeUtil::IsTuple(shape())) {
     // Because the shapes are compatible, they must have the same number of
     // tuple elements.
-    CHECK_EQ(tuple_literals_size(), literal2.tuple_literals_size());
+    CHECK_EQ(tuple_literals_size(), other.tuple_literals_size());
     for (int i = 0; i < tuple_literals_size(); ++i) {
-      if (!tuple_literals(i).Equal(literal2.tuple_literals(i))) {
+      if (tuple_literals(i) != other.tuple_literals(i)) {
         return false;
       }
     }
@@ -945,23 +950,23 @@ bool Literal::Equal(const Literal& literal2) const {
     std::vector<int64> multi_index(ShapeUtil::Rank(shape()), 0);
     switch (shape().element_type()) {
       case PRED:
-        return EqualElements<bool>(*this, literal2, 0, &multi_index);
+        return EqualElements<bool>(*this, other, 0, &multi_index);
       case U8:
-        return EqualElements<uint8>(*this, literal2, 0, &multi_index);
+        return EqualElements<uint8>(*this, other, 0, &multi_index);
       case S32:
-        return EqualElements<int32>(*this, literal2, 0, &multi_index);
+        return EqualElements<int32>(*this, other, 0, &multi_index);
       case S64:
-        return EqualElements<int64>(*this, literal2, 0, &multi_index);
+        return EqualElements<int64>(*this, other, 0, &multi_index);
       case U32:
-        return EqualElements<uint32>(*this, literal2, 0, &multi_index);
+        return EqualElements<uint32>(*this, other, 0, &multi_index);
       case U64:
-        return EqualElements<uint64>(*this, literal2, 0, &multi_index);
+        return EqualElements<uint64>(*this, other, 0, &multi_index);
       case F32:
-        return EqualElements<float>(*this, literal2, 0, &multi_index);
+        return EqualElements<float>(*this, other, 0, &multi_index);
       case F64:
-        return EqualElements<double>(*this, literal2, 0, &multi_index);
+        return EqualElements<double>(*this, other, 0, &multi_index);
       case F16:
-        return EqualElements<half>(*this, literal2, 0, &multi_index);
+        return EqualElements<half>(*this, other, 0, &multi_index);
       default:
         LOG(FATAL) << "Unimplemented: Literal::Equal for type "
                    << PrimitiveType_Name(shape().element_type());
@@ -1398,6 +1403,18 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
     default:
       LOG(FATAL) << "Unhandled primitive type " << shape().element_type();
   }
+}
+
+const Literal& Literal::GetSubliteral(const ShapeIndex& index) const {
+  return const_cast<Literal*>(this)->GetSubliteral(index);
+}
+
+Literal& Literal::GetSubliteral(const ShapeIndex& index) {
+  Literal* subliteral = this;
+  for (int64 i : index) {
+    subliteral = &subliteral->tuple_literals_.at(i);
+  }
+  return *subliteral;
 }
 
 }  // namespace xla

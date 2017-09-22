@@ -242,11 +242,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "farmhash_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/google/farmhash/archive/23eecfbe7e84ebf2e229bd02248f431c36e12f1a.tar.gz",
-          # "https://github.com/google/farmhash/archive/23eecfbe7e84ebf2e229bd02248f431c36e12f1a.tar.gz",
+          "http://mirror.bazel.build/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz",
+          # "https://github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz",
       ],
-      sha256 = "e5c86a2e32e7cb1d027d713cbf338be68ebbea76dbb2b2fdaae918864d3f8f3d",
-      strip_prefix = "farmhash-23eecfbe7e84ebf2e229bd02248f431c36e12f1a",
+      sha256 = "6560547c63e4af82b0f202cb710ceabb3f21347a4b996db565a411da5b17aba0",
+      strip_prefix = "farmhash-816a4ae622e964763ca0862d9dbd19324a1eaf45",
       build_file = str(Label("//third_party:farmhash.BUILD")),
   )
 
