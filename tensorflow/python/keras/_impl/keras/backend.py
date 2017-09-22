@@ -373,22 +373,7 @@ def get_session():
     session = _SESSION
   if not _MANUAL_VAR_INIT:
     with session.graph.as_default():
-      variables = variables_module.global_variables()
-      candidate_vars = []
-      for v in variables:
-        if not getattr(v, '_keras_initialized', False):
-          candidate_vars.append(v)
-      # This step is expensive, so we only run it on variables not already
-      # marked as initialized.
-      is_initialized = session.run(
-          [variables_module.is_variable_initialized(v) for v in candidate_vars])
-      uninitialized_vars = []
-      for flag, v in zip(is_initialized, candidate_vars):
-        if not flag:
-          uninitialized_vars.append(v)
-        v._keras_initialized = True
-      if uninitialized_vars:
-        session.run(variables_module.variables_initializer(uninitialized_vars))
+      _initialize_variables(session)
   return session
 
 
@@ -554,6 +539,26 @@ def variable(value, dtype=None, name=None, constraint=None):
     v._keras_shape = int_shape(value)
   v._uses_learning_phase = False
   return v
+
+
+def _initialize_variables(session):
+  """Utility to initialize uninitialized variables on the fly."""
+  variables = variables_module.global_variables()
+  candidate_vars = []
+  for v in variables:
+    if not getattr(v, '_keras_initialized', False):
+      candidate_vars.append(v)
+  # This step is expensive, so we only run it on variables not already
+  # marked as initialized.
+  is_initialized = session.run(
+      [variables_module.is_variable_initialized(v) for v in candidate_vars])
+  uninitialized_vars = []
+  for flag, v in zip(is_initialized, candidate_vars):
+    if not flag:
+      uninitialized_vars.append(v)
+    v._keras_initialized = True
+  if uninitialized_vars:
+    session.run(variables_module.variables_initializer(uninitialized_vars))
 
 
 def constant(value, dtype=None, shape=None, name=None):
