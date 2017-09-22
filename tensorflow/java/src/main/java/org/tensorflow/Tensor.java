@@ -244,8 +244,9 @@ public final class Tensor<T> implements AutoCloseable {
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
+  @SuppressWarnings("unchecked")
   public static <T> Tensor<T> create(Class<T> type, long[] shape, ByteBuffer data) {
-    return create(DataType.fromClass(type), shape, data).expect(type);
+    return (Tensor<T>) create(DataType.fromClass(type), shape, data);
   }
 
   /**
