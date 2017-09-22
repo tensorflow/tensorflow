@@ -1,6 +1,9 @@
 """For eager-mode Python."""
 
-load("//tensorflow:tensorflow.bzl", "clean_dep", "tf_copts")
+load("//tensorflow:tensorflow.bzl",
+     "clean_dep",
+     "tf_copts",
+     "tf_cc_binary")
 
 def tfe_gen_op_wrapper_py(name,
                           out=None,
@@ -12,7 +15,7 @@ def tfe_gen_op_wrapper_py(name,
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
     deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
-  native.cc_binary(
+  tf_cc_binary(
       name=tool_name,
       linkopts=["-lm"],
       copts=tf_copts(),

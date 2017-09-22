@@ -90,9 +90,13 @@ def _matrix_square_root(mat, eps=1e-10):
   Returns:
     Matrix square root of mat.
   """
+  # Unlike numpy, tensorflow's return order is (s, u, v)
   s, u, v = linalg_ops.svd(mat)
   # sqrt is unstable around 0, just use 0 in such case
   si = array_ops.where(math_ops.less(s, eps), s, math_ops.sqrt(s))
+  # Note that the v returned by Tensorflow is v = V
+  # (when referencing the equation A = U S V^T)
+  # This is unlike Numpy which returns v = V^T
   return math_ops.matmul(
       math_ops.matmul(u, array_ops.diag(si)), v, transpose_b=True)
 
@@ -388,9 +392,14 @@ def frechet_classifier_distance(real_images,
   # Compute mean and covariance matrices of activations.
   m = math_ops.reduce_mean(real_a, 0)
   m_v = math_ops.reduce_mean(gen_a, 0)
-  dim = math_ops.to_float(array_ops.shape(m)[0])
-  sigma = math_ops.matmul(real_a - m, real_a - m, transpose_b=True) / dim
-  sigma_v = math_ops.matmul(gen_a - m, gen_a - m, transpose_b=True) / dim
+  num_examples = math_ops.to_float(array_ops.shape(real_a)[0])
+
+  # sigma = (1 / (n - 1)) * (X - mu) (X - mu)^T
+  sigma = math_ops.matmul(
+      real_a - m, real_a - m, transpose_a=True) / (num_examples - 1)
+
+  sigma_v = math_ops.matmul(
+      gen_a - m_v, gen_a - m_v, transpose_a=True) / (num_examples - 1)
 
   # Take matrix square root of the product of covariance matrices.
   sqcc = _matrix_square_root(math_ops.matmul(sigma, sigma_v))

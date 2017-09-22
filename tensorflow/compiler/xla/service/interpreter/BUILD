@@ -2,6 +2,11 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
+)
+
 cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
@@ -43,11 +48,12 @@ cc_library(
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
     deps = [
-        "//tensorflow/core:stream_executor_headers_lib",
         "@nsync//:nsync_headers",
-        "@protobuf_archive//:protobuf_headers",
-        "@protobuf_archive//:protoc_lib",
-    ],
+        "//tensorflow/core:stream_executor_headers_lib",
+    ] + if_static(
+        ["@protobuf_archive//:protobuf"],
+        ["@protobuf_archive//:protobuf_headers"],
+    ),
 )
 
 cc_library(

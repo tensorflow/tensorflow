@@ -1293,7 +1293,7 @@ bool HloInstruction::IdenticalSlowPath(
 
     // A constant is defined by the value in the literal.
     case HloOpcode::kConstant:
-      return literal().Equal(other.literal());
+      return literal() == other.literal();
 
     // A convert result is determined by the primitive type that the operand is
     // converted into.

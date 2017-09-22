@@ -30,6 +30,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 _allowed_symbols = [
     'add_metrics',
     'binary_classification_head',
+    'clip_gradients_by_norm',
     'multi_class_head',
     'multi_head',
     'multi_label_head',

@@ -39,7 +39,7 @@ from tensorflow.python.summary import summary
 def multi_class_head(n_classes,
                      weight_column=None,
                      label_vocabulary=None,
-                     head_name=None):
+                     name=None):
   """Creates a `_Head` for multi class classification.
 
   Uses `sparse_softmax_cross_entropy` loss.
@@ -58,8 +58,8 @@ def multi_class_head(n_classes,
       [0, n_classes). If given, labels must be string type and have any value in
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
-    head_name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + head_name`.
+    name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + name`.
 
   Returns:
     An instance of `_Head` for multi class classification.
@@ -71,11 +71,11 @@ def multi_class_head(n_classes,
       n_classes=n_classes,
       weight_column=weight_column,
       label_vocabulary=label_vocabulary,
-      head_name=head_name)
+      name=name)
 
 
 def binary_classification_head(
-    weight_column=None, thresholds=None, label_vocabulary=None, head_name=None):
+    weight_column=None, thresholds=None, label_vocabulary=None, name=None):
   """Creates a `_Head` for single label binary classification.
 
   This head uses `sigmoid_cross_entropy_with_logits` loss.
@@ -97,8 +97,8 @@ def binary_classification_head(
       given, labels must be string type and have any value in
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
-    head_name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + head_name`.
+    name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + name`.
 
   Returns:
     An instance of `_Head` for binary classification.
@@ -110,12 +110,12 @@ def binary_classification_head(
       weight_column=weight_column,
       thresholds=thresholds,
       label_vocabulary=label_vocabulary,
-      head_name=head_name)
+      name=name)
 
 
 def regression_head(weight_column=None,
                     label_dimension=1,
-                    head_name=None):
+                    name=None):
   """Creates a `_Head` for regression using the mean squared loss.
 
   Uses `mean_squared_error` loss.
@@ -128,8 +128,8 @@ def regression_head(weight_column=None,
     label_dimension: Number of regression labels per example. This is the size
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
-    head_name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + head_name`.
+    name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + name`.
 
   Returns:
     An instance of `_Head` for linear regression.
@@ -137,14 +137,14 @@ def regression_head(weight_column=None,
   return head_lib._regression_head_with_mean_squared_error_loss(  # pylint:disable=protected-access
       weight_column=weight_column,
       label_dimension=label_dimension,
-      head_name=head_name)
+      name=name)
 
 
 def multi_label_head(n_classes,
                      weight_column=None,
                      thresholds=None,
                      label_vocabulary=None,
-                     head_name=None):
+                     name=None):
   """Creates a `_Head` for multi-label classification.
 
   Multi-label classification handles the case where each example may have zero
@@ -171,8 +171,8 @@ def multi_label_head(n_classes,
       [0, n_classes) or multi-hot Tensor. If given, labels must be SparseTensor
       string type and have any value in `label_vocabulary`. Also there will be
       errors if vocabulary is not provided and labels are string.
-    head_name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + head_name`.
+    name: name of the head. If provided, summary and metrics keys will be
+      suffixed by `"/" + name`.
 
   Returns:
     An instance of `_Head` for multi-label classification.
@@ -200,7 +200,7 @@ def multi_label_head(n_classes,
           'Given: {}'.format(n_classes, len(label_vocabulary)))
   return _MultiLabelHead(
       n_classes=n_classes, weight_column=weight_column, thresholds=thresholds,
-      label_vocabulary=label_vocabulary, head_name=head_name)
+      label_vocabulary=label_vocabulary, name=name)
 
 
 class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
@@ -211,12 +211,16 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                weight_column=None,
                thresholds=None,
                label_vocabulary=None,
-               head_name=None):
+               name=None):
     self._n_classes = n_classes
     self._weight_column = weight_column
     self._thresholds = thresholds
     self._label_vocabulary = label_vocabulary
-    self._head_name = head_name
+    self._name = name
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def logits_dimension(self):
@@ -306,11 +310,11 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         raise ValueError('train_op_fn can not be None.')
     with ops.name_scope(''):
       summary.scalar(
-          head_lib._summary_key(self._head_name, metric_keys.MetricKeys.LOSS),  # pylint:disable=protected-access
+          head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),  # pylint:disable=protected-access
           training_loss)
       summary.scalar(
           head_lib._summary_key(  # pylint:disable=protected-access
-              self._head_name, metric_keys.MetricKeys.LOSS_MEAN),
+              self._name, metric_keys.MetricKeys.LOSS_MEAN),
           losses.compute_weighted_loss(
               unweighted_loss, weights=weights,
               reduction=losses.Reduction.MEAN))
@@ -327,21 +331,21 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
-          head_lib._summary_key(self._head_name, keys.LOSS_MEAN):  # pylint:disable=protected-access
+          head_lib._summary_key(self._name, keys.LOSS_MEAN):  # pylint:disable=protected-access
               metrics_lib.mean(
                   per_example_loss, weights=weights, name=keys.LOSS_MEAN),
-          head_lib._summary_key(self._head_name, keys.AUC):  # pylint:disable=protected-access
+          head_lib._summary_key(self._name, keys.AUC):  # pylint:disable=protected-access
               metrics_lib.auc(
                   labels=labels, predictions=probabilities, weights=weights,
                   name=keys.AUC),
-          head_lib._summary_key(self._head_name, keys.AUC_PR):  # pylint:disable=protected-access
+          head_lib._summary_key(self._name, keys.AUC_PR):  # pylint:disable=protected-access
               metrics_lib.auc(
                   labels=labels, predictions=probabilities, weights=weights,
                   curve='PR', name=keys.AUC_PR),
       }
       for threshold in self._thresholds:
         accuracy_key = keys.ACCURACY_AT_THRESHOLD % threshold
-        metric_ops[head_lib._summary_key(self._head_name, accuracy_key)] = (  # pylint:disable=protected-access
+        metric_ops[head_lib._summary_key(self._name, accuracy_key)] = (  # pylint:disable=protected-access
             head_lib._accuracy_at_threshold(  # pylint:disable=protected-access
                 labels=labels,
                 predictions=probabilities,
@@ -350,7 +354,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                 name=accuracy_key))
         # Precision for positive examples.
         precision_key = keys.PRECISION_AT_THRESHOLD % threshold
-        metric_ops[head_lib._summary_key(self._head_name, precision_key)] = (  # pylint:disable=protected-access
+        metric_ops[head_lib._summary_key(self._name, precision_key)] = (  # pylint:disable=protected-access
             head_lib._precision_at_threshold(  # pylint:disable=protected-access
                 labels=labels,
                 predictions=probabilities,
@@ -359,7 +363,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                 name=precision_key))
         # Recall for positive examples.
         recall_key = keys.RECALL_AT_THRESHOLD % threshold
-        metric_ops[head_lib._summary_key(self._head_name, recall_key)] = (  # pylint:disable=protected-access
+        metric_ops[head_lib._summary_key(self._name, recall_key)] = (  # pylint:disable=protected-access
             head_lib._recall_at_threshold(  # pylint:disable=protected-access
                 labels=labels,
                 predictions=probabilities,

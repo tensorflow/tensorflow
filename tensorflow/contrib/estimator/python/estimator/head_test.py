@@ -126,6 +126,10 @@ class MultiLabelHead(test.TestCase):
         r'Length of label_vocabulary must be n_classes \(3\). Given: 2'):
       head_lib.multi_label_head(n_classes=3, label_vocabulary=['foo', 'bar'])
 
+  def test_name(self):
+    head = head_lib.multi_label_head(n_classes=4, name='foo')
+    self.assertEqual('foo', head.name)
+
   def test_predict(self):
     n_classes = 4
     head = head_lib.multi_label_head(n_classes)
