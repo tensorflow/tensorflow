@@ -26,7 +26,7 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
     .Output("output: out_type")
-    .Attr("out_type: {half,float,double,int32,uint8,int16,int8,int64}")
+    .Attr("out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
@@ -290,6 +290,19 @@ serialized: A scalar string containing a serialized TensorProto proto.
 out_type: The type of the serialized tensor.  The provided type must match the
   type of the serialized tensor and no implicit conversion will take place.
 output: A Tensor of type `out_type`.
+)doc");
+
+REGISTER_OP("SerializeTensor")
+    .Input("tensor: T")
+    .Output("serialized: string")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Transforms a Tensor into a serialized TensorProto proto.
+
+tensor: A Tensor of type `T`.
+T: The type of the input tensor.
+serialized: A serialized TensorProto proto of the input tensor.
 )doc");
 
 REGISTER_OP("DecodeJSONExample")

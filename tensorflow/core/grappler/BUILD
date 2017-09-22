@@ -1,5 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 filegroup(
@@ -30,19 +31,21 @@ cc_library(
     hdrs = ["utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
-    size = "small",
     srcs = ["utils_test.cc"],
     deps = [
         ":utils",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -98,9 +101,8 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "grappler_item_test",
-    size = "small",
     srcs = ["grappler_item_test.cc"],
     deps = [
         ":grappler_item",
@@ -111,9 +113,8 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "grappler_item_builder_test",
-    size = "small",
     srcs = ["grappler_item_builder_test.cc"],
     deps = [
         ":grappler_item_builder",

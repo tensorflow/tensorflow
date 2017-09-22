@@ -72,19 +72,13 @@ Disabling these as a starting point.
 */
 // TODO(b/64227304) Creating a custom pass pipeline will replace this.
 
+namespace {
 class FilteredFunctionPassManager : public llvm::legacy::FunctionPassManager {
  public:
   FilteredFunctionPassManager(llvm::Module* m, bool disable_expensive_passes)
       : llvm::legacy::FunctionPassManager(m),
         disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
-    if (disable_expensive_passes_) {
-      llvm::StringRef PassName = p->getPassName();
-      if (PassName.contains("LICM") || PassName.contains("IndVarSimplify") ||
-          PassName.contains("LoopUnroll")) {
-        return;
-      }
-    }
     llvm::legacy::FunctionPassManager::add(p);
   }
 
@@ -99,8 +93,7 @@ class FilteredPassManager : public llvm::legacy::PassManager {
   void add(llvm::Pass* p) override {
     if (disable_expensive_passes_) {
       llvm::StringRef PassName = p->getPassName();
-      if (PassName.contains("LICM") || PassName.contains("IndVarSimplify") ||
-          PassName.contains("LoopUnroll")) {
+      if (PassName.contains("Unroll loops")) {
         return;
       }
     }
@@ -110,6 +103,7 @@ class FilteredPassManager : public llvm::legacy::PassManager {
  private:
   bool disable_expensive_passes_;
 };
+}  // anonymous namespace
 
 llvm::object::OwningBinary<llvm::object::ObjectFile> CompilerFunctor::
 operator()(llvm::Module& module) const {

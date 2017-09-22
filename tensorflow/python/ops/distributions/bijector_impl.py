@@ -593,7 +593,7 @@ class Bijector(object):
       except NotImplementedError as original_exception:
         try:
           x = mapping.x if mapping.x is not None else self._inverse(y, **kwargs)
-          ildj = self._inverse_log_det_jacobian(y, **kwargs)
+          ildj = -self._forward_log_det_jacobian(x, **kwargs)
         except NotImplementedError:
           raise original_exception
       mapping = mapping.merge(x=x, ildj=ildj)

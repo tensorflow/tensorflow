@@ -249,8 +249,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // because cuBLAS assumes column-major storage while TensorFlow TF uses
     // row-major.
     TensorShape transposed_rhs_shape(rhs.shape());
-    transposed_rhs_shape.RemoveDim(transposed_rhs_shape.dims() - 1);
-    transposed_rhs_shape.RemoveDim(transposed_rhs_shape.dims() - 1);
+    transposed_rhs_shape.RemoveLastDims(2);
     transposed_rhs_shape.AddDim(nrhs);
     transposed_rhs_shape.AddDim(n);
     Tensor transposed_rhs;

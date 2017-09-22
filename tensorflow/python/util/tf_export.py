@@ -34,7 +34,7 @@ tf_export('foo', 'bar.foo')(foo)
 Exporting a constant
 ```python
 foo = 1
-tf_export("consts.foo").export_constant(__name__, foo)
+tf_export("consts.foo").export_constant(__name__, 'foo')
 ```
 """
 from __future__ import absolute_import
@@ -102,7 +102,7 @@ class tf_export(object):  # pylint: disable=invalid-name
     # pylint: enable=protected-access
     return func
 
-  def export_constant(self, module_name, value):
+  def export_constant(self, module_name, name):
     """Store export information for constants/string literals.
 
     Export information is stored in the module where constants/string literals
@@ -112,17 +112,17 @@ class tf_export(object):  # pylint: disable=invalid-name
     ```python
     foo = 1
     bar = 2
-    tf_export("consts.foo").export_constant(__name__, foo)
-    tf_export("consts.bar").export_constant(__name__, bar)
+    tf_export("consts.foo").export_constant(__name__, 'foo')
+    tf_export("consts.bar").export_constant(__name__, 'bar')
     ```
 
     Args:
       module_name: (string) Name of the module to store constant at.
-      value: Value of the constant.
+      name: (string) Current constant name.
     """
     module = sys.modules[module_name]
     if not hasattr(module, '_tf_api_constants'):
       module._tf_api_constants = []  # pylint: disable=protected-access
     # pylint: disable=protected-access
-    module._tf_api_constants.append((self._names, value))
+    module._tf_api_constants.append((self._names, name))
 

@@ -38,7 +38,17 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class SelectAndScatterTest : public ClientLibraryTestBase {
+struct SelectAndScatterTestParam {
+  Array4D<float> operand_shape;
+  Array4D<float> source_shape;
+  Padding padding_type;
+  tensorflow::gtl::ArraySlice<int64> window_dimensions;
+  tensorflow::gtl::ArraySlice<int64> window_strides;
+};
+
+class SelectAndScatterTest
+    : public ClientLibraryTestBase,
+      public ::testing::WithParamInterface<SelectAndScatterTestParam> {
  public:
   SelectAndScatterTest() : builder_(client_, TestName()) {
     // Create S32 GE and ADD computations for select and scatter respectively.
@@ -58,6 +68,84 @@ class SelectAndScatterTest : public ClientLibraryTestBase {
   Computation max_f32_;
   Computation min_f32_;
 };
+
+XLA_TEST_P(SelectAndScatterTest, R4Randomized) {
+  Array4D<float> o(GetParam().operand_shape);
+  o.FillRandom(1.5f);
+  auto operand = builder_.ConstantR4FromArray4D(o);
+
+  Array4D<float> s(GetParam().source_shape);
+  s.FillRandom(12.0f);
+  auto source = builder_.ConstantR4FromArray4D(s);
+
+  builder_.SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
+                            GetParam().window_strides, GetParam().padding_type,
+                            source, builder_.ConstantR0<float>(0.0f), add_f32_);
+
+  auto e = ReferenceUtil::SelectAndScatter4DGePlus(
+      o, s, 0.0f, GetParam().window_dimensions, GetParam().window_strides,
+      GetParam().padding_type == Padding::kSame);
+
+  ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-5));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    SelectAndScatterTest_Instantiation, SelectAndScatterTest,
+    ::testing::Values(SelectAndScatterTestParam{{6, 6, 256, 128},
+                                                {3, 3, 256, 128},
+                                                Padding::kSame,
+                                                {3, 3, 1, 1},
+                                                {2, 2, 1, 1}},
+                      SelectAndScatterTestParam{{7, 7, 256, 128},
+                                                {3, 3, 256, 128},
+                                                Padding::kValid,
+                                                {3, 3, 1, 1},
+                                                {2, 2, 1, 1}},
+                      SelectAndScatterTestParam{{6, 7, 256, 128},
+                                                {3, 3, 256, 128},
+                                                Padding::kValid,
+                                                {2, 3, 1, 1},
+                                                {2, 2, 1, 1}},
+                      SelectAndScatterTestParam{{6, 7, 256, 128},
+                                                {2, 3, 256, 128},
+                                                Padding::kValid,
+                                                {2, 3, 1, 1},
+                                                {3, 2, 1, 1}},
+                      SelectAndScatterTestParam{{9, 9, 16, 128},
+                                                {3, 3, 16, 128},
+                                                Padding::kValid,
+                                                {3, 3, 1, 1},
+                                                {3, 3, 1, 1}},
+                      SelectAndScatterTestParam{{3, 3, 4, 4},
+                                                {1, 1, 4, 4},
+                                                Padding::kValid,
+                                                {3, 3, 1, 1},
+                                                {3, 3, 1, 1}},
+                      SelectAndScatterTestParam{{3, 3, 4, 4},
+                                                {1, 1, 4, 4},
+                                                Padding::kValid,
+                                                {3, 3, 1, 1},
+                                                {3, 3, 1, 1}},
+                      SelectAndScatterTestParam{{9, 3, 4, 4},
+                                                {3, 1, 4, 4},
+                                                Padding::kValid,
+                                                {3, 3, 1, 1},
+                                                {3, 3, 1, 1}},
+                      SelectAndScatterTestParam{{7, 3, 4, 4},
+                                                {3, 1, 4, 4},
+                                                Padding::kValid,
+                                                {3, 3, 1, 1},
+                                                {2, 3, 1, 1}},
+                      SelectAndScatterTestParam{{1, 1, 5, 5},
+                                                {1, 1, 5, 5},
+                                                Padding::kSame,
+                                                {3, 3, 1, 1},
+                                                {3, 3, 1, 1}},
+                      SelectAndScatterTestParam{{7, 7, 8, 256},
+                                                {4, 4, 8, 256},
+                                                Padding::kSame,
+                                                {2, 2, 1, 1},
+                                                {2, 2, 1, 1}}));
 
 // Test for F32 1D array, with a zero-element input.
 XLA_TEST_F(SelectAndScatterTest, R1S0F32) {
@@ -274,80 +362,6 @@ TEST_F(SelectAndScatterTest, R4F32RefValidFixedSmall) {
                             builder_.ConstantR0<float>(0.0f), add_f32_);
   auto e = ReferenceUtil::SelectAndScatter4DGePlus(o, s, 0.0f, {2, 3, 1, 1},
                                                    {2, 3, 1, 1}, false);
-  ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-7));
-}
-
-TEST_F(SelectAndScatterTest, R4F32RefSameRandom) {
-  Array4D<float> o(7, 7, 8, 256);
-  o.FillRandom(1.5f);
-  auto operand = builder_.ConstantR4FromArray4D(o);
-
-  Array4D<float> s(4, 4, 8, 256);
-  s.FillRandom(12.0f);
-  auto source = builder_.ConstantR4FromArray4D(s);
-
-  builder_.SelectAndScatter(operand, ge_f32_, {2, 2, 1, 1}, {2, 2, 1, 1},
-                            Padding::kSame, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
-  auto e = ReferenceUtil::SelectAndScatter4DGePlus(o, s, 0.0f, {2, 2, 1, 1},
-                                                   {2, 2, 1, 1}, true);
-
-  ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-7));
-}
-
-TEST_F(SelectAndScatterTest, R4F32RefSameRandomFullyPadded) {
-  Array4D<float> o(1, 1, 5, 5);
-  o.FillRandom(1.5f);
-  auto operand = builder_.ConstantR4FromArray4D(o);
-
-  Array4D<float> s(1, 1, 5, 5);
-  s.FillRandom(12.0f);
-  auto source = builder_.ConstantR4FromArray4D(s);
-
-  builder_.SelectAndScatter(operand, ge_f32_, {3, 3, 1, 1}, {3, 3, 1, 1},
-                            Padding::kSame, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
-  auto e = ReferenceUtil::SelectAndScatter4DGePlus(o, s, 0.0f, {3, 3, 1, 1},
-                                                   {3, 3, 1, 1}, true);
-
-  ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-7));
-}
-
-TEST_F(SelectAndScatterTest, R4F32RefValidRandom) {
-  Array4D<float> o(9, 9, 16, 128);
-  o.FillRandom(1.5f);
-  auto operand = builder_.ConstantR4FromArray4D(o);
-
-  Array4D<float> s(3, 3, 16, 128);
-  s.FillRandom(12.0f);
-  auto source = builder_.ConstantR4FromArray4D(s);
-
-  builder_.SelectAndScatter(operand, ge_f32_, {3, 3, 1, 1}, {3, 3, 1, 1},
-                            Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
-
-  auto e = ReferenceUtil::SelectAndScatter4DGePlus(o, s, 0.0f, {3, 3, 1, 1},
-                                                   {3, 3, 1, 1}, false);
-
-  ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-7));
-}
-
-TEST_F(SelectAndScatterTest, R4F32RefValidRandomSmall) {
-  Array4D<float> o(3, 3, 4, 4);
-  o.FillRandom(1.5f);
-  auto operand = builder_.ConstantR4FromArray4D(o);
-
-  Array4D<float> s(1, 1, 4, 4);
-  s.FillRandom(12.0f);
-  auto source = builder_.ConstantR4FromArray4D(s);
-
-  builder_.SelectAndScatter(operand, ge_f32_, {3, 3, 1, 1}, {3, 3, 1, 1},
-                            Padding::kValid, source,
-                            builder_.ConstantR0<float>(0.0f), add_f32_);
-
-  auto e = ReferenceUtil::SelectAndScatter4DGePlus(o, s, 0.0f, {3, 3, 1, 1},
-                                                   {3, 3, 1, 1}, false);
-
   ComputeAndCompareR4<float>(&builder_, *e, {}, ErrorSpec(1e-7));
 }
 

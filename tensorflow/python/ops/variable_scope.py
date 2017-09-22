@@ -710,6 +710,14 @@ class _VariableStore(object):
     Raises:
       ValueError: See documentation of get_variable above.
     """
+    # Fast-path for get_variable in eager mode when the variable already
+    # exists. Note this skips error validation code, so mismatched shapes and
+    # dtypes will be caught when the variable is used instead of when the call
+    # to get_variable happens.
+    if context.in_eager_mode():
+      v = self._vars.get(name, None)
+      if v is not None:
+        return v
 
     # Set to true if initializer is a constant.
     initializing_from_value = False
@@ -1698,7 +1706,7 @@ def variable_scope(name_or_scope,
       use when doing asynchronous distributed training.
 
   Returns:
-    A scope that can be to captured and reused.
+    A scope that can be captured and reused.
 
   Raises:
     ValueError: when trying to reuse within a create scope, or create within

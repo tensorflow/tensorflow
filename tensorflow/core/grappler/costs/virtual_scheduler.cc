@@ -88,10 +88,7 @@ struct RecvNodeDescriptorEqual {
 VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
                                    const bool use_static_shapes,
                                    Cluster* cluster)
-    :  // Allow LIFO as well as FIFO. LIFO allows an output node of an node to
-       // follow it in execution, saving addition memory time from having to
-       // write and read. For default cases, use FIFO for performance.
-      ready_nodes_(new FIFOManager()),
+    : ready_nodes_(ReadyNodeManagerFactory("FirstReady")),
       graph_costs_(Costs::ZeroCosts()),
       graph_properties_(*grappler_item),
       cluster_(cluster),
@@ -99,6 +96,18 @@ VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
       use_static_shapes_(use_static_shapes),
       placer_(cluster) {
   initialized_ = false;
+}
+
+ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
+    const string& ready_node_manager) {
+  if (ready_node_manager == "FIFO") {
+    return new FIFOManager();
+  } else if (ready_node_manager == "LIFO") {
+    return new LIFOManager();
+  } else if (ready_node_manager == "FirstReady") {
+    return new FirstReadyManager(GetNodeStates());
+  }
+  CHECK(false) << "Not a valid ready node manager: " << ready_node_manager;
 }
 
 Status VirtualScheduler::Init() {
@@ -210,7 +219,7 @@ Status VirtualScheduler::Init() {
     if (given_as_feed || has_no_inputs) {
       curr_node_state.time_ready = Costs::Duration();
       ready_nodes_->AddNode(curr_node);
-      VLOG(1) << "Added ready node: " << curr_node->name();
+      VLOG(3) << "Added ready node: " << curr_node->name();
     }
 
     feed_nodes.erase(curr_node->name());
@@ -229,8 +238,9 @@ Status VirtualScheduler::Init() {
     return Status(error::UNAVAILABLE, "No ready nodes in the graph.");
   }
 
-  CHECK(feed_nodes.empty()) << "Some feed nodes were not found in the graph: "
-                            << str_util::Join(feed_nodes, ",");
+  if (!feed_nodes.empty())
+    LOG(ERROR) << "Some feed nodes were not found in the graph: "
+               << str_util::Join(feed_nodes, ",");
 
   initialized_ = true;
   return Status::OK();

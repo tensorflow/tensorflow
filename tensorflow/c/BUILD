@@ -45,8 +45,13 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "c_api",
-    srcs = ["c_api.cc"],
-    hdrs = ["c_api.h"],
+    srcs = [
+        "c_api.cc",
+        "c_api_function.cc",
+    ],
+    hdrs = [
+        "c_api.h",
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
@@ -154,6 +159,22 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
+    ],
+)
+
+tf_cc_test(
+    name = "c_api_function_test",
+    size = "small",
+    srcs = ["c_api_function_test.cc"],
+    deps = [
+        ":c_api",
+        ":c_api_internal",
+        ":c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

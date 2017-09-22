@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
@@ -198,8 +199,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx);
-    TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
-        &profile_candidates_for_computation));
+    TF_RETURN_IF_ERROR(
+        computation->Accept(&profile_candidates_for_computation));
     return hlo_to_profile_idx;
   }
 
@@ -216,8 +217,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override {
     TF_RETURN_IF_ERROR(DefaultAction(call));
     CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(
-        call->to_apply()->root_instruction()->Accept(&candidates_for_call));
+    TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
     return Status::OK();
   }
 
@@ -236,12 +236,11 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_condition()->root_instruction()->Accept(
-        &candidates_for_condition));
+    TF_RETURN_IF_ERROR(
+        xla_while->while_condition()->Accept(&candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_body()->root_instruction()->Accept(
-        &candidates_for_body));
+    TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
     return Status::OK();
   }
@@ -262,6 +261,10 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
   // where we will take this pass in future.
   // pipeline.AddPass<Inliner>();
+
+  // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
+  // pass.
+  pipeline.AddPass<CallInliner>();
 
   pipeline.AddPass<ConvCanonicalization>();
   {
@@ -365,7 +368,7 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
 Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(ir_module_string));
   TF_RETURN_IF_ERROR(f->Close());
   return Status::OK();
@@ -433,6 +436,10 @@ Status InitializeModuleHooks(
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  const string timer_message =
+      "Compiling [" + module->name() + "] for CPU using JIT";
+  ScopedLoggingTimer compiling_timer(timer_message, 1);
+
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
@@ -492,6 +499,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         BufferAssigner::Run(module.get(),
                             MakeUnique<DependencyHloOrdering>(module.get()),
                             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
@@ -595,6 +605,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
             module.get(),
             MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
@@ -763,6 +776,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         BufferAssigner::Run(
             module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     const string dump_debug_json_to =
         module->config().debug_options().xla_dump_debug_json_to();

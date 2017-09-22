@@ -23,17 +23,20 @@ namespace gputools {
 namespace dnn {
 
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<AlgorithmDesc::Index>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<AlgorithmDesc::Index>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<AlgorithmDesc::Index>* out_algorithms) {
   return false;
 }
 
@@ -202,7 +205,8 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
 // -- AlgorithmConfig
 
 string AlgorithmConfig::ToString() const {
-  return port::StrCat(algorithm_, ", ", algorithm_no_scratch_);
+  return port::StrCat(algorithm_.algo_id(), ", ",
+                      algorithm_no_scratch_.algo_id());
 }
 
 // -- BatchDescriptor

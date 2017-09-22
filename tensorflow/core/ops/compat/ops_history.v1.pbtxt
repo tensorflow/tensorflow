@@ -304,6 +304,49 @@ op {
   is_commutative: true
 }
 op {
+  name: "AddN"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "sum"
+    type_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_VARIANT
+      }
+    }
+  }
+  is_aggregate: true
+  is_commutative: true
+}
+op {
   name: "AddSparseToTensorsMap"
   input_arg {
     name: "sparse_indices"
@@ -2999,7 +3042,7 @@ op {
   name: "BatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -3007,7 +3050,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -3022,6 +3065,33 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "BatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "BatchFFT"
@@ -4421,7 +4491,7 @@ op {
   name: "CacheDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "filename"
@@ -4429,7 +4499,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -4444,6 +4514,33 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "CacheDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "Cast"
@@ -4823,15 +4920,15 @@ op {
   name: "ConcatenateDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "another_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -4846,6 +4943,33 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "ConcatenateDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "another_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "ConditionalAccumulator"
@@ -4916,6 +5040,31 @@ op {
       list {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "Conj"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_VARIANT
       }
     }
   }
@@ -6470,6 +6619,63 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DecodeAndCropJpeg"
+  input_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "crop_window"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "image"
+    type: DT_UINT8
+  }
+  attr {
+    name: "channels"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "ratio"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "fancy_upscaling"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "try_recover_truncated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "acceptable_fraction"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "dct_method"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
@@ -6718,6 +6924,41 @@ op {
   }
 }
 op {
+  name: "DecodeRaw"
+  input_arg {
+    name: "bytes"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT16
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "little_endian"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
   name: "DecodeWav"
   input_arg {
     name: "contents"
@@ -6806,7 +7047,7 @@ op {
   name: "DenseToSparseBatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -6818,7 +7059,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -6833,6 +7074,37 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "DenseToSparseBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "row_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "DenseToSparseSetOperation"
@@ -9065,7 +9337,7 @@ op {
   name: "FilterDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -9073,7 +9345,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "predicate"
@@ -9099,6 +9371,42 @@ op {
   is_stateful: true
 }
 op {
+  name: "FilterDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "predicate"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "FixedLengthRecordDataset"
   input_arg {
     name: "filenames"
@@ -9122,7 +9430,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   is_stateful: true
 }
@@ -9563,7 +9871,7 @@ op {
   name: "FlatMapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -9571,7 +9879,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -9595,6 +9903,42 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "FlatMapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "Floor"
@@ -10456,7 +10800,7 @@ op {
   name: "GroupByWindowDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "key_func_other_arguments"
@@ -10467,12 +10811,12 @@ op {
     type_list_attr: "Treduce_func_other_arguments"
   }
   input_arg {
-    name: "window_size"
-    type: DT_INT64
+    name: "window_size_func_other_arguments"
+    type_list_attr: "Twindow_size_func_other_arguments"
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "key_func"
@@ -10483,12 +10827,21 @@ op {
     type: "func"
   }
   attr {
+    name: "window_size_func"
+    type: "func"
+  }
+  attr {
     name: "Tkey_func_other_arguments"
     type: "list(type)"
     has_minimum: true
   }
   attr {
     name: "Treduce_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Twindow_size_func_other_arguments"
     type: "list(type)"
     has_minimum: true
   }
@@ -10505,6 +10858,68 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "GroupByWindowDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "key_func_other_arguments"
+    type_list_attr: "Tkey_func_other_arguments"
+  }
+  input_arg {
+    name: "reduce_func_other_arguments"
+    type_list_attr: "Treduce_func_other_arguments"
+  }
+  input_arg {
+    name: "window_size_func_other_arguments"
+    type_list_attr: "Twindow_size_func_other_arguments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "key_func"
+    type: "func"
+  }
+  attr {
+    name: "reduce_func"
+    type: "func"
+  }
+  attr {
+    name: "window_size_func"
+    type: "func"
+  }
+  attr {
+    name: "Tkey_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Treduce_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Twindow_size_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "HSVToRGB"
@@ -10849,11 +11264,11 @@ op {
   name: "IgnoreErrorsDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -10868,6 +11283,29 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "IgnoreErrorsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "Imag"
@@ -11177,7 +11615,7 @@ op {
   name: "InterleaveDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -11193,7 +11631,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -11217,6 +11655,50 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "InterleaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "Inv"
@@ -12487,7 +12969,7 @@ op {
   name: "MakeIterator"
   input_arg {
     name: "dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "iterator"
@@ -12537,7 +13019,7 @@ op {
   name: "MapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -12545,7 +13027,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -12569,6 +13051,42 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "MapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "MapIncompleteSize"
@@ -13460,6 +13978,74 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+      }
+    }
+  }
+}
+op {
+  name: "MaxPool"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_QINT8
+      }
+    }
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+        s: "NCHW_VECT_C"
       }
     }
   }
@@ -14422,6 +15008,70 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+      }
+    }
+  }
+}
+op {
+  name: "MaxPoolV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "ksize"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "strides"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_QINT8
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+        s: "NCHW_VECT_C"
       }
     }
   }
@@ -16053,7 +16703,7 @@ op {
   name: "PaddedBatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -16070,7 +16720,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -16091,6 +16741,48 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "PaddedBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "padded_shapes"
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "padding_values"
+    type_list_attr: "Toutput_types"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "Toutput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "PaddingFIFOQueue"
@@ -16238,7 +16930,7 @@ op {
   name: "ParallelMapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -16250,7 +16942,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -16274,6 +16966,46 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "ParallelMapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "num_parallel_calls"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "ParameterizedTruncatedNormal"
@@ -16799,7 +17531,7 @@ op {
   name: "PrefetchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "buffer_size"
@@ -16807,7 +17539,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -16822,6 +17554,33 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "PrefetchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "PreventGradient"
@@ -19535,7 +20294,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -20330,7 +21089,7 @@ op {
   name: "RepeatDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -20338,7 +21097,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -20353,6 +21112,33 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "RepeatDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "count"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "RequantizationRange"
@@ -20546,6 +21332,38 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResizeBicubicGrad"
+  input_arg {
+    name: "grads"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "original_image"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -24382,6 +25200,21 @@ op {
   }
 }
 op {
+  name: "SerializeTensor"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "serialized"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "SetSize"
   input_arg {
     name: "set_indices"
@@ -24524,7 +25357,7 @@ op {
   name: "ShuffleDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "buffer_size"
@@ -24540,7 +25373,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -24555,6 +25388,41 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "ShuffleDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "Sigmoid"
@@ -24714,7 +25582,7 @@ op {
   name: "SkipDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -24722,7 +25590,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -24737,6 +25605,33 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "SkipDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "count"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "Skipgram"
@@ -24833,6 +25728,95 @@ op {
         type: DT_INT64
       }
     }
+  }
+}
+op {
+  name: "SloppyInterleaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "SloppyInterleaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {
@@ -27532,7 +28516,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Tvalues"
@@ -27734,7 +28718,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -28809,6 +29793,40 @@ op {
   }
 }
 op {
+  name: "Sub"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "Substr"
   input_arg {
     name: "input"
@@ -29005,7 +30023,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   is_stateful: true
 }
@@ -29072,7 +30090,7 @@ op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -29080,7 +30098,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -29095,6 +30113,33 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "TakeDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "count"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "TakeManySparseFromTensorsMap"
@@ -30127,7 +31172,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -30151,7 +31196,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -30243,7 +31288,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   is_stateful: true
 }
@@ -31250,12 +32295,12 @@ op {
   name: "ZipDataset"
   input_arg {
     name: "input_datasets"
-    type: DT_RESOURCE
+    type: DT_VARIANT
     number_attr: "N"
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -31276,4 +32321,34 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "ZipDataset"
+  input_arg {
+    name: "input_datasets"
+    type: DT_VARIANT
+    number_attr: "N"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
 }

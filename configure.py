@@ -175,7 +175,7 @@ def get_python_major_version(python_bin_path):
   return run_shell([python_bin_path, '-c', 'import sys; print(sys.version[0])'])
 
 
-def setup_python(environ_cp, bazel_version):
+def setup_python(environ_cp):
   """Setup python related env variables."""
   # Get PYTHON_BIN_PATH, default is the current running python.
   default_python_bin_path = sys.executable
@@ -229,17 +229,7 @@ def setup_python(environ_cp, bazel_version):
   write_to_bazelrc('build --define PYTHON_LIB_PATH="%s"' % python_lib_path)
   write_to_bazelrc('build --force_python=py%s' % python_major_version)
   write_to_bazelrc('build --host_force_python=py%s' % python_major_version)
-  bazel_version_int = convert_version_to_int(bazel_version)
-  version_0_5_3_int = convert_version_to_int('0.5.3')
-  # If bazel_version_int is None, we are testing a release Bazel, then the
-  # version should be higher than 0.5.3
-  # TODO(pcloudy): remove this after required min bazel version is higher
-  # than 0.5.3
-  if not bazel_version_int or bazel_version_int >= version_0_5_3_int:
-    write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
-  else:
-    write_to_bazelrc('build --python%s_path=\"%s"' % (python_major_version,
-                                                      python_bin_path))
+  write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
   write_to_bazelrc('test --force_python=py%s' % python_major_version)
   write_to_bazelrc('test --host_force_python=py%s' % python_major_version)
   write_to_bazelrc('test --define PYTHON_BIN_PATH="%s"' % python_bin_path)
@@ -359,7 +349,7 @@ def get_var(environ_cp,
 
 
 def set_build_var(environ_cp, var_name, query_item, option_name,
-                  enabled_by_default):
+                  enabled_by_default, bazel_config_name=None):
   """Set if query_item will be enabled for the build.
 
   Ask user if query_item will be enabled. Default is used if no input is given.
@@ -372,12 +362,18 @@ def set_build_var(environ_cp, var_name, query_item, option_name,
       System".
     option_name: string for option to define in .bazelrc.
     enabled_by_default: boolean for default behavior.
+    bazel_config_name: Name for Bazel --config argument to enable build feature.
   """
 
   var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
   environ_cp[var_name] = var
   if var == '1':
     write_to_bazelrc('build --define %s=true' % option_name)
+  elif bazel_config_name is not None:
+    # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
+    # options and not to set build configs through environment variables.
+    write_to_bazelrc('build:%s --define %s=true'
+                     % (bazel_config_name, option_name))
 
 
 def set_action_env_var(environ_cp,
@@ -685,10 +681,13 @@ def set_tf_cunn_version(environ_cp):
       ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
       cudnn_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
       cudnn_path_from_ldconfig = re.search('.*libcudnn.so .* => (.*)',
-                                           cudnn_path_from_ldconfig).group(1)
-      if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig, tf_cudnn_version)):
-        cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
-        break
+                                           cudnn_path_from_ldconfig)
+      if cudnn_path_from_ldconfig:
+        cudnn_path_from_ldconfig = cudnn_path_from_ldconfig.group(1)
+        if os.path.exists('%s.%s' % (cudnn_path_from_ldconfig,
+                                     tf_cudnn_version)):
+          cudnn_install_path = os.path.dirname(cudnn_path_from_ldconfig)
+          break
 
     # Reset and Retry
     print(
@@ -950,16 +949,29 @@ def set_mkl():
       'time before build.')
 
 
+def set_monolithic():
+  # Add --config=monolithic to your bazel command to use a mostly-static
+  # build and disable modular op registration support (this will revert to
+  # loading TensorFlow with RTLD_GLOBAL in Python). By default (without
+  # --config=monolithic), TensorFlow will build with a dependence on
+  # //tensorflow:libtensorflow_framework.so.
+  write_to_bazelrc('build:monolithic --define framework_shared_object=false')
+  # For projects which use TensorFlow as part of a Bazel build process, putting
+  # nothing in a bazelrc will default to a monolithic build. The following line
+  # opts in to modular op registration support by default:
+  write_to_bazelrc('build --define framework_shared_object=true')
+
+
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
   environ_cp = dict(os.environ)
 
-  bazel_version = check_bazel_version('0.4.5')
+  check_bazel_version('0.5.4')
 
   reset_tf_configure_bazelrc()
   cleanup_makefile()
-  setup_python(environ_cp, bazel_version)
+  setup_python(environ_cp)
   run_gen_git_source(environ_cp)
 
   if is_windows():
@@ -975,15 +987,15 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
   set_build_var(environ_cp, 'TF_NEED_GCP', 'Google Cloud Platform',
-                'with_gcp_support', False)
+                'with_gcp_support', False, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
-                'with_hdfs_support', False)
+                'with_hdfs_support', False, 'hdfs')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                False)
+                False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
-                False)
+                False, 'gdr')
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
-                False)
+                False, 'verbs')
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL', 'OpenCL', False)
   if environ_cp.get('TF_NEED_OPENCL') == '1':
@@ -992,7 +1004,8 @@ def main():
     set_computecpp_toolkit_path(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
-  if environ_cp.get('TF_NEED_CUDA') == '1':
+  if (environ_cp.get('TF_NEED_CUDA') == '1' and
+      'TF_CUDA_CONFIG_REPO' not in environ_cp):
     set_tf_cuda_version(environ_cp)
     set_tf_cunn_version(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
@@ -1015,6 +1028,7 @@ def main():
 
   set_cc_opt_flags(environ_cp)
   set_mkl()
+  set_monolithic()
 
 
 if __name__ == '__main__':

@@ -548,6 +548,14 @@ class HloInstruction {
   string ToString(bool compact_operands = false,
                   bool include_metadata = true) const;
 
+  // Components of the ToString() representation:
+
+  // Returns a string representation of the operand list.
+  string OperandsToString(bool compact) const;
+
+  // Returns string representation of op-specific attributes.
+  std::vector<string> ExtraAttributesToString() const;
+
   string ToStringNoMetadata() const { return ToString(false, false); }
 
   // As ToString, but returns a shorter string.
@@ -797,8 +805,7 @@ class HloInstruction {
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
-  // Returns the computations this instruction calls (if any). This includes
-  // computations called by fused instructions inside of a fusion instruction.
+  // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
     return called_computations_;
   }
@@ -893,9 +900,6 @@ class HloInstruction {
   // instruction to make it a bitcast.
   bool CouldBeBitcast() const;
 
-  // CHECKs various invariants of a fusion instruction.
-  void CheckFusionInstruction() const;
-
   // Get/Set the number of partitions per outer dimension (in order, starting
   // with outer-most dimension first). Currently used by the parallel cpu
   // backend to partition HLOs into parallel tasks.
@@ -906,6 +910,12 @@ class HloInstruction {
   }
   void set_outer_dimension_partitions(
       const std::vector<int64>& outer_dimension_partitions);
+
+  // Change the layout for an Constant Hlo instruction to match new_layout.  For
+  // tuple shaped constants shape_index is the path to the internal array
+  // subshape whose layout needs to be changed.
+  void RelayoutConstant(const Layout& new_layout,
+                        const ShapeIndex& shape_index = {});
 
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };

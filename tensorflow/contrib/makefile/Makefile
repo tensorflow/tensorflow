@@ -243,6 +243,7 @@ ifeq ($(TARGET),ANDROID)
 	CXXFLAGS +=\
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
 -Wno-narrowing \
+-fomit-frame-pointer \
 -march=armv7-a \
 -mfloat-abi=softfp \
 -mfpu=neon \
@@ -267,7 +268,8 @@ $(TARGET_NSYNC_LIB) \
 -lprotobuf \
 -llog \
 -lz \
--lm
+-lm \
+-ldl
 
 	LD := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/arm-linux-androideabi/bin/ld
 
@@ -510,7 +512,6 @@ $(wildcard tensorflow/core/grappler/clusters/single_machine.*)
 # Filter out all the excluded files.
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily
-TF_CC_SRCS += tensorflow/core/platform/default/gpu_tracer.cc
 TF_CC_SRCS += tensorflow/contrib/makefile/downloads/fft2d/fftsg.c
 # Also include the op and kernel definitions.
 TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)

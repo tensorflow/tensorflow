@@ -139,7 +139,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     features = {'x': np.array(((42.,),))}
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features=features,
           mode=model_fn.ModeKeys.EVAL,
@@ -275,6 +275,11 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
             labels_placeholder: values_3x1,
             logits_placeholder: values_2x3
         })
+
+  def test_name(self):
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes=3, name='foo')
+    self.assertEqual('foo', head.name)
 
   def test_predict(self):
     n_classes = 3
@@ -435,7 +440,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_eval_metric_ops_with_head_name(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, head_name='some_multiclass_head')
+        n_classes, name='some_multiclass_head')
     logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
     labels = np.array(((1,), (1,)), dtype=np.int64)
     features = {'x': np.array(((42,),), dtype=np.int32)}
@@ -623,7 +628,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_train_summaries_with_head_name(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, head_name='some_multiclass_head')
+        n_classes, name='some_multiclass_head')
 
     logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
     labels = np.array(((1,), (1,)), dtype=np.int64)
@@ -889,7 +894,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     logits_2x1 = np.array(((45.,), (41.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': np.array(((42.,),))},
           mode=model_fn.ModeKeys.EVAL,
@@ -955,6 +960,11 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
             labels_placeholder: values_3x1,
             logits_placeholder: values_2x1
         })
+
+  def test_name(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        name='foo')
+    self.assertEqual('foo', head.name)
 
   def test_predict(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
@@ -1090,7 +1100,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
 
   def test_eval_metric_ops_with_head_name(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        head_name='some_binary_head')
+        name='some_binary_head')
     logits = np.array(((45,), (-41,),), dtype=np.float32)
     labels = np.array(((1,), (1,),), dtype=np.int32)
     features = {'x': np.array(((42,),), dtype=np.int32)}
@@ -1292,7 +1302,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
 
   def test_train_summaries_with_head_name(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        head_name='some_binary_head')
+        name='some_binary_head')
 
     logits = np.array(((45,), (-41,),), dtype=np.float32)
     labels = np.array(((1,), (1,),), dtype=np.float64)
@@ -1692,7 +1702,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     values_1d = np.array(((43.,), (44.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': values_1d},
           mode=model_fn.ModeKeys.EVAL,
@@ -1737,7 +1747,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     values_1d = np.array(((43.,), (44.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': values_1d},
           mode=model_fn.ModeKeys.TRAIN,
@@ -1778,6 +1788,11 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
             labels_placeholder: values_1d,
             logits_placeholder: values_3d
         })
+
+  def test_name(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        name='foo')
+    self.assertEqual('foo', head.name)
 
   def test_predict(self):
     head = head_lib._regression_head_with_mean_squared_error_loss()
@@ -1933,7 +1948,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
 
   def test_train_summaries_with_head_name(self):
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        head_name='some_regression_head')
+        name='some_regression_head')
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.

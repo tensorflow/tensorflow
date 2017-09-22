@@ -123,6 +123,17 @@ XLA_TEST_F(TupleTest, GetTupleElementWithZeroElements) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 101), {}, error_spec_);
 }
 
+XLA_TEST_F(TupleTest, GetTupleElementOfNonTupleFailsGracefully) {
+  ComputationBuilder builder(client_, TestName());
+  auto value = builder.ConstantR1<float>({4.5f});
+  builder.GetTupleElement(value, 1);
+  auto result_status = builder.Build();
+  EXPECT_FALSE(result_status.ok());
+  EXPECT_THAT(
+      result_status.status().error_message(),
+      ::testing::HasSubstr("Operand to GetTupleElement() is not a tuple"));
+}
+
 // Extracts both elements from a tuple with GetTupleElement and then adds them
 // together.
 XLA_TEST_F(TupleTest, AddTupleElements) {

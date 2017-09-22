@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -56,7 +57,7 @@ namespace cpu {
 // instance of llvm::TargetTransformInfo outside an LLVM pass pipeline without
 // super-ugly hacks is difficult.
 //
-// TODO(b/27457097): See if the LLVM community will be receptive to exposing an
+// TODO(b/66049221): See if the LLVM community will be receptive to exposing an
 // API that lets us directly create and use llvm::TargetTransformInfo instances
 // outside of a pass manager.
 class TargetMachineFeatures {
@@ -131,6 +132,13 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       HloComputation* computation, const string& function_name_prefix,
       bool is_top_level_computation,
       std::vector<const HloInstruction*>* instruction_order);
+
+  llvm::IRBuilder<>* ir_builder() { return &ir_builder_; }
+
+  // Emits a call to `computation` with scalar arguments `arguments`.
+  StatusOr<llvm::Value*> EmitScalarCall(
+      PrimitiveType return_type, HloComputation* computation,
+      const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name);
 
  protected:
   //
@@ -210,12 +218,17 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // which would correspond to the index for a given HLO.
   llvm::Value* GetProfileCounterFor(const HloInstruction* hlo);
 
-  // Convenience function to get the IR Value emitted previously for the given
-  // hlo. Make sure to call it only when you're certain a value *was* emitted -
-  // if not found, this will log a fatal error.
+  // Gets the IR Value emitted previously for the given hlo.
+  //
+  // Prefer calling GetIrArrayForOp if the value you're reading is a buffer,
+  // because GetIrArrayForOp annotates buffer's loads/stores with noalias
+  // metadata.
+  //
+  // Make sure to call this only when you're certain a value *was* emitted - if
+  // not found, this will log a fatal error.
   llvm::Value* GetEmittedValueFor(const HloInstruction* hlo);
 
-  // Convenience function to get an IrArray representing the given hlo.
+  // Gets an IrArray representing the given hlo.
   llvm_ir::IrArray GetIrArrayForOp(const HloInstruction* hlo);
 
   // Augments IrArray with aliasing information.
@@ -313,9 +326,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // shape). The body of the inner-most loop is provided by the body_emitter
   // function.
   //
+  // desc is an optional human-readable string that's added to the loop name in
+  // IR.  Regardless of whether desc is provided, target_op->name() is included
+  // in the loop name.
+  //
   // TODO(jingyue): target_op should be a `const HloInstruction*`.
   Status EmitTargetElementLoop(
       HloInstruction* target_op,
+      const llvm_ir::ElementGenerator& element_generator);
+  Status EmitTargetElementLoop(
+      HloInstruction* target_op, tensorflow::StringPiece desc,
       const llvm_ir::ElementGenerator& element_generator);
 
   // Emit IR to perform a computation for every element in a partition/slice of
@@ -325,7 +345,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitParallelTargetElementLoop(
       const Shape& target_shape,
       const llvm_ir::ElementGenerator& element_generator,
-      llvm_ir::IrArray* target_array);
+      tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array);
 
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the

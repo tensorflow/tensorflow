@@ -68,7 +68,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
       auto range = constants.equal_range(shape_string);
       HloInstruction* match = nullptr;
       for (auto it = range.first; it != range.second; ++it) {
-        if (instruction->literal().Equal(it->second->literal())) {
+        if (instruction->literal() == it->second->literal()) {
           match = it->second;
           break;
         }
@@ -92,9 +92,6 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
   for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
     changed |= CombineConstants(computation.get(), is_layout_sensitive_);
 
     std::list<HloInstruction*> post_order =

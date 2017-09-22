@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_local_launch_op.h"
 
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/xla_device.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_local_runtime_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/util/stream_executor_util.h"
@@ -43,13 +46,11 @@ namespace tensorflow {
 // see comment on `AllowsAsynchronousDeallocation()`.
 class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
-  XlaAllocator(const perftools::gputools::Platform* platform,
-               OpKernelContext* op_context);
+  XlaAllocator(const gpu::Platform* platform, OpKernelContext* op_context);
   ~XlaAllocator() override;
-  xla::StatusOr<perftools::gputools::DeviceMemoryBase> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure = true) override;
-  Status Deallocate(int device_ordinal,
-                    perftools::gputools::DeviceMemoryBase* mem) override;
+  xla::StatusOr<gpu::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
+                                                bool retry_on_failure) override;
+  Status Deallocate(int device_ordinal, gpu::DeviceMemoryBase* mem) override;
 
   // Makes 'tensor' a wrapper around the data buffer at 'ptr'. The buffer is
   // interpreted as having data type 'dtype' and shape 'shape'.
@@ -74,13 +75,13 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
   std::unordered_map<void*, Tensor> tensors_;
 };
 
-XlaAllocator::XlaAllocator(const perftools::gputools::Platform* platform,
+XlaAllocator::XlaAllocator(const gpu::Platform* platform,
                            OpKernelContext* op_context)
     : xla::DeviceMemoryAllocator(platform), op_context_(op_context) {}
 
 XlaAllocator::~XlaAllocator() = default;
 
-xla::StatusOr<perftools::gputools::DeviceMemoryBase> XlaAllocator::Allocate(
+xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
   AllocatorAttributes allocator_attrs;
   allocator_attrs.set_on_host(false);
@@ -100,11 +101,11 @@ xla::StatusOr<perftools::gputools::DeviceMemoryBase> XlaAllocator::Allocate(
       reinterpret_cast<void*>(const_cast<char*>(t.tensor_data().data()));
   TF_RET_CHECK(data != nullptr);
   tensors_[data] = t;
-  return perftools::gputools::DeviceMemoryBase(data, size);
+  return gpu::DeviceMemoryBase(data, size);
 }
 
 Status XlaAllocator::Deallocate(int device_ordinal,
-                                perftools::gputools::DeviceMemoryBase* mem) {
+                                gpu::DeviceMemoryBase* mem) {
   if (mem->opaque() != nullptr) {
     if (tensors_.erase(mem->opaque()) == 0) {
       return tensorflow::errors::InvalidArgument("Unknown tensor address");
@@ -142,25 +143,26 @@ XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
   DataTypeVector constant_types;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tconstants", &constant_types));
   num_constant_args_ = constant_types.size();
-
-  int num_resource_args;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args));
-  OP_REQUIRES(ctx, num_resource_args == 0,
-              errors::Unimplemented(
-                  "XlaLocalLaunchOp does not support resource variables"));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("Nresources", &num_resource_args_));
   if (device_type_ == DeviceType(DEVICE_CPU)) {
     platform_id_ = gpu::host::kHostPlatformId;
   } else if (device_type_ == DeviceType(DEVICE_GPU)) {
     platform_id_ = gpu::cuda::kCudaPlatformId;
   } else {
-    ctx->SetStatus(
-        errors::InvalidArgument("Unknown device type for local _XlaLaunch"));
-    return;
+    platform_id_ = nullptr;
   }
 }
 
 Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
                                                XlaCompilationCache** cache) {
+  const XlaDevice::Metadata* metadata;
+  Status s = XlaDevice::GetMetadata(ctx, &metadata);
+  if (s.ok()) {
+    *cache = new XlaCompilationCache(metadata->client(),
+                                     metadata->jit_device_type());
+    return Status::OK();
+  }
+
   auto platform = gpu::MultiPlatformManager::PlatformWithId(platform_id_);
   if (!platform.ok()) {
     return StreamExecutorUtil::ConvertStatus(platform.status());
@@ -182,6 +184,23 @@ Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
   *cache = new XlaCompilationCache(
       client.ValueOrDie(), DeviceType(registration->compilation_device_name));
   return Status::OK();
+}
+
+std::vector<OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
+                                                      int num_variables) {
+  std::vector<OptionalTensor> snapshot(num_variables);
+  int first_variable = ctx->num_inputs() - num_variables;
+  for (int i = 0; i < num_variables; ++i) {
+    Var* variable = nullptr;
+    ResourceHandle handle = HandleFromInput(ctx, first_variable + i);
+    if (LookupResource(ctx, handle, &variable).ok()) {
+      mutex_lock lock(*variable->mu());
+      snapshot[i].name = handle.name();
+      snapshot[i].present = true;
+      snapshot[i].value = *variable->tensor();
+    }
+  }
+  return snapshot;
 }
 
 void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
@@ -206,6 +225,18 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
+  // Get the platform_id_ for XLA_* devices.
+  if (platform_id_ == nullptr) {
+    const XlaDevice::Metadata* metadata;
+    Status s = XlaDevice::GetMetadata(ctx, &metadata);
+    if (s.ok()) {
+      platform_id_ = metadata->platform()->id();
+    }
+  }
+
+  std::vector<OptionalTensor> variables =
+      SnapshotResourceVariables(ctx, num_resource_args_);
+
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
   XlaCompiler::Options options;
@@ -218,8 +249,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
-  OP_REQUIRES_OK(ctx, cache->Compile(options, function_, num_constant_args_, {},
-                                     ctx, &kernel, &executable));
+  OP_REQUIRES_OK(ctx, cache->Compile(options, function_, num_constant_args_,
+                                     variables, ctx, &kernel, &executable));
 
   VLOG(1) << "Executing XLA Computation...";
 
@@ -228,67 +259,70 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   XlaLocalRuntimeContext local_runtime_context;
 
   std::unique_ptr<xla::ShapedBuffer> output;
-  bool output_is_tuple;
-  if (!kernel->computation->IsNull()) {
-    // Build xla::ShapedBuffers that point directly to the Tensor buffers.
-    std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers;
-    arg_buffers.reserve(kernel->xla_input_shapes.size() + 1);
-    arg_buffers.resize(kernel->xla_input_shapes.size());
-    std::vector<xla::ShapedBuffer*> arg_ptrs(arg_buffers.size());
+  // Build xla::ShapedBuffers that point directly to the Tensor buffers.
+  std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers;
+  arg_buffers.reserve(kernel->xla_input_shapes.size() + 1);
+  arg_buffers.resize(kernel->xla_input_shapes.size());
+  std::vector<xla::ShapedBuffer*> arg_ptrs(arg_buffers.size());
 
-    // Pass remaining parameters.
-    for (int i = 0; i < kernel->xla_input_shapes.size(); ++i) {
-      int arg_num = kernel->input_mapping[i];
-      const xla::Shape& shape = kernel->xla_input_shapes[i];
-      gpu::DeviceMemoryBase dmem(
-          const_cast<char*>(ctx->input(arg_num).tensor_data().data()),
-          ctx->input(arg_num).tensor_data().size());
-
-      arg_buffers[i] =
-          xla::ShapedBuffer::MakeArrayShapedBuffer(
-              shape, client->platform(), client->default_device_ordinal(), dmem)
-              .ConsumeValueOrDie();
-      arg_ptrs[i] = arg_buffers[i].get();
+  const int first_variable_arg = ctx->num_inputs() - num_resource_args_;
+  // Pass remaining parameters.
+  const Tensor* t;
+  for (int i = 0; i < kernel->xla_input_shapes.size(); ++i) {
+    int arg_num = kernel->input_mapping[i];
+    const xla::Shape& shape = kernel->xla_input_shapes[i];
+    if (arg_num >= first_variable_arg) {
+      t = &(variables[arg_num - first_variable_arg].value);
+    } else {
+      t = &(ctx->input(arg_num));
     }
 
-    // Make the final parameter point at local_runtime_context.
-    if (kernel->requires_runtime_context) {
-      gpu::DeviceMemoryBase local_runtime_context_dmem(
-          &local_runtime_context, sizeof(local_runtime_context));
-      arg_buffers.push_back(
-          xla::ShapedBuffer::MakeArrayShapedBuffer(
-              xla::ShapeUtil::MakeOpaqueShape(), client->platform(),
-              client->default_device_ordinal(), local_runtime_context_dmem)
-              .ConsumeValueOrDie());
-      arg_ptrs.push_back(arg_buffers.back().get());
-    }
+    gpu::DeviceMemoryBase dmem = gpu::DeviceMemoryBase(
+        const_cast<char*>(t->tensor_data().data()), t->tensor_data().size());
 
-    // Execute the computation.
-    VLOG(2) << "Executing computation.";
-    xla::ExecutableRunOptions run_options;
-    run_options.set_stream(stream);
-    run_options.set_allocator(&xla_allocator);
-    run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
-    Env* env = Env::Default();
-    auto start_time = env->NowMicros();
-    auto run_result = executable->Run(arg_ptrs, run_options);
-    OP_REQUIRES(ctx, run_result.ok(), run_result.status());
+    arg_buffers[i] =
+        xla::ShapedBuffer::MakeArrayShapedBuffer(
+            shape, client->platform(), client->default_device_ordinal(), dmem)
+            .ConsumeValueOrDie();
+    arg_ptrs[i] = arg_buffers[i].get();
+  }
 
-    if (local_runtime_context.error) {
-      ctx->CtxFailure(errors::InvalidArgument(
-          "Compiled kernel returned error: ", local_runtime_context.error_msg));
-      return;
-    }
+  // Make the final parameter point at local_runtime_context.
+  if (kernel->requires_runtime_context) {
+    gpu::DeviceMemoryBase local_runtime_context_dmem(
+        &local_runtime_context, sizeof(local_runtime_context));
+    arg_buffers.push_back(
+        xla::ShapedBuffer::MakeArrayShapedBuffer(
+            xla::ShapeUtil::MakeOpaqueShape(), client->platform(),
+            client->default_device_ordinal(), local_runtime_context_dmem)
+            .ConsumeValueOrDie());
+    arg_ptrs.push_back(arg_buffers.back().get());
+  }
 
-    output = std::move(run_result.ValueOrDie());
-    auto elapsed = env->NowMicros() - start_time;
-    VLOG(2) << "Elapsed time: " << elapsed << "us";
+  // Execute the computation.
+  VLOG(2) << "Executing computation.";
+  xla::ExecutableRunOptions run_options;
+  run_options.set_stream(stream);
+  run_options.set_allocator(&xla_allocator);
+  run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
+  Env* env = Env::Default();
+  auto start_time = env->NowMicros();
+  auto run_result = executable->Run(arg_ptrs, run_options);
+  OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
-    // Computation output should always be a tuple.
-    if (VLOG_IS_ON(2)) {
-      VLOG(2) << "Result tuple shape: " << output->shape().DebugString();
-    }
-    output_is_tuple = xla::ShapeUtil::IsTuple(output->shape());
+  if (local_runtime_context.error) {
+    ctx->CtxFailure(errors::InvalidArgument("Compiled kernel returned error: ",
+                                            local_runtime_context.error_msg));
+    return;
+  }
+
+  output = std::move(run_result.ValueOrDie());
+  auto elapsed = env->NowMicros() - start_time;
+  VLOG(2) << "Elapsed time: " << elapsed << "us";
+
+  // Computation output should always be a tuple.
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Result tuple shape: " << output->shape().DebugString();
   }
   CHECK_EQ(ctx->num_outputs(), kernel->outputs.size());
 
@@ -296,7 +330,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   int output_num = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     if (kernel->outputs[i].is_constant) {
-      // Output is a constant
+      // Output is a constant.
       const Tensor& const_tensor = kernel->outputs[i].constant_value;
       const size_t total_bytes = const_tensor.TotalBytes();
       if (stream && total_bytes > 0) {
@@ -318,13 +352,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
       const TensorShape& shape = kernel->outputs[i].shape;
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString();
 
-      gpu::DeviceMemoryBase buffer;
-      if (output_is_tuple) {
-        buffer = output->buffer({output_num});
-      } else {
-        CHECK_EQ(0, output_num);
-        buffer = output->buffer({});
-      }
+      gpu::DeviceMemoryBase buffer = output->buffer({output_num});
       Tensor output_tensor;
       // Looks up the owning Tensor by buffer address.
       OP_REQUIRES_OK(ctx, xla_allocator.MakeTensorFromBuffer(
@@ -339,6 +367,41 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     }
   }
 
+  // Apply variable updates, if any.
+  VLOG(2) << "Applying variable updates";
+  for (int i = 0; i < kernel->resource_updates.size(); ++i) {
+    const XlaCompiler::ResourceUpdate& write = kernel->resource_updates[i];
+    OP_REQUIRES(ctx,
+                write.input_index >= 0 && write.input_index < ctx->num_inputs(),
+                errors::Internal("Invalid input index for variable write."));
+    TensorShape write_shape;
+    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(write.shape, &write_shape));
+
+    gpu::DeviceMemoryBase buffer = output->buffer({output_num});
+
+    Var* variable = nullptr;
+    // TODO(b/35625933): tensorflow::Var should contain a PersistentTensor, not
+    // a Tensor.
+    OP_REQUIRES_OK(ctx, LookupOrCreateResource<Var>(
+                            ctx, HandleFromInput(ctx, write.input_index),
+                            &variable, [this, ctx, &write](Var** ptr) {
+                              *ptr = new Var(write.type);
+                              return Status::OK();
+                            }));
+
+    core::ScopedUnref s(variable);
+
+    mutex_lock ml(*variable->mu());
+    OP_REQUIRES(ctx, variable->tensor()->dtype() == write.type,
+                errors::Internal("Mismatched type in variable write"));
+
+    // Looks up the owning Tensor by buffer address.
+    OP_REQUIRES_OK(
+        ctx, xla_allocator.MakeTensorFromBuffer(buffer, write.type, write_shape,
+                                                variable->tensor()));
+    ++output_num;
+  }
+
   VLOG(1) << "Done";
 }
 
@@ -349,8 +412,10 @@ XlaLocalLaunchOp::~XlaLocalLaunchOp() {
 REGISTER_KERNEL_BUILDER(Name("_XlaLaunch").Device(DEVICE_CPU),
                         XlaLocalLaunchOp);
 
-REGISTER_KERNEL_BUILDER(
-    Name("_XlaLaunch").Device(DEVICE_GPU).HostMemory("constants"),
-    XlaLocalLaunchOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaLaunch")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("constants")
+                            .HostMemory("resources"),
+                        XlaLocalLaunchOp);
 
 }  // namespace tensorflow
