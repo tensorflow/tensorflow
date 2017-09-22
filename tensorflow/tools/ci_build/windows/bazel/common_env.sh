@@ -55,8 +55,11 @@ export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/extras/CUPT
 export PATH="/c/tools/cuda/bin:$PATH"
 
 # Set the common build options on Windows
-export BUILD_OPTS='--copt=-w --host_copt=-w --verbose_failures --experimental_ui'
+export BUILD_OPTS='--config=monolithic --copt=-w --host_copt=-w --verbose_failures --experimental_ui'
 
 # Build TF with wrapper-less CROSSTOOL
 # TODO(pcloudy): Remove this after wrapper-less CROSSTOOL becomes default
 export NO_MSVC_WRAPPER=1
+
+export USE_DYNAMIC_CRT=1
+
