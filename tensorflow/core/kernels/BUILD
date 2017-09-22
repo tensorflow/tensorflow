@@ -2300,7 +2300,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "self_adjoint_eig_v2_op",
     prefix = "self_adjoint_eig_v2_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":cast_op",
+        ":cwise_op",
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]),
 )
 
 tf_kernel_library(
