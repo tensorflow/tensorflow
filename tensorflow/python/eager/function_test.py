@@ -99,6 +99,19 @@ class FunctionTest(test.TestCase):
 
     self.assertAllEqual(2, g(constant_op.constant(2)).numpy())
 
+  def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):
+
+    @function.defun
+    def g(x):
+      return backprop.gradients_function(math_ops.multiply, [0, 1])(x, x)
+
+    def np_g(x):
+      return [d.numpy() for d in g(x)]
+
+    x = constant_op.constant(1.)
+    self.assertAllEqual([1., 1.], np_g(x))
+    self.assertAllEqual([1., 1.], np_g(1.))
+
   def testCallShape(self):
 
     @function.defun
