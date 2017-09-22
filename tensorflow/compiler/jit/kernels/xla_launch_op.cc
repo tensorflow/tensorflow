@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/jit/kernels/xla_local_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_device.h"
@@ -194,7 +194,7 @@ std::vector<OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
     Var* variable = nullptr;
     ResourceHandle handle = HandleFromInput(ctx, first_variable + i);
     if (LookupResource(ctx, handle, &variable).ok()) {
-      mutex_lock lock(*variable->mu());
+      tf_shared_lock lock(*variable->mu());
       snapshot[i].name = handle.name();
       snapshot[i].present = true;
       snapshot[i].value = *variable->tensor();
