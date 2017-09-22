@@ -47,7 +47,12 @@ template <typename T>
 struct scalar_asinh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+  // TODO{lukeiwanski}: Remove once Eigen has implementation for Android
+#ifndef __ANDROID__
     return numext::asinh(a);
+#else
+    return std::asinh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
 template <typename T>
@@ -59,7 +64,12 @@ template <typename T>
 struct scalar_acosh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+  // TODO{lukeiwanski}: Remove once Eigen has implementation for Android
+#ifndef __ANDROID__
     return numext::acosh(a);
+#else
+    return std::acosh(a);
+#endif  // __ANDROID__
   }
 };
 template <typename T>
@@ -71,7 +81,12 @@ template <typename T>
 struct scalar_atanh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+  // TODO{lukeiwanski}: Remove once Eigen has implementation for Android
+#ifndef __ANDROID__
     return numext::atanh(a);
+#else
+    return std::atanh(a);
+#endif  // __ANDROID__
   }
 };
 template <typename T>
