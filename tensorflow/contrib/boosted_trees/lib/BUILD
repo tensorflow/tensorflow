@@ -281,9 +281,6 @@ py_test(
     name = "categorical_split_handler_test",
     srcs = ["learner/batch/categorical_split_handler_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":categorical_split_handler",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
@@ -309,9 +306,6 @@ py_test(
     name = "ordinal_split_handler_test",
     srcs = ["learner/batch/ordinal_split_handler_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":ordinal_split_handler",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
