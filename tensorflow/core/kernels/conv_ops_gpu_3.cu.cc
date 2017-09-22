@@ -278,7 +278,7 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   effective_thread_num = ThreadNum / TileSizeI * TileSizeI;
 
   if (x < effective_thread_num) {
-    // Re-oriente the logical thread block with respect to the output array.
+    // Re-orient the logical thread block with respect to the output array.
     // ie. align the contiguous dimension of thread blocks with contiguous
     // dimension of the output array.
     int ti = x / TileSizeI;
@@ -578,11 +578,8 @@ struct BatchNarrowMatrixTransposeDispatcher {
   BATCH_NARROW_MATRIX_TRANSPOSE_LIMIT_PER_LONG_SIDE_LEN(TYPE, 1024, 2);
 
 BATCH_NARROW_MATRIX_TRANSPOSE_128(float4);
-BATCH_NARROW_MATRIX_TRANSPOSE_64(double);
 BATCH_NARROW_MATRIX_TRANSPOSE_64(uint64);
-BATCH_NARROW_MATRIX_TRANSPOSE_32(float);
 BATCH_NARROW_MATRIX_TRANSPOSE_32(uint32);
-BATCH_NARROW_MATRIX_TRANSPOSE_16(Eigen::half);
 BATCH_NARROW_MATRIX_TRANSPOSE_16(uint16);
 BATCH_NARROW_MATRIX_TRANSPOSE_8(uint8);
 
@@ -708,11 +705,28 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
 
-    // We recusively search for the minimum pre-compiled configuration that
-    // satisfies the requested tile sizes.
-    BatchNarrowMatrixTransposeDispatcher<T, 32, 2>::DoBatchNarrowMatrixTranspose(
+    switch (sizeof (T)) {
+      case 1: BatchNarrowMatrixTransposeDispatcher<uint8, 32, 2>::DoBatchNarrowMatrixTranspose(
         d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
-        input, input_dims, output);
+        reinterpret_cast<const uint8*>(input), input_dims, reinterpret_cast<uint8*>(output));
+        break;
+      case 2: BatchNarrowMatrixTransposeDispatcher<uint16, 32, 2>::DoBatchNarrowMatrixTranspose(
+        d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
+        reinterpret_cast<const uint16*>(input), input_dims, reinterpret_cast<uint16*>(output));
+        break;
+      case 4: BatchNarrowMatrixTransposeDispatcher<uint32, 32, 2>::DoBatchNarrowMatrixTranspose(
+        d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
+        reinterpret_cast<const uint32*>(input), input_dims, reinterpret_cast<uint32*>(output));
+        break;
+      case 8: BatchNarrowMatrixTransposeDispatcher<uint64, 32, 2>::DoBatchNarrowMatrixTranspose(
+        d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
+        reinterpret_cast<const uint64*>(input), input_dims, reinterpret_cast<uint64*>(output));
+        break;
+      case 16: BatchNarrowMatrixTransposeDispatcher<float4, 32, 2>::DoBatchNarrowMatrixTranspose(
+        d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
+        reinterpret_cast<const float4*>(input), input_dims, reinterpret_cast<float4*>(output));
+        break;
+    }
 
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
