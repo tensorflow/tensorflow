@@ -515,7 +515,7 @@ TEST_F(CWiseUnaryGradTest, Lgamma) {
   auto x_fn = [this](const int i) {
     return RV({-3.5, -2.5, -1.5, 1.0, 2.0, 3.5});
   };
-  TestCWiseGrad<float, complex64>(LGAMMA, x_fn);
+  TestCWiseGrad<float, float>(LGAMMA, x_fn);
 }
 
 TEST_F(CWiseUnaryGradTest, Lgamma_Complex) {
@@ -533,7 +533,7 @@ TEST_F(CWiseUnaryGradTest, Erf) {
   auto x_fn = [this](const int i) {
     return RV({-1.2, -1.0, -0.5, 0.3, 0.5, 1.3});
   };
-  TestCWiseGrad<float, complex64>(ERF, x_fn);
+  TestCWiseGrad<float, float>(ERF, x_fn);
 }
 
 TEST_F(CWiseUnaryGradTest, Erf_Complex) {
