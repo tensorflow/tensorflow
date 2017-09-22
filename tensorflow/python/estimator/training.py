@@ -203,6 +203,22 @@ class EvalSpec(
         throttle_secs=throttle_secs)
 
 
+class _StopAtSecsHook(session_run_hook.SessionRunHook):
+  """Stops given secs after begin is called."""
+
+  def __init__(self, stop_after_secs):
+    self._stop_after_secs = stop_after_secs
+    self._start_time = None
+
+  def begin(self):
+    self._start_time = time.time()
+
+  def after_run(self, run_context, run_values):
+    del run_values
+    if time.time() - self._start_time >= self._stop_after_secs:
+      run_context.request_stop()
+
+
 class UnimplementedError(Exception):
   pass
 
@@ -254,7 +270,38 @@ class _TrainingExecutor(object):
 
   def run_local(self):
     """Runs training and evaluation locally (non-distributed)."""
-    raise UnimplementedError('Method run_local has not been implemented.')
+
+    def _should_stop_local_train(global_step):
+      if self._train_spec.max_steps is None:
+        return False
+      if global_step >= self._train_spec.max_steps:
+        return True
+      return False
+
+    if self._eval_spec.throttle_secs <= 0:
+      raise ValueError('eval_spec.throttle_secs should be positive, given: {}.'
+                       'It is used do determine how long each training '
+                       'iteration should go when train and evaluate '
+                       'locally.'.format(
+                           self._eval_spec.throttle_secs))
+
+    stop_hook = _StopAtSecsHook(self._eval_spec.throttle_secs)
+    train_hooks = list(self._train_spec.hooks) + [stop_hook]
+    logging.info('Start train and evaluate loop. The evaluate will happen '
+                 'after {} secs (eval_spec.throttle_secs) or training is '
+                 'finished.'.format(self._eval_spec.throttle_secs))
+    while True:
+      self._estimator.train(
+          input_fn=self._train_spec.input_fn,
+          max_steps=self._train_spec.max_steps,
+          hooks=train_hooks)
+      metrics = self._estimator.evaluate(
+          input_fn=self._eval_spec.input_fn,
+          steps=self._eval_spec.steps,
+          hooks=self._eval_spec.hooks,
+          name=self._eval_spec.name)
+      if _should_stop_local_train(metrics[ops.GraphKeys.GLOBAL_STEP]):
+        break
 
   def _start_std_server(self, config):
     """Creates, starts, and returns a server_lib.Server."""
