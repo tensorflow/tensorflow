@@ -136,14 +136,17 @@ class GRUBlockCell(rnn_cell_impl.RNNCell):
     """Initialize the Block GRU cell.
 
     Args:
-      num_units: int, The number of units in the GRU cell
+      num_units: int, The number of units in the GRU cell.
+      cell_size: int, The old (deprecated) name for `num_units`.
+
+    Raises:
+      ValueError: if both cell_size and num_units are not None;
+        or both are None.
     """
-    if cell_size is not None:
-      if num_units is not None:
-        raise ValueError("Cannot specify both 'num_units' and 'cell_size'")
+    if (cell_size is None) == (num_units is None):
+      raise ValueError("Exactly one of num_units or cell_size must be provided.")
+    if num_units is None:
       num_units = cell_size
-    if num_units is None and cell_size is None:
-      raise ValueError("`num_units` and `cell_size` cannot both be None.")
     self._cell_size = num_units
 
   @property
