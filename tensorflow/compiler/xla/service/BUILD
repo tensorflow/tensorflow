@@ -1968,6 +1968,20 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cc_test(
+    name = "hlo_graph_dumper_test",
+    srcs = ["hlo_graph_dumper_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_graph_dumper",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+    ],
+)
+
 cc_library(
     name = "transpose_folding",
     srcs = ["transpose_folding.cc"],
