@@ -1223,7 +1223,8 @@ XLA_REGISTER_GRAPH_RENDERER(FileGraphRenderer, 0);
 
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
-                 const HloExecutionProfile* hlo_execution_profile) {
+                 const HloExecutionProfile* hlo_execution_profile,
+                 bool show_metadata) {
   string graph;
   string graph_url;
   if (debug_options.xla_hlo_dump_as_graphdef()) {
@@ -1237,11 +1238,11 @@ string DumpGraph(const HloComputation& computation, const string& label,
     graph_url = FileGraphRenderer().RenderGraph(
         graph, GraphRendererInterface::TF_GRAPHDEF, debug_options);
   } else {
-    graph = HloDotDumper(
-                &computation, label,
-                /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
-                /*show_metadata=*/false, hlo_execution_profile, NodeFilter())
-                .Dump();
+    graph =
+        HloDotDumper(&computation, label,
+                     /*show_addresses=*/debug_options.xla_hlo_graph_addresses(),
+                     show_metadata, hlo_execution_profile, NodeFilter())
+            .Dump();
     graph_url = GetGraphRenderer()->RenderGraph(
         graph, GraphRendererInterface::DOT_GRAPH, debug_options);
   }

@@ -161,8 +161,10 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   XlaDevice* xla_device = dynamic_cast<XlaDevice*>(ctx->device());
   if (xla_device == nullptr) {
     return errors::Internal(
-        "GetMetadata should be called on an XLA device. This usually means an "
-        "internal bug or Op is placed on the wrong device.");
+        "Cannot get XLA metadata from non-XLA device \"", ctx->device()->name(),
+        "\". GetMetadata must only be called on an XLA device. Either an "
+        "internal bug has been triggered, or an XLA-specific op has been "
+        "placed on the wrong device.");
   }
   *metadata = &(xla_device->xla_metadata_);
   return Status::OK();
