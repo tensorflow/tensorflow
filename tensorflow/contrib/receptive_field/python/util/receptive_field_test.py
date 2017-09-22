@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
+import numpy as np
 
 
 def create_test_network_1():
@@ -220,6 +221,18 @@ class RfUtilsTest(test.TestCase):
     self.assertEqual(effective_padding_x, 0)
     self.assertEqual(effective_padding_y, 0)
 
+  def testComputeCoordinatesRoundtrip(self):
+    graph_def = create_test_network_1()
+    input_node = 'input_image'
+    output_node = 'output'
+    rf = receptive_field.compute_receptive_field_from_graph_def(
+      graph_def, input_node, output_node)
+
+    x = np.random.randint(0, 100, (50, 2))
+    y = rf.compute_feature_coordinates(x)
+    x2 = rf.compute_input_coordinates(y)
+
+    self.assertAllEqual(x, x2)
 
 if __name__ == '__main__':
   test.main()
