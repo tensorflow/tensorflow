@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-import re
+import re as _re
 
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
@@ -644,7 +644,7 @@ def _is_removed_mentioned(s, removed_op_names):
   # /foo/bar. This regex ensures that we handle these two nodes
   # as separate entities.  It matches on nodes having names in the form of
   # '/foo/bar_x' as well as nodes having names in the form of 'foo.'
-  s_names = re.findall(r'((?:[\/]?[a-zA-Z0-9\_]*)*)', compat.as_str_any(s))
+  s_names = _re.findall(r'((?:[\/]?[a-zA-Z0-9\_]*)*)', compat.as_str_any(s))
   for removed_op_name in removed_op_names:
     for s_name in s_names:
       if s_name.endswith(removed_op_name):
