@@ -179,6 +179,7 @@ sh_binary(
             "//tensorflow/python/eager:eager_pip",
             "//tensorflow/python/saved_model:saved_model",
             "//tensorflow/python/tools:tools_pip",
+            "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),

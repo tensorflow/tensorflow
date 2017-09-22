@@ -47,9 +47,14 @@ sed -i 's/ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4/a34b2
 sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
 sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
 
+# The system-installed OpenSSL headers get pulled in by the latest BoringSSL
+# release on this configuration, so move them before we build:
+sudo mv /usr/include/openssl /usr/include/openssl.original
+
 # Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
 # TODO(petewarden) - It would be nicer to move this into the main Bazel build
 # process if we can maintain a build file for this.
+sudo rm -rf toolchain
 mkdir toolchain
 cd toolchain
 curl -L https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz -o toolchain.tar.gz
@@ -59,6 +64,7 @@ cd ..
 
 CROSSTOOL_CC=$(pwd)/toolchain/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
 
+sudo rm -rf openblas
 git clone https://github.com/xianyi/OpenBLAS openblas
 cd openblas
 make CC=${CROSSTOOL_CC} FC=${CROSSTOOL_CC} HOSTCC=gcc TARGET=ARMV6

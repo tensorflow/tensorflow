@@ -218,12 +218,17 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // which would correspond to the index for a given HLO.
   llvm::Value* GetProfileCounterFor(const HloInstruction* hlo);
 
-  // Convenience function to get the IR Value emitted previously for the given
-  // hlo. Make sure to call it only when you're certain a value *was* emitted -
-  // if not found, this will log a fatal error.
+  // Gets the IR Value emitted previously for the given hlo.
+  //
+  // Prefer calling GetIrArrayForOp if the value you're reading is a buffer,
+  // because GetIrArrayForOp annotates buffer's loads/stores with noalias
+  // metadata.
+  //
+  // Make sure to call this only when you're certain a value *was* emitted - if
+  // not found, this will log a fatal error.
   llvm::Value* GetEmittedValueFor(const HloInstruction* hlo);
 
-  // Convenience function to get an IrArray representing the given hlo.
+  // Gets an IrArray representing the given hlo.
   llvm_ir::IrArray GetIrArrayForOp(const HloInstruction* hlo);
 
   // Augments IrArray with aliasing information.

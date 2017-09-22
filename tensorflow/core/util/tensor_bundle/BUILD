@@ -12,6 +12,7 @@ load(
     "cc_header_only_library",
     "if_not_windows",
     "tf_copts",
+    "tf_cc_test",
 )
 
 # To be exported to tensorflow/core:mobile_srcs.
@@ -37,7 +38,7 @@ cc_library(
     copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":naming",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -60,7 +61,7 @@ cc_library(
     deps = ["//tensorflow/core:lib"],
 )
 
-cc_test(
+tf_cc_test(
     name = "tensor_bundle_test",
     srcs = ["tensor_bundle_test.cc"],
     deps = [

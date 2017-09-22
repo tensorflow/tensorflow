@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library", "tf_cc_test")
 
 filegroup(
     name = "all_files",
@@ -54,7 +54,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "graph_properties_test",
     srcs = ["graph_properties_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
@@ -91,7 +91,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "graph_memory_test",
     srcs = ["graph_memory_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
@@ -111,7 +111,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_test(
+tf_cc_test(
     name = "robust_stats_test",
     srcs = ["robust_stats_test.cc"],
     deps = [
@@ -139,7 +139,7 @@ tf_cuda_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
     visibility = ["//visibility:public"],
@@ -180,7 +180,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "virtual_placer_test",
     srcs = ["virtual_placer_test.cc"],
     deps = [
@@ -214,7 +214,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "virtual_scheduler_test",
     srcs = ["virtual_scheduler_test.cc"],
     deps = [
@@ -264,7 +264,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "op_level_cost_estimator_test",
     srcs = ["op_level_cost_estimator_test.cc"],
     deps = [
@@ -296,7 +296,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "analytical_cost_estimator_test",
     srcs = ["analytical_cost_estimator_test.cc"],
     deps = [

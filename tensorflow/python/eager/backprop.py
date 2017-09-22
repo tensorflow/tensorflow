@@ -414,7 +414,6 @@ _ops_which_dont_need_outputs = set([
     "Mul",
     "Div",
     "RealDiv",
-    "Pow",
     "Maximum",
     "Minimum",
     "SquaredDifference",
