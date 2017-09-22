@@ -22,7 +22,6 @@ py_library(
         ":model_fn",
         ":parsing_utils",
         ":run_config",
-        ":training",
         "//tensorflow/python:util",
     ],
 )
@@ -72,28 +71,6 @@ py_test(
 )
 
 py_library(
-    name = "training",
-    srcs = ["training.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":estimator",
-        "//tensorflow/python:training",
-        "@six_archive//:six",
-    ],
-)
-
-py_test(
-    name = "training_test",
-    size = "small",
-    srcs = ["training_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":training",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_library(
     name = "run_config",
     srcs = ["run_config.py"],
     srcs_version = "PY2AND3",
@@ -121,17 +98,32 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
-        ":head",
         ":model_fn",
-        ":optimizers",
+        ":utils",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:nn",
-        "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "utils",
+    srcs = ["canned/utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":optimizers",
+        ":head",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:training",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:state_ops",
         "@six_archive//:six",
     ],
 )
@@ -171,7 +163,6 @@ py_test(
     name = "dnn_test",
     size = "medium",
     srcs = ["canned/dnn_test.py"],
-    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -181,6 +172,7 @@ py_test(
         ":numpy_io",
         ":pandas_io",
         ":prediction_keys",
+        ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:data_flow_ops",
@@ -202,20 +194,12 @@ py_library(
     deps = [
         ":dnn",
         ":estimator",
-        ":head",
         ":linear",
         ":model_fn",
-        ":optimizers",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_ops",
+        ":utils",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:nn",
-        "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
         "@six_archive//:six",
     ],
@@ -225,10 +209,11 @@ py_test(
     name = "dnn_linear_combined_test",
     size = "medium",
     srcs = ["canned/dnn_linear_combined_test.py"],
-    shard_count = 8,
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
+        ":dnn",
         ":dnn_linear_combined",
         ":dnn_testing_utils",
         ":export_export",
@@ -240,7 +225,6 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:nn",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
@@ -354,6 +338,7 @@ py_library(
 
 py_test(
     name = "parsing_utils_test",
+    size = "small",
     srcs = ["canned/parsing_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -526,11 +511,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
-        ":head",
-        ":optimizers",
-        "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
+        ":utils",
         "//tensorflow/python/feature_column",
         "@six_archive//:six",
     ],
@@ -575,9 +556,11 @@ py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["canned/linear_test.py"],
-    shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "noasan",  # times out b/63680444
+    ],
     deps = [
         ":linear",
         ":linear_testing_utils",

@@ -206,8 +206,9 @@ def mock_optimizer(testcase, hidden_units, expected_loss=None):
 class BaseDNNModelFnTest(object):
   """Tests that _dnn_model_fn passes expected logits to mock head."""
 
-  def __init__(self, dnn_model_fn):
+  def __init__(self, dnn_model_fn, dnn_logit_fn_builder):
     self._dnn_model_fn = dnn_model_fn
+    self._dnn_logit_fn_builder = dnn_logit_fn_builder
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -227,17 +228,22 @@ class BaseDNNModelFnTest(object):
           hidden_units=hidden_units,
           logits_dimension=logits_dimension,
           expected_logits=expected_logits)
+
+      logit_fn = self._dnn_logit_fn_builder(
+          units=head.logits_dimension,
+          hidden_units=hidden_units,
+          feature_columns= [feature_column.numeric_column(
+              'age', shape=np.array(inputs).shape[1:])])
+
       estimator_spec = self._dnn_model_fn(
-          features={'age': constant_op.constant(inputs)},
+        name='dnn',
+        features={'age': constant_op.constant(inputs)},
           labels=constant_op.constant([[1]]),
           mode=mode,
           head=head,
-          hidden_units=hidden_units,
-          feature_columns=[
-              feature_column.numeric_column(
-                  'age', shape=np.array(inputs).shape[1:])
-          ],
+          logit_fn=logit_fn,
           optimizer=mock_optimizer(self, hidden_units))
+
       with monitored_session.MonitoredTrainingSession(
           checkpoint_dir=self._model_dir) as sess:
         if mode == model_fn.ModeKeys.TRAIN:
@@ -414,7 +420,17 @@ class BaseDNNModelFnTest(object):
             hidden_units=hidden_units,
             logits_dimension=logits_dimension,
             expected_logits=expected_logits)
+
+        logit_fn = self._dnn_logit_fn_builder(
+            units=head.logits_dimension,
+            hidden_units=hidden_units,
+            feature_columns=[
+                feature_column.numeric_column('age'),
+                feature_column.numeric_column('height')
+            ])
+
         estimator_spec = self._dnn_model_fn(
+            name='dnn',
             features={
                 'age': constant_op.constant(inputs[0]),
                 'height': constant_op.constant(inputs[1])
@@ -422,12 +438,9 @@ class BaseDNNModelFnTest(object):
             labels=constant_op.constant([[1]]),
             mode=mode,
             head=head,
-            hidden_units=hidden_units,
-            feature_columns=[
-                feature_column.numeric_column('age'),
-                feature_column.numeric_column('height')
-            ],
+            logit_fn=logit_fn,
             optimizer=mock_optimizer(self, hidden_units))
+
         with monitored_session.MonitoredTrainingSession(
             checkpoint_dir=self._model_dir) as sess:
           if mode == model_fn.ModeKeys.TRAIN:
@@ -453,17 +466,23 @@ class BaseDNNModelFnTest(object):
           hidden_units=hidden_units,
           logits_dimension=logits_dimension,
           expected_logits=expected_logits)
+
+      logit_fn = self._dnn_logit_fn_builder(
+          units=head.logits_dimension,
+          hidden_units=hidden_units,
+        feature_columns=[
+           feature_column.numeric_column(
+                'age', shape=np.array(inputs).shape[1:])
+        ])
+
       with self.assertRaisesRegexp(ValueError, 'features should be a dict'):
         self._dnn_model_fn(
+            name='dnn',
             features=constant_op.constant(inputs),
             labels=constant_op.constant([[1]]),
             mode=model_fn.ModeKeys.TRAIN,
             head=head,
-            hidden_units=hidden_units,
-            feature_columns=[
-                feature_column.numeric_column(
-                    'age', shape=np.array(inputs).shape[1:])
-            ],
+            logit_fn=logit_fn,
             optimizer=mock_optimizer(self, hidden_units))
 
 
@@ -502,10 +521,9 @@ class BaseDNNLogitFnTest(object):
                     'age', shape=np.array(inputs).shape[1:])
             ],
             activation_fn=nn.relu,
-            dropout=None,
-            input_layer_partitioner=input_layer_partitioner)
+            dropout=None)
         logits = logit_fn(
-            features={'age': constant_op.constant(inputs)}, mode=mode)
+            features={'age': constant_op.constant(inputs)}, mode=mode, input_layer_partitioner=input_layer_partitioner)
         with monitored_session.MonitoredTrainingSession(
             checkpoint_dir=self._model_dir) as sess:
           self.assertAllClose(expected_logits, sess.run(logits))
@@ -683,14 +701,14 @@ class BaseDNNLogitFnTest(object):
                   feature_column.numeric_column('height')
               ],
               activation_fn=nn.relu,
-              dropout=None,
-              input_layer_partitioner=input_layer_partitioner)
+              dropout=None)
           logits = logit_fn(
               features={
                   'age': constant_op.constant(inputs[0]),
                   'height': constant_op.constant(inputs[1])
               },
-              mode=mode)
+              mode=mode,
+              input_layer_partitioner = input_layer_partitioner)
           with monitored_session.MonitoredTrainingSession(
               checkpoint_dir=self._model_dir) as sess:
             self.assertAllClose(expected_logits, sess.run(logits))

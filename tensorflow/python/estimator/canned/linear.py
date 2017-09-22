@@ -18,29 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
-import six
-
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator.canned import head as head_lib
-from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
-from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import ftrl
-from tensorflow.python.training import training_util
 
+from tensorflow.python.estimator.canned.utils import common_model_fn
+from tensorflow.python.estimator.canned.utils import classifier_head
+from tensorflow.python.estimator.canned.utils import regression_head
+from tensorflow.python.estimator.canned.utils import add_layer_summary
 
 # The default learning rate of 0.2 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
 _LEARNING_RATE = 0.2
-
-
-def _get_default_optimizer(feature_columns):
-  learning_rate = min(_LEARNING_RATE, 1.0 / math.sqrt(len(feature_columns)))
-  return ftrl.FtrlOptimizer(learning_rate=learning_rate)
-
 
 def _linear_logit_fn_builder(units, feature_columns):
   """Function builder for a linear logit_fn.
@@ -55,7 +43,7 @@ def _linear_logit_fn_builder(units, feature_columns):
 
   """
 
-  def linear_logit_fn(features):
+  def linear_logit_fn(features, mode=None, input_layer_partitioner=None):
     """Linear model logit_fn.
 
     Args:
@@ -66,72 +54,50 @@ def _linear_logit_fn_builder(units, feature_columns):
     Returns:
       A `Tensor` representing the logits.
     """
-    return feature_column_lib.linear_model(
+    logits = feature_column_lib.linear_model(
         features=features, feature_columns=feature_columns, units=units)
+    add_layer_summary(logits, 'linear')
+    return logits
+
 
   return linear_logit_fn
 
 
-def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
-                     partitioner, config):
-  """A model_fn for linear models that use a gradient-based optimizer.
-
-  Args:
-    features: dict of `Tensor`.
-    labels: `Tensor` of shape `[batch_size, logits_dimension]`.
-    mode: Defines whether this is training, evaluation or prediction.
-      See `ModeKeys`.
-    head: A `Head` instance.
-    feature_columns: An iterable containing all the feature columns used by
-      the model.
-    optimizer: string, `Optimizer` object, or callable that defines the
-      optimizer to use for training. If `None`, will use a FTRL optimizer.
-    partitioner: Partitioner for variables.
-    config: `RunConfig` object to configure the runtime settings.
-
-  Returns:
-    An `EstimatorSpec` instance.
-
-  Raises:
-    ValueError: mode or params are invalid, or features has the wrong type.
-  """
-  if not isinstance(features, dict):
-    raise ValueError('features should be a dictionary of `Tensor`s. '
-                     'Given type: {}'.format(type(features)))
-  optimizer = optimizers.get_optimizer_instance(
-      optimizer or _get_default_optimizer(feature_columns),
-      learning_rate=_LEARNING_RATE)
-  num_ps_replicas = config.num_ps_replicas if config else 0
-
-  partitioner = partitioner or (
-      partitioned_variables.min_max_variable_partitioner(
-          max_partitions=num_ps_replicas,
-          min_slice_size=64 << 20))
-
-  with variable_scope.variable_scope(
-      'linear',
-      values=tuple(six.itervalues(features)),
-      partitioner=partitioner):
+class _Linear(estimator.Estimator):
+  """Common functionality for canned Linear models"""
+  def __init__(self,
+               head,
+               feature_columns,
+               model_dir,
+               optimizer,
+               config,
+               partitioner):
+    """Initializes a `_Linear` instance."""
 
     logit_fn = _linear_logit_fn_builder(
-        units=head.logits_dimension, feature_columns=feature_columns)
-    logits = logit_fn(features=features)
+        units=head.logits_dimension,
+        feature_columns=tuple(feature_columns or []))
 
-    def _train_op_fn(loss):
-      """Returns the op to optimize the loss."""
-      return optimizer.minimize(
-          loss,
-          global_step=training_util.get_global_step())
+    def _model_fn(features, labels, mode, config):
+      return common_model_fn(
+          name='linear',
+          features=features,
+          labels=labels,
+          mode=mode,
+          head=head,
+          logit_fn=logit_fn,
+          optimizer=optimizer,
+          learning_rate=_LEARNING_RATE,
+          partitioner=partitioner,
+          config=config)
 
-    return head.create_estimator_spec(
-        features=features,
-        mode=mode,
-        labels=labels,
-        train_op_fn=_train_op_fn,
-        logits=logits)
+    super(_Linear, self).__init__(
+        model_fn=_model_fn,
+        model_dir=model_dir,
+        config=config)
 
 
-class LinearClassifier(estimator.Estimator):
+class LinearClassifier(_Linear):
   """Linear classifier model.
 
   Train a linear model to classify instances into one of multiple possible
@@ -231,31 +197,21 @@ class LinearClassifier(estimator.Estimator):
     Raises:
       ValueError: if n_classes < 2.
     """
-    if n_classes == 2:
-      head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
-          weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
-    else:
-      head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes, weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
-    def _model_fn(features, labels, mode, config):
-      return _linear_model_fn(
-          features=features,
-          labels=labels,
-          mode=mode,
-          head=head,
-          feature_columns=tuple(feature_columns or []),
-          optimizer=optimizer,
-          partitioner=partitioner,
-          config=config)
+    head = classifier_head(
+        n_classes=n_classes,
+        weight_column=weight_column,
+        label_vocabulary=label_vocabulary)
+
     super(LinearClassifier, self).__init__(
-        model_fn=_model_fn,
-        model_dir=model_dir,
-        config=config)
+      head=head,
+      feature_columns=feature_columns,
+      model_dir=model_dir,
+      optimizer=optimizer,
+      config=config,
+      partitioner=partitioner)
 
 
-class LinearRegressor(estimator.Estimator):
+class LinearRegressor(_Linear):
   """An estimator for TensorFlow Linear regression problems.
 
   Train a linear regression model to predict label value given observation of
@@ -331,19 +287,14 @@ class LinearRegressor(estimator.Estimator):
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
     """
-    head = head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
-        label_dimension=label_dimension, weight_column=weight_column)
-    def _model_fn(features, labels, mode, config):
-      return _linear_model_fn(
-          features=features,
-          labels=labels,
-          mode=mode,
-          head=head,
-          feature_columns=tuple(feature_columns or []),
-          optimizer=optimizer,
-          partitioner=partitioner,
-          config=config)
+    head = regression_head(
+        label_dimension=label_dimension,
+        weight_column=weight_column)
+
     super(LinearRegressor, self).__init__(
-        model_fn=_model_fn,
-        model_dir=model_dir,
-        config=config)
+      head=head,
+      feature_columns=feature_columns,
+      model_dir=model_dir,
+      optimizer=optimizer,
+      config=config,
+      partitioner=partitioner)

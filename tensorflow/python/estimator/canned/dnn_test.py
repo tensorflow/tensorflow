@@ -26,6 +26,7 @@ import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.estimator.canned.utils import common_model_fn
 from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import dnn_testing_utils
 from tensorflow.python.estimator.canned import prediction_keys
@@ -62,7 +63,9 @@ class DNNModelFnTest(dnn_testing_utils.BaseDNNModelFnTest, test.TestCase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
-    dnn_testing_utils.BaseDNNModelFnTest.__init__(self, dnn._dnn_model_fn)
+    dnn_testing_utils.BaseDNNModelFnTest.__init__(self,
+                                                  common_model_fn,
+                                                  dnn._dnn_logit_fn_builder)
 
 
 class DNNLogitFnTest(dnn_testing_utils.BaseDNNLogitFnTest, test.TestCase):
