@@ -414,9 +414,15 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                                             std::vector<NodeDef>* outputs) {
   TensorVector inputs;
-  auto inputs_cleanup = gtl::MakeCleanup([&inputs] {
+  TensorVector output_tensors;
+  auto inputs_cleanup = gtl::MakeCleanup([&inputs, &output_tensors] {
     for (const auto& input : inputs) {
       delete input.tensor;
+    }
+    for (const auto& output : output_tensors) {
+      if (output.tensor) {
+        delete output.tensor;
+      }
     }
   });
 
@@ -439,7 +445,6 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     inputs.emplace_back(value);
   }
 
-  TensorVector output_tensors;
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
   if (output_tensors.empty()) {
     return Status(error::INVALID_ARGUMENT, "Expected at least one output.");
@@ -452,7 +457,6 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
     if (output_tensors[i].tensor) {
       outputs->push_back(CreateNodeDef(node_name, output_tensors[i]));
-      delete output_tensors[i].tensor;
     } else {
       // Create an empty NodeDef to identify dead outputs (e.g. the output of a
       // switch that's not selected by the switch predicate).
@@ -462,7 +466,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   return Status::OK();
 }
 
-Status ConstantFolding::FoldNode(NodeDef* node) {
+Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph) {
   if (IsMerge(*node)) {
     // Merge nodes are special, in the sense that they execute as soon as one of
     // their input is ready. We can therefore fold a merge node iff it has at
@@ -511,7 +515,7 @@ Status ConstantFolding::FoldNode(NodeDef* node) {
                             "already present in the graph"));
       }
 
-      NodeDef* const_out = added_graph_.add_node();
+      NodeDef* const_out = output_graph->add_node();
       *const_out = *input_node;
       const_out->set_name(const_out_name);
       const_out->set_device(node->device());
@@ -519,7 +523,7 @@ Status ConstantFolding::FoldNode(NodeDef* node) {
       node_map_->AddNode(const_out->name(), const_out);
       node_map_->AddOutput(node->name(), const_out->name());
 
-      NodeDef* const_index = added_graph_.add_node();
+      NodeDef* const_index = output_graph->add_node();
       const_index->set_op("Const");
       Tensor index(DT_INT32, TensorShape({}));
       index.flat<int32>()(0) = input_index;
@@ -608,7 +612,7 @@ Status ConstantFolding::FoldNode(NodeDef* node) {
         return errors::AlreadyExists(strings::StrCat(
             const_node->name(), "already present in the graph"));
       }
-      NodeDef* added_node = added_graph_.add_node();
+      NodeDef* added_node = output_graph->add_node();
       *added_node = *const_node;
       added_node->set_device(node->device());
       node_map_->AddNode(added_node->name(), added_node);
@@ -679,7 +683,7 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
     }
     // We need to record a copy of output nodes before FoldNode() modifies it.
     std::set<NodeDef*> outputs = node_map_->GetOutputs(node->name());
-    Status s = FoldNode(node);
+    Status s = FoldNode(node, output);
     processed_nodes.insert(node->name());
     if (!s.ok()) {
       VLOG(1) << "Failed to fold node " << node->name() << ": " << s;
@@ -692,14 +696,19 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
     }
   }
 
-  // Build the graph after constant folding.
-  for (const auto& node : added_graph_.node()) {
+  // Delete the newly created nodes that don't feed anything.
+  int last = output->node_size() - 1;
+  for (int i = output->node_size() - 1; i >= 0; --i) {
+    const NodeDef& node = output->node(i);
     auto outputs = node_map_->GetOutputs(node.name());
-    if (!outputs.empty()) {
-      auto added_node = output->add_node();
-      *added_node = node;
+    if (outputs.empty()) {
+      output->mutable_node()->SwapElements(i, last);
+      last--;
     }
   }
+  output->mutable_node()->DeleteSubrange(last + 1,
+                                         output->node_size() - last - 1);
+
   for (const auto& node : graph_.node()) {
     // If no fetch nodes is provided, we conservatively
     // keep all nodes in the original graph in case users need to fetch
@@ -843,11 +852,11 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
   return Status::OK();
 }
 
-Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output) {
-  graph_ = item.graph;
+Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
+                                            const GrapplerItem& item,
+                                            GraphDef* output) {
   node_map_.reset(new NodeMap(&graph_));
-  nodes_to_preserve_ = item.NodesToPreserve();
+  nodes_whitelist_.clear();
   // Fold fetch nodes iff it has a single fanout. Note that if a fetch node
   // has a single fanout, it would be rewritten as a constant with the same
   // node name, and therefore users are still able to fetch it. This is not
@@ -861,16 +870,9 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
       nodes_whitelist_.insert(fetch_node->name());
     }
   }
-  *output = GraphDef();
-  if (cpu_device_ == nullptr) {
-    owned_device_.reset(new DeviceSimple());
-    cpu_device_ = owned_device_.get();
-  }
-
-  bool has_feed = !item.feed.empty();
-  has_fetch_ = !item.fetch.empty();
 
   GraphProperties properties(item);
+  bool has_feed = !item.feed.empty();
   if (!has_feed) {
     // Only use static shape information when there is no feed in the
     // graph. That's because it's possible to feed a placeholder with a tensor
@@ -889,6 +891,28 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (!has_feed) {
     TF_RETURN_IF_ERROR(SimplifyGraph(output, properties));
   }
+  return Status::OK();
+}
+
+Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
+                                 GraphDef* output) {
+  nodes_to_preserve_ = item.NodesToPreserve();
+
+  if (cpu_device_ == nullptr) {
+    owned_device_.reset(new DeviceSimple());
+    cpu_device_ = owned_device_.get();
+  }
+
+  has_fetch_ = !item.fetch.empty();
+
+  GrapplerItem item_to_optimize = item;
+  *output = item.graph;
+  do {
+    graph_.Swap(output);
+    item_to_optimize.graph = graph_;
+    *output = GraphDef();
+    TF_RETURN_IF_ERROR(RunOptimizationPass(cluster, item_to_optimize, output));
+  } while (output->node_size() < graph_.node_size());
 
   *output->mutable_library() = item.graph.library();
   *output->mutable_versions() = item.graph.versions();

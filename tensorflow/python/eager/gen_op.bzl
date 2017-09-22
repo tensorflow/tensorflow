@@ -2,6 +2,7 @@
 
 load("//tensorflow:tensorflow.bzl",
      "clean_dep",
+     "tf_binary_additional_srcs",
      "tf_copts",
      "tf_cc_binary")
 
@@ -32,7 +33,7 @@ def tfe_gen_op_wrapper_py(name,
   native.genrule(
       name=name + "_pygenrule",
       outs=[out],
-      tools=[tool_name],
+      tools=[tool_name] + tf_binary_additional_srcs(),
       cmd=("$(location " + tool_name + ")  > $@"))
 
   # Make a py_library out of the generated python file.
