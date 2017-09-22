@@ -20,7 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
-from tensorflow.contrib.data.python.util import nest
+from tensorflow.python.data.util import nest
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test

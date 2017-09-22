@@ -22,7 +22,7 @@ import collections
 
 import numpy as np
 
-from tensorflow.contrib.data.python.util import nest
+from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
