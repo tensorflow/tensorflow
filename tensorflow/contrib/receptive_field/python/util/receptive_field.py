@@ -27,12 +27,14 @@ import math
 from tensorflow.contrib.receptive_field.python.util import graph_compute_order
 from tensorflow.contrib.util import make_ndarray
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.framework import ops as framework_ops
+import numpy as np
 
 # White-listed layer operations, which do not affect the receptive field
 # computation.
 _UNCHANGED_RF_LAYER_OPS = [
     "Softplus", "Relu", "BiasAdd", "Mul", "Add", "Const", "Identity",
-    "VariableV2", "Sub", "Rsqrt", "ConcatV2"
+    "VariableV2", "Sub", "Rsqrt", "ConcatV2", "Log", "Pow", "RealDiv",
 ]
 
 # Different ways in which padding modes may be spelled.
@@ -304,6 +306,62 @@ def _get_effective_padding_node_input(stride, padding,
   return stride * effective_padding_output + padding
 
 
+class ReceptiveField:
+  """
+  Receptive field of a convolutioanl neural network.
+
+  Args:
+    size: Receptive field size.
+    stride: Effective stride.
+    padding: Effective padding.
+  """
+  def __init__(self, size, stride, padding):
+    self.size = np.asarray(size)
+    self.stride = np.asarray(stride)
+    self.padding = np.asarray(padding)
+
+  def compute_input_coordinates(self, x, axis=None):
+    """
+    Computes the center of the receptive field that generated a feature.
+
+    Args:
+      x: Coordinate of the feature.
+      axis: The dimensions for which to compute the input coordinates.
+
+    Returns:
+      y: Center of the receptive field that generated the feature.
+    """
+    # Use all dimensions
+    if axis is None:
+      axis = range(self.size.size)
+    # Ensure axis is a list because tuples have different indexing behavior
+    axis = list(axis)
+    return - self.padding[axis] + x * self.stride[axis] + \
+      (self.size[axis] - 1) / 2
+
+  def compute_feature_coordinates(self, y, axis=None):
+    """
+    Computes the position of a feature given the center of a receptive field.
+
+    Args:
+      y: Center of the receptive field.
+      axis: The dimensions for which to compute the feature coordinates.
+
+    Returns:
+      x: Coordinate of the feature.
+    """
+    # Use all dimensions
+    if axis is None:
+      axis = range(self.size.size)
+    # Ensure axis is a list because tuples have different indexing behavior
+    axis = list(axis)
+    return (y + self.padding[axis] + (1 - self.size[axis]) / 2) / \
+      self.stride[axis]
+
+  def __iter__(self):
+    return iter(np.concatenate([self.size, self.stride, self.padding]))
+
+
 def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
   """Computes receptive field (RF) parameters from a GraphDef object.
 
@@ -331,6 +389,16 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
       cannot be found. For network criterion alignment, see
       photos/vision/features/delf/g3doc/rf_computation.md
   """
+  # Convert a graph to graph_def if necessary
+  if isinstance(graph_def, framework_ops.Graph):
+    graph_def = graph_def.as_graph_def()
+
+  # Convert tensors to names
+  if isinstance(input_node, framework_ops.Tensor):
+    input_node = input_node.op.name
+  if isinstance(output_node, framework_ops.Tensor):
+    output_node = output_node.op.name
+
   # Computes order of computation for a given graph.
   name_to_order_node = graph_compute_order.get_compute_order(
       graph_def=graph_def)
@@ -480,6 +548,7 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
     raise ValueError("Output node was not found")
   if input_node not in rf_sizes_x:
     raise ValueError("Input node was not found")
-  return (rf_sizes_x[input_node], rf_sizes_y[input_node],
-          effective_strides_x[input_node], effective_strides_y[input_node],
-          effective_paddings_x[input_node], effective_paddings_y[input_node])
+  return ReceptiveField(
+    (rf_sizes_x[input_node], rf_sizes_y[input_node]),
+    (effective_strides_x[input_node], effective_strides_y[input_node]),
+    (effective_paddings_x[input_node], effective_paddings_y[input_node]))
