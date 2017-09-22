@@ -22,6 +22,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -66,6 +67,11 @@ class Literal {
   Literal& operator=(const Literal& other) = default;
   Literal& operator=(Literal&&) = default;
 
+  // Literals are equal if they have compatible shapes and the same data
+  // values. Layout is not checked.
+  bool operator==(const Literal& other) const;
+  bool operator!=(const Literal& other) const { return !(*this == other); }
+
   LiteralProto ToProto() const;
 
   bool has_shape() const {
@@ -76,6 +82,10 @@ class Literal {
   // functions for convenience.
   string DebugString() const { return ToProto().DebugString(); }
   string ShortDebugString() const { return ToProto().ShortDebugString(); }
+
+  // Return the nested literal at the given shape index.
+  const Literal& GetSubliteral(const ShapeIndex& index) const;
+  Literal& GetSubliteral(const ShapeIndex& index);
 
   void Clear() {
     shape_.Clear();
@@ -518,10 +528,6 @@ class Literal {
   template <typename NativeT>
   void Resize(int64 num_elements, NativeT value);
 
-  // Returns true if this literal has the same shape and value as the given
-  // literal. Layout is not considered in the comparison.
-  bool Equal(const Literal& literal2) const;
-
   // Returns whether every element in this literal is equal to value.
   //
   // value is an int8 because we expect this to be called with small
@@ -596,6 +602,8 @@ class Literal {
   std::vector<double> f64s_;
   std::vector<Literal> tuple_literals_;
 };
+
+std::ostream& operator<<(std::ostream& out, const Literal& literal);
 
 // Declarations of template specializations for GetArraySlice and
 // GetMutableArraySlice. The specializations map native type to XLA primitive

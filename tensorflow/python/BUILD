@@ -21,6 +21,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
@@ -32,6 +33,7 @@ load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 
 py_library(
     name = "python",
@@ -314,7 +316,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_shared_object(
     name = "framework/test_file_system.so",
     srcs = ["framework/test_file_system.cc"],
     copts = if_not_windows(["-Wno-sign-compare"]),
@@ -324,7 +326,6 @@ cc_binary(
         ],
         "//tensorflow:darwin": [],
     }),
-    linkshared = 1,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "@protobuf_archive//:protobuf_headers",
@@ -338,7 +339,10 @@ py_test(
     data = [":framework/test_file_system.so"],
     main = "framework/file_system_test.py",
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_pip",  # Path issues due to test environment
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":data_flow_ops",
@@ -2927,7 +2931,13 @@ tf_cuda_library(
 
 py_library(
     name = "pywrap_tensorflow",
-    srcs = ["pywrap_tensorflow.py"],
+    srcs = [
+        "pywrap_tensorflow.py",
+    ] + if_static(
+        ["pywrap_dlopen_global_flags.py"],
+        # Import will fail, indicating no global dlopen flags
+        otherwise = [],
+    ),
     srcs_version = "PY2AND3",
     deps = [":pywrap_tensorflow_internal"],
 )
@@ -3214,7 +3224,7 @@ tf_cuda_library(
         "//tensorflow/core",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_cc",
+        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )

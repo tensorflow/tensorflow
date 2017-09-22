@@ -40,6 +40,63 @@ Status GetInitializableLookupTable(const string& input_name,
 // table's data types.
 Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
                            DataType value_dtype, const string& table_name);
+
+Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
+                                   char delimiter, int32 key_index,
+                                   int32 value_index, Env* env,
+                                   InitializableLookupTable* table);
+
+// Iterator to initialize tables given 'keys' and 'values' tensors.
+//
+// The two tensors are returned in the first iteration. It doesn't loop
+// over each element of the tensor since insertions in the lookup table can
+// process batches.
+class KeyValueTensorIterator
+    : public InitializableLookupTable::InitTableIterator {
+ public:
+  // keys and values are not owned by the iterator.
+  explicit KeyValueTensorIterator(const Tensor* keys, const Tensor* values)
+      : keys_(keys), values_(values), valid_(true), status_(Status::OK()) {
+    TensorShape key_shape = keys_->shape();
+    if (!key_shape.IsSameSize(values_->shape())) {
+      valid_ = false;
+      status_ = errors::InvalidArgument(
+          "keys and values should have the same dimension.",
+          key_shape.DebugString(), " vs ", values_->shape().DebugString());
+    }
+    if (key_shape.num_elements() == 0) {
+      valid_ = false;
+      status_ =
+          errors::InvalidArgument("keys and values cannot be empty tensors.");
+    }
+  }
+
+  bool Valid() const override { return valid_; }
+
+  void Next() override {
+    valid_ = false;
+    status_ = errors::OutOfRange("No more data.");
+  }
+
+  const Tensor& keys() const override { return *keys_; }
+
+  const Tensor& values() const override { return *values_; }
+
+  Status status() const override { return status_; }
+
+  int64 total_size() const override {
+    return keys_ == nullptr ? -1 : keys_->NumElements();
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(KeyValueTensorIterator);
+
+  const Tensor* keys_;    // Doesn't own it.
+  const Tensor* values_;  // Doesn't own it.
+  bool valid_;            // true if the iterator points to an existing range.
+  Status status_;
+};
+
 }  // namespace lookup
 }  // namespace tensorflow
 

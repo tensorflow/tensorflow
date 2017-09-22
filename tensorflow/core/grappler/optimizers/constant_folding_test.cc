@@ -62,29 +62,18 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(3, output.node_size());
+  EXPECT_EQ(1, output.node_size());
 
-  const NodeDef& node_b = output.node(0);
-  EXPECT_EQ("b", node_b.name());
-
-  const NodeDef& node_c = output.node(1);
-  EXPECT_EQ("c", node_c.name());
-  EXPECT_EQ("Const", node_c.op());
-  EXPECT_EQ("/CPU:0", node_c.device());
-
-  const NodeDef& node_d = output.node(2);
+  const NodeDef& node_d = output.node(0);
   EXPECT_EQ("d", node_d.name());
-  EXPECT_EQ("c", node_d.input(1));
-  EXPECT_EQ("", node_d.device());
+  EXPECT_EQ("Const", node_d.op());
 
-  std::vector<string> fetch = {"b", "c", "d"};
+  std::vector<string> fetch = {"d"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
   auto tensors = EvaluateNodes(output, fetch);
-  EXPECT_EQ(fetch.size(), tensors_expected.size());
-  EXPECT_EQ(fetch.size(), tensors.size());
-  for (int i = 0; i < fetch.size(); i++) {
-    test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
-  }
+  EXPECT_EQ(1, tensors_expected.size());
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
 TEST_F(ConstantFoldingTest, FoldingNodeWithTwoOutputs) {
@@ -108,23 +97,15 @@ TEST_F(ConstantFoldingTest, FoldingNodeWithTwoOutputs) {
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(4, output.node_size());
+  EXPECT_EQ(2, output.node_size());
 
   const NodeDef& new_c = output.node(0);
-  EXPECT_EQ("c", new_c.name());
+  EXPECT_EQ("e", new_c.name());
   EXPECT_EQ("Const", new_c.op());
 
   const NodeDef& new_d = output.node(1);
-  EXPECT_EQ("d", new_d.name());
+  EXPECT_EQ("f", new_d.name());
   EXPECT_EQ("Const", new_d.op());
-
-  const NodeDef& new_e = output.node(2);
-  EXPECT_EQ("e", new_e.name());
-  EXPECT_EQ("c", new_e.input(0));
-
-  const NodeDef& new_f = output.node(3);
-  EXPECT_EQ("f", new_f.name());
-  EXPECT_EQ("d", new_f.input(0));
 
   std::vector<string> fetch = {"e", "f"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
@@ -157,18 +138,18 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "i2", "e"};
+  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "e"};
   EXPECT_EQ(output.node_size(), expected_nodes.size());
   int i = 0;
   int found = 0;
   for (const auto& node : output.node()) {
     EXPECT_EQ(expected_nodes[i], output.node(i).name());
     i++;
-    if (node.name() == "i2") {
+    if (node.name() == "e") {
       EXPECT_EQ("Const", node.op());
       ++found;
-      auto folded = EvaluateNodes(output, {"i2"});
-      auto expected = EvaluateNodes(item.graph, {"i2"});
+      auto folded = EvaluateNodes(output, {"e"});
+      auto expected = EvaluateNodes(item.graph, {"e"});
       EXPECT_EQ(1, expected.size());
       EXPECT_EQ(1, folded.size());
       test::ExpectTensorEqual<int>(folded[0], expected[0]);
@@ -257,13 +238,13 @@ TEST_F(ConstantFoldingTest, ControlDependenciesDeduplicate) {
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "i1", "i2"};
+  std::vector<string> expected_nodes = {"dflt", "p1", "p2", "i2"};
   EXPECT_EQ(output.node_size(), expected_nodes.size());
   int i = 0;
   for (const auto& node : output.node()) {
     EXPECT_EQ(expected_nodes[i], output.node(i).name());
     i++;
-    if (node.name() == "i1") {
+    if (node.name() == "i2") {
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("^p1", node.input(0));
@@ -333,8 +314,8 @@ TEST_F(ConstantFoldingTest, VariableNumberOfOutputs) {
 
   int constant_folded = 0;
   for (const auto& node : output.node()) {
-    if (node.name().find("ConstantFolding/partition") != string::npos ||
-        node.name().find("ConstantFolding/concat_offsets") != string::npos) {
+    if (node.name().find("part_out") != string::npos ||
+        node.name().find("concat_offset_out") != string::npos) {
       ++constant_folded;
       EXPECT_EQ("Const", node.op());
     }
@@ -371,15 +352,19 @@ TEST_F(ConstantFoldingTest, ShapeMaterialization) {
 
   int found = 0;
   for (const auto& node : output.node()) {
-    if (node.name() == "shape") {
+    if (node.name() == "p2") {
       ++found;
       EXPECT_EQ("Const", node.op());
-      EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("^v2", node.input(0));
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("^v3", node.input(0));
+      EXPECT_EQ("^v1", node.input(1));
+      EXPECT_EQ("^v2", node.input(2));
       Tensor value;
       CHECK(value.FromProto(node.attr().at("value").tensor()));
-      EXPECT_EQ(5, value.flat<int>()(0));
-      EXPECT_EQ(7, value.flat<int>()(1));
+      // rank = 1, shape = (5, 7), size = 143 = 11*13
+      // p2 = (715, 1001) = (5*143, 7*143)
+      EXPECT_EQ(715, value.flat<int>()(0));
+      EXPECT_EQ(1001, value.flat<int>()(1));
     }
   }
   EXPECT_EQ(1, found);
@@ -614,11 +599,11 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
   for (const auto& node : output.node()) {
     if (node.name() == "out1") {
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("ConstantFolding/m1", node.input(0));
+      EXPECT_EQ("^m1", node.input(0));
       ++found_nodes;
     } else if (node.name() == "idx1") {
       EXPECT_EQ(1, node.input_size());
-      EXPECT_EQ("ConstantFolding/m1_index", node.input(0));
+      EXPECT_EQ("^m1", node.input(0));
       ++found_nodes;
     } else if (node.name() == "ConstantFolding/m1") {
       EXPECT_EQ("Const", node.op());
@@ -649,7 +634,7 @@ TEST_F(ConstantFoldingTest, MergeNodes) {
     }
   }
   // Make sure the graph contains all the nodes we're expecting.
-  EXPECT_EQ(8, found_nodes);
+  EXPECT_EQ(6, found_nodes);
 
   std::vector<string> fetch = {"out1", "idx1"};
   auto tensors = EvaluateNodes(output, fetch);

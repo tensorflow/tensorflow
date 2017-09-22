@@ -317,15 +317,17 @@ You should be able to compile `zero_out.cc` with a `C++` compiler such as `g++`
 or `clang` available on your system. The binary PIP package installs the header
 files and the library that you need to compile your op in locations that are
 system specific. However, the TensorFlow python library provides the
-`get_include` function to get the header directory.
-Here is the output of this function on an Ubuntu machine.
+`get_include` function to get the header directory, and the `get_lib` directory
+has a shared object to link against.
+Here are the outputs of these functions on an Ubuntu machine.
 
 ```bash
 $ python
 >>> import tensorflow as tf
 >>> tf.sysconfig.get_include()
 '/usr/local/lib/python2.7/site-packages/tensorflow/include'
-
+>>> tf.sysconfig.get_lib()
+'/usr/local/lib/python2.7/site-packages/tensorflow'
 ```
 
 Assuming you have `g++` installed, here is the sequence of commands you can use
@@ -333,8 +335,8 @@ to compile your op into a dynamic library.
 
 ```bash
 TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
-
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I$TF_INC -I$TF_INC/external/nsync/public -O2
+TF_LIB=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I$TF_INC -I$TF_INC/external/nsync/public -L$TF_LIB -ltensorflow_framework -O2
 ```
 
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
@@ -1222,7 +1224,7 @@ nvcc -std=c++11 -c -o cuda_op_kernel.cu.o cuda_op_kernel.cu.cc \
 -I $TF_INC -I$TF_INC/external/nsync/public -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
 
 g++ -std=c++11 -shared -o cuda_op_kernel.so cuda_op_kernel.cc \
-cuda_op_kernel.cu.o -I $TF_INC -I$TF_INC/external/nsync/public -fPIC -lcudart
+cuda_op_kernel.cu.o -I $TF_INC -I$TF_INC/external/nsync/public -fPIC -lcudart -L$TF_LIB -ltensorflow_framework
 ```
 
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the

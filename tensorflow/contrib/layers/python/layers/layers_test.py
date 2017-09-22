@@ -434,7 +434,7 @@ class ConvolutionTest(test.TestCase):
       conv = layers_lib.convolution2d(
           images, 32, [3, 3], outputs_collections='outputs', scope='Conv')
     output_collected = ops.get_collection('outputs')[0]
-    self.assertEqual(output_collected.aliases, ['fe/Conv'])
+    self.assertEqual(output_collected.aliases, ['Conv'])
     self.assertEqual(output_collected, conv)
 
   def testCreateConvWithoutActivation(self):
@@ -1589,7 +1589,7 @@ class FCTest(test.TestCase):
       fc = _layers.fully_connected(
           inputs, 7, outputs_collections='outputs', scope='fc')
     output_collected = ops.get_collection('outputs')[0]
-    self.assertEqual(output_collected.aliases, ['fe/fc'])
+    self.assertEqual(output_collected.aliases, ['fc'])
     self.assertEqual(output_collected, fc)
 
   def testCreateFcCreatesWeightsAndBiasesVars(self):
