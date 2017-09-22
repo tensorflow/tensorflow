@@ -141,6 +141,8 @@ class Multinomial(distribution.Distribution):
 
   counts = [[2., 1, 1], [3, 1, 1]]
   dist.prob(counts)  # Shape [2]
+
+  dist.sample(5) # Shape [5, 2, 3]
   ```
   """
 
