@@ -25,12 +25,8 @@ import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.media.Image;
-import android.media.Image.Plane;
-import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.SystemClock;
-import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
@@ -44,7 +40,7 @@ import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 import org.tensorflow.demo.tracking.MultiBoxTracker;
-import org.tensorflow.demo.R;
+import org.tensorflow.demo.R; // Explicit import needed for internal Google builds.
 
 /**
  * An activity that uses a TensorFlowMultiBoxDetector and ObjectTracker to detect and then track
@@ -104,30 +100,23 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   private Classifier detector;
 
-  private int previewWidth = 0;
-  private int previewHeight = 0;
-  private byte[][] yuvBytes;
-  private int[] rgbBytes = null;
+  private long lastProcessingTimeMs;
   private Bitmap rgbFrameBitmap = null;
   private Bitmap croppedBitmap = null;
+  private Bitmap cropCopyBitmap = null;
 
-  private boolean computing = false;
+  private boolean computingDetection = false;
 
   private long timestamp = 0;
 
   private Matrix frameToCropTransform;
   private Matrix cropToFrameTransform;
 
-  private Bitmap cropCopyBitmap;
-
   private MultiBoxTracker tracker;
 
-  private byte[] luminance;
+  private byte[] luminanceCopy;
 
   private BorderedText borderedText;
-
-  private long lastProcessingTimeMs;
-
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
     final float textSizePx =
@@ -187,7 +176,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     sensorOrientation = rotation + screenOrientation;
 
     LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
-    rgbBytes = new int[previewWidth * previewHeight];
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
     croppedBitmap = Bitmap.createBitmap(cropSize, cropSize, Config.ARGB_8888);
 
@@ -199,7 +187,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     cropToFrameTransform = new Matrix();
     frameToCropTransform.invert(cropToFrameTransform);
-    yuvBytes = new byte[3][];
 
     trackingOverlay = (OverlayView) findViewById(R.id.tracking_overlay);
     trackingOverlay.addCallback(
@@ -260,82 +247,47 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   OverlayView trackingOverlay;
 
   @Override
-  public void onImageAvailable(final ImageReader reader) {
-    Image image = null;
-
+  protected void processImage() {
     ++timestamp;
     final long currTimestamp = timestamp;
+    byte[] originalLuminance = getLuminance();
+    tracker.onFrame(
+        previewWidth,
+        previewHeight,
+        getLuminanceStride(),
+        sensorOrientation,
+        originalLuminance,
+        timestamp);
+    trackingOverlay.postInvalidate();
 
-    try {
-      image = reader.acquireLatestImage();
-
-      if (image == null) {
-        return;
-      }
-
-      Trace.beginSection("imageAvailable");
-
-      final Plane[] planes = image.getPlanes();
-      fillBytes(planes, yuvBytes);
-
-      tracker.onFrame(
-          previewWidth,
-          previewHeight,
-          planes[0].getRowStride(),
-          sensorOrientation,
-          yuvBytes[0],
-          timestamp);
-      trackingOverlay.postInvalidate();
-
-      // No mutex needed as this method is not reentrant.
-      if (computing) {
-        image.close();
-        return;
-      }
-      computing = true;
-
-      final int yRowStride = planes[0].getRowStride();
-      final int uvRowStride = planes[1].getRowStride();
-      final int uvPixelStride = planes[1].getPixelStride();
-      ImageUtils.convertYUV420ToARGB8888(
-          yuvBytes[0],
-          yuvBytes[1],
-          yuvBytes[2],
-          previewWidth,
-          previewHeight,
-          yRowStride,
-          uvRowStride,
-          uvPixelStride,
-          rgbBytes);
-
-      image.close();
-    } catch (final Exception e) {
-      if (image != null) {
-        image.close();
-      }
-      LOGGER.e(e, "Exception!");
-      Trace.endSection();
+    // No mutex needed as this method is not reentrant.
+    if (computingDetection) {
+      readyForNextImage();
       return;
     }
+    computingDetection = true;
+    LOGGER.i("Preparing image " + currTimestamp + " for detection in bg thread.");
 
-    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+    rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
+
+    if (luminanceCopy == null) {
+      luminanceCopy = new byte[originalLuminance.length];
+    }
+    System.arraycopy(originalLuminance, 0, luminanceCopy, 0, originalLuminance.length);
+    readyForNextImage();
+
     final Canvas canvas = new Canvas(croppedBitmap);
     canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
-
     // For examining the actual TF input.
     if (SAVE_PREVIEW_BITMAP) {
       ImageUtils.saveBitmap(croppedBitmap);
     }
 
-    if (luminance == null) {
-      luminance = new byte[yuvBytes[0].length];
-    }
-    System.arraycopy(yuvBytes[0], 0, luminance, 0, luminance.length);
-
     runInBackground(
         new Runnable() {
           @Override
           public void run() {
+            LOGGER.i("Running detection on image " + currTimestamp);
             final long startTime = SystemClock.uptimeMillis();
             final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
             lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
@@ -349,9 +301,15 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
             float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
             switch (MODE) {
-                case TF_OD_API: minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API; break;
-                case MULTIBOX: minimumConfidence = MINIMUM_CONFIDENCE_MULTIBOX; break;
-                case YOLO: minimumConfidence = MINIMUM_CONFIDENCE_YOLO; break;
+              case TF_OD_API:
+                minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                break;
+              case MULTIBOX:
+                minimumConfidence = MINIMUM_CONFIDENCE_MULTIBOX;
+                break;
+              case YOLO:
+                minimumConfidence = MINIMUM_CONFIDENCE_YOLO;
+                break;
             }
 
             final List<Classifier.Recognition> mappedRecognitions =
@@ -368,18 +326,14 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
               }
             }
 
-            tracker.trackResults(mappedRecognitions, luminance, currTimestamp);
+            tracker.trackResults(mappedRecognitions, luminanceCopy, currTimestamp);
             trackingOverlay.postInvalidate();
 
             requestRender();
-            computing = false;
+            computingDetection = false;
           }
         });
-
-    Trace.endSection();
   }
-
-  protected void processImageRGBbytes(int[] rgbBytes ) {}
 
   @Override
   protected int getLayoutId() {

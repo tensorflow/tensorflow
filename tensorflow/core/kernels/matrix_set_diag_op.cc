@@ -64,8 +64,7 @@ class MatrixSetDiagOp : public OpKernel {
     const int64 min_dim = std::min(input_shape.dim_size(rank - 1),
                                    input_shape.dim_size(rank - 2));
     TensorShape expected_diag_shape = input_shape;
-    expected_diag_shape.RemoveDim(rank - 1);
-    expected_diag_shape.RemoveDim(rank - 2);
+    expected_diag_shape.RemoveLastDims(2);
     expected_diag_shape.AddDim(min_dim);
     OP_REQUIRES(context, expected_diag_shape == diag_shape,
                 errors::InvalidArgument(

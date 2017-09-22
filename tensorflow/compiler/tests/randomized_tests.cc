@@ -817,7 +817,7 @@ Tensor AsIntTensor(DataType dtype, const std::vector<int64>& values) {
     case DT_INT64:
       return test::AsTensor<int64>(values);
     default:
-      CHECK(false);
+      LOG(FATAL);
   }
 }
 

@@ -286,27 +286,6 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
 }
 
-// Adds a function call to 'scope.
-// TODO(phawkins): replace with C++ API for calling functions, when that exists.
-Output Call(Scope* scope, const string& op_name, const string& fn_name,
-            gtl::ArraySlice<Input> inputs) {
-  NodeDef def;
-  NodeDefBuilder builder(op_name, fn_name, scope->graph()->op_registry());
-  for (const Input& input : inputs) {
-    builder.Input(input.node()->name(), input.index(),
-                  input.node()->output_type(input.index()));
-  }
-  TF_CHECK_OK(builder.Finalize(&def));
-  Status status;
-  Node* n = scope->graph()->AddNode(def, &status);
-  TF_CHECK_OK(status);
-  TF_CHECK_OK(scope->DoShapeInference(n));
-  for (int i = 0; i < inputs.size(); ++i) {
-    scope->graph()->AddEdge(inputs[i].node(), inputs[i].index(), n, i);
-  }
-  return Output(n);
-}
-
 TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
@@ -317,8 +296,8 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
     Scope s = Scope::NewRootScope();
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto arg = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto a = Call(&s, "x4", "XTimesFour", {arg});
-    auto b = Call(&s, "y", "XTimesFour", {a});
+    auto a = test::function::Call(&s, "x4", "XTimesFour", {arg});
+    auto b = test::function::Call(&s, "y", "XTimesFour", {a});
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), b, 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
@@ -334,12 +313,12 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::Identity(s.WithOpName("Func/_0"), x);
-    auto x4_x2 = Call(&s, "x4/x2", "XTimesTwo", {func0});
-    auto x4_y = Call(&s, "x4/y", "XTimesTwo", {x4_x2});
+    auto x4_x2 = test::function::Call(&s, "x4/x2", "XTimesTwo", {func0});
+    auto x4_y = test::function::Call(&s, "x4/y", "XTimesTwo", {x4_x2});
     auto func1 = ops::Identity(s.WithOpName("Func/_1"), x4_y);
     auto func2 = ops::Identity(s.WithOpName("Func/_2"), func1);
-    auto y_x2 = Call(&s, "y/x2", "XTimesTwo", {func2});
-    auto y_y = Call(&s, "y/y", "XTimesTwo", {y_x2});
+    auto y_x2 = test::function::Call(&s, "y/x2", "XTimesTwo", {func2});
+    auto y_y = test::function::Call(&s, "y/y", "XTimesTwo", {y_x2});
     auto func3 = ops::Identity(s.WithOpName("Func/_3"), y_y);
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), func3, 0);
     GraphDef expected;
@@ -435,7 +414,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
     auto c = ops::NoOp(s.WithOpName("c"));
-    auto b = Call(&s, "b", "XTimesFour", {a});
+    auto b = test::function::Call(&s, "b", "XTimesFour", {a});
     s.graph()->AddControlEdge(c.operation.node(), b.node());
     auto ret = ops::_Retval(s.WithOpName("b_RetVal"), b, 0);
     TF_ASSERT_OK(s.ToGraph(g.get()));
@@ -451,9 +430,9 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
         ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
     auto func1 = ops::Identity(
         s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
-    auto b_x2 = Call(&s, "b/x2", "XTimesTwo", {func1});
+    auto b_x2 = test::function::Call(&s, "b/x2", "XTimesTwo", {func1});
     s.graph()->AddControlEdge(func0.operation.node(), b_x2.node());
-    auto b_y = Call(&s, "b/y", "XTimesTwo", {b_x2});
+    auto b_y = test::function::Call(&s, "b/y", "XTimesTwo", {b_x2});
     s.graph()->AddControlEdge(func0.operation.node(), b_y.node());
     auto func2 = ops::Identity(s.WithOpName("Func/_2"), b_y);
     auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);

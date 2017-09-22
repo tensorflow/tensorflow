@@ -77,6 +77,7 @@ class ConstantFolding : public GraphOptimizer {
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
+  std::unordered_set<string> nodes_whitelist_;
   GraphDef added_graph_;
   bool has_fetch_;
 };

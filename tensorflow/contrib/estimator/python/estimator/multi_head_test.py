@@ -85,24 +85,30 @@ class MultiHeadTest(test.TestCase):
       multi_head_lib.multi_head(heads=[])
 
   def test_head_name_missing(self):
-    head1 = head_lib.multi_label_head(n_classes=2, head_name='head1')
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     head2 = head_lib.multi_label_head(n_classes=3)
     with self.assertRaisesRegexp(
-        ValueError, r'All given heads must have head_name specified\.'):
+        ValueError, r'All given heads must have name specified\.'):
       multi_head_lib.multi_head([head1, head2])
 
   def test_head_weights_wrong_size(self):
-    head1 = head_lib.multi_label_head(n_classes=2, head_name='head1')
-    head2 = head_lib.multi_label_head(n_classes=3, head_name='head2')
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
     with self.assertRaisesRegexp(
         ValueError,
         r'heads and head_weights must have the same size\. '
         r'Given len\(heads\): 2. Given len\(head_weights\): 1\.'):
       multi_head_lib.multi_head([head1, head2], head_weights=[1.])
 
+  def test_name(self):
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
+    multi_head = multi_head_lib.multi_head([head1, head2])
+    self.assertEqual('head1_head2', multi_head.name)
+
   def test_predict_two_heads(self):
-    head1 = head_lib.multi_label_head(n_classes=2, head_name='head1')
-    head2 = head_lib.multi_label_head(n_classes=3, head_name='head2')
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
     multi_head = multi_head_lib.multi_head([head1, head2])
 
     logits = {
@@ -153,8 +159,8 @@ class MultiHeadTest(test.TestCase):
           sess.run(spec.export_outputs['head2'].scores))
 
   def test_eval_two_heads_with_weights(self):
-    head1 = head_lib.multi_label_head(n_classes=2, head_name='head1')
-    head2 = head_lib.multi_label_head(n_classes=3, head_name='head2')
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
     multi_head = multi_head_lib.multi_head(
         [head1, head2], head_weights=[1., 2.])
 
@@ -220,7 +226,7 @@ class MultiHeadTest(test.TestCase):
           atol=tol)
 
   def test_train_create_loss_one_head(self):
-    head1 = head_lib.multi_label_head(n_classes=2, head_name='head1')
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     multi_head = multi_head_lib.multi_head([head1])
 
     logits = {'head1': np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)}
@@ -235,8 +241,8 @@ class MultiHeadTest(test.TestCase):
           labels=labels)
 
   def test_train_create_loss_two_heads_with_weights(self):
-    head1 = head_lib.multi_label_head(n_classes=2, head_name='head1')
-    head2 = head_lib.multi_label_head(n_classes=3, head_name='head2')
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
     multi_head = multi_head_lib.multi_head(
         [head1, head2], head_weights=[1., 2.])
 
@@ -259,7 +265,7 @@ class MultiHeadTest(test.TestCase):
           labels=labels)
 
   def test_train_one_head(self):
-    head1 = head_lib.multi_label_head(n_classes=2, head_name='head1')
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
     multi_head = multi_head_lib.multi_head([head1])
 
     logits = {'head1': np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)}
@@ -307,8 +313,8 @@ class MultiHeadTest(test.TestCase):
       }, summary_str, tol)
 
   def test_train_two_heads_with_weights(self):
-    head1 = head_lib.multi_label_head(n_classes=2, head_name='head1')
-    head2 = head_lib.multi_label_head(n_classes=3, head_name='head2')
+    head1 = head_lib.multi_label_head(n_classes=2, name='head1')
+    head2 = head_lib.multi_label_head(n_classes=3, name='head2')
     multi_head = multi_head_lib.multi_head(
         [head1, head2], head_weights=[1., 2.])
 

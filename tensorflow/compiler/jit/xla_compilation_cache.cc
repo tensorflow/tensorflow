@@ -295,6 +295,8 @@ Status XlaCompilationCache::Compile(
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
   if (!entry->compiled) {
+    VLOG(1) << "Compilation cache miss for signature: "
+            << SignatureDebugString(signature);
     // Do the actual JIT compilation without holding the lock (it can take
     // a long time.)
     std::vector<XlaCompiler::Argument> args;

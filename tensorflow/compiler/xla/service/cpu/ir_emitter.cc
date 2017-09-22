@@ -391,10 +391,10 @@ Status IrEmitter::HandleSelect(HloInstruction* select, HloInstruction* pred,
   if (ShapeUtil::IsTuple(select->shape())) {
     TF_ASSIGN_OR_RETURN(llvm::Value * output_address,
                         EmitTargetAddressForOp(select));
-    llvm_ir::EmitTupleSelect(llvm_ir::IrArray(output_address, select->shape()),
-                             GetIrArrayForOp(pred), GetEmittedValueFor(on_true),
-                             GetEmittedValueFor(on_false), &ir_builder_);
     emitted_value_[select] = output_address;
+    llvm_ir::EmitTupleSelect(GetIrArrayForOp(select), GetIrArrayForOp(pred),
+                             GetEmittedValueFor(on_true),
+                             GetEmittedValueFor(on_false), &ir_builder_);
     return Status::OK();
   }
 
@@ -2081,8 +2081,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
     SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &ir_builder_);
   }
 
-  llvm_ir::IrArray source_array(GetEmittedValueFor(operand), operand->shape());
-
+  llvm_ir::IrArray source_array = GetIrArrayForOp(operand);
   const llvm_ir::IrArray::Index source_index = target_index.SourceIndexOfSlice(
       /*shape=*/slice->shape(), /*starts=*/slice->slice_starts(),
       /*strides=*/slice->slice_strides(), /*builder=*/&ir_builder_);
@@ -2224,14 +2223,14 @@ Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
           update_array.EmitReadArrayElement(index, &ir_builder_);
 
       // Write value to output array.
-      llvm_ir::IrArray(GetEmittedValueFor(operand), operand->shape())
-          .EmitWriteArrayElement(output_index, update_data, &ir_builder_);
+      GetIrArrayForOp(operand).EmitWriteArrayElement(output_index, update_data,
+                                                     &ir_builder_);
       return Status::OK();
     };
 
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(loop_body_emitter, update->shape(), &ir_builder_)
-            .EmitLoop(IrName(dynamic_update_slice)));
+            .EmitLoop(IrName(dynamic_update_slice, "in_place")));
 
     TF_ASSIGN_OR_RETURN(llvm::Value * dynamic_update_slice_address,
                         EmitTargetAddressForOp(dynamic_update_slice));
@@ -2609,9 +2608,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   // equal to the product of inner dimensions.
   for (HloInstruction* operand : operands) {
     const Shape& input_shape = operand->shape();
-    llvm_ir::IrArray source_array(GetEmittedValueFor(operand), input_shape);
-    AddAliasingInformationToIrArray(*operand, &source_array);
-
+    llvm_ir::IrArray source_array = GetIrArrayForOp(operand);
     llvm::Value* copy_source_address = ir_builder_.CreateBitCast(
         source_array.EmitArrayElementAddress(outer_dims_index, &ir_builder_,
                                              "src_addr"),

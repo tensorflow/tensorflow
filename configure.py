@@ -949,6 +949,19 @@ def set_mkl():
       'time before build.')
 
 
+def set_monolithic():
+  # Add --config=monolithic to your bazel command to use a mostly-static
+  # build and disable modular op registration support (this will revert to
+  # loading TensorFlow with RTLD_GLOBAL in Python). By default (without
+  # --config=monolithic), TensorFlow will build with a dependence on
+  # //tensorflow:libtensorflow_framework.so.
+  write_to_bazelrc('build:monolithic --define framework_shared_object=false')
+  # For projects which use TensorFlow as part of a Bazel build process, putting
+  # nothing in a bazelrc will default to a monolithic build. The following line
+  # opts in to modular op registration support by default:
+  write_to_bazelrc('build --define framework_shared_object=true')
+
+
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
@@ -1015,6 +1028,7 @@ def main():
 
   set_cc_opt_flags(environ_cp)
   set_mkl()
+  set_monolithic()
 
 
 if __name__ == '__main__':

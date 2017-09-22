@@ -239,12 +239,13 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     return false;
   }
 
-  // Skips nodes that must be preserved, and op_types that don't benefit from
-  // folding
-  if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
+  // Skips nodes that must be preserved except whitelisted nodes.
+  if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end() &&
+      nodes_whitelist_.find(node.name()) == nodes_whitelist_.end()) {
     return false;
   }
 
+  // Skips ops that don't benefit from folding.
   const string& op = node.op();
   // Skip constants, they're already folded
   if (op == "Const") {
@@ -283,12 +284,14 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     return false;
   }
 
-  // No need to (and don't) fold nodes that have no outgoing edges. Such nodes
-  // could be introduced by an earlier constant folding pass and are preserved
-  // in case users want to fetch their values; re-processing them would
-  // lead to an error of adding a duplicated node to graph.
+  // No need to (and don't) fold nodes that have no outgoing edges except
+  // whitelisted nodes. Such nodes could be introduced by an earlier constant
+  // folding pass and are preserved in case users want to fetch their values;
+  // re-processing them would lead to an error of adding a duplicated node
+  // to graph.
   auto outputs = node_map_->GetOutputs(node.name());
-  if (outputs.empty()) {
+  if (outputs.empty() &&
+      nodes_whitelist_.find(node.name()) == nodes_whitelist_.end()) {
     return false;
   }
 
@@ -845,6 +848,19 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   graph_ = item.graph;
   node_map_.reset(new NodeMap(&graph_));
   nodes_to_preserve_ = item.NodesToPreserve();
+  // Fold fetch nodes iff it has a single fanout. Note that if a fetch node
+  // has a single fanout, it would be rewritten as a constant with the same
+  // node name, and therefore users are still able to fetch it. This is not
+  // the case if the node has multiple fanouts, and constant folding would
+  // replace the node with multiple constants (each for one fanout) with
+  // new names, and as a result users would not be able to fetch the node any
+  // more with the original node name.
+  for (const auto& fetch : item.fetch) {
+    auto fetch_node = node_map_->GetNode(fetch);
+    if (NumOutputs(*fetch_node) == 1) {
+      nodes_whitelist_.insert(fetch_node->name());
+    }
+  }
   *output = GraphDef();
   if (cpu_device_ == nullptr) {
     owned_device_.reset(new DeviceSimple());

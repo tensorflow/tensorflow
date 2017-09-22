@@ -264,10 +264,9 @@ def _build_signature(obj_info):
         "range(start, limit, delta=1, dtype=None, name='range')\n"
         '```\n\n')
 
-  signature_template = '\n'.join([
-      '``` python',
-      '{name}({sig})',
-      '```\n\n'])
+  parts = ['``` python']
+  parts.extend(['@' + dec for dec in obj_info.decorators])
+  signature_template = '{name}({sig})'
 
   if not obj_info.signature:
     sig = ''
@@ -277,7 +276,10 @@ def _build_signature(obj_info):
     sig = ',\n'.join('    %s' % sig_item for sig_item in obj_info.signature)
     sig = '\n'+sig+'\n'
 
-  return signature_template.format(name=obj_info.short_name, sig=sig)
+  parts.append(signature_template.format(name=obj_info.short_name, sig=sig))
+  parts.append('```\n\n')
+
+  return '\n'.join(parts)
 
 
 def _build_compatibility(compatibility):

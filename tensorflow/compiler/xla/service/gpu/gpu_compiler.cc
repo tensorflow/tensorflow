@@ -307,6 +307,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
                           BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
                             return kMemoryAlignment;
                           }));
+  // BufferAssignment::ToString() includes a header, so no need for us to
+  // print one ourselves.
+  XLA_VLOG_LINES(2, buffer_assignment->ToString());
 
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();
