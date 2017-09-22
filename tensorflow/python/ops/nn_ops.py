@@ -1041,18 +1041,13 @@ def conv2d_transpose(value,
       raise ValueError("padding must be either VALID or SAME:"
                        " {}".format(padding))
 
-    output = gen_nn_ops.conv2d_backprop_input(input_sizes=output_shape_,
-                                              filter=filter,
-                                              out_backprop=value,
-                                              strides=strides,
-                                              padding=padding,
-                                              data_format=data_format,
-                                              name=name)
-    if not output.get_shape().is_fully_defined():
-      output_shape_value = tensor_util.constant_value_as_shape(output_shape_)
-      if output_shape_value is not None:
-        output.set_shape(output_shape_value)
-    return output
+    return gen_nn_ops.conv2d_backprop_input(input_sizes=output_shape_,
+                                            filter=filter,
+                                            out_backprop=value,
+                                            strides=strides,
+                                            padding=padding,
+                                            data_format=data_format,
+                                            name=name)
 
 
 def atrous_conv2d_transpose(value,

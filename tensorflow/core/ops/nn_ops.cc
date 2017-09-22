@@ -563,11 +563,11 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      // NOTE(mrry): We could in principle work out the shape from the
-      // gradients and the attrs, but if we do not know orig_input_shape
-      // statically, then we are unlikely to know the shape of the
-      // gradients either.
-      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
     })
     .Doc(R"doc(
 Computes the gradients of convolution with respect to the input.
