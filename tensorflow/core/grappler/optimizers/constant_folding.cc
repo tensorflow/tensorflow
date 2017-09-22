@@ -414,9 +414,15 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                                             std::vector<NodeDef>* outputs) {
   TensorVector inputs;
-  auto inputs_cleanup = gtl::MakeCleanup([&inputs] {
+  TensorVector output_tensors;
+  auto inputs_cleanup = gtl::MakeCleanup([&inputs, &output_tensors] {
     for (const auto& input : inputs) {
       delete input.tensor;
+    }
+    for (const auto& output : output_tensors) {
+      if (output.tensor) {
+        delete output.tensor;
+      }
     }
   });
 
@@ -439,7 +445,6 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     inputs.emplace_back(value);
   }
 
-  TensorVector output_tensors;
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
   if (output_tensors.empty()) {
     return Status(error::INVALID_ARGUMENT, "Expected at least one output.");
@@ -452,7 +457,6 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
     if (output_tensors[i].tensor) {
       outputs->push_back(CreateNodeDef(node_name, output_tensors[i]));
-      delete output_tensors[i].tensor;
     } else {
       // Create an empty NodeDef to identify dead outputs (e.g. the output of a
       // switch that's not selected by the switch predicate).
