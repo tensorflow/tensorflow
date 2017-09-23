@@ -31,13 +31,12 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
 import java.util.List;
-import org.tensorflow.DataType;
 import org.tensorflow.Graph;
 import org.tensorflow.Operation;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
 import org.tensorflow.TensorFlow;
-import org.tensorflow.types.TFUInt8;
+import org.tensorflow.types.UInt8;
 
 /**
  * Wrapper over the TensorFlow API ({@link Graph}, {@link Session}) providing a smaller API surface
@@ -305,7 +304,7 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, byte[] src, long... dims) {
-    addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
+    addFeed(inputName, Tensor.create(UInt8.class, dims, ByteBuffer.wrap(src)));
   }
 
   /**
@@ -381,7 +380,7 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, ByteBuffer src, long... dims) {
-    addFeed(inputName, Tensor.create(DataType.UINT8, dims, src));
+    addFeed(inputName, Tensor.create(UInt8.class, dims, src));
   }
 
   /**
