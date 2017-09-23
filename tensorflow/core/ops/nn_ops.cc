@@ -119,11 +119,11 @@ REGISTER_OP("AvgPoolGrad")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      // NOTE(mrry): We could in principle work out the shape from the
-      // gradients and the attrs, but if we do not know orig_input_shape
-      // statically, then we are unlikely to know the shape of the
-      // gradients either.
-      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
     })
     .Doc(R"doc(
 Computes gradients of the average pooling function.
@@ -605,11 +605,11 @@ REGISTER_OP("Conv2DBackpropFilter")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      // NOTE(mrry): We could in principle work out the shape from the
-      // gradients and the attrs, but if we do not know orig_input_shape
-      // statically, then we are unlikely to know the shape of the
-      // gradients either.
-      return InputTensorShapeOrUnknown(c, 1 /* input_idx */, 4 /* ndims */);
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
     })
     .Doc(R"doc(
 Computes the gradients of convolution with respect to the filter.
@@ -862,11 +862,11 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      // NOTE(mrry): We could in principle work out the shape from the
-      // gradients and the attrs, but if we do not know orig_input_shape
-      // statically, then we are unlikely to know the shape of the
-      // gradients either.
-      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
     })
     .Doc(R"doc(
 Computes the gradients of depthwise convolution with respect to the input.
@@ -904,11 +904,11 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      // NOTE(mrry): We could in principle work out the shape from the
-      // gradients and the attrs, but if we do not know orig_input_shape
-      // statically, then we are unlikely to know the shape of the
-      // gradients either.
-      return InputTensorShapeOrUnknown(c, 1 /* input_idx */, 4 /* ndims */);
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
     })
     .Doc(R"doc(
 Computes the gradients of depthwise convolution with respect to the filter.
@@ -2850,7 +2850,11 @@ REGISTER_OP("_MklConv2DBackpropFilter")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return InputTensorShapeOrUnknown(c, 1 /* input_idx */, 4 /* ndims */);
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter. Uses MKL DNN APIs to compute the
@@ -2891,7 +2895,11 @@ REGISTER_OP("_MklConv2DBackpropInput")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
     })
     .Doc(R"doc(
 MKL version of Convolution2D backward input. Uses MKL DNN APIs to compute the
@@ -3014,7 +3022,11 @@ REGISTER_OP("_MklAvgPoolGrad")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {float, half, double}")
     .SetShapeFn([](InferenceContext* c) {
-      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
     })
     .Doc(R"doc(
 MKL version of AvgPoolGrad operator. Uses MKL DNN APIs to compute gradients
