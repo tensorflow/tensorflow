@@ -156,16 +156,6 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                     ") that is incompatible with the row shape (",
                     row_shape.DebugString(), ").");
               }
-              for (int i = 0; i < row_ndims; ++i) {
-                if (batch_element_tuple[0].shape().dim_size(i) >
-                    row_shape.dim_size(i)) {
-                  return errors::DataLoss(
-                      "Input element had shape (",
-                      batch_element_tuple[0].shape().DebugString(),
-                      ") that is larger than the row shape (",
-                      row_shape.DebugString(), ").");
-                }
-              }
             }
           }
         }
@@ -190,10 +180,35 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         auto values_flat = values.flat<T>();
         auto dense_shape_vec = dense_shape.vec<int64>();
 
+        dense_shape_vec(0) = batch_elements.size();
+        for (size_t i = 0; i < row_ndims; ++i) {
+          if (row_shape.dim_size(i) == -1) {
+            dense_shape_vec(i + 1) = 0;
+          } else {
+            dense_shape_vec(i + 1) = row_shape.dim_size(i);
+          }
+        }
+
         int64 current_position_in_values = 0;
         for (int64 i = 0; i < batch_elements.size(); ++i) {
           const Tensor& t = batch_elements[i];
           const auto& t_flat = t.flat<T>();
+
+          // Take the maximum in the dimension if -1 is given.
+          for (int i = 0; i < row_ndims; ++i) {
+            if (row_shape.dim_size(i) == -1) {
+              if (t.dim_size(i) > dense_shape_vec(i + 1)) {
+                dense_shape_vec(i + 1) = t.dim_size(i);
+              }
+            } else if (t.dim_size(i) > row_shape.dim_size(i)) {
+              return errors::DataLoss(
+                  "Input element had shape (",
+                  t.shape().DebugString(),
+                  ") that is larger than the row shape (",
+                  row_shape.DebugString(), ").");
+            }
+          }
+
           // TODO(mrry): Replace with a memcpy or something more
           // efficient. (Maybe an Eigen assign op?)
           gtl::InlinedVector<int64, 4> strides(row_ndims);
@@ -217,11 +232,6 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
             }
             ++current_position_in_values;
           }
-        }
-
-        dense_shape_vec(0) = batch_elements.size();
-        for (size_t i = 0; i < row_ndims; ++i) {
-          dense_shape_vec(i + 1) = row_shape.dim_size(i);
         }
 
         out_tensors->push_back(std::move(indices));
