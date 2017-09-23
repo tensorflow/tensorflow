@@ -811,7 +811,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                    /*is_entry_computation=*/true,
                                    &module_sequence.at(computation)));
 
-    entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
+    CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 
     ModuleHook pre_optimization_ir_dump_hook;
     ModuleHook post_optimization_ir_dump_hook;

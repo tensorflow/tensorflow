@@ -542,10 +542,16 @@ class GANTrainOpsTest(test.TestCase):
   def test_unused_update_ops_callable_acgan_provideupdates(self):
     self._test_unused_update_ops(create_callable_acgan_model, True)
 
-  def _test_sync_replicas_helper(self, create_gan_model_fn):
+  def _test_sync_replicas_helper(
+      self, create_gan_model_fn, create_global_step=False):
     model = create_gan_model_fn()
     loss = train.gan_loss(model)
     num_trainable_vars = len(variables_lib.get_trainable_variables())
+
+    if create_global_step:
+      gstep = variable_scope.get_variable(
+          'custom_gstep', dtype=dtypes.int32, initializer=0, trainable=False)
+      ops.add_to_collection(ops.GraphKeys.GLOBAL_STEP, gstep)
 
     g_opt = get_sync_optimizer()
     d_opt = get_sync_optimizer()
@@ -609,6 +615,9 @@ class GANTrainOpsTest(test.TestCase):
 
   def test_sync_replicas_callable_acgan(self):
     self._test_sync_replicas_helper(create_callable_acgan_model)
+
+  def test_global_step_can_be_int32(self):
+    self._test_sync_replicas_helper(create_gan_model, create_global_step=True)
 
 
 class GANTrainTest(test.TestCase):

@@ -242,30 +242,37 @@ class CudaSolver {
   Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau,
                int* dev_lapack_info) const TF_MUST_USE_RESULT;
 
-  // Overwrite matrix C by product of C and Householder matrix Q. The
-  // Householder matrix Q is represented by the output from Geqrf in dev_a and
-  // dev_tau.
+  // Overwrite matrix C by product of C and the unitary Householder matrix Q.
+  // The Householder matrix Q is represented by the output from Geqrf in dev_a
+  // and dev_tau.
   // Notice: If Scalar is real, only trans=CUBLAS_OP_N or trans=CUBLAS_OP_T is
   // supported. If Scalar is complex, trans=CUBLAS_OP_N or trans=CUBLAS_OP_C is
   // supported.
   // Returns Status::OK() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-ormqr
   template <typename Scalar>
-  Status Ormqr(cublasSideMode_t side, cublasOperation_t trans, int m, int n,
+  Status Unmqr(cublasSideMode_t side, cublasOperation_t trans, int m, int n,
                int k, const Scalar* dev_a, int lda, const Scalar* dev_tau,
                Scalar* dev_c, int ldc,
                int* dev_lapack_info) const TF_MUST_USE_RESULT;
 
-  // Overwrites QR factorization produced by Geqrf by Householder matrix Q.
-  // On input, the Householder matrix Q is represented by the output from Geqrf
-  // in dev_a and dev_tau. On output, dev_a is overwritten with the first n
-  // columns of Q.
-  // Requires m >= n >= 0.
+  // Overwrites QR factorization produced by Geqrf by the unitary Householder
+  // matrix Q. On input, the Householder matrix Q is represented by the output
+  // from Geqrf in dev_a and dev_tau. On output, dev_a is overwritten with the
+  // first n columns of Q. Requires m >= n >= 0.
   // Returns Status::OK() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-orgqr
   template <typename Scalar>
-  Status Orgqr(int m, int n, int k, Scalar* dev_a, int lda,
+  Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
                const Scalar* dev_tau,
+               int* dev_lapack_info) const TF_MUST_USE_RESULT;
+
+  // Hermitian (Symmetric) Eigen decomposition.
+  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-syevd
+  template <typename Scalar>
+  Status Heevd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n,
+               Scalar* dev_A, int lda,
+               typename Eigen::NumTraits<Scalar>::Real* dev_W,
                int* dev_lapack_info) const TF_MUST_USE_RESULT;
 
   // Singular value decomposition.
@@ -276,16 +283,6 @@ class CudaSolver {
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
                int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
                int ldvt, int* dev_lapack_info) const TF_MUST_USE_RESULT;
-
-  /*
-  TODO(rmlarsen, volunteers): Implement the kernels below.
-
-  // Symmetric/Hermitian Eigen decomposition.
-  // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-syevd
-  template <typename Scalar>
-  Status Syevd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n, Scalar*
-  dev_A, int lda, Scalar* dev_W, int* dev_lapack_info) const TF_MUST_USE_RESULT;
-  */
 
  private:
   OpKernelContext* context_;  // not owned.

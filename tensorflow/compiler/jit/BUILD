@@ -45,7 +45,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":jit_compilation_passes",
-        "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",
     ],
@@ -57,7 +57,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda([
         ":jit_compilation_passes",
-        "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),
@@ -71,7 +71,7 @@ cc_library(
     deps = [
         ":jit_compilation_passes",
         ":xla_device",
-        "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
@@ -88,7 +88,7 @@ cc_library(
     deps = [
         ":jit_compilation_passes",
         ":xla_device",
-        "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
@@ -103,7 +103,7 @@ cc_library(
     srcs = ["xla_interpreter_device.cc"],
     deps = [
         ":xla_device",
-        "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
     ],
     alwayslink = True,
@@ -213,7 +213,7 @@ cc_library(
     deps = [
         ":common",
         ":compilation_passes",
-        "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:const_analysis",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:core_cpu_internal",
@@ -297,7 +297,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
-        "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu",
