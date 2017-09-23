@@ -203,8 +203,8 @@ else
   USER_OP_SO="add_one.so"
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" ${TF_INCLUDE_PATH} -L "${CUDA_LIB_DIR}" \
-      -fPIC -lcudart || \
+      "${OP_KERNEL_O}" ${TF_INCLUDE_PATH} -L "${CUDA_LIB_DIR}" -L "${TF_LIB}" \
+      -fPIC -lcudart -ltensorflow_framework || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi
 

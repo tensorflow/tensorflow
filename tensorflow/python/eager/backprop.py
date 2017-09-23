@@ -714,6 +714,38 @@ def gradients_function(f, params=None):
   return decorated
 
 
+def _ensure_unique_tensor_objects(parameter_positions, args):
+  """Make each of the parameter_positions in args a unique ops.Tensor object.
+
+  Ensure that each parameter is treated independently.
+  For example:
+
+  def f(x, y): return x * y
+  g = gradients_function(f)
+  one = tf.constant(1.)
+
+  g(one, one) should return [1., 1.]
+  (even though the two arguments are the same Tensor object).
+
+  Args:
+    parameter_positions: List of indices into args defining the arguments to
+      differentiate against.
+    args: A list of arguments to the function to be differentiated.
+
+  Returns:
+    args, possibly edited in-place.
+  """
+  s = set()
+  for (i, t) in enumerate(args):
+    if i in parameter_positions:
+      tid = ops.tensor_id(t)
+      if tid in s:
+        args[i] = args[i]._dup()  # pylint: disable=protected-access
+      else:
+        s.add(tid)
+  return args
+
+
 def val_and_grad_function(f, params=None):
   """Returns a function that computes f and is derivative w.r.t. params.
 
@@ -778,13 +810,11 @@ def val_and_grad_function(f, params=None):
         ops.convert_to_tensor(args[i]) if i in parameter_positions else args[i]
         for i in range(len(args))
     ]
+    args = _ensure_unique_tensor_objects(parameter_positions, args)
     for i in parameter_positions:
       sources.append(args[i])
       tape.watch(args[i])
     result = f(*args)
-    return result, imperative_grad(
-        result,
-        sources,
-        output_gradients=dy)
+    return result, imperative_grad(result, sources, output_gradients=dy)
 
   return decorated
