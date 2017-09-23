@@ -29,22 +29,6 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-// A shape function that uses the tensor value at <input_idx> as a shape for
-// output 0. If the tensor value is not available, it uses a shape with <ndims>
-// unknown dims.
-Status InputTensorShapeOrUnknown(InferenceContext* c, int input_idx,
-                                 int ndims) {
-  ShapeHandle out;
-  const Tensor* input = c->input_tensor(input_idx);
-  if (input == nullptr) {
-    out = c->UnknownShapeOfRank(ndims);
-  } else {
-    TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(input_idx, &out));
-  }
-  c->set_output(0, out);
-  return Status::OK();
-}
-
 Status FractionalPoolShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
