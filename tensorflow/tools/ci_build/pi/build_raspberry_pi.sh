@@ -97,14 +97,14 @@ bazel build -c opt ${PI_COPTS} \
   //tensorflow/tools/pip_package:build_pip_package
 
 OUTDIR=bazel-out/pi
-mkdir -p ${OUTDIR}
+mkdir -p "${OUTDIR}"
 echo "Final outputs will go to ${OUTDIR}"
 
 # Build a universal wheel.
 BDIST_OPTS="--universal" \
   bazel-bin/tensorflow/tools/pip_package/build_pip_package "${OUTDIR}"
 
-OLD_FN=$(ls "${OUTDIR}" | grep \.whl)
+OLD_FN=$(ls "${OUTDIR}" | grep -m 1 \.whl)
 SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-any.whl/; print'
 NEW_FN=$(echo "${OLD_FN}" | perl -ne "${SUB}")
 mv "${OUTDIR}/${OLD_FN}" "${OUTDIR}/${NEW_FN}"
