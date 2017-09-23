@@ -240,11 +240,11 @@ class Multinomial(distribution.Distribution):
     n_draws = array_ops.ones_like(
         self.logits[..., 0], dtype=n_draws.dtype) * n_draws
     logits = array_ops.ones_like(
-        n_draws[..., None], dtype=self.logits.dtype) * self.logits
+        n_draws[..., array_ops.newaxis], dtype=self.logits.dtype) * self.logits
 
     # flatten the total_count and logits
-    flat_logits = array_ops.reshape(logits, [-1, k]) # [B1*B2*...*Bm, k]
-    flat_ndraws = n * array_ops.reshape(n_draws, [-1]) # [B1*B2*...*Bm]
+    flat_logits = array_ops.reshape(logits, [-1, k]) # [B1B2...Bm, k]
+    flat_ndraws = n * array_ops.reshape(n_draws, [-1]) # [B1B2...Bm]
 
     # computes each total_count and logits situation by map_fn
     def _sample_single(args):
@@ -256,7 +256,7 @@ class Multinomial(distribution.Distribution):
       return x
     x = functional_ops.map_fn(_sample_single,
                               [flat_logits, flat_ndraws],
-                              dtype=self.dtype) # [B1*B2*...Bm, n, k]
+                              dtype=self.dtype) # [B1B2...Bm, n, k]
 
     # reshape the results to proper shape
     x = array_ops.transpose(x, perm=[1, 0, 2])
