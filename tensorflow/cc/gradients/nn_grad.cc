@@ -50,7 +50,6 @@ REGISTER_GRADIENT_OP("Softmax", SoftmaxGrad);
 Status LogSoftmaxGrad(const Scope& scope, const Operation& op,
                    const std::vector<Output>& grad_inputs,
                    std::vector<Output>* grad_outputs) {
-
   auto softmax = Exp(scope, op.output(0));
   auto sum = Sum(scope, grad_inputs[0], {1}, Sum::KeepDims(true));
   auto mul = Mul(scope, sum, softmax);
@@ -130,8 +129,7 @@ Status Conv2DGrad(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "use_cudnn_on_gpu", 
-			         &use_cudnn_on_gpu));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "use_cudnn_on_gpu", &use_cudnn_on_gpu));
   Conv2DBackpropInput::Attrs input_attrs;
   input_attrs.DataFormat(data_format);
   input_attrs.UseCudnnOnGpu(use_cudnn_on_gpu);
@@ -198,8 +196,6 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 
-
-  
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

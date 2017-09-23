@@ -7,9 +7,9 @@ package(
 )
 
 cc_library(
-    name = "xla_local_launch_op",
-    srcs = ["xla_local_launch_op.cc"],
-    hdrs = ["xla_local_launch_op.h"],
+    name = "xla_launch_op",
+    srcs = ["xla_launch_op.cc"],
+    hdrs = ["xla_launch_op.h"],
     deps = [
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_compilation_cache",

@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "estimator"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "initializers"
     mtype: "<type \'module\'>"
   }

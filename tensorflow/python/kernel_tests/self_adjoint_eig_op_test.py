@@ -29,6 +29,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+def _AddTest(test_class, op_name, testcase_name, fn):
+  test_name = "_".join(["test", op_name, testcase_name])
+  if hasattr(test_class, test_name):
+    raise RuntimeError("Test %s defined more than once" % test_name)
+  setattr(test_class, test_name, fn)
+
+
 class SelfAdjointEigTest(test.TestCase):
 
   def testWrongDimensions(self):
@@ -50,28 +57,30 @@ def SortEigenDecomposition(e, v):
     return np.take(e, perm, -1), np.take(v, perm, -1)
 
 
-def NormalizeEigenvectorsPhase(v):
-  """Normalizes the phase of the Eigenvectors stored in the columns of `v`.
+def EquilibrateEigenVectorPhases(x, y):
+  """Equilibrate the phase of the Eigenvectors in the columns of `x` and `y`.
 
-  (complex) Eigenvectors are only unique up to an arbitrary phase.
-  We normalize the vectors such that the first component has phase 0.
+  Eigenvectors are only unique up to an arbitrary phase. This function rotates x
+  such that it matches y. Precondition: The coluns of x and y differ by a
+  multiplicative complex phase factor only.
 
   Args:
-    v: `np.ndarray` with Eigenvectors as returned from `np.linalg.eigh`.
+    x: `np.ndarray` with Eigenvectors
+    y: `np.ndarray` with Eigenvectors
 
   Returns:
-    `np.ndarray` normalized Eigenvectors.
+    `np.ndarray` containing an equilibrated version of x.
   """
-  reference = v / np.linalg.norm(v[..., 0:1, :], axis=-1, keepdims=True)
-  return v * reference.conj()
+  phases = np.sum(np.conj(x) * y, -2, keepdims=True)
+  phases /= np.abs(phases)
+  return phases * x
 
 
 def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
 
   def CompareEigenVectors(self, x, y, tol):
-    x = NormalizeEigenvectorsPhase(x)
-    y = NormalizeEigenvectorsPhase(y)
-    self.assertAllClose(x, y, atol=tol, rtol=tol)
+    x = EquilibrateEigenVectorPhases(x, y)
+    self.assertAllClose(x, y, atol=tol)
 
   def CompareEigenDecompositions(self, x_e, x_v, y_e, y_v, tol):
     num_batches = int(np.prod(x_e.shape[:-1]))
@@ -103,7 +112,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
     else:
       atol = 1e-12
     np_e, np_v = np.linalg.eigh(a)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       if compute_v_:
         tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
 
@@ -152,7 +161,7 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
       tol = 1e-2
     else:
       tol = 1e-7
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       tf_a = constant_op.constant(a)
       if compute_v_:
         tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)
@@ -185,17 +194,16 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
   return Test
 
 
-if __name__ == '__main__':
-  for compute_v in [True, False]:
-    for dtype in (
-        dtypes_lib.float32, dtypes_lib.float64,
-        dtypes_lib.complex64, dtypes_lib.complex128):
+if __name__ == "__main__":
+  for compute_v in True, False:
+    for dtype in (dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
+                  dtypes_lib.complex128):
       for size in 1, 2, 5, 10:
         for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
           shape = batch_dims + (size, size)
-          name = '%s_%s_%s' % (dtype, '_'.join(map(str, shape)), compute_v)
-          setattr(SelfAdjointEigTest, 'testSelfAdjointEig_' + name,
-                  _GetSelfAdjointEigTest(dtype, shape, compute_v))
-          setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
-                  _GetSelfAdjointEigGradTest(dtype, shape, compute_v))
+          name = "%s_%s_%s" % (dtype, "_".join(map(str, shape)), compute_v)
+          _AddTest(SelfAdjointEigTest, "SelfAdjointEig", name,
+                   _GetSelfAdjointEigTest(dtype, shape, compute_v))
+          _AddTest(SelfAdjointEigGradTest, "SelfAdjointEigGrad", name,
+                   _GetSelfAdjointEigGradTest(dtype, shape, compute_v))
   test.main()

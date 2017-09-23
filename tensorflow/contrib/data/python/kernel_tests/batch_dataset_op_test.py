@@ -229,8 +229,9 @@ class BatchDatasetTest(test.TestCase):
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
     iterator = (dataset_ops.Dataset.from_tensor_slices(components)
-                .map(lambda x: array_ops.fill([x], x)).dense_to_sparse_batch(
-                    4, [12]).make_initializable_iterator())
+                .map(lambda x: array_ops.fill([x], x)).apply(
+                    dataset_ops.dense_to_sparse_batch(4, [12]))
+                .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = sparse_tensor.SparseTensor(*iterator.get_next())
 
@@ -253,8 +254,9 @@ class BatchDatasetTest(test.TestCase):
 
   def testDenseToSparseBatchDatasetShapeErrors(self):
     input_tensor = array_ops.placeholder(dtypes.int32)
-    iterator = (dataset_ops.Dataset.from_tensors(input_tensor)
-                .dense_to_sparse_batch(4, [12]).make_initializable_iterator())
+    iterator = (dataset_ops.Dataset.from_tensors(input_tensor).apply(
+        dataset_ops.dense_to_sparse_batch(4, [12]))
+                .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = sparse_tensor.SparseTensor(*iterator.get_next())
 
@@ -277,7 +279,7 @@ class BatchDatasetTest(test.TestCase):
     expected_types = (dtypes.int32,) * 3
     data = data.batch(2)
     self.assertEqual(expected_types, data.output_types)
-    data = data.unbatch()
+    data = data.apply(dataset_ops.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
     iterator = data.make_one_shot_iterator()
@@ -296,7 +298,7 @@ class BatchDatasetTest(test.TestCase):
     expected_types = ((dtypes.int32,),) * 3
     data = data.batch(2)
     self.assertEqual(expected_types, data.output_types)
-    data = data.unbatch()
+    data = data.apply(dataset_ops.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
     iterator = data.make_one_shot_iterator()
@@ -317,7 +319,7 @@ class BatchDatasetTest(test.TestCase):
     expected_types = ((dtypes.int32, dtypes.string),) * 3
     data = data.batch(2)
     self.assertAllEqual(expected_types, data.output_types)
-    data = data.unbatch()
+    data = data.apply(dataset_ops.unbatch())
     self.assertAllEqual(expected_types, data.output_types)
 
     iterator = data.make_one_shot_iterator()

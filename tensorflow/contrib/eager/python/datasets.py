@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.contrib.data.python.util import nest
+from tensorflow.python.data.util import nest
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import gen_dataset_ops

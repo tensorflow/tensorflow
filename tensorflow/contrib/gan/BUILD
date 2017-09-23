@@ -41,7 +41,6 @@ py_library(
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:training",

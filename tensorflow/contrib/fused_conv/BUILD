@@ -63,6 +63,7 @@ tf_kernel_library(
         "kernels/fused_conv_ops_gpu.h",
     ],
     prefix = "fused_conv2d_bias_activation_op",
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
