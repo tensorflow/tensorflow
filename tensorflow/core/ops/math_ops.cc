@@ -748,6 +748,28 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 ```
 )doc");
 
+REGISTER_OP("IntegralPow")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: double")
+    .Attr("T: {int32, int64}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Computes the power of one value to another.
+
+Given two integer tensors `x` and `y`, this operation computes \\(x^y\\) for
+corresponding elements in `x` and `y`. For example:
+
+```
+# tensor 'x' is [[2, 2]], [3, 3]]
+# tensor 'y' is [[8, 16], [2, 3]]
+tf.pow(x, y) ==> [[256, 65536], [9, 27]]
+```
+
+Note, the returned tensor is of type float64, in order to handle negative
+powers.
+)doc");
+
 REGISTER_OP("Igammac")
     .Input("a: T")
     .Input("x: T")

@@ -541,8 +541,15 @@ def pow(x, y, name=None):
 
   Returns:
     A `Tensor`.
+    Note, for `int32` or `int64` inputs, the returned `Tensor` will be of type
+    `float64`.
   """
   with ops.name_scope(name, "Pow", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y")
+    if (x.dtype in (dtypes.int32, dtypes.int64) and
+        y.dtype in (dtypes.int32, dtypes.int64)):
+      return gen_math_ops._integral_pow(x, y, name=name)
     return gen_math_ops._pow(x, y, name=name)
 
 

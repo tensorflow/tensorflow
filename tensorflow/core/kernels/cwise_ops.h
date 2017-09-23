@@ -83,12 +83,32 @@ struct functor_traits<scalar_atanh_op<T>> {
 // https://bitbucket.org/eigen/eigen/commits/f339468d04d0f87caeb6cab9aef568627e9f6ea9
 // that renamed scalar_binary_pow_op to scalar_pow_op and deleted the unary
 // version of the latter. Remove once we upgrade to Eigen 3.3.
-template <typename Scalar, typename Exponent>
+template <typename Scalar, typename Exponent,
+          bool IsInteger =
+              NumTraits<Scalar>::IsInteger&& NumTraits<Exponent>::IsInteger>
 struct scalar_binary_pow_op_google {
+  typedef typename NumTraits<Scalar>::NonInteger result_type;
   EIGEN_EMPTY_STRUCT_CTOR(scalar_binary_pow_op_google)
-  EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a,
-                                             const Exponent& b) const {
+  EIGEN_DEVICE_FUNC inline result_type operator()(const Scalar& a,
+                                                  const Exponent& b) const {
     return numext::pow(a, b);
+  }
+};
+
+// Specialize the pow template for integer parameters and fix
+// a bug where the call to Eigen's numext::pow does not finish
+// for negative exponent.
+template <typename Scalar, typename Exponent>
+struct scalar_binary_pow_op_google<Scalar, Exponent, true> {
+  typedef typename NumTraits<Scalar>::NonInteger result_type;
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_binary_pow_op_google)
+  EIGEN_DEVICE_FUNC inline result_type operator()(const Scalar& a,
+                                                  const Exponent& b) const {
+    if (!NumTraits<Exponent>::IsSigned || b >= 0)
+      return numext::pow(a, b);
+    else
+      return static_cast<result_type>(1.0) /
+             static_cast<result_type>(numext::pow(a, -b));
   }
 };
 
@@ -719,7 +739,8 @@ template <typename T>
 struct floor_div_real : base<T, Eigen::internal::google_floor_div_real<T>> {};
 
 template <typename T>
-struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};
+struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>,
+                  typename Eigen::NumTraits<T>::NonInteger> {};
 
 template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
