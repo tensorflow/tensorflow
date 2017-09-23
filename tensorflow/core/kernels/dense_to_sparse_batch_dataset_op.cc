@@ -195,12 +195,12 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
           const auto& t_flat = t.flat<T>();
 
           // Take the maximum in the dimension if -1 is given.
-          for (int i = 0; i < row_ndims; ++i) {
-            if (row_shape.dim_size(i) == -1) {
-              if (t.dim_size(i) > dense_shape_vec(i + 1)) {
-                dense_shape_vec(i + 1) = t.dim_size(i);
+          for (int j = 0; j < row_ndims; ++j) {
+            if (row_shape.dim_size(j) == -1) {
+              if (t.dim_size(j) > dense_shape_vec(j + 1)) {
+                dense_shape_vec(j + 1) = t.dim_size(j);
               }
-            } else if (t.dim_size(i) > row_shape.dim_size(i)) {
+            } else if (t.dim_size(j) > row_shape.dim_size(j)) {
               return errors::DataLoss(
                   "Input element had shape (",
                   t.shape().DebugString(),
