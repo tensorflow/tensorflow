@@ -187,18 +187,20 @@ class AttentionWrapperTest(test.TestCase):
       if alignment_history:
         if is_multi:
           state_alignment_history = []
-          for history_array in final_state.alignment_history:
-            history = history_array.stack()
+          for history in final_state.alignment_history:
             self.assertEqual(
-                (None, batch_size, None),
+                (batch_size, None, None),
                 tuple(history.get_shape().as_list()))
             state_alignment_history.append(history)
           state_alignment_history = tuple(state_alignment_history)
         else:
-          state_alignment_history = final_state.alignment_history.stack()
+          state_alignment_history = final_state.alignment_history
           self.assertEqual(
-              (None, batch_size, None),
+              (batch_size, None, None),
               tuple(state_alignment_history.get_shape().as_list()))
+        nest.assert_same_structure(
+            cell.state_size,
+            cell.zero_state(batch_size, dtype('float32')))
         # Remove the history from final_state for purposes of the
         # remainder of the tests.
         final_state = final_state._replace(alignment_history=())  # pylint: disable=protected-access
@@ -255,7 +257,7 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
-        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.12500001)
+        shape=(5, 3, 8), dtype=dtype('float32'), mean=0.12500001)
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -546,7 +548,7 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 8), dtype=dtype('float32'), mean=0.032228071),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
-        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050430927)
+        shape=(5, 3, 8), dtype=dtype('float32'), mean=0.050430927)
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -579,7 +581,7 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 8), dtype=dtype('float32'), mean=0.028698336),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
-        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.046009291)
+        shape=(5, 3, 8), dtype=dtype('float32'), mean=0.046009291)
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -612,7 +614,7 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
-        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050387777)
+        shape=(5, 3, 8), dtype=dtype('float32'), mean=0.050387777)
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -646,7 +648,7 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
-        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050387777)
+        shape=(5, 3, 8), dtype=dtype('float32'), mean=0.050387777)
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -681,8 +683,8 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=())
 
     expected_final_alignment_history = (
-        ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),
-        ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125))
+        ResultSummary(shape=(5, 3, 8), dtype=dtype('float32'), mean=0.125),
+        ResultSummary(shape=(5, 3, 8), dtype=dtype('float32'), mean=0.125))
 
     self._testWithMaybeMultiAttention(
         True,
@@ -718,8 +720,8 @@ class AttentionWrapperTest(test.TestCase):
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
         alignment_history=())
     expected_final_alignment_history = (
-        ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),
-        ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125))
+        ResultSummary(shape=(5, 3, 8), dtype=dtype('float32'), mean=0.125),
+        ResultSummary(shape=(5, 3, 8), dtype=dtype('float32'), mean=0.125))
 
     self._testWithMaybeMultiAttention(
         is_multi=True,
@@ -753,7 +755,7 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=())
 
     expected_final_alignment_history = (
-        ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),)
+        ResultSummary(shape=(5, 3, 8), dtype=dtype('float32'), mean=0.125),)
 
     self._testWithMaybeMultiAttention(
         is_multi=True,  # pass the AttentionMechanism wrapped in a list

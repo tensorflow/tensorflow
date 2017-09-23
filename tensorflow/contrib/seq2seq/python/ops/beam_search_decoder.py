@@ -569,7 +569,8 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
           gather_from=gather_from,
           batch_size=batch_size,
           range_size=beam_width,
-          gather_shape=[batch_size * beam_width, -1]),
+          gather_shape=[batch_size * beam_width, -1],
+          keep_dims=True),
       next_cell_state)
   # pylint: enable=g-long-lambda
 
@@ -661,7 +662,7 @@ def _mask_probs(probs, eos_token, finished):
 
 
 def _maybe_tensor_gather_helper(gather_indices, gather_from, batch_size,
-                                range_size, gather_shape):
+                                range_size, gather_shape, keep_dims=False):
   """Maybe applies _tensor_gather_helper.
 
   This applies _tensor_gather_helper when the gather_from dims is at least as
@@ -679,10 +680,12 @@ def _maybe_tensor_gather_helper(gather_indices, gather_from, batch_size,
       There, we want to preserve the attention_size elements, so gather_shape is
       [batch_size * beam_width, -1]. Then, upon reshape, we still have the
       attention_size as desired.
+    keep_dims: If true, retains the original values dimensions.
 
   Returns:
     output: Gathered tensor of shape tf.shape(gather_from)[:1+len(gather_shape)]
-      or the original tensor if its dimensions are too small.
+      if keep_dims is false (of shape tf.shape(gather_from) otherwise), or the
+      original tensor if its dimensions are too small.
   """
   _check_maybe(gather_from)
   if gather_from.shape.ndims >= len(gather_shape):
@@ -691,13 +694,14 @@ def _maybe_tensor_gather_helper(gather_indices, gather_from, batch_size,
         gather_from=gather_from,
         batch_size=batch_size,
         range_size=range_size,
-        gather_shape=gather_shape)
+        gather_shape=gather_shape,
+        keep_dims=keep_dims)
   else:
     return gather_from
 
 
 def _tensor_gather_helper(gather_indices, gather_from, batch_size,
-                          range_size, gather_shape):
+                          range_size, gather_shape, keep_dims=False):
   """Helper for gathering the right indices from the tensor.
 
   This works by reshaping gather_from to gather_shape (e.g. [-1]) and then
@@ -715,19 +719,28 @@ def _tensor_gather_helper(gather_indices, gather_from, batch_size,
       There, we want to preserve the attention_size elements, so gather_shape is
       [batch_size * beam_width, -1]. Then, upon reshape, we still have the
       attention_size as desired.
+    keep_dims: If true, retains the original values dimensions.
 
   Returns:
     output: Gathered tensor of shape tf.shape(gather_from)[:1+len(gather_shape)]
+      if keep_dims is false (of shape tf.shape(gather_from) otherwise).
   """
   range_ = array_ops.expand_dims(math_ops.range(batch_size) * range_size, 1)
   gather_indices = array_ops.reshape(gather_indices + range_, [-1])
   output = array_ops.gather(
       array_ops.reshape(gather_from, gather_shape), gather_indices)
-  final_shape = array_ops.shape(gather_from)[:1 + len(gather_shape)]
+
+  if keep_dims:
+    final_shape = array_ops.shape(gather_from)
+    non_batch_ndims = len(gather_from.shape) - 1
+  else:
+    final_shape = array_ops.shape(gather_from)[:1 + len(gather_shape)]
+    non_batch_ndims = len(gather_shape)
+
   static_batch_size = tensor_util.constant_value(batch_size)
   final_static_shape = (tensor_shape.TensorShape([static_batch_size])
                         .concatenate(
-                            gather_from.shape[1:1 + len(gather_shape)]))
+                            gather_from.shape[1:1 + non_batch_ndims]))
   output = array_ops.reshape(output, final_shape)
   output.set_shape(final_static_shape)
   return output

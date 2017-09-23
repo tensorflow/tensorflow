@@ -225,7 +225,8 @@ class TestBeamStep(test.TestCase):
 
 class BeamSearchDecoderTest(test.TestCase):
 
-  def _testDynamicDecodeRNN(self, time_major, has_attention):
+  def _testDynamicDecodeRNN(self, time_major, has_attention,
+                            with_alignment_history=False):
     encoder_sequence_length = np.array([3, 2, 3, 1, 1])
     decoder_sequence_length = np.array([2, 0, 1, 2, 3])
     batch_size = 5
@@ -265,7 +266,7 @@ class BeamSearchDecoderTest(test.TestCase):
             cell=cell,
             attention_mechanism=attention_mechanism,
             attention_layer_size=attention_depth,
-            alignment_history=False)
+            alignment_history=with_alignment_history)
       cell_state = cell.zero_state(
           dtype=dtypes.float32, batch_size=batch_size_tensor * beam_width)
       if has_attention:
@@ -326,6 +327,12 @@ class BeamSearchDecoderTest(test.TestCase):
 
   def testDynamicDecodeRNNBatchMajorYesAttention(self):
     self._testDynamicDecodeRNN(time_major=False, has_attention=True)
+
+  def testDynamicDecodeRNNBatchMajorYesAttentionWithAlignmentHistory(self):
+    self._testDynamicDecodeRNN(
+        time_major=False,
+        has_attention=True,
+        with_alignment_history=True)
 
 
 if __name__ == '__main__':
