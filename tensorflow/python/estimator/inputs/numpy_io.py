@@ -89,6 +89,7 @@ def numpy_input_fn(x,
     ValueError: if the shape of `y` mismatches the shape of values in `x` (i.e.,
       values in `x` have same shape).
     ValueError: if duplicate keys are in both `x` and `y` when `y` is a dict.
+    ValueError: if x or y is a empty dict.
     TypeError: `x` is not a dict or `shuffle` is not bool.
   """
 
@@ -100,6 +101,8 @@ def numpy_input_fn(x,
     """Numpy input function."""
     if not isinstance(x, dict):
       raise TypeError('x must be dict; got {}'.format(type(x).__name__))
+    if not x:
+      raise ValueError('x cannot be empty')
 
     # Make a shadow copy and also ensure the order of iteration is consistent.
     ordered_dict_data = collections.OrderedDict(
@@ -107,9 +110,12 @@ def numpy_input_fn(x,
     # Deep copy keys which is a view in python 3
     feature_keys = list(ordered_dict_data.keys())
 
-    if y:
+    if y is None:
       target_keys = None
     elif isinstance(y, dict):
+      if not y:
+        raise ValueError('y cannot be empty dict, use None instead.')
+
       ordered_dict_y = collections.OrderedDict(
         sorted(y.items(), key=lambda t: t[0]))
       target_keys = list(ordered_dict_y.keys())
@@ -128,7 +134,7 @@ def numpy_input_fn(x,
       shape_dict_of_x = {k: ordered_dict_data[k].shape
                          for k in feature_keys}
 
-      if target_keys:
+      if target_keys is None:
         shape_of_y = None
       elif isinstance(target_keys, string_types):
         shape_of_y = y.shape
@@ -157,7 +163,7 @@ def numpy_input_fn(x,
       batch.pop(0)
 
     features = dict(zip(feature_keys, batch[:len(feature_keys)]))
-    if target_keys:
+    if target_keys is None:
       return features
     elif isinstance(target_keys, string_types):
       target = batch[-1]
