@@ -49,10 +49,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("row_shape", &row_shape_t));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(row_shape_t->shape()),
                 errors::InvalidArgument("row_shape must be a vector"));
-    TensorShape row_shape;
-    for (size_t i = 0; i < row_shape_t->dim_size(0); ++i) {
-      row_shape.AddDim(row_shape_t->vec<int64>()(i));
-    }
+    PartialTensorShape row_shape(row_shape_t->vec<int64>());
 
     *output = nullptr;
 
@@ -78,7 +75,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
   template <class T>
   class Dataset : public DatasetBase {
    public:
-    Dataset(int64 batch_size, const TensorShape& row_shape,
+    Dataset(int64 batch_size, const PartialTensorShape& row_shape,
             const DatasetBase* input)
         : batch_size_(batch_size), row_shape_(row_shape), input_(input) {
       input_->Ref();
@@ -129,7 +126,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         int64 total_elements = 0;
         batch_elements.reserve(
             DatasetIterator<Dataset<T>>::dataset()->batch_size_);
-        const TensorShape& row_shape =
+        const PartialTensorShape& row_shape =
             DatasetIterator<Dataset<T>>::dataset()->row_shape_;
         const int row_ndims = row_shape.dims();
         {
@@ -249,7 +246,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const int64 batch_size_;
-    const TensorShape row_shape_;
+    const PartialTensorShape row_shape_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;
   };
