@@ -46,31 +46,36 @@ if [ -d /usr/include/openssl ]; then
   sudo mv /usr/include/openssl /usr/include/openssl.original
 fi
 
+WORKSPACE_PATH=`pwd`
+
 # Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
 # TODO(petewarden) - It would be nicer to move this into the main Bazel build
 # process if we can maintain a build file for this.
-sudo rm -rf toolchain
-mkdir toolchain
-cd toolchain
+TOOLCHAIN_INSTALL_PATH=/tmp/toolchain_install/
+sudo rm -rf ${TOOLCHAIN_INSTALL_PATH}
+mkdir ${TOOLCHAIN_INSTALL_PATH}
+cd ${TOOLCHAIN_INSTALL_PATH}
 curl -L https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz -o toolchain.tar.gz
 tar xzf toolchain.tar.gz
 mv tools-0e906ebc527eab1cdbf7adabff5b474da9562e9f/ tools
-cd ..
 
-CROSSTOOL_CC=$(pwd)/toolchain/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
+CROSSTOOL_CC=${TOOLCHAIN_INSTALL_PATH}/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
 
-sudo rm -rf openblas
-git clone https://github.com/xianyi/OpenBLAS openblas
-cd openblas
+OPENBLAS_SRC_PATH=/tmp/openblas_src/
+sudo rm -rf ${OPENBLAS_SRC_PATH}
+git clone https://github.com/xianyi/OpenBLAS ${OPENBLAS_SRC_PATH}
+cd ${OPENBLAS_SRC_PATH}
+# If this path is changed, you'll also need to update
+# cxx_builtin_include_directory in third_party/toolchains/cpus/arm/CROSSTOOL.tpl
+OPENBLAS_INSTALL_PATH=/tmp/openblas_install/
 make CC=${CROSSTOOL_CC} FC=${CROSSTOOL_CC} HOSTCC=gcc TARGET=ARMV6
-make PREFIX=$(pwd)/toolchain/openblas/ install
-cd ..
+make PREFIX=${OPENBLAS_INSTALL_PATH} install
 
 if [[ $1 == "PI_ONE" ]]; then
   PI_COPTS="--copt=-march=armv6 --copt=-mfpu=vfp
   --copt=-DUSE_GEMM_FOR_CONV --copt=-DUSE_OPENBLAS
-  --copt=-isystem=$(pwd)/toolchain/openblas/include/
-  --linkopt=-L$(pwd)/toolchain/openblas/lib/
+  --copt=-isystem --copt=${OPENBLAS_INSTALL_PATH}/include/
+  --linkopt=-L${OPENBLAS_INSTALL_PATH}/lib/
   --linkopt=-l:libopenblas.a"
   echo "Building for the Pi One/Zero, with no NEON support"
 else
@@ -81,6 +86,7 @@ else
   echo "Building for the Pi Two/Three, with NEON acceleration"
 fi
 
+cd ${WORKSPACE_PATH}
 bazel build -c opt ${PI_COPTS} \
   --config=monolithic \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
