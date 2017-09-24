@@ -319,7 +319,7 @@ described below.
 * **`target`.** If this argument is left empty (the default), the session will
   only use devices in the local machine. However, you may also specify a
   `grpc://` URL to specify the address of a TensorFlow server, which gives the
-  session access to all devices on machines that that server controls. See
+  session access to all devices on machines that this server controls. See
   @{tf.train.Server} for details of how to create a TensorFlow
   server. For example, in the common **between-graph replication**
   configuration, the @{tf.Session} connects to a @{tf.train.Server} in the same

@@ -167,9 +167,6 @@ Status Conv2DShape(shape_inference::InferenceContext* c);
 // Shape function for Conv3D-like operations.
 Status Conv3DShape(shape_inference::InferenceContext* c);
 
-// Shape function for FusedConvBiasActivation operation.
-Status FusedConvBiasActivationShape(shape_inference::InferenceContext* c);
-
 // Shape function for DepthwiseConv2D-like operations.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 
@@ -215,6 +212,9 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 
 // Shape function for ScatterNd update/add/sub/... operations.
 Status ScatterNdUpdateShape(InferenceContext* c);
+
+// Shape function for ops with an explicit "shape" attribute.
+Status ExplicitShape(InferenceContext* c);
 
 }  // namespace shape_inference
 

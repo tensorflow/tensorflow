@@ -367,18 +367,18 @@ Status HloCostAnalysis::HandleReshape(HloInstruction* reshape) {
 }
 
 Status HloCostAnalysis::HandleBatchNormTraining(
-    HloInstruction* batchNormTraining) {
+    HloInstruction* batch_norm_training) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleBatchNormInference(
-    HloInstruction* batchNormInference) {
+    HloInstruction* batch_norm_inference) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-inference.
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction* batchNormGrad) {
+Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction* batch_norm_grad) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-grad.
   return Status::OK();
 }

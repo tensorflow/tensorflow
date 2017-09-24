@@ -32,6 +32,5 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "//third_party/py/pandas",
     ],
 )

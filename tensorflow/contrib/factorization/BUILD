@@ -162,6 +162,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
+    tags = ["notsan"],  # b/62863147
 )
 
 py_library(
@@ -220,6 +221,7 @@ tf_py_test(
         "manual",
         "noasan",  # times out b/63678675
         "nomsan",
+        "notsan",
     ],
 )
 

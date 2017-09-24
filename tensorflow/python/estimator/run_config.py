@@ -60,7 +60,8 @@ _GRPC_SCHEME = 'grpc://'
 def _get_master(cluster_spec, task_type, task_id):
   """Returns the appropriate string for the TensorFlow master."""
   if not cluster_spec:
-    return _LOCAL_MASTER
+    raise RuntimeError(
+        'Internal error: `_get_master` does not expect empty cluster_spec.')
 
   jobs = cluster_spec.jobs
   # Lookup the master in cluster_spec using task_type and task_id,
@@ -84,7 +85,8 @@ def _get_master(cluster_spec, task_type, task_id):
 def _count_ps(cluster_spec):
   """Counts the number of parameter servers in cluster_spec."""
   if not cluster_spec:
-    return 0
+    raise RuntimeError(
+        'Internal error: `_count_ps` does not expect empty cluster_spec.')
 
   return len(cluster_spec.as_dict().get(TaskType.PS, []))
 

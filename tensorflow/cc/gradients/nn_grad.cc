@@ -50,7 +50,6 @@ REGISTER_GRADIENT_OP("Softmax", SoftmaxGrad);
 Status LogSoftmaxGrad(const Scope& scope, const Operation& op,
                    const std::vector<Output>& grad_inputs,
                    std::vector<Output>* grad_outputs) {
-
   auto softmax = Exp(scope, op.output(0));
   auto sum = Sum(scope, grad_inputs[0], {1}, Sum::KeepDims(true));
   auto mul = Mul(scope, sum, softmax);
@@ -127,10 +126,10 @@ Status Conv2DGrad(const Scope& scope, const Operation& op,
   std::vector<int32> strides;
   bool use_cudnn_on_gpu;
   auto attrs = op.output(0).node()->attrs();
-  GetNodeAttr(attrs, "data_format", &data_format);
-  GetNodeAttr(attrs, "padding", &padding);
-  GetNodeAttr(attrs, "strides", &strides);
-  GetNodeAttr(attrs, "use_cudnn_on_gpu", &use_cudnn_on_gpu);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "use_cudnn_on_gpu", &use_cudnn_on_gpu));
   Conv2DBackpropInput::Attrs input_attrs;
   input_attrs.DataFormat(data_format);
   input_attrs.UseCudnnOnGpu(use_cudnn_on_gpu);
@@ -157,10 +156,10 @@ Status MaxPoolGradHelper(const Scope& scope, const Operation& op,
   std::vector<int32> strides;
   std::vector<int32> ksize;
   auto attrs = op.output(0).node()->attrs();
-  GetNodeAttr(attrs, "data_format", &data_format);
-  GetNodeAttr(attrs, "ksize", &ksize);
-  GetNodeAttr(attrs, "padding", &padding);
-  GetNodeAttr(attrs, "strides", &strides);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
   internal::MaxPoolGrad::Attrs grad_attrs;
   grad_attrs.DataFormat(data_format);
   auto dx = internal::MaxPoolGrad(scope, op.input(0),
@@ -179,8 +178,8 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
   string data_format;
   string padding;
   auto attrs = op.output(0).node()->attrs();
-  GetNodeAttr(attrs, "data_format", &data_format);
-  GetNodeAttr(attrs, "padding", &padding);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
   MaxPoolGradV2::Attrs grad_attrs;
   grad_attrs.DataFormat(data_format);
   auto dx = MaxPoolGradV2(scope, op.input(0),
@@ -197,8 +196,6 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 
-
-  
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

@@ -37,7 +37,6 @@ REQUIRED_PACKAGES = [
     'six >= 1.10.0',
     'protobuf >= 3.3.0',
     'tensorflow-tensorboard >= 0.1.0, < 0.2.0',
-    'autograd >= 1.1.11',
 ]
 
 project_name = 'tensorflow'
@@ -234,8 +233,8 @@ setup(
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
         'Topic :: Software Development',
-        'Topic :: Software Development :: Libraries',  
-        'Topic :: Software Development :: Libraries :: Python Modules',  
+        'Topic :: Software Development :: Libraries',
+        'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     license='Apache 2.0',
     keywords='tensorflow tensor machine learning',)

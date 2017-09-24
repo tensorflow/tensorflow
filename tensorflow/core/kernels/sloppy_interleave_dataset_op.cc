@@ -359,7 +359,7 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  const NameAttrList* func_;
+  NameAttrList func_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SloppyInterleaveDataset").Device(DEVICE_CPU),

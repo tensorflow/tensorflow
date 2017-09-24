@@ -1654,6 +1654,21 @@ class InputLayerTest(test.TestCase):
       fc.input_layer(
           features={'a': [[0]]}, feature_columns={'a': fc.numeric_column('a')})
 
+  def test_bare_column(self):
+    with ops.Graph().as_default():
+      features = features = {'a': [0.]}
+      net = fc.input_layer(features, fc.numeric_column('a'))
+      with _initialized_session():
+        self.assertAllClose([[0.]], net.eval())
+
+  def test_column_generator(self):
+    with ops.Graph().as_default():
+      features = features = {'a': [0.], 'b': [1.]}
+      columns = (fc.numeric_column(key) for key in features)
+      net = fc.input_layer(features, columns)
+      with _initialized_session():
+        self.assertAllClose([[0., 1.]], net.eval())
+
   def test_raises_if_duplicate_name(self):
     with self.assertRaisesRegexp(
         ValueError, 'Duplicate feature column name found for columns'):

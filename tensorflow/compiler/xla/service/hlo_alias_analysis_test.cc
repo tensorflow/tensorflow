@@ -20,8 +20,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -44,6 +46,7 @@ class HloAliasAnalysisTest : public HloTestBase {
   // Run alias analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
   HloAliasAnalysis& RunAnalysis() {
+    hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before alias analysis");
     analysis_ = HloAliasAnalysis::Run(module_.get()).ConsumeValueOrDie();
     return *analysis_;
   }
@@ -91,7 +94,8 @@ class HloAliasAnalysisTest : public HloTestBase {
       for (const HloValue* value_a : buffer.values()) {
         for (const HloValue* value_b : buffer.values()) {
           if (*value_a != *value_b &&
-              ordering.MayInterfere(*value_a, *value_b)) {
+              ordering.MayInterfere(*value_a, *value_b,
+                                    analysis_->dataflow_analysis())) {
             VLOG(1) << *value_a << " interferes with " << *value_b
                     << " in buffer: " << buffer;
             return true;
