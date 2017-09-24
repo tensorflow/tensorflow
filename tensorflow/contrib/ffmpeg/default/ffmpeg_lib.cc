@@ -125,7 +125,7 @@ bool IsBinaryInstalled(const string& binary_name) {
   ::execvp(kFfmpegExecutable, args_chars.data());
   // exec only returns on error.
   const int error = errno;
-  LOG(ERROR) << "FFmpeg could not be executed: " << error;
+  LOG(ERROR) << "FFmpeg could not be executed: " << strerror(error);
   ::_exit(error);
 }
 
@@ -235,24 +235,26 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
   uint32 height_value = 0;
   uint32 width_value = 0;
   for (const string& line : str_util::Split(data, '\n')) {
+    // Output starts with the first line of `Output #..`.
+    // Further processing output region starts next line so we could continue
+    // the loop.
     if (!in_output && line.find("Output #") == 0) {
       in_output = true;
       in_mapping = false;
+      continue;
     }
+    // Stream mapping starts with the first line of `Stream mapping`, it also
+    // signals the end of Output section.
+    // Further processing of stream mapping region starts next line so we could
+    // continue the loop.
     if (!in_mapping && line.find("Stream mapping:") == 0) {
       in_output = false;
       in_mapping = true;
-    }
-    if (in_mapping) {
-      if (line.find("frame=  ") == 0) {
-        string number = line.substr(8, line.find(" ", 8));
-        number = number.substr(0, number.find(" "));
-        if (strings::safe_strtou32(number, &frames_value)) {
-          in_mapping = false;
-        }
-      }
+      continue;
     }
     if (in_output) {
+      // We only look for the first stream in output `Stream #0`.
+      // Once processed we will not further process output section.
       if (line.find("    Stream #") == 0) {
         size_t p = line.find(", rgb24, ", 24);
         if (p != std::string::npos) {
@@ -266,6 +268,20 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
           }
         }
       }
+      continue;
+    }
+    if (in_mapping) {
+      // We only look for the first stream mapping to have the number of the
+      // frames.
+      // Once processed we will not further process stream mapping section.
+      if (line.find("frame=  ") == 0) {
+        string number = line.substr(8, line.find(" ", 8));
+        number = number.substr(0, number.find(" "));
+        if (strings::safe_strtou32(number, &frames_value)) {
+          in_mapping = false;
+        }
+      }
+      continue;
     }
   }
   if (frames_value == 0 || height_value == 0 || width_value == 0) {
@@ -346,7 +362,8 @@ Status ReadAudioFile(const string& filename, const string& audio_format_id,
   // Execute ffmpeg and report errors.
   pid_t child_pid = ::fork();
   if (child_pid < 0) {
-    return Status(error::Code::UNKNOWN, StrCat("fork failed: ", errno));
+    return Status(error::Code::UNKNOWN,
+                  StrCat("fork failed: ", strerror(errno)));
   }
   if (child_pid == 0) {
     ExecuteFfmpeg(args);
@@ -391,13 +408,16 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
   // Execute ffmpeg and report errors.
   pid_t child_pid = ::fork();
   if (child_pid < 0) {
-    return Status(error::Code::UNKNOWN, StrCat("fork failed: ", errno));
+    return Status(error::Code::UNKNOWN,
+                  StrCat("fork failed: ", strerror(errno)));
   }
   if (child_pid == 0) {
-    int fd = open(stderr_filename.c_str(), O_RDWR | O_CREAT | O_APPEND, 0600);
+    const int fd =
+        open(stderr_filename.c_str(), O_RDWR | O_CREAT | O_APPEND, 0600);
     if (fd < 0) {
       const int error = errno;
-      LOG(ERROR) << "FFmpeg stderr file coule not be created: " << error;
+      LOG(ERROR) << "FFmpeg stderr file coule not be created: "
+                 << strerror(error);
       ::_exit(error);
     }
     close(STDERR_FILENO);
@@ -405,7 +425,10 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
     ExecuteFfmpeg(args);
   } else {
     int status_code;
-    ::waitpid(child_pid, &status_code, 0);
+    if (::waitpid(child_pid, &status_code, 0) < 0) {
+      return Status(error::Code::UNKNOWN,
+                    StrCat("waitpid failed: ", strerror(errno)));
+    }
     if (status_code) {
       return Status(error::Code::UNKNOWN,
                     StrCat("FFmpeg execution failed: ", status_code));

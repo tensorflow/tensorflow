@@ -30,7 +30,6 @@
 
 namespace tensorflow {
 namespace ffmpeg {
-namespace {}  // namespace
 
 class DecodeVideoOp : public OpKernel {
  public:
@@ -54,12 +53,14 @@ class DecodeVideoOp : public OpKernel {
     OP_REQUIRES_OK(context, WriteFile(temp_filename, contents));
     FileDeleter deleter(temp_filename);
 
-    uint32 width = 0, height = 0, frames = 0;
+    uint32 width = 0;
+    uint32 height = 0;
+    uint32 frames = 0;
 
     // Run FFmpeg on the data and verify results.
     std::vector<uint8> output_data;
-    Status result = ffmpeg::ReadVideoFile(temp_filename, &output_data, &width,
-                                          &height, &frames);
+    const Status result = ffmpeg::ReadVideoFile(temp_filename, &output_data,
+                                                &width, &height, &frames);
     if (result.code() == error::Code::NOT_FOUND) {
       OP_REQUIRES(
           context, result.ok(),

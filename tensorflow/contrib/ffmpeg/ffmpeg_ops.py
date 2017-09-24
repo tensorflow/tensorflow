@@ -97,10 +97,10 @@ def decode_video(contents):
 
   Args:
     contents: The binary contents of the video file to decode. This is a
-        scalar.
+      scalar.
 
   Returns:
-    A rank-4 tensor that has [frames, height, width, 3] RGB as output.
+    A rank-4 `Tensor` that has `[frames, height, width, 3]` RGB as output.
   """
   return gen_decode_video_op_py.decode_video(contents)
 
