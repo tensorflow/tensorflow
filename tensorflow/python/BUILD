@@ -21,6 +21,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
@@ -32,6 +33,7 @@ load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 
 py_library(
     name = "python",
@@ -48,7 +50,6 @@ py_library(
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
-        ":tf_optimizer",
         ":array_ops",
         ":bitwise_ops",
         ":check_ops",
@@ -61,15 +62,20 @@ py_library(
         ":framework_for_generated_wrappers",
         ":functional_ops",
         ":gradient_checker",
+        ":graph_util",
         ":histogram_ops",
         ":image_ops",
         ":initializers_ns",
         ":io_ops",
+        ":layers",
         ":lib",
         ":linalg_ns",
         ":math_ops",
+        ":metrics",
         ":nn",
+        ":ops",
         ":platform",
+        ":pywrap_tensorflow",
         ":script_ops",
         ":session_ops",
         ":sets",
@@ -79,24 +85,24 @@ py_library(
         ":state_ops",
         ":string_ops",
         ":summary",
-        ":metrics",
-        ":layers",
         ":tensor_array_ops",
         ":training",
-        ":ops",
         ":saver_test_utils",
         ":subscribe",
         ":test_ops",  # TODO: Break testing code out into separate rule.
+        ":tf_optimizer",
         ":util",
         ":weights_broadcast_ops",
         "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column:feature_column_py",
+        "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
-        "//tensorflow/python/keras",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
     ]),
@@ -314,7 +320,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_shared_object(
     name = "framework/test_file_system.so",
     srcs = ["framework/test_file_system.cc"],
     copts = if_not_windows(["-Wno-sign-compare"]),
@@ -324,7 +330,6 @@ cc_binary(
         ],
         "//tensorflow:darwin": [],
     }),
-    linkshared = 1,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "@protobuf_archive//:protobuf_headers",
@@ -338,7 +343,10 @@ py_test(
     data = [":framework/test_file_system.so"],
     main = "framework/file_system_test.py",
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_pip",  # Path issues due to test environment
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":data_flow_ops",
@@ -2927,7 +2935,13 @@ tf_cuda_library(
 
 py_library(
     name = "pywrap_tensorflow",
-    srcs = ["pywrap_tensorflow.py"],
+    srcs = [
+        "pywrap_tensorflow.py",
+    ] + if_static(
+        ["pywrap_dlopen_global_flags.py"],
+        # Import will fail, indicating no global dlopen flags
+        otherwise = [],
+    ),
     srcs_version = "PY2AND3",
     deps = [":pywrap_tensorflow_internal"],
 )
@@ -3214,7 +3228,7 @@ tf_cuda_library(
         "//tensorflow/core",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_cc",
+        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )

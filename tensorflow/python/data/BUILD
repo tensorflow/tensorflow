@@ -1,11 +1,18 @@
-# Description:
-#   Contains KfacOptimizer, an implementation of the K-FAC optimization
-#   algorithm in TensorFlow.
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
+
+py_library(
+    name = "data",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
 
 filegroup(
     name = "all_files",

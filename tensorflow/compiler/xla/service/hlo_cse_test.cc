@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #include "tensorflow/compiler/xla/types.h"
@@ -293,6 +294,40 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsInsensitive) {
   auto first_operand = tuple->operand(0);
   EXPECT_THAT(first_operand, ::testing::AnyOf(exp1, exp2));
   EXPECT_THAT(tuple, op::Tuple(first_operand, first_operand));
+}
+
+TEST_F(HloCseTest, FusionInternalCSE) {
+  // Test that we can CSE expressions that live within a fusion node
+  // computation.
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  const Shape shape_r0 = ShapeUtil::MakeShape(F32, {});
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape_r0, "p0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape_r0, "p1"));
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape_r0, HloOpcode::kAdd, param0, param1));
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape_r0, HloOpcode::kAdd, param0, param1));
+  auto mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape_r0, HloOpcode::kMultiply, add1, add2));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto fused_computation =
+      computation
+          ->CreateFusionInstruction({mul, add1, add2},
+                                    HloInstruction::FusionKind::kLoop)
+          ->fused_instructions_computation();
+
+  EXPECT_EQ(5, fused_computation->instruction_count());
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  EXPECT_EQ(4, fused_computation->instruction_count());
+
+  auto root = fused_computation->root_instruction();
+  EXPECT_THAT(root, op::Multiply(root->operand(0), root->operand(0)));
 }
 
 TEST_F(HloCseTest, IdenticalExpressions) {

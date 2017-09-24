@@ -5,6 +5,7 @@ package(
 )
 
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 test_suite(
     name = "all_tests",
@@ -137,7 +138,7 @@ tf_library(
     tags = ["manual"],
 )
 
-cc_test(
+tf_cc_test(
     name = "tfcompile_test",
     srcs = ["tfcompile_test.cc"],
     tags = ["manual"],

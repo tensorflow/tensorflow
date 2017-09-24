@@ -70,29 +70,29 @@ class Invert(bijector_lib.Bijector):
         name=name or "_".join(["invert", bijector.name]))
 
   def _forward_event_shape(self, input_shape):
-    return self.bijector.inverse_event_shape(input_shape)
+    return self.bijector._inverse_event_shape(input_shape)  # pylint: disable=protected-access
 
   def _forward_event_shape_tensor(self, input_shape):
-    return self.bijector.inverse_event_shape_tensor(input_shape)
+    return self.bijector._inverse_event_shape_tensor(input_shape)  # pylint: disable=protected-access
 
   def _inverse_event_shape(self, output_shape):
-    return self.bijector.forward_event_shape(output_shape)
+    return self.bijector._forward_event_shape(output_shape)  # pylint: disable=protected-access
 
   def _inverse_event_shape_tensor(self, output_shape):
-    return self.bijector.forward_event_shape_tensor(output_shape)
+    return self.bijector._forward_event_shape_tensor(output_shape)  # pylint: disable=protected-access
 
   @property
   def bijector(self):
     return self._bijector
 
   def _forward(self, x, **kwargs):
-    return self.bijector.inverse(x, **kwargs)
+    return self.bijector._inverse(x, **kwargs)  # pylint: disable=protected-access
 
   def _inverse(self, y, **kwargs):
-    return self.bijector.forward(y, **kwargs)
+    return self.bijector._forward(y, **kwargs)  # pylint: disable=protected-access
 
   def _inverse_log_det_jacobian(self, y, **kwargs):
-    return self.bijector.forward_log_det_jacobian(y, **kwargs)
+    return self.bijector._forward_log_det_jacobian(y, **kwargs)  # pylint: disable=protected-access
 
   def _forward_log_det_jacobian(self, x, **kwargs):
-    return self.bijector.inverse_log_det_jacobian(x, **kwargs)
+    return self.bijector._inverse_log_det_jacobian(x, **kwargs)  # pylint: disable=protected-access

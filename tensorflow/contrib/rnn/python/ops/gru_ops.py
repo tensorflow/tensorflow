@@ -27,6 +27,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.util.deprecation import deprecated_args
 
 _gru_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_gru_ops.so"))
@@ -129,13 +130,24 @@ class GRUBlockCell(rnn_cell_impl.RNNCell):
 
   """
 
-  def __init__(self, cell_size):
+  @deprecated_args(None, "cell_size is deprecated, use num_units instead",
+                   "cell_size")
+  def __init__(self, num_units=None, cell_size=None):
     """Initialize the Block GRU cell.
 
     Args:
-      cell_size: int, GRU cell size.
+      num_units: int, The number of units in the GRU cell.
+      cell_size: int, The old (deprecated) name for `num_units`.
+
+    Raises:
+      ValueError: if both cell_size and num_units are not None;
+        or both are None.
     """
-    self._cell_size = cell_size
+    if (cell_size is None) == (num_units is None):
+      raise ValueError("Exactly one of num_units or cell_size must be provided.")
+    if num_units is None:
+      num_units = cell_size
+    self._cell_size = num_units
 
   @property
   def state_size(self):

@@ -329,7 +329,7 @@ batch_variance: A 1D Tensor for the computed batch variance, to be used by
 reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
                  in the gradient computation.
 reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
-                 in the cuDNN case), to be used in the gradient computation.
+                 in the cuDNN case), to be reused in the gradient computation.
 T: The data type for the elements of input and output Tensors.
 epsilon: A small float number added to the variance of x.
 data_format: The data format for x and y. Either "NHWC" (default) or "NCHW".
@@ -409,10 +409,14 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 y_backprop: A 4D Tensor for the gradient with respect to y.
 x: A 4D Tensor for input data.
 scale: A 1D Tensor for scaling factor, to scale the normalized x.
-reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
-                 in the gradient computation.
-reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
-                 in the cuDNN case), to be used in the gradient computation.
+reserve_space_1: When is_training is True, a 1D Tensor for the computed batch mean
+                 to be reused in gradient computation.
+                 When is_training is False, a 1D Tensor for the population mean
+                 to be reused in both 1st and 2nd order gradient computation.
+reserve_space_2: When is_training is True, a 1D Tensor for the computed batch variance
+                 (inverted variance in the cuDNN case) to be reused in gradient computation.
+                 When is_training is False, a 1D Tensor for the population variance
+                 to be reused in both 1st and 2nd order gradient computation.
 x_backprop: A 4D Tensor for the gradient with respect to x.
 scale_backprop: A 1D Tensor for the gradient with respect to scale.
 offset_backprop: A 1D Tensor for the gradient with respect to offset.

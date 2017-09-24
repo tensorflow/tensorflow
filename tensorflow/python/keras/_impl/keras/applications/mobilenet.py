@@ -57,7 +57,7 @@ the 100 % MobileNet on various input sizes:
 
 The weights for all 16 models are obtained and translated
 from Tensorflow checkpoints found at
-https://github.com/tensorflow/models/blob/master/slim/nets/mobilenet_v1.md
+https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md
 
 # Reference
 - [MobileNets: Efficient Convolutional Neural Networks for

@@ -373,6 +373,30 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(tfe_conv2d, params=(0,))(i, k, s)[0]
     self.assertAllEqual([[[[2.0]]]], grad.numpy())
 
+  def testSameObjectForMultipleArguments(self):
+
+    def f(x, y):
+      return math_ops.multiply(x, y)
+
+    g = backprop.gradients_function(f)
+
+    def np_g(x, y):
+      dx, dy = g(x, y)
+      return [dx.numpy(), dy.numpy()]
+
+    x = constant_op.constant(1.)
+    self.assertAllEqual([1., 1.], np_g(x, x))
+    x = 1.
+    self.assertAllEqual([1., 1.], np_g(x, x))
+    x = constant_op.constant([[1.]])
+    self.assertAllEqual([[[1.]], [[1.]]], np_g(x, x))
+    x = [[1.]]
+    self.assertAllEqual([[[1.]], [[1.]]], np_g(x, x))
+
+    v = resource_variable_ops.ResourceVariable(
+        initial_value=1., name='testSameObjectForMultipleArguments.Variable')
+    self.assertAllEqual([1., 1.], np_g(v, v))
+
 
 if __name__ == '__main__':
   test.main()

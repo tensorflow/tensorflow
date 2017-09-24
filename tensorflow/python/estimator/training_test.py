@@ -27,8 +27,10 @@ from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator import training
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
@@ -70,6 +72,18 @@ _TF_CONFIG_FOR_WORKER = {
     },
     'task': {
         'type': run_config_lib.TaskType.WORKER,
+        'index': 1
+    }
+}
+
+_TF_CONFIG_FOR_PS = {
+    'cluster': {
+        run_config_lib.TaskType.CHIEF: ['host0:0'],
+        run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+        run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4']
+    },
+    'task': {
+        'type': run_config_lib.TaskType.PS,
         'index': 1
     }
 }
@@ -508,6 +522,195 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
       executor.run_evaluator()
     mock_sleep.assert_called_with(throttle_secs - operation_secs)
     self.assertTrue(mock_est.evaluate.called)
+
+
+class TrainingExecutorRunPsTest(test.TestCase):
+  """Tests run_ps of _TrainingExecutor."""
+
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_std_server(self, mock_server):
+    mock_server_instance = test.mock.Mock()
+    mock_server.return_value = mock_server_instance
+
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = _create_run_config_with_cluster_spec(_TF_CONFIG_FOR_PS)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec,
+                                          mock_eval_spec)
+    executor.run_ps()
+
+    mock_server.assert_called_with(
+        mock_est.config.cluster_spec,
+        job_name=mock_est.config.task_type,
+        task_index=mock_est.config.task_id,
+        config=test.mock.ANY,
+        start=False)
+
+    self.assertTrue(mock_server_instance.start.called)
+    self.assertTrue(mock_server_instance.join.called)
+
+  def test_fail_with_empty_cluster_spec(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = None
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = 'gs'
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(mock_est, mock_train_spec,
+                                 mock_eval_spec).run_ps()
+
+  def test_fail_with_empty_master(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.master = ''
+    mock_est.config.task_type = 'gs'
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(mock_est, mock_train_spec,
+                                 mock_eval_spec).run_ps()
+
+  def test_fail_with_empty_task_type(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = ''
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(mock_est, mock_train_spec,
+                                 mock_eval_spec).run_ps()
+
+  def test_fail_with_none_task_id(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'gs': 'dummy'}
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = 'gs'
+    mock_est.config.task_id = None
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(mock_est, mock_train_spec,
+                                 mock_eval_spec).run_ps()
+
+
+class StopAtSecsHookTest(test.TestCase):
+  """Tests StopAtSecsHook."""
+
+  @test.mock.patch.object(time, 'time')
+  def test_stops_after_time(self, mock_time):
+    mock_time.return_value = 1484695987.209386
+    hook = training._StopAtSecsHook(1000)
+    with ops.Graph().as_default():
+      no_op = control_flow_ops.no_op()
+      # some time passed before training starts
+      mock_time.return_value += 250
+      with monitored_session.MonitoredSession(hooks=[hook]) as sess:
+        self.assertFalse(sess.should_stop())
+        sess.run(no_op)
+        self.assertFalse(sess.should_stop())
+        mock_time.return_value += 500
+        sess.run(no_op)
+        self.assertFalse(sess.should_stop())
+        mock_time.return_value += 400
+        sess.run(no_op)
+        self.assertFalse(sess.should_stop())
+        mock_time.return_value += 200
+        sess.run(no_op)
+        self.assertTrue(sess.should_stop())
+
+
+class TrainingExecutorRunLocalTest(test.TestCase):
+  """Tests run_local of _TrainingExecutor."""
+
+  def test_send_stop_at_secs_to_train(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=2, hooks=[_FakeHook()])
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, hooks=[_FakeHook()], throttle_secs=100)
+    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_local()
+
+    stop_hook = mock_est.train.call_args[1]['hooks'][-1]
+    self.assertIsInstance(stop_hook, training._StopAtSecsHook)
+    self.assertEqual(eval_spec.throttle_secs, stop_hook._stop_after_secs)
+
+  def test_runs_in_a_loop_until_max_steps(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, hooks=[_FakeHook()], throttle_secs=100)
+    # should be called 3 times.
+    mock_est.evaluate.side_effect = [{
+        _GLOBAL_STEP_KEY: train_spec.max_steps - 100
+    }, {
+        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
+    }, {
+        _GLOBAL_STEP_KEY: train_spec.max_steps
+    }]
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_local()
+
+    self.assertEqual(3, mock_est.train.call_count)
+    self.assertEqual(3, mock_est.evaluate.call_count)
+
+  def test_train_and_evaluate_args(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, steps=2, hooks=[_FakeHook()], name='local_eval')
+    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_local()
+
+    mock_est.evaluate.assert_called_with(
+        name=eval_spec.name,
+        input_fn=eval_spec.input_fn,
+        steps=eval_spec.steps,
+        hooks=eval_spec.hooks)
+
+    train_args = mock_est.train.call_args[1]
+    self.assertEqual(list(train_spec.hooks), list(train_args['hooks'][:-1]))
+    self.assertEqual(train_spec.input_fn, train_args['input_fn'])
+    self.assertEqual(train_spec.max_steps, train_args['max_steps'])
+
+  def test_errors_out_if_throttle_secs_is_zero(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=lambda: 1, throttle_secs=0)
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(ValueError, 'throttle_secs'):
+      executor.run_local()
 
 
 if __name__ == '__main__':
