@@ -129,6 +129,19 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         const PartialTensorShape& row_shape =
             DatasetIterator<Dataset<T>>::dataset()->row_shape_;
         const int row_ndims = row_shape.dims();
+
+        // Determine the size of the output tensors:
+        // * dense_shape will be [`row_shape + 1`].
+        Tensor dense_shape(cpu_allocator(), DT_INT64, {row_ndims + 1});
+        auto dense_shape_vec = dense_shape.vec<int64>();
+        for (size_t i = 0; i < row_ndims; ++i) {
+          if (row_shape.dim_size(i) == -1) {
+            dense_shape_vec(i + 1) = 0;
+          } else {
+            dense_shape_vec(i + 1) = row_shape.dim_size(i);
+          }
+        }
+
         {
           mutex_lock l(mu_);
           *end_of_sequence = false;
@@ -153,6 +166,20 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                     ") that is incompatible with the row shape (",
                     row_shape.DebugString(), ").");
               }
+              for (int j = 0; j < row_ndims; ++j) {
+                // Take the maximum in the dimension if -1 is given.
+                if (row_shape.dim_size(j) == -1) {
+                  dense_shape_vec(j + 1) = std::max(
+                      batch_element_tuple[0].dim_size(j),
+                      dense_shape_vec(j + 1));
+                } else if (batch_element_tuple[0].dim_size(j) > row_shape.dim_size(j)) {
+                  return errors::DataLoss(
+                      "Input element had shape (",
+                      batch_element_tuple[0].shape().DebugString(),
+                      ") that is larger than the row shape (",
+                      row_shape.DebugString(), ").");
+                }
+              }
             }
           }
         }
@@ -162,48 +189,21 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        // Determine the size of the output tensors:
         // * indices will be [`total_elements`, `row_shape + 1`].
         // * values will be [`total_elements`].
-        // * dense_shape will be [`row_shape + 1`].
         Tensor indices(cpu_allocator(), DT_INT64,
                        {total_elements, row_ndims + 1});
         Tensor values(
             cpu_allocator(),
             DatasetIterator<Dataset<T>>::dataset()->output_dtypes()[1],
             {total_elements});
-        Tensor dense_shape(cpu_allocator(), DT_INT64, {row_ndims + 1});
         auto indices_matrix = indices.matrix<int64>();
         auto values_flat = values.flat<T>();
-        auto dense_shape_vec = dense_shape.vec<int64>();
-
-        dense_shape_vec(0) = batch_elements.size();
-        for (size_t i = 0; i < row_ndims; ++i) {
-          if (row_shape.dim_size(i) == -1) {
-            dense_shape_vec(i + 1) = 0;
-          } else {
-            dense_shape_vec(i + 1) = row_shape.dim_size(i);
-          }
-        }
 
         int64 current_position_in_values = 0;
         for (int64 i = 0; i < batch_elements.size(); ++i) {
           const Tensor& t = batch_elements[i];
           const auto& t_flat = t.flat<T>();
-
-          // Take the maximum in the dimension if -1 is given.
-          for (int j = 0; j < row_ndims; ++j) {
-            if (row_shape.dim_size(j) == -1) {
-              dense_shape_vec(j + 1) = std::max(t.dim_size(j), dense_shape_vec(j + 1));
-            } else if (t.dim_size(j) > row_shape.dim_size(j)) {
-              return errors::DataLoss(
-                  "Input element had shape (",
-                  t.shape().DebugString(),
-                  ") that is larger than the row shape (",
-                  row_shape.DebugString(), ").");
-            }
-          }
-
           // TODO(mrry): Replace with a memcpy or something more
           // efficient. (Maybe an Eigen assign op?)
           gtl::InlinedVector<int64, 4> strides(row_ndims);
@@ -228,6 +228,8 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
             ++current_position_in_values;
           }
         }
+
+        dense_shape_vec(0) = batch_elements.size();
 
         out_tensors->push_back(std::move(indices));
         out_tensors->push_back(std::move(values));
