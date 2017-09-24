@@ -78,24 +78,6 @@ struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, I
                   typename TTypes<T, 2>::Tensor output);
 };
 
-// Functor for UnsortedSegmentSumWithDropNegativesOp.
-// output_rows: the number of output segments (unique segment ids in
-//                'segment_ids').
-// segment_ids_shape: shape of 'segment_ids' tensor.
-// segment_ids: unsorted map from input to output segment ids at which to
-//                perform segment sum operation.
-// data_size: size of input data tensor.
-// data: input data tensor.
-// output: output reshaped to {output_rows, output.size/output_rows}
-template <typename Device, typename T, typename Index>
-struct UnsortedSegmentSumWithDropNegativesFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
-  void operator()(OpKernelContext* ctx, const Device& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output);
-};
-
 // Functor for UnsortedSegmentMaxOp.
 // output_rows: the number of output segments (unique segment ids in
 //                'segment_ids').

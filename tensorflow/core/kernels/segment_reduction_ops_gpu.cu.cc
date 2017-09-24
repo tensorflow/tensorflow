@@ -229,46 +229,6 @@ struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>: UnsortedSegmentBaseFuncto
   }
 };
 
-
-// UnsortedSegmentSumWithDropNegativesFunctor implementation for GPUDevice.
-template <typename T, typename Index>
-struct UnsortedSegmentSumWithDropNegativesFunctor<GPUDevice, T, Index>
-    : UnsortedSegmentBaseFunctor<GPUDevice, T, Index> {
-  void operator()(OpKernelContext* ctx, const GPUDevice& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output) override {
-    if (output.size() == 0) {
-      return;
-    }
-    // Set 'output' to zeros.
-    CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
-    SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        output.size(), output.data());
-    if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
-      return;
-    }
-
-    // Launch kernel to compute unsorted segment sum.
-    // Notes:
-    // *) 'input_total_size' is the total number of elements to process.
-    // *) 'segment_ids.shape' is a prefix of data's shape.
-    // *) 'input_outer_dim_size' is the total number of segments to process.
-    const Index input_total_size = data_size;
-    const Index input_outer_dim_size = segment_ids.dimension(0);
-    const Index input_inner_dim_size = input_total_size / input_outer_dim_size;
-
-    config = GetCudaLaunchConfig(input_total_size, d);
-    UnsortedSegmentSumCustomKernel<
-        T,
-        Index><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        input_outer_dim_size, input_inner_dim_size, output_rows,
-        segment_ids.data(), data, output.data());
-  }
-};
-
-
 #define DEFINE_SORTED_GPU_SPECS_INDEX(T, Index) \
   template struct SegmentSumFunctor<T, Index>
 
@@ -278,10 +238,8 @@ struct UnsortedSegmentSumWithDropNegativesFunctor<GPUDevice, T, Index>
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
 
-#define DEFINE_GPU_SPECS_INDEX(T, Index)                                   \
-  template struct UnsortedSegmentSumFunctor<GPUDevice, T, Index> ;         \
-  template struct UnsortedSegmentSumWithDropNegativesFunctor<GPUDevice, T, \
-                                                              Index>
+#define DEFINE_GPU_SPECS_INDEX(T, Index) \
+  template struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>
 
 #define DEFINE_GPU_SPECS(T)         \
   DEFINE_GPU_SPECS_INDEX(T, int32); \

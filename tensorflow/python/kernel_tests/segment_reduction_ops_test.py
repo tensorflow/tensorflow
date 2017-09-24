@@ -323,8 +323,9 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
   def testBadIndices(self):
     # Note: GPU kernel does not return the out-of-range error needed for this
     # test, so this test is marked as cpu-only.
+    # Note: With PR #13055 a negative index will be ignored silently.
     with self.test_session(use_gpu=False):
-      for bad in [[-1]], [[7]]:
+      for bad in [[2]], [[7]]:
         unsorted = math_ops.unsorted_segment_sum([[17]], bad, num_segments=2)
         with self.assertRaisesOpError(
             r"segment_ids\[0,0\] = %d is out of range \[0, 2\)" % bad[0][0]):
@@ -381,8 +382,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
           # Replace 8 with -1 in indices
           np.place(indices, indices==8, [-1])
           s = math_ops.unsorted_segment_sum(
-              data=tf_x, segment_ids=indices, num_segments=num_segments,
-              drop_negatives=True)
+              data=tf_x, segment_ids=indices, num_segments=num_segments)
           tf_ans = s.eval()
         self.assertAllClose(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, s)
