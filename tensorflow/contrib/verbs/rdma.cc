@@ -67,8 +67,13 @@ string MessageTypeToString(RdmaMessageType rmt) {
 }
 }  // namespace
 
-int get_dev_active_port_num(ibv_device *device)
-{
+string get_env_var(char const* var_name) {
+	char const* var_temp = getenv(var_name);
+
+	return (var_temp == NULL) ? string() : string(var_temp);
+}
+
+int get_dev_active_port_num(ibv_device *device) {
   ibv_device_attr device_att;
   ibv_port_attr port_attr;
   ibv_context* context = NULL;
@@ -92,19 +97,14 @@ int get_dev_active_port_num(ibv_device *device)
 
 ibv_device* set_device() {
   ibv_device** dev_list;
-  int dev_num;
-  int device_index;
-  int device_to_open = 0;
+  int dev_num, device_index, device_to_open = 0;
   bool found_active_port = false;
-  string env_p_rdma_device;
-  char const* env_p_rdma_device_temp;
+  string env_p_rdma_device, str_port_num;
 
   dev_list = ibv_get_device_list(&dev_num);
   CHECK(dev_list) << "No InfiniBand device found";
 
-  env_p_rdma_device_temp = getenv("RDMA_DEVICE");
-  env_p_rdma_device = (env_p_rdma_device_temp == NULL)?string(): string(env_p_rdma_device_temp);
-
+  env_p_rdma_device = get_env_var("RDMA_DEVICE");
   if (!env_p_rdma_device.empty()) {
     for (device_index = 0; device_index < dev_num; device_index++) {
       if (!env_p_rdma_device.compare(ibv_get_device_name(dev_list[device_index]))) {
@@ -116,6 +116,8 @@ ibv_device* set_device() {
     CHECK(false) <<  "The device " << env_p_rdma_device << " wasn't found";
   }
   else {
+  str_port_num = get_env_var("RDMA_DEVICE_PORT");
+  CHECK(str_port_num.empty()) << "RDMA_DEVICE should be provided if RDMA_DEVICE_PORT is set by user";
     for (device_index = 0; device_index < dev_num; device_index++) {
       //get port_num
       if (get_dev_active_port_num(dev_list[device_index]) > 0){
@@ -144,7 +146,6 @@ ibv_context* open_device(ibv_device *ibv_dev) {
 uint8_t set_port(ibv_context* context) {
   uint8_t port_num = 1;
   string str_port_num;
-  char const* str_port_num_temp;
   ibv_device_attr device_att;
   ibv_port_attr port_attr;
   int rc, port_index;
@@ -152,8 +153,7 @@ uint8_t set_port(ibv_context* context) {
   rc = ibv_query_device(context, &device_att);
   CHECK (!rc) << "Failed to query the device\n";
 
-  str_port_num_temp = getenv("RDMA_DEVICE_PORT");
-  str_port_num = str_port_num_temp == NULL ? string() : string(str_port_num_temp);
+  str_port_num = get_env_var("RDMA_DEVICE_PORT");
   //user defined port
   if (!str_port_num.empty()) {
     port_num = stoi(str_port_num);
@@ -209,6 +209,8 @@ int read_sysfs_file(const char *dir, const char *file, char *buf, size_t size) {
   return len;
 }
 
+#define RoCE_V2 "RoCE v2"
+
 bool is_gid_type_rocev2(ibv_context* context,uint8_t port_num, uint8_t index) {
   char name[32];
   char buff[41];
@@ -217,12 +219,11 @@ bool is_gid_type_rocev2(ibv_context* context,uint8_t port_num, uint8_t index) {
   if (read_sysfs_file(context->device->ibdev_path, name, buff, sizeof(buff)) <= 0) {
       return false;
   }
-  return !strcmp(buff, "RoCE v2");
+  return !strcmp(buff, RoCE_V2);
 }
 
 uint8_t set_gid(uint8_t port_num, ibv_context* context) {
   ibv_port_attr port_attr;
-  char const *gid_temp;
   string gid_str;
   int rc, i, gids_num = 0, v2_ip_num = 0;
   union ibv_gid gid;
@@ -250,8 +251,7 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
       if (v2_ip_num == 0) {
         LOG(INFO) << "RoCE v2 is not configured";
       }
-      gid_temp = getenv("RDMA_GID_INDEX");
-      gid_str = gid_temp == NULL ? string() : string(gid_temp);
+      gid_str = get_env_var("RDMA_GID_INDEX");
       if (!gid_str.empty()) {
         gid_index = stoi(gid_str);
         CHECK(gid_index < gids_num) << "RDMA_GID_INDEX should be less than GIDs amount" << gids_num;
@@ -273,10 +273,8 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
 uint8_t set_pkey() {
   uint8_t pkey_index = 0;
   string pkey_index_s;
-  char const* pkey_index_s_temp;
 
-  pkey_index_s_temp = getenv("RDMA_PKEY");
-  pkey_index_s = pkey_index_s_temp == NULL ? string() : string(pkey_index_s_temp);
+  pkey_index_s = get_env_var("RDMA_PKEY");
 
   if (!pkey_index_s.empty()) {
     pkey_index = stoi(pkey_index_s);
@@ -291,10 +289,8 @@ uint8_t set_pkey() {
 uint32_t set_queue_depth() {
   uint32_t queue_depth = 0;
   string queue_depth_s;
-  char const* queue_depth_s_temp;
 
-  queue_depth_s_temp = getenv("RDMA_QUEUE_DEPTH");
-  queue_depth_s = queue_depth_s_temp == NULL ? string() : string(queue_depth_s_temp);
+  queue_depth_s = get_env_var("RDMA_QUEUE_DEPTH");
 
   if (!queue_depth_s.empty()) {
     queue_depth = stoi(queue_depth_s);
@@ -309,10 +305,8 @@ uint32_t set_queue_depth() {
 uint8_t set_timeout() {
   uint8_t timeout = 0;
   string timeout_s;
-  char const* timeout_s_temp;
 
-  timeout_s_temp = getenv("RDMA_TIMEOUT");
-  timeout_s = timeout_s_temp == NULL ? string() : string(timeout_s_temp);
+  timeout_s = get_env_var("RDMA_TIMEOUT");
 
   if (!timeout_s.empty()) {
     timeout = stoi(timeout_s);
@@ -327,10 +321,8 @@ uint8_t set_timeout() {
 uint8_t set_retry_cnt() {
   uint8_t retry_cnt = 0;
   string retry_cnt_s;
-  char const* retry_cnt_s_temp;
 
-  retry_cnt_s_temp = getenv("RDMA_RETRY_CNT");
-  retry_cnt_s = retry_cnt_s_temp == NULL ? string() : string(retry_cnt_s_temp);
+  retry_cnt_s = get_env_var("RDMA_RETRY_CNT");
 
   if (!retry_cnt_s.empty()) {
     retry_cnt = stoi(retry_cnt_s);
@@ -345,10 +337,8 @@ uint8_t set_retry_cnt() {
 uint8_t set_sl() {
   uint8_t sl = 0;
   string sl_s;
-  char const* sl_s_temp;
 
-  sl_s_temp = getenv("RDMA_SL");
-  sl_s = sl_s_temp == NULL ? string() : string(sl_s_temp);
+  sl_s = get_env_var("RDMA_SL");
 
   if (!sl_s.empty()) {
     sl = stoi(sl_s);
@@ -363,10 +353,8 @@ uint8_t set_sl() {
 uint8_t set_mtu() {
   uint32_t mtu = 0;
   string mtu_s;
-  char const* mtu_s_temp;
 
-  mtu_s_temp = getenv("RDMA_MTU");
-  mtu_s = mtu_s_temp == NULL ? string() : string(mtu_s_temp);
+  mtu_s = get_env_var("RDMA_MTU");
 
   if (!mtu_s.empty()) {
     mtu = stoi(mtu_s);
