@@ -45,7 +45,7 @@ struct RdmaParams{
   uint8_t timeout;
   uint8_t retry_cnt;
   uint8_t sl;
-  uint8_t mtu;
+  enum ibv_mtu mtu;
 };
 // structure to save the address of remote channels.
 struct RdmaAddress {
