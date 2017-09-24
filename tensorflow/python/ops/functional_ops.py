@@ -97,13 +97,30 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(lambda op: op.device)
       varscope_caching_device_was_none = True
 
+    # Try to convert elems to tensor
+    elems_tensor = None
+    try:
+      elems_tensor = ops.convert_to_tensor(elems, name="elems")
+    except ValueError:
+      pass
+
     # Convert elems to tensor array.
-    elems = ops.convert_to_tensor(elems, name="elems")
-    n = array_ops.shape(elems)[0]
-    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False,
-                                            infer_shape=True)
-    elems_ta = elems_ta.unstack(elems)
+    if elems_tensor is not None:
+      elems = elems_tensor
+      n = array_ops.shape(elems)[0]
+      elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                              dynamic_size=False,
+                                              infer_shape=True)
+      elems_ta = elems_ta.unstack(elems)
+    else:
+      # Try to convert elems to tensor array, assuming elems is an iterable
+      n = sum(1 for e in elems)
+      elems_ta = tensor_array_ops.TensorArray(dtype=next(iter(elems)).dtype,
+                                              size=n,
+                                              dynamic_size=False,
+                                              infer_shape=False)
+      for index, value in enumerate(elems):
+        elems_ta = elems_ta.write(index, value)
 
     if initializer is None:
       a = elems_ta.read(0)
@@ -177,13 +194,30 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(lambda op: op.device)
       varscope_caching_device_was_none = True
 
+    # Try to convert elems to tensor
+    elems_tensor = None
+    try:
+      elems_tensor = ops.convert_to_tensor(elems, name="elems")
+    except ValueError:
+      pass
+
     # Convert elems to tensor array.
-    elems = ops.convert_to_tensor(elems, name="elems")
-    n = array_ops.shape(elems)[0]
-    elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
-                                            dynamic_size=False,
-                                            infer_shape=True)
-    elems_ta = elems_ta.unstack(elems)
+    if elems_tensor is not None:
+      elems = elems_tensor
+      n = array_ops.shape(elems)[0]
+      elems_ta = tensor_array_ops.TensorArray(dtype=elems.dtype, size=n,
+                                              dynamic_size=False,
+                                              infer_shape=True)
+      elems_ta = elems_ta.unstack(elems)
+    else:
+      # Try to convert elems to tensor array, assuming elems is an iterable
+      n = sum(1 for e in elems)
+      elems_ta = tensor_array_ops.TensorArray(dtype=next(iter(elems)).dtype,
+                                              size=n,
+                                              dynamic_size=False,
+                                              infer_shape=False)
+      for index, value in enumerate(elems):
+        elems_ta = elems_ta.write(index, value)
 
     if initializer is None:
       i = n - 1
