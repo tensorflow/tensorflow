@@ -36,7 +36,7 @@ class NNGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK((ComputeGradientError<float, float, float>(
         scope_, {x}, {x_shape}, {y}, {y_shape}, &max_error)));
-    EXPECT_LT(max_error, 2.2e-4);
+    EXPECT_LT(max_error, 1e-3);
   }
 
   void RunTest(const Output& x, const Tensor& x_init_value, const Output& y,
@@ -44,7 +44,7 @@ class NNGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK((ComputeGradientError<float, float, float>(
         scope_, x, x_init_value, y, y_shape, &max_error)));
-    EXPECT_LT(max_error, 2.2e-4);
+    EXPECT_LT(max_error, 1e-3);
   }
 
   void RunTest(const OutputList& xs, const std::vector<TensorShape>& x_shapes,
@@ -53,7 +53,25 @@ class NNGradTest : public ::testing::Test {
     float max_error;
     TF_ASSERT_OK((ComputeGradientError<float, float, float>(
         scope_, xs, x_shapes, ys, y_shapes, &max_error)));
-    EXPECT_LT(max_error, 2.2e-4);
+    EXPECT_LT(max_error, 1e-3);
+  }
+
+  // Sets tensor with random values, ensuring that the max value is largest by
+  // a reasonable amount.
+  // This is an issue for MaxPool and MaxPoolV2, in which perturbations by the
+  // numeric gradient computation in the gradient checker can change the max
+  // value if values are too close together.
+  template <typename T>
+  void SetRandomValuesWithBumpedMax(Tensor* tensor) {
+    auto tensor_flat = tensor->flat<T>();
+    tensor_flat.setRandom();
+    int32 max_index = 0;
+    for (size_t i = 1; i < tensor->NumElements(); i++) {
+      if (tensor_flat(i) > tensor_flat(max_index)) {
+        max_index = i;
+      }
+    }
+    tensor_flat(max_index) += 1e-2;
   }
 
   Scope scope_;
@@ -148,22 +166,30 @@ TEST_F(NNGradTest, Conv2DGrad) {
 }
 
 TEST_F(NNGradTest, MaxPoolGradHelper) {
-  TensorShape shape({1, 2, 2, 1});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  TensorShape x_shape({1, 2, 2, 1});
+  TensorShape y_shape({1, 1, 1, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Setup window and strides so that we only do one MaxPool.
   const std::vector<int> ksize{1, 2, 2, 1};
-  const std::vector<int> strides{1, 1, 1, 1};
-  auto y = MaxPool(scope_, x, ksize, strides, "SAME");
-  RunTest(x, shape, y, shape);
+  const std::vector<int> strides{1, 2, 2, 1};
+  auto y = MaxPool(scope_, x, ksize, strides, "VALID");
+  Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
+  SetRandomValuesWithBumpedMax<float>(&x_init_value);
+  RunTest(x, x_init_value, y, y_shape);
 }
 
 TEST_F(NNGradTest, MaxPoolGradV2Helper) {
-  TensorShape shape({1, 2, 2, 1});
-  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  TensorShape x_shape({1, 2, 2, 1});
+  TensorShape y_shape({1, 1, 1, 1});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  // Setup window and strides so that we only do one MaxPool.
   Tensor ksize = test::AsTensor<int>({1, 2, 2, 1}, {4});
-  Tensor strides = test::AsTensor<int>({1, 1, 1, 1}, {4});
-  auto y = MaxPoolV2(scope_, x, ksize, strides, "SAME");
-  RunTest(x, shape, y, shape);
+  Tensor strides = test::AsTensor<int>({1, 2, 2, 1}, {4});
+  auto y = MaxPoolV2(scope_, x, ksize, strides, "VALID");
+  Tensor x_init_value = Tensor(DT_FLOAT, x_shape);
+  SetRandomValuesWithBumpedMax<float>(&x_init_value);
+  RunTest(x, x_init_value, y, y_shape);
 }
-  
+
 }  // namespace
 }  // namespace tensorflow

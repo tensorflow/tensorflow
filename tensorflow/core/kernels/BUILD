@@ -2300,7 +2300,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "self_adjoint_eig_v2_op",
     prefix = "self_adjoint_eig_v2_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":cast_op",
+        ":cwise_op",
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]),
 )
 
 tf_kernel_library(
@@ -4011,7 +4016,6 @@ tf_kernel_library(
     name = "word2vec_kernels",
     prefix = "word2vec_kernels",
     deps = [
-        "//tensorflow/core",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -4803,8 +4807,8 @@ tf_kernel_library(
         ":image_resizer_state",
         ":ops_util",
         ":pooling_ops",
-        "//tensorflow/core",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",

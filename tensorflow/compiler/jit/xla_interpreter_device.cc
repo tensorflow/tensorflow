@@ -15,7 +15,7 @@ limitations under the License.
 
 // Registers the XLA_INTERPRETER device which exposes the XLA Interpreter.
 
-#include "tensorflow/compiler/jit/kernels/xla_local_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"

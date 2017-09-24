@@ -340,11 +340,8 @@ class HloDotDumper {
   string Header();
   string Footer();
 
-  // Maps HloComputations we should dump to their parent instruction in the
-  // outer computation.
-  std::unordered_map<const HloComputation*, const HloInstruction*>
-  SubcomputationsToDump();
-
+  bool ShouldShowSubcomputation(const HloComputation* subcomp);
+  bool ShouldShowFusionSubcomputation(const HloInstruction* instr);
   string DumpSubcomputation(const HloComputation* subcomp,
                             const HloInstruction* parent_instr);
   string DumpComputation(const HloComputation* comp);
@@ -401,11 +398,6 @@ class HloDotDumper {
 
 string HloDotDumper::Dump() {
   string body;
-  for (const auto& kv : SubcomputationsToDump()) {
-    const HloComputation* subcomp = kv.first;
-    const HloInstruction* parent = kv.second;
-    StrAppend(&body, DumpSubcomputation(subcomp, parent));
-  }
   StrAppend(&body, DumpComputation(computation_));
   StrAppend(&body, DumpRootTag());
 
@@ -525,33 +517,36 @@ stylesheet="
 
 string HloDotDumper::Footer() { return StrCat(Join(edges_, "\n"), "\n}"); }
 
-std::unordered_map<const HloComputation*, const HloInstruction*>
-HloDotDumper::SubcomputationsToDump() {
-  // Dump the subcomputations of each instruction that's shown and doesn't have
-  // its operands omitted.  If an instruction has just one subcomputation and
-  // it's trivial, omit it: We'll display that subcomputation inlined into the
-  // instruction's node when we draw it.
-  std::unordered_map<const HloComputation*, const HloInstruction*> to_dump;
-  for (const auto& instr : computation_->instructions()) {
-    if (!filter_.Show(instr.get()) ||
-        filter_.SomeOrAllOperandsOmitted(instr.get())) {
-      continue;
-    }
-    if (instr->opcode() == HloOpcode::kFusion) {
-      to_dump[instr->fused_instructions_computation()] = instr.get();
-    }
+bool HloDotDumper::ShouldShowFusionSubcomputation(const HloInstruction* instr) {
+  CHECK_EQ(instr->opcode(), HloOpcode::kFusion);
+  return ShouldShowSubcomputation(instr->fused_instructions_computation());
+}
 
-    for (const HloComputation* comp : instr->called_computations()) {
-      if (!MatchTrivialComputation(comp)) {
-        to_dump[comp] = instr.get();
-      }
+bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
+  if (subcomp->IsFusionComputation()) {
+    const HloInstruction* fusion = subcomp->FusionInstruction();
+    if (!filter_.Show(fusion) || filter_.SomeOrAllOperandsOmitted(fusion)) {
+      return false;
     }
   }
-  return to_dump;
+
+  // Don't show trivial subcomputations on non-fusion nodes -- these are inlined
+  // into the graph.
+  if (!subcomp->IsFusionComputation() && MatchTrivialComputation(subcomp)) {
+    return false;
+  }
+
+  // Show the subcomputation if we're showing any of its members.
+  return std::any_of(computation_->instructions().begin(),
+                     computation_->instructions().end(),
+                     [&](const std::unique_ptr<HloInstruction>& instr) {
+                       return filter_.Show(instr.get());
+                     });
 }
 
 string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
                                         const HloInstruction* parent_instr) {
+  VLOG(2) << "Dumping subcomputation " << subcomp->name();
   const char* computation_fmt = R"(subgraph %s {
 %s
 label = <%s>;
@@ -593,20 +588,10 @@ tooltip = " ";
 
   string comp_body = DumpComputation(subcomp);
 
-  if (parent_instr->opcode() == HloOpcode::kFusion) {
-    // Dump any nested fusion nodes.
-    for (const auto& subcomp_instr : subcomp->instructions()) {
-      if (subcomp_instr->opcode() == HloOpcode::kFusion) {
-        StrAppend(
-            &comp_body,
-            DumpSubcomputation(subcomp_instr->fused_instructions_computation(),
-                               subcomp_instr.get()));
-      }
-    }
-  } else {
-    // Add an edge from the subcomputation to its parent node.  If subcomp
-    // belongs to a fusion node, it's drawn in place of the fusion instruction,
-    // so there's no need to link those.
+  // Add an edge from the subcomputation to its parent node.  If subcomp
+  // belongs to a fusion node, it's drawn in place of the fusion instruction,
+  // so there's no need to link those.
+  if (parent_instr->opcode() != HloOpcode::kFusion) {
     VLOG(2) << "Edge: from " << subcomp->root_instruction()->name() << " to "
             << parent_instr->name() << " as " << next_edge_id_;
     edge_ids_.insert(
@@ -631,6 +616,14 @@ string HloDotDumper::DumpComputation(const HloComputation* comp) {
     if (!filter_.Show(instr.get())) {
       continue;
     }
+
+    // Dump subcomputations within instr.
+    for (const HloComputation* subcomp : instr->called_computations()) {
+      if (ShouldShowSubcomputation(subcomp)) {
+        StrAppend(&g, DumpSubcomputation(subcomp, instr.get()));
+      }
+    }
+
     StrAppend(&g, DumpInstruction(instr.get()));
   }
   return g;
@@ -638,6 +631,14 @@ string HloDotDumper::DumpComputation(const HloComputation* comp) {
 
 string HloDotDumper::DumpRootTag() {
   HloInstruction* from = computation_->root_instruction();
+
+  // Fusion nodes are expanded inline, so if root is an expanded fusion node,
+  // walk up the graph until we find a node that isn't.
+  while (from->opcode() == HloOpcode::kFusion &&
+         ShouldShowFusionSubcomputation(from)) {
+    from = from->fused_expression_root();
+  }
+
   auto from_id = InstructionId(from);
 
   if (!filter_.Show(from)) {
@@ -678,7 +679,7 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   // Omit the fusion node if its subcomputation is drawn, since the
   // subcomputation will be drawn inline.
   if (instr->opcode() == HloOpcode::kFusion &&
-      filter_.ShowFusionSubcomputation(instr)) {
+      ShouldShowFusionSubcomputation(instr)) {
     return "";
   }
 
@@ -937,7 +938,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   // Show the shape and layout of the instruction, unless it's an inlined fusion
   // node -- there the shape and layout is present in the output node.
   if (instr->opcode() != HloOpcode::kFusion ||
-      !filter_.ShowFusionSubcomputation(instr)) {
+      !ShouldShowFusionSubcomputation(instr)) {
     string instr_shape = ShapeUtil::HumanString(instr->shape());
 
     // Show layout of non-tuple shapes with more than one dimension.
@@ -982,7 +983,7 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     // fusion node and the node's subcomputation is shown, we draw our edge
     // starting at the fusion node's root instead of at the fusion node itself.
     if (from->opcode() == HloOpcode::kFusion &&
-        filter_.ShowFusionSubcomputation(from)) {
+        ShouldShowFusionSubcomputation(from)) {
       from = from->fused_expression_root();
     }
     if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant) {
@@ -1145,6 +1146,11 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
           worklist.push_back({operand, depth + 1});
         }
       }
+    }
+
+    // Traverse into instr's nested computations.
+    for (const HloComputation* computation : instr->called_computations()) {
+      worklist.push_back({computation->root_instruction(), depth + 1});
     }
 
     // Traverse into instr's users, unless:

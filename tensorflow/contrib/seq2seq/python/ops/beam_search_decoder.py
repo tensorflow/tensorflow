@@ -22,6 +22,7 @@ import collections
 
 from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -256,7 +257,7 @@ class BeamSearchDecoder(decoder.Decoder):
             dtype=nest.flatten(self._initial_cell_state)[0].dtype),
         finished=finished,
         lengths=array_ops.zeros(
-            [self._batch_size, self._beam_width], dtype=dtypes.int32))
+            [self._batch_size, self._beam_width], dtype=dtypes.int64))
 
     return (finished, start_inputs, initial_state)
 
@@ -267,7 +268,7 @@ class BeamSearchDecoder(decoder.Decoder):
       outputs: An instance of BeamSearchDecoderOutput.
       final_state: An instance of BeamSearchDecoderState. Passed through to the
         output.
-      sequence_lengths: An `int32` tensor shaped `[batch_size, beam_width]`.
+      sequence_lengths: An `int64` tensor shaped `[batch_size, beam_width]`.
         The sequence lengths determined for each beam during decode.
 
     Returns:
@@ -491,9 +492,10 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       indices=array_ops.tile(
           array_ops.reshape(end_token, [1, 1]), [batch_size, beam_width]),
       depth=vocab_size,
-      on_value=0,
-      off_value=1)
-  add_mask = (1 - math_ops.to_int32(previously_finished))
+      on_value=constant_op.constant(0, dtype=dtypes.int64),
+      off_value=constant_op.constant(1, dtype=dtypes.int64),
+      dtype=dtypes.int64)
+  add_mask = (1 - math_ops.to_int64(previously_finished))
   lengths_to_add = array_ops.expand_dims(add_mask, 2) * lengths_to_add
   new_prediction_lengths = (
       lengths_to_add + array_ops.expand_dims(prediction_lengths, 2))
@@ -547,9 +549,9 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   # 1. Finished beams remain unchanged
   # 2. Beams that are now finished (EOS predicted) remain unchanged
   # 3. Beams that are not yet finished have their length increased by 1
-  lengths_to_add = math_ops.to_int32(
+  lengths_to_add = math_ops.to_int64(
       math_ops.not_equal(next_word_ids, end_token))
-  lengths_to_add = (1 - math_ops.to_int32(next_finished)) * lengths_to_add
+  lengths_to_add = (1 - math_ops.to_int64(next_finished)) * lengths_to_add
   next_prediction_len = _tensor_gather_helper(
       gather_indices=next_beam_ids,
       gather_from=beam_state.lengths,

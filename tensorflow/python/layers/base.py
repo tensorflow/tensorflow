@@ -57,7 +57,8 @@ class Layer(object):
   Properties:
     trainable: Whether the layer should be trained (boolean).
     name: The name of the layer (string).
-    dtype: Default dtype of the layer (dtypes.float32).
+    dtype: Default dtype of the layer (default of None means use the
+      type of the first input).
     trainable_variables: List of trainable variables.
     non_trainable_variables: List of non-trainable variables.
     variables: List of all variables of this layer, trainable and non-trainable.
@@ -68,7 +69,7 @@ class Layer(object):
   """
 
   def __init__(self, trainable=True, name=None,
-               dtype=dtypes.float32, **kwargs):
+               dtype=None, **kwargs):
     # We use a kwargs dict here because these kwargs only exist
     # for compatibility reasons.
     # The list of kwargs is subject to changes in the future.
@@ -97,7 +98,7 @@ class Layer(object):
     self._graph = ops.get_default_graph()
     self._per_input_losses = {}
     self._per_input_updates = {}
-    self.dtype = dtypes.as_dtype(dtype).name
+    self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     self.input_spec = None
     self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
                                    or hasattr(self, 'compute_mask'))
@@ -130,6 +131,10 @@ class Layer(object):
     if 'input_shape' in kwargs:
       batch_size = kwargs.get('batch_size')
       self.batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
+
+  @property
+  def dtype(self):
+    return self._dtype
 
   @property
   def scope_name(self):
@@ -389,7 +394,7 @@ class Layer(object):
     Arguments:
       name: variable name.
       shape: variable shape.
-      dtype: The type of the variable. Defaults to `self.dtype`.
+      dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
       initializer: initializer instance (callable).
       regularizer: regularizer instance (callable).
       trainable: whether the variable should be part of the layer's
@@ -414,7 +419,7 @@ class Layer(object):
         raise RuntimeError('Variable regularization not supported in Eager '
                            'mode.')
     if dtype is None:
-      dtype = self.dtype
+      dtype = self.dtype or dtypes.float32
 
     self._set_scope(None)
     vs_reuse = ((self.built or self._reuse)
@@ -526,6 +531,11 @@ class Layer(object):
           # Check input assumptions set before layer building, e.g. input rank.
           self._assert_input_compatibility(inputs)
           input_list = nest.flatten(inputs)
+          if input_list and self._dtype is None:
+            try:
+              self._dtype = input_list[0].dtype.name
+            except AttributeError:
+              pass
           input_shapes = [x.get_shape() for x in input_list]
           if len(input_shapes) == 1:
             self.build(input_shapes[0])
@@ -1406,8 +1416,8 @@ class Network(Layer):
     self.trainable = True
     # A Network does not create weights of its own, thus it is already built.
     self.built = True
-    # A Network does not create weights of its own, thus dtype is not settable.
-    self.dtype = None
+    # A Network does not create weights of its own, thus has no dtype.
+    self._dtype = None
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
