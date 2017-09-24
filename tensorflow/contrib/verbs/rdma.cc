@@ -258,7 +258,7 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
         CHECK(is_gid_type_rocev2(context, port_num, gid_index)) << "RoCE v2 is not available for GID_INDEX " << (int)gid_index;
       }
       else {
-        CHECK(v2_ip_num <= 1) << "More then one IP is available, please specify GID_INDEX";
+        CHECK(v2_ip_num <= 1) << "More than one IP is available, please specify GID_INDEX";
       }
       break;
     case (IBV_LINK_LAYER_INFINIBAND): //no need in GID index
