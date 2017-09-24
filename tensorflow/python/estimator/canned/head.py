@@ -21,14 +21,13 @@ from __future__ import print_function
 import abc
 import collections
 
-import collections
 import six
 
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export_output
-from tensorflow.python.feature_column import feature_column as feature_column_lib
+from tensorflow.python.feature_column import feature_column as feature_column_lib #pylint: disable=line-too-long
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
