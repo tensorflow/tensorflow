@@ -194,9 +194,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
           // Take the maximum in the dimension if -1 is given.
           for (int j = 0; j < row_ndims; ++j) {
             if (row_shape.dim_size(j) == -1) {
-              if (t.dim_size(j) > dense_shape_vec(j + 1)) {
-                dense_shape_vec(j + 1) = t.dim_size(j);
-              }
+              dense_shape_vec(j + 1) = std::max(t.dim_size(j), dense_shape_vec(j + 1));
             } else if (t.dim_size(j) > row_shape.dim_size(j)) {
               return errors::DataLoss(
                   "Input element had shape (",
