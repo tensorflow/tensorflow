@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 import copy
 import re
+import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
@@ -122,6 +123,9 @@ def extract_sub_graph(graph_def, dest_nodes):
 
   if not isinstance(graph_def, graph_pb2.GraphDef):
     raise TypeError("graph_def must be a graph_pb2.GraphDef proto.")
+
+  if isinstance(dest_nodes, six.string_types):
+    raise TypeError("dest_nodes must be a list.")
 
   edges = {}  # Keyed by the dest node name.
   name_to_node_map = {}  # Keyed by node name.
