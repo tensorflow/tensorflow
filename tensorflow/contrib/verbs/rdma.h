@@ -38,7 +38,6 @@ limitations under the License.
 namespace tensorflow {
 
 struct RdmaParams{
-  ibv_device* ibv_dev;
   uint8_t port_num;
   uint8_t sgid_index;
   uint8_t pkey_index;
@@ -94,9 +93,9 @@ class RdmaAdapter {
 
  protected:
   static const int MAX_CONCURRENT_WRITES = 1000;
+  ibv_context* context_;
   // RDMA configuration parameters
   RdmaParams params_;
-  ibv_context* context_;
   // ibverbs protection domain
   ibv_pd* pd_;
   // Completion event channel, to wait for work completions
