@@ -141,16 +141,14 @@ ibv_context* open_device(ibv_device *ibv_dev) {
   return context;
 }
 
-uint8_t set_port(ibv_device *ibv_dev) {
+uint8_t set_port(ibv_context* context) {
   uint8_t port_num = 1;
   string str_port_num;
   char const* str_port_num_temp;
   ibv_device_attr device_att;
-  ibv_context* context;
   ibv_port_attr port_attr;
   int rc, port_index;
 
-  context = open_device(ibv_dev);
   rc = ibv_query_device(context, &device_att);
   CHECK (!rc) << "Failed to query the device\n";
 
@@ -178,7 +176,6 @@ uint8_t set_port(ibv_device *ibv_dev) {
       CHECK(port_index != device_att.phys_port_cnt) << "No active ports";
     }
   }
-  ibv_close_device(context);
   return port_num;
 }
 
@@ -223,25 +220,23 @@ bool is_gid_type_rocev2(ibv_context* context,uint8_t port_num, uint8_t index) {
   return !strcmp(buff, "RoCE v2");
 }
 
-uint8_t set_gid(RdmaParams *params) {
+uint8_t set_gid(uint8_t port_num, ibv_context* context) {
   ibv_port_attr port_attr;
-  ibv_context* context;
   char const *gid_temp;
   string gid_str;
-  int rc, i, default_gid, gids_num = 0, v2_ip_num = 0;
+  int rc, i, gids_num = 0, v2_ip_num = 0;
   union ibv_gid gid;
   uint8_t gid_index = 0;
 
-  context = open_device(params->ibv_dev);
-  rc = ibv_query_port(context, params->port_num, &port_attr);
-  CHECK(!rc) << "Failed to query the port" << params->port_num;
+  rc = ibv_query_port(context, port_num, &port_attr);
+  CHECK(!rc) << "Failed to query the port" << port_num;
 
   for (i = 0; i < port_attr.gid_tbl_len; i++) {
-    rc = ibv_query_gid(context, params->port_num, i, &gid);
-    CHECK(!rc) << "Failed to query gid to port " << (int)params->port_num << " index " <<  i;
+    rc = ibv_query_gid(context, port_num, i, &gid);
+    CHECK(!rc) << "Failed to query gid to port " << (int)port_num << " index " <<  i;
     if (!null_gid(&gid)) {
       gids_num++;
-      if (gid.raw[0] == 0 && gid.raw[1] == 0 && is_gid_type_rocev2(context, params->port_num, i)) {
+      if (gid.raw[0] == 0 && gid.raw[1] == 0 && is_gid_type_rocev2(context, port_num, i)) {
         if (v2_ip_num == 0) {
         //can be overwritten by RDMA_GID_INDEX later
         gid_index = i;
@@ -260,7 +255,7 @@ uint8_t set_gid(RdmaParams *params) {
       if (!gid_str.empty()) {
         gid_index = stoi(gid_str);
         CHECK(gid_index < gids_num) << "RDMA_GID_INDEX should be less than GIDs amount" << gids_num;
-        CHECK(is_gid_type_rocev2(context, params->port_num, gid_index)) << "RoCE v2 is not available for GID_INDEX " << (int)gid_index;
+        CHECK(is_gid_type_rocev2(context, port_num, gid_index)) << "RoCE v2 is not available for GID_INDEX " << (int)gid_index;
       }
       else {
         CHECK(v2_ip_num <= 1) << "More then one IP is available, please specify GID_INDEX";
@@ -402,13 +397,11 @@ uint8_t set_mtu() {
   return mtu;
 }
 
-RdmaParams params_init(){
+RdmaParams params_init(ibv_context* context){
   RdmaParams params;
 
-  params.ibv_dev = set_device();
-  CHECK(params.ibv_dev)  << "Params_init set_device failed";
-  params.port_num = set_port(params.ibv_dev);
-  params.sgid_index = set_gid(&params);
+  params.port_num = set_port(context);
+  params.sgid_index = set_gid(params.port_num, context);
   params.pkey_index = set_pkey();
   params.queue_depth = set_queue_depth();
   params.timeout = set_timeout();
@@ -425,11 +418,10 @@ ibv_pd* alloc_protection_domain(ibv_context* context) {
 }
 
 RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
-    : params_(params_init()),
-      context_(open_device(params_.ibv_dev)),
+    : context_(open_device(set_device())),
+      params_(params_init(context_)),
       pd_(alloc_protection_domain(context_)),
       worker_env_(worker_env) {
-  // check params
   event_channel_ = ibv_create_comp_channel(context_);
   CHECK(event_channel_) << "Failed to create completion channel";
   cq_ = ibv_create_cq(context_, MAX_CONCURRENT_WRITES * 2, NULL, event_channel_,
