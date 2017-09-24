@@ -1289,13 +1289,30 @@ Status UserComputation::SetOpMetadata(const ComputationDataHandle& handle,
 
   int64 handle_value = handle.handle();
   if (session_computation_.requests().count(handle_value) == 0) {
-    return InvalidArgument("Invalid handle in SetDebugMetadata (%lld)",
+    return InvalidArgument("Invalid handle in SetOpMetadata (%lld)",
                            handle_value);
   }
   *session_computation_.mutable_requests()
        ->at(handle_value)
        .mutable_request()
        ->mutable_metadata() = metadata;
+  return Status::OK();
+}
+
+Status UserComputation::SetOpDeviceAssignment(
+    const ComputationDataHandle& handle,
+    const OpDeviceAssignment& device_assignment) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  int64 handle_value = handle.handle();
+  if (session_computation_.requests().count(handle_value) == 0) {
+    return InvalidArgument("Invalid handle in SetOpDeviceAssignment (%lld)",
+                           handle_value);
+  }
+  *session_computation_.mutable_requests()
+       ->at(handle_value)
+       .mutable_request()
+       ->mutable_device_assignment() = device_assignment;
   return Status::OK();
 }
 
@@ -2510,6 +2527,8 @@ void ComputationLowerer::Visit(
     HloInstruction* hlo_instruction =
         hlo_builder_.AddInstruction(std::move(instruction));
     hlo_instruction->set_metadata(request.request().metadata());
+    hlo_instruction->set_device_assignment(
+        request.request().device_assignment());
     return hlo_instruction;
   };
   auto lookup_instruction = [&](const ComputationDataHandle& handle) {
