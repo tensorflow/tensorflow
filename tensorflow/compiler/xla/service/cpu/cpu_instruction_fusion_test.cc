@@ -209,6 +209,31 @@ class OpcodeFusionTest : public InstructionFusionTest {
         std::multiset<HloOpcode>(fused_opcodes.begin(), fused_opcodes.end()),
         expected_opcodes);
   }
+
+  HloComputation* CreateAdderToOne(HloModule* module) {
+    HloComputation::Builder builder(TestName());
+    HloInstruction* arg0 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            0, ShapeUtil::MakeShape(F32, {}), "arg0"));
+    HloInstruction* one = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, arg0, one));
+    return module->AddEmbeddedComputation(builder.Build());
+  }
+
+  HloComputation* CreateMax(HloModule* module) {
+    HloComputation::Builder builder(TestName());
+    HloInstruction* arg0 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            0, ShapeUtil::MakeShape(F32, {}), "arg0"));
+    HloInstruction* arg1 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            1, ShapeUtil::MakeShape(F32, {}), "arg1"));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kMaximum, arg0, arg1));
+    return module->AddEmbeddedComputation(builder.Build());
+  }
 };
 
 TEST_F(OpcodeFusionTest, Exponential_Bitcast_Negate) {
@@ -402,6 +427,49 @@ TEST_F(OpcodeFusionTest, Exponential_Transpose_Negate) {
                      HloOpcode::kParameter});
 }
 
+TEST_F(OpcodeFusionTest, UnaryMapOfExp) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+
+  HloInstruction* exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param0));
+  builder.AddInstruction(HloInstruction::CreateMap(
+      shape, {exp}, CreateAdderToOne(module.get()), /*static_operands=*/{}));
+
+  module->AddEntryComputation(builder.Build());
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kParameter, HloOpcode::kExp, HloOpcode::kMap});
+}
+
+TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param"));
+
+  HloInstruction* exp0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param0));
+  HloInstruction* exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param1));
+
+  builder.AddInstruction(HloInstruction::CreateMap(
+      shape, {exp0, exp1}, CreateMax(module.get()), /*static_operands=*/{}));
+
+  module->AddEntryComputation(builder.Build());
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kParameter, HloOpcode::kParameter,
+                     HloOpcode::kExp, HloOpcode::kExp, HloOpcode::kMap});
+}
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

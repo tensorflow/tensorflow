@@ -26,7 +26,6 @@ from tensorflow.contrib.gan.python import losses as tfgan_losses
 from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.slim.python.slim import learning as slim_learning
 from tensorflow.contrib.training.python.training import training
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -549,7 +548,7 @@ def gan_train_ops(
     generator_global_step = variable_scope.get_variable(
         'dummy_global_step_generator',
         shape=[],
-        dtype=dtypes.int64,
+        dtype=global_step.dtype.base_dtype,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
@@ -570,7 +569,7 @@ def gan_train_ops(
     discriminator_global_step = variable_scope.get_variable(
         'dummy_global_step_discriminator',
         shape=[],
-        dtype=dtypes.int64,
+        dtype=global_step.dtype.base_dtype,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])

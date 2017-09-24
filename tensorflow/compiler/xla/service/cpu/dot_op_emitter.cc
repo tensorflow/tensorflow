@@ -127,18 +127,32 @@ tensorflow::Status DotOpEmitter::Emit() {
   TF_RET_CHECK(lhs_shape.dimensions(lhs_reduction_dimension) ==
                rhs_shape.dimensions(rhs_reduction_dimension));
 
+  bool lhs_reduction_along_minor_dimension =
+      lhs_reduction_dimension == LayoutUtil::Minor(lhs_shape.layout(), 0);
+  bool rhs_reduction_along_minor_dimension =
+      rhs_reduction_dimension == LayoutUtil::Minor(rhs_shape.layout(), 0);
+
   // Create loop nests which loop through the LHS operand dimensions and the RHS
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
-  llvm_ir::ForLoopNest loop_nest(ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(llvm_ir::IrName(&dot_), ir_builder_);
   llvm_ir::IrArray::Index lhs_index = EmitOperandArrayLoopNest(
       &loop_nest, lhs_array_, lhs_reduction_dimension, "lhs");
   llvm_ir::IrArray::Index rhs_index = EmitOperandArrayLoopNest(
       &loop_nest, rhs_array_, rhs_reduction_dimension, "rhs");
 
   // Create the loop which does the sum of products reduction.
+  //
+  // The prevent_unrolling bit is working around a deficiency in LLVM's loop
+  // vectorization pipeline, wherein in some cases unrolling a loop can prevent
+  // effective vectorization.  Since we know that the IR we generate when
+  // reducing across the minor dimension in both LHS and RHS is vectorized well
+  // by the loop vectorizer, we block unrolling in that case to stop loop unroll
+  // from messing up the vectorization.
   std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
-      0, lhs_shape.dimensions(lhs_reduction_dimension), "reduction");
+      0, lhs_shape.dimensions(lhs_reduction_dimension), "reduction",
+      /*prevent_unrolling=*/lhs_reduction_along_minor_dimension &&
+          rhs_reduction_along_minor_dimension);
 
   // The final entry in the rhs and lhs indexes is the indvar of the
   // reduction loop.
@@ -291,6 +305,9 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
+
+  CHECK(LayoutUtil::Equal(lhs_shape.layout(), rhs_shape.layout()));
+
   int64 m = lhs_shape.dimensions(transpose_lhs_ ? 1 : 0);
   int64 k = lhs_shape.dimensions(transpose_lhs_ ? 0 : 1);
   int64 n = rhs_shape.dimensions(transpose_rhs_ ? 0 : 1);

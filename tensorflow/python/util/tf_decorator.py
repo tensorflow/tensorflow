@@ -83,7 +83,8 @@ def make_decorator(target,
     The `decorator_func` argument with new metadata attached.
   """
   if decorator_name is None:
-    decorator_name = _inspect.stack()[1][3]  # Caller's name.
+    prev_frame = _inspect.currentframe().f_back
+    decorator_name = _inspect.getframeinfo(prev_frame)[2]  # Caller's name.
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)

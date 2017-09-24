@@ -5,12 +5,15 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//third_party/mpi:mpi.bzl", "if_mpi")
+
 py_library(
     name = "contrib_py",
     srcs = glob(["**/*.py"]),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/contrib/all_reduce",
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/boosted_trees:init_py",
@@ -33,9 +36,9 @@ py_library(
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/hooks",
+        "//tensorflow/contrib/image:distort_image_py",
         "//tensorflow/contrib/image:image_py",
         "//tensorflow/contrib/image:single_image_random_dot_stereograms_py",
-        "//tensorflow/contrib/imperative",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/keras",
@@ -84,7 +87,7 @@ py_library(
         "//tensorflow/contrib/tpu",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
-    ],
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_py"]),
 )
 
 cc_library(

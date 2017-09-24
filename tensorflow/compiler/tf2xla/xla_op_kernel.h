@@ -143,9 +143,6 @@ class XlaOpKernelContext {
   void SetStatus(const Status& status) { context_->SetStatus(status); }
   Status status() { return context_->status(); }
 
-  // Mark the op has having side effects (i.e., via Send).
-  void SetOpHasSideEffects();
-
   // Variables
 
   // Sets '*resource' to the resource associated with input `index`.

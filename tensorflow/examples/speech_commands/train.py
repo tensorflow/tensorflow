@@ -75,6 +75,7 @@ import os.path
 import sys
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import input_data
@@ -113,8 +114,8 @@ def main(_):
   # example --how_many_training_steps=10000,3000 --learning_rate=0.001,0.0001
   # will run 13,000 training loops in total, with a rate of 0.001 for the first
   # 10,000, and 0.0001 for the final 3,000.
-  training_steps_list = map(int, FLAGS.how_many_training_steps.split(','))
-  learning_rates_list = map(float, FLAGS.learning_rate.split(','))
+  training_steps_list = list(map(int, FLAGS.how_many_training_steps.split(',')))
+  learning_rates_list = list(map(float, FLAGS.learning_rate.split(',')))
   if len(training_steps_list) != len(learning_rates_list):
     raise Exception(
         '--how_many_training_steps and --learning_rate must be equal length '

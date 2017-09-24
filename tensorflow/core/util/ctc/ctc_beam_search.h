@@ -285,17 +285,14 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
       continue;
     }
 
-    if (!b->HasChildren()) {
-      b->PopulateChildren(num_classes_ - 1);
-    }
-
-    for (BeamEntry& c : *b->Children()) {
+    for (int ind = 0; ind < num_classes_ - 1; ind++) {
+      // Perform label selection: if input for this label looks very
+      // unpromising, never evaluate it with a scorer.
+      if (input(ind) < label_selection_input_min) {
+        continue;
+      }
+      BeamEntry& c = b->GetChild(ind);
       if (!c.Active()) {
-        // Perform label selection: if input for this label looks very
-        // unpromising, never evaluate it with a scorer.
-        if (input(c.label) < label_selection_input_min) {
-          continue;
-        }
         //   Pblank(l=abcd @ t=6) = 0
         c.newp.blank = kLogZero;
         // If new child label is identical to beam label:
@@ -320,13 +317,13 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
           }
           leaves_.push(&c);
         } else {
-          // Deactivate child (signal it's not in the beam)
+          // Deactivate child.
           c.oldp.Reset();
           c.newp.Reset();
         }
-      }  // if (!c.Active()) ...
-    }    // for (BeamEntry& c in children...
-  }      // for (BeamEntry* b...
+      }
+    }
+  }  // for (BeamEntry* b...
 }
 
 template <typename CTCBeamState, typename CTCBeamComparer>
@@ -335,7 +332,7 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Reset() {
 
   // This beam root, and all of its children, will be in memory until
   // the next reset.
-  beam_root_.reset(new BeamEntry(nullptr, -1, num_classes_ - 1, -1));
+  beam_root_.reset(new BeamEntry(nullptr, -1));
   beam_root_->newp.total = 0.0;  // ln(1)
   beam_root_->newp.blank = 0.0;  // ln(1)
 

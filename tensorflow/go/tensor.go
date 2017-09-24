@@ -100,7 +100,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		}
 	} else {
 		e := stringEncoder{offsets: buf, data: raw[nflattened*8 : len(raw)], status: newStatus()}
-		if e.encode(reflect.ValueOf(value)); err != nil {
+		if err := e.encode(reflect.ValueOf(value)); err != nil {
 			return nil, err
 		}
 		if int64(buf.Len()) != nflattened*8 {

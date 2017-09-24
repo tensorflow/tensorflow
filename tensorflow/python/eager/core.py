@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.eager import context
 from tensorflow.python.eager import memory_trace
 from tensorflow.python.framework import errors
 
@@ -56,9 +55,9 @@ def enable_tracing():
 
   WARNING: tracing is not thread-safe.
   """
+  # TODO(alive): Add code example in doc string.
   global _active_trace
-  _active_trace = memory_trace.MemoryTrace(
-      len(context.get_default_context().devices()))
+  _active_trace = memory_trace.MemoryTrace()
 
 
 def flush_trace():
@@ -66,6 +65,7 @@ def flush_trace():
 
   WARNING: tracing is not thread-safe.
   """
+  # TODO(alive): Add code example in doc string.
   if _active_trace is not None:
     _active_trace.flush_trace()
 

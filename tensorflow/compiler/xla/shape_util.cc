@@ -44,6 +44,11 @@ string ShapeIndex::ToString() const {
       "{", tensorflow::str_util::Join(indices_, ","), "}");
 }
 
+ShapeIndex::ShapeIndex(const ShapeIndex& parent, int64 begin_offset) {
+  std::copy(parent.begin() + begin_offset, parent.end(),
+            std::back_inserter(indices_));
+}
+
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   out << shape_index.ToString();
   return out;

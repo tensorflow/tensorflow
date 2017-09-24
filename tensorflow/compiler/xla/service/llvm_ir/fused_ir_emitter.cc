@@ -56,7 +56,7 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
         VLOG(3) << "The cached generated value is reused.";
         return generated_value;
       }
-      VLOG(3) << "The cached generated value can't be reuse, because it is at "
+      VLOG(3) << "The cached generated value can't be reused, because it is in "
                  "a different BB ("
               << llvm_ir::AsString(generated_value_bb->getName())
               << ") from the current insertion block ("

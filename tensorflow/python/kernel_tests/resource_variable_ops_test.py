@@ -74,6 +74,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         resource_variable_ops.assign_variable_op(
             handle, constant_op.constant([1.], dtype=dtypes.float32))
 
+  def testUnprintableHandle(self):
+    with context.eager_mode():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[1], name="foo")
+      self.assertIn("<unprintable>", str(handle))
+      self.assertIn("<unprintable>", repr(handle))
+
   @test_util.run_in_graph_and_eager_modes()
   def testDtypeSurvivesIdentity(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])

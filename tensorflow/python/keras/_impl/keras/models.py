@@ -417,6 +417,9 @@ class Sequential(Model):
       name = prefix + str(K.get_uid(prefix))
     self.name = name
 
+    # Used by Layer base class.
+    self._dtype = None
+
     # The following properties are not actually used by Keras;
     # they exist for compatibility with TF's variable scoping mechanism.
     self._updates = []

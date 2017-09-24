@@ -54,15 +54,20 @@ class IteratorTest(test.TestCase):
     self.assertEqual(4, total)
 
   def testMapAndFilter(self):
-    # TODO(ashankar): Address this
-    self.skipTest('Not working yet, requires function attribute support')
-
     def even(x):
       return math_ops.equal(math_ops.mod(x, 2), 0)
 
     it = datasets.Iterator(Dataset.range(8).map(math_ops.square).filter(even))
     got = [x.numpy() for x in it]
     self.assertAllEqual([0, 4, 16, 36], got)
+
+  def testMultipleIteratorsOnADatasetThatUsesFunctions(self):
+    ds = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(math_ops.square)
+
+    got1 = [x.numpy() for x in datasets.Iterator(ds)]
+    self.assertAllEqual([1, 4, 9, 16, 25, 36], got1)
+    got2 = [x.numpy() for x in datasets.Iterator(ds)]
+    self.assertAllEqual(got1, got2)
 
 
 if __name__ == '__main__':

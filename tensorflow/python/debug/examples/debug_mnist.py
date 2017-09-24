@@ -122,7 +122,6 @@ def main(_):
 
   if FLAGS.debug:
     sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
-    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
   # Add this point, sess is a debug wrapper around the actual Session if
   # FLAGS.debug is true. In that case, calling run() will launch the CLI.
