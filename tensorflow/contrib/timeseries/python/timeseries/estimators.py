@@ -22,6 +22,7 @@ from tensorflow.contrib.timeseries.python.timeseries import ar_model
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 from tensorflow.contrib.timeseries.python.timeseries import math_utils
 from tensorflow.contrib.timeseries.python.timeseries import model_utils
+from tensorflow.contrib.timeseries.python.timeseries import ts_head_lib
 from tensorflow.contrib.timeseries.python.timeseries import state_management
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import state_space_model
 from tensorflow.contrib.timeseries.python.timeseries.state_space_models import structural_ensemble
@@ -59,9 +60,9 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
     if optimizer is None:
       optimizer = train.AdamOptimizer(0.02)
     self._model = model
-    model_fn = model_utils.make_model_fn(
+    model_fn = ts_head_lib.time_series_regression_head(
         model, state_manager, optimizer,
-        input_statistics_generator=input_statistics_generator)
+        input_statistics_generator=input_statistics_generator).create_estimator_spec
     super(TimeSeriesRegressor, self).__init__(
         model_fn=model_fn,
         model_dir=model_dir,
