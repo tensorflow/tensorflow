@@ -96,7 +96,7 @@ bazel build -c opt ${PI_COPTS} \
   //tensorflow/tools/benchmark:benchmark_model \
   //tensorflow/tools/pip_package:build_pip_package
 
-OUTDIR=bazel-out/pi
+OUTDIR=output-artifacts
 mkdir -p "${OUTDIR}"
 echo "Final outputs will go to ${OUTDIR}"
 
