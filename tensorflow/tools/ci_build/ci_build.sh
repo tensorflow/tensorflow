@@ -148,7 +148,7 @@ ${DOCKER_BINARY} run --rm --pid=host \
     -e "CI_BUILD_GROUP=$(id -g -n)" \
     -e "CI_BUILD_GID=$(id -g)" \
     -e "CI_TENSORFLOW_SUBMODULE_PATH=${CI_TENSORFLOW_SUBMODULE_PATH}" \
-    -u $(stat -c "%u:%g" ${WORKSPACE})
+    -u $(stat -c "%u:%g" ${WORKSPACE}) \
     -v ${WORKSPACE}:/workspace \
     -w /workspace \
     ${GPU_EXTRA_PARAMS} \
