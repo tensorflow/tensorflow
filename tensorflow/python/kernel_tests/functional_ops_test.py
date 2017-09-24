@@ -120,6 +120,29 @@ class FunctionalOpsTest(test.TestCase):
         self.assertEqual(len(variables.trainable_variables()), 1)
         self.assertAllEqual(1282, r.eval())
 
+
+  def testFoldr_NoInferShape(self):
+    # Test case for 12019 (foldr)
+    with self.test_session():
+      a = constant_op.constant([[10, 10]])
+      b = constant_op.constant([[20, 20], [30, 30]])
+
+      r = functional_ops.foldr(
+          lambda a, b: array_ops.concat([b, a], axis = 0),
+          [a, b])
+      self.assertAllEqual([[10, 10], [20, 20], [30, 30]], r.eval())
+
+  def testFoldl_NoInferShape(self):
+    # Test case for 12019 (foldl)
+    with self.test_session():
+      a = constant_op.constant([[10, 10]])
+      b = constant_op.constant([[20, 20], [30, 30]])
+
+      r = functional_ops.foldl(
+          lambda a, b: array_ops.concat([a, b], axis = 0),
+          [a, b])
+      self.assertAllEqual([[10, 10], [20, 20], [30, 30]], r.eval())
+
   # pylint: disable=unnecessary-lambda
   def testFold_Grad(self):
     with self.test_session():
