@@ -350,37 +350,43 @@ uint8_t set_sl() {
   return sl;
 }
 
-uint8_t set_mtu() {
-  uint32_t mtu = 0;
+enum ibv_mtu set_mtu(uint8_t port_num, ibv_context* context) {
+  ibv_port_attr port_attr;
+  enum ibv_mtu mtu;
   string mtu_s;
+  int rc,mtu_i;
+
+  rc = ibv_query_port(context, port_num, &port_attr);
+  CHECK(!rc) << "Failed to query the port" << port_num;
 
   mtu_s = get_env_var("RDMA_MTU");
 
   if (!mtu_s.empty()) {
-    mtu = stoi(mtu_s);
-    switch (mtu) {
+	  mtu_i = stoi(mtu_s);
+    switch (mtu_i) {
     case 256:
-      return IBV_MTU_256;
+      mtu = IBV_MTU_256;
       break;
     case 512:
-      return IBV_MTU_512;
+      mtu = IBV_MTU_512;
       break;
     case 1024:
-      return IBV_MTU_1024;
+      mtu = IBV_MTU_1024;
       break;
     case 2048:
-      return IBV_MTU_2048;
+      mtu = IBV_MTU_2048;
       break;
     case 4096:
-      return IBV_MTU_4096;
+      mtu = IBV_MTU_4096;
       break;
     default:
       CHECK(0) << "Error: MTU input value must be one of the following: 256, 512, 1024, 2048, 4096. MTU " << mtu << " is invalid\n";
       break;
     }
+    CHECK(mtu<port_attr.active_mtu) <<"MTU configuration for the QPs is larger than active MTU";
   }
   else {
-    mtu = 0;
+    mtu = port_attr.active_mtu;
   }
   return mtu;
 }
@@ -395,7 +401,7 @@ RdmaParams params_init(ibv_context* context){
   params.timeout = set_timeout();
   params.retry_cnt = set_retry_cnt();
   params.sl = set_sl();
-  params.mtu = set_mtu();
+  params.mtu = set_mtu(params.port_num, context);
   return params;
 }
 
@@ -805,15 +811,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     CHECK(!ibv_query_port(adapter_->context_, adapter_->params_.port_num, &port_attr))
         << "Query port failed";
     // This assumes both QP's ports are configured with the same MTU
-    if (adapter_->params_.mtu == 0)
-    {
-      attr.path_mtu = port_attr.active_mtu;
-    }
-    else
-    {
-      CHECK(adapter_->params_.mtu<port_attr.active_mtu) <<"MTU configuration for the QPs is larger than active MTU";
-      attr.path_mtu = (ibv_mtu)adapter_->params_.mtu;
-    }
+    attr.path_mtu = adapter_->params_.mtu;
     attr.dest_qp_num = remoteAddr.qpn;
     attr.rq_psn = remoteAddr.psn;
     attr.max_dest_rd_atomic = 1;
