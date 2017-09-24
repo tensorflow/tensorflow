@@ -21,10 +21,15 @@
 @@TextLineDataset
 
 @@batch_and_drop_remainder
-@@read_batch_features
-@@rejection_resample
+@@dense_to_sparse_batch
+@@enumerate_dataset
 @@group_by_window
+@@ignore_errors
+@@read_batch_features
+@@unbatch
+@@rejection_resample
 @@sloppy_interleave
+
 """
 
 from __future__ import absolute_import
@@ -34,15 +39,19 @@ from __future__ import print_function
 # pylint: disable=unused-import
 from tensorflow.contrib.data.python.ops.dataset_ops import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
+from tensorflow.contrib.data.python.ops.dataset_ops import dense_to_sparse_batch
+from tensorflow.contrib.data.python.ops.dataset_ops import enumerate_dataset
 from tensorflow.contrib.data.python.ops.dataset_ops import FixedLengthRecordDataset
 from tensorflow.contrib.data.python.ops.dataset_ops import group_by_window
-from tensorflow.contrib.data.python.ops.dataset_ops import Iterator
+from tensorflow.contrib.data.python.ops.dataset_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.dataset_ops import read_batch_features
 from tensorflow.contrib.data.python.ops.dataset_ops import rejection_resample
 from tensorflow.contrib.data.python.ops.dataset_ops import SqlDataset
 from tensorflow.contrib.data.python.ops.dataset_ops import TextLineDataset
 from tensorflow.contrib.data.python.ops.dataset_ops import TFRecordDataset
+from tensorflow.contrib.data.python.ops.dataset_ops import unbatch
 from tensorflow.contrib.data.python.ops.sloppy_ops import sloppy_interleave
+from tensorflow.python.data.ops.dataset_ops import Iterator
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

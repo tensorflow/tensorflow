@@ -41,11 +41,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/util:nest",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:errors",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
     ],
 )

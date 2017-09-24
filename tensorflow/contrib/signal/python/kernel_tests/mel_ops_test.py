@@ -33,7 +33,7 @@ def hertz_to_mel(frequencies_hertz):
   """Convert frequencies to mel scale using HTK formula.
 
   Copied from
-  https://github.com/tensorflow/models/blob/master/audioset/mel_features.py.
+  https://github.com/tensorflow/models/blob/master/research/audioset/mel_features.py.
 
   Args:
     frequencies_hertz: Scalar or np.array of frequencies in hertz.
@@ -54,7 +54,7 @@ def spectrogram_to_mel_matrix(num_mel_bins=20,
   """Return a matrix that can post-multiply spectrogram rows to make mel.
 
   Copied from
-  https://github.com/tensorflow/models/blob/master/audioset/mel_features.py.
+  https://github.com/tensorflow/models/blob/master/research/audioset/mel_features.py.
 
   Returns a np.array matrix A that can be used to post-multiply a matrix S of
   spectrogram values (STFT magnitudes) arranged as frames x bins to generate a

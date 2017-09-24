@@ -169,8 +169,8 @@ class RangeDatasetTest(test.TestCase):
     components = (["a", "b"], [1, 2], [37.0, 38])
     start = constant_op.constant(20, dtype=dtypes.int64)
 
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components).enumerate(
-        start=start).make_initializable_iterator())
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components).apply(
+        dataset_ops.enumerate_dataset(start)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

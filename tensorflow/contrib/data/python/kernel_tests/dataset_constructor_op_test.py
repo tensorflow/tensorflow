@@ -22,9 +22,9 @@ import threading
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
-from tensorflow.contrib.data.python.util import nest
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
