@@ -2514,6 +2514,12 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
         }
       }
       return UseKind::kReuse;
+    case HloOpcode::kDynamicUpdateSlice:
+      // Dynamic-update-slice reuses only operand 2 (start_indices).
+      if (i == 0 || i == 1) {
+        return UseKind::kUse;
+      }
+      return UseKind::kReuse;
     default:
       return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
