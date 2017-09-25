@@ -27,6 +27,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+def _AddTest(test_class, op_name, testcase_name, fn):
+  test_name = "_".join(["test", op_name, testcase_name])
+  if hasattr(test_class, test_name):
+    raise RuntimeError("Test %s defined more than once" % test_name)
+  setattr(test_class, test_name, fn)
+
+
 class QrOpTest(test.TestCase):
 
   def testWrongDimensions(self):
@@ -41,7 +48,7 @@ class QrOpTest(test.TestCase):
       linalg_ops.qr(vector)
 
 
-def _GetQrOpTest(dtype_, shape_, use_static_shape_):
+def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
 
   is_complex = dtype_ in (np.complex64, np.complex128)
   is_single = dtype_ in (np.float32, np.complex64)
@@ -95,36 +102,35 @@ def _GetQrOpTest(dtype_, shape_, use_static_shape_):
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    for full_matrices in False, True:
-      with self.test_session() as sess:
-        if use_static_shape_:
-          x_tf = constant_op.constant(x_np)
-        else:
-          x_tf = array_ops.placeholder(dtype_)
-        q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices)
+    with self.test_session(use_gpu=True) as sess:
+      if use_static_shape_:
+        x_tf = constant_op.constant(x_np)
+      else:
+        x_tf = array_ops.placeholder(dtype_)
+      q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices_)
 
-        if use_static_shape_:
-          q_tf_val, r_tf_val = sess.run([q_tf, r_tf])
-        else:
-          q_tf_val, r_tf_val = sess.run([q_tf, r_tf], feed_dict={x_tf: x_np})
+      if use_static_shape_:
+        q_tf_val, r_tf_val = sess.run([q_tf, r_tf])
+      else:
+        q_tf_val, r_tf_val = sess.run([q_tf, r_tf], feed_dict={x_tf: x_np})
 
-        q_dims = q_tf_val.shape
-        np_q = np.ndarray(q_dims, dtype_)
-        np_q_reshape = np.reshape(np_q, (-1, q_dims[-2], q_dims[-1]))
-        new_first_dim = np_q_reshape.shape[0]
+      q_dims = q_tf_val.shape
+      np_q = np.ndarray(q_dims, dtype_)
+      np_q_reshape = np.reshape(np_q, (-1, q_dims[-2], q_dims[-1]))
+      new_first_dim = np_q_reshape.shape[0]
 
-        x_reshape = np.reshape(x_np, (-1, x_np.shape[-2], x_np.shape[-1]))
-        for i in range(new_first_dim):
-          if full_matrices:
-            np_q_reshape[i,:,:], _ = \
+      x_reshape = np.reshape(x_np, (-1, x_np.shape[-2], x_np.shape[-1]))
+      for i in range(new_first_dim):
+        if full_matrices_:
+          np_q_reshape[i,:,:], _ = \
                 np.linalg.qr(x_reshape[i,:,:], mode="complete")
-          else:
-            np_q_reshape[i,:,:], _ = \
+        else:
+          np_q_reshape[i,:,:], _ = \
                 np.linalg.qr(x_reshape[i,:,:], mode="reduced")
-        np_q = np.reshape(np_q_reshape, q_dims)
-        CompareOrthogonal(self, np_q, q_tf_val, min(shape_[-2:]))
-        CheckApproximation(self, x_np, q_tf_val, r_tf_val)
-        CheckUnitary(self, q_tf_val)
+      np_q = np.reshape(np_q_reshape, q_dims)
+      CompareOrthogonal(self, np_q, q_tf_val, min(shape_[-2:]))
+      CheckApproximation(self, x_np, q_tf_val, r_tf_val)
+      CheckUnitary(self, q_tf_val)
 
   return Test
 
@@ -133,11 +139,15 @@ if __name__ == "__main__":
   for dtype in np.float32, np.float64, np.complex64, np.complex128:
     for rows in 1, 2, 5, 10, 32, 100:
       for cols in 1, 2, 5, 10, 32, 100:
-        for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
-          shape = batch_dims + (rows, cols)
-          for use_static_shape in True, False:
-            name = "%s_%s_%s" % (dtype.__name__, "_".join(map(str, shape)),
-                                 use_static_shape)
-            setattr(QrOpTest, "testQr_" + name,
-                    _GetQrOpTest(dtype, shape, use_static_shape))
+        for full_matrices in False, True:
+          for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
+            for use_static_shape in True, False:
+              shape = batch_dims + (rows, cols)
+              name = "%s_%s_full_%s_static_%s" % (dtype.__name__,
+                                                  "_".join(map(str, shape)),
+                                                  full_matrices,
+                                                  use_static_shape)
+              _AddTest(QrOpTest, "Qr", name,
+                       _GetQrOpTest(dtype, shape, full_matrices,
+                                    use_static_shape))
   test.main()

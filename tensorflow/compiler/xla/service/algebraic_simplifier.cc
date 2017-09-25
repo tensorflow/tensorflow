@@ -1376,7 +1376,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     // try to get more fancy about proving equivalence in cases beyond that.
     if (pad_value->opcode() != HloOpcode::kConstant ||
         reduce_init_value->opcode() != HloOpcode::kConstant ||
-        !pad_value->literal().Equal(reduce_init_value->literal())) {
+        pad_value->literal() != reduce_init_value->literal()) {
       VLOG(10) << "Not folding pad into reduce-window due to different pad "
                   "values.";
       return Status::OK();

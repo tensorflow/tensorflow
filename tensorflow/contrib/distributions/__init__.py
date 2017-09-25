@@ -146,12 +146,15 @@ _allowed_symbols = [
     'kl_divergence',
     'RegisterKL',
     'matrix_diag_transform',
+    'fill_triangular',
     'normal_conjugates_known_scale_posterior',
     'normal_conjugates_known_scale_predictive',
     'softplus_inverse',
     'percentile',
-    'assign_exponential_moving_mean_variance',
-    'exponential_moving_mean_variance',
+    'reduce_weighted_logsumexp',
+    'assign_moving_mean_variance',
+    'assign_log_moving_mean_exp',
+    'moving_mean_variance',
     'estimator_head_distribution_regression',
 ]
 

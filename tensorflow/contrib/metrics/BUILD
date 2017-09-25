@@ -47,7 +47,6 @@ py_library(
 
 py_test(
     name = "classification_test",
-    size = "small",
     srcs = ["python/metrics/classification_test.py"],
     srcs_version = "PY2AND3",
     deps = [

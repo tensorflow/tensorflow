@@ -55,6 +55,7 @@ class ShapeIndex {
  public:
   ShapeIndex() = default;
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
+  ShapeIndex(const ShapeIndex& parent, int64 begin_offset);
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }

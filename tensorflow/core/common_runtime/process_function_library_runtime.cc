@@ -71,13 +71,14 @@ string ProcessFunctionLibraryRuntime::ObtainFunctionTarget(
 /* static */
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
-    const string& key_prefix, gtl::ArraySlice<Tensor> tensors_to_send,
-    const Rendezvous::Args& args, Rendezvous* rendezvous) {
+    const string& key_prefix, int64 src_incarnation,
+    gtl::ArraySlice<Tensor> tensors_to_send, const Rendezvous::Args& args,
+    Rendezvous* rendezvous) {
   std::vector<string> keys;
   for (int i = 0; i < tensors_to_send.size(); ++i) {
     string name = strings::StrCat(key_prefix, i);
-    string key = Rendezvous::CreateKey(source_device, i, target_device, name,
-                                       FrameAndIter(0, 0));
+    string key = Rendezvous::CreateKey(source_device, src_incarnation,
+                                       target_device, name, FrameAndIter(0, 0));
     keys.push_back(key);
   }
   TF_RETURN_IF_ERROR(
@@ -88,19 +89,29 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
 /* static */
 void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     const string& source_device, const string& target_device,
-    const string& key_prefix, int64 num_tensors, const Rendezvous::Args& args,
-    Rendezvous* rendezvous, std::vector<Tensor>* received_tensors,
-    const StatusCallback& done) {
+    const string& key_prefix, int64 src_incarnation, int64 num_tensors,
+    const Rendezvous::Args& args, Rendezvous* rendezvous,
+    std::vector<Tensor>* received_tensors, const StatusCallback& done) {
   std::vector<string> keys;
   for (int64 i = 0; i < num_tensors; ++i) {
     string name = strings::StrCat(key_prefix, i);
-    string key = Rendezvous::CreateKey(source_device, i, target_device, name,
-                                       FrameAndIter(0, 0));
+    string key = Rendezvous::CreateKey(source_device, src_incarnation,
+                                       target_device, name, FrameAndIter(0, 0));
     keys.push_back(key);
   }
   RecvOutputsFromRendezvousAsync(
       rendezvous, args, keys, received_tensors,
       [done](const Status& status) { done(status); });
+}
+
+Status ProcessFunctionLibraryRuntime::GetDeviceIncarnation(
+    const string& device_name, int64* incarnation) {
+  FunctionLibraryRuntime* flr = GetFLR(device_name);
+  if (flr == nullptr) {
+    return errors::InvalidArgument("Device name: ", device_name, " not found");
+  }
+  *incarnation = flr->device()->attributes().incarnation();
+  return Status::OK();
 }
 
 Status ProcessFunctionLibraryRuntime::GetDeviceContext(
@@ -224,17 +235,25 @@ void ProcessFunctionLibraryRuntime::Run(
       done(s);
       return;
     }
+    int64 src_incarnation, target_incarnation;
+    s = GetDeviceIncarnation(source_device, &src_incarnation);
+    s.Update(GetDeviceIncarnation(target_device, &target_incarnation));
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
+
     // Send the args over to the target device.
-    s = SendTensors(source_device, target_device, "arg_", args, rendez_args,
-                    rendezvous);
+    s = SendTensors(source_device, target_device, "arg_", src_incarnation, args,
+                    rendez_args, rendezvous);
     if (!s.ok()) {
       done(s);
       return;
     }
     std::vector<Tensor>* remote_rets = new std::vector<Tensor>;
     flr->Run(opts, handle, args, remote_rets,
-             [source_device, target_device, rendezvous, remote_rets, rets, done,
-              rendez_args](const Status& status) {
+             [source_device, target_device, target_incarnation, rendezvous,
+              remote_rets, rets, done, rendez_args](const Status& status) {
                if (!status.ok()) {
                  delete remote_rets;
                  done(status);
@@ -244,8 +263,8 @@ void ProcessFunctionLibraryRuntime::Run(
                delete remote_rets;
                // Now receive the return values from the target.
                ReceiveTensorsAsync(target_device, source_device, "ret_",
-                                   num_returns, rendez_args, rendezvous, rets,
-                                   done);
+                                   target_incarnation, num_returns, rendez_args,
+                                   rendezvous, rets, done);
              });
   } else {
     done(errors::Internal("Could not find device"));

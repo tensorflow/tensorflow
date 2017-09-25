@@ -146,15 +146,15 @@ class CudnnSupport : public dnn::DnnSupport {
 
   bool GetConvolveAlgorithms(
       bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmType>* out_algorithms) override;
+      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) override;
 
   bool GetConvolveBackwardDataAlgorithms(
       bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmType>* out_algorithms) override;
+      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) override;
 
   bool GetConvolveBackwardFilterAlgorithms(
       bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmType>* out_algorithms) override;
+      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<float>& x,

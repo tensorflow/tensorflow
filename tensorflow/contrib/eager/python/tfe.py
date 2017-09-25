@@ -43,7 +43,9 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@nan_callback
 @@seterr
 
+@@Iterator
 @@Saver
+@@Variable
 """
 
 from __future__ import absolute_import
@@ -53,6 +55,7 @@ from __future__ import print_function
 
 # pylint:disable=g-bad-import-order,g-import-not-at-top,unused-import
 #
+from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.saver import Saver
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.eager import backprop
@@ -70,6 +73,7 @@ from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
+from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 
 defun = function.defun
 implicit_gradients = backprop.implicit_grad

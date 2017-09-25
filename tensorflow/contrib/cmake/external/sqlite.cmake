@@ -23,7 +23,7 @@ set(sqlite_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/sqlite/install)
 if(WIN32)
   set(sqlite_STATIC_LIBRARIES ${sqlite_INSTALL}/lib/sqlite.lib)
 else()
-  set(sqlite_STATIC_LIBRARIES ${sqlite_INSTALL}/lib/sqlite.a)
+  set(sqlite_STATIC_LIBRARIES ${sqlite_INSTALL}/lib/libsqlite.a)
 endif()
 
 set(sqlite_HEADERS
@@ -49,11 +49,14 @@ else()
         PREFIX sqlite
         URL ${sqlite_URL}
         URL_HASH ${sqlite_HASH}
+        PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/sqlite/CMakeLists.txt ${sqlite_BUILD}
         INSTALL_DIR ${sqlite_INSTALL}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
-        BUILD_COMMAND $(MAKE)
-        INSTALL_COMMAND $(MAKE) install
-	    CFLAGS=-fPIC
+        CMAKE_CACHE_ARGS
+            -DCMAKE_BUILD_TYPE:STRING=Release
+            -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+            -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+            -DCMAKE_INSTALL_PREFIX:STRING=${sqlite_INSTALL}
     )
 
 endif()

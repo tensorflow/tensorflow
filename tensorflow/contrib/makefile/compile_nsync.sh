@@ -129,17 +129,16 @@ for arch in $archs; do
                         include dependfile
                 ';;
 
-        ios)    xcode=/Applications/Xcode.app/Contents/Developer/Platforms
-                arch_flags=
+        ios)    arch_flags=
                 nsync_backup_dir="$nsync_backup_dir""_$target_platform/$arch"
                 case "$arch" in
                 i386|x86_64)
                         arch_flags="$arch_flags -mios-simulator-version-min=8.0"
-                        arch_flags="$arch_flags -isysroot $xcode/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator10.0.sdk"
+                        arch_flags="$arch_flags -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)"
                         ;;
                 *)
                         arch_flags="$arch_flags -miphoneos-version-min=8.0"
-                        arch_flags="$arch_flags -isysroot $xcode/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.0.sdk"
+                        arch_flags="$arch_flags -isysroot $(xcrun --sdk iphoneos --show-sdk-path)"
                         ;;
                 esac
                 makefile='
@@ -291,7 +290,7 @@ for arch in $archs; do
 
         if [ ! -d "$nsync_platform_dir" ]; then
                 mkdir "$nsync_platform_dir"
-                echo "$makefile" | sed 's,^[ \t]*,,' > "$nsync_platform_dir/Makefile"
+                echo "$makefile" | sed $'s,^[ \t]*,,' > "$nsync_platform_dir/Makefile"
                 touch "$nsync_platform_dir/dependfile"
         fi
         if (cd "$nsync_platform_dir" && make depend nsync.a >&2); then

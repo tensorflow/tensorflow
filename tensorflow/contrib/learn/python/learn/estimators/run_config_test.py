@@ -377,6 +377,22 @@ class RunConfigTest(test.TestCase):
     uid_2 = _create_run_config_with_cluster_spec(json.dumps(tf_config_2)).uid()
     self.assertNotEqual(uid_1, uid_2)
 
+  def test_num_worker_replicas_counts_in_master_too(self):
+    tf_config = {
+        "cluster": {
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.MASTER: ["host6:6"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"],
+        },
+        "task": {
+            "type": run_config_lib.TaskType.WORKER,
+            "index": 1
+        }
+    }
+
+    config = _create_run_config_with_cluster_spec(json.dumps(tf_config))
+    self.assertEqual(config.num_worker_replicas, 4)
+
 
 if __name__ == "__main__":
   test.main()
