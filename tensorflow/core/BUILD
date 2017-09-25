@@ -1748,6 +1748,7 @@ tf_cuda_library(
 tf_cuda_library(
     name = "core_cpu_internal",
     srcs = [
+        "common_runtime/accumulate_n_optimizer.cc",
         "common_runtime/allocator_retry.cc",
         "common_runtime/bfc_allocator.cc",
         "common_runtime/build_graph_options.cc",

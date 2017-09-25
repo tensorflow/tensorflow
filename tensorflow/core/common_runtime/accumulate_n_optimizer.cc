@@ -13,14 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/graph_optimizer.h"
 
-#include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/graph/optimizer_cse.h"
 
 
 namespace tensorflow {
@@ -37,23 +32,16 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
   return tensor;
 }
 
-// Replaces occurrences of the AccumulateN stub operator with a graph of
+// Replaces occurrences of the "AccumulateNV2" stub operator with a graph of
 // lower-level ops. The graph is equivalent (modulo certain corner cases)
-// to what the following Python code used to produce:
-//  with ops.name_scope(name, "AccumulateN", inputs) as name:
-//    var = gen_state_ops._temporary_variable(
-//        shape=tensor_shape.vector(0), dtype=tensor_dtype)
-//    with ops.colocate_with(var):
-//      zeros = array_ops.zeros_like(gen_control_flow_ops._merge(inputs)[0])
-//      zeros.set_shape(shape)
-//      ref = state_ops.assign(var, zeros, validate_shape=False)
-//      update_ops = [
-//          state_ops.assign_add(ref, input_tensor, use_locking=True)
-//          for input_tensor in inputs
-//      ]
-//      with ops.control_dependencies(update_ops):
-//        return gen_state_ops._destroy_temporary_variable(
-//            ref, var_name=var.op.name, name=name)
+// to the semantics of the original accumulate_n() Python op in math_ops.py.
+// Implementing the op with a rewrite allows this new variant of accumulate_n 
+// to be differentiable.
+//
+// The binary code that generates AccumulateNV2 stub ops is located in a
+// dynamic library built out of tensorflow/contrib/framework. Ideally, this
+// class would also be in contrib, but calls to REGISTER_OPTIMIZATION() from
+// third-party libraries aren't currently supported.
 class AccumulateNRemovePass : public GraphOptimizationPass {
  public:
 

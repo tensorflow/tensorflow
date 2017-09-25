@@ -103,4 +103,12 @@ def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
                                                     name=name, 
                                                     shape=shape)
 
+# The following code should eventually be merged into 
+# tensorflow/python/ops/math_grad.py
+@ops.RegisterGradient("AccumulateNV2")
+def _AddNGrad(op, grad):
+  """Same as gradient for AddN. Copies the gradient to all inputs."""
+  # Not broadcasting.
+  return [grad] * len(op.inputs)
+
 
