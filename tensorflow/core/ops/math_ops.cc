@@ -362,7 +362,7 @@ REGISTER_OP("Cos").UNARY_COMPLEX().Doc(R"doc(
 Computes cos of x element-wise.
 )doc");
 
-REGISTER_OP("Tan").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Tan").UNARY().Doc(R"doc(
 Computes tan of x element-wise.
 )doc");
 
