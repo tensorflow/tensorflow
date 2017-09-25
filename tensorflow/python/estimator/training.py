@@ -300,6 +300,9 @@ class _TrainingExecutor(object):
           steps=self._eval_spec.steps,
           hooks=self._eval_spec.hooks,
           name=self._eval_spec.name)
+
+      # TODO(b/65169058): Adds export once export strategies are moved.
+
       if _should_stop_local_train(metrics[ops.GraphKeys.GLOBAL_STEP]):
         break
 
