@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
 
@@ -90,18 +91,18 @@ class UniqueOp : public OpKernel {
     auto idx_vec = idx->template vec<TIndex>();
 
     auto hash_fn = [&Tin](const int64& key) -> unsigned long {
-      size_t hash = 0;
+      size_t h = 0;
       for (int64 i = 0; i < Tin.dimension(0); i++) {
-        for (uint64 j = 0; j < Tin.dimension(2); j++) {
-          hash += std::hash<T>{}(Tin(i, key, j));
+        for (int64 j = 0; j < Tin.dimension(2); j++) {
+          h = Hash64Combine(h, hash<T>{}(Tin(i, key, j)));
         }
       }
-      return hash;
+      return h;
     };
 
     auto equal_to_fn = [&Tin](const int64& lhs, const int64& rhs) {
       for (int64 i = 0; i < Tin.dimension(0); i++) {
-        for (uint64 j = 0; j < Tin.dimension(2); j++) {
+        for (int64 j = 0; j < Tin.dimension(2); j++) {
           if (Tin(i, lhs, j) != Tin(i, rhs, j)) {
             return false;
           }
@@ -132,8 +133,8 @@ class UniqueOp : public OpKernel {
     auto Tout = output->shaped<T, 3>(new_sizes);
 
     for (auto it : uniq) {
-      for (uint64 i = 0; i < Tin.dimension(0); i++) {
-        for (uint64 j = 0; j < Tin.dimension(2); j++) {
+      for (int64 i = 0; i < Tin.dimension(0); i++) {
+        for (int64 j = 0; j < Tin.dimension(2); j++) {
           Tout(i, it.second, j) = Tin(i, it.first, j);
         }
       }

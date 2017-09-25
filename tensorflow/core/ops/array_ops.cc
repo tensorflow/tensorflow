@@ -2064,9 +2064,13 @@ y ==> [1, 2, 4, 7, 8]
 idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 ```
 
-x: 1-D.
-y: 1-D.
-idx: 1-D.
+
+x: A `Tensor`.
+axis: A `Tensor` of type `int64` (default: 0). The axis of the Tensor to
+  find the unique elements.
+y: A `Tensor`. Unique elements along the `axis` of `Tensor` x.
+idx: A 1-D Tensor. Has the same type as x that contains the index of each
+  value of x in the output y.
 )doc");
 
 // --------------------------------------------------------------------------
