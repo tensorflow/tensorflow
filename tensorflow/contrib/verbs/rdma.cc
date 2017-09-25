@@ -34,6 +34,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+#define RoCE_V2 "RoCE v2"
+
 namespace {
 // hash name to 32-bit integer
 uint32_t NameHash(const string& name) {
@@ -67,13 +69,35 @@ string MessageTypeToString(RdmaMessageType rmt) {
 }
 }  // namespace
 
+// Function to get environment variable
+// Args:
+//    var_name - the name of the environmental variable
+// Returns:
+//    string with it's value or empty string if not set
 string get_env_var(char const* var_name) {
 	char const* var_temp = getenv(var_name);
 
 	return (var_temp == NULL) ? string() : string(var_temp);
 }
 
-int get_dev_active_port_num(ibv_device *device) {
+// Function to open device
+// Args:
+//   ibv_dev device to open
+// Returns:
+//   context of the opened device
+ibv_context* open_device(ibv_device *ibv_dev) {
+  ibv_context* context = ibv_open_device(ibv_dev);
+
+  CHECK(context) << "Open context failed for " << ibv_get_device_name(ibv_dev);
+  return context;
+}
+
+// Function to count the number of active ports for device
+// Args:
+//   device - to check active ports
+// Returns:
+//   number of active ports of the given device
+int get_dev_active_port_count(ibv_device *device) {
   ibv_device_attr device_att;
   ibv_port_attr port_attr;
   ibv_context* context = NULL;
@@ -87,7 +111,7 @@ int get_dev_active_port_num(ibv_device *device) {
   for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
     rc = ibv_query_port(context, port_index, &port_attr);
     CHECK(!rc) << "Failed to query the port" << port_index;
-    if (port_attr.state == 4/*IBV_PORT_ACTIVE*/) {
+    if (port_attr.state == IBV_PORT_ACTIVE) {
       active_ports++;
     }
   }
@@ -95,6 +119,10 @@ int get_dev_active_port_num(ibv_device *device) {
   return active_ports;
 }
 
+// Function to set device. If RDMA_DEVICE not set, search for device with active port.
+// Fails if more than one device with active port was found.
+// Returns:
+//   device to use
 ibv_device* set_device() {
   ibv_device** dev_list;
   int dev_num, device_index, device_to_open = 0;
@@ -108,19 +136,20 @@ ibv_device* set_device() {
   if (!env_p_rdma_device.empty()) {
     for (device_index = 0; device_index < dev_num; device_index++) {
       if (!env_p_rdma_device.compare(ibv_get_device_name(dev_list[device_index]))) {
-        CHECK(get_dev_active_port_num(dev_list[device_index]) != 0) << "Device " << ibv_get_device_name(dev_list[device_index]) << " has no active ports";
+        CHECK(get_dev_active_port_count(dev_list[device_index]) != 0) << "Device " << ibv_get_device_name(dev_list[device_index]) << " has no active ports";
           return dev_list[device_index];
         }
       }
     //check validity of input device
     CHECK(false) <<  "The device " << env_p_rdma_device << " wasn't found";
   }
+  //set default device
   else {
-  str_port_num = get_env_var("RDMA_DEVICE_PORT");
-  CHECK(str_port_num.empty()) << "RDMA_DEVICE should be provided if RDMA_DEVICE_PORT is set by user";
+    str_port_num = get_env_var("RDMA_DEVICE_PORT");
+    CHECK(str_port_num.empty()) << "RDMA_DEVICE should be provided if RDMA_DEVICE_PORT is set by user";
     for (device_index = 0; device_index < dev_num; device_index++) {
       //get port_num
-      if (get_dev_active_port_num(dev_list[device_index]) > 0){
+      if (get_dev_active_port_count(dev_list[device_index]) > 0){
         CHECK(found_active_port != true)  << "More than one device with active port in the system. Please enter RDMA_DEVICE";
       }
       else {
@@ -133,16 +162,15 @@ ibv_device* set_device() {
     return dev_list[device_to_open];
   }
   CHECK(false) << "No device was set!";
-  return NULL;
+  return NULL; //never happens
 }
 
-ibv_context* open_device(ibv_device *ibv_dev) {
-  ibv_context* context = ibv_open_device(ibv_dev);
-
-  CHECK(context) << "Open context failed for " << ibv_get_device_name(ibv_dev);
-  return context;
-}
-
+// Function to set port for device.
+// If RDMA_DEVICE_PORT not set, first active port of the device will be set.
+// Args:
+//   context of the device
+// Returns:
+//   port to use
 uint8_t set_port(ibv_context* context) {
   uint8_t port_num = 1;
   string str_port_num;
@@ -160,30 +188,43 @@ uint8_t set_port(ibv_context* context) {
     CHECK(port_num > 0) << "RDMA_DEVICE_PORT should be positive";
     CHECK(port_num <= device_att.phys_port_cnt) << "RDMA_DEVICE_PORT should be less or equal to amount of available ports";
     rc = ibv_query_port(context, port_num, &port_attr);
-        CHECK(!rc) << "Failed to query the port" << port_num;
+    CHECK(!rc) << "Failed to query the port" << port_num;
     //check if port id active
-    CHECK(port_attr.state == 4/*IBV_PORT_ACTIVE*/) << "Selected RDMA_DEVICE_PORT is not active";
+    CHECK(port_attr.state == IBV_PORT_ACTIVE) << "Selected RDMA_DEVICE_PORT is not active";
   }
   // set default port
   else {
     for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
       rc = ibv_query_port(context, port_index, &port_attr);
       CHECK(!rc) << "Failed to query the port" << port_index;
-      if (port_attr.state == 4/*IBV_PORT_ACTIVE*/) {
+      if (port_attr.state == IBV_PORT_ACTIVE) {
         port_num = port_index;
         break;
       }
-      CHECK(port_index != device_att.phys_port_cnt) << "No active ports";
     }
+    CHECK(port_index != device_att.phys_port_cnt) << "No active ports";
   }
   return port_num;
 }
 
-int null_gid(union ibv_gid *gid) {
+// Function to check if GID is null
+// Args:
+//   GID
+// Returns:
+//   if GID is null - true, otherwise - false
+bool is_gid_null(union ibv_gid *gid) {
   return !(gid->raw[8] | gid->raw[9] | gid->raw[10] | gid->raw[11] |
     gid->raw[12] | gid->raw[13] | gid->raw[14] | gid->raw[15]);
 }
 
+// Function read from sysfs file
+// Args:
+//   dir - directory
+//   file - file
+//   buff - buffer for the result
+//   size - buffer size
+// Returns:
+//   number of bytes were read or -1 if failed
 int read_sysfs_file(const char *dir, const char *file, char *buf, size_t size) {
   char *path;
   int fd;
@@ -209,9 +250,14 @@ int read_sysfs_file(const char *dir, const char *file, char *buf, size_t size) {
   return len;
 }
 
-#define RoCE_V2 "RoCE v2"
-
-bool is_gid_type_rocev2(ibv_context* context,uint8_t port_num, uint8_t index) {
+// Function to check if GID index support RoCE V2
+// Args:
+//   context - device context
+//   port_num - port number
+//   index -  GID index
+// Returns:
+//   if GID supports RoCE V2 - true, otherwise - false.
+bool is_gid_type_roce_v2(ibv_context* context, uint8_t port_num, uint8_t index) {
   char name[32];
   char buff[41];
 
@@ -222,6 +268,15 @@ bool is_gid_type_rocev2(ibv_context* context,uint8_t port_num, uint8_t index) {
   return !strcmp(buff, RoCE_V2);
 }
 
+// Function to set GID index.
+// If the port link is IB, no GID index should be selected.
+// If Ethernet but RDMA_GID_INDEX not set gid index that supports
+//   RoCE V2 will be chosen(fails if more then one IP is configured)
+// Args:
+//   context - device context
+//   port_num - port number
+// Returns:
+//   GID index to use
 uint8_t set_gid(uint8_t port_num, ibv_context* context) {
   ibv_port_attr port_attr;
   string gid_str;
@@ -235,9 +290,9 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
   for (i = 0; i < port_attr.gid_tbl_len; i++) {
     rc = ibv_query_gid(context, port_num, i, &gid);
     CHECK(!rc) << "Failed to query gid to port " << (int)port_num << " index " <<  i;
-    if (!null_gid(&gid)) {
+    if (!is_gid_null(&gid)) {
       gids_num++;
-      if (gid.raw[0] == 0 && gid.raw[1] == 0 && is_gid_type_rocev2(context, port_num, i)) {
+      if (gid.raw[0] == 0 && gid.raw[1] == 0 && is_gid_type_roce_v2(context, port_num, i)) {
         if (v2_ip_num == 0) {
         //can be overwritten by RDMA_GID_INDEX later
         gid_index = i;
@@ -262,7 +317,7 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
     default:
       CHECK(false) << "Unknown port link layer!";
   }
-  if (!is_gid_type_rocev2(context, port_num, gid_index)) {
+  if (!is_gid_type_roce_v2(context, port_num, gid_index)) {
     LOG(INFO) << "RoCE v2 is not configured for GID_INDEX " << (int)gid_index;
   }
   return gid_index;
