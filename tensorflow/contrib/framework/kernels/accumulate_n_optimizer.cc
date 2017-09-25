@@ -58,7 +58,7 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
  public:
 
   AccumulateNRemovePass() {
-    fprintf(stderr, "In constructor\n");
+    fprintf(stderr, "Initializing AccumulateNRemovePass rewrite\n");
   }
 
   Status Run(const GraphOptimizationPassOptions& options) override {
