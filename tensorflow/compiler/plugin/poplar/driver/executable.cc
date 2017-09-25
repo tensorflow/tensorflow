@@ -42,6 +42,7 @@ PoplarExecutable::ExecuteOnStream(
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
+  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
   VLOG(1) << "Execute " << module().name();
   if (VLOG_IS_ON(2)) {
@@ -59,6 +60,7 @@ PoplarExecutable::ExecuteOnStream(
   perftools::gputools::DeviceMemoryBase retbuf;
   TF_ASSIGN_OR_RETURN(retbuf,
                       poplarExecutor->ExecuteEngine(poplar_engine_,
+                                                    memory_allocator,
                                                     result_shape(),
                                                     arguments,
                                                     output_map_,
@@ -79,8 +81,47 @@ StatusOr<std::unique_ptr<ShapedBuffer>> PoplarExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  return tensorflow::errors::Unimplemented(
-          "ExecuteOnStream is not yet supported on Poplar.");
+  se::Stream* stream = run_options->stream();
+
+  std::vector<se::DeviceMemoryBase> argument_buffers;
+  for (int i = 0; i < arguments.size(); ++i) {
+    TF_RET_CHECK(!ShapeUtil::IsTuple(arguments[i]->shape()));
+    argument_buffers.push_back(arguments[i]->buffer(/*index=*/{}));
+  }
+
+  se::DeviceMemoryBase result;
+  TF_ASSIGN_OR_RETURN(result, ExecuteOnStream(run_options, argument_buffers,
+                                              hlo_execution_profile));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result_buffer,
+                      ShapedBuffer::MakeShapedBuffer(
+                              result_shape(), stream->parent()->platform(),
+                              stream->parent()->device_ordinal()));
+
+  // Copy DeviceMemoryBase values which contain the array(s) of the result into
+  // the respective location in ShapedBuffer which is returned to the caller.
+  perftools::gputools::StreamExecutor* executor(stream->parent());
+  sep::PoplarExecutor* poplarExecutor(
+          static_cast<sep::PoplarExecutor*>(executor->implementation()));
+
+  TF_RETURN_IF_ERROR(
+    result_buffer->mutable_shape_index_to_buffer_entry()
+      ->ForEachMutableElementWithStatus(
+              [&result, &result_buffer, poplarExecutor](const ShapeIndex& index,
+                                                        size_t* buffer_entry) {
+                se::DeviceMemoryBase buffer = result;
+                for (auto i : index) {
+                  TF_ASSIGN_OR_RETURN(
+                          buffer,
+                          poplarExecutor->GetTupleBufferByIndex(buffer, i));
+                }
+                CHECK(!buffer.is_null() || buffer.size() == 0);
+                *buffer_entry = result_buffer->mutable_buffers()->size();
+                result_buffer->mutable_buffers()->push_back(buffer);
+                return Status::OK();
+              }));
+
+  return std::move(result_buffer);
 }
 
 StatusOr<se::DeviceMemoryBase>

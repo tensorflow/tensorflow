@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_timer.h"
 
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/lib/error.h"
@@ -198,10 +199,14 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   port::StatusOr<DeviceMemoryBase>
   ExecuteEngine(const std::shared_ptr<poplar::Engine>&,
+                xla::DeviceMemoryAllocator* allocator,
                 const xla::Shape&,
                 const Args&,
                 const OutputMap&,
                 const std::vector<xla::Shape>&);
+
+  port::StatusOr<DeviceMemoryBase>
+  GetTupleBufferByIndex(const DeviceMemoryBase& base, int64 value);
 
  private:
   struct TensorControl {
@@ -224,13 +229,15 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
                       const std::vector<xla::Shape>&);
 
   std::tuple<DeviceMemoryBase,int64>
-  AllocateSingleOutput(const xla::Shape& shape,
+  AllocateSingleOutput(xla::DeviceMemoryAllocator* allocator,
+                       const xla::Shape& shape,
                        const int64 n,
                        const OutputMap& map,
                        const Args& args);
 
   std::tuple<DeviceMemoryBase,int64>
-  AllocateOutputBuffer(const xla::Shape& shape,
+  AllocateOutputBuffer(xla::DeviceMemoryAllocator* allocator,
+                       const xla::Shape& shape,
                        const int64 n,
                        const OutputMap& map,
                        const Args& args);
