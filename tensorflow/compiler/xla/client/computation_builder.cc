@@ -454,7 +454,6 @@ ComputationDataHandle ComputationBuilder::Reshape(
 
   StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
   if (!shape.ok()) {
-    // Just early return with the existing error status.
     first_error_ = shape.status();
     return ComputationDataHandle();
   }
@@ -485,7 +484,6 @@ ComputationDataHandle ComputationBuilder::Collapse(
   // dimensions by the product of their sizes.
   StatusOr<std::unique_ptr<Shape>> shape_or_status = GetShape(operand);
   if (!shape_or_status.ok()) {
-    // Just early return with the existing error status.
     first_error_ = shape_or_status.status();
     return ComputationDataHandle();
   }
@@ -981,6 +979,11 @@ ComputationDataHandle ComputationBuilder::Ceil(
   return UnaryOp(UNOP_CEIL, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Round(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_ROUND_NEAREST_AFZ, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Log(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_LOG, operand);
@@ -1082,7 +1085,6 @@ ComputationDataHandle ComputationBuilder::ConvertElementType(
 
   StatusOr<std::unique_ptr<Shape>> shape_status = GetShape(operand);
   if (!shape_status.ok()) {
-    // Just early return with the existing error status.
     first_error_ = shape_status.status();
     return ComputationDataHandle();
   }
@@ -1394,6 +1396,24 @@ ComputationDataHandle ComputationBuilder::Reduce(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::ReduceAll(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& init_value, const Computation& computation) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
+  if (!shape.ok()) {
+    first_error_ = shape.status();
+    return ComputationDataHandle();
+  }
+
+  std::vector<int64> all_dimnos(ShapeUtil::Rank(*shape.ValueOrDie()));
+  std::iota(all_dimnos.begin(), all_dimnos.end(), 0);
+  return Reduce(operand, init_value, computation, all_dimnos);
+}
+
 ComputationDataHandle ComputationBuilder::ReduceWindow(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& init_value, const Computation& computation,
@@ -1405,7 +1425,6 @@ ComputationDataHandle ComputationBuilder::ReduceWindow(
 
   StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
   if (!shape.ok()) {
-    // Just early return with the existing error status.
     first_error_ = shape.status();
     return ComputationDataHandle();
   }
@@ -1564,7 +1583,6 @@ ComputationDataHandle ComputationBuilder::SelectAndScatter(
 
   StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
   if (!shape.ok()) {
-    // Just early return with the existing error status.
     first_error_ = shape.status();
     return ComputationDataHandle();
   }

@@ -62,6 +62,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kLogicalNot;
     case UNOP_NEGATE:
       return HloOpcode::kNegate;
+    case UNOP_ROUND_NEAREST_AFZ:
+      return HloOpcode::kRoundNearestAfz;
     case UNOP_SIGN:
       return HloOpcode::kSign;
     case UNOP_SIN:

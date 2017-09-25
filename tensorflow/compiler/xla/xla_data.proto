@@ -650,6 +650,10 @@ enum UnaryOperation {
 
   // Elementwise, computes the sine of x.
   UNOP_SIN = 13;
+
+  // Elementwise, rounds x to nearest integral value, rounding half-way cases
+  // away from zero.
+  UNOP_ROUND_NEAREST_AFZ = 14;
 }
 
 message UnaryOpRequest {
