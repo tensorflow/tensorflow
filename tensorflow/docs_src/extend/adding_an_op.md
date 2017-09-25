@@ -155,7 +155,7 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 ### Multi-threaded CPU kernels
 
 To write a multi-threaded CPU kernel, the Shard function in
-[`work_sharder.h`](https://www.tensorflow.org/code/tensorflow/core/framework/work_sharder.h)
+[`work_sharder.h`](https://www.tensorflow.org/code/tensorflow/core/util/work_sharder.h)
 can be used. This function shards a computation function across the
 threads configured to be used for intra-op threading (see
 intra_op_parallelism_threads in
