@@ -50,7 +50,7 @@ def _is_free_function(py_object, full_name, index):
   return True
 
 
-def write_docs(output_dir, parser_config, yaml_toc):
+def write_docs(output_dir, parser_config, yaml_toc, root_title='TensorFlow'):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -65,15 +65,15 @@ def write_docs(output_dir, parser_config, yaml_toc):
     parser_config: A `parser.ParserConfig` object, containing all the necessary
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
+    root_title: The title name for the root level index.md.
 
   Raises:
     ValueError: if `output_dir` is not an absolute path
   """
   # Make output_dir.
   if not os.path.isabs(output_dir):
-    raise ValueError(
-        "'output_dir' must be an absolute path.\n"
-        "    output_dir='%s'" % output_dir)
+    raise ValueError("'output_dir' must be an absolute path.\n"
+                     "    output_dir='%s'" % output_dir)
 
   try:
     if not os.path.exists(output_dir):
@@ -169,7 +169,7 @@ def write_docs(output_dir, parser_config, yaml_toc):
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
     f.write(
-        parser.generate_global_index('TensorFlow', parser_config.index,
+        parser.generate_global_index(root_title, parser_config.index,
                                      parser_config.reference_resolver))
 
 
@@ -193,7 +193,6 @@ def _get_default_do_not_descend_map():
       'tf': ['cli', 'lib', 'wrappers'],
       'tf.contrib': [
           'compiler',
-          'factorization',
           'grid_rnn',
           'labeled_tensor',
           'ndlstm',
@@ -493,8 +492,8 @@ class DocGenerator(object):
         base_dir=base_dir)
 
   def run_extraction(self):
-    return extract(
-        self._py_modules, self._private_map, self._do_not_descend_map)
+    return extract(self._py_modules, self._private_map,
+                   self._do_not_descend_map)
 
   def build(self, flags):
     """Actually build the docs."""

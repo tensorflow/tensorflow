@@ -55,6 +55,7 @@ class ShapeIndex {
  public:
   ShapeIndex() = default;
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
+  ShapeIndex(const ShapeIndex& parent, int64 begin_offset);
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -296,6 +297,8 @@ class ShapeUtil {
 
   // Shorthand for testing whether a shape is of a given element type and
   // sequence of dimensions.
+  //
+  // DEPRECATED: Use Equal() instead.
   static bool ShapeIs(const Shape& shape, PrimitiveType element_type,
                       std::initializer_list<int64> dimensions);
 

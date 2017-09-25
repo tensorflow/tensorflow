@@ -18,91 +18,136 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import contextlib
 import threading
 
-from autograd import container_types
-from autograd import core as ag_core
-
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 
-class ImplicitTape(object):
-  """Global object which can watch tensors and wrap them with autograd."""
+def tid(tensor):
+  return tensor._id  # pylint: disable=protected-access
+
+
+class TapeEntry(
+    collections.namedtuple("TapeEntry", [
+        "op_type",
+        "output_ids", "input_ids", "side_outputs", "backward_function",
+        "output_shape_and_dtype",
+    ])):
+  """Entry in the gradient tape.
+
+  Represents the execution of one op or function, with instructions for doing
+  its backward pass and useful information for it.
+
+  Args:
+   output_ids: tensor_id(t) for each output tensor T
+   input_ids: tensor_id(t) for each input tensor T
+   side_outputs: optional tensors (not IDs) which need to be provided to the
+    backward function.
+   backward_function: function to be called with the downstream gradients and
+    side outputs as arguments which computes the backward pass.
+   output_shape_and_dtype: a list of (shape_tuple, dtype) for every output
+    tensor_id
+  """
+
+
+def _tensor_shape(t):
+  return t._shape_tuple()  # pylint: disable=protected-access
+
+
+class Tape(object):
+  """Represents a gradient propagation trace."""
 
   def __init__(self):
-    self.tensors = {}
-    self.gradients = []
+    # _tensor_tape maps from tensor IDs to their operation IDs
+    self._tensor_tape = {}
+    # maps from tensor ID to usage count. Triggers garbage collection when this
+    # goes to zero.
+    self._tensor_usage = {}
+    # maps from operation ID to TapeEntry
+    self._op_tape = {}
+    # next operation ID
+    self._next_op_id = 0
+    # List of directly watched tensors
+    self._watched = []
+    # Set of directly watched variables
+    self._watched_variables = set()
 
-  def __eq__(self, other):
-    return self is other
+  def should_record(self, tensors):
+    """Returns true if any tensor should be recorded.
 
-  def __hash__(self):
-    return id(self)
+    Args:
+      tensors: some tensors.
 
+    Returns:
+      True if any of the tensors is in the tape.
+    """
+    return any(x._id in self._tensor_tape for x in tensors)  # pylint: disable=protected-access
 
-@ag_core.primitive
-def _watch_with_tape_internal(_, tensor):
-  """Primitive to wrap a tensor around an ImplicitTape progenitor."""
-  return tensor
+  def watch(self, tensor):
+    """Adds a tensor to the tape."""
+    i = tid(tensor)
+    if i not in self._tensor_tape:
+      self._tensor_tape[i] = None
+      self._tensor_usage[i] = 1
+      self._watched.append(tensor)
 
+  def watch_variable(self, v):
+    self._watched_variables.add(v)
+    self.watch(v.handle)
 
-def _watch_with_tape(tape, tensor):
-  """Wraps a watched Tensor and keeps track of it in the implicit tape."""
-  w = _watch_with_tape_internal(tape, tensor)
-  if ag_core.isnode(tape):
-    tape.value.tensors[ops.tensor_id(tensor)] = w
-  return w
+  def record_operation(self, op_type, output_tensors, input_tensors,
+                       side_outputs, backward_function):
+    """Records an operation in the tape."""
+    if not self.should_record(input_tensors):
+      return output_tensors
+    for t in output_tensors:
+      i = tid(t)
+      self._tensor_tape[i] = self._next_op_id
+      self._tensor_usage[i] = 1
+    for t in input_tensors:
+      i = tid(t)
+      self._tensor_usage[i] = self._tensor_usage.get(i, 0) + 1
+    self._op_tape[self._next_op_id] = TapeEntry(
+        op_type,
+        [tid(t) for t in output_tensors],
+        [tid(t) for t in input_tensors],
+        side_outputs,
+        backward_function,
+        [(_tensor_shape(t), t.dtype) for t in output_tensors])
+    self._next_op_id += 1
 
+  def _delete_tensor_id(self, i):
+    if i in self._tensor_usage:
+      self._tensor_usage[i] -= 1
+      if self._tensor_usage[i] == 0:
+        del self._tensor_usage[i]
+        op_id = self._tensor_tape.pop(i, None)
+        if op_id is None:
+          return
+        op = self._op_tape[op_id]
+        if not any(tensor_id in self._tensor_usage
+                   for tensor_id in op.output_ids):
+          del self._op_tape[op_id]
+          for tensor_id in op.input_ids:
+            # TODO(apassos) this recursion might come to bite us. Consider
+            # adding an explicit stack if this ever gets out of hand
+            self._delete_tensor_id(tensor_id)
 
-def _watch_with_tape_vjp(g, ans, vs, gvs, tape, tensor):
-  """Gradient for _watch_with_tape_internal."""
-  del ans, gvs, tape
+  def delete_trace(self, tensor):
+    """Deletes any trace we have for this tensor."""
+    self._delete_tensor_id(tid(tensor))
 
-  def mut_add(implicit_tape):
-    t = ag_core.getval(tensor)
-    implicit_tape.gradients.append((t, g))
-    return implicit_tape
+  def export(self):
+    """Exports the internal state of this tape.
 
-  return ag_core.SparseObject(vs, mut_add)
-
-_watch_with_tape_internal.defvjp(_watch_with_tape_vjp, argnum=0)
-_watch_with_tape_internal.defvjp(
-    lambda g, ans, vs, gvs, tape, tensor: g,
-    argnum=1)
-
-
-class ImplicitTapeVSpace(ag_core.VSpace):
-  """VSpace needed to have ImplicitTape be a valid progenitor."""
-
-  def zeros(self):
-    return ImplicitTape()
-
-
-class ImplicitTapeNode(ag_core.Node):
-  """Node to wrap ImplicitTape in."""
-
-  def __eq__(self, other):
-    return self is other
-
-  def __hash__(self):
-    return id(self)
-
-ag_core.register_node(ImplicitTapeNode, ImplicitTape)
-ag_core.register_vspace(ImplicitTapeVSpace, ImplicitTape)
-
-
-# TODO(apassos) try to not do this.
-class NoneVSpace(ag_core.VSpace):
-  """VSpace for python None."""
-
-  def __init__(self, _):
-    self.size = 0
-
-
-ag_core.register_vspace(NoneVSpace, type(None))
+    Returns:
+      tensor_tape: a map from tensor_id(tensor) to <identifier for op>
+       responsible for generating that tensor.
+      op_tape: a map from <identifier for op> to TapeEntry for that op.
+    """
+    return self._tensor_tape, self._op_tape
 
 
 class _TapeStack(threading.local):
@@ -129,9 +174,7 @@ _tape_stack = _TapeStack()
 
 def push_new_tape():
   """Pushes a new tape onto the tape stack."""
-  progenitor = ag_core.new_progenitor(ImplicitTape())
-  _tape_stack.stack.append(progenitor)
-  ag_core.active_progenitors.add(progenitor)
+  _tape_stack.stack.append(Tape())
 
 
 def watch(tensor):
@@ -144,8 +187,20 @@ def watch(tensor):
     The tensor, potentially wrapped by all tapes in the stack.
   """
   for t in _tape_stack.stack:
-    tensor = _watch_with_tape(t, tensor)
-  return tensor
+    t.watch(tensor)
+
+
+def watch_variable(variable):
+  """Marks this variable to be watched by all tapes in the stack.
+
+  Args:
+    variable: variable to be watched.
+
+  Returns:
+    The tensor, potentially wrapped by all tapes in the stack.
+  """
+  for t in _tape_stack.stack:
+    t.watch_variable(variable)
 
 
 def pop_tape():
@@ -155,81 +210,49 @@ def pop_tape():
   return None
 
 
-def any_tape_has(tensor):
-  for t in _tape_stack.stack:
-    if ops.tensor_id(tensor) in t.value.tensors:
-      return True
-  return False
+@contextlib.contextmanager
+def stop_recording():
+  old = _tape_stack.stack
+  _tape_stack._stack = []  # pylint: disable=protected-access
+  try:
+    yield
+  finally:
+    _tape_stack._stack = old  # pylint: disable=protected-access
 
 
 def should_record(tensors):
   """Returns true if any tape in the stach watches any of these tensors."""
-  return any(ag_core.isnode(x) for x in tensors)
+  if not _tape_stack.stack:
+    return False
+  return any(x.should_record(tensors) for x in _tape_stack.stack)
 
 
-class _EagerSequenceNode(container_types.SequenceNode):
-  """Eager version of SequenceNode, to live in EagerSequenceVSpace."""
-  pass
+def record_operation(op_type, output_tensors, input_tensors, side_outputs,
+                     backward_function):
+  """Records the operation on all tapes in the stack."""
+  for t in _tape_stack.stack:
+    t.record_operation(op_type, output_tensors,
+                       input_tensors,
+                       side_outputs,
+                       backward_function)
 
 
-class _EagerSequenceVSpace(container_types.SequenceVSpace):
-  """Changes equality on SequenceVSpace to conform to tfe requirements."""
-
-  def __init__(self, value):
-    self.shape = [ag_core.vspace(x) for x in value]
-    self.size = sum(s.size for s in self.shape)
-    self.sequence_type = type(value)
-
-  def __eq__(self, other):
-    if type(self) != type(other):  # pylint: disable=unidiomatic-typecheck
-      return False
-    if len(self.shape) != len(other.shape):
-      # TODO(apassos) function gradients sometimes return gradients for side
-      # inputs which breaks this assertion. Understand how to fix it.
-      return True
-    for ss, os in zip(self.shape, other.shape):
-      if ss != os:
-        if isinstance(ss, NoneVSpace) or isinstance(os, NoneVSpace):
-          continue
-        if ss.dtype == dtypes.resource or os.dtype == dtypes.resource:
-          continue
-        return False
-    return True
+def delete_trace(tensor):
+  """Deletes traces for this Tensor from all tapes in the stack."""
+  for t in _tape_stack.stack:
+    t.delete_trace(tensor)
 
 
-class _EagerList(list):
-  """Type used to bypass SequenceVSpace."""
-
-  def __init__(self, value):
-    super(_EagerList, self).__init__(value)
-    for v in value:
-      assert not ag_core.isnode(v)
-
-ag_core.register_vspace(_EagerSequenceVSpace, _EagerList)
-ag_core.register_node(_EagerSequenceNode, _EagerList)
+def top_tape_watched_tensors():
+  t = _tape_stack.stack[-1]
+  return t._watched  # pylint: disable=protected-access
 
 
-@ag_core.primitive
-def _record_operation(output_tensors, input_tensors, side_outputs,
-                      backward_function):
-  del input_tensors, side_outputs, backward_function
-  return _EagerList(output_tensors)
+def top_tape_watched_variables():
+  t = _tape_stack.stack[-1]
+  return t._watched_variables  # pylint: disable=protected-access
 
 
-def record_operation(o, i, s, b):
-  """Primitive to trigger autograd tracing on outputs from inputs."""
-  inputs = container_types.make_sequence(_EagerList, *i)
-  return _record_operation(o, inputs, s, b)
-
-
-def _record_operation_vjp(g, ans, vs, gvs, output_tensors, input_tensors,
-                          side_outputs, backward_function):
-  """Gradient for _record_operation."""
-  del ans, vs, gvs, output_tensors, input_tensors
-  backward_args = tuple(g) + tuple(side_outputs)
-  if ag_core.isnode(backward_args):
-    backward_args = list(backward_args)
-  tensors = nest.flatten(backward_function(*backward_args))
-  return _EagerList([ag_core.getval(t) for t in tensors])
-
-_record_operation.defvjp(_record_operation_vjp, argnum=1)
+def could_possibly_record():
+  """Returns True if any tape is active."""
+  return len(_tape_stack.stack) > 0  # pylint: disable=g-explicit-length-test

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,8 +40,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
 
-# TODO(yleon): Remove this function.
-@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
+@deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -152,9 +152,13 @@ class InitializableLookupTableBase(LookupInterface):
       default_value: The value to use if a key is missing in the table.
       initializer: The table initializer to use.
     """
+    if context.in_graph_mode():
+      name = table_ref.op.name.split("/")[-1]
+    else:
+      name = context.context().scope_name
     super(InitializableLookupTableBase,
           self).__init__(initializer.key_dtype, initializer.value_dtype,
-                         table_ref.op.name.split("/")[-1])
+                         name)
     self._table_ref = table_ref
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)

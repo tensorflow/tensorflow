@@ -44,62 +44,64 @@ struct AdjointBatchFunctor<GPUDevice, Scalar> {
 // Instantiate implementations for the 4 numeric types.
 template struct AdjointBatchFunctor<GPUDevice, float>;
 template struct AdjointBatchFunctor<GPUDevice, double>;
-template struct AdjointBatchFunctor<GPUDevice, std::complex<float>>;
-template struct AdjointBatchFunctor<GPUDevice, std::complex<double>>;
+template struct AdjointBatchFunctor<GPUDevice, complex64>;
+template struct AdjointBatchFunctor<GPUDevice, complex128>;
 
 namespace {
 
 // Hacks around missing support for complex arithmetic in nvcc.
 template <typename Scalar>
-__host__ __device__ inline Scalar Multiply(Scalar x, Scalar y) {
+__device__ inline Scalar Multiply(Scalar x, Scalar y) {
   return x * y;
 }
 
 template <>
-__host__ __device__ inline cuComplex Multiply(cuComplex x, cuComplex y) {
+__device__ inline cuComplex Multiply(cuComplex x, cuComplex y) {
   return cuCmulf(x, y);
 }
 
 template <>
-__host__ __device__ inline cuDoubleComplex Multiply(cuDoubleComplex x,
-                                                    cuDoubleComplex y) {
+__device__ inline cuDoubleComplex Multiply(cuDoubleComplex x,
+                                           cuDoubleComplex y) {
   return cuCmul(x, y);
 }
 
 template <typename Scalar>
-__host__ __device__ inline Scalar Negate(Scalar x) {
+__device__ inline Scalar Negate(Scalar x) {
   return -x;
 }
 
 template <>
-__host__ __device__ inline cuComplex Negate(cuComplex x) {
+__device__ inline cuComplex Negate(cuComplex x) {
   return make_cuComplex(-cuCrealf(x), -cuCimagf(x));
 }
 
 template <>
-__host__ __device__ inline cuDoubleComplex Negate(cuDoubleComplex x) {
+__device__ inline cuDoubleComplex Negate(cuDoubleComplex x) {
   return make_cuDoubleComplex(-cuCreal(x), -cuCimag(x));
 }
 
 template <typename Scalar>
-__host__ __device__ inline bool IsFinite(Scalar x) {
-  return isfinite(x);
+__device__ inline bool IsFinite(Scalar x) {
+  return Eigen::numext::isfinite(x);
 }
 
 template <>
-__host__ __device__ inline bool IsFinite(cuComplex x) {
-  return isfinite(cuCrealf(x)) && isfinite(cuCimagf(x));
+__device__ inline bool IsFinite(cuComplex x) {
+  return Eigen::numext::isfinite(cuCrealf(x)) &&
+         Eigen::numext::isfinite(cuCimagf(x));
 }
 
 template <>
-__host__ __device__ inline bool IsFinite(cuDoubleComplex x) {
-  return isfinite(cuCreal(x)) && isfinite(cuCimag(x));
+__device__ inline bool IsFinite(cuDoubleComplex x) {
+  return Eigen::numext::isfinite(cuCreal(x)) &&
+         Eigen::numext::isfinite(cuCimag(x));
 }
 
 template <typename Scalar>
 struct Const {
   template <typename RealScalar>
-  __host__ __device__ static inline Scalar make_const(const RealScalar x) {
+  __device__ static inline Scalar make_const(const RealScalar x) {
     return Scalar(x);
   }
 };
@@ -107,7 +109,7 @@ struct Const {
 template <>
 struct Const<cuComplex> {
   template <typename RealScalar>
-  __host__ __device__ static inline cuComplex make_const(const RealScalar x) {
+  __device__ static inline cuComplex make_const(const RealScalar x) {
     return make_cuComplex(x, 0.0f);
   }
 };
@@ -115,8 +117,7 @@ struct Const<cuComplex> {
 template <>
 struct Const<cuDoubleComplex> {
   template <typename RealScalar>
-  __host__ __device__ static inline cuDoubleComplex make_const(
-      const RealScalar x) {
+  __device__ static inline cuDoubleComplex make_const(const RealScalar x) {
     return make_cuDoubleComplex(x, 0.0f);
   }
 };
@@ -172,7 +173,7 @@ __global__ void DeterminantFromPivotedLUKernel(int nthreads, int n,
 template <typename Scalar>
 struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
   void operator()(const GPUDevice& device,
-                  typename TTypes<Scalar, 3>::Tensor lu_factor,
+                  typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
                   int* info) {
     using CudaType = typename CUDAComplexT<Scalar>::type;
@@ -189,19 +190,16 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
   }
 };
 
-// Instantiate implementations for the 4 numeric types.
 template struct DeterminantFromPivotedLUFunctor<GPUDevice, float>;
 template struct DeterminantFromPivotedLUFunctor<GPUDevice, double>;
-template struct DeterminantFromPivotedLUFunctor<GPUDevice, std::complex<float>>;
-template struct DeterminantFromPivotedLUFunctor<GPUDevice,
-                                                std::complex<double>>;
+template struct DeterminantFromPivotedLUFunctor<GPUDevice, complex64>;
+template struct DeterminantFromPivotedLUFunctor<GPUDevice, complex128>;
 
 template <typename Scalar>
 __global__ void EyeKernel(Cuda3DLaunchConfig config, int batch_size, int m,
                           int n, Scalar* matrix_batch_ptr) {
   const int matrix_size = m * n;
   const Scalar one = Const<Scalar>::make_const(1.0);
-  const Scalar zero = Const<Scalar>::make_const(0.0);
   CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count, x) {
     if (batch >= batch_size) {
       break;
@@ -215,7 +213,7 @@ __global__ void EyeKernel(Cuda3DLaunchConfig config, int batch_size, int m,
         if (col >= n) {
           break;
         }
-        matrix_batch_ptr[row_start + col] = row == col ? one : zero;
+        matrix_batch_ptr[row_start + col] = row == col ? one : Scalar();
       }
     }
   }
@@ -238,11 +236,10 @@ struct EyeFunctor<GPUDevice, Scalar> {
   }
 };
 
-// Instantiate implementations for the 4 numeric types.
 template struct EyeFunctor<GPUDevice, float>;
 template struct EyeFunctor<GPUDevice, double>;
-template struct EyeFunctor<GPUDevice, std::complex<float>>;
-template struct EyeFunctor<GPUDevice, std::complex<double>>;
+template struct EyeFunctor<GPUDevice, complex64>;
+template struct EyeFunctor<GPUDevice, complex128>;
 
 }  // namespace functor
 }  // namespace tensorflow

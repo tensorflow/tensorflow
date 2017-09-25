@@ -59,10 +59,57 @@ CompilerFunctor::AllIntrinsics() {
   return intrinsics;
 }
 
+/* Create filtered versions of the LLVM Pass Managers to filter out some
+of the expensive passes.
+Profiling:
+   learning/brain/google/xla/benchmarks:inception_cpu_benchmark
+   learning/brain/google/xla/benchmarks:cifarnet
+pointed to LICM and IndVarSimplify as the hottest passes.
+LICM is known to exhibit O(n^2) time in the number of instructions.
+IndVarSimplify is slow due to SCEV. If loops are emitted in canonical form,
+this pass is not necessary.
+Disabling these as a starting point.
+*/
+// TODO(b/64227304) Creating a custom pass pipeline will replace this.
+
+namespace {
+class FilteredFunctionPassManager : public llvm::legacy::FunctionPassManager {
+ public:
+  FilteredFunctionPassManager(llvm::Module* m, bool disable_expensive_passes)
+      : llvm::legacy::FunctionPassManager(m),
+        disable_expensive_passes_(disable_expensive_passes) {}
+  void add(llvm::Pass* p) override {
+    llvm::legacy::FunctionPassManager::add(p);
+  }
+
+ private:
+  bool disable_expensive_passes_;
+};
+
+class FilteredPassManager : public llvm::legacy::PassManager {
+ public:
+  explicit FilteredPassManager(bool disable_expensive_passes)
+      : disable_expensive_passes_(disable_expensive_passes) {}
+  void add(llvm::Pass* p) override {
+    if (disable_expensive_passes_) {
+      llvm::StringRef PassName = p->getPassName();
+      if (PassName.contains("Unroll loops")) {
+        return;
+      }
+    }
+    llvm::legacy::PassManager::add(p);
+  }
+
+ private:
+  bool disable_expensive_passes_;
+};
+}  // anonymous namespace
+
 llvm::object::OwningBinary<llvm::object::ObjectFile> CompilerFunctor::
 operator()(llvm::Module& module) const {
-  llvm::legacy::PassManager module_passes;
-  llvm::legacy::FunctionPassManager function_passes(&module);
+  FilteredPassManager module_passes(disable_expensive_passes_);
+  FilteredFunctionPassManager function_passes(&module,
+                                              disable_expensive_passes_);
 
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));

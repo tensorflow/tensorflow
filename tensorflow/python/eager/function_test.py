@@ -21,21 +21,23 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import tape
-from tensorflow.python.eager import tensor
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 
 
 class FunctionTest(test.TestCase):
 
   def testBasic(self):
     matmul = function.defun(math_ops.matmul)
-    t = tensor.Tensor([[1.0, 2.0], [3.0, 4.0]])
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     sq = matmul(t, t, transpose_a=True)
     sq2 = matmul(sq, t, transpose_a=True)
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
@@ -48,29 +50,42 @@ class FunctionTest(test.TestCase):
     def sq(a):
       return matmul(a, a)
 
-    t = tensor.Tensor([[1.0, 2.0], [3.0, 4.0]])
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     out = sq(t)
     self.assertAllEqual(out.numpy(), math_ops.matmul(t, t).numpy())
+
+  def testGraphModeWithGradients(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.defun
+    def step():
+      def inner():
+        tape.watch_variable(v)
+        return v * v
+
+      return backprop.implicit_grad(inner)()[0][0]
+
+    self.assertAllEqual(step().numpy(), 2.0)
 
   def testTensorConversionWithDefun(self):
 
     @function.defun
     def f(x):
-      return math_ops.add(x, tensor.Tensor(3))
+      return math_ops.add(x, constant_op.constant(3))
 
-    self.assertAllEqual(5, f(tensor.Tensor(2)).numpy())
+    self.assertAllEqual(5, f(constant_op.constant(2)).numpy())
 
   def testTensorConversionCall(self):
 
     @function.defun
     def f(x):
-      return math_ops.add(x, tensor.Tensor(3))
+      return math_ops.add(x, constant_op.constant(3))
 
     @function.defun
     def g(x):
       return f(f(x))
 
-    self.assertAllEqual(8, g(tensor.Tensor(2)).numpy())
+    self.assertAllEqual(8, g(constant_op.constant(2)).numpy())
 
   def testDefunCallBackprop(self):
 
@@ -82,7 +97,20 @@ class FunctionTest(test.TestCase):
     def g(x):
       return backprop.gradients_function(f, [0])(x)[0]
 
-    self.assertAllEqual(2, g(tensor.Tensor(2)).numpy())
+    self.assertAllEqual(2, g(constant_op.constant(2)).numpy())
+
+  def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):
+
+    @function.defun
+    def g(x):
+      return backprop.gradients_function(math_ops.multiply, [0, 1])(x, x)
+
+    def np_g(x):
+      return [d.numpy() for d in g(x)]
+
+    x = constant_op.constant(1.)
+    self.assertAllEqual([1., 1.], np_g(x))
+    self.assertAllEqual([1., 1.], np_g(1.))
 
   def testCallShape(self):
 
@@ -96,20 +124,20 @@ class FunctionTest(test.TestCase):
       self.assertEqual(x.shape.as_list(), [])
       return None
 
-    g(tensor.Tensor(1.0))
+    g(constant_op.constant(1.0))
 
   def testGradientTensorConversionWithDefun(self):
-    three = tensor.Tensor(3.0)
+    three = resource_variable_ops.ResourceVariable(3.0)
 
     @function.defun
     def f(x):
       return math_ops.add(x, three)
 
     def g(x):
-      tape.watch(three)
+      tape.watch_variable(three)
       return f(x)
 
-    g = backprop.implicit_grad(g)(tensor.Tensor(1.0))[0][1]
+    g = backprop.implicit_grad(g)(constant_op.constant(1.0))[0][0]
     self.assertEqual(g.numpy(), 1.0)
 
   def testGradient(self):
@@ -118,7 +146,7 @@ class FunctionTest(test.TestCase):
     def sq(x):
       return matmul(x, x, transpose_a=True)
 
-    t = tensor.Tensor([[1.0, 2.0], [3.0, 4.0]])
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     grad_t, = backprop.gradients_function(sq, [0])(t)
     self.assertAllEqual(grad_t.numpy(), [[6, 6], [14, 14]])
 
@@ -128,13 +156,13 @@ class FunctionTest(test.TestCase):
     def f(x):
       return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
 
-    self.assertEqual(f(tensor.Tensor(1.0)).numpy(), 2.0)
+    self.assertEqual(f(constant_op.constant(1.0)).numpy(), 2.0)
 
   def testFunctionOnDevice(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 
-    x = tensor.Tensor([1.]).as_gpu_tensor()
+    x = constant_op.constant([1.]).as_gpu_tensor()
     f = function.defun(math_ops.add)
     y = f(x, x).as_cpu_tensor()
     self.assertAllEqual(y.numpy(), [2.])
@@ -145,8 +173,8 @@ class FunctionTest(test.TestCase):
 
     # The Reshape op requires the shape tensor to be placed in host memory.
     reshape = function.defun(array_ops.reshape)
-    value = tensor.Tensor([1., 2.]).as_gpu_tensor()
-    shape = tensor.Tensor([2, 1])
+    value = constant_op.constant([1., 2.]).as_gpu_tensor()
+    shape = constant_op.constant([2, 1])
     reshaped = reshape(value, shape).as_cpu_tensor()
     self.assertAllEqual(reshaped.numpy(), [[1], [2]])
 
@@ -156,8 +184,8 @@ class FunctionTest(test.TestCase):
 
     # The Reshape op requires the shape tensor to be placed in host memory.
     reshape = function.defun(array_ops.reshape)
-    value = tensor.Tensor([1., 2.]).as_gpu_tensor()
-    shape = tensor.Tensor([2, 1]).as_gpu_tensor()
+    value = constant_op.constant([1., 2.]).as_gpu_tensor()
+    shape = constant_op.constant([2, 1]).as_gpu_tensor()
     with self.assertRaises(errors.InvalidArgumentError):
       reshape(value, shape)
 
@@ -170,7 +198,7 @@ class FunctionTest(test.TestCase):
     def wrapper(x):
       return my_function(x)[0]
 
-    g = backprop.gradients_function(wrapper, [0])(tensor.Tensor(0.0))
+    g = backprop.gradients_function(wrapper, [0])(constant_op.constant(0.0))
     self.assertAllEqual(g[0].numpy(), 1.)
 
   def testNoneOutput(self):
@@ -192,15 +220,16 @@ class FunctionTest(test.TestCase):
     def add_one(x):
       return add(x, 1)
 
-    self.assertAllEqual(3, add_one(tensor.Tensor(2)).numpy())
+    self.assertAllEqual(3, add_one(constant_op.constant(2)).numpy())
 
   def testSequenceInputs(self):
     clip_by_global_norm = function.defun(clip_ops.clip_by_global_norm)
-    t_list = [tensor.Tensor(1.0), tensor.Tensor(2.0)]
-    clipped_list, global_norm = clip_by_global_norm(t_list, tensor.Tensor(.2))
+    t_list = [constant_op.constant(1.0), constant_op.constant(2.0)]
+    clipped_list, global_norm = clip_by_global_norm(t_list,
+                                                    constant_op.constant(.2))
     for t in clipped_list:
-      self.assertTrue(isinstance(t, tensor.Tensor))
-    self.assertTrue(isinstance(global_norm, tensor.Tensor))
+      self.assertTrue(isinstance(t, ops.Tensor))
+    self.assertTrue(isinstance(global_norm, ops.Tensor))
 
   def testNestedSequenceInputs(self):
 
@@ -212,9 +241,10 @@ class FunctionTest(test.TestCase):
 
     my_eager_op = function.defun(my_op)
     ret = my_eager_op([
-        tensor.Tensor(1), [(tensor.Tensor(2), tensor.Tensor(3)),
-                           tensor.Tensor(4)],
-        tensor.Tensor(5)
+        constant_op.constant(1), [(constant_op.constant(2),
+                                   constant_op.constant(3)),
+                                  constant_op.constant(4)],
+        constant_op.constant(5)
     ])
     self.assertEqual(len(ret), 2)
     self.assertEqual(ret[0][0].numpy(), 2)

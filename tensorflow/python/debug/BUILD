@@ -28,6 +28,7 @@ py_library(
     deps = [
         ":debug_data",
         ":debug_gradients",
+        ":debug_graphs",
         ":debug_utils",
         ":grpc_debug_server",
         ":hooks",
@@ -50,10 +51,25 @@ py_library(
 )
 
 py_library(
+    name = "debug_graphs",
+    srcs = ["lib/debug_graphs.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:op_def_registry",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_util",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "debug_data",
     srcs = ["lib/debug_data.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":debug_graphs",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:op_def_registry",
@@ -70,6 +86,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
+        ":debug_graphs",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
@@ -99,6 +116,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
+        ":debug_graphs",
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -181,7 +199,7 @@ py_library(
     deps = [
         ":cli_shared",
         ":command_parser",
-        ":debug_data",
+        ":debug_graphs",
         ":debugger_cli_common",
         ":evaluator",
         ":source_utils",
@@ -401,6 +419,18 @@ py_binary(
 )
 
 py_test(
+    name = "debug_graphs_test",
+    size = "small",
+    srcs = ["lib/debug_graphs_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_graphs",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "debug_data_test",
     size = "small",
     srcs = ["lib/debug_data_test.py"],
@@ -569,6 +599,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
+        ":debug_graphs",
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -608,7 +639,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":debug_data",
+        ":debug_graphs",
         ":debug_service_pb2_grpc",
         "//tensorflow/core/debug:debug_service_proto_py",
         "@six_archive//:six",
@@ -646,6 +677,23 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["notsan"],
+)
+
+cuda_py_test(
+    name = "debug_graph_reconstruction_test",
+    size = "small",
+    srcs = ["lib/debug_graph_reconstruction_test.py"],
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
 )
 
 cuda_py_test(
@@ -752,6 +800,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",

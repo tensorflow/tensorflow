@@ -1,5 +1,5 @@
 diff --git a/BUILD b/BUILD
-index 6dcc76eb7a..903739bfad 100644
+index 6552d5879e..59adb1ce1c 100644
 --- a/BUILD
 +++ b/BUILD
 @@ -287,6 +287,7 @@ grpc_cc_library(
@@ -10,6 +10,23 @@ index 6dcc76eb7a..903739bfad 100644
          "grpc_unsecure",
      ],
  )
+@@ -1519,13 +1520,13 @@ grpc_cc_library(
+ 
+ grpc_cc_library(
+     name = "grpc++_config_proto",
+-    external_deps = [
+-        "protobuf",
+-    ],
+     language = "c++",
+     public_hdrs = [
+         "include/grpc++/impl/codegen/config_protobuf.h",
+     ],
++    deps = [
++        "@protobuf_archive//:protobuf_headers",
++    ],
+ )
+ 
+ grpc_cc_library(
 diff --git a/bazel/grpc_build_system.bzl b/bazel/grpc_build_system.bzl
 index f793cae56d..0295adb8ab 100644
 --- a/bazel/grpc_build_system.bzl

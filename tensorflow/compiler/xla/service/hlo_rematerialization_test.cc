@@ -525,7 +525,3 @@ INSTANTIATE_TEST_CASE_P(IndirectUseTestInstantiation, IndirectUseTest,
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

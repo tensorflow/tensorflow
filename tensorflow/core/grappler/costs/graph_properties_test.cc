@@ -345,6 +345,15 @@ TEST_F(GraphPropertiesTest, MergeWithoutLoops) {
     EXPECT_EQ(DT_FLOAT, prop.dtype());
     EXPECT_EQ(expected_outputs[i], PropToString(prop));
   }
+
+  // The "Less" node should be fed by 2 int32 scalar constant values.
+  const auto props = properties.GetInputProperties("Less");
+  EXPECT_EQ(2, props.size());
+  for (int i = 0; i < props.size(); ++i) {
+    EXPECT_EQ(DT_INT32, props[i].dtype());
+    EXPECT_TRUE(props[i].has_value());
+    EXPECT_EQ("int32: []", PropToString(props[i]));
+  }
 }
 
 TEST_F(GraphPropertiesTest, WhileLoop) {

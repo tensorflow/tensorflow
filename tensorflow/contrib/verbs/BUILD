@@ -50,11 +50,8 @@ cc_library(
     srcs = ["verbs_util.cc"],
     hdrs = ["verbs_util.h"],
     deps = [
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 

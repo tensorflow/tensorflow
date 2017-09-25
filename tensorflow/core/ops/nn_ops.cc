@@ -329,7 +329,7 @@ batch_variance: A 1D Tensor for the computed batch variance, to be used by
 reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
                  in the gradient computation.
 reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
-                 in the cuDNN case), to be used in the gradient computation.
+                 in the cuDNN case), to be reused in the gradient computation.
 T: The data type for the elements of input and output Tensors.
 epsilon: A small float number added to the variance of x.
 data_format: The data format for x and y. Either "NHWC" (default) or "NCHW".
@@ -409,10 +409,14 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 y_backprop: A 4D Tensor for the gradient with respect to y.
 x: A 4D Tensor for input data.
 scale: A 1D Tensor for scaling factor, to scale the normalized x.
-reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
-                 in the gradient computation.
-reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
-                 in the cuDNN case), to be used in the gradient computation.
+reserve_space_1: When is_training is True, a 1D Tensor for the computed batch mean
+                 to be reused in gradient computation.
+                 When is_training is False, a 1D Tensor for the population mean
+                 to be reused in both 1st and 2nd order gradient computation.
+reserve_space_2: When is_training is True, a 1D Tensor for the computed batch variance
+                 (inverted variance in the cuDNN case) to be reused in gradient computation.
+                 When is_training is False, a 1D Tensor for the population variance
+                 to be reused in both 1st and 2nd order gradient computation.
 x_backprop: A 4D Tensor for the gradient with respect to x.
 scale_backprop: A 1D Tensor for the gradient with respect to scale.
 offset_backprop: A 1D Tensor for the gradient with respect to offset.
@@ -1344,11 +1348,13 @@ output: The gradients for LRN.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MaxPool")
-    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr(
+        "T: {float, double, int32, int64, uint8, int16, int8, uint16, "
+        "half, qint8} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::MaxPoolShape)
@@ -1369,9 +1375,11 @@ output: The max pooled output tensor.
 )doc");
 
 REGISTER_OP("MaxPoolV2")
-    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr(
+        "T: {float, double, int32, int64, uint8, int16, int8, uint16, "
+        "half, qint8} = DT_FLOAT")
     .Attr(GetPaddingAttrString())
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Input("ksize: int32")
     .Input("strides: int32")
@@ -1945,7 +1953,7 @@ Computes softsign gradients for a softsign operation.
 
 gradients: The backpropagated gradients to the corresponding softsign operation.
 features: The features passed as input to the corresponding softsign operation.
-backprops: The gradients: `gradients / (1 + abs(-features)) ** 2`.
+backprops: The gradients: `gradients / (1 + abs(features)) ** 2`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -2791,7 +2799,9 @@ REGISTER_OP("_MklConv2D")
     .Input("mkl_input: uint8")
     .Input("mkl_filter: uint8")
     .Output("output: T")
+    .Output("filter_output: T")
     .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
@@ -2813,7 +2823,9 @@ REGISTER_OP("_MklConv2DWithBias")
     .Input("mkl_filter: uint8")
     .Input("mkl_bias: uint8")
     .Output("output: T")
+    .Output("filter_output: T")
     .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
@@ -3229,6 +3241,29 @@ REGISTER_OP("_MklToTf")
     .Attr(GetConvnetDataFormatAttrString())
     .Doc(R"doc(
 MKL operator to convert a tensor from MKL layout to TensorFlow layout.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklInputConversion")
+    .Input("input_0: T")
+    .Input("input_1: T")
+    .Input("mkl_input_0: uint8")
+    .Input("mkl_input_1: uint8")
+    .Output("output_0: T")
+    .Output("output_1: T")
+    .Output("mkl_output_0: uint8")
+    .Output("mkl_output_1: uint8")
+    // All datatypes supported by element-wise ops
+    .Attr(
+        "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
+        "complex64, complex128}")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Doc(R"doc(
+MKL operator to process the inputs to an elementwise MKL op. Both inputs
+need to be either in TF or in MKL format. This op is added before every
+element-wise MKL op.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.

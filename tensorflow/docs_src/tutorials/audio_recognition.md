@@ -1,4 +1,4 @@
-# How to Train a Simple Audio Recognition Network
+# Simple Audio Recognition
 
 This tutorial will show you how to build a basic speech recognition network that
 recognizes ten different words. It's important to know that real speech and

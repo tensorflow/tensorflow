@@ -43,12 +43,12 @@ INCLUDES := \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 LIBS := \
--lstdc++ \
--lprotobuf \
 -Wl,--allow-multiple-definition \
 -Wl,--whole-archive \
 -ltensorflow-core \
 -Wl,--no-whole-archive \
+-lstdc++ \
+-lprotobuf \
 -ldl \
 -lpthread \
 -lm \

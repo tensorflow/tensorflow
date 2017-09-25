@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -373,7 +374,7 @@ def _SoftplusGradGrad(op, grad):
   #   dx = gen_nn_ops._softplus_grad(dy, x) = dy / (1 + exp(-x))
   # This op computes (ddy, d2x) from op.inputs == [dy, x] and grad == ddx.
   dy, x = op.inputs
-  with ops.control_dependencies([grad.op]):
+  with ops.control_dependencies([grad]):
     ddy = gen_nn_ops._softplus_grad(grad, x)  # pylint: disable=protected-access
     d2x = grad * dy / (math_ops.exp(-x) + 2.0 + math_ops.exp(x))
     return (ddy, d2x)
@@ -420,12 +421,15 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
 
   def IsZero(g):
     # Some introspection to check if the gradient is feeding zeros
+    if context.in_eager_mode():
+      # TODO(apassos) add an efficient way to detect eager zeros here.
+      return False
     if g.op.type in ("ZerosLike", "Zeros"):
       return True
     const_fill_value = tensor_util.constant_value(g)
     return const_fill_value is not None and (const_fill_value == 0).all()
 
-  if not IsZero(grad_grad):
+  if grad_grad is not None and not IsZero(grad_grad):
     logits = op.inputs[0]
     softmax = nn_ops.softmax(logits)
 
@@ -732,6 +736,70 @@ def _FusedBatchNormGrad(op, *grad):
   else:
     pop_mean = op.inputs[3]
     pop_var = op.inputs[4]
+    if data_format == b"NCHW":
+      x = array_ops.transpose(x, [0, 2, 3, 1])
+      grad_y = array_ops.transpose(grad_y, [0, 2, 3, 1])
+    dx, dscale, doffset, _, _ = gen_nn_ops.fused_batch_norm_grad(
+        grad_y,
+        x,
+        scale,
+        pop_mean,
+        pop_var,
+        epsilon=epsilon,
+        data_format='NHWC',
+        is_training=is_training)
+    if data_format == b"NCHW":
+      dx = array_ops.transpose(dx, [0, 3, 1, 2])
+    return dx, dscale, doffset, None, None
+
+
+def _BatchNormGrad(grad_y, x, scale, pop_mean, pop_var, epsilon, data_format, is_training=True):
+  """Returns the gradients for the 3 inputs of BatchNorm.
+
+  Args:
+    grad_y: A `Tensor` of 4 dimensions for gradient for y.
+    x: A `Tensor` of 4 dimensions for x.
+    scale: A `Tensor` of 1 dimension for scaling.
+    pop_mean: A `Tensor` of 1 dimension for the population mean. Only used when is_training=False.
+    pop_var: A `Tensor` of 1 dimension for the population variance. Only used when is_training=False.
+    epsilon: A small float number added to the variance of x.
+    data_format: The data format for input. Either b"NHWC" or b"NCHW".
+    is_training: A bool value to indicate the operation is for training (default)
+        or inference.
+
+  Returns:
+    A tuple (grad_x, grad_scale, grad_offset), where grad_x is the gradient
+    for x, grad_scale the gradient for scale, and grad_offset the gradient
+    for offset.
+  """
+  if is_training:
+    if data_format == b"NHWC":
+      keep_dims = False
+      reduce_axis = [0, 1, 2]
+    else:
+      keep_dims = True
+      reduce_axis = [0, 2, 3]
+      shape = [1, array_ops.size(scale), 1, 1]
+      scale = array_ops.reshape(scale, shape)
+    mean_grad_y = math_ops.reduce_mean(grad_y, reduce_axis, keep_dims=keep_dims)
+    mean_x = math_ops.reduce_mean(x, reduce_axis, keep_dims=keep_dims)
+    var_x = math_ops.reduce_mean(
+        math_ops.squared_difference(x, array_ops.stop_gradient(mean_x)),
+        reduce_axis,
+        keep_dims=keep_dims)
+    grad_y_offset = grad_y - mean_grad_y
+    x_offset = x - mean_x
+    mean = math_ops.reduce_mean(
+        grad_y * x_offset, axis=reduce_axis, keep_dims=keep_dims)
+    grad_x = scale * math_ops.rsqrt(var_x + epsilon) * (
+        grad_y_offset - math_ops.reciprocal(var_x + epsilon) * mean * x_offset)
+    grad_scale = math_ops.rsqrt(var_x + epsilon) * math_ops.reduce_sum(
+        grad_y * x_offset, axis=reduce_axis, keep_dims=keep_dims)
+    if data_format == b"NCHW":
+      grad_scale = array_ops.squeeze(grad_scale)
+    grad_offset = math_ops.reduce_sum(grad_y, axis=reduce_axis)
+    return grad_x, grad_scale, grad_offset
+  else:
     if data_format == b"NHWC":
       reduce_axis = [0, 1, 2]
     else:
@@ -746,50 +814,7 @@ def _FusedBatchNormGrad(op, *grad):
     grad_scale = math_ops.reduce_sum(
         grad_y * (x - pop_mean) * var_rsqrt, axis=reduce_axis)
     grad_x = grad_y * scale * var_rsqrt
-    return grad_x, grad_scale, grad_offset, None, None
-
-
-def _BatchNormGrad(grad_y, x, scale, epsilon, data_format):
-  """Returns the gradients for the 3 inputs of BatchNorm.
-
-  Args:
-    grad_y: A `Tensor` of 4 dimensions for gradient for y.
-    x: A `Tensor` of 4 dimensions for x.
-    scale: A `Tensor` of 1 dimension for scaling.
-    epsilon: A small float number added to the variance of x.
-    data_format: The data format for input. Either b"NHWC" or b"NCHW".
-
-  Returns:
-    A tuple (grad_x, grad_scale, grad_offset), where grad_x is the gradient
-    for x, grad_scale the gradient for scale, and grad_offset the gradient
-    for offset.
-  """
-  if data_format == b"NHWC":
-    keep_dims = False
-    reduce_axis = [0, 1, 2]
-  else:
-    keep_dims = True
-    reduce_axis = [0, 2, 3]
-    shape = [1, array_ops.size(scale), 1, 1]
-    scale = array_ops.reshape(scale, shape)
-  mean_grad_y = math_ops.reduce_mean(grad_y, reduce_axis, keep_dims=keep_dims)
-  mean_x = math_ops.reduce_mean(x, reduce_axis, keep_dims=keep_dims)
-  var_x = math_ops.reduce_mean(
-      math_ops.squared_difference(x, array_ops.stop_gradient(mean_x)),
-      reduce_axis,
-      keep_dims=keep_dims)
-  grad_y_offset = grad_y - mean_grad_y
-  x_offset = x - mean_x
-  mean = math_ops.reduce_mean(
-      grad_y * x_offset, axis=reduce_axis, keep_dims=keep_dims)
-  grad_x = scale * math_ops.rsqrt(var_x + epsilon) * (
-      grad_y_offset - math_ops.reciprocal(var_x + epsilon) * mean * x_offset)
-  grad_scale = math_ops.rsqrt(var_x + epsilon) * math_ops.reduce_sum(
-      grad_y * x_offset, axis=reduce_axis, keep_dims=keep_dims)
-  if data_format == b"NCHW":
-    grad_scale = array_ops.squeeze(grad_scale)
-  grad_offset = math_ops.reduce_sum(grad_y, axis=reduce_axis)
-  return grad_x, grad_scale, grad_offset
+    return grad_x, grad_scale, grad_offset
 
 
 @ops.RegisterGradient("FusedBatchNormGrad")
@@ -809,14 +834,17 @@ def _FusedBatchNormGradGrad(op, *grad):
   """
   data_format = op.get_attr("data_format")
   epsilon = op.get_attr("epsilon")
+  is_training = op.get_attr("is_training")
   grad_y = op.inputs[0]
   x = op.inputs[1]
   scale = op.inputs[2]
+  pop_mean = op.inputs[3]
+  pop_var = op.inputs[4]
   grad_grad_x = grad[0]
   grad_grad_scale = grad[1]
   grad_grad_offset = grad[2]
-  grad_x, grad_scale, grad_offset = _BatchNormGrad(grad_y, x, scale, epsilon,
-                                                   data_format)
+  grad_x, grad_scale, grad_offset = _BatchNormGrad(
+        grad_y, x, scale, pop_mean, pop_var, epsilon, data_format, is_training)
   grad_initial = [grad_grad_x, grad_grad_scale, grad_grad_offset]
   grad_grad_y, grad_x, grad_scale = gradients_impl.gradients(
       [grad_x, grad_scale, grad_offset], [grad_y, x, scale], grad_initial)

@@ -25,6 +25,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
 
 /**
  * A typed multi-dimensional array.
@@ -71,24 +72,52 @@ public final class Tensor implements AutoCloseable {
    * Tensor x = Tensor.create(twoD);
    * }</pre>
    *
+   * {@link DataType#STRING} typed Tensors are multi-dimensionary arrays of arbitrary byte sequences
+   * and thus have {@code byte[]} and not {@code String}-valued elements. For example:
+   *
+   * <pre>{@code
+   * // Valid: A DataType.STRING tensor.
+   * Tensor s = Tensor.create(new byte[]{1, 2, 3});
+   *
+   * // Java Strings will need to be encoded into a byte-sequence.
+   * String mystring = "foo";
+   * Tensor s = Tensor.create(mystring.getBytes("UTF-8"));
+   *
+   * // Valid: Matrix of DataType.STRING tensors.
+   * // Each element might have a different length.
+   * byte[][][] matrix = new byte[2][2][];
+   * matrix[0][0] = "this".getBytes("UTF-8");
+   * matrix[0][1] = "is".getBytes("UTF-8");
+   * matrix[1][0] = "a".getBytes("UTF-8");
+   * matrix[1][1] = "matrix".getBytes("UTF-8");
+   * Tensor m = Tensor.create(matrix);
+   * }</pre>
+   *
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system, or if obj does not disambiguate between multiple DataTypes. In that case, consider
    *     using {@link #create(DataType, long[], ByteBuffer)} instead.
    */
   public static Tensor create(Object obj) {
+    return create(obj, dataTypeOf(obj));
+  }
+
+  /**
+   * Create a Tensor of data type {@code dtype} from a Java object.
+   *
+   * @param dtype the intended tensor data type. It must match the the run-time type of the object.
+   */
+  static Tensor create(Object obj, DataType dtype) {
     Tensor t = new Tensor();
-    t.dtype = dataTypeOf(obj);
-    t.shapeCopy = new long[numDimensions(obj)];
+    t.dtype = dtype;
+    t.shapeCopy = new long[numDimensions(obj, dtype)];
+    assert objectCompatWithType(obj, dtype);
     fillShape(obj, 0, t.shapeCopy);
     if (t.dtype != DataType.STRING) {
       int byteSize = elemByteSize(t.dtype) * numElements(t.shapeCopy);
       t.nativeHandle = allocate(t.dtype.c(), t.shapeCopy, byteSize);
       setValue(t.nativeHandle, obj);
     } else if (t.shapeCopy.length != 0) {
-      throw new UnsupportedOperationException(
-          String.format(
-              "non-scalar DataType.STRING tensors are not supported yet (version %s). Please file a feature request at https://github.com/tensorflow/tensorflow/issues/new",
-              TensorFlow.version()));
+      t.nativeHandle = allocateNonScalarBytes(t.shapeCopy, (Object[]) obj);
     } else {
       t.nativeHandle = allocateScalarBytes((byte[]) obj);
     }
@@ -328,9 +357,9 @@ public final class Tensor implements AutoCloseable {
    * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
    *
    * <p>For non-scalar tensors, this method copies the contents of the underlying tensor to a Java
-   * array. For scalar tensors, use one of {@link #floatValue()}, {@link #doubleValue()}, {@link
-   * #intValue()}, {@link #longValue()} or {@link #booleanValue()} instead. The type and shape of
-   * {@code dst} must be compatible with the tensor. For example:
+   * array. For scalar tensors, use one of {@link #bytesValue()}, {@link #floatValue()}, {@link
+   * #doubleValue()}, {@link #intValue()}, {@link #longValue()} or {@link #booleanValue()} instead.
+   * The type and shape of {@code dst} must be compatible with the tensor. For example:
    *
    * <pre>{@code
    * int matrix[2][2] = {{1,2},{3,4}};
@@ -496,8 +525,6 @@ public final class Tensor implements AutoCloseable {
 
   private static int elemByteSize(DataType dataType) {
     switch (dataType) {
-      case UINT8:
-        return 1;
       case FLOAT:
       case INT32:
         return 4;
@@ -505,6 +532,7 @@ public final class Tensor implements AutoCloseable {
       case INT64:
         return 8;
       case BOOL:
+      case UINT8:
         return 1;
       case STRING:
         throw new IllegalArgumentException("STRING tensors do not have a fixed element size");
@@ -512,50 +540,77 @@ public final class Tensor implements AutoCloseable {
     throw new IllegalArgumentException("DataType " + dataType + " is not supported yet");
   }
 
+  private static void throwExceptionIfNotByteOfByteArrays(Object array) {
+    if (!array.getClass().getName().equals("[[B")) {
+      throw new IllegalArgumentException(
+          "object cannot be converted to a Tensor as it includes an array with null elements");
+    }
+  }
+
+  private static HashMap<Class<?>, DataType> classDataTypes = new HashMap<>();
+
+  static {
+    classDataTypes.put(int.class, DataType.INT32);
+    classDataTypes.put(Integer.class, DataType.INT32);
+    classDataTypes.put(long.class, DataType.INT64);
+    classDataTypes.put(Long.class, DataType.INT64);
+    classDataTypes.put(float.class, DataType.FLOAT);
+    classDataTypes.put(Float.class, DataType.FLOAT);
+    classDataTypes.put(double.class, DataType.DOUBLE);
+    classDataTypes.put(Double.class, DataType.DOUBLE);
+    classDataTypes.put(byte.class, DataType.STRING);
+    classDataTypes.put(Byte.class, DataType.STRING);
+    classDataTypes.put(boolean.class, DataType.BOOL);
+    classDataTypes.put(Boolean.class, DataType.BOOL);
+  }
+
   private static DataType dataTypeOf(Object o) {
-    if (o.getClass().isArray()) {
-      if (Array.getLength(o) == 0) {
-        throw new IllegalArgumentException("cannot create Tensors with a 0 dimension");
-      }
-      // byte[] is a DataType.STRING scalar.
-      Object e = Array.get(o, 0);
-      if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
-        return DataType.STRING;
-      }
-      return dataTypeOf(e);
+    Class<?> c = o.getClass();
+    while (c.isArray()) {
+      c = c.getComponentType();
     }
-    if (Float.class.isInstance(o) || float.class.isInstance(o)) {
-      return DataType.FLOAT;
-    } else if (Double.class.isInstance(o) || double.class.isInstance(o)) {
-      return DataType.DOUBLE;
-    } else if (Integer.class.isInstance(o) || int.class.isInstance(o)) {
-      return DataType.INT32;
-    } else if (Long.class.isInstance(o) || long.class.isInstance(o)) {
-      return DataType.INT64;
-    } else if (Boolean.class.isInstance(o) || boolean.class.isInstance(o)) {
-      return DataType.BOOL;
-    } else {
-      throw new IllegalArgumentException("cannot create Tensors of " + o.getClass().getName());
+    DataType ret = classDataTypes.get(c);
+    if (ret != null) {
+      return ret;
     }
+    throw new IllegalArgumentException("cannot create Tensors of type " + c.getName());
   }
 
-  private static int numDimensions(Object o) {
-    if (o.getClass().isArray()) {
-      // byte[] is a DataType.STRING scalar.
-      Object e = Array.get(o, 0);
-      if (Byte.class.isInstance(e) || byte.class.isInstance(e)) {
-        return 0;
-      }
-      return 1 + numDimensions(e);
+  /**
+   * Returns the number of dimensions of a tensor of type dtype when represented by the object o.
+   */
+  private static int numDimensions(Object o, DataType dtype) {
+    int ret = numArrayDimensions(o);
+    if (dtype == DataType.STRING && ret > 0) {
+      return ret - 1;
     }
-    return 0;
+    return ret;
   }
 
+  /** Returns the number of dimensions of the array object o. Returns 0 if o is not an array. */
+  private static int numArrayDimensions(Object o) {
+    Class<?> c = o.getClass();
+    int i = 0;
+    while (c.isArray()) {
+      c = c.getComponentType();
+      i++;
+    }
+    return i;
+  }
+
+  /**
+   * Fills in the remaining entries in the shape array starting from position {@code dim} with the
+   * dimension sizes of the multidimensional array o. Checks that all arrays reachable from o have
+   * sizes consistent with the filled-in shape, throwing IllegalArgumentException otherwise.
+   */
   private static void fillShape(Object o, int dim, long[] shape) {
     if (shape == null || dim == shape.length) {
       return;
     }
     final int len = Array.getLength(o);
+    if (len == 0) {
+      throw new IllegalArgumentException("cannot create Tensors with a 0 dimension");
+    }
     if (shape[dim] == 0) {
       shape[dim] = len;
     } else if (shape[dim] != len) {
@@ -567,20 +622,33 @@ public final class Tensor implements AutoCloseable {
     }
   }
 
+  /** Returns whether the object {@code obj} can represent a tensor with data type {@code dtype}. */
+  private static boolean objectCompatWithType(Object obj, DataType dtype) {
+    DataType dto = dataTypeOf(obj);
+    if (dto.equals(dtype)) {
+      return true;
+    }
+    if (dto == DataType.STRING && dtype == DataType.UINT8) {
+      return true;
+    }
+    return false;
+  }
+
   private void throwExceptionIfTypeIsIncompatible(Object o) {
-    if (numDimensions(o) != numDimensions()) {
+    final int rank = numDimensions();
+    final int oRank = numDimensions(o, dtype);
+    if (oRank != rank) {
       throw new IllegalArgumentException(
           String.format(
-              "cannot copy Tensor with %d dimensions into an object with %d",
-              numDimensions(), numDimensions(o)));
+              "cannot copy Tensor with %d dimensions into an object with %d", rank, oRank));
     }
-    if (dataTypeOf(o) != dtype) {
+    if (!objectCompatWithType(o, dtype)) {
       throw new IllegalArgumentException(
           String.format(
               "cannot copy Tensor with DataType %s into an object of type %s",
               dtype.toString(), o.getClass().getName()));
     }
-    long[] oShape = new long[numDimensions()];
+    long[] oShape = new long[rank];
     fillShape(o, 0, oShape);
     for (int i = 0; i < oShape.length; ++i) {
       if (oShape[i] != shape()[i]) {
@@ -595,6 +663,8 @@ public final class Tensor implements AutoCloseable {
   private static native long allocate(int dtype, long[] shape, long byteSize);
 
   private static native long allocateScalarBytes(byte[] value);
+
+  private static native long allocateNonScalarBytes(long[] shape, Object[] value);
 
   private static native void delete(long handle);
 

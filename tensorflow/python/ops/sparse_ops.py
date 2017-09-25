@@ -296,7 +296,7 @@ def sparse_add(a, b, thresh=0):
     a = _convert_to_sparse_tensor(a)
     b = _convert_to_sparse_tensor(b)
     thresh = ops.convert_to_tensor(
-        thresh, dtype=a.values.dtype.real_dtype, name="thresh")
+        thresh, dtype=a.values.dtype.real_dtype.base_dtype, name="thresh")
     output_ind, output_val, output_shape = (gen_sparse_ops._sparse_add(
         a.indices, a.values, a.dense_shape,
         b.indices, b.values, b.dense_shape,
@@ -1225,7 +1225,8 @@ def sparse_reset_shape(sp_input, new_shape=None):
   """Resets the shape of a `SparseTensor` with indices and values unchanged.
 
   If `new_shape` is None, returns a copy of `sp_input` with its shape reset
-  to the tight bounding box of `sp_input`.
+  to the tight bounding box of `sp_input`. This will be a shape consisting of
+  all zeros if sp_input has no values.
 
   If `new_shape` is provided, then it must be larger or equal in all dimensions
   compared to the shape of `sp_input`. When this condition is met, the returned
@@ -1284,9 +1285,10 @@ def sparse_reset_shape(sp_input, new_shape=None):
   in_shape = array_ops.identity(sp_input.dense_shape)
 
   if new_shape is None:
-    dim_low_bound = math_ops.reduce_max(in_indices, 0)
-    output_shape_tensor = math_ops.add(dim_low_bound,
-                                       array_ops.ones_like(in_shape))
+    dim_low_bound = math_ops.reduce_max(in_indices, axis=0)
+    output_shape_tensor = math_ops.maximum(
+        array_ops.constant(0, dtype=dtypes.int64),
+        math_ops.add(dim_low_bound, array_ops.ones_like(in_shape)))
   else:
     output_shape_tensor = ops.convert_to_tensor(new_shape)
     output_shape_tensor.get_shape().assert_has_rank(1)

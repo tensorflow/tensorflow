@@ -18,6 +18,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <numeric>
+
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -247,8 +249,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // because cuBLAS assumes column-major storage while TensorFlow TF uses
     // row-major.
     TensorShape transposed_rhs_shape(rhs.shape());
-    transposed_rhs_shape.RemoveDim(transposed_rhs_shape.dims() - 1);
-    transposed_rhs_shape.RemoveDim(transposed_rhs_shape.dims() - 1);
+    transposed_rhs_shape.RemoveLastDims(2);
     transposed_rhs_shape.AddDim(nrhs);
     transposed_rhs_shape.AddDim(n);
     Tensor transposed_rhs;

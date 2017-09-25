@@ -26,12 +26,14 @@ limitations under the License.
 #include "grpc++/create_channel.h"
 #else
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
-#pragma comment(lib,"Ws2_32.lib")
+#pragma comment(lib, "Ws2_32.lib")
 #endif  // #ifndef PLATFORM_WINDOWS
 
+#include "tensorflow/core/debug/debug_callback_registry.h"
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -262,10 +264,13 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
     event.set_graph_def(strings::StrCat(hash, ",", device_name, ",", wall_time,
                                         "|", i, "|", num_chunks, "|",
                                         encoded_graph_def.substr(pos, len)));
-    if (!DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url).ok()) {
+    const Status s = DebugGrpcIO::SendEventProtoThroughGrpcStream(
+        event, debug_url, num_chunks - 1 == i);
+    if (!s.ok()) {
       return errors::FailedPrecondition(
           "Failed to send chunk ", i, " of ", num_chunks,
-          " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes");
+          " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes, ",
+          "due to: ", s.error_message());
     }
   }
   return Status::OK();
@@ -274,42 +279,13 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
 
 }  // namespace
 
-// static
 const char* const DebugIO::kDebuggerPluginName = "debugger";
 
-// static
-const char* const DebugIO::kMetadataFilePrefix = "_tfdbg_";
-
-// static
 const char* const DebugIO::kCoreMetadataTag = "core_metadata_";
 
-// static
-const char* const DebugIO::kDeviceTag = "device_";
-
-// static
 const char* const DebugIO::kGraphTag = "graph_";
 
-// static
 const char* const DebugIO::kHashTag = "hash";
-
-DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
-                           const int32 output_slot, const string& debug_op)
-    : device_name(device_name),
-      node_name(node_name),
-      output_slot(output_slot),
-      debug_op(debug_op),
-      debug_node_name(
-          strings::StrCat(node_name, ":", output_slot, ":", debug_op)),
-      device_path(DeviceNameToDevicePath(device_name)) {}
-
-bool DebugNodeKey::operator==(const DebugNodeKey& other) const {
-  return (device_name == other.device_name && node_name == other.node_name &&
-          output_slot == other.output_slot && debug_op == other.debug_op);
-}
-
-bool DebugNodeKey::operator!=(const DebugNodeKey& other) const {
-  return !((*this) == other);
-}
 
 Status ReadEventFromFile(const string& dump_file_path, Event* event) {
   Env* env(Env::Default());
@@ -340,22 +316,11 @@ Status ReadEventFromFile(const string& dump_file_path, Event* event) {
   return Status::OK();
 }
 
-// static
-const string DebugNodeKey::DeviceNameToDevicePath(const string& device_name) {
-  return strings::StrCat(
-      DebugIO::kMetadataFilePrefix, DebugIO::kDeviceTag,
-      str_util::StringReplace(
-          str_util::StringReplace(device_name, ":", "_", true), "/", ",",
-          true));
-}
-
-// static
 const char* const DebugIO::kFileURLScheme = "file://";
-// static
 const char* const DebugIO::kGrpcURLScheme = "grpc://";
+const char* const DebugIO::kMemoryURLScheme = "memcbk://";
 
 // Publishes debug metadata to a set of debug URLs.
-// static
 Status DebugIO::PublishDebugMetadata(
     const int64 global_step, const int64 session_run_index,
     const int64 executor_step_index, const std::vector<string>& input_names,
@@ -420,7 +385,7 @@ Status DebugIO::PublishDebugMetadata(
                           ",\"grpc_path\":\"", path, "\"}"));
 
       status.Update(
-          DebugGrpcIO::SendEventProtoThroughGrpcStream(grpc_event, url));
+          DebugGrpcIO::SendEventProtoThroughGrpcStream(grpc_event, url, true));
 #else
       GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR;
 #endif
@@ -429,7 +394,7 @@ Status DebugIO::PublishDebugMetadata(
       const string core_metadata_path = AppendTimestampToFilePath(
           io::JoinPath(
               dump_root_dir,
-              strings::StrCat(DebugIO::kMetadataFilePrefix,
+              strings::StrCat(DebugNodeKey::kMetadataFilePrefix,
                               DebugIO::kCoreMetadataTag, "sessionrun",
                               strings::Printf("%.14lld", session_run_index))),
           Env::Default()->NowMicros());
@@ -442,7 +407,6 @@ Status DebugIO::PublishDebugMetadata(
   return status;
 }
 
-// static
 Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
@@ -472,6 +436,12 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
 #else
       GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR;
 #endif
+    } else if (str_util::Lowercase(url).find(kMemoryURLScheme) == 0) {
+      const string dump_root_dir = url.substr(strlen(kMemoryURLScheme));
+      auto* callback_registry = DebugCallbackRegistry::singleton();
+      auto* callback = callback_registry->GetCallback(dump_root_dir);
+      CHECK(callback) << "No callback registered for: " << dump_root_dir;
+      (*callback)(debug_node_key, tensor);
     } else {
       return Status(error::UNAVAILABLE,
                     strings::StrCat("Invalid debug target URL: ", url));
@@ -493,7 +463,6 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
   }
 }
 
-// static
 Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
@@ -502,7 +471,6 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                             false);
 }
 
-// static
 Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
                              const std::unordered_set<string>& debug_urls) {
   GraphDef graph_def;
@@ -524,7 +492,7 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
                        DebugNodeKey::DeviceNameToDevicePath(device_name));
       const uint64 graph_hash = ::tensorflow::Hash64(buf);
       const string file_name =
-          strings::StrCat(DebugIO::kMetadataFilePrefix, DebugIO::kGraphTag,
+          strings::StrCat(DebugNodeKey::kMetadataFilePrefix, DebugIO::kGraphTag,
                           DebugIO::kHashTag, graph_hash, "_", now_micros);
 
       status.Update(
@@ -542,7 +510,6 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
   return status;
 }
 
-// static
 bool DebugIO::IsCopyNodeGateOpen(
     const std::vector<DebugWatchAndURLSpec>& specs) {
 #ifndef PLATFORM_WINDOWS
@@ -562,7 +529,6 @@ bool DebugIO::IsCopyNodeGateOpen(
 #endif
 }
 
-// static
 bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
                                   const std::vector<string>& debug_urls) {
 #ifndef PLATFORM_WINDOWS
@@ -582,7 +548,6 @@ bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
 #endif
 }
 
-// static
 bool DebugIO::IsDebugURLGateOpen(const string& watch_key,
                                  const string& debug_url) {
 #ifndef PLATFORM_WINDOWS
@@ -596,7 +561,6 @@ bool DebugIO::IsDebugURLGateOpen(const string& watch_key,
 #endif
 }
 
-// static
 Status DebugIO::CloseDebugURL(const string& debug_url) {
   if (debug_url.find(DebugIO::kGrpcURLScheme) == 0) {
 #ifndef PLATFORM_WINDOWS
@@ -610,10 +574,8 @@ Status DebugIO::CloseDebugURL(const string& debug_url) {
   }
 }
 
-// static
 static Status CloseDebugURL(const string& debug_url) { return Status::OK(); }
 
-// static
 Status DebugFileIO::DumpTensorToDir(const DebugNodeKey& debug_node_key,
                                     const Tensor& tensor,
                                     const uint64 wall_time_us,
@@ -629,7 +591,6 @@ Status DebugFileIO::DumpTensorToDir(const DebugNodeKey& debug_node_key,
   return DumpTensorToEventFile(debug_node_key, tensor, wall_time_us, file_path);
 }
 
-// static
 string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
                                     const DebugNodeKey& debug_node_key,
                                     const uint64 wall_time_us) {
@@ -641,7 +602,6 @@ string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
       wall_time_us);
 }
 
-// static
 Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
                                          const string& dir_name,
                                          const string& file_name) {
@@ -667,7 +627,6 @@ Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
   return Status::OK();
 }
 
-// static
 Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
                                           const Tensor& tensor,
                                           const uint64 wall_time_us,
@@ -679,7 +638,6 @@ Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
                               io::Basename(file_path).ToString());
 }
 
-// static
 Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   if (env->FileExists(dir).ok() && env->IsDirectory(dir).ok()) {
     // The path already exists as a directory. Return OK right away.
@@ -741,24 +699,19 @@ Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
 
 bool DebugGrpcChannel::WriteEvent(const Event& event) {
   mutex_lock l(mu_);
-
   return reader_writer_->Write(event);
 }
 
 bool DebugGrpcChannel::ReadEventReply(EventReply* event_reply) {
   mutex_lock l(mu_);
-
   return reader_writer_->Read(event_reply);
 }
 
-Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
-  mutex_lock l(mu_);
-
-  reader_writer_->WritesDone();
-
-  // Read all EventReply messages (if any) from the server.
+void DebugGrpcChannel::ReceiveAndProcessEventReplies(const size_t max_replies) {
   EventReply event_reply;
-  while (reader_writer_->Read(&event_reply)) {
+  size_t num_replies = 0;
+  while ((max_replies == 0 || ++num_replies <= max_replies) &&
+         ReadEventReply(&event_reply)) {
     for (const EventReply::DebugOpStateChange& debug_op_state_change :
          event_reply.debug_op_state_changes()) {
       string watch_key = strings::StrCat(debug_op_state_change.node_name(), ":",
@@ -768,6 +721,12 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
                                             debug_op_state_change.state());
     }
   }
+}
+
+Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
+  reader_writer_->WritesDone();
+  // Read all EventReply messages (if any) from the server.
+  ReceiveAndProcessEventReplies(0);
 
   if (reader_writer_->Finish().ok()) {
     return Status::OK();
@@ -777,29 +736,23 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
   }
 }
 
-// static
 mutex DebugGrpcIO::streams_mu;
 
-// static
 int64 DebugGrpcIO::channel_connection_timeout_micros = 900 * 1000 * 1000;
 // TODO(cais): Make this configurable?
 
-// static
 const size_t DebugGrpcIO::kGrpcMessageSizeLimitBytes = 4000 * 1024;
 
-// static
 const size_t DebugGrpcIO::kGrpcMaxVarintLengthSize = 6;
 
-// static
-std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+std::unordered_map<string, std::unique_ptr<DebugGrpcChannel>>*
 DebugGrpcIO::GetStreamChannels() {
-  static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+  static std::unordered_map<string, std::unique_ptr<DebugGrpcChannel>>*
       stream_channels =
-          new std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>();
+          new std::unordered_map<string, std::unique_ptr<DebugGrpcChannel>>();
   return stream_channels;
 }
 
-// static
 Status DebugGrpcIO::SendTensorThroughGrpcStream(
     const DebugNodeKey& debug_node_key, const Tensor& tensor,
     const uint64 wall_time_us, const string& grpc_stream_url,
@@ -816,9 +769,10 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
           SendEventProtoThroughGrpcStream(event, grpc_stream_url));
     }
     if (IsWriteGateOpen(grpc_stream_url, debug_node_key.debug_node_name)) {
-      EventReply event_reply;
-      TF_RETURN_IF_ERROR(ReceiveEventReplyProtoThroughGrpcStream(
-          &event_reply, grpc_stream_url));
+      DebugGrpcChannel* debug_grpc_channel = nullptr;
+      TF_RETURN_IF_ERROR(
+          GetOrCreateDebugGrpcChannel(grpc_stream_url, &debug_grpc_channel));
+      debug_grpc_channel->ReceiveAndProcessEventReplies(1);
       // TODO(cais): Support new tensor value carried in the EventReply for
       // overriding the value of the tensor being published.
     }
@@ -826,16 +780,11 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
   }
 }
 
-// static
 Status DebugGrpcIO::ReceiveEventReplyProtoThroughGrpcStream(
     EventReply* event_reply, const string& grpc_stream_url) {
-  std::shared_ptr<DebugGrpcChannel> debug_grpc_channel;
-  {
-    mutex_lock l(streams_mu);
-    std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
-        stream_channels = GetStreamChannels();
-    debug_grpc_channel = (*stream_channels)[grpc_stream_url];
-  }
+  DebugGrpcChannel* debug_grpc_channel = nullptr;
+  TF_RETURN_IF_ERROR(
+      GetOrCreateDebugGrpcChannel(grpc_stream_url, &debug_grpc_channel));
   if (debug_grpc_channel->ReadEventReply(event_reply)) {
     return Status::OK();
   } else {
@@ -844,34 +793,45 @@ Status DebugGrpcIO::ReceiveEventReplyProtoThroughGrpcStream(
   }
 }
 
-// static
-Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
-    const Event& event_proto, const string& grpc_stream_url) {
+Status DebugGrpcIO::GetOrCreateDebugGrpcChannel(
+    const string& grpc_stream_url, DebugGrpcChannel** debug_grpc_channel) {
   const string addr_with_path =
       grpc_stream_url.find(DebugIO::kGrpcURLScheme) == 0
           ? grpc_stream_url.substr(strlen(DebugIO::kGrpcURLScheme))
           : grpc_stream_url;
   const string server_stream_addr =
       addr_with_path.substr(0, addr_with_path.find('/'));
-  std::shared_ptr<DebugGrpcChannel> debug_grpc_channel;
   {
     mutex_lock l(streams_mu);
-    std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+    std::unordered_map<string, std::unique_ptr<DebugGrpcChannel>>*
         stream_channels = GetStreamChannels();
     if (stream_channels->find(grpc_stream_url) == stream_channels->end()) {
-      debug_grpc_channel.reset(new DebugGrpcChannel(server_stream_addr));
-      TF_RETURN_IF_ERROR(
-          debug_grpc_channel->Connect(channel_connection_timeout_micros));
-      (*stream_channels)[grpc_stream_url] = debug_grpc_channel;
-    } else {
-      debug_grpc_channel = (*stream_channels)[grpc_stream_url];
+      std::unique_ptr<DebugGrpcChannel> channel(
+          new DebugGrpcChannel(server_stream_addr));
+      TF_RETURN_IF_ERROR(channel->Connect(channel_connection_timeout_micros));
+      stream_channels->insert(
+          std::make_pair(grpc_stream_url, std::move(channel)));
     }
+    *debug_grpc_channel = (*stream_channels)[grpc_stream_url].get();
   }
+  return Status::OK();
+}
+
+Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
+    const Event& event_proto, const string& grpc_stream_url,
+    const bool receive_reply) {
+  DebugGrpcChannel* debug_grpc_channel;
+  TF_RETURN_IF_ERROR(
+      GetOrCreateDebugGrpcChannel(grpc_stream_url, &debug_grpc_channel));
 
   bool write_ok = debug_grpc_channel->WriteEvent(event_proto);
   if (!write_ok) {
     return errors::Cancelled(strings::StrCat("Write event to stream URL ",
                                              grpc_stream_url, " failed."));
+  }
+
+  if (receive_reply) {
+    debug_grpc_channel->ReceiveAndProcessEventReplies(1);
   }
 
   return Status::OK();
@@ -896,17 +856,16 @@ bool DebugGrpcIO::IsWriteGateOpen(const string& grpc_debug_url,
   }
 }
 
-// static
 Status DebugGrpcIO::CloseGrpcStream(const string& grpc_stream_url) {
   mutex_lock l(streams_mu);
 
-  std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+  std::unordered_map<string, std::unique_ptr<DebugGrpcChannel>>*
       stream_channels = GetStreamChannels();
   if (stream_channels->find(grpc_stream_url) != stream_channels->end()) {
     // Stream of the specified address exists. Close it and remove it from
     // record.
-    Status s;
-    s = (*stream_channels)[grpc_stream_url]->ReceiveServerRepliesAndClose();
+    Status s =
+        (*stream_channels)[grpc_stream_url]->ReceiveServerRepliesAndClose();
     (*stream_channels).erase(grpc_stream_url);
     return s;
   } else {
@@ -915,7 +874,6 @@ Status DebugGrpcIO::CloseGrpcStream(const string& grpc_stream_url) {
   }
 }
 
-// static
 std::unordered_map<string, DebugGrpcIO::DebugNodeName2State>*
 DebugGrpcIO::GetEnabledDebugOpStates() {
   static std::unordered_map<string, DebugNodeName2State>*
@@ -924,7 +882,6 @@ DebugGrpcIO::GetEnabledDebugOpStates() {
   return enabled_debug_op_states;
 }
 
-// static
 DebugGrpcIO::DebugNodeName2State* DebugGrpcIO::GetEnabledDebugOpStatesAtUrl(
     const string& grpc_debug_url) {
   static mutex* debug_ops_state_mu = new mutex();
@@ -939,7 +896,6 @@ DebugGrpcIO::DebugNodeName2State* DebugGrpcIO::GetEnabledDebugOpStatesAtUrl(
   return &(*states)[grpc_debug_url];
 }
 
-// static
 void DebugGrpcIO::SetDebugNodeKeyGrpcState(
     const string& grpc_debug_url, const string& watch_key,
     const EventReply::DebugOpStateChange::State new_state) {
@@ -956,7 +912,6 @@ void DebugGrpcIO::SetDebugNodeKeyGrpcState(
   }
 }
 
-// static
 void DebugGrpcIO::ClearEnabledWatchKeys() {
   GetEnabledDebugOpStates()->clear();
 }

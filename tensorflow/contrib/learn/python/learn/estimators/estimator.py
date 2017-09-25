@@ -418,6 +418,7 @@ class BaseEstimator(
             "model_dir are set both in constructor and RunConfig, but with "
             "different values. In constructor: '{}', in RunConfig: "
             "'{}' ".format(model_dir, self._config.model_dir))
+        # pylint: enable=g-doc-exception
 
     self._model_dir = model_dir or self._config.model_dir
     if self._model_dir is None:
@@ -1033,7 +1034,6 @@ class BaseEstimator(
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
-      core_summary.FileWriterCache.clear()
       return loss
 
 

@@ -82,6 +82,7 @@ py_library(
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python/profiler/internal:flops_registry",
         "@six_archive//:six",
     ],
 )
@@ -110,6 +111,21 @@ py_library(
         ":model_analyzer",
         ":tfprof_logger",
     ],
+)
+
+cuda_py_test(
+    name = "profile_context_test",
+    srcs = ["profile_context_test.py"],
+    additional_deps = [
+        ":profile_context",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/profiler/internal:model_analyzer_testlib",
+        "//tensorflow/python:variables",
+    ],
+    tags = ["no_pip"],
 )
 
 py_library(

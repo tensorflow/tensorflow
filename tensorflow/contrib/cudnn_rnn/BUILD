@@ -15,6 +15,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 tf_custom_op_library(
     name = "python/ops/_cudnn_rnn_ops.so",
@@ -136,7 +137,7 @@ cuda_py_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "cudnn_rnn_ops_test_cc",
     size = "small",
     srcs = [
@@ -146,7 +147,7 @@ cc_test(
         ":cudnn_rnn_ops_op_lib",
         "//tensorflow/core",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

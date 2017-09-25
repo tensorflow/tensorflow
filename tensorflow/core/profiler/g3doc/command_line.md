@@ -14,7 +14,12 @@
 
 ### Command Line Inputs
 
-tfprof command line tool uses the following inputs:
+tfprof command line tool uses the following input:
+
+<b>--profile_path:</b> A ProfileProto binary proto file.
+See QuickStart on generating the file.
+
+<b>THE OLD WAY BELOW IS DEPRECATED:</b>
 
 <b>--graph_path:</b> GraphDef proto file (required). Used to build in-memory
 data structure of the model. For example, graph.pbtxt written by tf.Supervisor
@@ -51,13 +56,13 @@ It defines _checkpoint_variable op type. It also provides checkpointed tensors' 
 Note: this feature is not well maintained now.
 
 
-###Start `tfprof`
+### Start `tfprof`
 
 #### Build `tfprof`
 
 ```shell
 # Build the tool.
-bazel build --config opt third_party/tensorflow/core/profiler/...
+bazel build --config opt tensorflow/core/profiler:profiler
 
 # Help information, including detail 'option' instructions.
 bazel-bin/tensorflow/core/profiler/profiler help
@@ -140,9 +145,9 @@ tfprof>
 -output
 ```
 
-###Examples
+### Examples
 
-####Profile Python Time
+#### Profile Python Time
 ```shell
 # Requires --graph_path --op_log_path
 tfprof> code -max_depth 1000 -show_name_regexes .*model_analyzer.*py.* -select micros -account_type_regexes .* -order_by micros

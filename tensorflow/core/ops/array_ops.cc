@@ -635,15 +635,7 @@ REGISTER_OP("ImmutableConst")
     .Attr("shape: shape")
     .Attr("memory_region_name: string")
     .Output("tensor: dtype")
-    .SetShapeFn([](InferenceContext* c) {
-      TensorShape shape_from_attr;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_from_attr));
-      ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromPartialTensorShape(shape_from_attr, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Returns immutable tensor from memory region.
 
@@ -1307,15 +1299,7 @@ REGISTER_OP("_ParallelConcatStart")
     .Attr("shape: shape")
     .Attr("dtype: type")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Creates an empty Tensor with shape `shape` and type `dtype`.
 
@@ -3083,14 +3067,7 @@ REGISTER_OP("PlaceholderV2")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("shape: shape")
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
-      c->set_output(0, output);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Deprecated(23, "Placeholder now behaves the same as PlaceholderV2.")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
@@ -5488,24 +5465,28 @@ REGISTER_OP("BatchMatrixDiag")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixDiag");
+    .Deprecated(14, "Use MatrixDiag")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixSetDiag")
     .Input("input: T")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixSetDiag");
+    .Deprecated(14, "Use MatrixSetDiag")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixDiagPart")
     .Input("input: T")
     .Output("diagonal: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixDiagPart");
+    .Deprecated(14, "Use MatrixDiagPart")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixBandPart")
     .Input("input: T")
     .Input("num_lower: int64")
     .Input("num_upper: int64")
     .Output("band: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixBandPart");
+    .Deprecated(14, "Use MatrixBandPart")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 }  // namespace tensorflow
