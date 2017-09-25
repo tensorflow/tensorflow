@@ -84,6 +84,38 @@ class ShapeIndex {
   std::vector<int64> indices_;
 };
 
+// A view into a ShapeIndex as above, with the cheap/easy ability to consume the
+// value at the front of the view.
+class ShapeIndexView {
+ public:
+  ShapeIndexView(const ShapeIndex& shape_index)
+      : ShapeIndexView(shape_index.begin(), shape_index.end()) {}
+  ShapeIndexView(const ShapeIndexView& other) = default;
+
+  int64 size() const { return std::distance(begin_, end_); }
+  bool empty() const { return begin_ == end_; }
+  int64 front() const {
+    CHECK(!empty());
+    return *begin_;
+  }
+  ShapeIndexView ConsumeFront() const {
+    CHECK(!empty());
+    auto new_begin = begin_;
+    ++new_begin;
+    return ShapeIndexView(new_begin, end_);
+  }
+
+  string ToString() const;
+
+ private:
+  ShapeIndexView(std::vector<int64>::const_iterator begin,
+                 std::vector<int64>::const_iterator end)
+      : begin_(begin), end_(end) {}
+
+  std::vector<int64>::const_iterator begin_;
+  std::vector<int64>::const_iterator end_;
+};
+
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 
 // Namespaced collection of (static) shape utilities.
