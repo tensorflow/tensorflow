@@ -19,21 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TEMPORARY until ExplicitShape is merged into main
-namespace shape_inference {
-
-Status ExplicitShape(InferenceContext* c) {
-  PartialTensorShape shape;
-  TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-  ShapeHandle output_shape;
-  TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output_shape));
-  c->set_output(0, output_shape);
-  return Status::OK();
-}
-
-}  // namespace shape_inference
-// END temporary code
-
 // Note that the following operator is just a placeholder and has no
 // associated kernel. The code in accumulate_n_optimizer.cc replaces
 // this placeholder with a graph of operators that do have kernels.
