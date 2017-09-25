@@ -24,7 +24,7 @@ from tensorflow.python.util import nest
 
 def time_series_regression_head(
         model, state_manager, optimizer, input_statistics_generator=None):
-  """Creates a `_Head` for regression using the mean squared loss.
+  """Creates a `_Head` for time series regression.
 
   Args:
     weight_column: A string or a `_NumericColumn` created by
@@ -36,26 +36,15 @@ def time_series_regression_head(
       `[batch_size, label_dimension]`).
 
   Returns:
-    An instance of `_Head` for linear regression.
+    An instance of `_Head` for time series regression.
   """
   return _TimeSeriesRegressionHead(
     model, state_manager, optimizer, input_statistics_generator)
 
 
 class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
-  """Returns a model function suitable for use with a tf.estimator.
+  """See `time_series_regression_head`."""
 
-  Args:
-    model: The object (inheriting from Model) to create a function for.
-    state_manager: A state manager to wrap the model with (or
-        PassthroughStateManager if no state needs to be managed).
-    optimizer: An instance of `tf.train.Optimizer` to use for training.
-    input_statistics_generator: An InputStatisticsFromMiniBatch object from
-        math_utils.py, used for collecting statistics about input data during
-        training.
-  Returns:
-    The model function, suitable for passing to a tf.estimator.Estimator.
-  """
   def __init__(self, model, state_manager, optimizer, input_statistics_generator=None):
     self.model = model
     self.state_manager = state_manager
@@ -126,7 +115,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
           export_lib.PredictOutput(prediction_outputs),
         feature_keys.SavedModelLabels.FILTER:
           export_lib.PredictOutput(
-            _state_to_dictionary(filtering_outputs.end_state))
+            state_to_dictionary(filtering_outputs.end_state))
       },
       # Likely unused, but it is necessary to return `predictions` to satisfy
       # the Estimator's error checking.
@@ -167,6 +156,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
 
   def create_estimator_spec(
           self, features, mode, logits=None, labels=None, train_op_fn=None):
+    """Performs basic error checking and returns an EstimatorSpec."""
     with ops.name_scope("head"):
       if labels:
         raise ValueError("The model received a `labels` dictionary, which is not"
@@ -333,7 +323,7 @@ def _identity_metric_nested(name, input_tensors):
   return (nest.pack_sequence_as(input_tensors, value_tensors),
           control_flow_ops.group(*update_ops))
 
-def _state_to_dictionary(state_tuple):
+def state_to_dictionary(state_tuple):
   """Flatten model state into a dictionary with string keys."""
   flattened = {}
   for state_number, state_value in enumerate(nest.flatten(state_tuple)):

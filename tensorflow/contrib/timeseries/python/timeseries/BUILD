@@ -123,9 +123,9 @@ py_test(
 )
 
 py_library(
-    name = "model_utils",
+    name = "head",
     srcs = [
-        "model_utils.py",
+        "head.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -149,9 +149,9 @@ py_library(
 )
 
 py_test(
-    name = "model_utils_test",
+    name = "head_test",
     srcs = [
-        "model_utils_test.py",
+        "head_test.py",
     ],
     srcs_version = "PY2AND3",
     tags = [
@@ -160,7 +160,7 @@ py_test(
     deps = [
         ":feature_keys",
         ":model",
-        ":model_utils",
+        ":head",
         ":state_management",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -171,6 +171,41 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_library(
+    name = "model_utils",
+    srcs = [
+        "model_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":feature_keys",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:variable_scope",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "model_utils_test",
+    srcs = [
+        "model_utils_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
+    deps = [
+        ":model_utils",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:variables",
     ],
 )
 
