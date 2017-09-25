@@ -15,10 +15,9 @@ if [ "${OS}" = "Linux" ]; then
     CUDNN_URL=http://developer.download.nvidia.com/compute/redist/cudnn/v5.1/cudnn-8.0-linux-x64-v5.1.tgz
     CUDNN_SHA256=c10719b36f2dd6e9ddc63e3189affaa1a94d7d027e63b71c3f64d449ab0645ce
 elif [ "${OS}" = "Darwin" ]; then
-    if [ -z "${TASKCLUSTER_TASK_DIR}" -o -z "${TASKCLUSTER_ARTIFACTS}" -o -z "${TASKCLUSTER_TASK_ROOT}" ]; then
+    if [ -z "${TASKCLUSTER_TASK_DIR}" -o -z "${TASKCLUSTER_ARTIFACTS}" ]; then
         echo "Inconsistent OSX setup: missing some vars."
         echo "TASKCLUSTER_TASK_DIR=${TASKCLUSTER_TASK_DIR}"
-        echo "TASKCLUSTER_TASK_ROOT=${TASKCLUSTER_TASK_ROOT}"
         echo "TASKCLUSTER_ARTIFACTS=${TASKCLUSTER_ARTIFACTS}"
         exit 1
     fi;
@@ -89,8 +88,12 @@ export CC_OPT_FLAGS
 
 if [ "${OS}" = "Darwin" ]; then
     BAZEL_OUTPUT_CACHE_DIR="${DS_ROOT_TASK}/.bazel_cache/"
-    mkdir -p ${BAZEL_OUTPUT_CACHE_DIR} || true
-    BAZEL_OUTPUT_USER_ROOT="--output_user_root ${BAZEL_OUTPUT_CACHE_DIR}"
+    BAZEL_OUTPUT_CACHE_INSTANCE="${BAZEL_OUTPUT_CACHE_DIR}/output/"
+    mkdir -p ${BAZEL_OUTPUT_CACHE_INSTANCE} || true
+
+    # We need both to ensure stable path ; default value for output_base is some
+    # MD5 value.
+    BAZEL_OUTPUT_USER_ROOT="--output_user_root ${BAZEL_OUTPUT_CACHE_DIR} --output_base ${BAZEL_OUTPUT_CACHE_INSTANCE}"
     export BAZEL_OUTPUT_USER_ROOT
 fi;
 

@@ -7,12 +7,20 @@ if [ -z "${TASKCLUSTER_TASK_DIR}" ]; then
     exit 1
 fi
 
-mkdir "${TASKCLUSTER_TASK_DIR}/homebrew" && curl -L https://github.com/Homebrew/brew/tarball/master | tar xz --strip 1 -C "${TASKCLUSTER_TASK_DIR}/homebrew"
-
 LOCAL_BREW="${TASKCLUSTER_TASK_DIR}/homebrew"
 export PATH=${LOCAL_BREW}/bin:$PATH
+export HOMEBREW_CACHE="${TASKCLUSTER_TASK_DIR}/homebrew.cache/"
 
-echo "local brew list (should me empty) ..."
+# Never fail on pre-existing homebrew/ directory
+mkdir -p "${LOCAL_BREW}" || true
+mkdir -p "${HOMEBREW_CACHE}" || true
+
+# Make sure to verify there is a 'brew' binary there, otherwise install things.
+if [ ! -x "${LOCAL_BREW}/bin/brew" ]; then
+    curl -L https://github.com/Homebrew/brew/tarball/master | tar xz --strip 1 -C "${LOCAL_BREW}"
+fi;
+
+echo "local brew list (should be empty) ..."
 brew list
 
 echo "local brew prefix ..."
@@ -32,5 +40,5 @@ all_pkgs="coreutils pyenv-virtualenv node@6 pkg-config sox swig"
 
 for pkg in ${all_pkgs};
 do
-	brew list --versions ${pkg} || brew install ${pkg}
+	(brew list --versions ${pkg} && brew upgrade ${pkg}) || brew install ${pkg}
 done;
