@@ -33,6 +33,7 @@ cc_library(
     deps = [
         ":xla_cpu_device",
         ":xla_cpu_jit",
+        "//tensorflow/compiler/plugin",
     ] + if_cuda_is_configured([
         ":xla_gpu_device",
         ":xla_gpu_jit",
