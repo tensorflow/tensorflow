@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 
+
 namespace tensorflow {
 namespace {
 
@@ -55,6 +56,11 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 //            ref, var_name=var.op.name, name=name)
 class AccumulateNRemovePass : public GraphOptimizationPass {
  public:
+
+  AccumulateNRemovePass() {
+    fprintf(stderr, "In constructor\n");
+  }
+
   Status Run(const GraphOptimizationPassOptions& options) override {
     // TODO(freiss.oss@gmail.com): Substantial shared code with
     // ParallelConcatRemovePass::Run(). Consider refactoring if someone makes
@@ -75,7 +81,7 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
     // Build up a todo list of ops to replace, *then* modify the graph
     gtl::InlinedVector<Node*, 2> matches;
     for (Node* n : g->op_nodes()) {
-      if (n->type_string() == "AccumulateN") {
+      if (n->type_string() == "AccumulateNV2") {
         matches.push_back(n);
       }
     }

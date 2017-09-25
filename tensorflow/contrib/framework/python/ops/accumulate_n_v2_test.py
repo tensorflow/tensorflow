@@ -12,21 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.contrib.framework.ops.math_ops."""
+"""Tests for new version of accumulate_n op that will eventually go into 
+`ops.math_ops`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.framework.python.ops import accumulate_n_v2 as av2
 
-from tensorflow.contrib.framework.python.ops import math_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.platform import googletest
 
-
-ops._USE_C_API = True
-
-exp = np.exp
-log = np.log
 
 class AccumulateNV2Test(test_util.TensorFlowTestCase):
   """Tests of the new, differentiable version of accumulate_n"""
@@ -36,7 +35,7 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
     x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
     tf_x = ops.convert_n_to_tensor(x)
     with self.test_session(use_gpu=True):
-      self.assertAllClose(sum(x), math_ops.accumulate_n_v2(tf_x).eval())
+      self.assertAllClose(sum(x), av2.accumulate_n_v2(tf_x).eval())
       self.assertAllClose(x[0] * 5, math_ops.accumulate_n_v2([tf_x[0]] * 5).eval())
 
   def testInt(self):

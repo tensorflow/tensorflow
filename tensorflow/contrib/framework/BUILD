@@ -30,25 +30,25 @@ tf_custom_op_py_library(
         "python/ops/arg_scope.py",
         "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
-        "python/ops/math_grad.py",
-        "python/ops/math_ops.py",
+        "python/ops/accumulate_n_v2.py",
+        "python/ops/accumulate_n_v2_grad.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
         "python/ops/variables.py",
     ],
     dso = [
         ":python/ops/_variable_ops.so",
-        ":python/ops/_math_ops.so",
+        ":python/ops/_accumulate_n_v2_op.so",
     ],
     kernels = [
-        ":math_ops_kernels",
-        ":math_ops_op_lib",
+        ":accumulate_n_v2_kernels",
+        ":accumulate_n_v2_op_lib",
         ":variable_kernels",
         ":variable_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":gen_math_ops",
+        ":gen_accumulate_n_v2_ops",
         ":gen_variable_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
@@ -106,21 +106,25 @@ tf_custom_op_library(
 
 
 tf_kernel_library(
-    name = "math_ops_kernels",
+    name = "accumulate_n_v2_kernels",
     srcs = [
         "kernels/accumulate_n_optimizer.cc",
     ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:core",
-    ]
+    ],
+    alwayslink = 1,
 )
 
 
 tf_custom_op_library(
-    name = "python/ops/_math_ops.so",
+    name = "python/ops/_accumulate_n_v2_op.so",
     srcs = [
-        "ops/math_ops.cc",
+        "ops/accumulate_n_v2_op.cc",
+    ],
+    deps = [
+        #"//tensorflow/contrib/framework:accumulate_n_v2_kernels"
     ],
 )
 
@@ -128,7 +132,7 @@ tf_custom_op_library(
 tf_gen_op_libs(
     op_lib_names = [
         "variable_ops",
-        "math_ops",
+        "accumulate_n_v2_op",
     ],
 )
 
@@ -136,7 +140,7 @@ cc_library(
     name = "all_ops",
     deps = [
         ":variable_ops_op_lib",
-        ":math_ops_op_lib",
+        ":accumulate_n_v2_op_op_lib",
     ],
 )
 
@@ -149,10 +153,10 @@ tf_gen_op_wrapper_py(
 )
 
 tf_gen_op_wrapper_py(
-    name = "gen_math_ops",
-    out = "python/ops/gen_math_ops.py",
+    name = "gen_accumulate_n_v2_ops",
+    out = "python/ops/gen_accumulate_n_v2_ops.py",
     deps = [
-        ":math_ops_op_lib",
+        ":accumulate_n_v2_op_op_lib",
     ],
 )
 
@@ -188,9 +192,9 @@ py_test(
 )
 
 py_test(
-    name = "math_ops_test",
+    name = "accumulate_n_v2_test",
     size = "small",
-    srcs = ["python/ops/math_ops_test.py"],
+    srcs = ["python/ops/accumulate_n_v2_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",

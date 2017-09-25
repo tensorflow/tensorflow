@@ -18,10 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework.python.ops import gen_accumulate_n_v2_ops
+from tensorflow.contrib.util import loader
+
+from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import resource_loader
+from tensorflow.python.framework import tensor_shape
+
 
 def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
-
 
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
@@ -59,6 +66,8 @@ def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
+  loader.load_op_library(
+      resource_loader.get_path_to_datafile("_accumulate_n_v2_op.so"))
   _INPUTS_ERR_MSG = ValueError("inputs must be a list of at least one Tensor"
                                "with the same dtype and shape")
   if context.in_eager_mode():
@@ -90,6 +99,8 @@ def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
   else:
-    return gen_math_ops._accumulate_n_v2(inputs, name=name, shape=shape)
+    return gen_accumulate_n_v2_ops.accumulate_nv2(inputs, 
+                                                    name=name, 
+                                                    shape=shape)
 
 
