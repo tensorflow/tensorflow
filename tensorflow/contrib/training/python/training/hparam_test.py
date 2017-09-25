@@ -91,6 +91,16 @@ class HParamsTest(test.TestCase):
     self.assertEqual(2.0, hparams2.b)
     self.assertEqual('2.3"', hparams2.c_c)
 
+  def testSetFromMap(self):
+    hparams = hparam.HParams(a=1, b=2.0, c='tanh')
+    hparams.set_from_map({'a': -2, 'c': 'identity'})
+    self.assertDictEqual({'a': -2, 'c': 'identity', 'b': 2.0}, hparams.values())
+
+    hparams = hparam.HParams(x=1, b=2.0, d=[0.5])
+    hparams.set_from_map({'d': [0.1, 0.2, 0.3]})
+    self.assertDictEqual({'d': [0.1, 0.2, 0.3], 'x': 1, 'b': 2.0},
+                         hparams.values())
+
   def testBoolParsing(self):
     for value in 'true', 'false', 'True', 'False', '1', '0':
       for initial in False, True:
