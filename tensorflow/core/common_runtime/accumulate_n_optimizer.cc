@@ -45,10 +45,6 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 class AccumulateNRemovePass : public GraphOptimizationPass {
  public:
 
-  AccumulateNRemovePass() {
-    fprintf(stderr, "Initializing AccumulateNRemovePass rewrite\n");
-  }
-
   Status Run(const GraphOptimizationPassOptions& options) override {
     // TODO(freiss.oss@gmail.com): Substantial shared code with
     // ParallelConcatRemovePass::Run(). Consider refactoring if someone makes
