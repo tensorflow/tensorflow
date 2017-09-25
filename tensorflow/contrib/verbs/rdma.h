@@ -36,6 +36,11 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
+#define PKEY_DEFAULT        0
+#define QUEUE_DEPTH_DEFAULT 1024
+#define TIMEOUT_DEFAULT     14
+#define RETRY_CNT_DEFAULT   7
+#define SL_DEFAULT          0
 
 struct RdmaParams{
   uint8_t port_num;

@@ -268,84 +268,22 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
   return gid_index;
 }
 
-uint8_t set_pkey() {
-  uint8_t pkey_index = 0;
-  string pkey_index_s;
+// set the default or environment value to the configuration parameter.
+// Args:
+//   default_val- the default value for this parameter
+//   env_param- the environment parameter's name
+// Returns:
+//   32-bit value
+uint32_t set_param(uint32_t default_val, const char* env_param) {
+  uint32_t val = default_val;
+  string val_s;
 
-  pkey_index_s = get_env_var("RDMA_PKEY");
+  val_s = get_env_var(env_param);
 
-  if (!pkey_index_s.empty()) {
-    pkey_index = stoi(pkey_index_s);
+  if (!val_s.empty()) {
+    val = stoi(val_s);
   }
-  else {
-    pkey_index = 0;
-  }
-
-  return pkey_index;
-}
-
-uint32_t set_queue_depth() {
-  uint32_t queue_depth = 0;
-  string queue_depth_s;
-
-  queue_depth_s = get_env_var("RDMA_QUEUE_DEPTH");
-
-  if (!queue_depth_s.empty()) {
-    queue_depth = stoi(queue_depth_s);
-  }
-  else {
-    queue_depth = 1024;
-  }
-
-  return queue_depth;
-}
-
-uint8_t set_timeout() {
-  uint8_t timeout = 0;
-  string timeout_s;
-
-  timeout_s = get_env_var("RDMA_TIMEOUT");
-
-  if (!timeout_s.empty()) {
-    timeout = stoi(timeout_s);
-  }
-  else {
-    timeout = 14;
-  }
-
-  return timeout;
-}
-
-uint8_t set_retry_cnt() {
-  uint8_t retry_cnt = 0;
-  string retry_cnt_s;
-
-  retry_cnt_s = get_env_var("RDMA_RETRY_CNT");
-
-  if (!retry_cnt_s.empty()) {
-    retry_cnt = stoi(retry_cnt_s);
-  }
-  else {
-    retry_cnt = 7;
-  }
-
-  return retry_cnt;
-}
-
-uint8_t set_sl() {
-  uint8_t sl = 0;
-  string sl_s;
-
-  sl_s = get_env_var("RDMA_SL");
-
-  if (!sl_s.empty()) {
-    sl = stoi(sl_s);
-  }
-  else {
-    sl = 0;
-  }
-
-  return sl;
+  return val;
 }
 
 enum ibv_mtu set_mtu(uint8_t port_num, ibv_context* context) {
@@ -394,11 +332,11 @@ RdmaParams params_init(ibv_context* context){
 
   params.port_num = set_port(context);
   params.sgid_index = set_gid(params.port_num, context);
-  params.pkey_index = set_pkey();
-  params.queue_depth = set_queue_depth();
-  params.timeout = set_timeout();
-  params.retry_cnt = set_retry_cnt();
-  params.sl = set_sl();
+  params.pkey_index = (uint8_t)set_param(PKEY_DEFAULT, "RDMA_PKEY");
+  params.queue_depth = set_param(QUEUE_DEPTH_DEFAULT, "RDMA_QUEUE_DEPTH");
+  params.timeout = (uint8_t)set_param(TIMEOUT_DEFAULT, "RDMA_TIMEOUT");
+  params.retry_cnt = (uint8_t)set_param(RETRY_CNT_DEFAULT, "RDMA_RETRY_CNT");
+  params.sl = (uint8_t)set_param(SL_DEFAULT, "RDMA_SL");
   params.mtu = set_mtu(params.port_num, context);
   return params;
 }
