@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -118,6 +119,19 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ObtainFunctionTarget) {
   AttrSlice attrs(&attr_values);
   target = ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
   EXPECT_EQ("/job:a/replica:0/task:0/cpu:1", target);
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, GetDeviceIncarnation) {
+  Init({});
+  int64 incarnation;
+  TF_EXPECT_OK(proc_flr_->GetDeviceIncarnation("/job:a/replica:0/task:0/cpu:1",
+                                               &incarnation));
+  // Incarnation is a random number other than 0.
+  EXPECT_NE(incarnation, 0);
+  Status s = proc_flr_->GetDeviceIncarnation("/job:a/replica:0/task:0/cpu:2",
+                                             &incarnation);
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  rendezvous_->Unref();
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCall) {

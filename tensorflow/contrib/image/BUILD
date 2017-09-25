@@ -88,6 +88,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["python/kernel_tests/image_ops_test.py"],
     additional_deps = [
+        ":distort_image_py",
         ":image_py",
         ":single_image_random_dot_stereograms_py",
         "//third_party/py/numpy",
@@ -96,6 +97,80 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_custom_op_library(
+    name = "python/ops/_distort_image_ops.so",
+    srcs = [
+        "kernels/adjust_hsv_in_yiq_op.cc",
+        "ops/distort_image_ops.cc",
+    ],
+    deps = [
+        "@protobuf_archive//:protobuf",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["distort_image_ops"],
+)
+
+tf_gen_op_wrapper_py(
+    name = "distort_image_ops",
+    deps = [":distort_image_ops_op_lib"],
+)
+
+cc_library(
+    name = "distort_image_ops_cc",
+    srcs = [
+        "kernels/adjust_hsv_in_yiq_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+py_library(
+    name = "distort_image_py",
+    srcs = [
+        "__init__.py",
+        "python/ops/distort_image_ops.py",
+    ],
+    data = [":python/ops/_distort_image_ops.so"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":distort_image_ops",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "distort_image_ops_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/distort_image_ops_test.py"],
+    additional_deps = [
+        ":distort_image_py",
+        ":image_py",
+        ":single_image_random_dot_stereograms_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 

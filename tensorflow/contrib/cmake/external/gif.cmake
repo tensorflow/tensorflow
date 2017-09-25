@@ -66,6 +66,7 @@ else()
           ${CMAKE_CURRENT_BINARY_DIR}/gif/src/gif/configure
           --with-pic
           --prefix=${gif_INSTALL}
+          --libdir=${gif_INSTALL}/lib
          --enable-shared=yes
   )
 

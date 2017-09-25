@@ -1,6 +1,9 @@
 # -*- Python -*-
 
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl",
+     "tf_binary_additional_srcs",
+     "tf_cc_binary",
+     "tf_copts")
 
 # Given a list of "ops_libs" (a list of files in the core/ops directory
 # without their .cc extensions), generate Java wrapper code for all operations
@@ -34,7 +37,7 @@ def tf_java_op_gen_srcjar(name,
     gen_lib = ops_lib[:ops_lib.rfind("_")]
     out_gen_tool = out_dir + ops_lib + "_gen_tool"
 
-    native.cc_binary(
+    tf_cc_binary(
         name=out_gen_tool,
         copts=tf_copts(),
         linkopts=["-lm"],
@@ -51,7 +54,7 @@ def tf_java_op_gen_srcjar(name,
   gen_srcjar = out_dir + name + ".srcjar"
   gen_cmds += ["$(location @local_jdk//:jar) cMf $(location :" + gen_srcjar + ") -C $(@D) ."]
   gen_tools += ["@local_jdk//:jar"] + ["@local_jdk//:jdk"]
-
+  gen_tools += tf_binary_additional_srcs()
   native.genrule(
       name=name,
       outs=[gen_srcjar],

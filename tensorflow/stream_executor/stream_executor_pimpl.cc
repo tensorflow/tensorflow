@@ -286,7 +286,7 @@ bool StreamExecutor::SupportsDnn() const {
 
 bool StreamExecutor::GetConvolveAlgorithms(
     bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
@@ -297,7 +297,7 @@ bool StreamExecutor::GetConvolveAlgorithms(
 
 bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
     bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
@@ -308,7 +308,7 @@ bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
 
 bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
     bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;

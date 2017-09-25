@@ -310,6 +310,11 @@ StatusOr<ComputationDataHandle> UserComputation::AddGetTupleElementInstruction(
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
                       LookUpRequest(get_tuple_element_request.operand()));
+  if (!ShapeUtil::IsTuple(operand->output_shape())) {
+    return InvalidArgument(
+        "Operand to GetTupleElement() is not a tuple; got %s",
+        ShapeUtil::HumanString(operand->output_shape()).c_str());
+  }
   Shape element_shape = ShapeUtil::GetTupleElementShape(
       operand->output_shape(), get_tuple_element_request.index());
 
@@ -2964,12 +2969,27 @@ void ComputationLowerer::Visit(
         HloInstruction* operand_to_broadcast =
             ShapeUtil::Rank(lhs->shape()) < ShapeUtil::Rank(rhs->shape()) ? lhs
                                                                           : rhs;
-        Shape broadcast_shape = ShapeUtil::MakeShape(
-            operand_to_broadcast->shape().element_type(),
-            AsInt64Slice(request.output_shape().dimensions()));
-
         CHECK_EQ(ShapeUtil::Rank(operand_to_broadcast->shape()),
                  binary_op_request.broadcast_dimensions().size());
+
+        // Construct the bounds of the shape of the kBroadcast instruction
+        // responsible for the in-dimension broadcast.
+        std::vector<int64> output_dimensions;
+        for (int64 size : request.output_shape().dimensions()) {
+          output_dimensions.push_back(size);
+        }
+        for (int64 operand_dim = 0;
+             operand_dim < ShapeUtil::Rank(operand_to_broadcast->shape());
+             ++operand_dim) {
+          int64 output_dim =
+              binary_op_request.broadcast_dimensions()[operand_dim];
+          output_dimensions[output_dim] =
+              operand_to_broadcast->shape().dimensions(operand_dim);
+        }
+
+        Shape broadcast_shape = ShapeUtil::MakeShape(
+            operand_to_broadcast->shape().element_type(), output_dimensions);
+
         // The broadcast semantics of a client-level binary op broadcast is
         // identical to the HLO broadcast semantics so the broadcast_dimensions
         // field can just be passed to the instruction builder.

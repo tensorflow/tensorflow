@@ -12,6 +12,7 @@ py_library(
         ":datasets",
         ":saver",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -27,6 +28,8 @@ cuda_py_test(
     srcs = ["tfe_test.py"],
     additional_deps = [
         ":tfe",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
     ],
@@ -38,11 +41,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/util:nest",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:errors",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
     ],
 )

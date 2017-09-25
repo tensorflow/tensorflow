@@ -41,7 +41,7 @@ def tf_library(name, graph, config,
     graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt' it
       is expected to be in the human-readable proto text format, otherwise it is
       expected to be in the proto binary format.
-    config: File containing tensorflow.tfcompile.Config proto.  If the file ends
+    config: File containing tensorflow.tf2xla.Config proto.  If the file ends
       in '.pbtxt' it is expected to be in the human-readable proto text format,
       otherwise it is expected to be in the proto binary format.
     freeze_checkpoint: If provided, run freeze_graph with this checkpoint to

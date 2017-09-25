@@ -27,7 +27,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
-from tensorflow.python.platform import tf_logging as logging
 
 
 class Reduction(object):
@@ -614,9 +613,7 @@ def sigmoid_cross_entropy(
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
                       (logits, multi_class_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
-    logging.info("logits.dtype=%s.", logits.dtype)
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
-    logging.info("multi_class_labels.dtype=%s.", multi_class_labels.dtype)
     logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     if label_smoothing > 0:
@@ -626,7 +623,6 @@ def sigmoid_cross_entropy(
     losses = nn.sigmoid_cross_entropy_with_logits(labels=multi_class_labels,
                                                   logits=logits,
                                                   name="xentropy")
-    logging.info("losses.dtype=%s.", losses.dtype)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 

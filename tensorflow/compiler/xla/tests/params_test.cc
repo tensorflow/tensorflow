@@ -251,6 +251,91 @@ XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
   ComputeAndCompareR1<float>(&builder, sum, param_data, ErrorSpec(0.0001f));
 }
 
+// Only run the 3,000-parameter tests in opt mode to avoid test timeouts.
+// Timeout last observed on 2017-09-12.
+#ifndef NDEBUG
+
+// TODO(b/65525254) Fails on GPU on 2017-09-10 because we try to reserve too
+// much space in parameter memory for the kernel.
+//
+// TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
+// compilation.
+XLA_TEST_F(ParamsTest,
+           DISABLED_ON_CPU(DISABLED_ON_GPU(ThreeThousandParameters))) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::vector<std::unique_ptr<GlobalData>> param_data_owner;
+  ComputationDataHandle sum_handle = builder.ConstantR0<float>(0.0f);
+  float target = 0.0;
+  constexpr int kParamCount = 3000;
+  for (int i = 0; i < kParamCount; ++i) {
+    target += i;
+    std::unique_ptr<Literal> literal = Literal::CreateR0<float>(i);
+    param_data_owner.push_back(
+        std::move(client_->TransferToServer(*literal)).ValueOrDie());
+    ComputationDataHandle param =
+        builder.Parameter(i, literal->shape(), "param");
+    sum_handle = builder.Add(sum_handle, param);
+  }
+
+  std::vector<GlobalData*> param_data;
+  param_data.reserve(param_data_owner.size());
+  for (const std::unique_ptr<GlobalData>& data : param_data_owner) {
+    param_data.push_back(data.get());
+  }
+
+  ComputeAndCompareR0<float>(&builder, target, param_data, ErrorSpec(0.0001f));
+}
+
+// TODO(b/65525254) Fails on GPU on 2017-09-10 because we try to reserve too
+// much space in parameter memory for the kernel.
+//
+// TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
+// compilation.
+XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
+                           ThreeThousandParametersAndOutputElements))) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::vector<std::unique_ptr<GlobalData>> param_data_owner;
+  ComputationDataHandle sum_handle = builder.ConstantR1<int32>({0, 0});
+  int32 target = 0;
+  constexpr int kParamCount = 3000;
+  std::vector<ComputationDataHandle> params;
+  for (int i = 0; i < kParamCount; ++i) {
+    target += i;
+    std::unique_ptr<Literal> literal = Literal::CreateR1<int32>({i, i});
+    param_data_owner.push_back(
+        std::move(client_->TransferToServer(*literal)).ValueOrDie());
+    ComputationDataHandle param =
+        builder.Parameter(i, literal->shape(), "param");
+    params.push_back(param);
+    sum_handle = builder.Add(sum_handle, param);
+  }
+
+  std::vector<ComputationDataHandle> outputs;
+  for (int i = 0; i < kParamCount; ++i) {
+    outputs.push_back(builder.Add(params[i], sum_handle));
+  }
+
+  builder.Tuple(outputs);
+
+  std::vector<GlobalData*> param_data;
+  param_data.reserve(param_data_owner.size());
+  for (const std::unique_ptr<GlobalData>& data : param_data_owner) {
+    param_data.push_back(data.get());
+  }
+
+  std::vector<std::unique_ptr<Literal>> elements;
+  std::vector<const Literal*> ptrs;
+  for (int i = 0; i < kParamCount; ++i) {
+    elements.push_back(Literal::CreateR1<int32>({target + i, target + i}));
+    ptrs.push_back(elements.back().get());
+  }
+  ComputeAndCompareTuple(&builder, *Literal::MakeTuple(ptrs), param_data);
+}
+
+#endif
+
 XLA_TEST_F(ParamsTest,
            DISABLED_ON_CPU_PARALLEL(TupleOfR1ParametersAddedTogether)) {
   ComputationBuilder builder(client_, TestName());

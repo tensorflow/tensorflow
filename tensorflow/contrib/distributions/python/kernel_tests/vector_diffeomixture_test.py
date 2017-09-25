@@ -32,7 +32,7 @@ class VectorDiffeomixtureTest(
     test_util.VectorDistributionTestHelpers, test.TestCase):
   """Tests the VectorDiffeomixture distribution."""
 
-  def testSampleProbConsistentBroadcastMix(self):
+  def testSampleProbConsistentBroadcastMixNoBatch(self):
     with self.test_session() as sess:
       dims = 4
       vdm = vector_diffeomixture_lib.VectorDiffeomixture(
@@ -88,7 +88,38 @@ class VectorDiffeomixtureTest(
       self.run_test_sample_consistent_log_prob(
           sess, vdm, radius=4., center=3., rtol=0.009)
 
-  def testMeanCovariance(self):
+  def testSampleProbConsistentBroadcastMixBatch(self):
+    with self.test_session() as sess:
+      dims = 4
+      vdm = vector_diffeomixture_lib.VectorDiffeomixture(
+          mix_loc=[[0.], [1.]],
+          mix_scale=[1.],
+          distribution=normal_lib.Normal(0., 1.),
+          loc=[
+              None,
+              np.float32([2.]*dims),
+          ],
+          scale=[
+              linop_identity_lib.LinearOperatorScaledIdentity(
+                  num_rows=dims,
+                  multiplier=[np.float32(1.1)],
+                  is_positive_definite=True),
+              linop_diag_lib.LinearOperatorDiag(
+                  diag=np.stack([
+                      np.linspace(2.5, 3.5, dims, dtype=np.float32),
+                      np.linspace(2.75, 3.25, dims, dtype=np.float32),
+                  ]),
+                  is_positive_definite=True),
+          ],
+          validate_args=True)
+      # Ball centered at component0's mean.
+      self.run_test_sample_consistent_log_prob(
+          sess, vdm, radius=2., center=0., rtol=0.005)
+      # Larger ball centered at component1's mean.
+      self.run_test_sample_consistent_log_prob(
+          sess, vdm, radius=4., center=2., rtol=0.005)
+
+  def testMeanCovarianceNoBatch(self):
     with self.test_session() as sess:
       dims = 3
       vdm = vector_diffeomixture_lib.VectorDiffeomixture(
@@ -112,7 +143,7 @@ class VectorDiffeomixtureTest(
       self.run_test_sample_consistent_mean_covariance(
           sess, vdm, rtol=0.02, cov_rtol=0.06)
 
-  def testMeanCovarianceUncenteredNonStandardBase(self):
+  def testMeanCovarianceNoBatchUncenteredNonStandardBase(self):
     with self.test_session() as sess:
       dims = 3
       vdm = vector_diffeomixture_lib.VectorDiffeomixture(
@@ -135,6 +166,33 @@ class VectorDiffeomixtureTest(
           validate_args=True)
       self.run_test_sample_consistent_mean_covariance(
           sess, vdm, num_samples=int(1e6), rtol=0.01, cov_atol=0.025)
+
+  def testMeanCovarianceBatch(self):
+    with self.test_session() as sess:
+      dims = 3
+      vdm = vector_diffeomixture_lib.VectorDiffeomixture(
+          mix_loc=[[0.], [4.]],
+          mix_scale=[10.],
+          distribution=normal_lib.Normal(0., 1.),
+          loc=[
+              np.float32([[-2.]]),
+              None,
+          ],
+          scale=[
+              linop_identity_lib.LinearOperatorScaledIdentity(
+                  num_rows=dims,
+                  multiplier=[np.float32(1.5)],
+                  is_positive_definite=True),
+              linop_diag_lib.LinearOperatorDiag(
+                  diag=np.stack([
+                      np.linspace(2.5, 3.5, dims, dtype=np.float32),
+                      np.linspace(0.5, 1.5, dims, dtype=np.float32),
+                  ]),
+                  is_positive_definite=True),
+          ],
+          validate_args=True)
+      self.run_test_sample_consistent_mean_covariance(
+          sess, vdm, rtol=0.02, cov_rtol=0.06)
 
   # TODO(jvdillon): We've tested that (i) .sample and .log_prob are consistent,
   # (ii) .mean, .stddev etc... and .sample are consistent. However, we haven't

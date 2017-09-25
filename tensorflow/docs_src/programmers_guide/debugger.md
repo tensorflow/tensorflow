@@ -64,7 +64,6 @@ so you can activate tfdbg CLI with the `--debug` flag at the command line.
 from tensorflow.python import debug as tf_debug
 
 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 ```
 
 This wrapper has the same interface as Session, so enabling debugging requires
@@ -246,13 +245,18 @@ some procedural-language debuggers:
 tfdbg> run -f has_inf_or_nan
 ```
 
-> NOTE: The preceding command works properly because we have registered a filter
-> for `nan`s and `inf`s called `has_inf_or_nan` (as explained previously).
+> NOTE: The preceding command works properly because a tensor filter called
+> `has_inf_or_nan` has been registered for you when the wrapped session is
+> created. This filter detects `nan`s and `inf`s (as explained previously).
 > If you have registered any other filters, you can
 > use "run -f" to have tfdbg run until any tensor triggers that filter (cause
 > the filter to return True).
 >
 > ``` python
+> def my_filter_callable(datum, tensor):
+>   # A filter that detects zero-valued scalars.
+>   return len(tensor.shape) == 0 and tensor == 0.0
+>
 > sess.add_tensor_filter('my_filter', my_filter_callable)
 > ```
 >

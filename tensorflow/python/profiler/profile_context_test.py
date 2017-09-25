@@ -43,25 +43,25 @@ class ProfilerContextTest(test.TestCase):
     x = lib.BuildFullModel()
 
     profile_str = None
-    profile_step50 = os.path.join(test.get_temp_dir(), "profile_50")
+    profile_step100 = os.path.join(test.get_temp_dir(), "profile_100")
     with profile_context.ProfileContext(test.get_temp_dir()) as pctx:
       pctx.add_auto_profiling("op", options=opts, profile_steps=[15, 50, 100])
       with session.Session() as sess:
         sess.run(variables.global_variables_initializer())
-        total_steps = 101 if test.is_gpu_available() else 50
+        total_steps = 101
         for i in range(total_steps):
           sess.run(x)
-          if i == 14 or i == 99:
+          if i == 14 or i == 49:
             self.assertTrue(gfile.Exists(outfile))
             gfile.Remove(outfile)
-          if i == 49:
-            self.assertTrue(gfile.Exists(profile_step50))
+          if i == 99:
+            self.assertTrue(gfile.Exists(profile_step100))
             with gfile.Open(outfile, "r") as f:
               profile_str = f.read()
             gfile.Remove(outfile)
 
     with lib.ProfilerFromFile(
-        os.path.join(test.get_temp_dir(), "profile_50")) as profiler:
+        os.path.join(test.get_temp_dir(), "profile_100")) as profiler:
       profiler.profile_operations(options=opts)
       with gfile.Open(outfile, "r") as f:
         self.assertEqual(profile_str, f.read())

@@ -1703,7 +1703,6 @@ StatusOr<Computation> ComputationBuilder::Build() {
 }
 
 void ComputationBuilder::AddOpMetadata(OpRequest* request) const {
-  tensorflow::mutex_lock lock(mutex_);
   *request->mutable_metadata() = metadata_;
 }
 

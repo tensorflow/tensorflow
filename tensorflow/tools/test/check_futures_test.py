@@ -43,6 +43,7 @@ WHITELIST = [
     'python/platform/control_imports.py',
     'tools/docker/jupyter_notebook_config.py',
     'tools/ci_build/update_version.py',
+    'tools/ci_build/copy_binary.py',
 ]
 
 # Tests that must *not* import division
