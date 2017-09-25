@@ -277,7 +277,7 @@ CreateSimpleReduction(poplar::Graph &graph,
     Literal identity_literal = GetIdentityConstantTensor(inst);
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
-          init_inst->literal().Equal(identity_literal))) {
+          init_inst->literal() == identity_literal)) {
 
       poplar::Tensor init_val;
       TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
@@ -386,7 +386,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
     Literal identity_literal = GetIdentityConstantTensor(inst);
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
-          init_inst->literal().Equal(identity_literal))) {
+          init_inst->literal() == identity_literal)) {
 
       poplar::Tensor init_val;
       TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
@@ -637,7 +637,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
    */
   auto* init_inst = inst->operand(2);
   if (!(init_inst->IsConstant() &&
-        init_inst->literal().Equal(identity_literal))) {
+        init_inst->literal() == identity_literal)) {
 
     poplar::Tensor init_val;
     TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 2));
