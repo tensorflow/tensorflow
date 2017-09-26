@@ -32,7 +32,7 @@ using `data_flow_ops.StagingArea`. `StagingArea` is a queue-like operator
 similar to @{tf.FIFOQueue}. The difference is that `StagingArea`  does not 
 guarantee FIFO ordering, but offers simpler functionality and can be executed 
 on both CPU and GPU in parallel with other stages. Breaking the input pipeline
-into 3 stages that operate independently inparallel is scalable and takes full
+into 3 stages that operate independently in parallel is scalable and takes full
 advantage of large multi-core environments. The rest of this section details
 the stages followed by details about using `data_flow_ops.StagingArea`.
 
