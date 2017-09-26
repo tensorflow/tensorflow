@@ -131,11 +131,13 @@ public:
   }
 
   Status FinishVisit(HloInstruction* inst) {
-    const HloComputation* comp = inst->parent();
+    HloComputation* comp = inst->parent();
 
     auto outputs = FindInstructionOutputs(tensor_map, inst);
 
-    std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
+    auto res_shape =
+            comp->parent()->mutable_entry_computation_layout()->result_shape();
+    std::vector<Shape> shapes = FlattenedXlaShape(res_shape);
 
     for (size_t o=0; o<outputs.size(); o++) {
 
@@ -290,12 +292,16 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     resources.inplace_instructions = std::move(finder.inplace_instructions);
   }
 
+  // Set layout if there isn't one
+  auto comp_layout = hlo_module->mutable_entry_computation_layout()
+          ->mutable_result_layout();
+  if (!comp_layout->LayoutIsSet()) {
+    comp_layout->CopyLayoutFromShape(entry->root_instruction()->shape());
+  }
 
   for (const auto comp : hlo_module->MakeComputationPostOrder()) {
     if (call_finder.targets.count(comp) > 0) {
       if (comp != entry && call_finder.targets.at(comp) > 1) {
-        // If this computation is a target of a call or while then compile
-        // it and store in compiler resources
         VLOG(1) << "Compiling sub-computation " << comp->name();
         XLA_VLOG_LINES(1, comp->ToString());
 
@@ -353,10 +359,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     stream.open(compute_graph);
     graph->outputComputeGraph(stream, progs);
   }
-
-  hlo_module->mutable_entry_computation_layout()
-            ->mutable_result_layout()
-            ->CopyLayoutFromShape(entry->root_instruction()->shape());
 
   std::unique_ptr<Executable> executable;
   executable.reset(
