@@ -3,6 +3,7 @@ licenses(["restricted"])
 package(default_visibility = ["//visibility:public"])
 
 load("@local_config_poplar//poplar:build_defs.bzl", "poplar_lib_directory")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # Rule for creating the vertex program pre-compiled object
 genrule(
@@ -128,7 +129,7 @@ cc_library(
     linkstatic=1,
 )
 
-cc_test(
+tf_cc_test(
     name = "graph_compile_io_map_test",
     srcs = ["tests/graph_compile_io_map_test.cc"],
     deps = [
@@ -139,7 +140,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "conversions_test",
     srcs = ["tests/conversions_test.cc"],
     deps = [
@@ -150,7 +151,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "outliner_test",
     srcs = ["tests/outliner_test.cc"],
     deps = [
@@ -161,7 +162,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_matcher_test",
     srcs = ["tests/hlo_matcher_test.cc"],
     deps = [
@@ -172,7 +173,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "allocation_finder_test",
     srcs = ["tests/allocation_finder_test.cc"],
     deps = [
@@ -183,7 +184,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "fuse_ops_test",
     srcs = ["tests/fuse_ops_test.cc"],
     deps = [

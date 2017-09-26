@@ -15,20 +15,20 @@ import numpy as np
 
 class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
-    def testConv3x3_Pad1x1(self):
-        with tf.device("/device:XLA_IPU:0"):
-            with tf.Session() as sess:
-                pa = tf.placeholder(tf.float32, [1,112,112,64], name="a")
-                pb = tf.placeholder(tf.float32, [3,3,64,128], name="b")
-                output = nn_ops.convolution(pa, pb, padding="SAME")
-
-                fd = {
-                    pa: np.zeros([1,112,112,64]),
-                    pb: np.zeros([3,3,64,128])
-                }
-                result = sess.run(output, fd)
-                self.assertAllClose(result,
-                                    np.zeros([1,112,112,128]))
+    # def testConv3x3_Pad1x1(self):
+    #     with tf.device("/device:XLA_IPU:0"):
+    #         with tf.Session() as sess:
+    #             pa = tf.placeholder(tf.float32, [1,112,112,64], name="a")
+    #             pb = tf.placeholder(tf.float32, [3,3,64,128], name="b")
+    #             output = nn_ops.convolution(pa, pb, padding="SAME")
+    #
+    #             fd = {
+    #                 pa: np.zeros([1,112,112,64]),
+    #                 pb: np.zeros([3,3,64,128])
+    #             }
+    #             result = sess.run(output, fd)
+    #             self.assertAllClose(result,
+    #                                 np.zeros([1,112,112,128]))
 
     # def testConv3x3_WithBias(self):
     #     with tf.device("/device:XLA_IPU:0"):
