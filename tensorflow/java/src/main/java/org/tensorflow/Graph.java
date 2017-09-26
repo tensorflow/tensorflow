@@ -81,7 +81,7 @@ public final class Graph implements AutoCloseable {
   /**
    * Iterator over all the {@link Operation}s in the graph.
    *
-   * <p>The order of iteration is unspecified. Consumers of the iterator will received no
+   * <p>The order of iteration is unspecified. Consumers of the iterator will receive no
    * notification should the underlying graph change during iteration.
    */
   public Iterator<Operation> operations() {
