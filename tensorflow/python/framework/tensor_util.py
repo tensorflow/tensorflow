@@ -676,6 +676,9 @@ def _ConstantValue(tensor, partial):
     # and return None.
     if not tensor.op.inputs:
       return None
+    # We can't handle axis != 0 Packs at the moment.
+    if tensor.op.get_attr("axis") != 0:
+      return None
     for x in tensor.op.inputs:
       value = constant_value(x, partial)
       if value is None and not partial:
@@ -769,6 +772,9 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
     ret = tensor_shape.scalar()  # Empty list.
+    # Since we expect rank 1 inputs, Pack's axis must be zero, otherwise it
+    # would not be rank 1.
+    assert tensor.op.get_attr("axis") == 0
     for pack_input in tensor.op.inputs:
       # `pack_input` must be a scalar. Attempt to evaluate it, and append it
       # to `ret`.
