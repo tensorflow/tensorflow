@@ -1,3 +1,10 @@
+# Release 1.3.1
+
+NOTE: TensorFlow 1.3.1 is a GitHub only release. The latest exported binaries are still version 1.3.0.
+
+## Bug Fixes and Other Changes
+* Fixing the hash mismatch errors when building from source.
+
 # Release 1.3.0
 
 See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/tag/0.1.4) release notes.
