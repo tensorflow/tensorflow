@@ -63,7 +63,7 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * // Invalid: Will throw an IllegalArgumentException as an arbitrary Object
    * // does not fit into the TensorFlow type system.
-   * Tensor<?> o = Tensor.create(new Object(), ...);
+   * Tensor<?> o = Tensor.create(new Object())
    *
    * // Invalid: Will throw an IllegalArgumentException since there are
    * // a differing number of elements in each row of this 2-D array.
@@ -73,8 +73,8 @@ public final class Tensor<T> implements AutoCloseable {
    * Tensor<Integer> x = Tensor.create(twoD, Integer.class);
    * }</pre>
    *
-   * {@link types.String} typed Tensors are multi-dimensional arrays of arbitrary byte sequences, so
-   * can be initialized from arrays of {@code byte[]} elements. For example:
+   * {@link String}-typed Tensors are multi-dimensional arrays of arbitrary byte sequences, so can
+   * be initialized from arrays of {@code byte[]} elements. For example:
    *
    * <pre>{@code
    * // Valid: A String tensor.
@@ -95,19 +95,17 @@ public final class Tensor<T> implements AutoCloseable {
    * }</pre>
    *
    * @param obj The object to convert to a Tensor<T>. Note that whether the it is compatible with
-   *     the type T is not checked by the type system. For type-safe creation of tensors, use {@link
-   *     op.Tensors}.
+   *     the type T is not checked by the type system.
    * @param type The class object representing the type T.
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system.
-   * @see org.tensorflow.op.Tensors
    */
   @SuppressWarnings("unchecked")
   public static <T> Tensor<T> create(Object obj, Class<T> type) {
     DataType dtype = DataType.fromClass(type);
     if (!objectCompatWithType(obj, dtype)) {
       throw new IllegalArgumentException(
-          "Data type of object does not match T (expected "
+          "DataType of object does not match T (expected "
               + dtype
               + ", got "
               + dataTypeOf(obj)
@@ -129,7 +127,7 @@ public final class Tensor<T> implements AutoCloseable {
 
   /**
    * Create a Tensor of data type {@code dtype} from a Java object. Requires the parameter {@code T}
-   * to match {@code type}, but this condition is checked only at run time.
+   * to match {@code type}, but this condition is not checked.
    *
    * @param obj the object supplying the tensor data.
    * @param dtype the data type of the tensor to create. It must be compatible with the run-time
@@ -140,11 +138,6 @@ public final class Tensor<T> implements AutoCloseable {
     @SuppressWarnings("rawtypes")
     Tensor<?> t = new Tensor(dtype);
     t.shapeCopy = new long[numDimensions(obj, dtype)];
-    if (!objectCompatWithType(obj, dtype)) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Expected an object compatible with %s, got %s instead", dtype, dataTypeOf(obj)));
-    }
     fillShape(obj, 0, t.shapeCopy);
     if (t.dtype != DataType.STRING) {
       int byteSize = elemByteSize(t.dtype) * numElements(t.shapeCopy);
@@ -244,9 +237,10 @@ public final class Tensor<T> implements AutoCloseable {
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
-  @SuppressWarnings("unchecked")
   public static <T> Tensor<T> create(Class<T> type, long[] shape, ByteBuffer data) {
-    return (Tensor<T>) create(DataType.fromClass(type), shape, data);
+    @SuppressWarnings("unchecked")
+    Tensor<T> ret = (Tensor<T>) create(DataType.fromClass(type), shape, data);
+    return ret;
   }
 
   /**
@@ -263,7 +257,7 @@ public final class Tensor<T> implements AutoCloseable {
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
-  public static Tensor<?> create(DataType dtype, long[] shape, ByteBuffer data) {
+  private static Tensor<?> create(DataType dtype, long[] shape, ByteBuffer data) {
     int nremaining = 0;
     if (dtype != DataType.STRING) {
       int elemBytes = elemByteSize(dtype);
@@ -283,11 +277,12 @@ public final class Tensor<T> implements AutoCloseable {
   }
 
   /**
-   * Returns this Tensor object with the type {@code Tensor<U>}. An exception is thrown if the
-   * actual data type of this object does not match the type {@code U}. This method is useful when
-   * given a value of type {@code Tensor<?>}.
+   * Returns this Tensor object with the type {@code Tensor<U>}. This method is useful when given a
+   * value of type {@code Tensor<?>}.
    *
    * @param type any (non-null) array of the correct type.
+   * @throws IllegalArgumentException if the actual data type of this object does not match the type
+   *     {@code U}.
    */
   @SuppressWarnings("unchecked")
   public <U> Tensor<U> expect(Class<U> type) {
@@ -664,7 +659,7 @@ public final class Tensor<T> implements AutoCloseable {
    */
   private static int numDimensions(Object o, DataType dtype) {
     int ret = numArrayDimensions(o);
-    if (dtype == DataType.STRING) {
+    if (dtype == DataType.STRING && ret > 0) {
       return ret - 1;
     }
     return ret;

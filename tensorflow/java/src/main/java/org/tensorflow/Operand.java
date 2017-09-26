@@ -22,7 +22,7 @@ package org.tensorflow;
  *
  * <pre>{@code
  * // The "decodeJpeg" operation can be used as an operand to the "cast" operation
- * Operand<TFUint8> decodeJpeg = ops.image().decodeJpeg(...);
+ * Operand<UInt8> decodeJpeg = ops.image().decodeJpeg(...);
  * ops.math().cast(decodeJpeg, DataType.FLOAT);
  *
  * // The output "y" of the "unique" operation can be used as an operand to the "cast" operation

@@ -107,10 +107,11 @@ public final class Operation {
   }
 
   /**
-   * Returns a symbolic handle to one of the tensors produced by this operation. Warning: Does not
-   * check that the type of the tensor matches T. It is recommended to call this method with an
-   * explicit type parameter rather than letting it be inferred, e.g. {@code
-   * operation.<Integer>.output(0)}
+   * Returns a symbolic handle to one of the tensors produced by this operation.
+   *
+   * <p>Warning: Does not check that the type of the tensor matches T. It is recommended to call
+   * this method with an explicit type parameter rather than letting it be inferred, e.g. {@code
+   * operation.<Integer>output(0)}
    *
    * @param <T> The expected element type of the tensors produced by this output.
    * @param idx The index of the output among the outputs produced by this operation.

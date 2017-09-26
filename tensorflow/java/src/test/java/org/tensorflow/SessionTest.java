@@ -35,8 +35,7 @@ public class SessionTest {
     try (Graph g = new Graph();
         Session s = new Session(g)) {
       TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
-      try (@SuppressWarnings("unchecked")
-              Tensor<Integer> x = (Tensor<Integer>) Tensor.create(new int[][] {{5}, {7}});
+      try (Tensor<Integer> x = Tensor.create(new int[][] {{5}, {7}}).expect(Integer.class);
           AutoCloseableList<Tensor<?>> outputs =
               new AutoCloseableList<Tensor<?>>(s.runner().feed("X", x).fetch("Y").run())) {
         assertEquals(1, outputs.size());
@@ -53,8 +52,7 @@ public class SessionTest {
       TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
       Output<Integer> feed = g.operation("X").output(0);
       Output<Integer> fetch = g.operation("Y").output(0);
-      try (@SuppressWarnings("unchecked")
-              Tensor<Integer> x = (Tensor<Integer>) Tensor.create(new int[][] {{5}, {7}});
+      try (Tensor<Integer> x = Tensor.create(new int[][] {{5}, {7}}).expect(Integer.class);
           AutoCloseableList<Tensor<?>> outputs =
               new AutoCloseableList<Tensor<?>>(s.runner().feed(feed, x).fetch(fetch).run())) {
         assertEquals(1, outputs.size());
@@ -86,8 +84,7 @@ public class SessionTest {
         assertArrayEquals(expected, fetched.copyTo(new int[2]));
       }
       // Feed using colon separated names.
-      try (@SuppressWarnings("unchecked")
-              Tensor<Integer> fed = (Tensor<Integer>) Tensor.create(new int[] {4, 3, 2, 1});
+      try (Tensor<Integer> fed = Tensor.create(new int[] {4, 3, 2, 1}).expect(Integer.class);
           Tensor<Integer> fetched =
               s.runner()
                   .feed("Split:0", fed)
@@ -107,8 +104,7 @@ public class SessionTest {
     try (Graph g = new Graph();
         Session s = new Session(g)) {
       TestUtil.transpose_A_times_X(g, new int[][] {{2}, {3}});
-      try (@SuppressWarnings("unchecked")
-          Tensor<Integer> x = (Tensor<Integer>) Tensor.create(new int[][] {{5}, {7}})) {
+      try (Tensor<Integer> x = Tensor.create(new int[][] {{5}, {7}}).expect(Integer.class)) {
         Session.Run result =
             s.runner()
                 .feed("X", x)

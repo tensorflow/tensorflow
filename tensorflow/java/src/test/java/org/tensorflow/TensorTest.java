@@ -296,40 +296,35 @@ public class TensorTest {
 
   @Test
   public void scalars() {
-    try (@SuppressWarnings("unchecked")
-        Tensor<Float> t = (Tensor<Float>) Tensor.create(2.718f)) {
+    try (Tensor<Float> t = Tensor.create(2.718f).expect(Float.class)) {
       assertEquals(DataType.FLOAT, t.dataType());
       assertEquals(0, t.numDimensions());
       assertEquals(0, t.shape().length);
       assertEquals(2.718f, t.floatValue(), EPSILON_F);
     }
 
-    try (@SuppressWarnings("unchecked")
-        Tensor<Double> t = (Tensor<Double>) Tensor.create(3.1415)) {
+    try (Tensor<Double> t = Tensor.create(3.1415).expect(Double.class)) {
       assertEquals(DataType.DOUBLE, t.dataType());
       assertEquals(0, t.numDimensions());
       assertEquals(0, t.shape().length);
       assertEquals(3.1415, t.doubleValue(), EPSILON);
     }
 
-    try (@SuppressWarnings("unchecked")
-        Tensor<Integer> t = (Tensor<Integer>) Tensor.create(-33)) {
+    try (Tensor<Integer> t = Tensor.create(-33).expect(Integer.class)) {
       assertEquals(DataType.INT32, t.dataType());
       assertEquals(0, t.numDimensions());
       assertEquals(0, t.shape().length);
       assertEquals(-33, t.intValue());
     }
 
-    try (@SuppressWarnings("unchecked")
-        Tensor<Long> t = (Tensor<Long>) Tensor.create(8589934592L)) {
+    try (Tensor<Long> t = Tensor.create(8589934592L).expect(Long.class)) {
       assertEquals(DataType.INT64, t.dataType());
       assertEquals(0, t.numDimensions());
       assertEquals(0, t.shape().length);
       assertEquals(8589934592L, t.longValue());
     }
 
-    try (@SuppressWarnings("unchecked")
-        Tensor<Boolean> t = (Tensor<Boolean>) Tensor.create(true)) {
+    try (Tensor<Boolean> t = Tensor.create(true).expect(Boolean.class)) {
       assertEquals(DataType.BOOL, t.dataType());
       assertEquals(0, t.numDimensions());
       assertEquals(0, t.shape().length);
@@ -337,8 +332,7 @@ public class TensorTest {
     }
 
     final byte[] bytes = {1, 2, 3, 4};
-    try (@SuppressWarnings("unchecked")
-        Tensor<String> t = (Tensor<String>) Tensor.create(bytes)) {
+    try (Tensor<String> t = Tensor.create(bytes).expect(String.class)) {
       assertEquals(DataType.STRING, t.dataType());
       assertEquals(0, t.numDimensions());
       assertEquals(0, t.shape().length);
@@ -349,8 +343,7 @@ public class TensorTest {
   @Test
   public void nDimensional() {
     double[] vector = {1.414, 2.718, 3.1415};
-    try (@SuppressWarnings("unchecked")
-        Tensor<Double> t = (Tensor<Double>) Tensor.create(vector)) {
+    try (Tensor<Double> t = Tensor.create(vector).expect(Double.class)) {
       assertEquals(DataType.DOUBLE, t.dataType());
       assertEquals(1, t.numDimensions());
       assertArrayEquals(new long[] {3}, t.shape());
@@ -360,8 +353,7 @@ public class TensorTest {
     }
 
     int[][] matrix = {{1, 2, 3}, {4, 5, 6}};
-    try (@SuppressWarnings("unchecked")
-        Tensor<Integer> t = (Tensor<Integer>) Tensor.create(matrix)) {
+    try (Tensor<Integer> t = Tensor.create(matrix).expect(Integer.class)) {
       assertEquals(DataType.INT32, t.dataType());
       assertEquals(2, t.numDimensions());
       assertArrayEquals(new long[] {2, 3}, t.shape());
@@ -373,8 +365,7 @@ public class TensorTest {
     long[][][] threeD = {
       {{1}, {3}, {5}, {7}, {9}}, {{2}, {4}, {6}, {8}, {0}},
     };
-    try (@SuppressWarnings("unchecked")
-        Tensor<Long> t = (Tensor<Long>) Tensor.create(threeD)) {
+    try (Tensor<Long> t = Tensor.create(threeD).expect(Long.class)) {
       assertEquals(DataType.INT64, t.dataType());
       assertEquals(3, t.numDimensions());
       assertArrayEquals(new long[] {2, 5, 1}, t.shape());
@@ -388,8 +379,7 @@ public class TensorTest {
       {{{false, false, true, true}, {false, true, false, false}}},
       {{{false, true, false, true}, {false, true, true, false}}},
     };
-    try (@SuppressWarnings("unchecked")
-        Tensor<Boolean> t = (Tensor<Boolean>) Tensor.create(fourD)) {
+    try (Tensor<Boolean> t = Tensor.create(fourD).expect(Boolean.class)) {
       assertEquals(DataType.BOOL, t.dataType());
       assertEquals(4, t.numDimensions());
       assertArrayEquals(new long[] {3, 1, 2, 4}, t.shape());
@@ -407,8 +397,7 @@ public class TensorTest {
         matrix[i][j] = String.format("(%d, %d) = %d", i, j, i << j).getBytes(UTF_8);
       }
     }
-    try (@SuppressWarnings("unchecked")
-        Tensor<String> t = (Tensor<String>) Tensor.create(matrix)) {
+    try (Tensor<String> t = Tensor.create(matrix).expect(String.class)) {
       assertEquals(DataType.STRING, t.dataType());
       assertEquals(2, t.numDimensions());
       assertArrayEquals(new long[] {4, 3}, t.shape());
@@ -502,8 +491,7 @@ public class TensorTest {
 
   @Test
   public void failOnZeroDimension() {
-    try (@SuppressWarnings("unchecked")
-        Tensor<Integer> t = (Tensor<Integer>) Tensor.create(new int[3][0][1])) {
+    try (Tensor<Integer> t = Tensor.create(new int[3][0][1]).expect(Integer.class)) {
       fail("should fail on creating a Tensor where one of the dimensions is 0");
     } catch (IllegalArgumentException e) {
       // The expected exception.
@@ -513,8 +501,7 @@ public class TensorTest {
   @Test
   public void useAfterClose() {
     int n = 4;
-    @SuppressWarnings("unchecked")
-    Tensor<Integer> t = (Tensor<Integer>) Tensor.create(n);
+    Tensor<?> t = Tensor.create(n);
     t.close();
     try {
       t.intValue();
@@ -532,8 +519,7 @@ public class TensorTest {
     // An exception is made for this test, where the pitfalls of this is avoided by not calling
     // close() on both Tensors.
     final float[][] matrix = {{1, 2, 3}, {4, 5, 6}};
-    try (@SuppressWarnings("unchecked")
-        Tensor<Float> src = (Tensor<Float>) Tensor.create(matrix)) {
+    try (Tensor<Float> src = Tensor.create(matrix).expect(Float.class)) {
       Tensor<Float> cpy = Tensor.fromHandle(src.getNativeHandle()).expect(Float.class);
       assertEquals(src.dataType(), cpy.dataType());
       assertEquals(src.numDimensions(), cpy.numDimensions());

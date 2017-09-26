@@ -89,7 +89,7 @@ public class LabelImage {
       // Since the graph is being constructed once per execution here, we can use a constant for the
       // input image. If the graph were to be re-used for multiple input images, a placeholder would
       // have been more appropriate.
-      final Output<String> input = b.stringConstant("input", imageBytes);
+      final Output<String> input = b.constant("input", imageBytes);
       final Output<Float> output =
           b.div(
               b.sub(
@@ -101,8 +101,7 @@ public class LabelImage {
                   b.constant("mean", mean)),
               b.constant("scale", scale));
       try (Session s = new Session(g)) {
-        Tensor<?> result = s.runner().fetch(output.op().name()).run().get(0);
-        return (Tensor<Float>) result;
+        return s.runner().fetch(output.op().name()).run().get(0).expect(Float.class);
       }
     }
   }
@@ -111,8 +110,8 @@ public class LabelImage {
     try (Graph g = new Graph()) {
       g.importGraphDef(graphDef);
       try (Session s = new Session(g);
-          Tensor<?> result =
-              s.runner().feed("input", image).fetch("output").run().get(0)) {
+          Tensor<Float> result =
+              s.runner().feed("input", image).fetch("output").run().get(0).expect(Float.class)) {
         final long[] rshape = result.shape();
         if (result.numDimensions() != 2 || rshape[0] != 1) {
           throw new RuntimeException(
@@ -207,42 +206,28 @@ public class LabelImage {
       }
     }
 
-    Output<String> stringConstant(String name, byte[] value) {
-      return this.<String>constant(name, value, String.class);
+    Output<String> constant(String name, byte[] value) {
+      return this.constant(name, value, String.class);
     }
 
     Output<Integer> constant(String name, int value) {
-      return this.<Integer>constant(name, value, Integer.class);
+      return this.constant(name, value, Integer.class);
     }
 
     Output<Integer> constant(String name, int[] value) {
-      try (Tensor<Integer> t = Tensor.create(value).expect(Integer.class)) {
-        return g.opBuilder("Const", name)
-            .setAttr("dtype", DataType.INT32)
-            .setAttr("value", t)
-            .build()
-            .<Integer>output(0);
-      }
+      return this.constant(name, value, Integer.class);
     }
 
     Output<Float> constant(String name, float value) {
-      try (Tensor<Float> t = Tensor.create(value, Float.class)) {
-        return g.opBuilder("Const", name)
-            .setAttr("dtype", DataType.FLOAT)
-            .setAttr("value", t)
-            .build()
-            .<Float>output(0);
-      }
+      return this.constant(name, value, Float.class);
     }
 
-    @SuppressWarnings("unchecked")
     private <T> Output<T> binaryOp(String type, Output<T> in1, Output<T> in2) {
-      return (Output<T>) g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
+      return (Output<T>) g.opBuilder(type, type).addInput(in1).addInput(in2).build().<T>output(0);
     }
 
-    @SuppressWarnings("unchecked")
     private <T, U, V> Output<T> binaryOp3(String type, Output<U> in1, Output<V> in2) {
-      return (Output<T>) g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
+      return (Output<T>) g.opBuilder(type, type).addInput(in1).addInput(in2).build().<T>output(0);
     }
 
     private Graph g;

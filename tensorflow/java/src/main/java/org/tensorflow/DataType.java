@@ -67,21 +67,23 @@ public enum DataType {
 
   static DataType fromC(int c) {
     for (DataType t : values) {
-      if (t.value == c) return t;
+      if (t.value == c) {
+        return t;
+      }
     }
     throw new IllegalArgumentException(
         "DataType " + c + " is not recognized in Java (version " + TensorFlow.version() + ")");
   }
 
   /**
-   * Returns the DataType value corresponding to a TensorFlow type class.
+   * Returns the DataType of a Tensor whose elements have the type specified by class {@code c}.
    *
    * @param c The class describing the TensorFlow type of interest.
    */
   public static DataType fromClass(Class<?> c) {
     DataType dtype = typeCodes.get(c);
     if (dtype == null) {
-      throw new IllegalArgumentException("" + c + " is not a TensorFlow type.");
+      throw new IllegalArgumentException(c.getName() + " objects cannot be used as elements in a TensorFlow Tensor");
     }
     return dtype;
   }

@@ -48,8 +48,7 @@ public class OperationBuilderTest {
   @Test
   public void failOnUseAfterBuild() {
     try (Graph g = new Graph();
-        @SuppressWarnings("unchecked")
-            Tensor<Integer> t = (Tensor<Integer>) Tensor.create(1)) {
+        Tensor<Integer> t = Tensor.create(1).expect(Integer.class)) {
       OperationBuilder b =
           g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
       b.build();
@@ -65,8 +64,7 @@ public class OperationBuilderTest {
   public void failOnUseAfterGraphClose() {
     OperationBuilder b = null;
     try (Graph g = new Graph();
-        @SuppressWarnings("unchecked")
-            Tensor<Integer> t = (Tensor<Integer>) Tensor.create(1)) {
+        Tensor<Integer> t = Tensor.create(1).expect(Integer.class)) {
       b = g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
     }
     try {
@@ -87,8 +85,7 @@ public class OperationBuilderTest {
     // types that aren't inferred from the input arguments.
     try (Graph g = new Graph()) {
       // dtype, tensor attributes.
-      try (@SuppressWarnings("unchecked")
-          Tensor<Integer> t = (Tensor<Integer>) Tensor.create(1)) {
+      try (Tensor<Integer> t = Tensor.create(1).expect(Integer.class)) {
         g.opBuilder("Const", "DataTypeAndTensor")
             .setAttr("dtype", DataType.INT32)
             .setAttr("value", t)
@@ -152,13 +149,12 @@ public class OperationBuilderTest {
     }
   }
 
-  @SuppressWarnings("unchecked")
   @Test
   public void addControlInput() {
     try (Graph g = new Graph();
         Session s = new Session(g);
-        Tensor<Boolean> yes = (Tensor<Boolean>) Tensor.create(true);
-        Tensor<Boolean> no = (Tensor<Boolean>) Tensor.create(false)) {
+        Tensor<Boolean> yes = Tensor.create(true).expect(Boolean.class);
+        Tensor<Boolean> no = Tensor.create(false).expect(Boolean.class)) {
       Output<Boolean> placeholder = TestUtil.placeholder(g, "boolean", Boolean.class);
       Operation check =
           g.opBuilder("Assert", "assert")

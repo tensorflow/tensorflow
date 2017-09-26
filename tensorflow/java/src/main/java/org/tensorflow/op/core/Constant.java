@@ -144,7 +144,7 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    *     buffer
    */
   public static <T> Constant<T> create(Scope scope, Class<T> type, long[] shape, ByteBuffer data) {
-    try (Tensor<T> value = Tensor.create(DataType.fromClass(type), shape, data).expect(type)) {
+    try (Tensor<T> value = Tensor.create(type, shape, data)) {
       return createWithTensor(scope, value);
     }
   }

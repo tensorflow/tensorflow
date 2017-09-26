@@ -19,9 +19,8 @@ import java.lang.reflect.Array;
 
 /** Static utility functions. */
 public class TestUtil {
-  @SuppressWarnings({"unchecked", "deprecation"})
   public static <T> Output<T> constant(Graph g, String name, Object value) {
-    try (Tensor<T> t = (Tensor<T>) Tensor.create(value)) {
+    try (Tensor<?> t = Tensor.create(value)) {
       return g.opBuilder("Const", name)
           .setAttr("dtype", t.dataType())
           .setAttr("value", t)
