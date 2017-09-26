@@ -105,3 +105,8 @@ CopyOpTest.CopyParameterScalar POPLAR // We return the parameter - not a copy
 
 R4ReduceWindowLargeTest POPLAR // Big
 ReduceWindowTest.NonstandardReduceFunction POPLAR // Don't support non-standard reductions
+
+LocalClientExecuteTest.AddZeroElementVectors POPLAR // Doesn't cope with aliasing
+LocalClientExecuteTest.TupleResult POPLAR // Doesn't cope with aliasing
+LocalClientExecuteTest.NestedTupleResult POPLAR // Doesn't cope with aliasing
+LocalClientExecuteTest.TupleResultWithLayout POPLAR // Doesn't cope with aliasing
