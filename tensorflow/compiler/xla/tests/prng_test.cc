@@ -170,7 +170,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto fn = build_sum_rng(builder);
-  builder.Map({param0}, fn);
+  builder.Map({param0}, fn, {0});
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 

@@ -18,6 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import conditional_distribution
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import transformed_distribution
 from tensorflow.python.ops.distributions import util as distribution_util
@@ -48,21 +51,57 @@ class ConditionalTransformedDistribution(
 
   @distribution_util.AppendDocstring(kwargs_dict=_condition_kwargs_dict)
   def _sample_n(self, n, seed=None,
-                bijector_kwargs=None, distribution_kwargs=None):
-    bijector_kwargs = bijector_kwargs or {}
-    distribution_kwargs = distribution_kwargs or {}
+                bijector_kwargs=None,
+                distribution_kwargs=None):
     sample_shape = _concat_vectors(
         distribution_util.pick_vector(self._needs_rotation, self._empty, [n]),
         self._override_batch_shape,
         self._override_event_shape,
         distribution_util.pick_vector(self._needs_rotation, [n], self._empty))
-    x = self.distribution.sample(sample_shape=sample_shape, seed=seed,
+    distribution_kwargs = distribution_kwargs or {}
+    x = self.distribution.sample(sample_shape=sample_shape,
+                                 seed=seed,
                                  **distribution_kwargs)
     x = self._maybe_rotate_dims(x)
-    return self.bijector.forward(x, **bijector_kwargs)
+    # We'll apply the bijector in the `_call_sample_n` function.
+    return x
+
+  def _call_sample_n(self, sample_shape, seed, name,
+                     bijector_kwargs=None,
+                     distribution_kwargs=None):
+    # We override `_call_sample_n` rather than `_sample_n` so we can ensure that
+    # the result of `self.bijector.forward` is not modified (and thus caching
+    # works).
+    with self._name_scope(name, values=[sample_shape]):
+      sample_shape = ops.convert_to_tensor(
+          sample_shape, dtype=dtypes.int32, name="sample_shape")
+      sample_shape, n = self._expand_sample_shape_to_vector(
+          sample_shape, "sample_shape")
+
+      # First, generate samples. We will possibly generate extra samples in the
+      # event that we need to reinterpret the samples as part of the
+      # event_shape.
+      x = self._sample_n(n, seed, bijector_kwargs, distribution_kwargs)
+
+      # Next, we reshape `x` into its final form. We do this prior to the call
+      # to the bijector to ensure that the bijector caching works.
+      batch_event_shape = array_ops.shape(x)[1:]
+      final_shape = array_ops.concat([sample_shape, batch_event_shape], 0)
+      x = array_ops.reshape(x, final_shape)
+
+      # Finally, we apply the bijector's forward transformation. For caching to
+      # work, it is imperative that this is the last modification to the
+      # returned result.
+      bijector_kwargs = bijector_kwargs or {}
+      y = self.bijector.forward(x, **bijector_kwargs)
+      y = self._set_sample_static_shape(y, sample_shape)
+
+      return y
 
   @distribution_util.AppendDocstring(kwargs_dict=_condition_kwargs_dict)
   def _log_prob(self, y, bijector_kwargs=None, distribution_kwargs=None):
+    # For caching to work, it is imperative that the bijector is the first to
+    # modify the input.
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
