@@ -115,7 +115,9 @@ class ConvolutionThunk : public Thunk {
       perftools::gputools::dnn::ProfileResult* profile_result);
 
   // Returns the convolve algorithms that can be used for this ConvolutionThunk.
-  std::vector<perftools::gputools::dnn::AlgorithmDesc> GetAlgorithms(
+  // TODO(nluehr) GetAlgorithms should return AlgorithmDesc including both
+  // tensor-op and non-tensor-op variants.
+  std::vector<perftools::gputools::dnn::AlgorithmDesc::Index> GetAlgorithms(
       perftools::gputools::StreamExecutor* stream_exec) const;
 
   // Fastest cuDNN convolution algorithm for this thunk learned from

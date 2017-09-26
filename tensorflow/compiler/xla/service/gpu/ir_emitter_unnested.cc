@@ -629,10 +629,12 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
   // array.
   auto emit_cp_tile = [builder, tile_size, &offset_dim, num_rows, logical_x,
                        logical_y](
-      std::function<void(const llvm_ir::IrArray::Index&, llvm::Value*)>
-          emit_cp_element,
-      llvm::Value* tile_width, llvm::Value* tile_height,
-      const llvm_ir::IrArray::Index& index, const string& loop_name) {
+                          std::function<void(const llvm_ir::IrArray::Index&,
+                                             llvm::Value*)>
+                              emit_cp_element,
+                          llvm::Value* tile_width, llvm::Value* tile_height,
+                          const llvm_ir::IrArray::Index& index,
+                          const string& loop_name) {
     llvm_ir::LlvmIfData if_not_last_row = llvm_ir::EmitIfThenElse(
         builder->CreateAnd(
             builder->CreateICmpEQ(builder->getInt64(tile_size), tile_width),
@@ -717,8 +719,8 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
   // Load data from input memory to shared memory tile.
   emit_cp_tile(
       // tile[y, x] = input_array[index]
-      [builder, tile, &input, logical_x](
-          const llvm_ir::IrArray::Index& index, llvm::Value* y) {
+      [builder, tile, &input, logical_x](const llvm_ir::IrArray::Index& index,
+                                         llvm::Value* y) {
         builder->CreateStore(
             input.EmitReadArrayElement(index, builder, "input_element"),
             builder->CreateGEP(tile, {builder->getInt64(0), y, logical_x}));
@@ -741,8 +743,8 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
   // Store data from shared memory tile to output memory.
   emit_cp_tile(
       // output_array[index] = tile[x, y]
-      [builder, tile, &output, logical_x](
-          const llvm_ir::IrArray::Index& index, llvm::Value* y) {
+      [builder, tile, &output, logical_x](const llvm_ir::IrArray::Index& index,
+                                          llvm::Value* y) {
         output.EmitWriteArrayElement(
             index,
             builder->CreateLoad(

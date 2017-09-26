@@ -1959,7 +1959,9 @@ class TFRecordDataset(Dataset):
         bytes in the read buffer. 0 means no buffering.
     """
     super(TFRecordDataset, self).__init__()
-    self._filenames = ops.convert_to_tensor(filenames, name="filenames")
+    # Force the type to string even if filenames is an empty list.
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtypes.string, name="filenames")
     self._compression_type = _convert_optional_param_to_tensor(
         "compression_type",
         compression_type,

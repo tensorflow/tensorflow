@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.contrib.estimator.python.estimator.dnn import *
 from tensorflow.contrib.estimator.python.estimator.extenders import *
 from tensorflow.contrib.estimator.python.estimator.head import *
+from tensorflow.contrib.estimator.python.estimator.logit_fns import *
 from tensorflow.contrib.estimator.python.estimator.multi_head import *
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -36,6 +37,9 @@ _allowed_symbols = [
     'multi_label_head',
     'regression_head',
     'DNNEstimator',
+    'call_logit_fn',
+    'dnn_logit_fn_builder',
+    'linear_logit_fn_builder',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

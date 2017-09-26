@@ -245,8 +245,8 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 // Emits the given module to a bit code file.
 void EmitBitcodeToFile(const Module& module, tensorflow::StringPiece filename) {
   std::error_code error_code;
-  llvm::tool_output_file outfile(filename.ToString().c_str(), error_code,
-                                 llvm::sys::fs::F_None);
+  llvm::ToolOutputFile outfile(filename.ToString().c_str(), error_code,
+                               llvm::sys::fs::F_None);
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }

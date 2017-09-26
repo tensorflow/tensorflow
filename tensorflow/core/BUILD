@@ -218,7 +218,6 @@ tf_proto_library(
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
-    js_codegen = "jspb",
     visibility = ["//visibility:public"],
 )
 
