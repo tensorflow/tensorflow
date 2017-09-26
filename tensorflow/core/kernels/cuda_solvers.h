@@ -200,7 +200,7 @@ class CudaSolver {
   // Returns Status::OK() if the kernel was launched successfully.See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrfbatched
   template <typename Scalar>
-  Status GetrfBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
+  Status GetrfBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                       int* dev_pivots, DeviceLapackInfo* dev_lapack_info,
                       int batch_size) const TF_MUST_USE_RESULT;
 
@@ -209,9 +209,9 @@ class CudaSolver {
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched
   template <typename Scalar>
   Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
-                      const Scalar* dev_Aarray[], int lda, const int* devIpiv,
-                      const Scalar* dev_Barray[], int ldb,
-                      DeviceLapackInfo* dev_lapack_info,
+                      const Scalar* const dev_Aarray[], int lda,
+                      const int* devIpiv, const Scalar* const dev_Barray[],
+                      int ldb, DeviceLapackInfo* dev_lapack_info,
                       int batch_size) const TF_MUST_USE_RESULT;
 
   // Computes matrix inverses for a batch of small matrices. Uses the outputs
@@ -219,9 +219,9 @@ class CudaSolver {
   // successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getribatched
   template <typename Scalar>
-  Status GetriBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
+  Status GetriBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                       const int* dev_pivots,
-                      const Scalar* host_a_inverse_dev_ptrs[], int ldainv,
+                      const Scalar* const host_a_inverse_dev_ptrs[], int ldainv,
                       DeviceLapackInfo* dev_lapack_info,
                       int batch_size) const TF_MUST_USE_RESULT;
 
@@ -229,9 +229,9 @@ class CudaSolver {
   // Returns Status::OK() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-matinvbatched
   template <typename Scalar>
-  Status MatInvBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
-                       const Scalar* host_a_inverse_dev_ptrs[], int ldainv,
-                       DeviceLapackInfo* dev_lapack_info,
+  Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
+                       const Scalar* const host_a_inverse_dev_ptrs[],
+                       int ldainv, DeviceLapackInfo* dev_lapack_info,
                        int batch_size) const TF_MUST_USE_RESULT;
 
   // QR factorization.

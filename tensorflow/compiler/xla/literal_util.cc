@@ -353,8 +353,7 @@ std::unique_ptr<Literal> Literal::Relayout(
   const Literal* copy_from = this;
   Literal* copy_to = outer_result.get();
   for (int64 i = 0; i < shape_index.size(); i++) {
-    *ShapeUtil::GetMutableSubshape(copy_to->mutable_shape(),
-                                   ShapeIndex(shape_index, i))
+    *ShapeUtil::GetMutableSubshape(copy_to->mutable_shape(), {shape_index, i})
          ->mutable_layout() = new_layout;
     copy_from = &copy_from->tuple_literals_[shape_index[i]];
     copy_to = &copy_to->tuple_literals_[shape_index[i]];

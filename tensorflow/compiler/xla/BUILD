@@ -227,6 +227,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
     ],
 )

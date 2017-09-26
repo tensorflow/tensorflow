@@ -99,7 +99,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 			return nil, bug("NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v", dataType, shape, nbytes, buf.Len())
 		}
 	} else {
-		e := stringEncoder{offsets: buf, data: raw[nflattened*8:], status: newStatus()}
+		e := stringEncoder{offsets: buf, data: raw[nflattened*8 : len(raw)], status: newStatus()}
 		if err := e.encode(reflect.ValueOf(value)); err != nil {
 			return nil, err
 		}

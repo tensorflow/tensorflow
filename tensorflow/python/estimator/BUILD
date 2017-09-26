@@ -8,25 +8,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-py_library(
-    name = "estimator_py",
-    srcs = ["estimator_lib.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":dnn",
-        ":dnn_linear_combined",
-        ":estimator",
-        ":export",
-        ":inputs",
-        ":linear",
-        ":model_fn",
-        ":parsing_utils",
-        ":run_config",
-        ":training",
-        "//tensorflow/python:util",
-    ],
-)
-
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -37,6 +18,77 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+py_library(
+    name = "estimator_py",
+    srcs = ["estimator_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dnn",
+        ":dnn_linear_combined",
+        ":estimator",
+        ":export",
+        ":export_strategy",
+        ":inputs",
+        ":linear",
+        ":model_fn",
+        ":parsing_utils",
+        ":run_config",
+        ":training",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "export_strategy",
+    srcs = ["export_strategy.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gc",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "export_strategy_test",
+    size = "small",
+    srcs = ["export_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":export_strategy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "gc",
+    srcs = ["gc.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "gc_test",
+    size = "small",
+    srcs = ["gc_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gc",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_library(

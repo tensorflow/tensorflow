@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
-#include "third_party/eigen3/Eigen/Core"
 // clang-format off
 #include "cuda/include/cudnn.h"
 // clang-format on
@@ -560,9 +560,9 @@ class ScopedFilterDescriptor {
 static bool TensorOpMathEnabled() {
   static bool is_enabled = [] {
     bool ret;
-    tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
-                                   /*default=*/false, &ret);
-    return !ret;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
+                                               /*default=*/false, &ret));
+    return ret;
   }();
   return is_enabled;
 }
@@ -2469,73 +2469,58 @@ struct WinogradNonfused {
 };
 
 bool CudnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
-    // clang-format off
-    CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
-    CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
-    CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
-    CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
-    CUDNN_CONVOLUTION_FWD_ALGO_FFT,
+    bool with_winograd_nonfused,
+    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
+  out_algorithms->assign({
+      // clang-format off
+      CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
+      CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+      CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
+      CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
+      CUDNN_CONVOLUTION_FWD_ALGO_FFT,
 #if CUDNN_VERSION >= 5000
-    CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
+      CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
 #endif
-    // clang-format on
-  };
+      // clang-format on
+  });
   if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
-    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
+    out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
   }
 #if CUDNN_VERSION >= 5100
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
-    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
+    out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
-
-  out_algorithms->clear();
-  for (auto i : algo_types) {
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
-      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
-    }
-  }
   return true;
 }
 
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
-    // clang-format off
-    CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
-    CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
-    CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
-    CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
+    bool with_winograd_nonfused,
+    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
+  out_algorithms->assign({
+      // clang-format off
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_0,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_FFT_TILING,
 #if CUDNN_VERSION >= 5000
-    CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
+      CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD,
 #endif
-    // clang-format on
-  };
+      // clang-format on
+  });
 #if CUDNN_VERSION >= 5100
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
-    algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
+    out_algorithms->push_back(
+        CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
-
-  out_algorithms->clear();
-  for (auto i : algo_types) {
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
-      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
-    }
-  }
   return true;
 }
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
+    bool with_winograd_nonfused,
+    std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) {
+  out_algorithms->assign({
       // clang-format off
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0,
       CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
@@ -2544,20 +2529,13 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       // Based on cudnn.h, the following is not implemented.
       // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
       // clang-format on
-  };
+  });
 #if CUDNN_VERSION >= 5110
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
-    algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
+    out_algorithms->push_back(
+        CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
-
-  out_algorithms->clear();
-  for (auto i : algo_types) {
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
-      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
-    }
-  }
   return true;
 }
 

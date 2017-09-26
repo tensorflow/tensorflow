@@ -1001,6 +1001,8 @@ class BaseEstimator(
             saver.Saver(
                 sharded=True,
                 max_to_keep=self._config.keep_checkpoint_max,
+                keep_checkpoint_every_n_hours=(
+                    self._config.keep_checkpoint_every_n_hours),
                 defer_build=True,
                 save_relative_paths=True))
 
