@@ -123,6 +123,7 @@ void *PoplarExecutor::Allocate(uint64 size) {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     allocations_.push_back(allocated);
   }
+  LOG(INFO) << "ALLOCATED " << size << " ON POPLAR.  RET " << (void*)allocated;
   return allocated;
 }
 
@@ -154,15 +155,16 @@ bool PoplarExecutor::Memcpy(Stream *stream, void *host_dst,
 
 bool PoplarExecutor::Memcpy(Stream *stream, DeviceMemoryBase *pop_dst,
                           const void *host_src, uint64 size) {
+  DeviceMemoryBase dst = *pop_dst;
   AsPoplarStream(stream)->EnqueueTask(
-      [this, pop_dst, host_src, size]() {
-        port::Status ok = SynchronousMemcpy(pop_dst, host_src, size); });
+      [this, dst, host_src, size]() mutable {
+        port::Status ok = SynchronousMemcpy(&dst, host_src, size); });
   return true;
 }
 
 port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
-                                             const void *host_src,
-                                             uint64 size) {
+                                               const void *host_src,
+                                               uint64 size) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
   memcpy(tc->data, host_src, size);
   {
@@ -174,8 +176,8 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
 }
 
 port::Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
-                                             const DeviceMemoryBase &pop_src,
-                                             uint64 size) {
+                                               const DeviceMemoryBase &pop_src,
+                                               uint64 size) {
   const TensorControl* tc =
           reinterpret_cast<const TensorControl*>(pop_src.opaque());
   {
