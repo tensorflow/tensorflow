@@ -9,6 +9,7 @@ load(":build_defs.bzl", "JAVACOPTS")
 load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_binary_additional_srcs",
     "tf_copts",
     "tf_cc_binary",
     "tf_java_test",
@@ -303,7 +304,7 @@ genrule(
     outs = ["pom.xml"],
     cmd = "$(location generate_pom) >$@",
     output_to_bindir = 1,
-    tools = [":generate_pom"],
+    tools = [":generate_pom"] + tf_binary_additional_srcs(),
 )
 
 tf_cc_binary(
