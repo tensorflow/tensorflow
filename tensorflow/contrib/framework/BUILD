@@ -27,10 +27,10 @@ tf_custom_op_py_library(
         "python/framework/experimental.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
+        "python/ops/accumulate_n_v2.py",
         "python/ops/arg_scope.py",
         "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
-        "python/ops/accumulate_n_v2.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
         "python/ops/variables.py",
@@ -105,34 +105,12 @@ tf_custom_op_library(
 # No kernels to build for the "AccumulateNV2" op; a rewrite in
 # tensorflow/core/common_runtime/accumulate_n_optimizer.cc converts instances
 # of the op into a graph of lower-level ops.
-
 tf_custom_op_library(
     name = "python/ops/_accumulate_n_v2_op.so",
     srcs = [
         "ops/accumulate_n_v2_op.cc",
     ],
-    deps = [
-    ],
 )
-
-#cc_binary(
-#    name = "python/ops/_accumulate_n_v2_op.so",
-#    srcs = [
-#        "ops/accumulate_n_v2_op.cc",
-#        "kernels/accumulate_n_optimizer.cc",
-#    ],
-#    deps = [
-#        #"//tensorflow/core:framework",
-#        "//tensorflow/core:core",
-#        #"//tensorflow/core:framework_headers_lib",
-#
-#        "@protobuf_archive//:protobuf_headers",
-#        "@nsync//:nsync_headers",
-#        "//third_party/eigen3",
-#    ],
-#    linkshared=1,
-#)
-
 
 tf_gen_op_libs(
     op_lib_names = [
@@ -207,7 +185,6 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
-
 
 py_test(
     name = "ops_test",
