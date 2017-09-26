@@ -230,7 +230,9 @@ CreateWhileOp(poplar::Graph &graph,
 
   poplar::program::Sequence main_seq;
   for (unsigned int i=0; i<param_count; i++) {
-    main_seq.add(poplar::program::Copy(inits[i], body_outputs[i]));
+    if (body_outputs[i].isParallelWriteable()) {
+      main_seq.add(poplar::program::Copy(inits[i], body_outputs[i]));
+    }
   }
 
   // Body
