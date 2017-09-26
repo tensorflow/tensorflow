@@ -71,10 +71,18 @@ class ComputationBuilder {
     metadata_ = metadata;
   }
 
-  // Clears the HloMetdata state.
+  // Clears the HloMetadata state.
   void ClearOpMetadata() {
     metadata_.Clear();
   }
+
+  // Sets an OpDeviceAssignment that will be attached to all instructions
+  // until cleared.
+  void SetDeviceAssignment(const OpDeviceAssignment& assignment);
+
+  // Clears the device assignment. Ops will be placed according to the default
+  // placement policy.
+  void ClearDeviceAssignment();
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -460,6 +468,12 @@ class ComputationBuilder {
       const ComputationDataHandle& init_value, const Computation& computation,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
 
+  // Convenience wrapper around the above that reduces all the dimensions in the
+  // operand shape.
+  ComputationDataHandle ReduceAll(const ComputationDataHandle& operand,
+                                  const ComputationDataHandle& init_value,
+                                  const Computation& computation);
+
   // Enqueues a windowed reduce instruction onto the computation.
   ComputationDataHandle ReduceWindow(
       const ComputationDataHandle& operand,
@@ -510,6 +524,10 @@ class ComputationBuilder {
 
   // Enqueues a ceil instruction onto the computation.
   ComputationDataHandle Ceil(const ComputationDataHandle& operand);
+
+  // Enqueues a round instruction onto the computation, rounding to nearest even
+  // with half-way cases rounding away from zero.
+  ComputationDataHandle Round(const ComputationDataHandle& operand);
 
   // Enqueues an log instruction (natural logarithm) onto the computation.
   ComputationDataHandle Log(const ComputationDataHandle& operand);
@@ -805,7 +823,7 @@ class ComputationBuilder {
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
-  void AddOpMetadata(OpRequest* request) const;
+  void AddCommonFieldsToOpRequest(OpRequest* request) const;
 
   string name_;  // Name to use for the built computation.
 
@@ -829,6 +847,9 @@ class ComputationBuilder {
   // operation, in order to simplify client code (and not sprinkle this metadata
   // throughout the TensorFlow op kernel implementations).
   OpMetadata metadata_;
+
+  // Device assignment for the operator.
+  OpDeviceAssignment device_assignment_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationBuilder);
 };

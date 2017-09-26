@@ -61,6 +61,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_LOGICAL_NOT;
     case HloOpcode::kNegate:
       return UNOP_NEGATE;
+    case HloOpcode::kRoundNearestAfz:
+      return UNOP_ROUND_NEAREST_AFZ;
     case HloOpcode::kSign:
       return UNOP_SIGN;
     case HloOpcode::kSin:
@@ -70,7 +72,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
     case HloOpcode::kTanh:
       return UNOP_TANH;
     default:
-      LOG(FATAL) << "unhandled opcode " << opcode;
+      LOG(FATAL) << "Unhandled opcode for conversion to unary operation: "
+                 << opcode;
   }
 }
 
@@ -313,8 +316,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       }
       return arg;
     case UNOP_ABS:
-    case UNOP_SIGN:
     case UNOP_NEGATE:
+    case UNOP_ROUND_NEAREST_AFZ:
+    case UNOP_SIGN:
     case UNOP_SORT:
       return arg;
 
@@ -337,8 +341,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       return ShapeUtil::ChangeElementType(arg, PRED);
 
     default:
-      return InvalidArgument("unknown operation %s",
-                             UnaryOperation_Name(operation).c_str());
+      return InvalidArgument(
+          "Unknown operation for unary shape inference: \"%s\".",
+          UnaryOperation_Name(operation).c_str());
   }
 }
 

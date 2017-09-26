@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
-#include "third_party/eigen3/Eigen/Core"
 // clang-format off
 #include "cuda/include/cudnn.h"
 // clang-format on
@@ -560,8 +560,8 @@ class ScopedFilterDescriptor {
 static bool TensorOpMathEnabled() {
   static bool is_enabled = [] {
     bool ret;
-    tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
-                                   /*default=*/false, &ret);
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
+                                               /*default=*/false, &ret));
     return ret;
   }();
   return is_enabled;

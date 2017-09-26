@@ -167,7 +167,15 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleAbs(HloInstruction* abs, HloInstruction* operand) override {
     return HandleAbs<ReturnT>(abs, operand);
-  };
+  }
+
+  Status HandleRound(HloInstruction* round) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[round],
+                        ElementWiseUnaryOp(round, [](ReturnT elem_operand) {
+                          return std::round(elem_operand);
+                        }));
+    return Status::OK();
+  }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
     parent_->evaluated_[broadcast] =

@@ -121,18 +121,6 @@ py_test(
 )
 
 py_test(
-    name = "logit_fns_test",
-    size = "small",
-    srcs = ["python/learn/estimators/logit_fns_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/estimator:model_fn",
-    ],
-)
-
-py_test(
     name = "estimators_test",
     size = "small",
     srcs = ["python/learn/estimators/estimators_test.py"],
