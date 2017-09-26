@@ -32,6 +32,7 @@ from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -71,6 +72,48 @@ class TestGatherTree(test.TestCase):
       res_ = sess.run(res)
 
     self.assertAllEqual(expected_result, res_)
+
+  def test_gather_tree_from_array(self):
+    # Only define a slice in depth of the array to simplify the declaration.
+    sliced_array = np.array(
+        [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [0, 0, 0]],
+         [[2, 3, 4], [5, 6, 7], [8, 9, 10], [11, 12, 0]]]).transpose([1, 0, 2])
+    parent_ids = np.array(
+        [[[0, 0, 0], [0, 1, 1], [2, 1, 2], [-1, -1, -1]],
+         [[0, 0, 0], [1, 1, 0], [2, 0, 1], [0, 1, 0]]]).transpose([1, 0, 2])
+    expected_sliced_array = np.array(
+        [[[2, 2, 2], [6, 5, 6], [7, 8, 9], [0, 0, 0]],
+         [[2, 3, 2], [7, 5, 7], [8, 9, 8], [11, 12, 0]]]).transpose([1, 0, 2])
+    sequence_length = [[3, 3, 3], [4, 4, 3]]
+
+    sliced_array = ops.convert_to_tensor(
+        sliced_array, dtype=dtypes.float32)
+    expected_sliced_array = ops.convert_to_tensor(
+        expected_sliced_array, dtype=dtypes.float32)
+
+    max_time = array_ops.shape(sliced_array)[0]
+    batch_size = array_ops.shape(sliced_array)[1]
+    beam_width = array_ops.shape(sliced_array)[2]
+
+    def _tile_in_depth(tensor_slice, depth):
+      tensor = array_ops.tile(
+          array_ops.expand_dims(tensor_slice, -1), [1, 1, 1, depth])
+      tensor = array_ops.reshape(
+          tensor, [max_time, batch_size, beam_width, depth])
+      return tensor
+
+    array = _tile_in_depth(sliced_array, 10)
+    expected_array = _tile_in_depth(expected_sliced_array, 10)
+
+    array = tensor_array_ops.TensorArray(
+        array.dtype, size=0, dynamic_size=True).unstack(array)
+    sorted_array = beam_search_decoder.gather_tree_from_array(
+        array, parent_ids, sequence_length).stack()
+
+    with self.test_session() as sess:
+      sorted_array = sess.run(sorted_array)
+      expected_array = sess.run(expected_array)
+      self.assertAllEqual(expected_array, sorted_array)
 
 
 class TestEosMasking(test.TestCase):
@@ -227,7 +270,8 @@ class TestBeamStep(test.TestCase):
 
 class BeamSearchDecoderTest(test.TestCase):
 
-  def _testDynamicDecodeRNN(self, time_major, has_attention):
+  def _testDynamicDecodeRNN(self, time_major, has_attention,
+                            with_alignment_history=False):
     encoder_sequence_length = np.array([3, 2, 3, 1, 1])
     decoder_sequence_length = np.array([2, 0, 1, 2, 3])
     batch_size = 5
@@ -267,7 +311,7 @@ class BeamSearchDecoderTest(test.TestCase):
             cell=cell,
             attention_mechanism=attention_mechanism,
             attention_layer_size=attention_depth,
-            alignment_history=False)
+            alignment_history=with_alignment_history)
       cell_state = cell.zero_state(
           dtype=dtypes.float32, batch_size=batch_size_tensor * beam_width)
       if has_attention:
@@ -286,6 +330,12 @@ class BeamSearchDecoderTest(test.TestCase):
       final_outputs, final_state, final_sequence_lengths = (
           decoder.dynamic_decode(
               bsd, output_time_major=time_major, maximum_iterations=max_out))
+
+      if with_alignment_history:
+        # Remove the alignment history from final_state for purposes of the
+        # remainder of the tests.
+        cell_state = final_state.cell_state._replace(alignment_history=())  # pylint: disable=protected-access
+        final_state = final_state._replace(cell_state=cell_state)  # pylint: disable=protected-access
 
       def _t(shape):
         if time_major:
@@ -328,6 +378,12 @@ class BeamSearchDecoderTest(test.TestCase):
 
   def testDynamicDecodeRNNBatchMajorYesAttention(self):
     self._testDynamicDecodeRNN(time_major=False, has_attention=True)
+
+  def testDynamicDecodeRNNBatchMajorYesAttentionWithAlignmentHistory(self):
+    self._testDynamicDecodeRNN(
+        time_major=False,
+        has_attention=True,
+        with_alignment_history=True)
 
 
 if __name__ == '__main__':
