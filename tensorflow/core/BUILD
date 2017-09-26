@@ -2471,7 +2471,7 @@ tf_cc_test_mkl(
         "graph/mkl_layout_pass_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    linkstatic = 1,
     deps = [
         ":core",
         ":core_cpu",

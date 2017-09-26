@@ -568,7 +568,7 @@ def tf_cc_test_mkl(srcs,
                    tags=[],
                    size="medium",
                    args=None):
-  if_mkl(tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args, nocopts="-fno-exceptions"))
+  if_mkl(tf_cc_tests(srcs, deps, name, linkstatic=linkstatic, tags=tags, size=size, args=args, nocopts="-fno-exceptions"))
 
 
 def tf_cc_tests_gpu(srcs,
