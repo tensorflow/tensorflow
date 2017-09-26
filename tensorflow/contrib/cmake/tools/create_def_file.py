@@ -63,6 +63,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
                         r"tensorflow::|"
                         r"functor::|"
+                        r"nsync_|"
                         r"perftools::gputools")
 
 # We want to identify data members explicitly in the DEF file, so that no one
@@ -71,7 +72,6 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
 # __declspec(dllimport). It is easier to detect what a data symbol does 
 # NOT look like, so doing it with the below regex.
 DATA_EXCLUDE_RE = re.compile(r"[)(]|"
-                             r"nsync_|"
                              r"vftable|"
                              r"vbtable|"
                              r"vcall|"
