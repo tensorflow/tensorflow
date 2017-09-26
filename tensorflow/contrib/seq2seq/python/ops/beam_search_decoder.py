@@ -67,8 +67,8 @@ class FinalBeamSearchDecoderOutput(
   Args:
     predicted_ids: The final prediction. A tensor of shape
       `[T, batch_size, beam_width]`.
-    beam_search_output: An instance of `BeamSearchDecoderOutput` that describes
-      the state of the beam search.
+    beam_search_decoder_output: An instance of `BeamSearchDecoderOutput` that
+      describes the state of the beam search.
   """
   pass
 
