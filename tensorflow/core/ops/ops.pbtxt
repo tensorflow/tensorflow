@@ -9119,7 +9119,7 @@ op {
   }
   output_arg {
     name: "reserve_space_2"
-    description: "A 1D Tensor for the computed batch variance (inverted variance\nin the cuDNN case), to be used in the gradient computation."
+    description: "A 1D Tensor for the computed batch variance (inverted variance\nin the cuDNN case), to be reused in the gradient computation."
     type_attr: "T"
   }
   attr {
@@ -9178,12 +9178,12 @@ op {
   }
   input_arg {
     name: "reserve_space_1"
-    description: "A 1D Tensor for the computed batch mean, to be reused\nin the gradient computation."
+    description: "When is_training is True, a 1D Tensor for the computed batch mean\nto be reused in gradient computation.\nWhen is_training is False, a 1D Tensor for the population mean\nto be reused in both 1st and 2nd order gradient computation."
     type_attr: "T"
   }
   input_arg {
     name: "reserve_space_2"
-    description: "A 1D Tensor for the computed batch variance (inverted variance\nin the cuDNN case), to be used in the gradient computation."
+    description: "When is_training is True, a 1D Tensor for the computed batch variance\n(inverted variance in the cuDNN case) to be reused in gradient computation.\nWhen is_training is False, a 1D Tensor for the population variance\nto be reused in both 1st and 2nd order gradient computation."
     type_attr: "T"
   }
   output_arg {
@@ -15866,25 +15866,6 @@ op {
     description: "The type of the serialized tensor.  The provided type must match the\ntype of the serialized tensor and no implicit conversion will take place."
   }
   summary: "Transforms a serialized tensorflow.TensorProto proto into a Tensor."
-}
-op {
-  name: "SerializeTensor"
-  input_arg {
-    name: "tensor"
-    description: "A Tensor of type `T`."
-    type: "T"
-  }
-  output_arg {
-    name: "serialized"
-    description: "A serialized TensorProto proto of the input tensor."
-    type_attr: DT_STRING
-  }
-  attr {
-    name: "T"
-    type: "type"
-    description: "The type of the input tensor."
-  }
-  summary: "Transforms a Tensor into a serialized TensorProto proto."
 }
 op {
   name: "Placeholder"
