@@ -1056,6 +1056,36 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tuple_simplifier",
+    srcs = ["tuple_simplifier.cc"],
+    hdrs = ["tuple_simplifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "tuple_simplifier_test",
+    srcs = ["tuple_simplifier_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":tuple_simplifier",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "reshape_mover",
     srcs = ["reshape_mover.cc"],
     hdrs = ["reshape_mover.h"],
