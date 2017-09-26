@@ -10,9 +10,9 @@ package(default_visibility = [
     "//tensorflow:__subpackages__",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -122,8 +122,8 @@ tf_gen_op_libs(
 cc_library(
     name = "all_ops",
     deps = [
-        ":variable_ops_op_lib",
         ":accumulate_n_v2_op_op_lib",
+        ":variable_ops_op_lib",
     ],
 )
 
@@ -142,7 +142,6 @@ tf_gen_op_wrapper_py(
         ":accumulate_n_v2_op_op_lib",
     ],
 )
-
 
 py_test(
     name = "arg_scope_test",
