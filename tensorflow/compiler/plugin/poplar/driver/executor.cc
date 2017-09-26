@@ -123,7 +123,6 @@ void *PoplarExecutor::Allocate(uint64 size) {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     allocations_.push_back(allocated);
   }
-  LOG(INFO) << "ALLOCATED " << size << " ON POPLAR.  RET " << (void*)allocated;
   return allocated;
 }
 
