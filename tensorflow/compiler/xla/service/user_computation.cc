@@ -421,7 +421,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddMapInstruction(
       to_apply_computation.ComputeProgramShape(to_apply_version));
   TF_ASSIGN_OR_RETURN(
       Shape inferred_shape,
-      ShapeInference::InferMapShape(operand_shapes, *to_apply_program_shape));
+      ShapeInference::InferMapShape(operand_shapes, *to_apply_program_shape,
+                                    map_request.dimensions()));
 
   ComputationDataHandle handle = CreateComputationDataHandle();
 
