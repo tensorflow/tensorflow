@@ -694,6 +694,13 @@ def _AddNGrad(op, grad):
   return [grad] * len(op.inputs)
 
 
+@ops.RegisterGradient("AccumulateN")
+def _AddNGrad(op, grad):
+  """Same as gradient for AddN. Copies the gradient to all inputs."""
+  # Not broadcasting.
+  return [grad] * len(op.inputs)
+
+
 @ops.RegisterGradient("Add")
 def _AddGrad(op, grad):
   x = op.inputs[0]

@@ -470,6 +470,9 @@ Status AddNGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("AddN", AddNGrad);
 
+// AccumulateN is equivalent to AddN for gradient computation purposes
+REGISTER_GRADIENT_OP("AccumulateN", AddNGrad);
+
 // MaximumMinimumGradCommon adds shared ops to calculate gradients for
 // the binary Maximum and Minimum ops.
 Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
