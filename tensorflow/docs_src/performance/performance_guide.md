@@ -541,11 +541,10 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 | Optimization | Data Format | Images/Sec   | Intra threads | Inter Threads |
 :              :             : (step time)  :               :               :
 | ------------ | ----------- | ------------ | ------------- | ------------- |
-| AVX2         | NHWC        | 6.8 (147ms)  | 4             | 0             |
-| MKL          | NCHW        | 6.6 (151ms)  | 4             | 1             |
-| MKL          | NHWC        | 5.95 (168ms) | 4             | 1             |
-| AVX          | NHWC        | 4.7 (211ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.7 (370ms)  | 4             | 0             |
+| AVX2         | NHWC        | 7.0 (142ms)  | 4             | 0             |
+| MKL          | NCHW        | 6.6 (152ms)  | 4             | 1             |
+| AVX          | NHWC        | 5.0 (202ms)  | 4             | 0             |
+| SSE3         | NHWC        | 2.8 (361ms)  | 4             | 0             |
 
 **Batch Size: 32**
 
@@ -561,12 +560,11 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 | Optimization | Data Format | Images/Sec    | Intra threads | Inter Threads |
 :              :             : (step time)   :               :               :
 | ------------ | ----------- | ------------- | ------------- | ------------- |
-| MKL          | NCHW        | 10.24         | 4             | 1             |
-:              :             : (3125ms)      :               :               :
-| MKL          | NHWC        | 8.9 (3595ms)  | 4             | 1             |
-| AVX2         | NHWC        | 7.3 (4383ms)  | 4             | 0             |
-| AVX          | NHWC        | 5.1 (6275ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.8 (11428ms) | 4             | 0             |
+| MKL          | NCHW        | 10.3          | 4             | 1             |
+:              :             : (3,104ms)     :               :               :
+| AVX2         | NHWC        | 7.5 (4,255ms) | 4             | 0             |
+| AVX          | NHWC        | 5.1 (6,275ms) | 4             | 0             |
+| SSE3         | NHWC        | 2.8 (11,428ms)| 4             | 0             |
 
 #### Inference ResNet-50
 
@@ -592,11 +590,10 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 | Optimization | Data Format | Images/Sec   | Intra threads | Inter Threads |
 :              :             : (step time)  :               :               :
 | ------------ | ----------- | ------------ | ------------- | ------------- |
-| AVX2         | NHWC        | 6.8 (147ms)  | 4             | 0             |
-| MKL          | NCHW        | 6.6 (151ms)  | 4             | 1             |
-| MKL          | NHWC        | 5.95 (168ms) | 4             | 1             |
-| AVX          | NHWC        | 4.7 (211ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.7 (370ms)  | 4             | 0             |
+| AVX2         | NHWC        | 8.8 (113ms)  | 4             | 0             |
+| MKL          | NCHW        | 8.5 (120ms)  | 4             | 1             |
+| AVX          | NHWC        | 6.4 (157ms)  | 4             | 0             |
+| SSE3         | NHWC        | 3.7 (270ms)  | 4             | 0             |
 
 **Batch Size: 32**
 
@@ -612,12 +609,11 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 | Optimization | Data Format | Images/Sec    | Intra threads | Inter Threads |
 :              :             : (step time)   :               :               :
 | ------------ | ----------- | ------------- | ------------- | ------------- |
-| MKL          | NCHW        | 10.24         | 4             | 1             |
-:              :             : (3125ms)      :               :               :
-| MKL          | NHWC        | 8.9 (3595ms)  | 4             | 1             |
-| AVX2         | NHWC        | 7.3 (4383ms)  | 4             | 0             |
-| AVX          | NHWC        | 5.1 (6275ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.8 (11428ms) | 4             | 0             |
+| MKL          | NCHW        | 12.4          | 4             | 1             |
+:              :             : (2,590ms)     :               :               :
+| AVX2         | NHWC        | 10.4 (3,079ms)| 4             | 0             |
+| AVX          | NHWC        | 7.3 (4,4416ms)| 4             | 0             |
+| SSE3         | NHWC        | 4.0 (8,054ms) | 4             | 0             |
 
 #### Training InceptionV3
 

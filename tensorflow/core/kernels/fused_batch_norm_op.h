@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_FUSED_BATCH_NORM_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 namespace functor {
@@ -51,17 +51,20 @@ struct InvVarianceToVariance {
 
 #endif  // GOOGLE_CUDA
 
-// Functor used by FusedBatchNormGradOp to do the computations when is_training=False.
-// Both CPU and GPU will use this functor.
+// Functor used by FusedBatchNormGradOp to do the computations when
+// is_training=False. Both CPU and GPU will use this functor.
 template <typename Device, typename T>
 struct FusedBatchNormFreezeGrad {
   void operator()(const Device& d, const Tensor& y_backprop_input,
                   const Tensor& x_input, const Tensor& scale_input,
-                  const Tensor& pop_mean_input, const Tensor& pop_variance_input,
-                  T epsilon, Tensor* x_backprop_output,
-                  Tensor* scale_backprop_output, Tensor* offset_backprop_output,
-                  typename TTypes<T>::Vec scratch1, typename TTypes<T>::Vec scratch2) {
-    typename TTypes<T, 4>::ConstTensor y_backprop(y_backprop_input.tensor<T, 4>());
+                  const Tensor& pop_mean_input,
+                  const Tensor& pop_variance_input, T epsilon,
+                  Tensor* x_backprop_output, Tensor* scale_backprop_output,
+                  Tensor* offset_backprop_output,
+                  typename TTypes<T>::Vec scratch1,
+                  typename TTypes<T>::Vec scratch2) {
+    typename TTypes<T, 4>::ConstTensor y_backprop(
+        y_backprop_input.tensor<T, 4>());
     typename TTypes<T, 4>::ConstTensor input(x_input.tensor<T, 4>());
     typename TTypes<T>::ConstVec scale(scale_input.vec<T>());
     typename TTypes<T>::ConstVec pop_mean(pop_mean_input.vec<T>());
@@ -89,22 +92,24 @@ struct FusedBatchNormFreezeGrad {
     // offset_backprop  = sum(y_backprop)
     // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var + epsilon))
     // x_backprop = y_backprop * (scale * rsqrt(pop_var + epsilon))
-    offset_backprop.device(d) = y_backprop.reshape(rest_by_depth).sum(reduction_axis);
+    offset_backprop.device(d) =
+        y_backprop.reshape(rest_by_depth).sum(reduction_axis);
 
     // scratch1 = rsqrt(pop_var + epsilon)
     scratch1.device(d) = (pop_var + pop_var.constant(epsilon)).rsqrt();
 
     // scratch2 = sum(y_backprop * (x - mean))
-    scratch2.device(d) = (y_backprop.reshape(rest_by_depth) *
-                          (input.reshape(rest_by_depth) -
-                           pop_mean.reshape(one_by_depth).broadcast(rest_by_one)))
-                           .sum(reduction_axis);
+    scratch2.device(d) =
+        (y_backprop.reshape(rest_by_depth) *
+         (input.reshape(rest_by_depth) -
+          pop_mean.reshape(one_by_depth).broadcast(rest_by_one)))
+            .sum(reduction_axis);
 
     x_backprop.reshape(rest_by_depth).device(d) =
         y_backprop.reshape(rest_by_depth) * ((scratch1 * scale)
-                                               .eval()
-                                               .reshape(one_by_depth)
-                                               .broadcast(rest_by_one));
+                                                 .eval()
+                                                 .reshape(one_by_depth)
+                                                 .broadcast(rest_by_one));
     scale_backprop.device(d) = scratch2 * scratch1;
   }
 };

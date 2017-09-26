@@ -573,6 +573,13 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
+  def test_latest_checkpoint(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    self.assertIsNone(est.latest_checkpoint())
+    est.train(dummy_input_fn, steps=5)
+    self.assertIsNotNone(est.latest_checkpoint())
+    self.assertTrue(est.latest_checkpoint().startswith(est.model_dir))
+
   def test_steps_and_saves_reloads(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
     est.train(dummy_input_fn, steps=5)
@@ -970,9 +977,7 @@ class EstimatorEvaluateTest(test.TestCase):
         model_fn=_model_fn_with_eval_metric_ops,
         params=params)
     scores = est2.evaluate(
-        dummy_input_fn,
-        steps=1,
-        checkpoint_path=saver.latest_checkpoint(est1.model_dir))
+        dummy_input_fn, steps=1, checkpoint_path=est1.latest_checkpoint())
     self.assertEqual(5, scores['global_step'])
 
   def test_scaffold_is_used(self):
@@ -1314,12 +1319,11 @@ class EstimatorPredictTest(test.TestCase):
     est1 = estimator.Estimator(model_fn=_model_fn)
     est1.train(dummy_input_fn, steps=1)
     est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
-    self.assertEqual(
-        [32.],
-        next(
-            est2.predict(
-                dummy_input_fn,
-                checkpoint_path=saver.latest_checkpoint(est1.model_dir))))
+    self.assertEqual([32.],
+                     next(
+                         est2.predict(
+                             dummy_input_fn,
+                             checkpoint_path=est2.latest_checkpoint())))
 
   def test_scaffold_is_used(self):
 

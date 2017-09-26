@@ -40,6 +40,7 @@ tf_kernel_library(
         "pack_op.cc",
         "pad_op.cc",
         "pooling_ops.cc",
+        "quantize_and_dequantize_op.cc",
         "random_ops.cc",
         "reduction_ops.cc",
         "reduction_ops_common.cc",

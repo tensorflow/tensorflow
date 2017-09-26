@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.estimators import logit_fns
+from tensorflow.contrib.estimator.python.estimator import logit_fns
 from tensorflow.python.client import session
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.framework import constant_op
