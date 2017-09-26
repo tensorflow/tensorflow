@@ -42,7 +42,7 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 // dynamic library built out of tensorflow/contrib/framework. Ideally, this
 // class would also be in contrib, but calls to REGISTER_OPTIMIZATION() from
 // third-party libraries aren't currently supported.
-class AccumulateNRemovePass : public GraphOptimizationPass {
+class AccumulateNV2RemovePass : public GraphOptimizationPass {
  public:
 
   Status Run(const GraphOptimizationPassOptions& options) override {
@@ -58,7 +58,7 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
     Graph* g = options.graph->get();
     if (g == nullptr) {
       return errors::Internal(
-          "AccumulateN removal should happen before partitioning and a "
+          "AccumulateNV2 removal should happen before partitioning and a "
           "graph should be available.");
     }
 
@@ -81,7 +81,7 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
                                            const string& name) {
       NodeBuilder node_builder(name, op);
 
-      // The pieces of AccumulateN should all be on the same node.
+      // The pieces of AccumulateNV2 should all be on the same node.
       node_builder.Device(n->requested_device());
       string colo;
       if (GetNodeAttr(n_attrs, kColocationAttrName, &colo).ok()) {
@@ -108,7 +108,7 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
       }
     }
 
-    // Create the following ops to replace the AccumulateN placeholder:
+    // Create the following ops to replace the AccumulateNV2 placeholder:
     Node* create_accumulator = nullptr;            // TemporaryVariable op
     Node* initial_val = nullptr;                   // Const op
     Node* initialize_accumulator = nullptr;        // Assign op
@@ -153,12 +153,12 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
 
     // Add edges to the graph to ensure that operations occur in the right
     // order:
-    // 1. Do anything that had a control edge to the AccumulateN placeholder
+    // 1. Do anything that had a control edge to the AccumulateNV2 placeholder
     // 2. Initialize accumulator
     // 3. Add input values to accumulator (already handled by data edges
     //    added above)
     // 4. Reclaim the buffer that held the accumulator
-    // 5. Do anything that depended on the AccumulateN placeholder
+    // 5. Do anything that depended on the AccumulateNV2 placeholder
     for (const Edge* control_edge : control_edges) {
       g->AddControlEdge(control_edge->src(), initialize_accumulator);
     }
@@ -176,7 +176,7 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
       }
     }
 
-    // Remove the original AccumulateN placeholder op.
+    // Remove the original AccumulateNV2 placeholder op.
     // This removal modifies the op and must happen after we have finished
     // using its incoming/outgoing edge sets.
     g->RemoveNode(n);
@@ -185,7 +185,7 @@ class AccumulateNRemovePass : public GraphOptimizationPass {
   }
 };
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
-                      AccumulateNRemovePass);
+                      AccumulateNV2RemovePass);
 
 }  // namespace
 }  // namespace tensorflow
