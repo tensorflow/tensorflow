@@ -653,6 +653,7 @@ class Experiment(object):
     This method is intended for single machine usage.
 
     This differs from `train_and_evaluate` as follows:
+
       1. The procedure will have train and evaluation in turns. The model
       will be trained for a number of steps (usually smaller than `train_steps`
       if provided) and then be evaluated.  `train_and_evaluate` will train the

@@ -92,6 +92,11 @@ class XlaContext : public ResourceBase {
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateMax(const DataType type);
 
+  // Get an XLA lambda to compute Min. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMin(const DataType type);
+
   // Get an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
@@ -143,6 +148,9 @@ class XlaContext : public ResourceBase {
 
   // Cached computation to compute Max of two elements, specialized by type.
   ComputationMap max_func_;
+
+  // Cached computation to compute Min of two elements, specialized by type.
+  ComputationMap min_func_;
 
   // Cached computation to compute Sum of two elements, specialized by type.
   ComputationMap add_func_;
