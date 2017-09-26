@@ -1260,6 +1260,19 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       y = image_ops.central_crop(x, 0.5)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+      self.assertAllEqual(y_tf.shape, y_np.shape)
+
+  def testCropping2(self):
+    # Test case for 10315
+    x_shape = [240, 320, 3]
+    x_np = np.zeros(x_shape, dtype=np.int32)
+    y_np = np.zeros([80, 106, 3], dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      x = array_ops.placeholder(shape=x_shape, dtype=dtypes.int32)
+      y = image_ops.central_crop(x, 0.33)
+      y_tf = y.eval(feed_dict={x:x_np})
+      self.assertAllEqual(y_tf, y_np)
+      self.assertAllEqual(y_tf.shape, y_np.shape)
 
   def testShapeInference(self):
     # Test no-op fraction=1.0

@@ -251,7 +251,7 @@ def reset_tf_configure_bazelrc():
   if not os.path.exists('.bazelrc'):
     if os.path.exists(os.path.join(home, '.bazelrc')):
       with open('.bazelrc', 'a') as f:
-        f.write('import %s/.bazelrc\n' % home)
+        f.write('import %s/.bazelrc\n' % home.replace('\\', '/'))
     else:
       open('.bazelrc', 'w').close()
 

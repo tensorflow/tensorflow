@@ -1482,7 +1482,8 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
     # For now, variant types must be created via zeros_like; as we need to
     # pass the input variant object to the proper zeros callback.
 
-    if tensor.shape.is_fully_defined() and tensor.dtype != dtypes.variant:
+    if optimize and tensor.shape.is_fully_defined() and \
+        tensor.dtype != dtypes.variant:
       # We can produce a zeros tensor independent of the value of 'tensor',
       # since the shape is known statically.
       return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)

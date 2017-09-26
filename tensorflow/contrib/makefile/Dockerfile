@@ -14,4 +14,5 @@ RUN apt-get install -y \
     make \
     python \
     unzip \
+    wget \
     zlib1g-dev

@@ -74,6 +74,7 @@ else()
         CONFIGURE_COMMAND
             ${jpeg_BUILD}/configure
             --prefix=${jpeg_INSTALL}
+            --libdir=${jpeg_INSTALL}/lib
             --enable-shared=yes
 	    CFLAGS=-fPIC
     )

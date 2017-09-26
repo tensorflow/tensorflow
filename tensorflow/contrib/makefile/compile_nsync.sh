@@ -286,7 +286,7 @@ for arch in $archs; do
 
         if [ ! -d "$nsync_platform_dir" ]; then
                 mkdir "$nsync_platform_dir"
-                echo "$makefile" | sed 's,^[ \t]*,,' > "$nsync_platform_dir/Makefile"
+                echo "$makefile" | sed $'s,^[ \t]*,,' > "$nsync_platform_dir/Makefile"
                 touch "$nsync_platform_dir/dependfile"
         fi
         if (cd "$nsync_platform_dir" && make depend nsync.a >&2); then

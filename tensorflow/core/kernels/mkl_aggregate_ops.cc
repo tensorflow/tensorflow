@@ -54,17 +54,62 @@ class MklAddNOp : public OpKernel {
     GetMklShape(ctx, 1, &(mkl_context.input2_shape));
     bool input2_in_mkl_format = mkl_context.input2_shape.IsMklTensor();
 
+    // handle the case of a scalar
+    if (!input1_in_mkl_format && input0.dims() == 0) {
+      const TensorShape& o_shape = input0.shape();
+      Tensor* out_tensor = nullptr;
+      mkl_context.output_shape.SetMklTensor(false);
+      AllocateOutputSetMklShape(ctx, 0, &out_tensor, o_shape,
+                                mkl_context.output_shape);
+      float user_i1 = (input0.scalar<T>()());
+      ;
+      float user_i2 = (input1.scalar<T>()());
+      ;
+      out_tensor->scalar<T>()() = std::plus<float>{}(user_i1, user_i2);
+      return;
+    }
+
     mkl_context.in_dims = input1_in_mkl_format
         ? mkl_context.input1_shape.GetDimension()
         : input0.dims();
     mkl_context.in_dims = input2_in_mkl_format
         ? mkl_context.input2_shape.GetDimension()
         : input1.dims();
+
+    // If there is nothing to compute, return.
+    if (!input1_in_mkl_format && !input2_in_mkl_format) {
+      const TensorShape& o_shape = input0.shape();
+      if (o_shape.num_elements() == 0) {
+        Tensor* out_tensor = nullptr;
+        mkl_context.output_shape.SetMklTensor(false);
+        AllocateOutputSetMklShape(ctx, 0, &out_tensor, o_shape,
+                                  mkl_context.output_shape);
+        return;
+      }
+    }
+
+    mkl_context.in_sizes = new size_t[mkl_context.in_dims];
+    mkl_context.in_strides = new size_t[mkl_context.in_dims];
     // Generate size, stride for input if input is in MKL format.
-    ExtractMklOpParams(&mkl_context.in1_sizes,
-     &mkl_context.in1_strides, input0, &mkl_context.input1_shape);
-    ExtractMklOpParams(&mkl_context.in2_sizes,
-     &mkl_context.in2_strides, input1, &mkl_context.input2_shape);
+    if (input1_in_mkl_format || input2_in_mkl_format) {
+      const MklShape* tmp_mkl_shape = (input1_in_mkl_format)
+                                          ? &mkl_context.input1_shape
+                                          : &mkl_context.input2_shape;
+      for (int i = 0; i < mkl_context.in_dims; i++) {
+        mkl_context.in_sizes[i] = tmp_mkl_shape->GetSizes()[i];
+        mkl_context.in_strides[i] = tmp_mkl_shape->GetStrides()[i];
+      }
+    } else {
+      for (int i = 0; i < mkl_context.in_dims; i++) {
+        mkl_context.in_sizes[i] =
+            input0.dim_size((mkl_context.in_dims - 1) - i);
+      }
+      mkl_context.in_strides[0] = 1;
+      for (int i = 1; i < mkl_context.in_dims; i++) {
+        mkl_context.in_strides[i] =
+            mkl_context.in_strides[i - 1] * mkl_context.in_sizes[i - 1];
+      }
+    }
 
     std::vector<float> coeff(2, 1.0);
     mkl_context.MklCreateInputLayouts(ctx);
@@ -82,7 +127,7 @@ class MklAddNOp : public OpKernel {
      mkl_context.output_shape.SetMklLayout(mkl_context.Eltwise, dnnResourceDst);
 
      mkl_context.output_shape.SetTfLayout(
-        mkl_context.in_dims, mkl_context.in1_sizes, mkl_context.in1_strides);
+         mkl_context.in_dims, mkl_context.in_sizes, mkl_context.in_strides);
      if (input1_in_mkl_format == true) {
       mkl_context.output_shape.SetTfDimOrder(mkl_context.in_dims,
       mkl_context.input1_shape.GetTfToMklDimMap());
@@ -113,44 +158,11 @@ class MklAddNOp : public OpKernel {
     mkl_context.MklCleanup();
   }
 
-  void ExtractMklOpParams(size_t** out_sizes, size_t** out_strides,
-    const Tensor& input, const MklShape* input_shape) {
-    bool input_in_mkl_format = input_shape->IsMklTensor();
-    int in_dims = input_in_mkl_format
-                              ? input_shape->GetDimension()
-                              : input.dims();
-    size_t* in_sizes = new size_t[in_dims];
-    size_t* in_strides = new size_t[in_dims];
-
-    if (input_in_mkl_format) {
-      for (int i = 0; i < in_dims; i++) {
-        in_sizes[i] = input_shape->GetSizes()[i];
-        in_strides[i] = input_shape->GetStrides()[i];
-      }
-    } else {
-      for (int i = 0; i < in_dims; i++) {
-        in_sizes[i] =
-            input.dim_size((in_dims - 1) - i);
-      }
-      in_strides[0] = 1;
-      for (int i = 1; i < in_dims; i++) {
-        in_strides[i] =
-            in_strides[i - 1] * in_sizes[i - 1];
-      }
-    }
-    *out_sizes = in_sizes;
-    *out_strides = in_strides;
-  }
-
-
  private:
   typedef struct {
     int in_dims;
-    size_t* in1_sizes;
-    size_t* in1_strides;
-
-    size_t* in2_sizes;
-    size_t* in2_strides;
+    size_t* in_sizes = nullptr;
+    size_t* in_strides = nullptr;
     dnnPrimitive_t Eltwise = nullptr;
     dnnPrimitiveAttributes_t attributes = nullptr;
     void* Eltwise_res[dnnResourceNumber];
@@ -160,18 +172,16 @@ class MklAddNOp : public OpKernel {
     void MklCreateInputLayouts(OpKernelContext* context) {
       bool input1_in_mkl_format = input1_shape.IsMklTensor();
       if (!input1_in_mkl_format) {
-        CHECK_EQ(
-            dnnLayoutCreate_F32(&lt_input1, in_dims, in1_sizes, in1_strides),
-            E_SUCCESS);
+        CHECK_EQ(dnnLayoutCreate_F32(&lt_input1, in_dims, in_sizes, in_strides),
+                 E_SUCCESS);
       } else {
         lt_input1 = static_cast<dnnLayout_t>(input1_shape.GetCurLayout());
       }
 
       bool input2_in_mkl_format = input2_shape.IsMklTensor();
       if (!input2_in_mkl_format) {
-        CHECK_EQ(
-            dnnLayoutCreate_F32(&lt_input2, in_dims, in2_sizes, in2_strides),
-            E_SUCCESS);
+        CHECK_EQ(dnnLayoutCreate_F32(&lt_input2, in_dims, in_sizes, in_strides),
+                 E_SUCCESS);
       } else {
         lt_input2 = static_cast<dnnLayout_t>(input2_shape.GetCurLayout());
       }
@@ -246,15 +256,15 @@ class MklAddNOp : public OpKernel {
       bool input1_in_mkl_format = input1_shape.IsMklTensor();
       bool input2_in_mkl_format = input2_shape.IsMklTensor();
       dnnDelete_F32(Eltwise);
+      if (!input1_in_mkl_format || !input2_in_mkl_format) {
+        delete[] in_sizes;
+        delete[] in_strides;
+      }
       if (!input1_in_mkl_format) {
          dnnLayoutDelete_F32(lt_input1);
-         delete [] in1_sizes;
-         delete [] in1_strides;
       }
       if (!input2_in_mkl_format) {
          dnnLayoutDelete_F32(lt_input2);
-         delete [] in2_sizes;
-         delete [] in2_strides;
       }
     }
   } MklAddNOpContext;

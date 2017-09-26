@@ -444,19 +444,19 @@ Now that you know how to build a basic (and somewhat restricted) op and
 implementation, we'll look at some of the more complicated things you will
 typically need to build into your op. This includes:
 
-*   [Conditional checks and validation](#validate)
-*   Op registration
+*   [Conditional checks and validation](#conditional_checks_and_validation)
+*   [Op registration](#op_registration)
     *   [Attrs](#attrs)
-    *   [Attr types](#attr-types)
+    *   [Attr types](#attr_types)
     *   [Polymorphism](#polymorphism)
-    *   [Inputs and outputs](#inputs-outputs)
-    *   [Backwards compatibility](#backward-compat)
-*   [GPU support](#gpu-support)
-    *   [Compiling the kernel for the GPU device](#compiling-kernel)
-*   [Implement the gradient in Python](#implement-gradient)
-*   [Shape functions in C++](#shape-functions)
+    *   [Inputs and outputs](#inputs_and_outputs)
+    *   [Backwards compatibility](#backwards_compatibility)
+*   [GPU support](#gpu_support)
+    *   [Compiling the kernel for the GPU device](#compiling_the_kernel_for_the_gpu_device)
+*   [Implement the gradient in Python](#implement_the_gradient_in_python)
+*   [Shape functions in C++](#shape_functions_in_c)
 
-### Conditional checks and validation {#validate}
+### Conditional checks and validation
 
 The example above assumed that the op applied to a tensor of any shape.  What
 if it only applied to vectors?  That means adding a check to the above OpKernel
@@ -497,7 +497,7 @@ function on error.
 
 ### Op registration
 
-#### Attrs {#attrs}
+#### Attrs
 
 Ops can have attrs, whose values are set when the op is added to a graph. These
 are used to configure the op, and their values can be accessed both within the
@@ -519,7 +519,7 @@ using the `Attr` method, which expects a spec of the form:
 
 where `<name>` begins with a letter and can be composed of alphanumeric
 characters and underscores, and `<attr-type-expr>` is a type expression of the
-form [described below](#attr-types).
+form [described below](#attr_types).
 
 For example, if you'd like the `ZeroOut` op to preserve a user-specified index,
 instead of only the 0th element, you can register the op like so:
@@ -530,7 +530,7 @@ REGISTER\_OP("ZeroOut")
     .Output("zeroed: int32");
 </code></pre>
 
-(Note that the set of [attribute types](#attr-types) is different from the
+(Note that the set of [attribute types](#attr_types) is different from the
 @{tf.DType$tensor types} used for inputs and outputs.)
 
 Your kernel can then access this attr in its constructor via the `context`
@@ -574,7 +574,7 @@ which can then be used in the `Compute` method:
   }
 </code></pre>
 
-#### Attr types {#attr-types}
+#### Attr types
 
 The following types are supported in an attr:
 
@@ -707,7 +707,7 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
 Note in particular that the values of type `type`
 use @{tf.DType$the `DT_*` names for the types}.
 
-#### Polymorphism {#polymorphism}
+#### Polymorphism
 
 ##### Type Polymorphism
 
@@ -1009,7 +1009,7 @@ REGISTER_OP("MinimumLengthPolymorphicListExample")
     .Output("out: T");
 ```
 
-#### Inputs and Outputs {#inputs-outputs}
+#### Inputs and Outputs
 
 To summarize the above, an op registration can have multiple inputs and outputs:
 
@@ -1110,7 +1110,7 @@ expressions:
 For more details, see
 [`tensorflow/core/framework/op_def_builder.h`][op_def_builder].
 
-#### Backwards compatibility {#backward-compat}
+#### Backwards compatibility
 
 Let's assume you have written a nice, custom op and shared it with others, so
 you have happy customers using your operation.  However, you'd like to make
@@ -1172,7 +1172,7 @@ new optional arguments to the end.  Generally incompatible changes may only be
 made when TensorFlow's changes major versions, and must conform to the
 @{$version_compat#compatibility_of_graphs_and_checkpoints$`GraphDef` version semantics}.
 
-### GPU Support {#gpu-support}
+### GPU Support
 
 You can implement different OpKernels and register one for CPU and another for
 GPU, just like you can [register kernels for different types](#polymorphism).
@@ -1204,7 +1204,7 @@ kept on the CPU, add a `HostMemory()` call to the kernel registration, e.g.:
                           PadOp<GPUDevice, T>)
 ```
 
-#### Compiling the kernel for the GPU device {#compiling-kernel}
+#### Compiling the kernel for the GPU device
 
 Look at
 [cuda_op_kernel.cu.cc](https://www.tensorflow.org/code/tensorflow/examples/adding_an_op/cuda_op_kernel.cu.cc)
@@ -1237,7 +1237,7 @@ For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 
 >   Note in some linux settings, additional options to `nvcc` compiling step are needed. Add `-D_MWAITXINTRIN_H_INCLUDED` to the `nvcc` command line to avoid errors from `mwaitxintrin.h`.
 
-### Implement the gradient in Python {#implement-gradient}
+### Implement the gradient in Python
 
 Given a graph of ops, TensorFlow uses automatic differentiation
 (backpropagation) to add new ops representing gradients with respect to the
@@ -1317,7 +1317,7 @@ Note that at the time the gradient function is called, only the data flow graph
 of ops is available, not the tensor data itself.  Thus, all computation must be
 performed using other tensorflow ops, to be run at graph execution time.
 
-### Shape functions in C++ {#shape-functions}
+### Shape functions in C++
 
 The TensorFlow API has a feature called "shape inference" that provides
 information about the shapes of tensors without having to execute the

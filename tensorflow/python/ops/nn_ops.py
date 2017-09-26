@@ -1022,8 +1022,8 @@ def conv2d_transpose(value,
     axis = 3 if data_format == "NHWC" else 1
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[3], filter.get_shape(
-                       )[3]))
+                       "{} != {}".format(value.get_shape()[axis],
+                                         filter.get_shape()[3]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
@@ -2145,5 +2145,4 @@ def in_top_k(predictions, targets, k, name=None):
     A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
   """
   with ops.name_scope(name, 'in_top_k'):
-    # TODO (yongtang): Need to switch to v2 after 3 weeks.
-    return gen_nn_ops._in_top_k(predictions, targets, k, name=name)
+    return gen_nn_ops._in_top_kv2(predictions, targets, k, name=name)
