@@ -52,6 +52,11 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
                                                 bool retry_on_failure) override;
   Status Deallocate(int device_ordinal, gpu::DeviceMemoryBase* mem) override;
 
+  // Register an Tensor (input or resource variable) with the allocator. If
+  // the operation returns an alias to one of its inputs, then the allocator
+  // needs to be able to handle it.
+  Status RegisterArgument(const Tensor* t);
+
   // Makes 'tensor' a wrapper around the data buffer at 'ptr'. The buffer is
   // interpreted as having data type 'dtype' and shape 'shape'.
   Status MakeTensorFromBuffer(gpu::DeviceMemoryBase buffer, DataType dtype,
@@ -102,6 +107,14 @@ xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
   TF_RET_CHECK(data != nullptr);
   tensors_[data] = t;
   return gpu::DeviceMemoryBase(data, size);
+}
+
+Status XlaAllocator::RegisterArgument(const Tensor* t) {
+  void* data =
+          reinterpret_cast<void*>(const_cast<char*>(t->tensor_data().data()));
+  TF_RET_CHECK(data != nullptr);
+  tensors_[data] = *t;
+  return Status::OK();
 }
 
 Status XlaAllocator::Deallocate(int device_ordinal,
@@ -285,6 +298,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
             shape, client->platform(), client->default_device_ordinal(), dmem)
             .ConsumeValueOrDie();
     arg_ptrs[i] = arg_buffers[i].get();
+
+    OP_REQUIRES_OK(ctx, xla_allocator.RegisterArgument(t));
   }
 
   // Make the final parameter point at local_runtime_context.
