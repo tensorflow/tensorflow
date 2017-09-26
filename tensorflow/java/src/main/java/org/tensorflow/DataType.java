@@ -83,7 +83,8 @@ public enum DataType {
   public static DataType fromClass(Class<?> c) {
     DataType dtype = typeCodes.get(c);
     if (dtype == null) {
-      throw new IllegalArgumentException(c.getName() + " objects cannot be used as elements in a TensorFlow Tensor");
+      throw new IllegalArgumentException(
+          c.getName() + " objects cannot be used as elements in a TensorFlow Tensor");
     }
     return dtype;
   }

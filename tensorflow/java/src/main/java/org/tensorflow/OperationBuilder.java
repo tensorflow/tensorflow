@@ -63,7 +63,6 @@ public final class OperationBuilder {
     }
   }
 
-
   /**
    * Returns the builder to create an operation.
    *
@@ -266,7 +265,7 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder setAttr(String name,  String[] value) {
+  public OperationBuilder setAttr(String name, String[] value) {
     Charset utf8 = Charset.forName("UTF-8");
     Object[] objects = new Object[value.length];
     for (int i = 0; i < value.length; ++i) {
@@ -326,5 +325,4 @@ public final class OperationBuilder {
   private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
 
   private static native void setAttrStringList(long handle, String name, Object[] value);
-
 }
