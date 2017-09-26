@@ -468,7 +468,7 @@ def spatial_pyramid_pooling(inputs, dimensions=None,
   """
     Spatial pyramid pooling (SPP) is a pooling strategy to result in an output of fixed size.
     It will turn a 2D input of arbitrary size into an output of fixed dimension.
-    Hence, the convlutional part of a DNN can be connected to a dense part
+    Hence, the convolutional part of a DNN can be connected to a dense part
     with a fixed number of nodes even if the dimensions of the input
     image are unknown.
     The pooling is performed over :math:`l` pooling levels.
