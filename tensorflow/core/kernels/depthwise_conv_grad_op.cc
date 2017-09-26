@@ -510,6 +510,7 @@ static void DepthwiseConvBackpropInputReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
+extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
@@ -600,6 +601,12 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T")
+                            .HostMemory("input_sizes"),
+                        DepthwiseConv2dNativeBackpropInputOp<GPUDevice, Eigen::half>);
+
 REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T")
@@ -885,6 +892,7 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
 
 #if GOOGLE_CUDA
 
+extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 
@@ -978,6 +986,13 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(
+    Name("DepthwiseConv2dNativeBackpropFilter")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::half>("T")
+        .HostMemory("filter_sizes"),
+    DepthwiseConv2dNativeBackpropFilterOp<GPUDevice, Eigen::half>);
+
 REGISTER_KERNEL_BUILDER(
     Name("DepthwiseConv2dNativeBackpropFilter")
         .Device(DEVICE_GPU)

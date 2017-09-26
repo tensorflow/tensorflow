@@ -246,6 +246,7 @@ extern template class LaunchConv2DOp<CPUDevice, float>;
 #if GOOGLE_CUDA
 
 // Extern template instantiated in depthwise_conv_op_gpu.cc.
+extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
@@ -426,6 +427,10 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(
+    Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    DepthwiseConv2dNativeOp<GPUDevice, Eigen::half>);
+
 REGISTER_KERNEL_BUILDER(
     Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     DepthwiseConv2dNativeOp<GPUDevice, float>);

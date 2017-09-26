@@ -105,7 +105,7 @@ __global__ void __launch_bounds__(1024, 2)
     const int input_row_end = input_row_start + filter_rows;
     const int input_col_end = input_col_start + filter_cols;
 
-    T sum = 0;
+    T sum = static_cast<T>(0);
 
     const int input_offset_temp = in_rows * OB;
     if (input_row_start >= 0 && input_col_start >= 0 &&
@@ -258,8 +258,8 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
     __syncthreads();
 
     if (depth_in_range) {
-      T sum1 = 0;
-      T sum2 = 0;
+      T sum1 = static_cast<T>(0);
+      T sum2 = static_cast<T>(0);
       int shared_offset = data_idx;
       const T* filter_ptr = filter_read_offset + shared_data;
       UNROLL for (int r = 0; r < filter_rows; ++r) {
@@ -369,7 +369,7 @@ __global__ void __launch_bounds__(1024, 2)
     const int input_row_end = input_row_start + filter_rows;
     const int input_col_end = input_col_start + filter_cols;
 
-    T sum = 0;
+    T sum = static_cast<T>(0);
     if (input_row_start >= 0 && input_col_start >= 0 &&
         input_row_end < in_rows && input_col_end < in_cols) {
       // Loop that doesn't need to check for boundary conditions.
@@ -529,8 +529,8 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
     __syncthreads();
 
     if (slice_in_range) {
-      T sum1 = 0;
-      T sum2 = 0;
+      T sum1 = static_cast<T>(0);
+      T sum2 = static_cast<T>(0);
       int shared_offset = data_idx;
       const T* filter_ptr = filter_read_offset + shared_data;
       UNROLL for (int r = 0; r < filter_rows; ++r) {
@@ -710,6 +710,7 @@ void LaunchDepthwiseConvOp<GPUDevice, T>::operator()(OpKernelContext* ctx,
                   "Launch of gpu kernel for DepthwiseConv2dGPULaunch failed"));
 }
 
+template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
 template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
@@ -744,7 +745,7 @@ __global__ void __launch_bounds__(640, 2)
     const int in_r = (thread_id / in_depth / in_cols) % in_rows;
     const int b = thread_id / in_depth / in_cols / in_rows;
 
-    T sum = 0;
+    T sum = static_cast<T>(0);
 
     const int out_r_start =
         tf_max<int>(0, (in_r - filter_rows + pad_rows + stride) / stride);
@@ -810,7 +811,7 @@ __global__ void __launch_bounds__(640, 2)
     const int in_d = (thread_id / in_cols / in_rows) % in_depth;
     const int b = thread_id / in_depth / in_cols / in_rows;
 
-    T sum = 0;
+    T sum = static_cast<T>(0);
     const int out_d_start = in_d * depth_multiplier;
     const int out_d_end = out_d_start + depth_multiplier;
 
@@ -919,6 +920,7 @@ void LaunchDepthwiseConvBackpropInputOp<GPUDevice, T>::operator()(
                                "utGPULaunch failed"));
 }
 
+template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, Eigen::half>;
 template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
 template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
@@ -1631,6 +1633,7 @@ void LaunchDepthwiseConvBackpropFilterOp<GPUDevice, T>::operator()(
                                "terGPULaunch failed"));
 }
 
+template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, Eigen::half>;
 template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
 template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 }  // namespace tensorflow
