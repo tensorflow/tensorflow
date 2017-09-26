@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/cc/ops/array_ops_internal.h"
-#include "tensorflow/cc/ops/math_ops_internal.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
@@ -25,7 +23,7 @@ namespace ops {
 namespace {
 
 // We duplicate this function for now since AccumulateNV2 is currently 
-// defined under contrib and AddNGrad is private to the "real" math_grad.cc
+// defined under contrib and AddNGrad is private to math_grad.cc
 Status AddNGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
@@ -42,7 +40,6 @@ Status AddNGrad(const Scope& scope, const Operation& op,
   }
   return scope.status();
 }
-//REGISTER_GRADIENT_OP("AddN", AddNGrad);
 
 // AccumulateNV2 is equivalent to AddN for gradient computation purposes
 REGISTER_GRADIENT_OP("AccumulateNV2", AddNGrad);
