@@ -34,10 +34,8 @@ REGISTER_OP("AccumulateNV2")
     .Doc(R"doc(
 Returns the element-wise sum of a list of tensors.
 
-`tf.accumulate_n` performs the same operation as `tf.add_n`, but does not wait
-for all of its inputs to be ready before beginning to sum. This can save memory
-if inputs are ready at different times, since minimum temporary storage is
-proportional to the output size rather than the inputs size.
+`tf.accumulate_n_v2` performs the same operation as `tf.accumulate_n`, except
+`tf.accumulate_n_v2` is differentiable.
 
 Returns a `Tensor` of same shape and type as the elements of `inputs`.
 
