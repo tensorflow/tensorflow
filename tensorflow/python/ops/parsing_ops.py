@@ -1168,6 +1168,7 @@ def _parse_single_sequence_example_raw(serialized,
     return (context_output, feature_list_output)
 
 
+# Swap `name` and `na_value` for backward compatibility.
 def decode_csv(records, record_defaults, field_delim=None,
                use_quote_delim=None, name=None, na_value=''):
   # pylint: disable=protected-access
@@ -1197,7 +1198,7 @@ def decode_csv(records, record_defaults, field_delim=None,
     A list of `Tensor` objects. Has the same type as `record_defaults`.
     Each tensor will have the same shape as records.
   """
-  # TODO(martinwicke), remove it when new Python API generator is done.
+  # TODO(martinwicke), remove the wrapper when new Python API generator is done.
   return gen_parsing_ops._decode_csv(
       records=records, record_defaults=record_defaults,
       field_delim=field_delim, use_quote_delim=use_quote_delim,
