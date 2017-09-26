@@ -470,6 +470,38 @@ TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
       module.get(), {HloOpcode::kParameter, HloOpcode::kParameter,
                      HloOpcode::kExp, HloOpcode::kExp, HloOpcode::kMap});
 }
+
+TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape full_shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {10, 1, 1000});
+
+  HloInstruction* slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+          slice_shape,
+          builder.AddInstruction(
+              HloInstruction::CreateParameter(0, full_shape, "slice_from")),
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
+          /*slice_sizes=*/{10, 1, 1000}));
+
+  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      full_shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(2, full_shape, "to_update")),
+      slice,
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
+
+  module->AddEntryComputation(builder.Build());
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+                     HloOpcode::kParameter, HloOpcode::kParameter,
+                     HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla

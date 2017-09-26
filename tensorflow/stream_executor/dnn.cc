@@ -23,20 +23,20 @@ namespace gputools {
 namespace dnn {
 
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
-    std::vector<AlgorithmDesc>* out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<AlgorithmDesc::Index>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
-    std::vector<AlgorithmDesc>* out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<AlgorithmDesc::Index>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
-    std::vector<AlgorithmDesc>* out_algorithms) {
+    bool with_winograd_nonfused,
+    std::vector<AlgorithmDesc::Index>* out_algorithms) {
   return false;
 }
 
