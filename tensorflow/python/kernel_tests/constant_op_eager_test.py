@@ -218,6 +218,27 @@ class ConstantTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, None):
       constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
+  def testShape(self):
+    self._testAll(constant_op.constant([1]).get_shape())
+
+  def testDimension(self):
+    x = constant_op.constant([1]).shape[0]
+    self._testAll(x)
+
+  def testDimensionList(self):
+    x = [constant_op.constant([1]).shape[0]]
+    self._testAll(x)
+
+    # Mixing with regular integers is fine too
+    self._testAll([1] + x)
+    self._testAll(x + [1])
+
+  def testDimensionTuple(self):
+    x = constant_op.constant([1]).shape[0]
+    self._testAll((x,))
+    self._testAll((1, x))
+    self._testAll((x, 1))
+
   def testSparseValuesRaiseErrors(self):
     with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                  "non-rectangular Python sequence"):
