@@ -1739,8 +1739,10 @@ void ComputationBuilder::SetDeviceAssignment(
 /* static */ ConvolutionDimensionNumbers
 ComputationBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_batch_dimension(kConvBatchDimension);
-  dimension_numbers.set_feature_dimension(kConvFeatureDimension);
+  dimension_numbers.set_input_batch_dimension(kConvBatchDimension);
+  dimension_numbers.set_input_feature_dimension(kConvFeatureDimension);
+  dimension_numbers.set_output_batch_dimension(kConvBatchDimension);
+  dimension_numbers.set_output_feature_dimension(kConvFeatureDimension);
   dimension_numbers.set_kernel_output_feature_dimension(
       kConvKernelOutputDimension);
   dimension_numbers.set_kernel_input_feature_dimension(
@@ -1754,15 +1756,17 @@ ComputationBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
 
 /* static */ StatusOr<ConvolutionDimensionNumbers>
 ComputationBuilder::CreateConvDimensionNumbers(
-    int64 batch, int64 feature, int64 first_spatial, int64 second_spatial,
+    int64 input_batch, int64 input_feature, int64 output_batch,
+    int64 output_feature, int64 first_spatial, int64 second_spatial,
     int64 kernel_output_feature, int64 kernel_input_feature,
     int64 kernel_first_spatial, int64 kernel_second_spatial) {
-  if (std::set<int64>({batch, feature, first_spatial, second_spatial}).size() !=
-      4) {
+  if (std::set<int64>(
+          {input_batch, input_feature, first_spatial, second_spatial})
+          .size() != 4) {
     return FailedPrecondition(
         "dimension numbers for the input are not unique: (%lld, %lld, %lld, "
         "%lld)",
-        batch, feature, first_spatial, second_spatial);
+        input_batch, input_feature, first_spatial, second_spatial);
   }
   if (std::set<int64>({kernel_output_feature, kernel_input_feature,
                        kernel_first_spatial, kernel_second_spatial})
@@ -1773,9 +1777,19 @@ ComputationBuilder::CreateConvDimensionNumbers(
         kernel_output_feature, kernel_input_feature, kernel_first_spatial,
         kernel_second_spatial);
   }
+  if (std::set<int64>(
+          {output_batch, output_feature, first_spatial, second_spatial})
+          .size() != 4) {
+    return FailedPrecondition(
+        "dimension numbers for the output are not unique: (%lld, %lld, %lld, "
+        "%lld)",
+        output_batch, output_feature, first_spatial, second_spatial);
+  }
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_batch_dimension(batch);
-  dimension_numbers.set_feature_dimension(feature);
+  dimension_numbers.set_input_batch_dimension(input_batch);
+  dimension_numbers.set_input_feature_dimension(input_feature);
+  dimension_numbers.set_output_batch_dimension(output_batch);
+  dimension_numbers.set_output_feature_dimension(output_feature);
   dimension_numbers.add_spatial_dimensions(first_spatial);
   dimension_numbers.add_spatial_dimensions(second_spatial);
   dimension_numbers.set_kernel_output_feature_dimension(kernel_output_feature);
