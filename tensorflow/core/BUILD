@@ -1763,8 +1763,8 @@ tf_cuda_library(
         otherwise = ["@protobuf_archive//:protobuf_headers"],
     ) + if_mkl(
         [
-          "//third_party/mkl:intel_binary_blob",
-          "@mkl_dnn//:mkl_dnn",
+            "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn//:mkl_dnn",
         ],
     ),
     alwayslink = 1,
@@ -2026,8 +2026,10 @@ tf_cuda_library(
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
     ] + if_mkl(
-        ["//third_party/mkl:intel_binary_blob",
-        "@mkl_dnn//:mkl_dnn",]
+        [
+            "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn//:mkl_dnn",
+        ],
     ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
     alwayslink = 1,
 )
