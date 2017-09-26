@@ -201,6 +201,15 @@ class Estimator(object):
 
     return public_model_fn
 
+  def latest_checkpoint(self):
+    """Finds the filename of latest saved checkpoint file in `model_dir`.
+
+    Returns:
+      The full path to the latest checkpoint or `None` if no checkpoint was
+      found.
+    """
+    return saver.latest_checkpoint(self.model_dir)
+
   def train(self, input_fn, hooks=None, steps=None, max_steps=None):
     """Trains a model given training data input_fn.
 

@@ -31,7 +31,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 
@@ -405,11 +404,9 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: training_max_step}
     mock_train_spec.max_steps = training_max_step
 
-  @test.mock.patch.object(saver, 'latest_checkpoint')
-  def test_evaluate_with_evaluate_spec(self, mock_latest_ckpt):
-    latest_ckpt_path = mock_latest_ckpt.return_value
-
+  def test_evaluate_with_evaluate_spec(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.latest_checkpoint.return_value = 'latest_it_is'
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
 
@@ -424,12 +421,11 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
         name='cont_eval',
         input_fn=eval_spec.input_fn,
         steps=eval_spec.steps,
-        checkpoint_path=latest_ckpt_path,
+        checkpoint_path='latest_it_is',
         hooks=eval_spec.hooks)
     self.assertFalse(mock_est.train.called)
 
-  @test.mock.patch.object(saver, 'latest_checkpoint')
-  def test_evaluate_multiple_times(self, mock_latest_ckpt):
+  def test_evaluate_multiple_times(self):
     training_max_step = 200
 
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
@@ -437,7 +433,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
         {_GLOBAL_STEP_KEY: training_max_step // 2},
         {_GLOBAL_STEP_KEY: training_max_step}
     ]
-    mock_latest_ckpt.side_effect = ['path_1', 'path_2']
+    mock_est.latest_checkpoint.side_effect = ['path_1', 'path_2']
 
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     mock_train_spec.max_steps = training_max_step
@@ -449,8 +445,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     executor.run_evaluator()
     self.assertEqual(2, mock_est.evaluate.call_count)
 
-  @test.mock.patch.object(saver, 'latest_checkpoint')
-  def test_skip_evaluation_due_to_ckpt(self, mock_latest_ckpt):
+  def test_skip_evaluation_due_to_ckpt(self):
     training_max_step = 200
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_est.evaluate.side_effect = [
@@ -463,7 +458,9 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
 
     # First two items are invalid, next two items are same.
-    mock_latest_ckpt.side_effect = [None, '', 'same', 'same', 'path_2']
+    mock_est.latest_checkpoint.side_effect = [
+        None, '', 'same', 'same', 'path_2'
+    ]
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1, delay_secs=0, throttle_secs=0)
@@ -473,15 +470,14 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
       executor.run_evaluator()
 
     # Three checkpoint paths are invalid.
-    self.assertEqual(5, mock_latest_ckpt.call_count)
+    self.assertEqual(5, mock_est.latest_checkpoint.call_count)
     self.assertEqual(2, mock_est.evaluate.call_count)
 
     # Two warning logs are expected (last warning time is reset after a
     # successuful evaluation)
     self.assertEqual(2, mock_log.call_count)
 
-  @test.mock.patch.object(saver, 'latest_checkpoint')
-  def test_sleep_delay_secs(self, mock_latest_ckpt):
+  def test_sleep_delay_secs(self):
     training_max_step = 200
     delay_secs = 123
 
@@ -502,8 +498,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
 
   @test.mock.patch.object(time, 'time')
   @test.mock.patch.object(time, 'sleep')
-  @test.mock.patch.object(saver, 'latest_checkpoint')
-  def test_throttle_secs(self, mock_latest_ckpt, mock_sleep, mock_time):
+  def test_throttle_secs(self, mock_sleep, mock_time):
     throttle_secs = 123
     operation_secs = 12
 
