@@ -64,7 +64,8 @@ def _OptimizerOptions():
                 do_constant_folding=cfold)))
 
 
-class FunctionTestMethods(object):
+@test_util.with_c_api
+class FunctionTest(test.TestCase):
   """Test methods for verifying Function support.
 
   These test methods are used as mix-ins in two test cases: with
@@ -211,7 +212,6 @@ class FunctionTestMethods(object):
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testCustomGradient(self):
     dtype = dtypes.float32
 
@@ -244,7 +244,6 @@ class FunctionTestMethods(object):
         out, = sess.run(dlogits, {logits: x, labels: y})
       self.assertAllClose(out, np.exp(prob - y))
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testCustomGradientError(self):
     dtype = dtypes.float32
 
@@ -270,7 +269,6 @@ class FunctionTestMethods(object):
           "SymGrad expects to return 1.*but get 2.*instead"):
         _ = sess.run(dinp, {inp: x})
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testSymGradShape(self):
     g = ops.Graph()
     with g.as_default():
@@ -286,7 +284,6 @@ class FunctionTestMethods(object):
       self.assertEqual(x.get_shape(), dx.get_shape())
       self.assertEqual(y.get_shape(), dy.get_shape())
 
-  @test_util.disable_c_api   # Function gradients don't work with C API
   def testSymGradAttr(self):
 
     @function.Defun(noinline=True)
@@ -688,90 +685,6 @@ class FunctionTestMethods(object):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclare(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def FooImpl(x):
-      return x * x + 1
-
-    x = array_ops.placeholder(dtypes.float32)
-    y = foo(x)
-
-    g = ops.get_default_graph()
-    FooImpl.add_to_graph(g)
-
-    with self.test_session():
-      rand = np.random.uniform(size=(3, 3))
-      expected = rand * rand + 1.0
-      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
-
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclareUsedInDefun(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun()
-    def Bar(x):
-      return foo(x)
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def FooImpl(x):
-      return x * x + 1
-
-    x = array_ops.placeholder(dtypes.float32)
-    y = Bar(x)
-
-    g = ops.get_default_graph()
-    FooImpl.add_to_graph(g)
-
-    with self.test_session():
-      rand = np.random.uniform(size=(3, 3))
-      expected = rand * rand + 1.0
-      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
-
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclareTypeMistake(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def Foo(x):
-      return x * x + 1
-
-    g = ops.Graph()
-    with g.as_default():
-      y = foo(2.0)
-      with self.test_session(graph=g):
-        with self.assertRaisesRegexp(errors_impl.NotFoundError,
-                                     "not registered"):
-          _ = y.eval()
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      y = foo(2)
-      with self.test_session(graph=g):
-        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                     "int32.*float"):
-          _ = y.eval()
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      with self.assertRaisesRegexp(
-          ValueError, "Expected number of arguments: 1, received: 2"):
-        _ = foo(2.0, 2.0)
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      y = foo(2.0)
-      with self.test_session(graph=g):
-        self.assertAllEqual(y.eval(), 5.0)
-
   def testCapture(self):
     g = ops.Graph()
     with g.as_default():
@@ -945,32 +858,7 @@ class FunctionTestMethods(object):
     self.assertEqual(len(f.signature.input_arg), 3)
 
 
-class FunctionTest(FunctionTestMethods, test.TestCase):
-  """Test case that invokes test methods with _USE_C_API=False."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = False
-    super(FunctionTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(FunctionTest, self).tearDown()
-
-
-class FunctionWithCApiTest(FunctionTestMethods, test.TestCase):
-  """Test case that invokes test methods with _USE_C_API=True."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = True
-    super(FunctionWithCApiTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(FunctionWithCApiTest, self).tearDown()
-
-
+@test_util.with_c_api
 class FunctionsFromProtos(test.TestCase):
 
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
@@ -1161,6 +1049,7 @@ class FunctionsFromProtos(test.TestCase):
       function._from_library(library)
 
 
+@test_util.with_c_api
 class FunctionOverloadTest(test.TestCase):
 
   def testBasic(self):
@@ -1213,6 +1102,7 @@ class FunctionOverloadTest(test.TestCase):
                      "Successor of x.")
 
 
+@test_util.with_c_api
 class FunctionCaptureByValueTest(test.TestCase):
 
   def testCaptureByValue(self):
@@ -1242,6 +1132,7 @@ class FunctionCaptureByValueTest(test.TestCase):
       self.assertAllEqual(y.eval(), [[12.0]])
 
 
+@test_util.with_c_api
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1377,6 +1268,7 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
+@test_util.with_c_api
 class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
@@ -1444,6 +1336,24 @@ def Linear2(w1, b1, w2, b2, x):
   return Linear(w2, b2, Linear(w1, b1, x))
 
 
+# Set C API before defining module level functions
+ops._USE_C_API = True
+
+
+@function.Defun(*[dtypes.float32] * 3)
+def LinearWithCApi(w, b, x):
+  return nn_ops.relu(math_ops.matmul(x, w) + b)
+
+
+@function.Defun(*[dtypes.float32] * 5)
+def Linear2WithCApi(w1, b1, w2, b2, x):
+  return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
+
+
+# Unset C API after defining module level functions
+ops._USE_C_API = False
+
+
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
@@ -1457,7 +1367,20 @@ class ModuleFunctionTest(test.TestCase):
         self.assertAllEqual([[1]], sess.run(y))
         self.assertAllEqual([[5]], sess.run(z))
 
+  @test_util.enable_c_api
+  def testBasicWithCApi(self):
+    with ops.Graph().as_default():
+      a, b, c, d, e = [
+          constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
+      ]
+      y = LinearWithCApi(a, b, c)
+      z = Linear2WithCApi(a, b, c, d, e)
+      with session.Session() as sess:
+        self.assertAllEqual([[1]], sess.run(y))
+        self.assertAllEqual([[5]], sess.run(z))
 
+
+@test_util.with_c_api
 class VariableHoistingTest(test.TestCase):
 
   def _testSimpleModel(self, use_forward_func, use_resource=False):

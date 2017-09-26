@@ -67,7 +67,12 @@ def benchmark_create_tensor(n):
 
   with timer(label("Tensor([[3]])"), iters=n) as iters:
     for _ in iters:
-      ops.EagerTensor([[3]])
+      ops.EagerTensor([[3]], context.context())
+
+  ctx = context.context()
+  with timer(label("Tensor([[3]], ctx)"), iters=n) as iters:
+    for _ in iters:
+      ops.EagerTensor([[3]], ctx)
 
 
 def benchmark_matmul(shape, n, use_gpu=False):

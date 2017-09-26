@@ -121,18 +121,6 @@ py_test(
 )
 
 py_test(
-    name = "logit_fns_test",
-    size = "small",
-    srcs = ["python/learn/estimators/logit_fns_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/estimator:model_fn",
-    ],
-)
-
-py_test(
     name = "estimators_test",
     size = "small",
     srcs = ["python/learn/estimators/estimators_test.py"],
@@ -780,7 +768,7 @@ py_test(
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/session_bundle:exporter",
-        "//tensorflow/contrib/session_bundle:manifest_proto_py_pb2",
+        "//tensorflow/contrib/session_bundle:manifest_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",

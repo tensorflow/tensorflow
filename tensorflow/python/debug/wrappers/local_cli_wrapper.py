@@ -95,6 +95,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     # Registered tensor filters.
     self._tensor_filters = {}
+    # Register frequently-used filter(s).
+    self.add_tensor_filter("has_inf_or_nan", debug_data.has_inf_or_nan)
 
     # Below are the state variables of this wrapper object.
     # _active_tensor_filter: what (if any) tensor filter is in effect. If such

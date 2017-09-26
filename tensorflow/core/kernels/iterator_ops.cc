@@ -227,9 +227,8 @@ class OneShotIteratorOp : public AsyncOpKernel {
     OP_REQUIRES(ctx, shared_name.empty(),
                 errors::InvalidArgument("OneShotIteratorOp does not currently "
                                         "support the 'shared_name' attr."));
-    const NameAttrList* dataset_factory_func;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dataset_factory", &dataset_factory_func));
-    dataset_factory_func_ = *dataset_factory_func;
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("dataset_factory", &dataset_factory_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }

@@ -33,6 +33,7 @@ using se::dnn::ConvolutionDescriptor;
 using se::dnn::DataLayout;
 using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
+using se::dnn::AlgorithmDesc;
 
 ConvolveScratchAllocator::ConvolveScratchAllocator(
     int device_ordinal, DeviceMemoryAllocator* memory_allocator)
@@ -251,12 +252,13 @@ tensorflow::Status ConvolutionThunk::Convolve(
       "Unable to launch convolution for thunk %p with type %s and algorithm "
       "(%lld, %lld)",
       this, ConvolutionKindToString(convolution_kind_).c_str(),
-      algorithm_config.algorithm(), algorithm_config.algorithm_no_scratch());
+      algorithm_config.algorithm().algo_id(),
+      algorithm_config.algorithm_no_scratch().algo_id());
 }
 
-std::vector<se::dnn::AlgorithmType> ConvolutionThunk::GetAlgorithms(
+std::vector<AlgorithmDesc::Index> ConvolutionThunk::GetAlgorithms(
     se::StreamExecutor* stream_exec) const {
-  std::vector<se::dnn::AlgorithmType> algorithms;
+  std::vector<AlgorithmDesc::Index> algorithms;
   // TODO(yangzihao): Currently disable the use of winograd nonfused in XLA
   // by default. Should send in conv parameters and enable it when
   // ShouldIncludeWinogradNonfusedAlgo() returns true.
@@ -286,7 +288,7 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     const ConvolutionDescriptor& convolution_descriptor,
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // TODO(b/29126320): Try cudnn v5's new auto-tuner when it's rolled out.
-  if (best_algorithm_.algorithm() == se::dnn::kDefaultAlgorithm) {
+  if (best_algorithm_.algorithm().is_default()) {
     // Auto-tuning either is disabled or only happens in the first run of this
     // function.
     VLOG(2) << "Profiling for best convolution algorithm used for "
@@ -295,26 +297,32 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
 
     se::dnn::ProfileResult best_result;
     se::dnn::ProfileResult best_result_without_scratch;
-    for (se::dnn::AlgorithmType algorithm : GetAlgorithms(stream->parent())) {
-      ConvolveScratchAllocator scratch_allocator(
-          buffer_allocations.device_ordinal(),
-          buffer_allocations.memory_allocator());
-      se::dnn::ProfileResult profile_result;
-      bool launch_ok =
-          Convolve(input_descriptor, input_data, filter_descriptor, filter_data,
-                   output_descriptor, output_data, convolution_descriptor,
-                   se::dnn::AlgorithmConfig(algorithm, algorithm), stream,
-                   &scratch_allocator, &profile_result)
-              .ok();
-      if (launch_ok && profile_result.is_valid()) {
-        if (profile_result.elapsed_time_in_ms() <
-            best_result.elapsed_time_in_ms()) {
-          best_result = profile_result;
-        }
-        if (scratch_allocator.TotalAllocatedBytes() == 0 &&
-            profile_result.elapsed_time_in_ms() <
-                best_result_without_scratch.elapsed_time_in_ms()) {
-          best_result_without_scratch = profile_result;
+    std::vector<AlgorithmDesc::Index> algorithms =
+        GetAlgorithms(stream->parent());
+    for (bool use_tensor_ops : {false, true}) {
+      for (auto algo_index : algorithms) {
+        AlgorithmDesc algorithm(algo_index, use_tensor_ops);
+        ConvolveScratchAllocator scratch_allocator(
+            buffer_allocations.device_ordinal(),
+            buffer_allocations.memory_allocator());
+        se::dnn::ProfileResult profile_result;
+        bool launch_ok =
+            Convolve(input_descriptor, input_data, filter_descriptor,
+                     filter_data, output_descriptor, output_data,
+                     convolution_descriptor,
+                     se::dnn::AlgorithmConfig(algorithm, algorithm), stream,
+                     &scratch_allocator, &profile_result)
+                .ok();
+        if (launch_ok && profile_result.is_valid()) {
+          if (profile_result.elapsed_time_in_ms() <
+              best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+          if (scratch_allocator.TotalAllocatedBytes() == 0 &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result_without_scratch.elapsed_time_in_ms()) {
+            best_result_without_scratch = profile_result;
+          }
         }
       }
     }
@@ -324,7 +332,7 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     } else {
       LOG(ERROR) << "No convolution algorithm works with profiling. Fall back "
                     "to the default algorithm.";
-      best_algorithm_.set_algorithm(se::dnn::kDefaultAlgorithm);
+      best_algorithm_.set_algorithm(AlgorithmDesc());
     }
 
     if (best_result_without_scratch.is_valid()) {
@@ -334,13 +342,14 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
       LOG(ERROR) << "No convolution algorithm without scratch works with "
                     "profiling. Fall back "
                     "to the default algorithm.";
-      best_algorithm_.set_algorithm_no_scratch(se::dnn::kDefaultAlgorithm);
+      best_algorithm_.set_algorithm_no_scratch(AlgorithmDesc());
     }
   }
 
   {
-    VLOG(2) << "Using convolution algorithm (" << best_algorithm_.algorithm()
-            << ", " << best_algorithm_.algorithm_no_scratch()
+    VLOG(2) << "Using convolution algorithm ("
+            << best_algorithm_.algorithm().algo_id() << ", "
+            << best_algorithm_.algorithm_no_scratch().algo_id()
             << ") for ConvolutionThunk: " << this;
     ConvolveScratchAllocator scratch_allocator(
         buffer_allocations.device_ordinal(),

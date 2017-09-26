@@ -25,7 +25,6 @@ import collections
 import hashlib
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.framework import op_def_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -97,8 +96,8 @@ class Defun(object):
            declare this `Function` in the graph.
 
          grad_func - (optional).  A function implementing the gradient
-           of the function-to-register.  This is either a
-           `_DefinedFunction` or a `Declare` object. The gradient
+           of the function-to-register.  This is must be a
+           `_DefinedFunction` object. The gradient
            function must satisify the criterion defined in
            function.proto:GradientDef.
 
@@ -184,59 +183,6 @@ class Defun(object):
         self._python_grad_func,
         out_names=self._out_names,
         **self._extra_kwargs)
-
-
-class Declare(object):
-  """Declares a TensorFlow function.
-
-  The object represents a TensorFlow function which will be defined
-  later during a graph construction.
-
-  For example,
-    # Declares a function Foo, which takes a tf.int32 named "n" and a
-    # tf.float32 named "x" as inputs and returns a tf.float32 named "z"
-    # as its output.
-    foo = Declare("Foo", [("n", tf.int32), ("x", tf.float32)],
-                  [("z", tf.float32)])
-
-    # Defines a function Bar calls Foo.
-    @tf.Defun(tf.float32)
-    def Bar(x):
-      return foo(6, x)
-
-    # Defines Foo, with output named "z".
-    @tf.Defun(tf.int32, tf.float32, out_names=["z"])
-    def Foo(n, x):
-       ...  # Calculation.
-       return result
-  """
-
-  def __init__(self, func_name, inputs, outputs):
-    """Creates a `Declare` object.
-
-    Args:
-      func_name: The name of the function.
-      inputs: A list of (name, data type) pairs of function arguments.
-      outputs: A list of (name, data type) pairs of function return values.
-    """
-    self._sig = op_def_pb2.OpDef()
-    self._sig.name = func_name
-
-    def _to_argdef_list(args):
-      names = [n for n, t in args]
-      if len(names) != len(set(names)):
-        raise ValueError("Expected names to all be unique: %s" % str(names))
-      return [
-          op_def_pb2.OpDef.ArgDef(type=t.as_datatype_enum, name=n)
-          for n, t in args
-      ]
-
-    self._sig.input_arg.extend(_to_argdef_list(inputs))
-    self._sig.output_arg.extend(_to_argdef_list(outputs))
-
-  def __call__(self, *inputs, **kwargs):
-    inputs = [ops.convert_to_tensor(_) for _ in inputs]
-    return _call(self._sig, *inputs, **kwargs)[0]
 
 
 class _DefinedFunction(object):
@@ -410,9 +356,10 @@ class _DefinedFunction(object):
 
     # pylint: disable=protected-access
     if temp_graph._c_graph:
+      output_names = ([compat.as_bytes(x) for x in self._out_names]
+                      if self._out_names else [])
+      description = self._func.__doc__ or None
       with errors.raise_exception_on_not_ok_status() as status:
-        output_names = ([compat.as_bytes(x) for x in self._out_names]
-                        if self._out_names else [])
         self._c_func = c_api.TF_GraphToFunction_wrapper(
             temp_graph._c_graph,
             self._func_name,
@@ -421,8 +368,26 @@ class _DefinedFunction(object):
             [t._as_tf_output() for t in outputs],
             output_names,
             None,  # opts
+            description,
             status)
+      self._set_c_attrs(kwargs_attr)
     # pylint: enable=protected-access
+
+  def _set_c_attrs(self, attrs):
+    """Sets `attrs` as attributes of self._c_func.
+
+    Requires that self._c_func is not None.
+
+    Args:
+      attrs: a dictionary from attribute name to attribute proto value
+    """
+    for name, attr_value in attrs.items():
+      serialized = attr_value.SerializeToString()
+      # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
+      # It might be worth creating a convenient way to re-use the same status.
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_FunctionSetAttrValueProto(self._c_func, compat.as_str(name),
+                                           serialized, status)
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
     """Creates an 8-character string unique to this input.

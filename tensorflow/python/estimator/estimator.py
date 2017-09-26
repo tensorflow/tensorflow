@@ -146,6 +146,7 @@ class Estimator(object):
     # Model directory.
     if (model_dir is not None) and (self._config.model_dir is not None):
       if model_dir != self._config.model_dir:
+        # TODO(alanyee): remove this suppression after it is no longer needed
         # pylint: disable=g-doc-exception
         raise ValueError(
             "model_dir are set both in constructor and RunConfig, but with "
@@ -200,6 +201,15 @@ class Estimator(object):
       return self._call_model_fn(features, labels, mode, config)
 
     return public_model_fn
+
+  def latest_checkpoint(self):
+    """Finds the filename of latest saved checkpoint file in `model_dir`.
+
+    Returns:
+      The full path to the latest checkpoint or `None` if no checkpoint was
+      found.
+    """
+    return saver.latest_checkpoint(self.model_dir)
 
   def train(self, input_fn, hooks=None, steps=None, max_steps=None):
     """Trains a model given training data input_fn.

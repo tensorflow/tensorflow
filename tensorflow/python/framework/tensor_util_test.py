@@ -792,7 +792,7 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
-  def testPack(self):
+  def testPack_Axis0(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     np_val = np.array(inputs)
     tf_val = array_ops.stack(inputs)
@@ -804,12 +804,30 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
-  def testPack_Partial(self):
+  def testPack_Axis1(self):
+    inputs = [np.random.rand(4, 7) for _ in range(3)]
+    tf_val = array_ops.stack(inputs, axis=1)
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertIsNone(c_val)
+
+    tf_val = array_ops.stack(
+        [inputs[0], array_ops.placeholder(dtypes.float32), inputs[2]], axis=1)
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertIs(None, c_val)
+
+  def testPack_Partial_Axis0(self):
     input_ = np.random.rand(4, 7)
     tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
     c_val = tensor_util.constant_value(tf_val, partial=True)
     self.assertAllClose(input_, c_val[0])
     self.assertIsNone(c_val[1])
+
+  def testPack_Partial_Axis1(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)],
+                             axis=1)
+    c_val = tensor_util.constant_value(tf_val, partial=True)
+    self.assertIsNone(c_val)
 
   def testEqual(self):
     # Scalar inputs.

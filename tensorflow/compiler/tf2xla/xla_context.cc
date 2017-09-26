@@ -119,10 +119,6 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   return Status::OK();
 }
 
-void XlaContext::AddSideEffects() {
-  has_side_effects_ = true;
-}
-
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
 Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
@@ -150,6 +146,20 @@ const xla::Computation* XlaContext::GetOrCreateMax(const DataType type) {
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     b.Max(x, y);
+    return b.Build().ConsumeValueOrDie();
+  });
+}
+
+const xla::Computation* XlaContext::GetOrCreateMin(const DataType type) {
+  return LookupOrCreate(type, &min_func_, [this, type] {
+    const string type_string = DataTypeString(type);
+    VLOG(1) << "Building Min() for " << type_string;
+    xla::ComputationBuilder b(builder()->client(), "min<" + type_string + ">");
+    xla::PrimitiveType xla_type;
+    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    b.Min(x, y);
     return b.Build().ConsumeValueOrDie();
   });
 }

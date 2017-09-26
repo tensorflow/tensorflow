@@ -421,6 +421,11 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     def v_greater_than_twelve(datum, tensor):
       return datum.node_name == "v" and tensor > 12.0
+
+    # Verify that adding the same tensor filter more than once is tolerated
+    # (i.e., as if it were added only once).
+    wrapped_sess.add_tensor_filter("v_greater_than_twelve",
+                                   v_greater_than_twelve)
     wrapped_sess.add_tensor_filter("v_greater_than_twelve",
                                    v_greater_than_twelve)
 

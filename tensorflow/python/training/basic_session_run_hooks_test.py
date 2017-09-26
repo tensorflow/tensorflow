@@ -985,9 +985,11 @@ class SummarySaverHookTest(test.TestCase):
             },
         })
 
-  def test_save_secs_saving_once_every_three_steps(self):
+  @test.mock.patch.object(time, 'time')
+  def test_save_secs_saving_once_every_three_steps(self, mock_time):
+    mock_time.return_value = 1484695987.209386
     hook = basic_session_run_hooks.SummarySaverHook(
-        save_secs=0.9,
+        save_secs=9.,
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
@@ -997,9 +999,10 @@ class SummarySaverHookTest(test.TestCase):
       mon_sess = monitored_session._HookedSession(sess, [hook])
       for _ in range(8):
         mon_sess.run(self.train_op)
-        time.sleep(0.3)
+        mock_time.return_value += 3.1
       hook.end(sess)
 
+    # 24.8 seconds passed (3.1*8), it saves every 9 seconds starting from first:
     self.summary_writer.assert_summaries(
         test_case=self,
         expected_logdir=self.log_dir,

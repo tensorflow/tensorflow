@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
+#include "tensorflow/python/lib/core/py_seq_tensor.h"
 
 using tensorflow::string;
 
@@ -371,6 +372,16 @@ namespace {
 // Python subclass of Exception that is created on not ok Status.
 tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
 PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
+
+void PyRaiseException(TF_Code error_code, const char* msg) {
+  tensorflow::mutex_lock l(exception_class_mutex);
+  if (exception_class != nullptr) {
+    PyErr_SetObject(exception_class, Py_BuildValue("si", msg, error_code));
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, msg);
+  }
+}
+
 }  // namespace
 
 TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj) {
@@ -379,16 +390,23 @@ TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj) {
   if (cppstatus.ok()) {
     return TFE_NewTensorHandle(t);
   } else {
-    tensorflow::mutex_lock l(exception_class_mutex);
-    auto msg = tensorflow::strings::StrCat(
-        "failed to convert numpy ndarray to a Tensor (",
-        cppstatus.error_message(), ")");
-    if (exception_class != nullptr) {
-      PyErr_SetObject(exception_class,
-                      Py_BuildValue("si", msg.c_str(), TF_INVALID_ARGUMENT));
-    } else {
-      PyErr_SetString(PyExc_RuntimeError, msg.c_str());
-    }
+    PyRaiseException(TF_INVALID_ARGUMENT,
+                     tensorflow::strings::StrCat(
+                         "failed to convert numpy ndarray to a Tensor (",
+                         cppstatus.error_message(), ")")
+                         .c_str());
+  }
+  return nullptr;
+}
+
+TFE_TensorHandle* TFE_Py_SequenceToTensorHandle(PyObject* obj,
+                                                PyObject* dtype) {
+  tensorflow::Tensor t;
+  auto cppstatus = tensorflow::PySeqToTensor(obj, dtype, &t);
+  if (cppstatus.ok()) {
+    return TFE_NewTensorHandle(t);
+  } else {
+    PyRaiseException(TF_INVALID_ARGUMENT, cppstatus.error_message().c_str());
   }
   return nullptr;
 }
@@ -411,19 +429,13 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
   }
 }
 
-int TFE_Py_MayBeRaiseException(TF_Status* status) {
+int TFE_Py_MaybeRaiseException(TF_Status* status) {
   if (TF_GetCode(status) == TF_OK) return 0;
-  tensorflow::mutex_lock l(exception_class_mutex);
-  if (exception_class != nullptr) {
-    PyErr_SetObject(exception_class, Py_BuildValue("si", TF_Message(status),
-                                                   TF_GetCode(status)));
-  } else {
-    PyErr_SetString(PyExc_RuntimeError, TF_Message(status));
-  }
+  PyRaiseException(TF_GetCode(status), TF_Message(status));
   return -1;
 }
 
-char* TFE_GetPyThonString(PyObject* o) {
+char* TFE_GetPythonString(PyObject* o) {
   if (PyBytes_Check(o)) {
     return PyBytes_AsString(o);
   }

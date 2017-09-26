@@ -254,6 +254,30 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(dx.numpy(), y.numpy())
     self.assertAllEqual(dy.numpy(), x.numpy())
 
+  def testEmptyParamsForValueAndGradFunction(self):
+    def fn(a, b):
+      return a * b
+    val_and_grads_fn = backprop.val_and_grad_function(fn)
+
+    x = 2.0
+    y = 3.0
+    val, (dx, dy) = val_and_grads_fn(x, y)
+    self.assertAllClose(val.numpy(), x * y)
+    self.assertAllEqual(dx.numpy(), y)
+    self.assertAllEqual(dy.numpy(), x)
+
+  def testNonEmptyParamsForValueAndGradFunction(self):
+    def fn(a, b):
+      return a * b
+    val_and_grad_fn = backprop.val_and_grad_function(fn, params=[1])
+
+    x = 2.0
+    y = 3.0
+    val, grads = val_and_grad_fn(x, y)
+    self.assertAllClose(val.numpy(), x * y)
+    self.assertEqual(1, len(grads))
+    self.assertAllEqual(grads[0].numpy(), x)
+
   def testTensorCopyCPU2GPU2CPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
@@ -326,6 +350,52 @@ class BackpropTest(test.TestCase):
 
     grad = backprop.implicit_grad(fn)()[0][0]
     self.assertAllEqual([1.0], grad.numpy())
+
+  def testOutput(self):
+
+    def multiout(x):
+      return x + 2, x * x
+
+    x = constant_op.constant([0.0, 1.0, 2.0])
+
+    grad = backprop.gradients_function(multiout)(x)[0]
+    self.assertAllEqual([1.0, 3.0, 5.0], grad.numpy())
+
+  def testMultiValuePreservesIfNotDiffedAgainst(self):
+
+    def tfe_conv2d(timage, tkernel, conv2dstrides):
+      return nn_ops.conv2d(timage, tkernel, conv2dstrides, 'SAME')
+
+    i = constant_op.constant([[[[1.0]]]])
+    k = constant_op.constant([[[[2.0]]]])
+    s = [1, 1, 1, 1]
+
+    grad = backprop.gradients_function(tfe_conv2d, params=(0,))(i, k, s)[0]
+    self.assertAllEqual([[[[2.0]]]], grad.numpy())
+
+  def testSameObjectForMultipleArguments(self):
+
+    def f(x, y):
+      return math_ops.multiply(x, y)
+
+    g = backprop.gradients_function(f)
+
+    def np_g(x, y):
+      dx, dy = g(x, y)
+      return [dx.numpy(), dy.numpy()]
+
+    x = constant_op.constant(1.)
+    self.assertAllEqual([1., 1.], np_g(x, x))
+    x = 1.
+    self.assertAllEqual([1., 1.], np_g(x, x))
+    x = constant_op.constant([[1.]])
+    self.assertAllEqual([[[1.]], [[1.]]], np_g(x, x))
+    x = [[1.]]
+    self.assertAllEqual([[[1.]], [[1.]]], np_g(x, x))
+
+    v = resource_variable_ops.ResourceVariable(
+        initial_value=1., name='testSameObjectForMultipleArguments.Variable')
+    self.assertAllEqual([1., 1.], np_g(v, v))
 
 
 if __name__ == '__main__':

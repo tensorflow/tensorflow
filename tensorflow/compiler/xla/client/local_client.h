@@ -158,21 +158,24 @@ class LocalClient : public Client {
   LocalClient(const LocalClient&) = delete;
   void operator=(const LocalClient&) = delete;
 
-  // Return a handle to a buffer large enough to hold shape, allocated
-  // on device_ordinal on the local service. If
-  // allocate_space_for_deep_copy, the buffer is large enough to hold
-  // all sub-buffers of a tuple shape, otherwise it is only as large
-  // as the top-level tuple pointer array.
-  StatusOr<std::unique_ptr<GlobalData>> AllocateBufferOnDevice(
-      const Shape& shape, int device_ordinal,
-      bool allocate_space_for_deep_copy);
-
   // Build and return a LocalExecutable object. The executable is compiled using
   // the given argument layouts and options.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const Computation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
       const ExecutableBuildOptions& options);
+
+  // Copy the literal data to the device with the given ordinal and return as a
+  // ScopedShapedBuffer. The given memory allocator is used for device memory
+  // allocation.
+  StatusOr<std::unique_ptr<ScopedShapedBuffer>> LiteralToShapedBuffer(
+      const Literal& literal, DeviceMemoryAllocator* allocator,
+      int device_ordinal);
+
+  // Copy the data from the device contained in the given ShapedBuffer and
+  // return as a Literal.
+  StatusOr<std::unique_ptr<Literal>> ShapedBufferToLiteral(
+      const ShapedBuffer& shaped_buffer);
 
   // Returns the platform that the underlying service targets.
   perftools::gputools::Platform* platform() const;

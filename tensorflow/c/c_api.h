@@ -922,14 +922,29 @@ TF_CAPI_EXPORT extern void TF_GraphImportGraphDef(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status);
 
-// Add `function` to graph `g`. Once `function` is added to `g`,
-// it can be called by creating an operation using the function's name.
+// Adds a copy of function `func` and optionally its gradient function `grad`
+// to `g`. Once `func`/`grad` is added to `g`, it can be called by creating
+// an operation using the function's name.
+// Any changes to `func`/`grad` (including deleting it) done after this method
+// returns, won't affect the copy of `func`/`grad` in `g`.
+// If `func` or `grad` are already in `g`, TF_GraphCopyFunction has no
+// effect on them, but can establish the function->gradient relationship
+// between them if `func` does not already have a gradient. If `func` already
+// has a gradient different from `grad`, an error is returned.
 //
-// If successful, status is set to OK and function is added to g
-// Otherwise, status is set to the encountered error and g is unmodified
-TF_CAPI_EXPORT extern void TF_GraphAddFunction(TF_Graph* g,
-                                               const TF_Function* function,
-                                               TF_Status* status);
+// `func` must not be null.
+// If `grad` is null and `func` is not in `g`, `func` is added without a
+// gradient.
+// If `grad` is null and `func` is in `g`, TF_GraphCopyFunction is a noop.
+// `grad` must have appropriate signature as described in the doc of
+// GradientDef in tensorflow/core/framework/function.proto.
+//
+// If successful, status is set to OK and `func` and `grad` are added to `g`.
+// Otherwise, status is set to the encountered error and `g` is unmodified.
+TF_CAPI_EXPORT extern void TF_GraphCopyFunction(TF_Graph* g,
+                                                const TF_Function* func,
+                                                const TF_Function* grad,
+                                                TF_Status* status);
 
 // Note: The following function may fail on very large protos in the future.
 
@@ -1070,6 +1085,7 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 //                 names - "[a-z][a-z0-9_]*". In the latter case,
 //                 names for outputs will be generated automatically.
 //  opts - various options for the function, e.g. XLA's inlining control.
+//  description - optional human-readable description of this function.
 //  status - Set to OK on success and an appropriate error on failure.
 //
 // Note that when the same TF_Output is listed as both an input and an output,
@@ -1079,9 +1095,10 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 // Callers must also satisfy the following constraints:
 // - `inputs` cannot refer to TF_Outputs within a control flow context. For
 //   example, one cannot use the output of "switch" node as input.
-// - No TF_Output of a function (inside any of `inputs`, `outputs`, `fn_body`)
-//   is allowed to have a reference type. Reference types are not exposed
-//   through C API and are being deprecated.
+// - `inputs` and `outputs` cannot have reference types. Reference types are
+//   not exposed through C API and are being replaced with Resources. We support
+//   reference types inside function's body to support legacy code. Do not
+//   use them in new code.
 // - Every node in the function's body must have all of its inputs (including
 //   control inputs). In other words, for every node in the body, each input
 //   must be either listed in `inputs` or must come from another node in
@@ -1092,18 +1109,15 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 //   included in explicitly specified body).
 //
 // Returns:
-//  On successful, a newly created TF_Function instance. It must be deleted by
+//  On success, a newly created TF_Function instance. It must be deleted by
 //  calling TF_DeleteFunction.
 //
 //  On failure, null.
-//
-// TODO(iga): Add input_names argument and get output_names working (they are
-// currently ignored)
 TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
     const TF_Graph* fn_body, const char* fn_name, int num_opers,
     const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,
     int noutputs, const TF_Output* outputs, const char* const* output_names,
-    const TF_FunctionOptions* opts, TF_Status* status);
+    const TF_FunctionOptions* opts, const char* description, TF_Status* status);
 
 // Write out a serialized representation of `func` (as a FunctionDef protocol
 // message) to `output_func_def` (allocated by TF_NewBuffer()).
@@ -1115,7 +1129,37 @@ TF_CAPI_EXPORT extern void TF_FunctionToFunctionDef(TF_Function* func,
                                                     TF_Buffer* output_func_def,
                                                     TF_Status* status);
 
-TF_CAPI_EXPORT extern void TF_DeleteFunction(TF_Function*);
+// Construct and return the function serialized in `func_def`.
+// Returns:
+//  On success, a newly created TF_Function instance. It must be deleted by
+//  calling TF_DeleteFunction.
+//
+//  On failure, null.
+TF_CAPI_EXPORT extern TF_Function* TF_FunctionImportFunctionDef(
+    const TF_Buffer* func_def, TF_Status* status);
+
+// Sets function attribute named `attr_name` to value stored in `proto`.
+// If this attribute is already set to another value, it is overriden.
+// `proto` should point to a sequence of bytes of length `proto_len`
+// representing a binary serialization of an AttrValue protocol
+// buffer.
+TF_CAPI_EXPORT extern void TF_FunctionSetAttrValueProto(TF_Function* func,
+                                                        const char* attr_name,
+                                                        const void* proto,
+                                                        size_t proto_len,
+                                                        TF_Status* status);
+
+// Sets `output_attr_value` to the binary-serialized AttrValue proto
+// representation of the value of the `attr_name` attr of `func`.
+// If `attr_name` attribute is not present, status is set to an error.
+TF_CAPI_EXPORT extern void TF_FunctionGetAttrValueProto(
+    TF_Function* func, const char* attr_name, TF_Buffer* output_attr_value,
+    TF_Status* status);
+
+// Frees the memory used by the `func` struct.
+// TF_DeleteFunction is a noop if `func` is null.
+// Deleting a function does not remove it from any graphs it was copied to.
+TF_CAPI_EXPORT extern void TF_DeleteFunction(TF_Function* func);
 
 // TODO(josh11b): Register OpDef, available to all operations added
 // to this graph.

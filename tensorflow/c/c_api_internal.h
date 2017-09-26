@@ -131,8 +131,7 @@ struct TF_DeviceList {
 };
 
 struct TF_Function {
-  // Currently contains a single function and no gradients
-  tensorflow::FunctionDefLibrary fdef_lib;
+  tensorflow::FunctionDef fdef;
 };
 
 namespace tensorflow {

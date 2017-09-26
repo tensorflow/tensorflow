@@ -284,7 +284,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
     diag_info.print(*printer);
   };
-  llvm_context.setDiagnosticHandler(DiagnosticHandler, &printer);
+  llvm_context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
   llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
@@ -307,6 +307,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
                           BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
                             return kMemoryAlignment;
                           }));
+  // BufferAssignment::ToString() includes a header, so no need for us to
+  // print one ourselves.
+  XLA_VLOG_LINES(2, buffer_assignment->ToString());
 
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();
