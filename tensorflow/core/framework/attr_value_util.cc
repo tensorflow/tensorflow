@@ -405,21 +405,6 @@ void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out) {
   }
 }
 
-// Wrapper around protocol buffer serialization that requests deterministic
-// serialization, in particular for Map fields, which serialize in a random
-// order by default. Returns true on success.
-template <typename T>
-static bool DeterministicSerialization(const T& t, string* result) {
-  const int size = t.ByteSize();
-  *result = string(size, '\0');
-  ::tensorflow::protobuf::io::ArrayOutputStream array_stream(&(*result)[0],
-                                                             size);
-  ::tensorflow::protobuf::io::CodedOutputStream output_stream(&array_stream);
-  output_stream.SetSerializationDeterministic(true);
-  t.SerializeWithCachedSizes(&output_stream);
-  return !output_stream.HadError() && size == output_stream.ByteCount();
-}
-
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
   // There are multiple equivalent representations of attr values containing
   // TensorProtos. Compare them by constructing Tensors and serializing them
@@ -442,8 +427,8 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
     bt.AsProtoTensorContent(&bp);
 
     string a_str, b_str;
-    DeterministicSerialization(ap, &a_str);
-    DeterministicSerialization(bp, &b_str);
+    SerializeToStringDeterministic(ap, &a_str);
+    SerializeToStringDeterministic(bp, &b_str);
     return a_str == b_str;
   }
 
@@ -470,8 +455,8 @@ bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
   // All other fields in AttrValue have deterministic representations.
   // It is safe to compare their serialized strings.
   string a_str, b_str;
-  DeterministicSerialization(a, &a_str);
-  DeterministicSerialization(b, &b_str);
+  SerializeToStringDeterministic(a, &a_str);
+  SerializeToStringDeterministic(b, &b_str);
   return a_str == b_str;
 }
 
@@ -486,7 +471,7 @@ uint64 AttrValueHash(const AttrValue& a) {
     TensorProto p;
     tensor.AsProtoTensorContent(&p);
     string s;
-    DeterministicSerialization(p, &s);
+    SerializeToStringDeterministic(p, &s);
     return Hash64(s);
   }
   if (a.has_func()) {
@@ -502,7 +487,7 @@ uint64 AttrValueHash(const AttrValue& a) {
 
   // If `a` is not a tensor or func, get a hash of serialized string.
   string s;
-  DeterministicSerialization(a, &s);
+  SerializeToStringDeterministic(a, &s);
   return Hash64(s);
 }
 
