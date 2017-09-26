@@ -55,7 +55,6 @@ class ShapeIndex {
  public:
   ShapeIndex() = default;
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
-  ShapeIndex(const ShapeIndex& parent, int64 begin_offset);
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -82,6 +81,8 @@ class ShapeIndex {
 
  private:
   std::vector<int64> indices_;
+
+  friend class ShapeIndexView;
 };
 
 // A view into a ShapeIndex as above, with the cheap/easy ability to consume the
@@ -89,9 +90,21 @@ class ShapeIndex {
 class ShapeIndexView {
  public:
   ShapeIndexView(const ShapeIndex& shape_index)
-      : ShapeIndexView(shape_index.begin(), shape_index.end()) {}
+      : ShapeIndexView(shape_index.indices_.data(),
+                       shape_index.indices_.data() + shape_index.size()) {}
+  ShapeIndexView(const ShapeIndex& shape_index, int64 offset)
+      : ShapeIndexView(shape_index.indices_.data() + offset,
+                       shape_index.indices_.data() + shape_index.size()) {
+    CHECK_LE(offset, shape_index.size());
+  }
+  ShapeIndexView(std::initializer_list<int64> indices)
+      : ShapeIndexView(indices.begin(), indices.end()) {}
   ShapeIndexView(const ShapeIndexView& other) = default;
 
+  using iterator = const int64*;
+
+  iterator begin() const { return begin_; }
+  iterator end() const { return end_; }
   int64 size() const { return std::distance(begin_, end_); }
   bool empty() const { return begin_ == end_; }
   int64 front() const {
@@ -108,12 +121,10 @@ class ShapeIndexView {
   string ToString() const;
 
  private:
-  ShapeIndexView(std::vector<int64>::const_iterator begin,
-                 std::vector<int64>::const_iterator end)
-      : begin_(begin), end_(end) {}
+  ShapeIndexView(iterator begin, iterator end) : begin_(begin), end_(end) {}
 
-  std::vector<int64>::const_iterator begin_;
-  std::vector<int64>::const_iterator end_;
+  iterator begin_;
+  iterator end_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
@@ -336,8 +347,8 @@ class ShapeUtil {
 
   // GetSubshape and GetMutableSubshape return a particular nested Shape within
   // the given Shape argument.
-  static const Shape& GetSubshape(const Shape& shape, const ShapeIndex& index);
-  static Shape* GetMutableSubshape(Shape* shape, const ShapeIndex& index);
+  static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+  static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
 
   // Returns whether the given index in the given shape is a leaf element of the
   // shape.

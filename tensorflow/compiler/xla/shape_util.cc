@@ -45,11 +45,6 @@ string ShapeIndex::ToString() const {
       "{", tensorflow::str_util::Join(indices_, ","), "}");
 }
 
-ShapeIndex::ShapeIndex(const ShapeIndex& parent, int64 begin_offset) {
-  std::copy(parent.begin() + begin_offset, parent.end(),
-            std::back_inserter(indices_));
-}
-
 string ShapeIndexView::ToString() const {
   return tensorflow::strings::StrCat(
       "{",
@@ -670,7 +665,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 
 /* static */ const Shape& ShapeUtil::GetSubshape(const Shape& shape,
-                                                 const ShapeIndex& index) {
+                                                 ShapeIndexView index) {
   const Shape* return_shape = &shape;
   for (auto i : index) {
     CHECK(IsTuple(*return_shape));
@@ -680,7 +675,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 
 /* static */ Shape* ShapeUtil::GetMutableSubshape(Shape* shape,
-                                                  const ShapeIndex& index) {
+                                                  ShapeIndexView index) {
   Shape* return_shape = shape;
   for (auto i : index) {
     CHECK(IsTuple(*return_shape));
