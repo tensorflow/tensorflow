@@ -36,8 +36,8 @@ _DTYPES = set(
 class ImageOpsTest(test_util.TensorFlowTestCase):
 
   def test_zeros(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         for shape in [(5, 5), (24, 24), (2, 24, 24, 3)]:
           for angle in [0, 1, np.pi / 2.0]:
             image = array_ops.zeros(shape, dtype)
@@ -46,8 +46,8 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                 np.zeros(shape, dtype.as_numpy_dtype()))
 
   def test_rotate_even(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         image = array_ops.reshape(
             math_ops.cast(math_ops.range(36), dtype), (6, 6))
         image_rep = array_ops.tile(image[None, :, :, None], [3, 1, 1, 1])
@@ -68,8 +68,8 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                               [1, 7, 13, 19, 25, 31], [0, 6, 12, 18, 24, 30]]])
 
   def test_rotate_odd(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         image = array_ops.reshape(
             math_ops.cast(math_ops.range(25), dtype), (5, 5))
         image_rep = array_ops.tile(image[None, :, :, None], [3, 1, 1, 1])
@@ -88,8 +88,8 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                               [24, 19, 14, 9, 4]]])
 
   def test_translate(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         image = constant_op.constant(
             [[1, 0, 1, 0],
              [0, 1, 0, 1],
@@ -104,8 +104,8 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                              [0, 0, 0, 0]])
 
   def test_compose(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         image = constant_op.constant(
             [[1, 1, 1, 0],
              [1, 0, 0, 0],
