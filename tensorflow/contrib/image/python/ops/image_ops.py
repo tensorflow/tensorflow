@@ -168,7 +168,7 @@ def translations_to_projective_transforms(translations, name=None):
   """Returns projective transform(s) for the given translation(s).
 
   Args:
-      translations: A 2-element list representing [dx, dy] or a vector of
+      translations: A 2-element list representing [dx, dy] or a matrix of
           2-element lists representing [dx, dy] to translate for each image
           (for a batch of images). The rank must be statically known (the shape
           is not `TensorShape(None)`.
