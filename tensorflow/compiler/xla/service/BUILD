@@ -1422,6 +1422,7 @@ cc_library(
         ":hlo",
         ":hlo_buffer",
         ":hlo_dataflow_analysis",
+        ":hlo_ordering",
         ":hlo_value",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
