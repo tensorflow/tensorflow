@@ -84,7 +84,9 @@ class MemoryStatsOpsTest(test_util.TensorFlowTestCase):
       # intermediate result allocates 1 matrix, max usage is at least 2
       self.assertGreaterEqual(bytes_in_use, matrix_size_in_bytes * 1)
       self.assertLess(bytes_in_use, matrix_size_in_bytes * 2)
-      self.assertGreaterEqual(max_bytes_in_use, matrix_size_in_bytes * 2)
+
+      # max usage is still 3 because it reflects maxium from previous .run call
+      self.assertGreaterEqual(max_bytes_in_use, matrix_size_in_bytes * 3)
 
 
 if __name__ == '__main__':
