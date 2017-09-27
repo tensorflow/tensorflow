@@ -2613,6 +2613,7 @@ tf_cc_tests(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/cc:while_loop",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
