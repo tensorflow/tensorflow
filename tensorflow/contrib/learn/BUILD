@@ -816,6 +816,22 @@ py_test(
 )
 
 py_test(
+    name = "input_fn_utils_test",
+    size = "small",
+    srcs = ["python/learn/utils/input_fn_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
     name = "stability_test",
     size = "small",
     srcs = ["python/learn/estimators/stability_test.py"],
