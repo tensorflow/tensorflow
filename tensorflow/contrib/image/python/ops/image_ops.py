@@ -99,7 +99,7 @@ def translate(images, translations, interpolation="NEAREST", name=None):
         (num_rows, num_columns) (HW). The rank must be statically known (the
         shape is not `TensorShape(None)`.
     translations: A vector representing [dx, dy] or (if images has rank 4)
-        a vector of length num_images, with a [dx, dy] vector for each image in
+        a matrix of length num_images, with a [dx, dy] vector for each image in
         the batch.
     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
     name: The name of the op.
@@ -191,6 +191,12 @@ def translations_to_projective_transforms(translations, name=None):
     else:
       raise TypeError("Translations should have rank 1 or 2.")
     num_translations = array_ops.shape(translations)[0]
+    # The translation matrix looks like:
+    #     [[1 0 -dx]
+    #      [0 1 -dy]
+    #      [0 0 1]]
+    # where the last entry is implicit.
+    # Translation matrices are always float32.
     return array_ops.concat(
         values=[
             array_ops.ones((num_translations, 1), dtypes.float32),
