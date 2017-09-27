@@ -756,8 +756,6 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_prediction_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_prediction_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_quantiles_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_quantile_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_ensemble_optimzier_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_ensemble_optimizer_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_cudnn_rnn_ops"
@@ -1191,4 +1189,3 @@ else()
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
   endif(${tensorflow_ENABLE_GPU})
 endif(${tensorflow_TF_NIGHTLY})
-
