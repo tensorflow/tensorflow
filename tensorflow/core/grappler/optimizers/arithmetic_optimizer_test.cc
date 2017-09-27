@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
-#include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -66,6 +65,10 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
+  for (const auto& node : output.node()) {
+    std::cout << node.DebugString() << std::endl;
+  }
+
   EXPECT_EQ(2, output.node_size());
   const NodeDef& new_c1 = output.node(0);
   EXPECT_EQ("c1", new_c1.name());
@@ -74,62 +77,6 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ(2, new_add.input_size());
   EXPECT_EQ("c1", new_add.input(0));
   EXPECT_EQ("c1", new_add.input(1));
-}
-
-TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs_shape =
-      ops::Const(s.WithOpName("inputs_shape"), {8, 3, 28, 28}, {4});
-  Output inputs =
-      ops::RandomUniform(s.WithOpName("inputs"), inputs_shape, DT_FLOAT);
-  Output perm1 = ops::Const(s.WithOpName("perm1"), {0, 2, 3, 1}, {4});
-  Output perm2 = ops::Const(s.WithOpName("perm2"), {0, 3, 1, 2}, {4});
-  Output transpose1 = ops::Transpose(s.WithOpName("transpose1"), inputs, perm1);
-  Output transpose2 =
-      ops::Transpose(s.WithOpName("transpose2"), transpose1, perm2);
-  Output outputs = ops::Identity(s.WithOpName("outputs"), transpose2);
-
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph = output;
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
-
-  std::set<string> nodes_after_optimization;
-  for (const NodeDef& node : output.node()) {
-    nodes_after_optimization.insert(node.name());
-  }
-  EXPECT_EQ(nodes_after_optimization,
-            std::set<string>({"inputs_shape", "inputs", "outputs"}));
-}
-
-TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs_shape =
-      ops::Const(s.WithOpName("inputs_shape"), {8, 3, 28, 28}, {4});
-  Output inputs =
-      ops::RandomUniform(s.WithOpName("inputs"), inputs_shape, DT_FLOAT);
-  Output perm = ops::Const(s.WithOpName("perm"), {1, 2, 3, 0}, {4});
-  Output transpose1 = ops::Transpose(s.WithOpName("transpose1"), inputs, perm);
-  Output transpose2 =
-      ops::Transpose(s.WithOpName("transpose2"), transpose1, perm);
-  Output outputs = ops::Identity(s.WithOpName("outputs"), transpose2);
-
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-
-  item.graph = output;
-  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
-
-  EXPECT_EQ(6, output.node_size());
 }
 
 }  // namespace

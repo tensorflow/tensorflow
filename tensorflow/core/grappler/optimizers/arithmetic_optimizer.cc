@@ -19,11 +19,10 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/tensor_coding.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -216,157 +215,14 @@ void ArithmeticOptimizer::DedupComputations(GraphDef* optimized_graph) const {
   }
 }
 
-static bool AreInversePermutations(gtl::ArraySlice<int32> a,
-                                   gtl::ArraySlice<int32> b) {
-  if (a.size() != b.size()) {
-    return false;
-  }
-  for (int i = 0; i < a.size(); ++i) {
-    if (a[b[i]] != i) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Extract int32 values from a Const op to `int32_values`. Returns true if
-// succeeds.
-static bool Int32ValuesFromNode(const NodeDef& node,
-                                std::vector<int>* int32_values) {
-  if (node.op() != "Const") {
-    return false;
-  }
-
-  if (node.attr().at("dtype").type() != DT_INT32) {
-    return false;
-  }
-
-  // TensorProto represents the content of the tensor in either <type>_val or
-  // tensor_content.
-  const TensorProto& tensor = node.attr().at("value").tensor();
-  if (tensor.int_val_size() > 0 && tensor.has_tensor_shape()) {
-    // When tensor_shape is set, theoretically the representation of the data
-    // could be compressed. So, before copying int_val to the returned vector,
-    // make sure no compression happens.
-    const TensorShapeProto& shape = tensor.tensor_shape();
-    if (shape.dim_size() == 1 && shape.dim(0).size() == tensor.int_val_size()) {
-      int32_values->insert(int32_values->end(), tensor.int_val().begin(),
-                           tensor.int_val().end());
-    }
-    return true;
-  }
-
-  const auto tensor_content_size = tensor.tensor_content().size();
-  if (tensor_content_size > 0) {
-    CHECK_EQ(0, tensor_content_size % sizeof(int32))
-        << "tensor_content_size (" << tensor_content_size
-        << ") is not a multiple of " << sizeof(int32);
-    int32_values->resize(tensor_content_size / sizeof(int32));
-    port::CopyToArray(tensor.tensor_content(),
-                      reinterpret_cast<char*>(int32_values->data()));
-    return true;
-  }
-
-  return false;
-}
-
-bool ArithmeticOptimizer::TrySimplifyAndReplaceUses(const NodeDef* node,
-                                                    NodeMap* node_map) const {
-  bool changed = false;
-  if (node->op() == "Transpose") {
-    const NodeDef* input = node_map->GetNode(node->input()[0]);
-    if (input->op() == "Transpose") {
-      const NodeDef* node_perm = node_map->GetNode(node->input()[1]);
-      const NodeDef* input_perm = node_map->GetNode(input->input()[1]);
-      std::vector<int> node_perm_values;
-      std::vector<int> input_perm_values;
-      if (Int32ValuesFromNode(*node_perm, &node_perm_values) &&
-          Int32ValuesFromNode(*input_perm, &input_perm_values) &&
-          AreInversePermutations(node_perm_values, input_perm_values)) {
-        // Copy the result of GetOutputs to consumers so avoid modifying NodeMap
-        // while iterating it.
-        std::set<NodeDef*> consumers = node_map->GetOutputs(node->name());
-        for (NodeDef* consumer : consumers) {
-          // Update `consumer`'s use of `node` to `input`'s operand.
-          protobuf::RepeatedPtrField<string>* inputs_of_consumer =
-              consumer->mutable_input();
-          for (int i = 0; i < consumer->input_size(); ++i) {
-            if (NodeName(inputs_of_consumer->Get(i)) == node->name()) {
-              *inputs_of_consumer->Mutable(i) = input->input()[0];
-            }
-          }
-          node_map->UpdateInput(consumer->name(), node->name(),
-                                input->input()[0]);
-          VLOG(2) << "Update input " << node->name() << " of "
-                  << consumer->name() << " to " << input->input()[0];
-          changed = true;
-        }
-      }
-    }
-  }
-  return changed;
-}
-
-namespace {
-// A vector with a set. The set stores the same elements as the vector, and
-// quickly answers whether a value is in the vector. Duplicated elements are not
-// allowed for now.
-template <class T>
-class SetVector {
- public:
-  void PushBack(const T& value) {
-    CHECK(!Exists(value)) << "Value " << value << " is already in the set.";
-    set_.insert(value);
-    vector_.push_back(value);
-  }
-
-  T PopBack() {
-    T back = vector_.back();
-    set_.erase(back);
-    vector_.pop_back();
-    return back;
-  }
-
-  bool Exists(const T& value) const { return set_.count(value); }
-
-  bool Empty() const { return vector_.empty(); }
-
- private:
-  std::unordered_set<T> set_;
-  std::vector<T> vector_;
-};
-}  // namespace
-
-void ArithmeticOptimizer::RemoveRedundantTransposes(
-    GraphDef* optimized_graph) const {
-  NodeMap node_map(optimized_graph);
-  SetVector<const NodeDef*> nodes_to_simplify;
-  for (int i = 0; i < optimized_graph->node_size(); ++i) {
-    nodes_to_simplify.PushBack(optimized_graph->mutable_node()->Mutable(i));
-  }
-  while (!nodes_to_simplify.Empty()) {
-    const NodeDef* node = nodes_to_simplify.PopBack();
-    if (TrySimplifyAndReplaceUses(node, &node_map)) {
-      // The consumers of `node` are modified when TrySimplifyAndReplaceUses
-      // returns true. Re-push them into `nodes_to_simplify` for further
-      // optimizations.
-      for (NodeDef* consumer : node_map.GetOutputs(node->name())) {
-        if (!nodes_to_simplify.Exists(consumer)) {
-          nodes_to_simplify.PushBack(consumer);
-        }
-      }
-    }
-  }
-}
-
 Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
                                      const GrapplerItem& item,
                                      GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
 
+  // For now, only dedup computations.
   DedupComputations(optimized_graph);
-  RemoveRedundantTransposes(optimized_graph);
 
   return Status::OK();
 }

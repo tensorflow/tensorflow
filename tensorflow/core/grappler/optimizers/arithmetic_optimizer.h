@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <unordered_set>
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
-#include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -41,11 +40,6 @@ class ArithmeticOptimizer : public GraphOptimizer {
  private:
   bool CanDedup(const NodeDef& node) const;
   void DedupComputations(GraphDef* optimized_graph) const;
-  void RemoveRedundantTransposes(GraphDef* optimized_graph) const;
-  // If the expression that roots at `node` can be simplified, simplifies it,
-  // redirects the uses of `node` to the simplified expression, updates
-  // `node_map`, and returns true. Otherwise, does nothing and returns false.
-  bool TrySimplifyAndReplaceUses(const NodeDef* node, NodeMap* node_map) const;
 
   std::unordered_set<string> nodes_to_preserve_;
 };
