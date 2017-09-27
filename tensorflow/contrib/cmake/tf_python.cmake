@@ -914,6 +914,7 @@ if(WIN32)
         $<TARGET_FILE:pywrap_tensorflow_internal_static>
         $<TARGET_FILE:tf_protos_cc>
         $<TARGET_FILE:tf_python_protos_cc>
+	${nsync_STATIC_LIBRARIES}
     )
 
     set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
