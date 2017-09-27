@@ -74,7 +74,7 @@ def bin_values_fixed_width(values,
   with ops.name_scope(name, 'bin_values_fixed_width',
                       [values, value_range, nbins]) as scope:
     values = ops.convert_to_tensor(values, name='values')
-    shape = values.get_shape()
+    shape = array_ops.shape(values)
 
     values = array_ops.reshape(values, [-1])
     value_range = ops.convert_to_tensor(value_range, name='value_range')
