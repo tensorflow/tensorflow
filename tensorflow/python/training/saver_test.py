@@ -1261,12 +1261,8 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
           }, max_to_keep=2, keep_checkpoint_every_n_hours=0.7 / 3600)
       self.assertEqual([], save.last_checkpoints)
 
-      # Wait till 1 seconds have elapsed so s1 will be old enough to keep.
-      # sleep may return early, don't trust it.
-      now = time.time()
-      while now - start_time <= 1:
-        time.sleep(1)
-        now = time.time()
+      # Wait till 0.7 second have elapsed so s1 will be old enough to keep.
+      time.sleep((time.time() + 0.7) - start_time)
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
 

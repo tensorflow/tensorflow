@@ -186,12 +186,6 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support",
-    values = {"define": "with_s3_support=true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "with_xla_support",
     values = {"define": "with_xla_support=true"},
     visibility = ["//visibility:public"],
