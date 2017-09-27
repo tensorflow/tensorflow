@@ -422,7 +422,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddMapInstruction(
   TF_ASSIGN_OR_RETURN(
       Shape inferred_shape,
       ShapeInference::InferMapShape(operand_shapes, *to_apply_program_shape,
-                                    map_request.dimensions()));
+                                    AsInt64Slice(map_request.dimensions())));
 
   ComputationDataHandle handle = CreateComputationDataHandle();
 
