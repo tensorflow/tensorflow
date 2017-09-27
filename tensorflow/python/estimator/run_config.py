@@ -91,14 +91,46 @@ def _count_ps(cluster_spec):
   return len(cluster_spec.as_dict().get(TaskType.PS, []))
 
 
-def _count_worker(cluster_spec):
+def _count_worker(cluster_spec, chief_task_type):
   """Counts the number of workers (including chief) in cluster_spec."""
   if not cluster_spec:
     raise RuntimeError(
         'Internal error: `_count_worker` does not expect empty cluster_spec.')
 
   return (len(cluster_spec.as_dict().get(TaskType.WORKER, [])) +
-          len(cluster_spec.as_dict().get(TaskType.CHIEF, [])))
+          len(cluster_spec.as_dict().get(chief_task_type, [])))
+
+
+def _validate_task_type_and_task_id(cluster_spec, task_env, chief_task_type):
+  """Validates the task type and index in `task_env` according to cluster."""
+  if chief_task_type not in cluster_spec.jobs:
+    raise ValueError(
+        'If "cluster" is set in TF_CONFIG, it must have one "%s" node.' %
+        chief_task_type)
+  if len(cluster_spec.job_tasks(chief_task_type)) > 1:
+    raise ValueError(
+        'The "cluster" in TF_CONFIG must have only one "%s" node.' %
+        chief_task_type)
+
+  task_type = task_env.get(_TASK_TYPE_KEY, None)
+  task_id = task_env.get(_TASK_ID_KEY, None)
+
+  if not task_type:
+    raise ValueError(
+        'If "cluster" is set in TF_CONFIG, task type must be set.')
+  if task_id is None:
+    raise ValueError(
+        'If "cluster" is set in TF_CONFIG, task index must be set.')
+
+  task_id = int(task_id)
+
+  # Check the task id bounds. Upper bound is not necessary as
+  # - for evaluator, there is no upper bound.
+  # - for non-evaluator, task id is upper bounded by the number of jobs in
+  # cluster spec, which will be checked later (when retrieving the `master`)
+  if task_id < 0:
+    raise ValueError('Task index must be non-negative number.')
+  return task_type, task_id
 
 
 def _validate_save_ckpt_with_replaced_keys(new_copy, replaced_keys):
@@ -341,39 +373,21 @@ class RunConfig(object):
     self._cluster_spec = server_lib.ClusterSpec(tf_config.get(_CLUSTER_KEY, {}))
     task_env = tf_config.get(_TASK_ENV_KEY, {})
 
+    if self._cluster_spec and TaskType.MASTER in self._cluster_spec.jobs:
+      return self._init_distributed_setting_from_environment_var_with_master(
+          tf_config)
+
     if self._cluster_spec:
       # Distributed mode.
-      if TaskType.CHIEF not in self._cluster_spec.jobs:
-        raise ValueError(
-            'If "cluster" is set in TF_CONFIG, it must have one "chief" node.')
-      if len(self._cluster_spec.job_tasks(TaskType.CHIEF)) > 1:
-        raise ValueError(
-            'The "cluster" in TF_CONFIG must have only one "chief" node.')
-
-      self._task_type = task_env.get(_TASK_TYPE_KEY, None)
-      task_id = task_env.get(_TASK_ID_KEY, None)
-
-      if not self._task_type:
-        raise ValueError(
-            'If "cluster" is set in TF_CONFIG, task type must be set.')
-      if task_id is None:
-        raise ValueError(
-            'If "cluster" is set in TF_CONFIG, task index must be set.')
-
-      self._task_id = int(task_id)
-
-      # Check the task id bounds. Upper bound is not necessary as
-      # - for evaluator, there is no upper bound.
-      # - for non-evaluator, task id is upper bounded by the number of jobs in
-      # cluster spec, which will be checked later (when retrieving the `master`)
-      if self._task_id < 0:
-        raise ValueError('Task index must be non-negative number.')
+      self._task_type, self._task_id = _validate_task_type_and_task_id(
+          self._cluster_spec, task_env, TaskType.CHIEF)
 
       if self._task_type != TaskType.EVALUATOR:
         self._master = _get_master(
             self._cluster_spec, self._task_type, self._task_id)
         self._num_ps_replicas = _count_ps(self._cluster_spec)
-        self._num_worker_replicas = _count_worker(self._cluster_spec)
+        self._num_worker_replicas = _count_worker(
+            self._cluster_spec, chief_task_type=TaskType.CHIEF)
       else:
         # Evaluator is not part of the training cluster.
         self._cluster_spec = server_lib.ClusterSpec({})
@@ -398,6 +412,33 @@ class RunConfig(object):
       self._is_chief = True
       self._num_ps_replicas = 0
       self._num_worker_replicas = 1
+
+  def _init_distributed_setting_from_environment_var_with_master(self,
+                                                                 tf_config):
+    """Initialize distributed properties for legacy cluster with `master`."""
+    # There is no tech reason, why user cannot have chief and master in the same
+    # cluster, but it is super confusing (which is really the chief?). So, block
+    # this case.
+    if TaskType.CHIEF in self._cluster_spec.jobs:
+      raise ValueError('If `master` node exists in `cluster`, job '
+                       '`chief` is not supported.')
+
+    task_env = tf_config.get(_TASK_ENV_KEY, {})
+
+    self._task_type, self._task_id = _validate_task_type_and_task_id(
+        self._cluster_spec, task_env, TaskType.MASTER)
+
+    if self._task_type == TaskType.EVALUATOR:
+      raise ValueError('If `master` node exists in `cluster`, task_type '
+                       '`evaluator` is not supported.')
+
+    self._master = _get_master(
+        self._cluster_spec, self._task_type, self._task_id)
+    self._num_ps_replicas = _count_ps(self._cluster_spec)
+    self._num_worker_replicas = _count_worker(
+        self._cluster_spec, chief_task_type=TaskType.MASTER)
+
+    self._is_chief = self._task_type == TaskType.MASTER
 
   @property
   def cluster_spec(self):
