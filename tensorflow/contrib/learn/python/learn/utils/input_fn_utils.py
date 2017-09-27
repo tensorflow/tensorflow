@@ -109,7 +109,7 @@ def build_default_serving_input_fn(features, default_batch_size=None):
 
       features_placeholders[name] = array_ops.placeholder(dtype=t.dtype,
                                                           shape=shape,
-                                                          name=t.name)
+                                                          name=t.op.name)
     labels = None  # these are not known in serving!
     return InputFnOps(features_placeholders, labels, features_placeholders)
   return input_fn

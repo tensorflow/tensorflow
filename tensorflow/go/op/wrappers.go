@@ -7971,10 +7971,14 @@ func FusedBatchNormGradIsTraining(value bool) FusedBatchNormGradAttr {
 //	y_backprop: A 4D Tensor for the gradient with respect to y.
 //	x: A 4D Tensor for input data.
 //	scale: A 1D Tensor for scaling factor, to scale the normalized x.
-//	reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
-// in the gradient computation.
-//	reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
-// in the cuDNN case), to be used in the gradient computation.
+//	reserve_space_1: When is_training is True, a 1D Tensor for the computed batch mean
+// to be reused in gradient computation.
+// When is_training is False, a 1D Tensor for the population mean
+// to be reused in both 1st and 2nd order gradient computation.
+//	reserve_space_2: When is_training is True, a 1D Tensor for the computed batch variance
+// (inverted variance in the cuDNN case) to be reused in gradient computation.
+// When is_training is False, a 1D Tensor for the population variance
+// to be reused in both 1st and 2nd order gradient computation.
 //
 // Returns A 4D Tensor for the gradient with respect to x.A 1D Tensor for the gradient with respect to scale.A 1D Tensor for the gradient with respect to offset.Unused placeholder to match the mean input in FusedBatchNorm.Unused placeholder to match the variance input
 // in FusedBatchNorm.
@@ -9161,7 +9165,7 @@ func FusedBatchNormIsTraining(value bool) FusedBatchNormAttr {
 // to compute the running mean.A 1D Tensor for the computed batch variance, to be used by
 // TensorFlow to compute the running variance.A 1D Tensor for the computed batch mean, to be reused
 // in the gradient computation.A 1D Tensor for the computed batch variance (inverted variance
-// in the cuDNN case), to be used in the gradient computation.
+// in the cuDNN case), to be reused in the gradient computation.
 func FusedBatchNorm(scope *Scope, x tf.Output, scale tf.Output, offset tf.Output, mean tf.Output, variance tf.Output, optional ...FusedBatchNormAttr) (y tf.Output, batch_mean tf.Output, batch_variance tf.Output, reserve_space_1 tf.Output, reserve_space_2 tf.Output) {
 	if scope.Err() != nil {
 		return

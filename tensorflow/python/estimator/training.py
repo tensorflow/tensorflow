@@ -31,7 +31,6 @@ from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 
@@ -300,6 +299,9 @@ class _TrainingExecutor(object):
           steps=self._eval_spec.steps,
           hooks=self._eval_spec.hooks,
           name=self._eval_spec.name)
+
+      # TODO(b/65169058): Adds export once export strategies are moved.
+
       if _should_stop_local_train(metrics[ops.GraphKeys.GLOBAL_STEP]):
         break
 
@@ -394,7 +396,7 @@ class _TrainingExecutor(object):
         Evaluation results. Returns `None` if current round of evaluation is
         skipped.
       """
-      latest_ckpt_path = saver.latest_checkpoint(self._estimator.model_dir)
+      latest_ckpt_path = self._estimator.latest_checkpoint()
       if not latest_ckpt_path:
         self._log_err_msg('Estimator is not trained yet. Will start an '
                           'evaluation when a checkpoint is ready.')

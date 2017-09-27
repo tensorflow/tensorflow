@@ -117,6 +117,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   // instructions with no auxiliary fields.
   switch (opcode) {
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
@@ -869,6 +870,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   switch (opcode_) {
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
@@ -1237,6 +1239,7 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
@@ -1899,6 +1902,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this, operands_[0]);
+    case HloOpcode::kRoundNearestAfz:
+      return visitor->HandleRound(this);
     case HloOpcode::kBatchNormTraining:
       return visitor->HandleBatchNormTraining(this);
     case HloOpcode::kBatchNormInference:
@@ -2308,6 +2313,7 @@ bool HloInstruction::IsElementwise() const {
 
     // Unary elementwise operations.
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
@@ -2512,6 +2518,12 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
             (i == 1 && shape().dimensions(0) == 1)) {
           return UseKind::kUse;
         }
+      }
+      return UseKind::kReuse;
+    case HloOpcode::kDynamicUpdateSlice:
+      // Dynamic-update-slice reuses only operand 2 (start_indices).
+      if (i == 0 || i == 1) {
+        return UseKind::kUse;
       }
       return UseKind::kReuse;
     default:

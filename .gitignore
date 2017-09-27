@@ -15,3 +15,5 @@ __pycache__
 .vscode/
 cmake_build/
 .idea/**
+/build/
+/tensorflow/core/util/version_info.cc

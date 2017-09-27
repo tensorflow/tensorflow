@@ -470,9 +470,9 @@ class HParams(object):
       type_map[name] = param_type
 
     values_map = parse_values(values, type_map)
-    return self._set_from_map(values_map)
+    return self.set_from_map(values_map)
 
-  def _set_from_map(self, values_map):
+  def set_from_map(self, values_map):
     """Override hyperparameter values, parsing new values from a dictionary.
 
     Args:
@@ -515,7 +515,7 @@ class HParams(object):
       ValueError: If `values_json` cannot be parsed.
     """
     values_map = json.loads(values_json)
-    return self._set_from_map(values_map)
+    return self.set_from_map(values_map)
 
   def values(self):
     """Return the hyperparameter values as a Python dictionary.
