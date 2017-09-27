@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from six.moves import xrange
 
 _repeat_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_repeat_op.so"))
