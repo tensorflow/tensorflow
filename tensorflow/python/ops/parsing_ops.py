@@ -1169,8 +1169,8 @@ def _parse_single_sequence_example_raw(serialized,
 
 
 # Swap `name` and `na_value` for backward compatibility.
-def decode_csv(records, record_defaults, field_delim=None,
-               use_quote_delim=None, name=None, na_value=''):
+def decode_csv(records, record_defaults, field_delim=',',
+               use_quote_delim=True, name=None, na_value=''):
   # pylint: disable=protected-access
   """Convert CSV records to tensors. Each column maps to one tensor.
 
