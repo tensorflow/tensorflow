@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -889,6 +890,64 @@ class BinaryOpsTest(XLATestCase):
           np.array([[1, 2, 3], [10, 11, 12]], dtype=dtype),
           np.array([[4, 5, 6], [40, 50, 60]], dtype=dtype),
           expected=np.array([[-3, 6, -3], [60, -120, 60]], dtype=dtype))
+
+  def testBroadcastArgs(self):
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([2, 3, 5], dtype=np.int32),
+                     np.array([1], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([1], dtype=np.int32),
+                     np.array([2, 3, 5], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([2, 3, 5], dtype=np.int32),
+                     np.array([5], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([5], dtype=np.int32),
+                     np.array([2, 3, 5], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([2, 3, 5], dtype=np.int32),
+                     np.array([3, 5], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([3, 5], dtype=np.int32),
+                     np.array([2, 3, 5], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([2, 3, 5], dtype=np.int32),
+                     np.array([3, 1], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([3, 1], dtype=np.int32),
+                     np.array([2, 3, 5], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([2, 1, 5], dtype=np.int32),
+                     np.array([3, 1], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    self._testBinary(array_ops.broadcast_dynamic_shape,
+                     np.array([3, 1], dtype=np.int32),
+                     np.array([2, 1, 5], dtype=np.int32),
+                     expected=np.array([2, 3, 5], dtype=np.int32))
+
+    with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                             "Incompatible shapes"):
+      self._testBinary(array_ops.broadcast_dynamic_shape,
+                       np.array([1, 2, 3], dtype=np.int32),
+                       np.array([4, 5, 6], dtype=np.int32),
+                       expected=None)
 
 
 if __name__ == "__main__":

@@ -1137,6 +1137,20 @@ TEST_F(OpTest, BiasAddV1) {
   });
 }
 
+TEST_F(OpTest, BroadcastArgs) {
+  Repeatedly([this]() {
+    // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
+    // DataType type = Choose<DataType>({DT_INT32, DT_INT64});
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("BroadcastArgs")
+            .Input(AsIntTensor(type, dims.first))
+            .Input(AsIntTensor(type, dims.second))
+            .Attr("T", type));
+  });
+}
+
 TEST_F(OpTest, BroadcastGradientArgs) {
   Repeatedly([this]() {
     // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
