@@ -59,13 +59,17 @@ def max_pool_2d_nxn_regions(inputs, pool_dimension, mode):
   for row in range(pool_dimension):
     for col in range(pool_dimension):
       # start_h = floor(row / n * h)
-      start_h = math_ops.cast(math_ops.floor(math_ops.multiply(math_ops.divide(row, n), math_ops.cast(h, dtypes.float32))), dtypes.int32)
+      start_h = math_ops.cast(
+        math_ops.floor(math_ops.multiply(math_ops.divide(row, n), math_ops.cast(h, dtypes.float32))), dtypes.int32)
       # end_h = ceil((row + 1) / n * h)
-      end_h = math_ops.cast(math_ops.ceil(math_ops.multiply(math_ops.divide((row + 1), n), math_ops.cast(h, dtypes.float32))), dtypes.int32)
+      end_h = math_ops.cast(
+        math_ops.ceil(math_ops.multiply(math_ops.divide((row + 1), n), math_ops.cast(h, dtypes.float32))), dtypes.int32)
       # start_w = floor(col / n * w)
-      start_w = math_ops.cast(math_ops.floor(math_ops.multiply(math_ops.divide(col, n), math_ops.cast(w, dtypes.float32))), dtypes.int32)
+      start_w = math_ops.cast(
+        math_ops.floor(math_ops.multiply(math_ops.divide(col, n), math_ops.cast(w, dtypes.float32))), dtypes.int32)
       # end_w = ceil((col + 1) / n * w)
-      end_w = math_ops.cast(math_ops.ceil(math_ops.multiply(math_ops.divide((col + 1), n), math_ops.cast(w, dtypes.float32))), dtypes.int32)
+      end_w = math_ops.cast(
+        math_ops.ceil(math_ops.multiply(math_ops.divide((col + 1), n), math_ops.cast(w, dtypes.float32))), dtypes.int32)
       pooling_region = inputs[:, start_h:end_h, start_w:end_w, :]
       pool_result = pooling_op(pooling_region, axis=(1, 2))
       result.append(pool_result)
@@ -130,7 +134,6 @@ class SpatialPyramidPooling(base.Layer):
     Ported from: https://github.com/Lasagne/Lasagne/pull/799
   """
 
-
   def __init__(self, dimensions=None, mode='max', implementation='spp', **kwargs):
     super(SpatialPyramidPooling, self).__init__(**kwargs)
     self.implementation = implementation
@@ -157,8 +160,7 @@ class SpatialPyramidPooling(base.Layer):
                                   padding='SAME')
         pool_list.append(array_ops.reshape(pool_result, [array_ops.shape(inputs)[0], -1]))
     else:
-        raise ValueError('Unknown implementation', self.implementation)
-
+      raise ValueError('Unknown implementation', self.implementation)
 
     return array_ops.concat(values=pool_list, axis=1)
 

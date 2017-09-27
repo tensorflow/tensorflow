@@ -20,14 +20,13 @@ from __future__ import print_function
 
 from random import randint
 
+from tensorflow.python.platform import test
+
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import test
 
 
 class PoolingTest(test.TestCase):
-
-
   def testSpatialPyramidPoolingDefaultDimensionForBins(self):
     height, width, channel = 5, 6, 3
     images = array_ops.placeholder(dtype='float32',
@@ -74,9 +73,9 @@ class PoolingTest(test.TestCase):
     batch_size, height, width, channel = 4, 5, 6, 3
     layer = pooling_layers.SpatialPyramidPooling(dimensions=[3, 4, 5])
     image = array_ops.placeholder(dtype='float32',
-                                   shape=(batch_size, height, width, channel))
+                                  shape=(batch_size, height, width, channel))
     output_shape = layer._compute_output_shape(input_shape=image._shape)
-    self.assertListEqual(output_shape.as_list() , [None, 200])
+    self.assertListEqual(output_shape.as_list(), [None, 200])
 
   def testSpatialPyramidPoolingMode(self):
     batch_size, height, width, channel = 4, 5, 6, 3
@@ -85,9 +84,8 @@ class PoolingTest(test.TestCase):
     images = array_ops.placeholder(dtype='float32',
                                    shape=(batch_size, height, width, channel))
     with self.assertRaisesRegexp(
-            ValueError, "Mode must be either 'max' or 'avg'. Got '{}'".format(mode)):
+        ValueError, "Mode must be either 'max' or 'avg'. Got '{}'".format(mode)):
       layer.apply(images)
-
 
 
 if __name__ == '__main__':
