@@ -93,7 +93,7 @@ def bin_values_fixed_width(values,
     # Clip edge cases (e.g. value = value_range[1]) or "outliers."
     indices = math_ops.cast(
         clip_ops.clip_by_value(indices, 0, nbins_float - 1), dtypes.int32)
-    return array_ops.reshape(indices, values.get_shape())
+    return array_ops.reshape(indices, shape)
 
 
 def histogram_fixed_width(values,
