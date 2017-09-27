@@ -37,7 +37,7 @@ _IMAGE_DTYPES = set(
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
 
 
-def rotate(images, angles, interpolation="NEAREST", name="rotate"):
+def rotate(images, angles, interpolation="NEAREST", name=None):
   """Rotate image(s) by the passed angle(s) in radians.
 
   Args:
@@ -57,7 +57,7 @@ def rotate(images, angles, interpolation="NEAREST", name="rotate"):
   Raises:
     TypeError: If `image` is an invalid type.
   """
-  with ops.name_scope(name):
+  with ops.name_scope(name, "rotate"):
     image_or_images = ops.convert_to_tensor(images)
     if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
       raise TypeError("Invalid dtype %s." % image_or_images.dtype)
@@ -86,7 +86,7 @@ def rotate(images, angles, interpolation="NEAREST", name="rotate"):
       return output
 
 
-def translate(images, translations, interpolation="NEAREST", name="translate"):
+def translate(images, translations, interpolation="NEAREST", name=None):
   """Translate image(s) by the passed vectors(s).
 
   Args:
@@ -107,7 +107,7 @@ def translate(images, translations, interpolation="NEAREST", name="translate"):
   Raises:
     TypeError: If `image` is an invalid type.
   """
-  with ops.name_scope(name):
+  with ops.name_scope(name, "translate"):
     return transform(
         images,
         translations_to_projective_transforms(translations),
@@ -117,7 +117,7 @@ def translate(images, translations, interpolation="NEAREST", name="translate"):
 def angles_to_projective_transforms(angles,
                                     image_height,
                                     image_width,
-                                    name="angles_to_projective_transforms"):
+                                    name=None):
   """Returns projective transform(s) for the given angle(s).
 
   Args:
@@ -131,7 +131,7 @@ def angles_to_projective_transforms(angles,
     A tensor of shape (num_images, 8). Projective transforms which can be given
       to `tf.contrib.image.transform`.
   """
-  with ops.name_scope(name):
+  with ops.name_scope(name, "angles_to_projective_transforms"):
     angle_or_angles = ops.convert_to_tensor(
         angles, name="angles", dtype=dtypes.float32)
     if len(angle_or_angles.get_shape()) == 0:  # pylint: disable=g-explicit-length-test
@@ -160,8 +160,7 @@ def angles_to_projective_transforms(angles,
         axis=1)
 
 
-def translations_to_projective_transforms(
-    translations, name="translations_to_projective_transforms"):
+def translations_to_projective_transforms(translations, name=None):
   """Returns projective transform(s) for the given translation(s).
 
   Args:
@@ -175,7 +174,7 @@ def translations_to_projective_transforms(
       A tensor of shape (num_images, 8) projective transforms which can be given
           to `tf.contrib.image.transform`.
   """
-  with ops.name_scope(name):
+  with ops.name_scope(name, "translations_to_projective_transforms"):
     translation_or_translations = ops.convert_to_tensor(
         translations, name="translations", dtype=dtypes.float32)
     if len(translation_or_translations.get_shape()) == 1:
@@ -198,7 +197,7 @@ def translations_to_projective_transforms(
         axis=1)
 
 
-def transform(images, transforms, interpolation="NEAREST", name="transform"):
+def transform(images, transforms, interpolation="NEAREST", name=None):
   """Applies the given transform(s) to the image(s).
 
   Args:
@@ -223,7 +222,7 @@ def transform(images, transforms, interpolation="NEAREST", name="transform"):
   Raises:
     TypeError: If `image` is an invalid type.
   """
-  with ops.name_scope(name):
+  with ops.name_scope(name, "transform"):
     image_or_images = ops.convert_to_tensor(images, name="images")
     transform_or_transforms = ops.convert_to_tensor(
         transforms, name="transforms", dtype=dtypes.float32)
