@@ -61,7 +61,9 @@ def rotate(images, angles, interpolation="NEAREST", name=None):
     image_or_images = ops.convert_to_tensor(images)
     if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
       raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-    if len(image_or_images.get_shape()) == 2:
+    elif image_or_images.get_shape().ndims is None:
+      raise TypeError("image_or_images rank must be statically known")
+    elif len(image_or_images.get_shape()) == 2:
       images = image_or_images[None, :, :, None]
     elif len(image_or_images.get_shape()) == 3:
       images = image_or_images[None, :, :, :]
@@ -78,7 +80,9 @@ def rotate(images, angles, interpolation="NEAREST", name=None):
         images,
         angles_to_projective_transforms(angles, image_height, image_width),
         interpolation=interpolation)
-    if len(image_or_images.get_shape()) == 2:
+    if image_or_images.get_shape().ndims is None:
+      raise TypeError("image_or_images rank must be statically known")
+    elif len(image_or_images.get_shape()) == 2:
       return output[0, :, :, 0]
     elif len(image_or_images.get_shape()) == 3:
       return output[0, :, :, :]
@@ -177,7 +181,10 @@ def translations_to_projective_transforms(translations, name=None):
   with ops.name_scope(name, "translations_to_projective_transforms"):
     translation_or_translations = ops.convert_to_tensor(
         translations, name="translations", dtype=dtypes.float32)
-    if len(translation_or_translations.get_shape()) == 1:
+    if translation_or_translations.get_shape().ndims is None:
+      raise TypeError(
+          "translation_or_translations rank must be statically known")
+    elif len(translation_or_translations.get_shape()) == 1:
       translations = translation_or_translations[None]
     elif len(translation_or_translations.get_shape()) == 2:
       translations = translation_or_translations
@@ -228,7 +235,9 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
         transforms, name="transforms", dtype=dtypes.float32)
     if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
       raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-    if len(image_or_images.get_shape()) == 2:
+    elif image_or_images.get_shape().ndims is None:
+      raise TypeError("image_or_images rank must be statically known")
+    elif len(image_or_images.get_shape()) == 2:
       images = image_or_images[None, :, :, None]
     elif len(image_or_images.get_shape()) == 3:
       images = image_or_images[None, :, :, :]
@@ -239,6 +248,9 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
 
     if len(transform_or_transforms.get_shape()) == 1:
       transforms = transform_or_transforms[None]
+    elif transform_or_transforms.get_shape().ndims is None:
+      raise TypeError(
+          "transform_or_transforms rank must be statically known")
     elif len(transform_or_transforms.get_shape()) == 2:
       transforms = transform_or_transforms
     else:
