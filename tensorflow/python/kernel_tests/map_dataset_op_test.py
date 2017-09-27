@@ -100,12 +100,13 @@ class MapDatasetTest(test.TestCase):
                                                  results[i * 18 + j]):
             self.assertAllEqual(component[i]**2, result_component)
 
-  def _buildParallelMapDataset(self, components, count, num_threads,
+  def _buildParallelMapDataset(self, components, count, num_parallel_calls,
                                output_buffer_size):
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn, num_threads=num_threads, output_buffer_size=output_buffer_size)
+    return (dataset_ops.Dataset.from_tensor_slices(components)
+            .map(_map_fn, num_parallel_calls=num_parallel_calls)
+            .prefetch(output_buffer_size)
             .repeat(count))
 
   def testParallelMapDataset(self):
@@ -116,11 +117,11 @@ class MapDatasetTest(test.TestCase):
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
                   np.array(37.0) * np.arange(7))
     count = array_ops.placeholder(dtypes.int64, shape=[])
-    num_threads = array_ops.placeholder(dtypes.int32, shape=[])
+    num_parallel_calls = array_ops.placeholder(dtypes.int32, shape=[])
     output_buffer_size = array_ops.placeholder(dtypes.int64, shape=[])
 
-    dataset = self._buildParallelMapDataset(components, count, num_threads,
-                                            output_buffer_size)
+    dataset = self._buildParallelMapDataset(
+        components, count, num_parallel_calls, output_buffer_size)
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -129,11 +130,11 @@ class MapDatasetTest(test.TestCase):
                      [t.shape for t in get_next])
 
     with self.test_session() as sess:
-      def do_test(num_threads_val, output_buffer_size_val):
+      def do_test(num_parallel_calls_val, output_buffer_size_val):
         # Test single-threaded access to the iterator.
         sess.run(init_op, feed_dict={
             count: 14,
-            num_threads: num_threads_val,
+            num_parallel_calls: num_parallel_calls_val,
             output_buffer_size: output_buffer_size_val})
         for _ in range(14):
           for i in range(7):
@@ -146,7 +147,7 @@ class MapDatasetTest(test.TestCase):
         # Test multi-threaded access to the same iterator.
         sess.run(init_op, feed_dict={
             count: 18,
-            num_threads: num_threads_val,
+            num_parallel_calls: num_parallel_calls_val,
             output_buffer_size: output_buffer_size_val})
         results = []
         def iterator_thread():
@@ -173,9 +174,9 @@ class MapDatasetTest(test.TestCase):
                                                    results[i * 18 + j]):
               self.assertAllEqual(component[i]**2, result_component)
 
-      for num_threads_val, output_buffer_size_val in [
+      for num_parallel_calls_val, output_buffer_size_val in [
           (1, 1), (1, 2), (2, 2), (2, 4), (8, 8), (8, 16)]:
-        do_test(num_threads_val, output_buffer_size_val)
+        do_test(num_parallel_calls_val, output_buffer_size_val)
 
   def _testDisposeParallelMapDataset(self, explicit_dispose):
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
@@ -211,7 +212,7 @@ class MapDatasetTest(test.TestCase):
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"),
-                    num_threads=2))
+                    num_parallel_calls=2))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -226,7 +227,7 @@ class MapDatasetTest(test.TestCase):
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message"),
-                    num_threads=2, output_buffer_size=2))
+                    num_parallel_calls=2))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()

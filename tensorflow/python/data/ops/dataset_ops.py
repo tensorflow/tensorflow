@@ -986,21 +986,13 @@ class Dataset(object):
     """
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values)
 
-  def map(self,
-          map_func,
-          num_threads=None,
-          output_buffer_size=None,
-          num_parallel_calls=None):
+  def map(self, map_func, num_parallel_calls=None):
     """Maps `map_func` across this datset.
 
     Args:
       map_func: A function mapping a nested structure of tensors (having
         shapes and types defined by `self.output_shapes` and
        `self.output_types`) to another nested structure of tensors.
-      num_threads: (Optional.) Deprecated, use `num_parallel_calls` instead.
-      output_buffer_size: (Optional.) A `tf.int64` scalar `tf.Tensor`,
-        representing the maximum number of processed elements that will be
-        buffered.
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process in parallel. If not
         specified, elements will be processed sequentially.
@@ -1008,16 +1000,10 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
-    if num_threads is None and num_parallel_calls is None:
-      ret = MapDataset(self, map_func)
+    if num_parallel_calls is None:
+      return MapDataset(self, map_func)
     else:
-      if num_threads is None:
-        ret = ParallelMapDataset(self, map_func, num_parallel_calls)
-      else:
-        ret = ParallelMapDataset(self, map_func, num_threads)
-    if output_buffer_size is not None:
-      ret = ret.prefetch(output_buffer_size)
-    return ret
+      return ParallelMapDataset(self, map_func, num_parallel_calls)
 
   def flat_map(self, map_func):
     """Maps `map_func` across this dataset and flattens the result.
