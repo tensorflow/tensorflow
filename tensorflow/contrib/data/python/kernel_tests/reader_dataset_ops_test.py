@@ -21,7 +21,9 @@ import gzip
 import os
 import zlib
 
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.framework import constant_op
@@ -81,7 +83,7 @@ class TextLineDatasetTest(test.TestCase):
     num_epochs = array_ops.placeholder(dtypes.int64, shape=[])
     batch_size = array_ops.placeholder(dtypes.int64, shape=[])
 
-    repeat_dataset = dataset_ops.TextLineDataset(
+    repeat_dataset = readers.TextLineDataset(
         filenames, compression_type=compression_type).repeat(num_epochs)
     batch_dataset = repeat_dataset.batch(batch_size)
 
@@ -150,7 +152,7 @@ class TextLineDatasetTest(test.TestCase):
   def testTextLineDatasetBuffering(self):
     test_filenames = self._createFiles(2, 5, crlf=True)
 
-    repeat_dataset = dataset_ops.TextLineDataset(test_filenames, buffer_size=10)
+    repeat_dataset = readers.TextLineDataset(test_filenames, buffer_size=10)
     iterator = repeat_dataset.make_one_shot_iterator()
 
     with self.test_session() as sess:
@@ -192,7 +194,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
     num_epochs = array_ops.placeholder(dtypes.int64, shape=[])
     batch_size = array_ops.placeholder(dtypes.int64, shape=[])
 
-    repeat_dataset = (dataset_ops.FixedLengthRecordDataset(
+    repeat_dataset = (readers.FixedLengthRecordDataset(
         filenames, self._record_bytes, self._header_bytes, self._footer_bytes)
                       .repeat(num_epochs))
     batch_dataset = repeat_dataset.batch(batch_size)
@@ -256,7 +258,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
 
   def testFixedLengthRecordDatasetBuffering(self):
     test_filenames = self._createFiles()
-    dataset = dataset_ops.FixedLengthRecordDataset(
+    dataset = readers.FixedLengthRecordDataset(
         test_filenames,
         self._record_bytes,
         self._header_bytes,
@@ -274,7 +276,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
   def _build_iterator_graph(self, num_epochs):
     filenames = self._createFiles()
     path = os.path.join(self.get_temp_dir(), "iterator")
-    dataset = (dataset_ops.FixedLengthRecordDataset(
+    dataset = (readers.FixedLengthRecordDataset(
         filenames, self._record_bytes, self._header_bytes, self._footer_bytes)
                .repeat(num_epochs))
     iterator = dataset.make_initializable_iterator()
@@ -405,8 +407,9 @@ class TFRecordDatasetTest(test.TestCase):
     self.compression_type = array_ops.placeholder_with_default("", shape=[])
     self.batch_size = array_ops.placeholder(dtypes.int64, shape=[])
 
-    repeat_dataset = dataset_ops.TFRecordDataset(
-        self.filenames, self.compression_type).repeat(self.num_epochs)
+    repeat_dataset = readers.TFRecordDataset(self.filenames,
+                                             self.compression_type).repeat(
+                                                 self.num_epochs)
     batch_dataset = repeat_dataset.batch(self.batch_size)
 
     iterator = dataset_ops.Iterator.from_structure(batch_dataset.output_types)
@@ -539,8 +542,7 @@ class TFRecordDatasetTest(test.TestCase):
 
   def testReadWithBuffer(self):
     one_mebibyte = 2**20
-    d = dataset_ops.TFRecordDataset(
-        self.test_filenames, buffer_size=one_mebibyte)
+    d = readers.TFRecordDataset(self.test_filenames, buffer_size=one_mebibyte)
     iterator = d.make_one_shot_iterator()
     with self.test_session() as sess:
       for j in range(self._num_files):
@@ -563,7 +565,7 @@ class ReadBatchFeaturesTest(test.TestCase):
     self.num_epochs = num_epochs
     self.batch_size = batch_size
 
-    return dataset_ops.read_batch_features(
+    return batching.read_batch_features(
         file_pattern=self.filenames,
         batch_size=self.batch_size,
         features={
@@ -571,7 +573,7 @@ class ReadBatchFeaturesTest(test.TestCase):
             "record": parsing_ops.FixedLenFeature([], dtypes.int64),
             "keywords": parsing_ops.VarLenFeature(dtypes.string)
         },
-        reader=dataset_ops.TFRecordDataset,
+        reader=readers.TFRecordDataset,
         randomize_input=False,
         num_epochs=self.num_epochs)
 
@@ -715,7 +717,7 @@ class ReadBatchFeaturesTest(test.TestCase):
         "file": parsing_ops.FixedLenFeature([], dtypes.int64),
         "record": parsing_ops.FixedLenFeature([], dtypes.int64),
     }
-    dataset = (dataset_ops.TFRecordDataset(self.test_filenames)
+    dataset = (readers.TFRecordDataset(self.test_filenames)
                .map(lambda x: parsing_ops.parse_single_example(x, features))
                .repeat(10).batch(2))
     iterator = dataset.make_initializable_iterator()

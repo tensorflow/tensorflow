@@ -18,7 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import enumerate_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -170,7 +172,7 @@ class RangeDatasetTest(test.TestCase):
     start = constant_op.constant(20, dtype=dtypes.int64)
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components).apply(
-        dataset_ops.enumerate_dataset(start)).make_initializable_iterator())
+        enumerate_ops.enumerate_dataset(start)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
