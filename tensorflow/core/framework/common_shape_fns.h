@@ -173,6 +173,12 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 // Shape function for AvgPool-like operations.
 Status AvgPoolShape(shape_inference::InferenceContext* c);
 
+// Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
+Status FusedBatchNormShape(shape_inference::InferenceContext* c);
+
+// Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
+Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
+
 // Shape function for MaxPool-like operations.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
 

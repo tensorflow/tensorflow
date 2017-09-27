@@ -273,6 +273,7 @@ class BatchNormalization(base.Layer):
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
+    # TODO(reedwm): Add support for fp16 inputs.
     beta = self.beta if self.center else self._beta_const
     gamma = self.gamma if self.scale else self._gamma_const
 
