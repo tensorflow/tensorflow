@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu_transfer_manager.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_transfer_manager.h"
 
 #include <string>
 #include <utility>
@@ -87,7 +87,8 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
 }  // namespace
 
 CpuTransferManager::CpuTransferManager()
-    : GenericTransferManager(se::host::kHostPlatformId) {}
+    : GenericTransferManager(se::host::kHostPlatformId,
+                             /*pointer_size=*/sizeof(void*)) {}
 
 Status CpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                                                    const Literal& literal) {

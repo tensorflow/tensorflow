@@ -398,6 +398,29 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_transfer_manager",
+    srcs = ["gpu_transfer_manager.cc"],
+    hdrs = ["gpu_transfer_manager.h"],
+    deps = [
+        ":gpu_compiler",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:generic_transfer_manager",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/service/gpu:infeed_manager",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@llvm//:core",
+    ],
+    alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
+cc_library(
     name = "gpu_compiler",
     srcs = ["gpu_compiler.cc"],
     hdrs = ["gpu_compiler.h"],

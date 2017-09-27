@@ -555,8 +555,7 @@ void BM_DynamicSlice(int num_iters) {
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Initialize and transfer parameter buffer.
-  auto buffer = ScopedShapedBuffer::MakeScopedShapedBuffer(start_indices_shape,
-                                                           &allocator, 0)
+  auto buffer = ScopedShapedBuffer::Allocate(start_indices_shape, &allocator, 0)
                     .ConsumeValueOrDie();
 
   auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});

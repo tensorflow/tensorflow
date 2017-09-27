@@ -277,9 +277,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
       auto param_no = allocation.parameter_number();
-      if (ShapeUtil::IsTuple(arguments[param_no]->shape())) {
-        return Unimplemented("Tuple ShapedBuffer arguments not supported");
-      }
       buffer_allocations_builder.RegisterBuffer(
           i, arguments[param_no]->buffer(/*index=*/{}));
     }
@@ -298,9 +295,8 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
-  TF_ASSIGN_OR_RETURN(auto shaped_buffer,
-                      ShapedBuffer::MakeShapedBuffer(
-                          root->shape(), executor->platform(), device_ordinal));
+  auto shaped_buffer = MakeUnique<ShapedBuffer>(
+      root->shape(), executor->platform(), device_ordinal);
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer.
@@ -310,32 +306,29 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
           ->ForEachMutableElementWithStatus(
               [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
-                if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
-                  const auto& sources =
-                      this->GetRootPointsToSet().element(index);
-                  // The points to set is unambiguous so the set should be a
-                  // singleton. That is, we know exactly which instruction
-                  // produced the array at this element.
-                  CHECK_EQ(1, sources.size());
-                  auto src_hlo = sources[0]->instruction();
+                const auto& sources = this->GetRootPointsToSet().element(index);
+                // The points-to set is unambiguous so the set should be a
+                // singleton. That is, we know exactly which instruction
+                // produced the array at this element.
+                CHECK_EQ(1, sources.size());
+                auto src_hlo = sources[0]->instruction();
 
-                  VLOG(4) << "Looking at: " << sources[0];
+                VLOG(4) << "Looking at: " << sources[0];
 
-                  // The source instruction should have a non-parameter buffer
-                  // assigned.
-                  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                                      this->assignment_->GetUniqueSlice(
-                                          src_hlo, sources[0]->index()));
-                  CHECK(!slice.allocation()->is_entry_computation_parameter());
+                // The source instruction should have a non-parameter buffer
+                // assigned.
+                TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                                    this->assignment_->GetUniqueSlice(
+                                        src_hlo, sources[0]->index()));
+                CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-                  perftools::gputools::DeviceMemoryBase src_base =
-                      buffer_allocations->GetDeviceAddress(slice.index());
-                  CHECK(!src_base.is_null() || src_base.size() == 0);
-                  shaped_buffer->mutable_buffers()->push_back(src_base);
-                  *buffer_entry = shaped_buffer->mutable_buffers()->size() - 1;
+                perftools::gputools::DeviceMemoryBase src_base =
+                    buffer_allocations->GetDeviceAddress(slice.index());
+                CHECK(!src_base.is_null() || src_base.size() == 0);
+                shaped_buffer->mutable_buffers()->push_back(src_base);
+                *buffer_entry = shaped_buffer->mutable_buffers()->size() - 1;
 
-                  buffers_in_result.insert(src_base);
-                }
+                buffers_in_result.insert(src_base);
                 return Status::OK();
               }));
   TF_RETURN_IF_ERROR(
