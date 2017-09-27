@@ -7830,103 +7830,6 @@ func MergeV2Checkpoints(scope *Scope, checkpoint_prefixes tf.Output, destination
 	return scope.AddOperation(opspec)
 }
 
-// AudioSpectrogramAttr is an optional argument to AudioSpectrogram.
-type AudioSpectrogramAttr func(optionalAttr)
-
-// AudioSpectrogramMagnitudeSquared sets the optional magnitude_squared attribute to value.
-//
-// value: Whether to return the squared magnitude or just the
-// magnitude. Using squared magnitude can avoid extra calculations.
-// If not specified, defaults to false
-func AudioSpectrogramMagnitudeSquared(value bool) AudioSpectrogramAttr {
-	return func(m optionalAttr) {
-		m["magnitude_squared"] = value
-	}
-}
-
-// Produces a visualization of audio data over time.
-//
-// Spectrograms are a standard way of representing audio information as a series of
-// slices of frequency information, one slice for each window of time. By joining
-// these together into a sequence, they form a distinctive fingerprint of the sound
-// over time.
-//
-// This op expects to receive audio data as an input, stored as floats in the range
-// -1 to 1, together with a window width in samples, and a stride specifying how
-// far to move the window between slices. From this it generates a three
-// dimensional output. The lowest dimension has an amplitude value for each
-// frequency during that time slice. The next dimension is time, with successive
-// frequency slices. The final dimension is for the channels in the input, so a
-// stereo audio input would have two here for example.
-//
-// This means the layout when converted and saved as an image is rotated 90 degrees
-// clockwise from a typical spectrogram. Time is descending down the Y axis, and
-// the frequency decreases from left to right.
-//
-// Each value in the result represents the square root of the sum of the real and
-// imaginary parts of an FFT on the current window of samples. In this way, the
-// lowest dimension represents the power of each frequency in the current window,
-// and adjacent windows are concatenated in the next dimension.
-//
-// To get a more intuitive and visual look at what this operation does, you can run
-// tensorflow/examples/wav_to_spectrogram to read in an audio file and save out the
-// resulting spectrogram as a PNG image.
-//
-// Arguments:
-//	input: Float representation of audio data.
-//	window_size: How wide the input window is in samples. For the highest efficiency
-// this should be a power of two, but other values are accepted.
-//	stride: How widely apart the center of adjacent sample windows should be.
-//
-// Returns 3D representation of the audio frequencies as an image.
-func AudioSpectrogram(scope *Scope, input tf.Output, window_size int64, stride int64, optional ...AudioSpectrogramAttr) (spectrogram tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"window_size": window_size, "stride": stride}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "AudioSpectrogram",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the gradient of morphological 2-D dilation with respect to the input.
-//
-// Arguments:
-//	input: 4-D with shape `[batch, in_height, in_width, depth]`.
-//	filter: 3-D with shape `[filter_height, filter_width, depth]`.
-//	out_backprop: 4-D with shape `[batch, out_height, out_width, depth]`.
-//	strides: 1-D of length 4. The stride of the sliding window for each dimension of
-// the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
-//	rates: 1-D of length 4. The input stride for atrous morphological dilation.
-// Must be: `[1, rate_height, rate_width, 1]`.
-//	padding: The type of padding algorithm to use.
-//
-// Returns 4-D with shape `[batch, in_height, in_width, depth]`.
-func Dilation2DBackpropInput(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, rates []int64, padding string) (in_backprop tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "rates": rates, "padding": padding}
-	opspec := tf.OpSpec{
-		Type: "Dilation2DBackpropInput",
-		Input: []tf.Input{
-			input, filter, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // FusedBatchNormGradAttr is an optional argument to FusedBatchNormGrad.
 type FusedBatchNormGradAttr func(optionalAttr)
 
@@ -7971,14 +7874,15 @@ func FusedBatchNormGradIsTraining(value bool) FusedBatchNormGradAttr {
 //	y_backprop: A 4D Tensor for the gradient with respect to y.
 //	x: A 4D Tensor for input data.
 //	scale: A 1D Tensor for scaling factor, to scale the normalized x.
-//	reserve_space_1: When is_training is True, a 1D Tensor for the computed batch mean
-// to be reused in gradient computation.
-// When is_training is False, a 1D Tensor for the population mean
-// to be reused in both 1st and 2nd order gradient computation.
-//	reserve_space_2: When is_training is True, a 1D Tensor for the computed batch variance
-// (inverted variance in the cuDNN case) to be reused in gradient computation.
-// When is_training is False, a 1D Tensor for the population variance
-// to be reused in both 1st and 2nd order gradient computation.
+//	reserve_space_1: When is_training is True, a 1D Tensor for the computed batch
+// mean to be reused in gradient computation. When is_training is
+// False, a 1D Tensor for the population mean to be reused in both
+// 1st and 2nd order gradient computation.
+//	reserve_space_2: When is_training is True, a 1D Tensor for the computed batch
+// variance (inverted variance in the cuDNN case) to be reused in
+// gradient computation. When is_training is False, a 1D Tensor
+// for the population variance to be reused in both 1st and 2nd
+// order gradient computation.
 //
 // Returns A 4D Tensor for the gradient with respect to x.A 1D Tensor for the gradient with respect to scale.A 1D Tensor for the gradient with respect to offset.Unused placeholder to match the mean input in FusedBatchNorm.Unused placeholder to match the variance input
 // in FusedBatchNorm.
@@ -8201,53 +8105,6 @@ func MaxPoolGradWithArgmax(scope *Scope, input tf.Output, grad tf.Output, argmax
 			input, grad, argmax,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the gradient of morphological 2-D dilation with respect to the filter.
-//
-// Arguments:
-//	input: 4-D with shape `[batch, in_height, in_width, depth]`.
-//	filter: 3-D with shape `[filter_height, filter_width, depth]`.
-//	out_backprop: 4-D with shape `[batch, out_height, out_width, depth]`.
-//	strides: 1-D of length 4. The stride of the sliding window for each dimension of
-// the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
-//	rates: 1-D of length 4. The input stride for atrous morphological dilation.
-// Must be: `[1, rate_height, rate_width, 1]`.
-//	padding: The type of padding algorithm to use.
-//
-// Returns 3-D with shape `[filter_height, filter_width, depth]`.
-func Dilation2DBackpropFilter(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, rates []int64, padding string) (filter_backprop tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "rates": rates, "padding": padding}
-	opspec := tf.OpSpec{
-		Type: "Dilation2DBackpropFilter",
-		Input: []tf.Input{
-			input, filter, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the truth value of (x == y) element-wise.
-//
-// *NOTE*: `Equal` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func Equal(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Equal",
-		Input: []tf.Input{
-			x, y,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -9046,6 +8903,78 @@ func BatchNormWithGlobalNormalizationGrad(scope *Scope, t tf.Output, m tf.Output
 		Type: "BatchNormWithGlobalNormalizationGrad",
 		Input: []tf.Input{
 			t, m, v, gamma, backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
+}
+
+// FusedBatchNormV2Attr is an optional argument to FusedBatchNormV2.
+type FusedBatchNormV2Attr func(optionalAttr)
+
+// FusedBatchNormV2Epsilon sets the optional epsilon attribute to value.
+//
+// value: A small float number added to the variance of x.
+// If not specified, defaults to 0.0001
+func FusedBatchNormV2Epsilon(value float32) FusedBatchNormV2Attr {
+	return func(m optionalAttr) {
+		m["epsilon"] = value
+	}
+}
+
+// FusedBatchNormV2DataFormat sets the optional data_format attribute to value.
+//
+// value: The data format for x and y. Either "NHWC" (default) or "NCHW".
+// If not specified, defaults to "NHWC"
+func FusedBatchNormV2DataFormat(value string) FusedBatchNormV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// FusedBatchNormV2IsTraining sets the optional is_training attribute to value.
+//
+// value: A bool value to indicate the operation is for training (default)
+// or inference.
+// If not specified, defaults to true
+func FusedBatchNormV2IsTraining(value bool) FusedBatchNormV2Attr {
+	return func(m optionalAttr) {
+		m["is_training"] = value
+	}
+}
+
+// Batch normalization.
+//
+// Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+// The size of 1D Tensors matches the dimension C of the 4D Tensors.
+//
+// Arguments:
+//	x: A 4D Tensor for input data.
+//	scale: A 1D Tensor for scaling factor, to scale the normalized x.
+//	offset: A 1D Tensor for offset, to shift to the normalized x.
+//	mean: A 1D Tensor for population mean. Used for inference only;
+// must be empty for training.
+//	variance: A 1D Tensor for population variance. Used for inference only;
+// must be empty for training.
+//
+// Returns A 4D Tensor for output data.A 1D Tensor for the computed batch mean, to be used by TensorFlow
+// to compute the running mean.A 1D Tensor for the computed batch variance, to be used by
+// TensorFlow to compute the running variance.A 1D Tensor for the computed batch mean, to be reused
+// in the gradient computation.A 1D Tensor for the computed batch variance (inverted variance
+// in the cuDNN case), to be reused in the gradient computation.
+func FusedBatchNormV2(scope *Scope, x tf.Output, scale tf.Output, offset tf.Output, mean tf.Output, variance tf.Output, optional ...FusedBatchNormV2Attr) (y tf.Output, batch_mean tf.Output, batch_variance tf.Output, reserve_space_1 tf.Output, reserve_space_2 tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FusedBatchNormV2",
+		Input: []tf.Input{
+			x, scale, offset, mean, variance,
 		},
 		Attrs: attrs,
 	}
@@ -11448,6 +11377,81 @@ func AddSparseToTensorsMap(scope *Scope, sparse_indices tf.Output, sparse_values
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// FusedBatchNormGradV2Attr is an optional argument to FusedBatchNormGradV2.
+type FusedBatchNormGradV2Attr func(optionalAttr)
+
+// FusedBatchNormGradV2Epsilon sets the optional epsilon attribute to value.
+//
+// value: A small float number added to the variance of x.
+// If not specified, defaults to 0.0001
+func FusedBatchNormGradV2Epsilon(value float32) FusedBatchNormGradV2Attr {
+	return func(m optionalAttr) {
+		m["epsilon"] = value
+	}
+}
+
+// FusedBatchNormGradV2DataFormat sets the optional data_format attribute to value.
+//
+// value: The data format for y_backprop, x, x_backprop.
+// Either "NHWC" (default) or "NCHW".
+// If not specified, defaults to "NHWC"
+func FusedBatchNormGradV2DataFormat(value string) FusedBatchNormGradV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// FusedBatchNormGradV2IsTraining sets the optional is_training attribute to value.
+//
+// value: A bool value to indicate the operation is for training (default)
+// or inference.
+// If not specified, defaults to true
+func FusedBatchNormGradV2IsTraining(value bool) FusedBatchNormGradV2Attr {
+	return func(m optionalAttr) {
+		m["is_training"] = value
+	}
+}
+
+// Gradient for batch normalization.
+//
+// Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+// The size of 1D Tensors matches the dimension C of the 4D Tensors.
+//
+// Arguments:
+//	y_backprop: A 4D Tensor for the gradient with respect to y.
+//	x: A 4D Tensor for input data.
+//	scale: A 1D Tensor for scaling factor, to scale the normalized x.
+//	reserve_space_1: When is_training is True, a 1D Tensor for the computed batch
+// mean to be reused in gradient computation. When is_training is
+// False, a 1D Tensor for the population mean to be reused in both
+// 1st and 2nd order gradient computation.
+//	reserve_space_2: When is_training is True, a 1D Tensor for the computed batch
+// variance (inverted variance in the cuDNN case) to be reused in
+// gradient computation. When is_training is False, a 1D Tensor
+// for the population variance to be reused in both 1st and 2nd
+// order gradient computation.
+//
+// Returns A 4D Tensor for the gradient with respect to x.A 1D Tensor for the gradient with respect to scale.A 1D Tensor for the gradient with respect to offset.Unused placeholder to match the mean input in FusedBatchNorm.Unused placeholder to match the variance input
+// in FusedBatchNorm.
+func FusedBatchNormGradV2(scope *Scope, y_backprop tf.Output, x tf.Output, scale tf.Output, reserve_space_1 tf.Output, reserve_space_2 tf.Output, optional ...FusedBatchNormGradV2Attr) (x_backprop tf.Output, scale_backprop tf.Output, offset_backprop tf.Output, reserve_space_3 tf.Output, reserve_space_4 tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FusedBatchNormGradV2",
+		Input: []tf.Input{
+			y_backprop, x, scale, reserve_space_1, reserve_space_2,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
 }
 
 // Constructs a tensor by tiling a given tensor.
@@ -20245,6 +20249,150 @@ func Sub(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 		Input: []tf.Input{
 			x, y,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// AudioSpectrogramAttr is an optional argument to AudioSpectrogram.
+type AudioSpectrogramAttr func(optionalAttr)
+
+// AudioSpectrogramMagnitudeSquared sets the optional magnitude_squared attribute to value.
+//
+// value: Whether to return the squared magnitude or just the
+// magnitude. Using squared magnitude can avoid extra calculations.
+// If not specified, defaults to false
+func AudioSpectrogramMagnitudeSquared(value bool) AudioSpectrogramAttr {
+	return func(m optionalAttr) {
+		m["magnitude_squared"] = value
+	}
+}
+
+// Produces a visualization of audio data over time.
+//
+// Spectrograms are a standard way of representing audio information as a series of
+// slices of frequency information, one slice for each window of time. By joining
+// these together into a sequence, they form a distinctive fingerprint of the sound
+// over time.
+//
+// This op expects to receive audio data as an input, stored as floats in the range
+// -1 to 1, together with a window width in samples, and a stride specifying how
+// far to move the window between slices. From this it generates a three
+// dimensional output. The lowest dimension has an amplitude value for each
+// frequency during that time slice. The next dimension is time, with successive
+// frequency slices. The final dimension is for the channels in the input, so a
+// stereo audio input would have two here for example.
+//
+// This means the layout when converted and saved as an image is rotated 90 degrees
+// clockwise from a typical spectrogram. Time is descending down the Y axis, and
+// the frequency decreases from left to right.
+//
+// Each value in the result represents the square root of the sum of the real and
+// imaginary parts of an FFT on the current window of samples. In this way, the
+// lowest dimension represents the power of each frequency in the current window,
+// and adjacent windows are concatenated in the next dimension.
+//
+// To get a more intuitive and visual look at what this operation does, you can run
+// tensorflow/examples/wav_to_spectrogram to read in an audio file and save out the
+// resulting spectrogram as a PNG image.
+//
+// Arguments:
+//	input: Float representation of audio data.
+//	window_size: How wide the input window is in samples. For the highest efficiency
+// this should be a power of two, but other values are accepted.
+//	stride: How widely apart the center of adjacent sample windows should be.
+//
+// Returns 3D representation of the audio frequencies as an image.
+func AudioSpectrogram(scope *Scope, input tf.Output, window_size int64, stride int64, optional ...AudioSpectrogramAttr) (spectrogram tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"window_size": window_size, "stride": stride}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "AudioSpectrogram",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the gradient of morphological 2-D dilation with respect to the input.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, in_height, in_width, depth]`.
+//	filter: 3-D with shape `[filter_height, filter_width, depth]`.
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, depth]`.
+//	strides: 1-D of length 4. The stride of the sliding window for each dimension of
+// the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+//	rates: 1-D of length 4. The input stride for atrous morphological dilation.
+// Must be: `[1, rate_height, rate_width, 1]`.
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape `[batch, in_height, in_width, depth]`.
+func Dilation2DBackpropInput(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, rates []int64, padding string) (in_backprop tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "rates": rates, "padding": padding}
+	opspec := tf.OpSpec{
+		Type: "Dilation2DBackpropInput",
+		Input: []tf.Input{
+			input, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the truth value of (x == y) element-wise.
+//
+// *NOTE*: `Equal` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func Equal(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Equal",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the gradient of morphological 2-D dilation with respect to the filter.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, in_height, in_width, depth]`.
+//	filter: 3-D with shape `[filter_height, filter_width, depth]`.
+//	out_backprop: 4-D with shape `[batch, out_height, out_width, depth]`.
+//	strides: 1-D of length 4. The stride of the sliding window for each dimension of
+// the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
+//	rates: 1-D of length 4. The input stride for atrous morphological dilation.
+// Must be: `[1, rate_height, rate_width, 1]`.
+//	padding: The type of padding algorithm to use.
+//
+// Returns 3-D with shape `[filter_height, filter_width, depth]`.
+func Dilation2DBackpropFilter(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, rates []int64, padding string) (filter_backprop tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "rates": rates, "padding": padding}
+	opspec := tf.OpSpec{
+		Type: "Dilation2DBackpropFilter",
+		Input: []tf.Input{
+			input, filter, out_backprop,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
