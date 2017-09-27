@@ -28,11 +28,13 @@ import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import estimator as estimator_lib
+from tensorflow.python.estimator import export_strategy as export_strategy_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import compat
 
 
 _MAX_DELAY_SECS = 60
@@ -60,12 +62,51 @@ def _validate_hooks(hooks):
   return hooks
 
 
+def _validate_export_strategies(export_strategies):
+  """Validates `export_strategies` and returns them as a tuple."""
+  if not export_strategies:
+    return ()
+
+  if isinstance(export_strategies, export_strategy_lib.ExportStrategy):
+    return (export_strategies,)
+
+  try:
+    for export_strategy in export_strategies:
+      if not isinstance(export_strategy,
+                        export_strategy_lib.ExportStrategy):
+        raise TypeError('`export_strategies` must be an ExportStrategy,'
+                        ' an iterable of ExportStrategy, or `None`,'
+                        ' found %s.' % export_strategy)
+  except TypeError:
+    # `export_strategies` is neither ExportStrategy nor iterable.
+    raise TypeError('`export_strategies` must be an ExportStrategy,'
+                    ' an iterable of ExportStrategy, or `None`,'
+                    ' found %s.' % export_strategies)
+
+  return tuple(export_strategies)
+
+
 def _is_google_env():
   """Detects whether current environment is google."""
   tf_config = json.loads(os.environ.get(_TF_CONFIG_ENV) or '{}')
   if not tf_config:
     logging.warn('TF_CONFIG should not be empty in distributed environment.')
   return tf_config.get(_ENVIRONMENT_KEY) == _ENVIRONMENT_GOOGLE_VALUE
+
+
+def _export_eval_result(eval_result, checkpoint_path, estimator, eval_spec):
+  """Export `eval_result` according to strategies in `EvalSpec`."""
+  export_dir_base = os.path.join(
+      compat.as_str_any(estimator.model_dir), compat.as_str_any('export'))
+
+  for strategy in eval_spec.export_strategies:
+    strategy.export(
+        estimator,
+        os.path.join(
+            compat.as_str_any(export_dir_base), compat.as_str_any(
+                strategy.name)),
+        checkpoint_path=checkpoint_path,
+        eval_result=eval_result)
 
 
 class TrainSpec(
@@ -178,8 +219,7 @@ class EvalSpec(
     hooks = _validate_hooks(hooks)
 
     # Validate export_strategies.
-    export_strategies = tuple(export_strategies or [])
-    # TODO(b/65169058): Validate export_strategies once `ExportStratey` defined.
+    export_strategies = _validate_export_strategies(export_strategies)
 
     # Validate delay_secs.
     if delay_secs < 0:
@@ -464,7 +504,8 @@ class _TrainingExecutor(object):
         self._log_err_msg('Estimator evaluate returns empty result.')
         return None
 
-      # TODO(b/65169058): Adds export once export strategies are moved.
+      _export_eval_result(eval_result, latest_ckpt_path, self._estimator,
+                          self._eval_spec)
 
       self._last_warning_time = 0
       self._previous_ckpt_path = latest_ckpt_path
