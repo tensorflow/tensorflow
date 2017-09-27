@@ -2496,8 +2496,10 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
       operand->shape().element_type(), AsInt64Slice(output_shape.dimensions()));
   // Do explicit broadcast for scalar.
   if (ShapeUtil::IsScalar(operand->shape())) {
-    return hlo_builder_.AddInstruction(
+    HloInstruction* broadcast = hlo_builder_.AddInstruction(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
+    broadcast->set_device_assignment(operand->device_assignment());
+    return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
   std::vector<int64> broadcast_dimensions;
@@ -2514,9 +2516,13 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
           ShapeUtil::MakeShape(operand->shape().element_type(),
                                reshaped_dimensions),
           operand));
+  reshaped_operand->set_device_assignment(operand->device_assignment());
   // Broadcast 'reshape' up to the larger size.
-  return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
-      broadcast_shape, reshaped_operand, broadcast_dimensions));
+  HloInstruction* broadcast =
+      hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
+          broadcast_shape, reshaped_operand, broadcast_dimensions));
+  broadcast->set_device_assignment(operand->device_assignment());
+  return broadcast;
 }
 
 void ComputationLowerer::Visit(
