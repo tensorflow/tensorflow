@@ -42,6 +42,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_keys",
+        ":head",
         ":input_pipeline",
         ":model_utils",
         "//tensorflow/python:util",
@@ -78,8 +79,8 @@ py_library(
     deps = [
         ":ar_model",
         ":feature_keys",
+        ":head",
         ":math_utils",
-        ":model_utils",
         ":state_management",
         "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:filtering_postprocessor",
         "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:state_space_model",
@@ -159,8 +160,8 @@ py_test(
     ],
     deps = [
         ":feature_keys",
-        ":model",
         ":head",
+        ":model",
         ":state_management",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

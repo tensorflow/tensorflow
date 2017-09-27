@@ -45,11 +45,13 @@ def time_series_regression_head(
 class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
   """See `time_series_regression_head`."""
 
-  def __init__(self, model, state_manager, optimizer, input_statistics_generator=None):
+  def __init__(self, model, state_manager, optimizer,
+    input_statistics_generator=None, name=None):
     self.model = model
     self.state_manager = state_manager
     self.optimizer = optimizer
     self.input_statistics_generator = input_statistics_generator
+    self._name = name
 
   def _train_ops(self, features):
     """Add training ops to the graph."""
@@ -66,6 +68,17 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
       loss=model_outputs.loss,
       mode=estimator_lib.ModeKeys.TRAIN,
       train_op=train_op)
+
+  # TODO: suffix summary and metrics keys by `"/" + name`
+  @property
+  def name(self):
+    return self._name
+
+  # TOOD: unused for now. Need to decouple `state_manager.define_loss`
+  # to satisfy the extendable return signature of `_Head.create_loss`.
+  def create_loss(self, features, mode, logits, labels):
+    """See `_Head`."""
+    return None
 
   # TODO: check label dimension
   @property
@@ -103,6 +116,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
       predictions=prediction, mode=estimator_lib.ModeKeys.PREDICT)
 
   def _serving_ops(self, features):
+    """Add ops for serving to the graph."""
     with variable_scope.variable_scope("model"):
       prediction_outputs = self.model.predict(features=features)
     with variable_scope.variable_scope("model", reuse=True):
@@ -154,8 +168,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
       flat_sequence=[tensor for _, _, tensor in numbered_state])
     return features, True
 
-  def create_estimator_spec(
-          self, features, mode, logits=None, labels=None, train_op_fn=None):
+  def create_estimator_spec(self, features, mode, labels=None):
     """Performs basic error checking and returns an EstimatorSpec."""
     with ops.name_scope("head"):
       if labels:
