@@ -83,7 +83,7 @@ class _ModelAverageDeviceChooser(object):
       ps_device.merge_from(current_device)
       return ps_device.to_string()
 
-    # put internal model average variables on worker
+    # put local model average variables on worker
     worker_device = pydev.DeviceSpec.from_string(self._worker_device or "")
     worker_device.merge_from(current_device)
     return worker_device.to_string()

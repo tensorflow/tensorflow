@@ -128,7 +128,7 @@ class ModelAverageOptimizerTest(test.TestCase):
   def testPS2TasksWithClusterSpecClass(self):
     with ops.device(
         model_average_optimizer.model_average_device_setter(
-            ps_tasks=0,
+            ps_tasks=self._cluster_spec.num_tasks("ps"),
             cluster=self._cluster_spec)):
       v = variables.Variable([1, 2], name="modelAverage_v")
       v_1 = variables.Variable([1, 2], name="modelAverage_v_1")
