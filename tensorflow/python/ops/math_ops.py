@@ -545,12 +545,20 @@ def pow(x, y, name=None):
     `float64`.
   """
   with ops.name_scope(name, "Pow", [x]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y")
-    if (x.dtype in (dtypes.int32, dtypes.int64) and
-        y.dtype in (dtypes.int32, dtypes.int64)):
-      return gen_math_ops._integral_pow(x, y, name=name)
-    return gen_math_ops._pow(x, y, name=name)
+    # infer the common dtype and convert x and y to tensors
+    # this parallels the internal call to args_to_matching_eager
+    dtype = None
+    if isinstance(x, ops.EagerTensor):
+      dtype = x.dtype
+    elif isinstance(y, ops.EagerTensor):
+      dtype = y.dtype
+    else:
+      x = ops.convert_to_tensor(x, name="x")
+      dtype = x.dtype
+      y = ops.convert_to_tensor(y, dtype, name="y")
+    if dtype not in (dtypes.int32, dtypes.int64):
+        return gen_math_ops._pow(x, y, name=name)
+    return gen_math_ops._integral_pow(x, y, name=name)
 
 
 # pylint: disable=redefined-builtin,redefined-outer-name

@@ -471,7 +471,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
 class PowTest(test_util.TensorFlowTestCase):
 
-  def testInt(self):
+  def testNegativeExponent(self):
     for i_dtype in (np.int32, np.int64):
       x = np.array([2, 3, 4, 5], dtype=i_dtype)
       y = np.array([-1, -2, -3, 3], dtype=i_dtype)
@@ -480,6 +480,15 @@ class PowTest(test_util.TensorFlowTestCase):
         z_np = math_ops.pow(x, y).eval()
         self.assertEqual(z_np.dtype, z.dtype)
         self.assertAllClose(z_np, z)
+
+  def testTypeInference(self):
+    x = np.array([2, 3], dtype=np.int64)
+    y = [2, 3]
+    z = np.array([4.0, 27.0], dtype=np.float64)
+    with self.test_session():
+      z_np = math_ops.pow(x, y).eval()
+      self.assertEqual(z_np.dtype, z.dtype)
+      self.assertAllClose(z_np, z)
 
   def testComplex(self):
     for i_dtype in (np.complex64, np.complex128):
