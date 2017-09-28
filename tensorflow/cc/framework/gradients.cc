@@ -178,9 +178,9 @@ Status SymbolicGradientBuilder::Initialize() {
   for (const Output& input : inputs_) {
     if (!reachable_nodes[input.node()->id()]) {
       return errors::InvalidArgument(
-        "Cannot compute the partial derivative for node '",
-        input.node()->name(),
-        "' as it's unreachable from the output node(s).");
+          "Cannot compute the partial derivative for node '",
+          input.node()->name(),
+          "' as it's unreachable from the output node(s).");
     }
   }
   grad_outputs_->clear();

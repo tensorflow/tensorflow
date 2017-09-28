@@ -87,8 +87,8 @@ class FusedBatchNormGradOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
     bool is_training;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("is_training", &is_training));
-    CHECK(is_training)
-        << "FusedBatchNormGradOp with is_training=False cannot be used with XLA for now!";
+    CHECK(is_training) << "FusedBatchNormGradOp with is_training=False cannot "
+                          "be used with XLA for now!";
     TensorFormat tensor_format;
     if (ctx->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(ctx, FormatFromString(data_format, &tensor_format),

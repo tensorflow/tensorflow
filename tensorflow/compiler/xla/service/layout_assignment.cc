@@ -1115,7 +1115,10 @@ StatusOr<Layout> InferArrayLayout(
 StatusOr<HloInstruction*> CreateCopyWithNewLayout(
     const Shape& shape_with_layout, HloInstruction* instruction) {
   TF_RET_CHECK(LayoutUtil::HasLayout(shape_with_layout));
-  DCHECK(ShapeUtil::Compatible(shape_with_layout, instruction->shape()));
+  DCHECK(ShapeUtil::Compatible(shape_with_layout, instruction->shape()))
+      << ShapeUtil::HumanString(shape_with_layout) << " "
+      << ShapeUtil::HumanString(instruction->shape())
+      << " instruction: " << instruction->ToString();
 
   if (ShapeUtil::IsTuple(instruction->shape())) {
     // Deep-copy tuples.

@@ -437,7 +437,7 @@ TEST_F(GradientsTest, UnreachableInput) {
   auto m1 = MatMul(scope_test_, x, y);
   auto m2 = MatMul(scope_test_, y, z);
   auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
-  
+
   // From m1, z is unreachable, so an error status should be returned.
   //   m2  m1
   //   |   |
@@ -445,11 +445,12 @@ TEST_F(GradientsTest, UnreachableInput) {
   //  / \ / \
   // z   y   x
   std::vector<Output> grad_outputs;
-  Status status = AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1},
-      &grad_outputs);
+  Status status =
+      AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1}, &grad_outputs);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_EQ(status.error_message(), "Cannot compute the partial derivative"
-      " for node 'z' as it's unreachable from the output node(s).");
+  EXPECT_EQ(status.error_message(),
+            "Cannot compute the partial derivative"
+            " for node 'z' as it's unreachable from the output node(s).");
 }
 
 // StopGradientSingleOutputMultiEdgeTest tests combinations of valid and
