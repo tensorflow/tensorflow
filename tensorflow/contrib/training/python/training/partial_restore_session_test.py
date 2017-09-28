@@ -34,7 +34,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
-from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training.monitored_session_test import FakeHook
 

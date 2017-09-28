@@ -151,9 +151,12 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/testing:testing_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:monitored_session_test",
@@ -162,9 +165,6 @@ py_test(
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/testing:testing_py",
-        "//tensorflow/core:protos_all_py",
         "@six_archive//:six",
     ],
 )
