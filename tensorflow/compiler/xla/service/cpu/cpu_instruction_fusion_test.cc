@@ -502,6 +502,59 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
                      HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
+TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
+  auto module = CreateNewModule();
+  HloComputation::Builder builder(TestName());
+
+  Shape full_shape = ShapeUtil::MakeShape(F32, {4, 100, 10, 100, 50});
+
+  auto loop_idx = builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(S32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(S32, {}), "param0"))));
+
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(S32, {1}), "param1"));
+  auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
+      ShapeUtil::MakeShape(S32, {5}),
+      {loop_idx, param1, param1, param1, param1}, /*dimension=*/0));
+
+  auto idx_choice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(S32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {4}), "param2")),
+      loop_idx,
+      /*slice_sizes=*/{1}));
+
+  PaddingConfig padding_config;
+  padding_config.add_dimensions()->set_edge_padding_high(4);
+  auto pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(S32, {5}), idx_choice,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0(0))),
+      padding_config));
+
+  auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(F32, {1, 100, 10, 100, 50}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(F32, {100, 100, 10, 100, 50}), "param3")),
+      pad, /*slice_sizes=*/{1, 100, 10, 100, 50}));
+
+  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      full_shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(4, full_shape, "param4")),
+      slice, concat));
+
+  module->AddEntryComputation(builder.Build());
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(),
+      {HloOpcode::kConcatenate, HloOpcode::kPad, HloOpcode::kDynamicSlice,
+       HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
