@@ -29,6 +29,7 @@ _allowed_symbols = [
     "NaturalParamsNegativeLogProbLoss",
     "DistributionNegativeLogProbLoss",
     "NormalMeanNegativeLogProbLoss",
+    "NormalMeanVarianceNegativeLogProbLoss",
     "CategoricalLogitsNegativeLogProbLoss",
     "MultiBernoulliNegativeLogProbLoss",
     "MultiBernoulliNegativeLogProbLoss",

@@ -22,6 +22,7 @@ import abc
 
 import six
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bernoulli
@@ -389,6 +390,129 @@ class NormalMeanNegativeLogProbLoss(DistributionNegativeLogProbLoss,
   @property
   def fisher_factor_inner_static_shape(self):
     return self._mean.shape
+
+
+class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
+  """Negative log prob loss for a normal distribution with mean and variance.
+
+  This class parameterizes a multivariate normal distribution with n independent
+  dimensions. Unlike `NormalMeanNegativeLogProbLoss`, this class does not
+  assume the variance is held constant. The Fisher Information for for n = 1
+  is given by,
+
+  F = [[1 / variance,                0],
+       [           0, 0.5 / variance^2]]
+
+  where the parameters of the distribution are concatenated into a single
+  vector as [mean, variance]. For n > 1, the mean parameter vector is
+  concatenated with the variance parameter vector.
+
+  See https://www.ii.pwr.edu.pl/~tomczak/PDF/[JMT]Fisher_inf.pdf for derivation.
+  """
+
+  def __init__(self, mean, variance, targets=None, seed=None):
+    assert len(mean.shape) == 2, "Expect 2D mean tensor."
+    assert len(variance.shape) == 2, "Expect 2D variance tensor."
+    self._mean = mean
+    self._variance = variance
+    self._scale = math_ops.sqrt(variance)
+    dist = normal.Normal(loc=self._mean, scale=self._scale)
+    super(NormalMeanVarianceNegativeLogProbLoss, self).__init__(dist,
+                                                                targets=targets,
+                                                                seed=seed)
+
+  @property
+  def params(self):
+    return self._mean, self._variance
+
+  def _concat(self, mean, variance):
+    return array_ops.concat([mean, variance], axis=-1)
+
+  def _split(self, params):
+    return array_ops.split(params, 2, axis=-1)
+
+  @property
+  def _fisher_mean(self):
+    return 1./self._variance
+
+  @property
+  def _fisher_mean_factor(self):
+    return 1./self._scale
+
+  @property
+  def _fisher_var(self):
+    return 1./(2*math_ops.square(self._variance))
+
+  @property
+  def _fisher_var_factor(self):
+    return 1./(math_ops.sqrt(2.)*self._variance)
+
+  def multiply_fisher(self, vecs):
+    mean_vec, var_vec = vecs
+    return (self._fisher_mean * mean_vec,
+            self._fisher_var * var_vec)
+
+  def multiply_fisher_factor(self, vecs):
+    mean_vec, var_vec = self._split(vecs)
+    return (self._fisher_mean_factor * mean_vec,
+            self._fisher_var_factor * var_vec)
+
+  def multiply_fisher_factor_transpose(self, vecs):
+    mean_vec, var_vec = vecs
+    return self._concat(self._fisher_mean_factor * mean_vec,
+                        self._fisher_var_factor * var_vec)
+
+  def multiply_fisher_factor_replicated_one_hot(self, index):
+    assert len(index) == 1, "Length of index was {}".format(len(index))
+    index = index[0]
+
+    if index < int(self._mean.shape[-1]):
+      # Index corresponds to mean parameter.
+      mean_slice = self._fisher_mean_factor[:, index]
+      mean_slice = array_ops.expand_dims(mean_slice, axis=-1)
+      mean_output = insert_slice_in_zeros(mean_slice, 1,
+                                          int(self._mean.shape[1]), index)
+      var_output = array_ops.zeros_like(mean_output)
+    else:
+      index -= int(self._mean.shape[-1])
+      # Index corresponds to variance parameter.
+      var_slice = self._fisher_var_factor[:, index]
+      var_slice = array_ops.expand_dims(var_slice, axis=-1)
+      var_output = insert_slice_in_zeros(var_slice, 1,
+                                         int(self._variance.shape[1]), index)
+      mean_output = array_ops.zeros_like(var_output)
+
+    return mean_output, var_output
+
+  @property
+  def fisher_factor_inner_shape(self):
+    return array_ops.concat([array_ops.shape(self._mean)[:-1],
+                             2*array_ops.shape(self._mean)[-1:]], axis=0)
+
+  @property
+  def fisher_factor_inner_static_shape(self):
+    shape = self._mean.shape.as_list()
+    return tensor_shape.TensorShape(shape[-1:] + [2*shape[-1]])
+
+  def multiply_hessian(self, vector):
+    raise NotImplementedError()
+
+  def multiply_hessian_factor(self, vector):
+    raise NotImplementedError()
+
+  def multiply_hessian_factor_transpose(self, vector):
+    raise NotImplementedError()
+
+  def multiply_hessian_factor_replicated_one_hot(self, index):
+    raise NotImplementedError()
+
+  @property
+  def hessian_factor_inner_shape(self):
+    raise NotImplementedError()
+
+  @property
+  def hessian_factor_inner_static_shape(self):
+    raise NotImplementedError()
 
 
 class CategoricalLogitsNegativeLogProbLoss(DistributionNegativeLogProbLoss,
