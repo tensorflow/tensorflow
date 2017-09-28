@@ -1887,6 +1887,24 @@ Status AlgebraicSimplifierVisitor::HandleWhile(HloInstruction* while_op) {
   // recv sides.
   if (ContainsSendOrRecv(while_op->while_body()) ||
       ContainsSendOrRecv(while_op->while_condition())) {
+    VLOG(2) << "Not attempting to simplify while loop because it contains a "
+               "send/recv node: "
+            << while_op->ToShortString();
+    return Status::OK();
+  }
+
+  // Cowardly refuse to simplify loops that are not removable.  In practice,
+  // this means that we can't simplify loops that contain side-effecting
+  // instructions or have control predecessors/successors.
+  //
+  // This is not a fundamental limitation.  The control operands can be moved
+  // onto the new HLOs after simplification, and any side-effecting ops inside
+  // the loop aren't removed, just cloned and added back to the loop.
+  // Nevertheless our infrastructure sees loop simplification as removal of
+  // these nodes and currently doesn't allow it.
+  if (!while_op->parent()->IsRemovable(while_op)) {
+    VLOG(2) << "Not attempting to simplify while loop it is not removable: "
+            << while_op->ToShortString();
     return Status::OK();
   }
 

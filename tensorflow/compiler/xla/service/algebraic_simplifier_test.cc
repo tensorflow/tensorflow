@@ -2148,5 +2148,22 @@ TEST_F(AlgebraicSimplifierTest, NotRemovedIfContainsRecv) {
   EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
 }
 
+// The limitation on not being able to simplify loops that contain infeeds (and
+// other non-removable instructions) isn't fundamental -- it just stems from the
+// fact that our infrastructure sees simplifying such a loop as tantamount to
+// removing the non-removable instruction.
+TEST_F(AlgebraicSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
+  HloModule module(TestName());
+  HloComputation* computation = MakeSimpleLoop(&module, /*num_iters=*/1);
+  auto* while_op = computation->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  auto* while_body = while_op->while_body();
+  while_body->AddInstruction(
+      HloInstruction::CreateInfeed(ShapeUtil::MakeShape(F32, {1}), "config"));
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace xla
