@@ -114,6 +114,23 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
 
                 result = sess.run(output, {pa: [[1.,1.],[2.,3.]]})
 
+    def testControlDependencies(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                a = tf.placeholder(tf.float32, [1])
+                b = tf.placeholder(tf.float32, [1])
+                c = tf.placeholder(tf.float32, [1])
+                d = tf.placeholder(tf.float32, [1])
+
+                e = a + b
+                f = c * d
+                g = a - c
+
+                with tf.control_dependencies([e, f, g]):
+                    h = e + f
+                    i = h + g
+
+                result = sess.run(i, {a: [1], b: [2], c: [3], d: [4]})
 
 if __name__ == "__main__":
     googletest.main()

@@ -57,6 +57,7 @@ FullVisitor::FullVisitor(poplar::Graph* graph,
 Status FullVisitor::HandleConcatenate(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  VLOG(1) << "Processing " << inst->name();
   int64 dimension(inst->concatenate_dimension());
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
@@ -73,6 +74,7 @@ Status FullVisitor::HandleDot(
         HloInstruction* inst,
         HloInstruction* lhs,
         HloInstruction* rhs) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateMatMulOp(*graph_,
@@ -89,6 +91,7 @@ Status FullVisitor::HandleConvolution(
         HloInstruction* lhs,
         HloInstruction* rhs,
         const Window& window) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateConv2D(*graph_,
@@ -103,6 +106,7 @@ Status FullVisitor::HandleConvolution(
 Status FullVisitor::HandleReverse(
         HloInstruction* inst,
         HloInstruction* operand) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
   TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
@@ -116,6 +120,7 @@ Status FullVisitor::HandleReduce(
         HloInstruction* init_value,
         tensorflow::gtl::ArraySlice<int64> dimensions,
         HloComputation* function) {
+  VLOG(1) << "Processing " << inst->name();
   if (IsReducableArtithmetic(function)) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
@@ -131,6 +136,7 @@ Status FullVisitor::HandleReduce(
 }
 
 Status FullVisitor::HandleBitcast(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   if (LayoutUtil::LayoutsInShapesEqual(inst->operand(0)->shape(),
                                        GetOutputShape(inst))) {
     return HandleReshape(inst);
@@ -140,6 +146,7 @@ Status FullVisitor::HandleBitcast(HloInstruction* inst) {
 }
 
 Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out,
@@ -152,6 +159,7 @@ Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
 }
 
 Status FullVisitor::HandleReshape(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
@@ -161,6 +169,7 @@ Status FullVisitor::HandleReshape(HloInstruction* inst) {
 }
 
 Status FullVisitor::HandleTranspose(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
   std::vector<unsigned> permutation(
@@ -173,6 +182,7 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
 Status FullVisitor::HandleSlice(
         HloInstruction* inst,
         HloInstruction* operand) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
   std::vector<std::size_t> begin(
@@ -207,6 +217,7 @@ Status FullVisitor::HandleDynamicSlice(
         HloInstruction* inst,
         HloInstruction* operand,
         HloInstruction* start_indices) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateDynamicSliceOp(*graph_,
@@ -223,6 +234,7 @@ Status FullVisitor::HandleDynamicUpdateSlice(
         HloInstruction* operand,
         HloInstruction* update,
         HloInstruction* start_indices) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateDynamicSliceUpdateOp(*graph_,
@@ -239,6 +251,7 @@ Status FullVisitor::HandleReduceWindow(
         HloInstruction* operand,
         const Window& window,
         HloComputation* function) {
+  VLOG(1) << "Processing " << inst->name();
   if (IsPoplibsPool(inst, function)) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
@@ -267,6 +280,7 @@ Status FullVisitor::HandleReduceWindow(
 Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
   if (IsSimpleSelection(inst->select()) &&
       IsReducableArtithmetic(inst->scatter())) {
+    VLOG(1) << "Processing " << inst->name();
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleSelectAndScatter(*graph_,
@@ -281,6 +295,7 @@ Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
 }
 
 Status FullVisitor::HandleWhile(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateWhileOp(*graph_,
@@ -293,6 +308,7 @@ Status FullVisitor::HandleWhile(HloInstruction* inst) {
 }
 
 Status FullVisitor::HandlePad(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
   poplar::Tensor pad;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));

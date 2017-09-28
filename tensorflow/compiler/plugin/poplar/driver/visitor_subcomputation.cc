@@ -42,6 +42,7 @@ SubComputationVisitor::SubComputationVisitor(poplar::Graph* graph,
 }
 
 Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   std::vector<xla::Shape> shapes = FlattenedXlaShape(inst->shape());
   for (unsigned int i=0; i<shapes.size(); i++) {
     poplar::Tensor out;

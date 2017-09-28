@@ -105,6 +105,7 @@ public:
             all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
+    VLOG(1) << "Processing " << inst->name();
 
     parameter_shapes[inst->parameter_number()] = inst->shape();
 

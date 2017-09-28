@@ -44,6 +44,7 @@ MapVisitor::MapVisitor(poplar::Graph* graph,
 }
 
 Status MapVisitor::HandleParameter(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
                                      operands_[inst->parameter_number()]));
   return Status::OK();

@@ -66,6 +66,7 @@ Status BaseVisitor::Unimplemented(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateUnaryElementwiseOp(*graph_,
@@ -78,6 +79,7 @@ Status BaseVisitor::HandleElementwiseUnary(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleElementwiseBinary(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateBinaryElementwiseOp(*graph_,
@@ -91,6 +93,7 @@ Status BaseVisitor::HandleElementwiseBinary(HloInstruction* inst) {
 
 Status BaseVisitor::HandleConvert(
         HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCastOp(*graph_,
@@ -103,6 +106,7 @@ Status BaseVisitor::HandleConvert(
 }
 
 Status BaseVisitor::HandleCopy(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Tensor in;
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
@@ -117,6 +121,7 @@ Status BaseVisitor::HandleClamp(
         HloInstruction* min,
         HloInstruction* arg,
         HloInstruction* max) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateClampOp(*graph_,
@@ -133,6 +138,7 @@ Status BaseVisitor::HandleSelect(
         HloInstruction* pred,
         HloInstruction* on_true,
         HloInstruction* on_false) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateSelectOp(*graph_,
@@ -190,6 +196,7 @@ Status BaseVisitor::HandleSort(
 Status BaseVisitor::HandleConstant(
         HloInstruction* inst,
         const Literal& literal) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, AddConstantTensor(*graph_,
                                            GetOutputShape(inst),
@@ -202,6 +209,7 @@ Status BaseVisitor::HandleConstant(
 Status BaseVisitor::HandleGetTupleElement(
         HloInstruction* inst,
         HloInstruction* operand) {
+  VLOG(1) << "Processing " << inst->name();
   std::vector<poplar::Tensor> inputs =
           FindTupleInInstructionInput(tensor_map, inst, 0, inst->tuple_index());
   for (unsigned int i=0; i<inputs.size(); i++) {
@@ -236,6 +244,7 @@ Status BaseVisitor::HandleTranspose(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleFusion(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateFusionOp(*graph_,
@@ -249,6 +258,7 @@ Status BaseVisitor::HandleFusion(HloInstruction* inst) {
 
 
 Status BaseVisitor::HandleCall(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
   HloComputation* comp = inst->to_apply();
 
   // If is is a special fusion-type op
@@ -444,6 +454,7 @@ Status BaseVisitor::HandleDynamicUpdateSlice(
 Status BaseVisitor::HandleTuple(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  VLOG(1) << "Processing " << inst->name();
   uint64 operand_count(inst->operand_count());
   int64 n=0;
   for (uint64 i=0; i<operand_count; i++) {
@@ -462,6 +473,7 @@ Status BaseVisitor::HandleMap(
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         HloComputation* function,
         tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) {
+  VLOG(1) << "Processing " << inst->name();
   bool simple_parallel;
   TF_ASSIGN_OR_RETURN(simple_parallel,
                       IsParallelMap(inst, function));
