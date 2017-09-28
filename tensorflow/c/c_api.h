@@ -1132,14 +1132,16 @@ TF_CAPI_EXPORT extern void TF_FunctionToFunctionDef(TF_Function* func,
                                                     TF_Buffer* output_func_def,
                                                     TF_Status* status);
 
-// Construct and return the function serialized in `func_def`.
+// Construct and return the function whose FunctionDef representation is
+// serialized in `proto`. `proto_len` must equal the number of bytes
+// pointed to by `proto`.
 // Returns:
 //  On success, a newly created TF_Function instance. It must be deleted by
 //  calling TF_DeleteFunction.
 //
 //  On failure, null.
 TF_CAPI_EXPORT extern TF_Function* TF_FunctionImportFunctionDef(
-    const TF_Buffer* func_def, TF_Status* status);
+    const void* proto, size_t proto_len, TF_Status* status);
 
 // Sets function attribute named `attr_name` to value stored in `proto`.
 // If this attribute is already set to another value, it is overriden.

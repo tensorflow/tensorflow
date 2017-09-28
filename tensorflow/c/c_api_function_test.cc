@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
-#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -364,12 +363,10 @@ class CApiFunctionTest : public ::testing::Test {
     TF_DeleteFunction(func_);
 
     // fdef -> func_
-    TF_Buffer* buf = TF_NewBuffer();
-    Status s = MessageToBuffer(fdef, buf);
-    ASSERT_EQ(Status::OK(), s) << s.error_message();
-    func_ = TF_FunctionImportFunctionDef(buf, s_);
+    string buf;
+    ASSERT_TRUE(fdef.SerializeToString(&buf));
+    func_ = TF_FunctionImportFunctionDef(buf.data(), buf.size(), s_);
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-    TF_DeleteBuffer(buf);
   }
 
   void GetAttr(const char* attr_name, AttrValue* out_attr) {
@@ -1406,9 +1403,7 @@ TEST_F(CApiFunctionTest, ImportFunctionDef) {
 TEST_F(CApiFunctionTest, ImportFunctionDef_InvalidProto) {
   // Invalid protobuf data (protos cannot start with 4 bytes of zeros)
   char proto[] = {0x0, 0x0, 0x0, 0x0};
-  TF_Buffer* buf = TF_NewBufferFromString(proto, 4);
-  func_ = TF_FunctionImportFunctionDef(buf, s_);
-  TF_DeleteBuffer(buf);
+  func_ = TF_FunctionImportFunctionDef(proto, 4, s_);
   EXPECT_TRUE(func_ == nullptr);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("Invalid FunctionDef given to TF_FunctionImportFunctionDef"),

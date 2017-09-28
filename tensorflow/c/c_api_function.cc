@@ -548,10 +548,10 @@ void TF_FunctionToFunctionDef(TF_Function* func, TF_Buffer* output_func_def,
   status->status = MessageToBuffer(func->fdef, output_func_def);
 }
 
-TF_Function* TF_FunctionImportFunctionDef(const TF_Buffer* func_def,
+TF_Function* TF_FunctionImportFunctionDef(const void* proto, size_t proto_len,
                                           TF_Status* status) {
   TF_Function* func = new TF_Function();
-  if (!func->fdef.ParseFromArray(func_def->data, func_def->length)) {
+  if (!func->fdef.ParseFromArray(proto, proto_len)) {
     status->status = InvalidArgument(
         "Invalid FunctionDef given to TF_FunctionImportFunctionDef");
     TF_DeleteFunction(func);
