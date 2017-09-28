@@ -71,11 +71,11 @@ class LossFunction(object):
     of the loss function with respect to its inputs.
 
     Args:
-      vector: The vector to multiply.  Must be the same shape as the
+      vector: The vector to multiply.  Must be the same shape(s) as the
         'inputs' property.
 
     Returns:
-      The vector right-multiplied by the Hessian.  Will be of the same shape
+      The vector right-multiplied by the Hessian.  Will be of the same shape(s)
       as the 'inputs' property.
     """
     pass
@@ -89,16 +89,16 @@ class LossFunction(object):
     block-diagonal across different cases in the batch, since the loss function
     is typically summed across cases.
 
-    Note that B can be any matrix satisfying B^T * B = H where H is the Hessian,
+    Note that B can be any matrix satisfying B * B^T = H where H is the Hessian,
     but will agree with the one used in the other methods of this class.
 
     Args:
-      vector: The vector to multiply.  Must be the same shape as the
-        'inputs' property.
+      vector: The vector to multiply.  Must be of the shape given by the
+        'hessian_factor_inner_shape' property.
 
     Returns:
-      The vector right-multiplied by the factor B.  Will be of shape
-      given by the 'hessian_factor_inner_shape' property.
+      The vector right-multiplied by B.  Will be of the same shape(s) as the
+      'inputs' property.
     """
     pass
 
@@ -111,16 +111,16 @@ class LossFunction(object):
     block-diagonal across different cases in the batch, since the loss function
     is typically summed across cases.
 
-    Note that B can be any matrix satisfying B^T * B = H where H is the Hessian,
+    Note that B can be any matrix satisfying B * B^T = H where H is the Hessian,
     but will agree with the one used in the other methods of this class.
 
     Args:
-      vector: The vector to multiply.  Must be of the shape given by the
-        'hessian_factor_inner_shape' property.
+      vector: The vector to multiply.  Must be the same shape(s) as the
+        'inputs' property.
 
     Returns:
-      The vector right-multiplied by B^T. Will be of the same shape as the
-      'inputs' property.
+      The vector right-multiplied by B^T.  Will be of the shape given by the
+      'hessian_factor_inner_shape' property.
     """
     pass
 
@@ -137,17 +137,17 @@ class LossFunction(object):
     batch dimension (assumed to be dimension 0), is 1.0 in the entry
     corresponding to the given index and 0 elsewhere.
 
-    Note that B can be any matrix satisfying B^T * B = H where H is the Hessian,
+    Note that B can be any matrix satisfying B * B^T = H where H is the Hessian,
     but will agree with the one used in the other methods of this class.
 
     Args:
       index: A tuple representing in the index of the entry in each slice that
-        is 1.0. Note that len(index) must by given by the rank of 'inputs' minus
-        one.
+        is 1.0. Note that len(index) must be equal to the number of elements
+        of the 'hessian_factor_inner_shape' tensor minus one.
 
     Returns:
-      The vector right-multiplied by the factor B.  Will be of shape
-      given by the 'hessian_factor_inner_shape' property.
+      The vector right-multiplied by B^T. Will be of the same shape(s) as the
+      'inputs' property.
     """
     pass
 
@@ -183,11 +183,11 @@ class NegativeLogProbLoss(LossFunction):
     """Right-multiply a vector by the Fisher.
 
     Args:
-      vector: The vector to multiply.  Must be the same shape as the
+      vector: The vector to multiply.  Must be the same shape(s) as the
         'inputs' property.
 
     Returns:
-      The vector right-multiplied by the Fisher.  Will be of the same shape
+      The vector right-multiplied by the Fisher.  Will be of the same shape(s)
       as the 'inputs' property.
     """
     pass
@@ -203,16 +203,16 @@ class NegativeLogProbLoss(LossFunction):
     distribution is usually (but not always) conditionally iid across different
     cases.
 
-    Note that B can be any matrix satisfying B^T * B = F where F is the Fisher,
+    Note that B can be any matrix satisfying B * B^T = F where F is the Fisher,
     but will agree with the one used in the other methods of this class.
 
     Args:
-      vector: The vector to multiply.  Must be the same shape as the
-        'inputs' property.
+      vector: The vector to multiply.  Must be of the shape given by the
+        'fisher_factor_inner_shape' property.
 
     Returns:
-      The vector right-multiplied by the factor B.  Will be of shape
-      given by the 'fisher_factor_inner_shape' property.
+      The vector right-multiplied by B. Will be of the same shape(s) as the
+      'inputs' property.
     """
     pass
 
@@ -227,16 +227,16 @@ class NegativeLogProbLoss(LossFunction):
     distribution is usually (but not always) conditionally iid across different
     cases.
 
-    Note that B can be any matrix satisfying B^T * B = F where F is the Fisher,
+    Note that B can be any matrix satisfying B * B^T = F where F is the Fisher,
     but will agree with the one used in the other methods of this class.
 
     Args:
-      vector: The vector to multiply.  Must be of the shape given by the
-        'fisher_factor_inner_shape' property.
+      vector: The vector to multiply.  Must be the same shape(s) as the
+        'inputs' property.
 
     Returns:
-      The vector right-multiplied by B^T. Will be of the same shape as the
-      'inputs' property.
+      The vector right-multiplied by B^T.  Will be of the shape given by the
+      'fisher_factor_inner_shape' property.
     """
     pass
 
@@ -255,17 +255,17 @@ class NegativeLogProbLoss(LossFunction):
     batch dimension (assumed to be dimension 0), is 1.0 in the entry
     corresponding to the given index and 0 elsewhere.
 
-    Note that B can be any matrix satisfying B^T * B = H where H is the Fisher,
+    Note that B can be any matrix satisfying B * B^T = H where H is the Fisher,
     but will agree with the one used in the other methods of this class.
 
     Args:
       index: A tuple representing in the index of the entry in each slice that
-        is 1.0. Note that len(index) must by given by the rank of 'inputs' minus
-        one.
+        is 1.0. Note that len(index) must be equal to the number of elements
+        of the 'fisher_factor_inner_shape' tensor minus one.
 
     Returns:
-      The vector right-multiplied by the factor B.  Will be of shape
-      given by the 'Fisher_factor_inner_shape' property.
+      The vector right-multiplied by B. Will be of the same shape(s) as the
+      'inputs' property.
     """
     pass
 
