@@ -80,6 +80,7 @@ See the @{$python/contrib.learn} guide.
 
 @@InputFnOps
 @@ProblemType
+@@build_default_serving_input_fn
 @@build_parsing_serving_input_fn
 @@make_export_strategy
 """

@@ -58,5 +58,6 @@ Queue and read batched input data.
 
 Export utilities
 
+*   @{tf.contrib.learn.build_default_serving_input_fn}
 *   @{tf.contrib.learn.build_parsing_serving_input_fn}
 *   @{tf.contrib.learn.ProblemType}
