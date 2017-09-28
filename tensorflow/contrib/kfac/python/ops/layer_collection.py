@@ -247,10 +247,17 @@ class LayerCollection(object):
     else:
       raise ValueError("Bad value {} for approx.".format(approx))
 
-  def register_conv2d(self, params, strides, padding, inputs, outputs):
-    self.register_block(params,
-                        fb.ConvKFCBasicFB(self, params, inputs, outputs,
-                                          strides, padding))
+  def register_conv2d(self, params, strides, padding, inputs, outputs,
+                      approx=APPROX_KRONECKER_NAME):
+
+    if approx == APPROX_KRONECKER_NAME:
+      self.register_block(params,
+                          fb.ConvKFCBasicFB(self, params, inputs, outputs,
+                                            strides, padding))
+    elif approx == APPROX_DIAGONAL_NAME:
+      self.register_block(params,
+                          fb.ConvDiagonalFB(self, params, inputs, outputs,
+                                            strides, padding))
 
   def register_generic(self, params, batch_size, approx=APPROX_DIAGONAL_NAME):
     params = params if isinstance(params, (tuple, list)) else (params,)

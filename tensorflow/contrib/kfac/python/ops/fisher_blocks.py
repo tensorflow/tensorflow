@@ -27,9 +27,10 @@ from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
-# Damping scale for blocks corresponding to convolutional layers, where the
-# damping scale is adjusted according to
-#   damping /= num_locations ** NORMALIZE_DAMPING_POWER
+# For blocks corresponding to convolutional layers, or any type of block where
+# the parameters can be thought of as being replicated in time or space,
+# we want to adjust the scale of the damping by
+#   damping /= num_replications ** NORMALIZE_DAMPING_POWER
 NORMALIZE_DAMPING_POWER = 1.0
 
 
@@ -227,6 +228,70 @@ class FullyConnectedDiagonalFB(FisherBlock):
     return self._outputs
 
 
+class ConvDiagonalFB(FisherBlock):
+  """FisherBlock for convolutional layers using a diagonal approx.
+
+  Unlike NaiveDiagonalFB this uses the low-variance "sum of squares" estimator.
+  """
+  # TODO(jamesmartens): add units tests for this class
+
+  def __init__(self, layer_collection, params, inputs, outputs, strides,
+               padding):
+    """Creates a ConvDiagonalFB block.
+
+    Args:
+      layer_collection: The collection of all layers in the K-FAC approximate
+          Fisher information matrix to which this FisherBlock belongs.
+      params: The parameters (Tensor or tuple of Tensors) of this layer. If
+        kernel alone, a Tensor of shape [kernel_height, kernel_width,
+        in_channels, out_channels]. If kernel and bias, a tuple of 2 elements
+        containing the previous and a Tensor of shape [out_channels].
+      inputs: A Tensor of shape [batch_size, height, width, in_channels].
+        Input activations to this layer.
+      outputs: A Tensor of shape [batch_size, height, width, out_channels].
+        Output pre-activations from this layer.
+      strides: The stride size in this layer (1-D Tensor of length 4).
+      padding: The padding in this layer (1-D of Tensor length 4).
+    """
+    self._inputs = inputs
+    self._outputs = outputs
+    self._strides = strides
+    self._padding = padding
+    self._has_bias = isinstance(params, (tuple, list))
+
+    fltr = params[0] if self._has_bias else params
+    self._filter_shape = tuple(fltr.shape.as_list())
+
+    input_shape = tuple(inputs.shape.as_list())
+    self._num_locations = (input_shape[1] * input_shape[2]
+                           // (strides[1] * strides[2]))
+
+    super(ConvDiagonalFB, self).__init__(layer_collection)
+
+  def instantiate_factors(self, grads_list, damping):
+    if NORMALIZE_DAMPING_POWER:
+      damping /= self._num_locations ** NORMALIZE_DAMPING_POWER
+    self._damping = damping
+
+    self._factor = self._layer_collection.make_or_get_factor(
+        fisher_factors.ConvDiagonalFactor,
+        (self._inputs, grads_list, self._filter_shape, self._strides,
+         self._padding, self._has_bias))
+
+  def multiply_inverse(self, vector):
+    reshaped_vect = utils.layer_params_to_mat2d(vector)
+    reshaped_out = reshaped_vect / (self._factor.get_cov() + self._damping)
+    return utils.mat2d_to_layer_params(vector, reshaped_out)
+
+  def multiply(self, vector):
+    reshaped_vect = utils.layer_params_to_mat2d(vector)
+    reshaped_out = reshaped_vect * (self._factor.get_cov() + self._damping)
+    return utils.mat2d_to_layer_params(vector, reshaped_out)
+
+  def tensors_to_compute_grads(self):
+    return self._outputs
+
+
 class KroneckerProductFB(FisherBlock):
   """A base class for FisherBlocks with separate input and output factors.
 
@@ -344,11 +409,16 @@ class ConvKFCBasicFB(KroneckerProductFB):
     Args:
       layer_collection: The collection of all layers in the K-FAC approximate
           Fisher information matrix to which this FisherBlock belongs.
-      params: The parameters (Tensor or tuple of Tensors) of this layer.
-      inputs: The Tensor of input activatoins to this layer.
-      outputs: The Tensor of output pre-activations from this layer.
-      strides: The stride size in this layer (1-D of length 4)
-      padding: The padding in this layer (1-D of length 4)
+      params: The parameters (Tensor or tuple of Tensors) of this layer. If
+        kernel alone, a Tensor of shape [kernel_height, kernel_width,
+        in_channels, out_channels]. If kernel and bias, a tuple of 2 elements
+        containing the previous and a Tensor of shape [out_channels].
+      inputs: A Tensor of shape [batch_size, height, width, in_channels].
+        Input activations to this layer.
+      outputs: A Tensor of shape [batch_size, height, width, out_channels].
+        Output pre-activations from this layer.
+      strides: The stride size in this layer (1-D Tensor of length 4).
+      padding: The padding in this layer (1-D of Tensor length 4).
     """
     self._inputs = inputs
     self._outputs = outputs
@@ -360,7 +430,7 @@ class ConvKFCBasicFB(KroneckerProductFB):
     self._filter_shape = tuple(fltr.shape.as_list())
 
     input_shape = tuple(inputs.shape.as_list())
-    self._num_locations = (input_shape[1] * input_shape[2] /
+    self._num_locations = (input_shape[1] * input_shape[2] //
                            (strides[1] * strides[2]))
 
     super(ConvKFCBasicFB, self).__init__(layer_collection)

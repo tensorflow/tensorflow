@@ -31,6 +31,7 @@ _allowed_symbols = [
     'KroneckerProductFB',
     'FullyConnectedKFACBasicFB',
     'ConvKFCBasicFB',
+    'ConvDiagonalFB'
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

@@ -39,6 +39,7 @@ _allowed_symbols = [
     "FullyConnectedKroneckerFactor",
     "ConvInputKroneckerFactor",
     "ConvOutputKroneckerFactor",
+    "ConvDiagonalFactor",
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

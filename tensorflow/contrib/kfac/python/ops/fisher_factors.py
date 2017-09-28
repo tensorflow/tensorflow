@@ -28,6 +28,7 @@ from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
@@ -88,18 +89,19 @@ def _compute_cov(tensor, normalizer=None):
 
 
 def _append_homog(tensor):
-  """Appends a homogeneous coordinate to the row vectors of a 2D Tensor.
+  """Appends a homogeneous coordinate to the last dimension of a Tensor.
 
   Args:
-    tensor: A 2D Tensor.
+    tensor: A Tensor.
 
   Returns:
     A Tensor identical to the input but one larger in the last dimension.  The
     new entries are filled with ones.
   """
-  size = array_ops.shape(tensor)[0]
-  ones = array_ops.ones((size, 1), dtype=tensor.dtype)
-  return array_ops.concat(values=[tensor, ones], axis=1)
+  rank = len(tensor.shape.as_list())
+  shape = array_ops.concat([array_ops.shape(tensor)[:-1], [1]], axis=0)
+  ones = array_ops.ones(shape, dtype=tensor.dtype)
+  return array_ops.concat([tensor, ones], axis=rank-1)
 
 
 def scope_string_from_params(params):
@@ -162,7 +164,7 @@ class FisherFactor(object):
      representations.
 
      Subclasses must implement the _compute_new_cov method, and the _var_scope
-     and_cov_shape properties.
+     and _cov_shape properties.
   """
 
   def __init__(self):
@@ -174,10 +176,19 @@ class FisherFactor(object):
 
   @abc.abstractproperty
   def _cov_shape(self):
+    """The shape of the cov matrix."""
     pass
 
   @abc.abstractproperty
   def _num_sources(self):
+    """The number of things to sum over when computing cov.
+
+    The default make_covariance_update_op function will call _compute_new_cov
+    with indices ranging from 0 to _num_sources-1. The typical situation is
+    where the factor wants to sum the statistics it computes over multiple
+    backpropped "gradients" (typically passed in via "tensors" or
+    "outputs_grads" arguments).
+    """
     pass
 
   @property
@@ -409,6 +420,9 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     self._orig_tensors_name = scope_string_from_params((inputs,) +
                                                        tuple(outputs_grads))
 
+    # Note that we precompute the required operations on the inputs since the
+    # inputs don't change with the 'idx' argument to _compute_new_cov.  Only
+    # the target entry of _outputs_grads changes with idx.
     if has_bias:
       inputs = _append_homog(inputs)
     self._squared_inputs = math_ops.square(inputs)
@@ -428,13 +442,96 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
     return len(self._outputs_grads)
 
   def _compute_new_cov(self, idx=0):
-    # the magic formula:
+    # The well-known special formula that uses the fact that the entry-wise
+    # square of an outer product is the outer-product of the entry-wise squares.
+    # The gradient is the outer product of the input and the output gradients,
+    # so we just square both and then take their outer-product.
     new_cov = math_ops.matmul(
         self._squared_inputs,
         math_ops.square(self._outputs_grads[idx]),
         transpose_a=True)
     new_cov /= math_ops.cast(self._batch_size, new_cov.dtype)
     return new_cov
+
+
+class ConvDiagonalFactor(DiagonalFactor):
+  """FisherFactor for a diagonal approx of a convolutional layer's Fisher."""
+
+  # TODO(jamesmartens): add units tests for this class
+
+  def __init__(self, inputs, outputs_grads, filter_shape, strides, padding,
+               has_bias=False):
+    """Creates a ConvDiagonalFactor object.
+
+    Args:
+      inputs: Tensor of shape [batch_size, height, width, in_channels].
+        Input activations to this layer.
+      outputs_grads: Tensor of shape [batch_size, height, width, out_channels].
+        Per-example gradients to the loss with respect to the layer's output
+        preactivations.
+      filter_shape: Tuple of 4 ints: (kernel_height, kernel_width, in_channels,
+        out_channels). Represents shape of kernel used in this layer.
+      strides: The stride size in this layer (1-D Tensor of length 4).
+      padding: The padding in this layer (1-D of Tensor length 4).
+      has_bias: Python bool. If True, the layer is assumed to have a bias
+        parameter in addition to its filter parameter.
+    """
+    self._filter_shape = filter_shape
+    self._has_bias = has_bias
+    self._outputs_grads = outputs_grads
+
+    self._orig_tensors_name = scope_string_from_name((inputs,)
+                                                     + tuple(outputs_grads))
+
+    # Note that we precompute the required operations on the inputs since the
+    # inputs don't change with the 'idx' argument to _compute_new_cov.  Only
+    # the target entry of _outputs_grads changes with idx.
+    filter_height, filter_width, _, _ = self._filter_shape
+    patches = array_ops.extract_image_patches(
+        inputs,
+        ksizes=[1, filter_height, filter_width, 1],
+        strides=strides,
+        rates=[1, 1, 1, 1],
+        padding=padding)
+
+    if has_bias:
+      patches = _append_homog(patches)
+
+    self._patches = patches
+
+    super(ConvDiagonalFactor, self).__init__()
+
+  @property
+  def _var_scope(self):
+    return "ff_convdiag/" + self._orig_tensors_name
+
+  @property
+  def _cov_shape(self):
+    filter_height, filter_width, in_channels, out_channels = self._filter_shape
+    return [filter_height * filter_width * in_channels + self._has_bias,
+            out_channels]
+
+  @property
+  def _num_sources(self):
+    return len(self._outputs_grads)
+
+  def _compute_new_cov(self, idx=0):
+    outputs_grad = self._outputs_grads[idx]
+    batch_size = array_ops.shape(self._patches)[0]
+
+    new_cov = self._convdiag_sum_of_squares(self._patches, outputs_grad)
+    new_cov /= math_ops.cast(batch_size, new_cov.dtype)
+
+    return new_cov
+
+  def _convdiag_sum_of_squares(self, patches, outputs_grad):
+    # This computes the sum of the squares of the per-training-case "gradients".
+    # It does this simply by computing a giant tensor containing all of these
+    # them, doing an entry-wise square, and them summing along the batch
+    # dimension.
+    case_wise_gradients = special_math_ops.einsum("bijk,bijl->bkl", patches,
+                                                  outputs_grad)
+    return math_ops.reduce_sum(math_ops.square(case_wise_gradients), axis=0)
 
 
 class FullyConnectedKroneckerFactor(InverseProvidingFactor):
