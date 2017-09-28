@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
 
@@ -109,7 +110,37 @@ REGISTER_OP("RestoreV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &shape1));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &shape2));
       TF_RETURN_IF_ERROR(c->Merge(shape1, shape2, &shape0));
-      return UnknownShape(c);
+
+      // Attempt to infer output shapes from its shape_and_slice input.
+      const Tensor* shape_and_slices_tensor = c->input_tensor(2);
+      if (shape_and_slices_tensor) {
+        const auto& shape_and_slices_flat =
+            shape_and_slices_tensor->flat<string>();
+        if (shape_and_slices_flat.size() != c->num_outputs()) {
+          return errors::InvalidArgument(
+              "The number of shape_and_slice doesn't match tensor outputs.");
+        }
+        for (int i = 0; i < shape_and_slices_flat.size(); ++i) {
+          const string& shape_and_slice = shape_and_slices_flat(i);
+          if (shape_and_slice.empty()) {
+            c->set_output(i, c->UnknownShape());
+            continue;
+          }
+          TensorShape parsed_full_shape;
+          TensorSlice parsed_slice;
+          TensorShape parsed_slice_shape;
+          TF_RETURN_IF_ERROR(checkpoint::ParseShapeAndSlice(
+              shape_and_slice, &parsed_full_shape, &parsed_slice,
+              &parsed_slice_shape));
+          ShapeHandle shape_handle;
+          TF_RETURN_IF_ERROR(
+              c->MakeShapeFromTensorShape(parsed_slice_shape, &shape_handle));
+          c->set_output(i, shape_handle);
+        }
+        return Status::OK();
+      } else {
+        return UnknownShape(c);
+      }
     })
     .Doc(R"doc(
 Restores tensors from a V2 checkpoint.
@@ -316,9 +347,29 @@ REGISTER_OP("RestoreSlice")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      // TODO(mrry): Attempt to parse the shapes_and_slices values and use
-      // them to constrain the shape of the remaining inputs.
-      c->set_output(0, c->UnknownShape());
+
+      // Attempt to infer output shapes from its shape_and_slice input.
+      const Tensor* shape_and_slices_tensor = c->input_tensor(2);
+      if (shape_and_slices_tensor) {
+        const auto& shape_and_slice =
+            shape_and_slices_tensor->flat<string>()(0);
+        if (shape_and_slice.empty()) {
+          c->set_output(0, c->UnknownShape());
+        } else {
+          TensorShape parsed_full_shape;
+          TensorSlice parsed_slice;
+          TensorShape parsed_slice_shape;
+          TF_RETURN_IF_ERROR(checkpoint::ParseShapeAndSlice(
+              shape_and_slice, &parsed_full_shape, &parsed_slice,
+              &parsed_slice_shape));
+          ShapeHandle shape_handle;
+          TF_RETURN_IF_ERROR(
+              c->MakeShapeFromTensorShape(parsed_slice_shape, &shape_handle));
+          c->set_output(0, shape_handle);
+        }
+      } else {
+        c->set_output(0, c->UnknownShape());
+      }
       return Status::OK();
     })
     .Doc(R"doc(

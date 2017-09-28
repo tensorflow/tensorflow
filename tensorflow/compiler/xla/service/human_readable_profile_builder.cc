@@ -53,13 +53,17 @@ string HumanReadableProfileBuilder::ToString() const {
 
     double nsecs = op.cycles / clock_rate_ghz_;
     Appendf(&s,
-            "%15lld cycles (%6.2f%%) :: %12.1f usec (%12.1f optimal) "
+            "%15lld cycles (%6.2f%%) :: %12.1f usec (%12.1f optimal) :: %18s "
             ":: %18s :: %12s/s :: %12s/cycle :: %s\n",
             op.cycles, cycles_percent, CyclesToMicroseconds(op.cycles),
             op.optimal_seconds * 1e6,
             op.flop_count <= 0
                 ? "<none>"
                 : HumanReadableNumFlops(op.flop_count, nsecs).c_str(),
+            op.transcendental_count <= 0 ? "<none>"
+                                         : HumanReadableNumTranscendentalOps(
+                                               op.transcendental_count, nsecs)
+                                               .c_str(),
             bytes_per_sec.c_str(), bytes_per_cycle.c_str(), op.name.c_str());
   };
 
@@ -68,7 +72,7 @@ string HumanReadableProfileBuilder::ToString() const {
     optimal_seconds_sum += op.optimal_seconds;
   }
 
-  append_op({"[total]", "[total]", /*category=*/"", total_cycles_, -1, -1,
+  append_op({"[total]", "[total]", /*category=*/"", total_cycles_, -1, -1, -1,
              optimal_seconds_sum});
 
   // Sort ops in decreasing order of cycles.

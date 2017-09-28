@@ -18,7 +18,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
+namespace boosted_trees {
 using shape_inference::InferenceContext;
 using shape_inference::DimensionHandle;
 using shape_inference::ShapeHandle;
@@ -286,5 +286,33 @@ sparse_quantiles: Rank 1 tensors representing associated quantiles for each of
 the sparse feature tensors.
 )doc");
 
-}  // namespace gtflow
+REGISTER_OP("BucketizeWithInputBoundaries")
+    .Input("input: T")
+    .Input("boundaries: float")
+    .Output("output: int32")
+    .Attr("T: {int32, int64, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Bucketizes 'input' based on 'boundaries'. This function is similar to Bucketize
+op in core math_ops, except that boundaries are specified using an input tensor,
+as compared with a fixed attribute in Bucketize().
+
+For example, if the inputs are
+    boundaries = [0, 10, 100]
+    input = [[-5, 10000]
+             [150,   10]
+             [5,    100]]
+
+then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+
+input: Any shape of Tensor contains with numeric type.
+boundaries: A vector Tensor of sorted floats specifies the boundaries
+of the buckets.
+output: Same shape as 'input', where each value of input is replaced with its corresponding bucket index.
+)doc");
+
+}  // namespace boosted_trees
 }  // namespace tensorflow

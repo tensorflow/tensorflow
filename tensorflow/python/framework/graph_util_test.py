@@ -106,9 +106,9 @@ class DeviceFunctionsTest(test.TestCase):
       var_0 = variables.Variable(0)
       with ops.device(test_device_func_pin_variable_to_cpu):
         var_1 = variables.Variable(1)
-        with ops.device(lambda op: "/gpu:0"):
+        with ops.device(lambda op: "/device:GPU:0"):
           var_2 = variables.Variable(2)
-        with ops.device("/gpu:0"):  # Implicit merging device function.
+        with ops.device("/device:GPU:0"):  # Implicit merging device function.
           var_3 = variables.Variable(3)
 
     self.assertDeviceEqual(var_0.device, None)
@@ -187,6 +187,13 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertEqual("n2", sub_graph.node[1].name)
     self.assertEqual("n3", sub_graph.node[2].name)
     self.assertEqual("n5", sub_graph.node[3].name)
+
+  def testExtractSubGraphWithInvalidDestNodes(self):
+    graph_def = graph_pb2.GraphDef()
+    n1 = graph_def.node.add()
+    n1.name = "n1"
+    with self.assertRaisesRegexp(TypeError, "must be a list"):
+      graph_util.extract_sub_graph(graph_def, "n1")
 
   def testConvertVariablesToConstsWithFunctions(self):
     @function.Defun(dtypes.float32)

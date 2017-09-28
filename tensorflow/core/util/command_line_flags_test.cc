@@ -224,6 +224,25 @@ TEST(CommandLineFlagsTest, FailedStringHook) {
   EXPECT_EQ(argc, 1);
 }
 
+TEST(CommandLineFlagsTest, RepeatedStringHook) {
+  int argc = 3;
+  std::vector<string> argv_strings = {"program_name", "--some_name=this",
+                                      "--some_name=that"};
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+  int call_count = 0;
+  bool parsed_ok = Flags::Parse(&argc, argv_array.data(),
+                                {Flag("some_name",
+                                      [&call_count](string value) {
+                                        call_count++;
+                                        return true;
+                                      },
+                                      "", "some name")});
+
+  EXPECT_EQ(true, parsed_ok);
+  EXPECT_EQ(argc, 1);
+  EXPECT_EQ(call_count, 2);
+}
+
 // Return whether str==pat, but allowing any whitespace in pat
 // to match zero or more whitespace characters in str.
 static bool MatchWithAnyWhitespace(const string &str, const string &pat) {

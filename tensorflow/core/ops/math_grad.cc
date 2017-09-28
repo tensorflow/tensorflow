@@ -349,6 +349,20 @@ Status ImagGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Imag", ImagGrad);
 
+Status AngleGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"re"}, "Real", {"x"}},
+      {{"im"}, "Imag", {"x"}},
+      {{"z"}, "Complex", {"im", "re"}},
+      {{"z_inv"}, "Reciprocal", {"z"}},
+      {{"neg"}, "Neg", {"z_inv"}},
+      {{"dx"}, "Mul", {"neg", "dy"}},
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Angle", AngleGrad);
+
 Status ConjGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {

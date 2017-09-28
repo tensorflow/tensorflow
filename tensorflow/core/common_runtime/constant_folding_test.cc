@@ -282,6 +282,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
     Status status;
     Node* times_two = s.graph()->AddNode(def, &status);
     TF_ASSERT_OK(status);
+    TF_ASSERT_OK(s.DoShapeInference(times_two));
     s.graph()->AddEdge(c.node(), 0, times_two, 0);
 
     auto times_two_send =
@@ -297,7 +298,10 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
   EXPECT_FALSE(was_mutated);
 }
 
-REGISTER_OP("ConstantFoldingTestOp").Input("a: int64").Output("b: int64");
+REGISTER_OP("ConstantFoldingTestOp")
+    .Input("a: int64")
+    .Output("b: int64")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
   Graph g(OpRegistry::Global());
@@ -312,6 +316,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
     Status status;
     Node* non_cpu = s.graph()->AddNode(def, &status);
     TF_ASSERT_OK(status);
+    TF_ASSERT_OK(s.DoShapeInference(non_cpu));
 
     auto non_cpu_send =
         ops::_Send(s.WithOpName("non_cpu_send"), Output(non_cpu),
@@ -398,9 +403,9 @@ TEST_F(ConstantFoldingTest, SimpleShapeKnown) {
   PartialTensorShape ps1;
   int r1_dims[] = {2, 3, 4};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape<int>(r1_dims, 3, &ps1));
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[recv0].push_back(ps0);
-  map[recv1].push_back(ps1);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[recv0->name()].push_back(ps0);
+  map[recv1->name()].push_back(ps1);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;
@@ -475,9 +480,9 @@ TEST_F(ConstantFoldingTest, PartialShape) {
   int r0_dims[] = {-1, -1};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape(r0_dims, 2, &ps0));
   PartialTensorShape ps1;
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[recv0].push_back(ps0);
-  map[recv1].push_back(ps1);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[recv0->name()].push_back(ps0);
+  map[recv1->name()].push_back(ps1);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;
@@ -530,8 +535,8 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
   PartialTensorShape ps0;
   int c0_dims[] = {};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape(c0_dims, 0, &ps0));
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[c0].push_back(ps0);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[c0->name()].push_back(ps0);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;

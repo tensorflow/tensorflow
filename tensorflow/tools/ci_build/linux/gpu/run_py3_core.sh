@@ -25,14 +25,12 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export TF_NEED_GCP=0
-export TF_NEED_HDFS=0
 export PYTHON_BIN_PATH=`which python3`
 
 export TF_NEED_CUDA=1
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
 
-$PYTHON_BIN_PATH configure.py
+yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --config=cuda --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchmark-test -k \

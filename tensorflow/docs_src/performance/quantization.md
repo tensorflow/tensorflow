@@ -89,12 +89,14 @@ here's how you can translate the latest GoogLeNet model into a version that uses
 eight-bit computations:
 
 ```sh
-curl http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz -o /tmp/inceptionv3.tgz
-tar xzf /tmp/inceptionv3.tgz -C /tmp/
+curl -L "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz" |
+  tar -C tensorflow/examples/label_image/data -xz
 bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
-  --inputs="Mul" --in_graph=/tmp/classify_image_graph_def.pb \
-  --outputs="softmax" --out_graph=/tmp/quantized_graph.pb \
+  --in_graph=tensorflow/examples/label_image/data/inception_v3_2016_08_28_frozen.pb \
+  --out_graph=/tmp/quantized_graph.pb \
+  --inputs=input \
+  --outputs=InceptionV3/Predictions/Reshape_1 \
   --transforms='add_default_attributes strip_unused_nodes(type=float, shape="1,299,299,3")
     remove_nodes(op=Identity, op=CheckNumerics) fold_constants(ignore_errors=true)
     fold_batch_norms fold_old_batch_norms quantize_weights quantize_nodes
@@ -110,15 +112,7 @@ outputs though, and you should get equivalent results. Here's an example:
 ```sh
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
---image=<input-image> \
 --graph=/tmp/quantized_graph.pb \
---labels=/tmp/imagenet_synset_to_human_label_map.txt \
---input_width=299 \
---input_height=299 \
---input_mean=128 \
---input_std=128 \
---input_layer="Mul:0" \
---output_layer="softmax:0"
 ```
 
 You'll see that this runs the newly-quantized graph, and outputs a very similar

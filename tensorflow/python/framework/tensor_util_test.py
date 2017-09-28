@@ -314,6 +314,17 @@ class TensorUtilTest(test.TestCase):
                   shape=[3, 4],
                   dtype=dtype)))
 
+  def testIntMixedWithDimension(self):
+    # Github issue: 11974
+    dtype = dtypes.int32
+    nptype = np.int32
+    t = tensor_util.make_tensor_proto(
+        [10, tensor_shape.Dimension(20), 30], dtype=dtype)
+    self.assertEquals(dtype, t.dtype)
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(nptype, a.dtype)
+    self.assertAllClose(np.array([10, 20, 30], dtype=nptype), a)
+
   def testLong(self):
     t = tensor_util.make_tensor_proto(10, dtype=dtypes.int64)
     self.assertProtoEquals("""
@@ -781,7 +792,7 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
 
-  def testPack(self):
+  def testPack_Axis0(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     np_val = np.array(inputs)
     tf_val = array_ops.stack(inputs)
@@ -792,6 +803,61 @@ class ConstantValueTest(test.TestCase):
         [inputs[0], array_ops.placeholder(dtypes.float32), inputs[2]])
     c_val = tensor_util.constant_value(tf_val)
     self.assertIs(None, c_val)
+
+  def testPack_Axis1(self):
+    inputs = [np.random.rand(4, 7) for _ in range(3)]
+    tf_val = array_ops.stack(inputs, axis=1)
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertIsNone(c_val)
+
+    tf_val = array_ops.stack(
+        [inputs[0], array_ops.placeholder(dtypes.float32), inputs[2]], axis=1)
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertIs(None, c_val)
+
+  def testPack_Partial_Axis0(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
+    c_val = tensor_util.constant_value(tf_val, partial=True)
+    self.assertAllClose(input_, c_val[0])
+    self.assertIsNone(c_val[1])
+
+  def testPack_Partial_Axis1(self):
+    input_ = np.random.rand(4, 7)
+    tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)],
+                             axis=1)
+    c_val = tensor_util.constant_value(tf_val, partial=True)
+    self.assertIsNone(c_val)
+
+  def testEqual(self):
+    # Scalar inputs.
+    tf_val = math_ops.equal(constant_op.constant(1), constant_op.constant(1))
+    self.assertEqual(tensor_util.constant_value(tf_val), True)
+
+    tf_val = math_ops.equal(constant_op.constant(1), constant_op.constant(0))
+    self.assertEqual(tensor_util.constant_value(tf_val), False)
+
+    # Shaped inputs with broadcast semantics.
+    tf_val = math_ops.equal(constant_op.constant([[0, 1]]),
+                            constant_op.constant([[0], [1]]))
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(c_val, [[True, False], [False, True]])
+
+  def testNotEqual(self):
+    # Scalar inputs.
+    tf_val = math_ops.not_equal(constant_op.constant(1),
+                                constant_op.constant(1))
+    self.assertEqual(tensor_util.constant_value(tf_val), False)
+
+    tf_val = math_ops.not_equal(constant_op.constant(1),
+                                constant_op.constant(0))
+    self.assertEqual(tensor_util.constant_value(tf_val), True)
+
+    # Shaped inputs with broadcast semantics.
+    tf_val = math_ops.not_equal(constant_op.constant([[0, 1]]),
+                                constant_op.constant([[0], [1]]))
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(c_val, [[False, True], [True, False]])
 
 
 class ConstantValueAsShapeTest(test.TestCase):

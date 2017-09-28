@@ -121,22 +121,24 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import stepper
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.training import monitored_session
 
 
 # Helper function.
-def _check_type(obj, expected_type):
+def _check_type(obj, expected_types):
   """Check if an object is of the expected type.
 
   Args:
     obj: The object being checked.
-    expected_type: (type) The expected type of obj.
+    expected_types: (`type` or an iterable of `type`s) The expected `type`(s)
+      of obj.
 
   Raises:
       TypeError: If obj is not an instance of expected_type.
   """
-  if not isinstance(obj, expected_type):
+  if not isinstance(obj, expected_types):
     raise TypeError("Expected type %s; got type %s" %
-                    (expected_type, type(obj)))
+                    (expected_types, type(obj)))
 
 
 class OnSessionInitRequest(object):
@@ -152,7 +154,7 @@ class OnSessionInitRequest(object):
       sess: A tensorflow Session object.
     """
 
-    _check_type(sess, session.BaseSession)
+    _check_type(sess, (session.BaseSession, monitored_session.MonitoredSession))
     self.session = sess
 
 
@@ -339,7 +341,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
     """Constructor of `BaseDebugWrapperSession`.
 
     Args:
-      sess: An (unwrapped) TensorFlow session instance.
+      sess: An (unwrapped) TensorFlow session instance. It should be a subtype
+        of `BaseSession` or `tf.MonitoredSession`.
       thread_name_filter: Regular-expression filter (whitelist) for name(s) of
         thread(s) on which the wrapper session will be active. This regular
         expression is used in a start-anchored fashion on the thread name, i.e.,
@@ -352,7 +355,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
       NotImplementedError: If a non-DirectSession sess object is received.
     """
 
-    _check_type(sess, session.BaseSession)
+    _check_type(sess, (session.BaseSession, monitored_session.MonitoredSession))
 
     # The session being wrapped.
     self._sess = sess
@@ -380,6 +383,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
       raise ValueError(
           "Invalid OnSessionInitAction value: %s" % response.action)
 
+    self._default_session_context_manager = None
+
   @property
   def graph(self):
     return self._sess.graph
@@ -395,9 +400,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
   @property
   def session(self):
     return self._sess
-
-  def as_default(self):
-    return ops.default_session(self)
 
   def run(self,
           fetches,
@@ -680,11 +682,17 @@ class BaseDebugWrapperSession(session.SessionInterface):
       An instance of `OnRunStartResponse`.
     """
 
+  def as_default(self):
+    return ops.default_session(self)
+
   def __enter__(self):
-    return self._sess.__enter__()
+    if self._default_session_context_manager is None:
+      self._default_session_context_manager = self.as_default()
+    return self._default_session_context_manager.__enter__()
 
   def __exit__(self, exec_type, exec_value, exec_tb):
-    self._sess.__exit__(exec_type, exec_value, exec_tb)
+    self._default_session_context_manager.__exit__(
+        exec_type, exec_value, exec_tb)
 
   def __del__(self):
     self._sess.__del__()
@@ -712,6 +720,14 @@ class BaseDebugWrapperSession(session.SessionInterface):
       The same return values as the `Session.run()` call on the same fetches as
         the NodeStepper.
     """
+
+  def should_stop(self):
+    if hasattr(self._sess, "should_stop"):
+      return self._sess.should_stop()
+    else:
+      raise ValueError(
+          "The wrapped session %r does not have a method called 'should_stop'. "
+          "Do you intend to wrap a tf.MonitoredSession instead?" % self._sess)
 
 
 class WatchOptions(object):

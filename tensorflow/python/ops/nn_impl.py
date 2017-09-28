@@ -417,7 +417,7 @@ def separable_conv2d(input,
 
   In detail,
 
-      output[b, i, j, k] = sum_{di, dj, q, r]
+      output[b, i, j, k] = sum_{di, dj, q, r}
           input[b, strides[1] * i + di, strides[2] * j + dj, q] *
           depthwise_filter[di, dj, q, r] *
           pointwise_filter[0, 0, q * channel_multiplier + r, k]
@@ -806,8 +806,10 @@ def fused_batch_norm(
     mean = constant_op.constant([])
   if variance is None:
     variance = constant_op.constant([])
-  # Add 1e-12 to epsilon when epsilon <= 1e-5 to prevent CUDNN exception.
-  epsilon = epsilon if epsilon > 1e-5 else epsilon + 1e-12
+  # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
+  # prevent exception (see cudnn.h).
+  min_epsilon = 1.001e-5
+  epsilon = epsilon if epsilon > min_epsilon else min_epsilon
   # pylint: disable=protected-access
   y, batch_mean, batch_var, _, _ = gen_nn_ops._fused_batch_norm(
       x,

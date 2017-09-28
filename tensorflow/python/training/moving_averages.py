@@ -47,6 +47,21 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   See `ADAM: A Method for Stochastic Optimization` Section 3 for more details
   (https://arxiv.org/abs/1412.6980).
 
+  The names of the debias shadow variables, by default, include both the scope
+  they were created in and the scope of the variables they debias. They are also
+  given a uniqifying-suffix.
+
+  Ex:
+    with tf.variable_scope('scope1'):
+      with tf.variable_scope('scope2'):
+        var = tf.get_variable('foo')
+        assign_moving_average(var, 0.0, 1.0)
+        assign_moving_average(var, 0.0, 0.9)
+
+    var.name: 'scope1/scope2/foo'
+    shadow var names: 'scope1/scope2/scope1/scope2/foo/biased'
+                      'scope1/scope2/scope1/scope2/foo/biased_1'
+
   Args:
     variable: A Variable.
     value: A tensor with the same shape as 'variable'.
@@ -176,10 +191,23 @@ def _zero_debias(unbiased_var, value, decay):
         biased_initializer = init_ops.zeros_initializer(
             dtype=unbiased_var.dtype)(unbiased_var.get_shape())
         local_step_initializer = init_ops.zeros_initializer()
+      def _maybe_get_unique(name):
+        """Get name for a unique variable, if not `reuse=True`."""
+        if variable_scope.get_variable_scope().reuse:
+          return name
+        vs_vars = [x.op.name for x in
+                   variable_scope.get_variable_scope().global_variables()]
+        full_name = variable_scope.get_variable_scope().name + "/" + name
+        if full_name not in vs_vars: return name
+        idx = 1
+        while full_name + ("_%d" % idx) in vs_vars:
+          idx += 1
+        return name + ("_%d" % idx)
       biased_var = variable_scope.get_variable(
-          "biased", initializer=biased_initializer, trainable=False)
+          _maybe_get_unique("biased"), initializer=biased_initializer,
+          trainable=False)
       local_step = variable_scope.get_variable(
-          "local_step",
+          _maybe_get_unique("local_step"),
           shape=[],
           dtype=unbiased_var.dtype,
           initializer=local_step_initializer,
@@ -250,14 +278,12 @@ class ExponentialMovingAverage(object):
   # Create an ExponentialMovingAverage object
   ema = tf.train.ExponentialMovingAverage(decay=0.9999)
 
-  # Create the shadow variables, and add ops to maintain moving averages
-  # of var0 and var1.
-  maintain_averages_op = ema.apply([var0, var1])
-
-  # Create an op that will update the moving averages after each training
-  # step.  This is what we will use in place of the usual training op.
   with tf.control_dependencies([opt_op]):
-      training_op = tf.group(maintain_averages_op)
+      # Create the shadow variables, and add ops to maintain moving averages
+      # of var0 and var1. This also creates an op that will update the moving
+      # averages after each training step.  This is what we will use in place
+      # of the usual training op.
+      training_op = ema.apply([var0, var1])
 
   ...train the model by running training_op...
   ```

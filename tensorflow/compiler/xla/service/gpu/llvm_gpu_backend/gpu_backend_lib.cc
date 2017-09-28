@@ -38,8 +38,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
-#include "llvm/LinkAllIR.h"
-#include "llvm/LinkAllPasses.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Support/CommandLine.h"
@@ -51,9 +50,9 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
-
 #include "llvm/Transforms/IPO/Internalize.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -72,7 +71,18 @@ const int kDefaultInlineThreshold = 1100;
 // Gets the libdevice filename for a particular compute capability.  When
 // presented with a GPU we don't recognize, we just return the libdevice from
 // compute_20.
-static string GetLibdeviceFilename(std::pair<int, int> compute_capability) {
+static string GetLibdeviceFilename(const string& libdevice_dir_path,
+                                   std::pair<int, int> compute_capability) {
+  // Since CUDA 9.0, all GPU versions are included in a single file
+  const char* unified_libdevice_filename = "libdevice.10.bc";
+  std::vector<string> unified_libdevice_files;
+  const tensorflow::Status status = 
+    tensorflow::Env::Default()->GetMatchingPaths(
+      tensorflow::io::JoinPath(libdevice_dir_path, unified_libdevice_filename),
+      &unified_libdevice_files);
+  if (status.ok() && unified_libdevice_files.size() == 1) {
+    return unified_libdevice_filename;
+  }
   // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU
   // version gets mapped to one of these.  Note in particular that sm_60 and
   // sm_61 map to libdevice.compute_30.
@@ -102,7 +112,7 @@ static string GetLibdeviceFilename(std::pair<int, int> compute_capability) {
 }
 
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
-// we see an unrecognized compute capability, we return "sm_20".
+// we see an unrecognized compute capability, we return "sm_30".
 static string GetSmName(std::pair<int, int> compute_capability) {
   static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
                                                            {{2, 1}, 21},
@@ -115,8 +125,10 @@ static string GetSmName(std::pair<int, int> compute_capability) {
                                                            {{5, 3}, 53},
                                                            {{6, 0}, 60},
                                                            {{6, 1}, 61},
-                                                           {{6, 2}, 62}});
-  int sm_version = 20;
+                                                           {{6, 2}, 62},
+                    // TODO: Change this to 70 once LLVM NVPTX supports it
+                                                           {{7, 0}, 60}});
+  int sm_version = 30;
   auto it = m->find(compute_capability);
   if (it != m->end()) {
     sm_version = it->second;
@@ -195,7 +207,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
   return WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx42", target_options,
-      Optional<Reloc::Model>(RelocModel), CMModel, codegen_opt_level));
+      Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
+      codegen_opt_level));
 }
 
 // Adds the standard LLVM optimization passes, based on the speed optimization
@@ -232,8 +245,8 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 // Emits the given module to a bit code file.
 void EmitBitcodeToFile(const Module& module, tensorflow::StringPiece filename) {
   std::error_code error_code;
-  llvm::tool_output_file outfile(filename.ToString().c_str(), error_code,
-                                 llvm::sys::fs::F_None);
+  llvm::ToolOutputFile outfile(filename.ToString().c_str(), error_code,
+                               llvm::sys::fs::F_None);
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
   }
@@ -306,7 +319,8 @@ tensorflow::Status LinkLibdeviceIfNecessary(
 
   llvm::Linker linker(*module);
   string libdevice_path = tensorflow::io::JoinPath(
-      libdevice_dir_path, GetLibdeviceFilename(compute_capability));
+      libdevice_dir_path, GetLibdeviceFilename(libdevice_dir_path,
+                                               compute_capability));
   TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(libdevice_path));
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   std::unique_ptr<llvm::Module> libdevice_module =
@@ -389,7 +403,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
-  // TODO(jingyue): SROA may further expose more optimization opportunities, such
+  // TODO(jingyue): SROA may further expose more optimization opportunities such
   // as more precise alias analysis and more function inlining (SROA may change
   // the inlining cost of a function). For now, running SROA already emits good
   // enough code for the evaluated benchmarks. We may want to run more

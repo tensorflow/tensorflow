@@ -26,8 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
@@ -119,17 +121,31 @@ string GetLibdeviceDir(const HloModuleConfig& config) {
 }
 
 // Runs optimization passes on the given HLO module.
-tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
-                                     const se::DeviceDescription& device_desc) {
+tensorflow::Status OptimizeHloModule(
+    HloModule* hlo_module, const se::DeviceDescription& device_desc,
+    const HloCostAnalysis::ShapeSizeFunction& shape_size_function) {
   {
     HloPassPipeline pipeline("optimization");
-    pipeline.AddInvariantChecker<HloVerifier>();
+    pipeline.AddInvariantChecker<HloVerifier>(shape_size_function);
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
-        HloReducePrecisionOptions::BEFORE_OP_FUSION);
+        ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
+
+    // TODO(b/64094172): make Call work on GPU instead of inlining.
+    pipeline.AddPass<CallInliner>();
+
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
+      pass.AddInvariantChecker<HloVerifier>(shape_size_function);
+
+      // TODO(b/62764704): Do not rewrite on GPU, use cuDNN's BatchNorm APIs
+      // instead.
+      pass.AddPass<BatchNormRewriter>(
+          /*rewrite_training_op=*/true,
+          /*rewrite_inference_op=*/true,
+          /*rewrite_grad_op=*/true,
+          /*use_fusion=*/false);
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
@@ -150,15 +166,17 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   }
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
+    fusion.AddInvariantChecker<HloVerifier>(shape_size_function);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
+    reduce_pipeline.AddInvariantChecker<HloVerifier>(shape_size_function);
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
-        HloReducePrecisionOptions::AFTER_OP_FUSION);
+        ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
     StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
     TF_RETURN_IF_ERROR(reduce_result.status());
 
@@ -173,14 +191,16 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
+tensorflow::Status PrepareHloModuleForIrEmitting(
+    HloModule* hlo_module,
+    const HloCostAnalysis::ShapeSizeFunction& shape_size_function) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  pipeline.AddInvariantChecker<HloVerifier>();
+  pipeline.AddInvariantChecker<HloVerifier>(shape_size_function);
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
@@ -249,9 +269,11 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
+  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(),
+                                       stream_exec->GetDeviceDescription(),
+                                       ShapeSizeBytesFunction()));
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec->GetDeviceDescription()));
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+      PrepareHloModuleForIrEmitting(module.get(), ShapeSizeBytesFunction()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -262,7 +284,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
     diag_info.print(*printer);
   };
-  llvm_context.setDiagnosticHandler(DiagnosticHandler, &printer);
+  llvm_context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
   llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
@@ -285,6 +307,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
                           BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
                             return kMemoryAlignment;
                           }));
+  // BufferAssignment::ToString() includes a header, so no need for us to
+  // print one ourselves.
+  XLA_VLOG_LINES(2, buffer_assignment->ToString());
 
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();
@@ -305,6 +330,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));
 
+  if (user_pre_optimization_hook_) {
+    TF_CHECK_OK(user_pre_optimization_hook_(llvm_module));
+  }
   string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
@@ -336,6 +364,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                          module->config(), libdevice_dir_));
 
+  if (user_post_optimization_hook_) {
+    TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
+  }
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
   VLOG(2) << "PTX:";

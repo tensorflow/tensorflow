@@ -36,11 +36,10 @@ TensorFlow uses Bazel build system and enforces next requirements:
 
 ```
 # Description:
-# <...>
+#   <...>
 
 package(
     default_visibility = ["//visibility:private"],
-    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0

@@ -76,6 +76,10 @@ def getcallargs(func, *positional, **named):
   return call_args
 
 
+def getframeinfo(*args, **kwargs):
+  return _inspect.getframeinfo(*args, **kwargs)
+
+
 def getdoc(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.getdoc.
 

@@ -53,6 +53,7 @@ class HloModule {
   // tests). The versioned handle is used by the service in the compilation
   // cache. A default configuration is created for this module.
   explicit HloModule(const string& name);
+  explicit HloModule(const string& name, const HloModuleConfig& config);
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
@@ -62,6 +63,9 @@ class HloModule {
   // Adds an embedded computation to the module.
   HloComputation* AddEmbeddedComputation(
       std::unique_ptr<HloComputation> computation);
+
+  // Removes an embedded computation.
+  Status RemoveEmbeddedComputation(HloComputation* to_remove);
 
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
@@ -76,7 +80,7 @@ class HloModule {
   const string& name() const { return name_; }
 
   // Returns a deep copy of this module including all computations.
-  std::unique_ptr<HloModule> Clone(const string& suffix = "clone");
+  std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
 
   // Return a pointer to the entry computation of the module..
   HloComputation* entry_computation() const {
@@ -127,6 +131,17 @@ class HloModule {
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
 
+  // Assign a new unique dense id for an instruction
+  int NewUniqueInstructionId() {
+    int result = next_unique_id_;
+    next_unique_id_++;
+    return result;
+  }
+
+  // Returns the number of unique intruction ids given out.  All ids up to
+  // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
+  int NumUniqueInstructionIds() const { return next_unique_id_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation);
@@ -151,6 +166,7 @@ class HloModule {
   // unique per module.
   NameUniquer computation_name_uniquer_{/*separator=*/"."};
   NameUniquer instruction_name_uniquer_{/*separator=*/"."};
+  int next_unique_id_ = 0;
 };
 
 }  // namespace xla

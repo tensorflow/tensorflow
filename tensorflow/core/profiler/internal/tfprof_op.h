@@ -65,6 +65,8 @@ class TFOp : public TFMultiShow {
   }
 
   string FormatNode(OpNode* node, OpNode* root, const Options& opts) const;
+  string FormatMemoryNode(int64 node_total_bytes, int64 root_total_bytes,
+                          int64 node_bytes) const;
 
   std::unique_ptr<OpNode> root_;
   std::map<string, std::unique_ptr<OpNode>> cnodes_map_;

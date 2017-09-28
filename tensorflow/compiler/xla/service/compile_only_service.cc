@@ -28,7 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -50,19 +52,14 @@ CompileOnlyService::NewService(const ServiceOptions& options) {
 
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
-                      CreateComputeConstantBackend());
-  std::unique_ptr<CompileOnlyService> service(new CompileOnlyService(
-      options, compiler, std::move(compute_constant_backend)));
+  std::unique_ptr<CompileOnlyService> service(
+      new CompileOnlyService(options, compiler));
   return std::move(service);
 }
 
-CompileOnlyService::CompileOnlyService(
-    const ServiceOptions& options, Compiler* compiler,
-    std::unique_ptr<Backend> compute_constant_backend)
-    : Service(options, /*backend=*/nullptr,
-              std::move(compute_constant_backend)),
-      compiler_(compiler) {}
+CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
+                                       Compiler* compiler)
+    : Service(options, /*execute_backend=*/nullptr), compiler_(compiler) {}
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
@@ -88,7 +85,10 @@ CompileOnlyService::CompileAheadOfTime(
           "computation_", versioned_handle.handle.handle(), "__",
           session_module->entry().name(), "__version_",
           versioned_handle.version);
-      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
+      const string& per_host_path = tensorflow::io::JoinPath(
+          directory_path, tensorflow::port::Hostname());
+
+      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(per_host_path, filename,
                                                      *session_module));
     }
 

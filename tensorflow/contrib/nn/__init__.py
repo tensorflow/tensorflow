@@ -14,6 +14,7 @@
 # ==============================================================================
 """Module for variants of ops in tf.nn.
 
+@@alpha_dropout
 @@deprecated_flipped_softmax_cross_entropy_with_logits
 @@deprecated_flipped_sparse_softmax_cross_entropy_with_logits
 @@deprecated_flipped_sigmoid_cross_entropy_with_logits
@@ -27,6 +28,7 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.nn.python.ops.cross_entropy import *
 from tensorflow.contrib.nn.python.ops.sampling_ops import *
+from tensorflow.contrib.nn.python.ops.alpha_dropout import *
 # pylint: enable=unused-import,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -36,9 +37,6 @@ static constexpr const char* const kNoInlineAttr = "_noinline";
 // takes ownership of the returned OpKernel.
 //
 // TODO(zhifengc/phawkins): b/32379046
-typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
-                             std::unique_ptr<OpKernel>*)>
-    CustomKernelCreator;
 void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
 
 // Creates a FunctionLibraryRuntime, which instantiates functions
@@ -50,11 +48,16 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb);
 // The returned object does not take ownerships of "device" or
 // "lib_def".  The caller must ensure "device" and "lib_def" outlives
 // the returned object.
+//
+// The "parent" is a pointer to the ProcessFunctionLibraryRuntime object that
+// typically owns the created FunctionLibraryRuntime object. The parent pointer
+// is not owned by the FunctionLibraryRuntime object.
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator);
+    CustomKernelCreator custom_kernel_creator,
+    ProcessFunctionLibraryRuntime* parent);
 
 // Same as above except that the returned runtime consults with the
 // global default custom kernel creator registered by
@@ -62,7 +65,8 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
 std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, Device* device,
     int graph_def_version, const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options);
+    const OptimizerOptions& optimizer_options,
+    ProcessFunctionLibraryRuntime* parent);
 
 // FunctionLibraryRuntime::GetFunctionBody returns a description of an
 // instantiated function that is represented as a Graph with arg/ret

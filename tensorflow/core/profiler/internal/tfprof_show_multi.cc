@@ -65,7 +65,13 @@ bool TFMultiShow::ShouldShow(const ShowMultiNode* node, const Options& opts,
   // want to see the middle code traces (i.e. their own codes.), instead
   // of the TensorFlow internal codes traces.
   if (node->proto().total_requested_bytes() < opts.min_bytes ||
+      node->proto().total_peak_bytes() < opts.min_peak_bytes ||
+      node->proto().total_residual_bytes() < opts.min_residual_bytes ||
+      node->proto().total_output_bytes() < opts.min_output_bytes ||
       node->proto().total_exec_micros() < opts.min_micros ||
+      node->proto().total_accelerator_exec_micros() <
+          opts.min_accelerator_micros ||
+      node->proto().total_cpu_exec_micros() < opts.min_cpu_micros ||
       node->proto().total_parameters() < opts.min_params ||
       node->proto().total_float_ops() < opts.min_float_ops ||
       depth > opts.max_depth || !ShouldShowIfExtra(node, opts, depth)) {
@@ -109,6 +115,15 @@ bool TFMultiShow::ReAccount(ShowMultiNode* node, const Options& opts) {
 string TFMultiShow::FormatLegend(const Options& opts) const {
   std::vector<string> legends;
   if (opts.select.find(kShown[0]) != opts.select.end()) {
+    legends.push_back("requested bytes");
+  }
+  if (opts.select.find(kShown[11]) != opts.select.end()) {
+    legends.push_back("peak bytes");
+  }
+  if (opts.select.find(kShown[12]) != opts.select.end()) {
+    legends.push_back("residual bytes");
+  }
+  if (opts.select.find(kShown[13]) != opts.select.end()) {
     legends.push_back("output bytes");
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {

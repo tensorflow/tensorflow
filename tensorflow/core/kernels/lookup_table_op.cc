@@ -475,9 +475,7 @@ class MutableDenseHashTable final : public LookupInterface {
     // of all keys, removing the dimensions particular to each key and then
     // appending the shape of a single value.
     TensorShape expected_value_shape = keys.shape();
-    for (int i = 0; i < key_shape.dims(); ++i) {
-      expected_value_shape.RemoveDim(expected_value_shape.dims() - 1);
-    }
+    expected_value_shape.RemoveLastDims(key_shape.dims());
     expected_value_shape.AppendShape(value_shape);
     if (values.shape() != expected_value_shape) {
       return errors::InvalidArgument(
@@ -671,9 +669,7 @@ class LookupTableFindOp : public OpKernel {
     OP_REQUIRES_OK(ctx, table->CheckFindArguments(key, default_value));
 
     TensorShape output_shape = key.shape();
-    for (int i = table->key_shape().dims(); i > 0; --i) {
-      output_shape.RemoveDim(output_shape.dims() - 1);
-    }
+    output_shape.RemoveLastDims(table->key_shape().dims());
     output_shape.AppendShape(table->value_shape());
     Tensor* out;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("values", output_shape, &out));

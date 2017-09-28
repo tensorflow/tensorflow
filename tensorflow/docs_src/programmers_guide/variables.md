@@ -110,7 +110,7 @@ devices. For example, the following snippet creates a variable named `v` and
 places it on the second GPU device:
 
 ``` python
-with tf.device("/gpu:1"):
+with tf.device("/device:GPU:1"):
   v = tf.get_variable("v", [1])
 ```
 
@@ -266,7 +266,7 @@ calling this function repeatedly would not work:
 ``` python
 input1 = tf.random_normal([1,10,10,32])
 input2 = tf.random_normal([1,20,20,32])
-x = conv_relu(input1, kernel_shape=[5, 5, 1, 32], bias_shape=[32])
+x = conv_relu(input1, kernel_shape=[5, 5, 32, 32], bias_shape=[32])
 x = conv_relu(x, kernel_shape=[5, 5, 32, 32], bias_shape = [32])  # This fails.
 ```
 
@@ -278,7 +278,7 @@ however, clarifies that we want to create new variables:
 def my_image_filter(input_images):
     with tf.variable_scope("conv1"):
         # Variables created here will be named "conv1/weights", "conv1/biases".
-        relu1 = conv_relu(input_images, [5, 5, 1, 32], [32])
+        relu1 = conv_relu(input_images, [5, 5, 32, 32], [32])
     with tf.variable_scope("conv2"):
         # Variables created here will be named "conv2/weights", "conv2/biases".
         return conv_relu(relu1, [5, 5, 32, 32], [32])

@@ -83,7 +83,7 @@ class IrArray {
     Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
           const Shape& shape, llvm::IRBuilder<>* ir_builder);
 
-    // Consturcts an index from both a multi-dimensional index and a linear
+    // Constructs an index from both a multi-dimensional index and a linear
     // index. "shape" has the same meaning as that in the constructor that takes
     // only a linear index.
     Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
@@ -107,6 +107,8 @@ class IrArray {
 
     const_iterator begin() const { return multidim().begin(); }
     const_iterator end() const { return multidim().end(); }
+
+    llvm::Value* back() const { return multidim().back(); }
 
     bool LinearValidOnShape(const Shape& a) const;
 

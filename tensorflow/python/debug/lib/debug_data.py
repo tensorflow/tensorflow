@@ -26,14 +26,14 @@ import platform
 
 import numpy as np
 import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.util import event_pb2
-from tensorflow.python.framework import op_def_registry
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -155,30 +155,6 @@ def _load_log_message_from_event_file(event_file_path):
   return event.log_message.message
 
 
-def parse_node_or_tensor_name(name):
-  """Get the node name from a string that can be node or tensor name.
-
-  Args:
-    name: An input node name (e.g., "node_a") or tensor name (e.g.,
-      "node_a:0"), as a str.
-
-  Returns:
-    1) The node name, as a str. If the input name is a tensor name, i.e.,
-      consists of a colon, the final colon and the following output slot
-      will be stripped.
-    2) If the input name is a tensor name, the output slot, as an int. If
-      the input name is not a tensor name, None.
-  """
-
-  if ":" in name and not name.endswith(":"):
-    node_name = name[:name.rfind(":")]
-    output_slot = int(name[name.rfind(":") + 1:])
-
-    return node_name, output_slot
-  else:
-    return name, None
-
-
 def _is_graph_file(file_name):
   return file_name.startswith(METADATA_FILE_PREFIX + GRAPH_FILE_TAG)
 
@@ -189,25 +165,6 @@ def _is_run_fetches_info_file(file_name):
 
 def _is_run_feed_keys_info_file(file_name):
   return file_name == METADATA_FILE_PREFIX + FEED_KEYS_INFO_FILE_TAG
-
-
-def get_node_name(element_name):
-  return element_name.split(":")[0] if ":" in element_name else element_name
-
-
-def get_output_slot(element_name):
-  """Get the output slot number from the name of a graph element.
-
-  If element_name is a node name without output slot at the end, 0 will be
-  assumed.
-
-  Args:
-    element_name: (`str`) name of the graph element in question.
-
-  Returns:
-    (`int`) output slot number.
-  """
-  return int(element_name.split(":")[-1]) if ":" in element_name else 0
 
 
 def _get_tensor_name(node_name, output_slot):
@@ -239,78 +196,6 @@ def _get_tensor_watch_key(node_name, output_slot, debug_op):
         key").
   """
   return "%s:%s" % (_get_tensor_name(node_name, output_slot), debug_op)
-
-
-def is_copy_node(node_name):
-  """Determine whether a node name is that of a debug Copy node.
-
-  Such nodes are inserted by TensorFlow core upon request in
-  RunOptions.debug_options.debug_tensor_watch_opts.
-
-  Args:
-    node_name: Name of the node.
-
-  Returns:
-    A bool indicating whether the input argument is the name of a debug Copy
-    node.
-  """
-  return node_name.startswith("__copy_")
-
-
-def is_debug_node(node_name):
-  """Determine whether a node name is that of a debug node.
-
-  Such nodes are inserted by TensorFlow core upon request in
-  RunOptions.debug_options.debug_tensor_watch_opts.
-
-  Args:
-    node_name: Name of the node.
-
-  Returns:
-    A bool indicating whether the input argument is the name of a debug node.
-  """
-  return node_name.startswith("__dbg_")
-
-
-def parse_debug_node_name(node_name):
-  """Parse the name of a debug node.
-
-  Args:
-    node_name: Name of the debug node.
-
-  Returns:
-    1. Name of the watched node, as a str.
-    2. Output slot index of the watched tensor, as an int.
-    3. Index of the debug node, as an int.
-    4. Name of the debug op, as a str, e.g, "DebugIdentity".
-
-  Raises:
-    ValueError: If the input node name is not a valid debug node name.
-  """
-  prefix = "__dbg_"
-
-  name = node_name
-  if not name.startswith(prefix):
-    raise ValueError("Invalid prefix in debug node name: '%s'" % node_name)
-
-  name = name[len(prefix):]
-
-  if name.count("_") < 2:
-    raise ValueError("Invalid debug node name: '%s'" % node_name)
-
-  debug_op = name[name.rindex("_") + 1:]
-  name = name[:name.rindex("_")]
-
-  debug_op_index = int(name[name.rindex("_") + 1:])
-  name = name[:name.rindex("_")]
-
-  if name.count(":") != 1:
-    raise ValueError("Invalid tensor name in debug node name: '%s'" % node_name)
-
-  watched_node_name = name[:name.index(":")]
-  watched_output_slot = int(name[name.index(":") + 1:])
-
-  return watched_node_name, watched_output_slot, debug_op_index, debug_op
 
 
 def has_inf_or_nan(datum, tensor):
@@ -380,7 +265,8 @@ def device_path_to_device_name(device_dir):
   path_items = os.path.basename(device_dir)[
       len(METADATA_FILE_PREFIX) + len(DEVICE_TAG):].split(",")
   return "/".join([
-      path_item.replace("_", ":", 1) for path_item in path_items])
+      path_item.replace("device_", "device:").replace("_", ":", 1)
+      for path_item in path_items])
 
 
 class DebugTensorDatum(object):
@@ -572,88 +458,6 @@ class WatchKeyDoesNotExistInDebugDumpDirError(ValueError):
   pass
 
 
-class _GraphTracingReachedDestination(Exception):
-  pass
-
-
-class _DFSGraphTracer(object):
-  """Graph input tracer using depth-first search."""
-
-  def __init__(self,
-               input_lists,
-               skip_node_names=None,
-               destination_node_name=None):
-    """Constructor of _DFSGraphTracer.
-
-    Args:
-      input_lists: A list of dicts. Each dict is an adjacency (input) map from
-        the recipient node name as the key and the list of input node names
-        as the value.
-      skip_node_names: Optional: a list of node names to skip tracing.
-      destination_node_name: Optional: destination node name. If not `None`, it
-        should be the name of a destination not as a str and the graph tracing
-        will raise GraphTracingReachedDestination as soon as the node has been
-        reached.
-
-    Raises:
-      _GraphTracingReachedDestination: if stop_at_node_name is not None and
-        the specified node is reached.
-    """
-
-    self._input_lists = input_lists
-    self._skip_node_names = skip_node_names
-
-    self._inputs = []
-    self._visited_nodes = []
-    self._depth_count = 0
-    self._depth_list = []
-
-    self._destination_node_name = destination_node_name
-
-  def trace(self, graph_element_name):
-    """Trace inputs.
-
-    Args:
-      graph_element_name: Name of the node or an output tensor of the node, as a
-        str.
-
-    Raises:
-      _GraphTracingReachedDestination: if destination_node_name of this tracer
-        object is not None and the specified node is reached.
-    """
-    self._depth_count += 1
-
-    node_name = get_node_name(graph_element_name)
-
-    if node_name == self._destination_node_name:
-      raise _GraphTracingReachedDestination()
-
-    if node_name in self._skip_node_names:
-      return
-    if node_name in self._visited_nodes:
-      return
-
-    self._visited_nodes.append(node_name)
-
-    for input_list in self._input_lists:
-      for inp in input_list[node_name]:
-        if get_node_name(inp) in self._visited_nodes:
-          continue
-        self._inputs.append(inp)
-        self._depth_list.append(self._depth_count)
-        self.trace(inp)
-
-    self._depth_count -= 1
-
-  def inputs(self):
-    return self._inputs
-
-  def depth_list(self):
-    return self._depth_list
-
-
-# TODO(cais): This class is getting too large in line count. Refactor to make it
-# smaller and easier to maintain.
 class DebugDumpDir(object):
   """Data set from a debug-dump directory on filesystem.
 
@@ -962,52 +766,36 @@ class DebugDumpDir(object):
       ValueError: If the partition GraphDef of one or more devices fail to be
         loaded.
     """
-
-    self._node_attributes = {}
-    self._node_inputs = {}
-    self._node_reversed_ref_inputs = {}
-    self._node_ctrl_inputs = {}
-    self._node_recipients = {}
-    self._node_ctrl_recipients = {}
+    self._debug_graphs = {}
     self._node_devices = {}
-    self._node_op_types = {}
-    self._copy_send_nodes = {}
-    self._ref_args = {}
 
-    self._partition_graphs = {}
-    for device_name in self._device_names:
-      partition_graph = None
-      if device_name in self._dump_graph_file_paths:
-        partition_graph = _load_graph_def_from_event_file(
-            self._dump_graph_file_paths[device_name])
-      else:
-        partition_graph = self._find_partition_graph(partition_graphs,
-                                                     device_name)
+    if partition_graphs:
+      partition_graphs_and_device_names = [
+          (partition_graph, None) for partition_graph in partition_graphs]
+    else:
+      partition_graphs_and_device_names = []
+      for device_name in self._device_names:
+        partition_graph = None
+        if device_name in self._dump_graph_file_paths:
+          partition_graph = _load_graph_def_from_event_file(
+              self._dump_graph_file_paths[device_name])
+        else:
+          partition_graph = self._find_partition_graph(partition_graphs,
+                                                       device_name)
+        if partition_graph:
+          partition_graphs_and_device_names.append((partition_graph,
+                                                    device_name))
+        else:
+          logging.warn("Failed to load partition graphs from disk.")
 
-      if partition_graph:
-        self._partition_graphs[device_name] = partition_graph
+    for partition_graph, maybe_device_name in partition_graphs_and_device_names:
+      debug_graph = debug_graphs.DebugGraph(partition_graph,
+                                            device_name=maybe_device_name)
+      self._debug_graphs[debug_graph.device_name] = debug_graph
+      self._collect_node_devices(debug_graph)
 
-      self._node_attributes[device_name] = {}
-      self._node_inputs[device_name] = {}
-      self._node_reversed_ref_inputs[device_name] = {}
-      self._node_ctrl_inputs[device_name] = {}
-      self._node_recipients[device_name] = {}
-      self._node_ctrl_recipients[device_name] = {}
-      self._node_op_types[device_name] = {}
-      self._copy_send_nodes[device_name] = []
-      self._ref_args[device_name] = []
-
-      if partition_graph:
-        for node in partition_graph.node:
-          self._process_partition_graph_node(device_name, node)
-
-      self._prune_non_control_edges_of_debug_ops(device_name)
-      self._prune_control_edges_of_debug_ops(device_name)
-
-      self._populate_recipient_maps(device_name)
-
-      if device_name in self._partition_graphs and validate:
-        self._validate_dump_with_graphs(device_name)
+      if validate and debug_graph.device_name in self._dump_tensor_data:
+        self._validate_dump_with_graphs(debug_graph.device_name)
 
   def _find_partition_graph(self, partition_graphs, device_name):
     if partition_graphs is None:
@@ -1019,167 +807,13 @@ class DebugDumpDir(object):
             return graph_def
       return None
 
-  def _get_ref_args(self, node):
-    """Determine whether an input of an op is ref-type.
-
-    Args:
-      node: A `NodeDef`.
-
-    Returns:
-      A list of the arg names (as strs) that are ref-type.
-    """
-
-    op_def = op_def_registry.get_registered_ops().get(node.op)
-    ref_args = []
-    if op_def:
-      for i, output_arg in enumerate(op_def.output_arg):
-        if output_arg.is_ref:
-          arg_name = node.name if i == 0 else (node.name + ":%d" % i)
-          ref_args.append(arg_name)
-    return ref_args
-
-  def _process_partition_graph_node(self, device_name, node):
-    """Process a node from the partition graphs.
-
-    Args:
-      device_name: (str) device name.
-      node: (NodeDef) A partition-graph node to be processed.
-
-    Raises:
-      ValueError: If duplicate node names are encountered.
-    """
-
-    if is_debug_node(node.name):
-      # This is a debug node. Parse the node name and retrieve the
-      # information about debug watches on tensors. But do not include
-      # the node in the graph.
-      (watched_node_name, watched_output_slot, _,
-       debug_op) = parse_debug_node_name(node.name)
-
-      self._debug_watches[device_name][watched_node_name][
-          watched_output_slot].add(debug_op)
-
-      return
-
-    if node.name in self._node_inputs[device_name]:
-      raise ValueError("Duplicate node name on device %s: '%s'" %
-                       (device_name, node.name))
-
-    self._node_attributes[device_name][node.name] = node.attr
-
-    self._node_inputs[device_name][node.name] = []
-    self._node_ctrl_inputs[device_name][node.name] = []
-    self._node_recipients[device_name][node.name] = []
-    self._node_ctrl_recipients[device_name][node.name] = []
-
-    if node.name not in self._node_devices:
-      self._node_devices[node.name] = set()
-    self._node_devices[node.name].add(node.device)
-    self._node_op_types[device_name][node.name] = node.op
-    self._ref_args[device_name].extend(self._get_ref_args(node))
-
-    for inp in node.input:
-      if is_copy_node(inp) and (node.op == "_Send" or node.op == "_Retval"):
-        self._copy_send_nodes[device_name].append(node.name)
-
-      if inp.startswith("^"):
-        cinp = inp[1:]
-        self._node_ctrl_inputs[device_name][node.name].append(cinp)
+  def _collect_node_devices(self, debug_graph):
+    for node_name in debug_graph.node_devices:
+      if node_name in self._node_devices:
+        self._node_devices[node_name] = self._node_devices[node_name].union(
+            debug_graph.node_devices[node_name])
       else:
-        self._node_inputs[device_name][node.name].append(inp)
-
-  def _prune_nodes_from_input_and_recipient_maps(self,
-                                                 device_name,
-                                                 nodes_to_prune):
-    """Prune nodes out of input and recipient maps.
-
-    Args:
-      device_name: (`str`) device name.
-      nodes_to_prune: (`list` of `str`) Names of the nodes to be pruned.
-    """
-
-    for node in nodes_to_prune:
-      del self._node_inputs[device_name][node]
-      del self._node_ctrl_inputs[device_name][node]
-      del self._node_recipients[device_name][node]
-      del self._node_ctrl_recipients[device_name][node]
-
-  def _prune_non_control_edges_of_debug_ops(self, device_name):
-    """Prune (non-control) edges related to debug ops.
-
-    Prune the Copy ops and associated _Send ops inserted by the debugger out
-    from the non-control inputs and output recipients map. Replace the inputs
-    and recipients with original ones.
-
-    Args:
-      device_name: (`str`) device name.
-    """
-
-    copy_nodes = []
-    for node in self._node_inputs[device_name]:
-      if node in self._copy_send_nodes[device_name]:
-        continue
-
-      if is_copy_node(node):
-        copy_nodes.append(node)
-
-      inputs = self._node_inputs[device_name][node]
-
-      for i in xrange(len(inputs)):
-        inp = inputs[i]
-        if is_copy_node(inp):
-          # Find the input to the Copy node, which should be the original
-          # input to the node.
-          orig_inp = self._node_inputs[device_name][inp][0]
-          inputs[i] = orig_inp
-
-    self._prune_nodes_from_input_and_recipient_maps(device_name, copy_nodes)
-    self._prune_nodes_from_input_and_recipient_maps(
-        device_name, self._copy_send_nodes[device_name])
-
-  def _prune_control_edges_of_debug_ops(self, device_name):
-    """Prune control edges related to the debug ops."""
-
-    for node in self._node_ctrl_inputs[device_name]:
-      ctrl_inputs = self._node_ctrl_inputs[device_name][node]
-      debug_op_inputs = []
-      for ctrl_inp in ctrl_inputs:
-        if is_debug_node(ctrl_inp):
-          debug_op_inputs.append(ctrl_inp)
-      for debug_op_inp in debug_op_inputs:
-        ctrl_inputs.remove(debug_op_inp)
-
-  def _populate_recipient_maps(self, device_name):
-    """Populate the map from node name to recipient(s) of its output(s).
-
-    This method also populates the input map based on reversed ref edges.
-
-    Args:
-      device_name: name of device.
-    """
-
-    for node in self._node_inputs[device_name]:
-      inputs = self._node_inputs[device_name][node]
-      for inp in inputs:
-        inp = get_node_name(inp)
-        if inp not in self._node_recipients[device_name]:
-          self._node_recipients[device_name][inp] = []
-        self._node_recipients[device_name][inp].append(node)
-
-        if inp in self._ref_args[device_name]:
-          if inp not in self._node_reversed_ref_inputs[device_name]:
-            self._node_reversed_ref_inputs[device_name][inp] = []
-          self._node_reversed_ref_inputs[device_name][inp].append(node)
-
-    for node in self._node_ctrl_inputs[device_name]:
-      ctrl_inputs = self._node_ctrl_inputs[device_name][node]
-      for ctrl_inp in ctrl_inputs:
-        if ctrl_inp in self._copy_send_nodes[device_name]:
-          continue
-
-        if ctrl_inp not in self._node_ctrl_recipients[device_name]:
-          self._node_ctrl_recipients[device_name][ctrl_inp] = []
-        self._node_ctrl_recipients[device_name][ctrl_inp].append(node)
+        self._node_devices[node_name] = debug_graph.node_devices[node_name]
 
   def _validate_dump_with_graphs(self, device_name):
     """Validate the dumped tensor data against the partition graphs.
@@ -1196,31 +830,31 @@ class DebugDumpDir(object):
         Or if the temporal order of the dump's timestamps violate the
         input relations on the partition graphs.
     """
-
-    if not self._partition_graphs[device_name]:
+    if not self._debug_graphs:
       raise LookupError(
           "No partition graphs loaded for device %s" % device_name)
+    debug_graph = self._debug_graphs[device_name]
 
     # Verify that the node names in the dump data are all present in the
     # partition graphs.
     for datum in self._dump_tensor_data[device_name]:
-      if datum.node_name not in self._node_inputs[device_name]:
+      if datum.node_name not in debug_graph.node_inputs:
         raise ValueError("Node name '%s' is not found in partition graphs of "
                          "device %s." % (datum.node_name, device_name))
 
     pending_inputs = {}
-    for node in self._node_inputs[device_name]:
+    for node in debug_graph.node_inputs:
       pending_inputs[node] = []
-      inputs = self._node_inputs[device_name][node]
+      inputs = debug_graph.node_inputs[node]
       for inp in inputs:
-        inp_node = get_node_name(inp)
-        inp_output_slot = get_output_slot(inp)
+        inp_node = debug_graphs.get_node_name(inp)
+        inp_output_slot = debug_graphs.get_output_slot(inp)
         # Inputs from Enter and NextIteration nodes are not validated because
         # DebugNodeInserter::InsertNodes() in the debugger core skips creating
         # control edges from debug ops watching these types of nodes.
         if (inp_node in self._debug_watches[device_name] and
             inp_output_slot in self._debug_watches[device_name][inp_node] and
-            self._node_op_types[device_name].get(inp) not in (
+            debug_graph.node_op_types.get(inp) not in (
                 "Enter", "NextIteration") and
             (inp_node, inp_output_slot) not in pending_inputs[node]):
           pending_inputs[node].append((inp_node, inp_output_slot))
@@ -1239,7 +873,7 @@ class DebugDumpDir(object):
                          "these input(s) are not satisfied: %s" %
                          (node, datum.timestamp, repr(pending_inputs[node])))
 
-      recipients = self._node_recipients[device_name][node]
+      recipients = debug_graph.node_recipients[node]
       for recipient in recipients:
         recipient_pending_inputs = pending_inputs[recipient]
         if (node, slot) in recipient_pending_inputs:
@@ -1284,7 +918,7 @@ class DebugDumpDir(object):
 
   def loaded_partition_graphs(self):
     """Test whether partition graphs have been loaded."""
-    return self._partition_graphs is not None
+    return bool(self._debug_graphs)
 
   def partition_graphs(self):
     """Get the partition graphs.
@@ -1295,11 +929,29 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If no partition graphs have been loaded.
     """
-
-    if self._partition_graphs is None:
+    if not self._debug_graphs:
       raise LookupError("No partition graphs have been loaded.")
+    return [self._debug_graphs[key].debug_graph_def
+            for key in self._debug_graphs]
 
-    return self._partition_graphs.values()
+  def reconstructed_non_debug_partition_graphs(self):
+    """Reconstruct partition graphs with the debugger-inserted ops stripped.
+
+    The reconstructed partition graphs are identical to the original (i.e.,
+    non-debugger-decorated) partition graphs except in the following respects:
+      1) The exact names of the runtime-inserted internal nodes may differ.
+         These include _Send, _Recv, _HostSend, _HostRecv, _Retval ops.
+      2) As a consequence of 1, the nodes that receive input directly from such
+         send- and recv-type ops will have different input names.
+      3) The parallel_iteration attribute of while-loop Enter ops are set to 1.
+
+    Returns:
+      A dict mapping device names (`str`s) to reconstructed `tf.GraphDef`s.
+    """
+    non_debug_graphs = dict()
+    for key in self._debug_graphs:
+      non_debug_graphs[key] = self._debug_graphs[key].non_debug_graph_def
+    return non_debug_graphs
 
   @property
   def run_fetches_info(self):
@@ -1379,17 +1031,17 @@ class DebugDumpDir(object):
       LookupError: If no partition graphs have been loaded.
       ValueError: If specified node name does not exist.
     """
-    if self._partition_graphs is None:
+    if not self._debug_graphs:
       raise LookupError("No partition graphs have been loaded.")
     if device_name is None:
       nodes = []
-      for device_name in self._node_inputs:
-        nodes.extend(self._node_inputs[device_name].keys())
+      for device_name in self._debug_graphs:
+        nodes.extend(self._debug_graphs[device_name].node_inputs.keys())
       return nodes
     else:
-      if device_name not in self._node_inputs:
+      if device_name not in self._debug_graphs:
         raise ValueError("Invalid device name: %s" % device_name)
-      return self._node_inputs[device_name].keys()
+      return self._debug_graphs[device_name].node_inputs.keys()
 
   def node_attributes(self, node_name, device_name=None):
     """Get the attributes of a node.
@@ -1405,11 +1057,11 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If no partition graphs have been loaded.
     """
-    if self._partition_graphs is None:
+    if not self._debug_graphs:
       raise LookupError("No partition graphs have been loaded.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    return self._node_attributes[device_name][node_name]
+    return self._debug_graphs[device_name].node_attributes[node_name]
 
   def node_inputs(self, node_name, is_control=False, device_name=None):
     """Get the inputs of given node according to partition graphs.
@@ -1428,16 +1080,15 @@ class DebugDumpDir(object):
       LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
     """
-
-    if self._partition_graphs is None:
+    if not self._debug_graphs:
       raise LookupError(
           "Node inputs are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
     if is_control:
-      return self._node_ctrl_inputs[device_name][node_name]
+      return self._debug_graphs[device_name].node_ctrl_inputs[node_name]
     else:
-      return self._node_inputs[device_name][node_name]
+      return self._debug_graphs[device_name].node_inputs[node_name]
 
   def transitive_inputs(self,
                         node_name,
@@ -1465,19 +1116,19 @@ class DebugDumpDir(object):
       LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
     """
-
-    if self._partition_graphs is None:
+    if not self._debug_graphs:
       raise LookupError(
           "Node inputs are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
 
-    input_lists = [self._node_inputs[device_name]]
+    input_lists = [self._debug_graphs[device_name].node_inputs]
     if include_control:
-      input_lists.append(self._node_ctrl_inputs[device_name])
+      input_lists.append(self._debug_graphs[device_name].node_ctrl_inputs)
     if include_reversed_ref:
-      input_lists.append(self._node_reversed_ref_inputs[device_name])
-    tracer = _DFSGraphTracer(
+      input_lists.append(
+          self._debug_graphs[device_name].node_reversed_ref_inputs)
+    tracer = debug_graphs.DFSGraphTracer(
         input_lists,
         skip_node_names=self._get_merge_node_names(device_name))
     tracer.trace(node_name)
@@ -1491,9 +1142,10 @@ class DebugDumpDir(object):
     if not hasattr(self, "_merge_node_names"):
       self._merge_node_names = {}
     if device_name not in self._merge_node_names:
+      debug_graph = self._debug_graphs[device_name]
       self._merge_node_names[device_name] = [
-          node for node in self._node_op_types[device_name]
-          if self._node_op_types[device_name][node] == "Merge"]
+          node for node in debug_graph.node_op_types
+          if debug_graph.node_op_types[node] == "Merge"]
     return self._merge_node_names[device_name]
 
   def find_some_path(self,
@@ -1545,12 +1197,13 @@ class DebugDumpDir(object):
           "%s vs. %s" % (src_node_name, dst_node_name, src_device_name,
                          dst_device_name))
 
-    input_lists = [self._node_inputs[dst_device_name]]
+    input_lists = [self._debug_graphs[dst_device_name].node_inputs]
+    debug_graph = self._debug_graphs[dst_device_name]
     if include_control:
-      input_lists.append(self._node_ctrl_inputs[dst_device_name])
+      input_lists.append(debug_graph.node_ctrl_inputs)
     if include_reversed_ref:
-      input_lists.append(self._node_reversed_ref_inputs[dst_device_name])
-    tracer = _DFSGraphTracer(
+      input_lists.append(debug_graph.node_reversed_ref_inputs)
+    tracer = debug_graphs.DFSGraphTracer(
         input_lists,
         skip_node_names=self._get_merge_node_names(dst_device_name),
         destination_node_name=src_node_name)
@@ -1560,7 +1213,7 @@ class DebugDumpDir(object):
 
     try:
       tracer.trace(dst_node_name)
-    except _GraphTracingReachedDestination:
+    except debug_graphs.GraphTracingReachedDestination:
       # Prune nodes not on the path.
       inputs = [dst_node_name] + tracer.inputs()
       depth_list = [0] + tracer.depth_list()
@@ -1591,15 +1244,16 @@ class DebugDumpDir(object):
          from partition graphs yet.
     """
 
-    if self._partition_graphs is None:
+    if not self._debug_graphs:
       raise LookupError(
           "Node recipients are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
+    debug_graph = self._debug_graphs[device_name]
     if is_control:
-      return self._node_ctrl_recipients[device_name][node_name]
+      return debug_graph.node_ctrl_recipients[node_name]
     else:
-      return self._node_recipients[device_name][node_name]
+      return debug_graph.node_recipients[node_name]
 
   def devices(self):
     """Get the list of device names.
@@ -1607,7 +1261,6 @@ class DebugDumpDir(object):
     Returns:
       (`list` of `str`) names of the devices.
     """
-
     return self._device_names
 
   def node_exists(self, node_name, device_name=None):
@@ -1626,20 +1279,18 @@ class DebugDumpDir(object):
       LookupError: If no partition graphs have been loaded yet.
       ValueError: If device_name is specified but cannot be found.
     """
-
-    if self._node_inputs is None:
+    if not self._debug_graphs:
       raise LookupError(
           "Nodes have not been loaded from partition graphs yet.")
 
-    if (device_name is not None) and device_name not in self._node_inputs:
+    if (device_name is not None) and device_name not in self._debug_graphs:
       raise ValueError(
           "The specified device_name '%s' cannot be found." % device_name)
 
-    node_inputs_all_devices = (self._node_inputs if device_name is None
-                               else (self._node_inputs[device_name],))
-
-    return any(node_name in node_inputs_all_devices[dev_name]
-               for dev_name in node_inputs_all_devices)
+    for _, debug_graph in self._debug_graphs.items():
+      if node_name in debug_graph.node_inputs:
+        return True
+    return False
 
   def node_device(self, node_name):
     """Get the names of the devices that has nodes of the specified name.
@@ -1657,8 +1308,7 @@ class DebugDumpDir(object):
          from partition graphs yet.
       ValueError: If the node does not exist in partition graphs.
     """
-
-    if self._partition_graphs is None:
+    if not self._debug_graphs:
       raise LookupError(
           "Node devices are not loaded from partition graphs yet.")
 
@@ -1684,13 +1334,12 @@ class DebugDumpDir(object):
       LookupError: If node op types have not been loaded
          from partition graphs yet.
     """
-
-    if self._partition_graphs is None:
+    if not self._debug_graphs:
       raise LookupError(
           "Node op types are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    return self._node_op_types[device_name][node_name]
+    return self._debug_graphs[device_name].node_op_types[node_name]
 
   def debug_watch_keys(self, node_name, device_name=None):
     """Get all tensor watch keys of given node according to partition graphs.
@@ -1956,7 +1605,7 @@ class DebugDumpDir(object):
     if self._python_graph is None:
       raise LookupError("Python graph is not available for traceback lookup")
 
-    node_name = get_node_name(element_name)
+    node_name = debug_graphs.get_node_name(element_name)
     if node_name not in self._node_traceback:
       raise KeyError("Cannot find node \"%s\" in Python graph" % node_name)
 

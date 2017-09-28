@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_LLVM_IR_RUNTINE_H_
 
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 namespace cpu {
@@ -33,7 +34,7 @@ extern const char* const kTanhV8F32SymbolName;
 // |LinkIRRuntimeFunctions| rewrites calls to these functions into generic LLVM
 // IR.
 
-void RewriteIRRuntimeFunctions(llvm::Module* module);
+void RewriteIRRuntimeFunctions(llvm::Module* module, bool enable_fast_math);
 
 }  // namespace runtime
 }  // namespace cpu

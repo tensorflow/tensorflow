@@ -38,8 +38,10 @@ class Dataset : public DatasetBase {
                  {-1},
                  {sparse_tensor.dims() - 1}}) {}
 
-  std::unique_ptr<IteratorBase> MakeIterator() const override {
-    return std::unique_ptr<IteratorBase>(new Iterator(this));
+  std::unique_ptr<IteratorBase> MakeIterator(
+      const string& prefix) const override {
+    return std::unique_ptr<IteratorBase>(
+        new Iterator({this, strings::StrCat(prefix, "::SparseTensorSlice")}));
   }
 
   const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -54,20 +56,21 @@ class Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset<T>> {
    public:
-    explicit Iterator(const Dataset<T>* dataset)
-        : DatasetIterator<Dataset<T>>(dataset),
-          dataset_(dataset),
-          num_elements_(dataset->sparse_tensor_.shape()[0]),
-          dense_shape_(DT_INT64, {dataset->sparse_tensor_.dims() - 1}),
-          group_iterable_(dataset->sparse_tensor_.group({0})),
+    explicit Iterator(const typename Iterator::Params& params)
+        : DatasetIterator<Dataset<T>>(params),
+          num_elements_(params.dataset->sparse_tensor_.shape()[0]),
+          dense_shape_(DT_INT64, {params.dataset->sparse_tensor_.dims() - 1}),
+          group_iterable_(params.dataset->sparse_tensor_.group({0})),
           iter_(group_iterable_.begin()) {
       for (size_t i = 0; i < dense_shape_.NumElements(); ++i) {
-        dense_shape_.vec<int64>()(i) = dataset_->sparse_tensor_.shape()[i + 1];
+        dense_shape_.vec<int64>()(i) =
+            params.dataset->sparse_tensor_.shape()[i + 1];
       }
     }
 
-    Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                   bool* end_of_sequence) override {
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
       mutex_lock l(mu_);
       if (i_ == num_elements_) {
         *end_of_sequence = true;
@@ -76,7 +79,7 @@ class Dataset : public DatasetBase {
 
       out_tensors->clear();
       out_tensors->reserve(3);
-      const int rank = dataset_->sparse_tensor_.dims();
+      const int rank = Iterator::dataset()->sparse_tensor_.dims();
 
       if (i_ > next_non_empty_i_ && iter_ != group_iterable_.end()) {
         // We still have elements to consume from `group_iterable_`
@@ -127,7 +130,6 @@ class Dataset : public DatasetBase {
     }
 
    private:
-    const Dataset<T>* const dataset_;
     const int64 num_elements_;
 
     Tensor dense_shape_;
@@ -208,7 +210,7 @@ class SparseTensorSliceDatasetOp : public DatasetOpKernel {
                               .TypeConstraint<type>("Tvalues"), \
                           SparseTensorSliceDatasetOp<type>);
 
-TF_CALL_ALL_TYPES(REGISTER_DATASET_KERNEL);
+TF_CALL_DATASET_TYPES(REGISTER_DATASET_KERNEL);
 #undef REGISTER_DATASET_KERNEL
 
 }  // namespace

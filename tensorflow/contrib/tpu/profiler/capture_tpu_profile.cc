@@ -24,17 +24,12 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
+#include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -42,39 +37,22 @@ namespace {
 
 using ::tensorflow::TPUProfiler;
 
-using ::grpc::ClientContext;
-using ::tensorflow::io::JoinPath;
-using ::tensorflow::Env;
-using ::tensorflow::WriteStringToFile;
+constexpr uint64 kMaxEvents = 1000000;
 
-constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-constexpr char kTraceFileName[] = "trace";
-constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
-
-tensorflow::string GetCurrentTimeStampAsString() {
+string GetCurrentTimeStampAsString() {
   char s[128];
   std::time_t t = std::time(nullptr);
   CHECK_NE(std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t)), 0);
   return s;
 }
 
-// The trace will be stored in <logdir>/plugins/profile/<run>/trace.
-void DumpTraceToLogDirectory(tensorflow::StringPiece logdir,
-                             tensorflow::StringPiece run,
-                             tensorflow::StringPiece trace) {
-  tensorflow::string run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
-  TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
-  tensorflow::string path = JoinPath(run_dir, kTraceFileName);
-  TF_CHECK_OK(WriteStringToFile(tensorflow::Env::Default(), path, trace));
-  LOG(INFO) << "Dumped trace data to " << path;
-}
-
-ProfileResponse Profile(const tensorflow::string& service_addr,
-                        int duration_ms) {
+ProfileResponse Profile(const string& service_addr, int duration_ms) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
-  ProfileResponse response;
-  ClientContext context;
+  request.set_max_events(kMaxEvents);
+  std::cout << "Limiting the number of trace events to " << kMaxEvents
+            << std::endl;
+  ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
   // TODO(ioeric): use `SetMaxReceiveMessageSize` instead once it's available.
   channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
@@ -82,20 +60,9 @@ ProfileResponse Profile(const tensorflow::string& service_addr,
   std::unique_ptr<TPUProfiler::Stub> stub =
       TPUProfiler::NewStub(::grpc::CreateCustomChannel(
           service_addr, ::grpc::InsecureChannelCredentials(), channel_args));
+  ProfileResponse response;
   TF_QCHECK_OK(FromGrpcStatus(stub->Profile(&context, request, &response)));
   return response;
-}
-
-void DumpGraph(tensorflow::StringPiece logdir, tensorflow::StringPiece run,
-               const tensorflow::string& graph_def) {
-  // The graph plugin expects the graph in <logdir>/<run>/<event.file>.
-  tensorflow::string run_dir =
-      JoinPath(logdir, tensorflow::strings::StrCat(kGraphRunPrefix, run));
-  TF_CHECK_OK(Env::Default()->RecursivelyCreateDir(run_dir));
-  tensorflow::EventsWriter event_writer(JoinPath(run_dir, "events"));
-  tensorflow::Event event;
-  event.set_graph_def(graph_def);
-  event_writer.WriteEvent(event);
 }
 
 }  // namespace
@@ -128,26 +95,8 @@ int main(int argc, char** argv) {
       tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms);
   // Use the current timestamp as the run name.
   tensorflow::string run = tensorflow::tpu::GetCurrentTimeStampAsString();
-  // Ignore computation_graph for now.
-  if (response.encoded_trace().empty()) {
-    LOG(WARNING) << "No trace event is collected during the " << duration_ms
-                 << "ms interval.";
-  } else {
-    tensorflow::tpu::DumpTraceToLogDirectory(FLAGS_logdir, run,
-                                             response.encoded_trace());
-  }
-  int num_graphs = response.computation_graph_size();
-  if (num_graphs > 0) {
-    // The server might generates multiple graphs for one program; we simply
-    // pick the first one.
-    if (num_graphs > 1) {
-      LOG(INFO) << num_graphs
-                << " TPU program variants observed over the profiling period. "
-                << "One computation graph will be chosen arbitrarily.";
-    }
-    tensorflow::tpu::DumpGraph(
-        FLAGS_logdir, run, response.computation_graph(0).SerializeAsString());
-  }
+  TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(
+      FLAGS_logdir, run, response, &std::cout));
   // Print this at the end so that it's not buried in irrelevant LOG messages.
   std::cout
       << "NOTE: using the trace duration " << duration_ms << "ms." << std::endl
