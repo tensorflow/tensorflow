@@ -23,7 +23,6 @@ from __future__ import print_function
 # pylint: disable=unused-import
 from tensorflow.python.saved_model.signature_def_utils_impl import build_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import classification_signature_def
-from tensorflow.python.saved_model.signature_def_utils_impl import is_valid_signature
 from tensorflow.python.saved_model.signature_def_utils_impl import predict_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import regression_signature_def
 # pylint: enable=unused-import

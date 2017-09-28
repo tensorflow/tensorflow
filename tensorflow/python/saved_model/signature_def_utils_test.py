@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -27,20 +26,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils_impl
 from tensorflow.python.saved_model import utils
-
-
-# We'll reuse the same tensor_infos in multiple contexts just for the tests.
-# The validator doesn't check shapes so we just omit them.
-_STRING = meta_graph_pb2.TensorInfo(
-    name="foobar",
-    dtype=dtypes.string.as_datatype_enum
-)
-
-
-_FLOAT = meta_graph_pb2.TensorInfo(
-    name="foobar",
-    dtype=dtypes.float32.as_datatype_enum
-)
 
 
 def _make_signature(inputs, outputs, name=None):
@@ -90,7 +75,7 @@ class SignatureDefUtilsTest(test.TestCase):
 
   def testRegressionSignatureDef(self):
     input1 = constant_op.constant("a", name="input-1")
-    output1 = constant_op.constant(2.2, name="output-1")
+    output1 = constant_op.constant("b", name="output-1")
     signature_def = signature_def_utils_impl.regression_signature_def(
         input1, output1)
 
@@ -110,13 +95,13 @@ class SignatureDefUtilsTest(test.TestCase):
     y_tensor_info_actual = (
         signature_def.outputs[signature_constants.REGRESS_OUTPUTS])
     self.assertEqual("output-1:0", y_tensor_info_actual.name)
-    self.assertEqual(types_pb2.DT_FLOAT, y_tensor_info_actual.dtype)
+    self.assertEqual(types_pb2.DT_STRING, y_tensor_info_actual.dtype)
     self.assertEqual(0, len(y_tensor_info_actual.tensor_shape.dim))
 
   def testClassificationSignatureDef(self):
     input1 = constant_op.constant("a", name="input-1")
     output1 = constant_op.constant("b", name="output-1")
-    output2 = constant_op.constant(3.3, name="output-2")
+    output2 = constant_op.constant("c", name="output-2")
     signature_def = signature_def_utils_impl.classification_signature_def(
         input1, output1, output2)
 
@@ -141,7 +126,7 @@ class SignatureDefUtilsTest(test.TestCase):
     scores_tensor_info_actual = (
         signature_def.outputs[signature_constants.CLASSIFY_OUTPUT_SCORES])
     self.assertEqual("output-2:0", scores_tensor_info_actual.name)
-    self.assertEqual(types_pb2.DT_FLOAT, scores_tensor_info_actual.dtype)
+    self.assertEqual(types_pb2.DT_STRING, scores_tensor_info_actual.dtype)
     self.assertEqual(0, len(scores_tensor_info_actual.tensor_shape.dim))
 
   def testPredictionSignatureDef(self):
@@ -218,143 +203,6 @@ class SignatureDefUtilsTest(test.TestCase):
     # Must compare `dims` since its an unknown shape.
     self.assertEqual(shapes["output-2"].dims, None)
 
-  def _assertValidSignature(self, inputs, outputs, method_name):
-    signature_def = signature_def_utils_impl.build_signature_def(
-        inputs, outputs, method_name)
-    self.assertTrue(
-        signature_def_utils_impl.is_valid_signature(signature_def))
-
-  def _assertInvalidSignature(self, inputs, outputs, method_name):
-    signature_def = signature_def_utils_impl.build_signature_def(
-        inputs, outputs, method_name)
-    self.assertFalse(
-        signature_def_utils_impl.is_valid_signature(signature_def))
-
-  def testValidSignaturesAreAccepted(self):
-    self._assertValidSignature(
-        {"inputs": _STRING},
-        {"classes": _STRING, "scores": _FLOAT},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertValidSignature(
-        {"inputs": _STRING},
-        {"classes": _STRING},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertValidSignature(
-        {"inputs": _STRING},
-        {"scores": _FLOAT},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertValidSignature(
-        {"inputs": _STRING},
-        {"outputs": _FLOAT},
-        signature_constants.REGRESS_METHOD_NAME)
-
-    self._assertValidSignature(
-        {"foo": _STRING, "bar": _FLOAT},
-        {"baz": _STRING, "qux": _FLOAT},
-        signature_constants.PREDICT_METHOD_NAME)
-
-  def testInvalidMethodNameSignatureIsRejected(self):
-    # WRONG METHOD
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {"classes": _STRING, "scores": _FLOAT},
-        "WRONG method name")
-
-  def testInvalidClassificationSignaturesAreRejected(self):
-    # CLASSIFY: wrong types
-    self._assertInvalidSignature(
-        {"inputs": _FLOAT},
-        {"classes": _STRING, "scores": _FLOAT},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {"classes": _FLOAT, "scores": _FLOAT},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {"classes": _STRING, "scores": _STRING},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    # CLASSIFY: wrong keys
-    self._assertInvalidSignature(
-        {},
-        {"classes": _STRING, "scores": _FLOAT},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs_WRONG": _STRING},
-        {"classes": _STRING, "scores": _FLOAT},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {"classes_WRONG": _STRING, "scores": _FLOAT},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {"classes": _STRING, "scores": _FLOAT, "extra_WRONG": _STRING},
-        signature_constants.CLASSIFY_METHOD_NAME)
-
-  def testInvalidRegressionSignaturesAreRejected(self):
-    # REGRESS: wrong types
-    self._assertInvalidSignature(
-        {"inputs": _FLOAT},
-        {"outputs": _FLOAT},
-        signature_constants.REGRESS_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {"outputs": _STRING},
-        signature_constants.REGRESS_METHOD_NAME)
-
-    # REGRESS: wrong keys
-    self._assertInvalidSignature(
-        {},
-        {"outputs": _FLOAT},
-        signature_constants.REGRESS_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs_WRONG": _STRING},
-        {"outputs": _FLOAT},
-        signature_constants.REGRESS_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {"outputs_WRONG": _FLOAT},
-        signature_constants.REGRESS_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {},
-        signature_constants.REGRESS_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"inputs": _STRING},
-        {"outputs": _FLOAT, "extra_WRONG": _STRING},
-        signature_constants.REGRESS_METHOD_NAME)
-
-  def testInvalidPredictSignaturesAreRejected(self):
-    # PREDICT: wrong keys
-    self._assertInvalidSignature(
-        {},
-        {"baz": _STRING, "qux": _FLOAT},
-        signature_constants.PREDICT_METHOD_NAME)
-
-    self._assertInvalidSignature(
-        {"foo": _STRING, "bar": _FLOAT},
-        {},
-        signature_constants.PREDICT_METHOD_NAME)
 
 if __name__ == "__main__":
   test.main()

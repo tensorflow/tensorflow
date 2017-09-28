@@ -73,7 +73,7 @@ class SavedModelExportUtilsTest(test.TestCase):
   def test_build_standardized_signature_def_regression(self):
     input_tensors = {
         "input-1":
-            array_ops.placeholder(dtypes.string, 1, name="input-tensor-1")
+            array_ops.placeholder(dtypes.float32, 1, name="input-tensor-1")
     }
     output_tensors = {
         "output-1":
@@ -86,16 +86,14 @@ class SavedModelExportUtilsTest(test.TestCase):
     expected_signature_def = meta_graph_pb2.SignatureDef()
     shape = tensor_shape_pb2.TensorShapeProto(
         dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
-    dtype_float = types_pb2.DataType.Value("DT_FLOAT")
-    dtype_string = types_pb2.DataType.Value("DT_STRING")
+    dtype = types_pb2.DataType.Value("DT_FLOAT")
     expected_signature_def.inputs[signature_constants.REGRESS_INPUTS].CopyFrom(
         meta_graph_pb2.TensorInfo(
-            name="input-tensor-1:0", dtype=dtype_string, tensor_shape=shape))
+            name="input-tensor-1:0", dtype=dtype, tensor_shape=shape))
     expected_signature_def.outputs[
         signature_constants.REGRESS_OUTPUTS].CopyFrom(
-            meta_graph_pb2.TensorInfo(name="output-tensor-1:0",
-                                      dtype=dtype_float,
-                                      tensor_shape=shape))
+            meta_graph_pb2.TensorInfo(
+                name="output-tensor-1:0", dtype=dtype, tensor_shape=shape))
 
     expected_signature_def.method_name = signature_constants.REGRESS_METHOD_NAME
     self.assertEqual(actual_signature_def, expected_signature_def)
@@ -104,7 +102,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     """Tests classification with one output tensor."""
     input_tensors = {
         "input-1":
-            array_ops.placeholder(dtypes.string, 1, name="input-tensor-1")
+            array_ops.placeholder(dtypes.float32, 1, name="input-tensor-1")
     }
     output_tensors = {
         "output-1":
@@ -117,10 +115,11 @@ class SavedModelExportUtilsTest(test.TestCase):
     expected_signature_def = meta_graph_pb2.SignatureDef()
     shape = tensor_shape_pb2.TensorShapeProto(
         dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
+    dtype_float = types_pb2.DataType.Value("DT_FLOAT")
     dtype_string = types_pb2.DataType.Value("DT_STRING")
     expected_signature_def.inputs[signature_constants.CLASSIFY_INPUTS].CopyFrom(
         meta_graph_pb2.TensorInfo(
-            name="input-tensor-1:0", dtype=dtype_string, tensor_shape=shape))
+            name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
     expected_signature_def.outputs[
         signature_constants.CLASSIFY_OUTPUT_CLASSES].CopyFrom(
             meta_graph_pb2.TensorInfo(
@@ -136,7 +135,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     """Tests multiple output tensors that include classes and probabilities."""
     input_tensors = {
         "input-1":
-            array_ops.placeholder(dtypes.string, 1, name="input-tensor-1")
+            array_ops.placeholder(dtypes.float32, 1, name="input-tensor-1")
     }
     output_tensors = {
         "classes":
@@ -161,7 +160,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     dtype_string = types_pb2.DataType.Value("DT_STRING")
     expected_signature_def.inputs[signature_constants.CLASSIFY_INPUTS].CopyFrom(
         meta_graph_pb2.TensorInfo(
-            name="input-tensor-1:0", dtype=dtype_string, tensor_shape=shape))
+            name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
     expected_signature_def.outputs[
         signature_constants.CLASSIFY_OUTPUT_CLASSES].CopyFrom(
             meta_graph_pb2.TensorInfo(
@@ -183,7 +182,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     """Tests multiple output tensors that include classes and scores."""
     input_tensors = {
         "input-1":
-            array_ops.placeholder(dtypes.string, 1, name="input-tensor-1")
+            array_ops.placeholder(dtypes.float32, 1, name="input-tensor-1")
     }
     output_tensors = {
         "classes":
@@ -207,7 +206,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     dtype_string = types_pb2.DataType.Value("DT_STRING")
     expected_signature_def.inputs[signature_constants.CLASSIFY_INPUTS].CopyFrom(
         meta_graph_pb2.TensorInfo(
-            name="input-tensor-1:0", dtype=dtype_string, tensor_shape=shape))
+            name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
     expected_signature_def.outputs[
         signature_constants.CLASSIFY_OUTPUT_CLASSES].CopyFrom(
             meta_graph_pb2.TensorInfo(
@@ -229,7 +228,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     """Tests classification without classes tensor."""
     input_tensors = {
         "input-1":
-            array_ops.placeholder(dtypes.string, 1, name="input-tensor-1")
+            array_ops.placeholder(dtypes.float32, 1, name="input-tensor-1")
     }
     output_tensors = {
         "probabilities":
@@ -247,10 +246,9 @@ class SavedModelExportUtilsTest(test.TestCase):
     shape = tensor_shape_pb2.TensorShapeProto(
         dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
     dtype_float = types_pb2.DataType.Value("DT_FLOAT")
-    dtype_string = types_pb2.DataType.Value("DT_STRING")
     expected_signature_def.inputs[signature_constants.CLASSIFY_INPUTS].CopyFrom(
         meta_graph_pb2.TensorInfo(
-            name="input-tensor-1:0", dtype=dtype_string, tensor_shape=shape))
+            name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
     expected_signature_def.outputs[
         signature_constants.CLASSIFY_OUTPUT_SCORES].CopyFrom(
             meta_graph_pb2.TensorInfo(
@@ -270,7 +268,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     """
     input_tensors = {
         "input-1":
-            array_ops.placeholder(dtypes.string, 1, name="input-tensor-1")
+            array_ops.placeholder(dtypes.float32, 1, name="input-tensor-1")
     }
     output_tensors = {
         "classes":
@@ -291,10 +289,9 @@ class SavedModelExportUtilsTest(test.TestCase):
     shape = tensor_shape_pb2.TensorShapeProto(
         dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
     dtype_float = types_pb2.DataType.Value("DT_FLOAT")
-    dtype_string = types_pb2.DataType.Value("DT_STRING")
     expected_signature_def.inputs[signature_constants.CLASSIFY_INPUTS].CopyFrom(
         meta_graph_pb2.TensorInfo(
-            name="input-tensor-1:0", dtype=dtype_string, tensor_shape=shape))
+            name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
     expected_signature_def.outputs[
         signature_constants.CLASSIFY_OUTPUT_SCORES].CopyFrom(
             meta_graph_pb2.TensorInfo(
@@ -314,7 +311,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     """
     input_tensors = {
         "input-1":
-            array_ops.placeholder(dtypes.string, 1, name="input-tensor-1")
+            array_ops.placeholder(dtypes.float32, 1, name="input-tensor-1")
     }
     output_tensors = {
         "classes":
@@ -333,10 +330,9 @@ class SavedModelExportUtilsTest(test.TestCase):
         dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)])
     dtype_int64 = types_pb2.DataType.Value("DT_INT64")
     dtype_float = types_pb2.DataType.Value("DT_FLOAT")
-    dtype_string = types_pb2.DataType.Value("DT_STRING")
     expected_signature_def.inputs["input-1"].CopyFrom(
         meta_graph_pb2.TensorInfo(
-            name="input-tensor-1:0", dtype=dtype_string, tensor_shape=shape))
+            name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
     expected_signature_def.outputs["classes"].CopyFrom(
         meta_graph_pb2.TensorInfo(
             name="output-tensor-classes:0",
@@ -503,13 +499,13 @@ class SavedModelExportUtilsTest(test.TestCase):
 
   def test_build_all_signature_defs(self):
     input_features = constant_op.constant(["10"])
-    input_example = constant_op.constant(["input string"])
+    input_example = constant_op.constant(["11"])
     input_ops = input_fn_utils.InputFnOps({
         "features": input_features
     }, None, {"default input": input_example})
     input_alternatives, _ = (
         saved_model_export_utils.get_input_alternatives(input_ops))
-    output_1 = constant_op.constant([1.0])
+    output_1 = constant_op.constant(["1"])
     output_2 = constant_op.constant(["2"])
     output_3 = constant_op.constant(["3"])
     provided_output_alternatives = {
