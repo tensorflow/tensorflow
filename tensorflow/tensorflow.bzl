@@ -891,7 +891,7 @@ def tf_mkl_kernel_library(name,
           hdrs=hdrs,
           deps=deps,
           alwayslink=alwayslink,
-          copts=tf_copts(),
+          copts=copts,
           nocopts=nocopts
       ))
 
