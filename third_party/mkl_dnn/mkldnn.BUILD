@@ -7,10 +7,12 @@ cc_library(
         "src/cpu/*.cpp",
     ]),
     hdrs = glob(["include/*"]),
-    copts = [
-        "-fopenmp",
-        "-fexceptions",
-    ],
+    copts = ["-fexceptions"] + select({
+        "@org_tensorflow//tensorflow:linux_x86_64": [
+            "-fopenmp",
+        ],
+        "//conditions:default": [],
+    }),
     includes = [
         "include",
         "src",
