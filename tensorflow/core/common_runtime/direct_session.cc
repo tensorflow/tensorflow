@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
@@ -165,7 +164,7 @@ class DirectSessionFactory : public SessionFactory {
       EnableCPUAllocatorFullStats(true);
     }
     std::vector<Device*> devices;
-    Status s = DeviceFactory::AddDevices(
+    const Status s = DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices);
     if (!s.ok()) {
       LOG(ERROR) << s;
@@ -280,7 +279,7 @@ DirectSession::DirectSession(const SessionOptions& options,
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
-  Status status =
+  const Status status =
       ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
   if (!status.ok()) {
     LOG(ERROR) << status.error_message();
@@ -345,20 +344,20 @@ Status DirectSession::MaybeInitializeExecutionState(
   // all subsequent extensions of the graph.
   flib_def_.reset(
       new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
-  SimpleGraphExecutionStateOptions options;
+  GraphExecutionStateOptions options;
   options.device_set = &device_set_;
   options.session_options = &options_;
   // TODO(mrry,suharshs): We explicitly copy `graph` so that
   // `MakeForBaseGraph()` can take ownership of its
   // contents. Previously this happened implicitly in calls to the
-  // `SimpleGraphExecutionState`. Other sessions call
+  // `GraphExecutionState`. Other sessions call
   // `MakeForBaseGraph` in such a way that we can destructively read
   // the passed-in `GraphDef`. In principle we could do the same here,
   // with a wider refactoring; we might revise the direct session so
   // that it copies the graph fewer times.
   GraphDef temp(graph);
-  TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
-      &temp, options, &execution_state_));
+  TF_RETURN_IF_ERROR(
+      GraphExecutionState::MakeForBaseGraph(&temp, options, &execution_state_));
   graph_created_ = true;
   *out_already_initialized = false;
   return Status::OK();
@@ -391,7 +390,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
       MaybeInitializeExecutionState(graph, &already_initialized));
   if (already_initialized) {
     TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
-    std::unique_ptr<SimpleGraphExecutionState> state;
+    std::unique_ptr<GraphExecutionState> state;
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
   }
@@ -498,7 +497,7 @@ Status DirectSession::Run(const RunOptions& run_options,
       feed_args[executors_and_keys->input_name_to_index[it.first]] = it.second;
     }
   }
-  Status s = call_frame.SetArgs(feed_args);
+  const Status s = call_frame.SetArgs(feed_args);
   if (errors::IsInternal(s)) {
     return errors::InvalidArgument(s.error_message());
   } else if (!s.ok()) {
@@ -567,9 +566,9 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   // Register this step with session's cancellation manager, so that
   // `Session::Close()` will cancel the step.
-  CancellationToken cancellation_token =
+  const CancellationToken cancellation_token =
       cancellation_manager_->get_cancellation_token();
-  bool already_cancelled = !cancellation_manager_->RegisterCallback(
+  const bool already_cancelled = !cancellation_manager_->RegisterCallback(
       cancellation_token, [&step_cancellation_manager]() {
         step_cancellation_manager.StartCancel();
       });
@@ -614,7 +613,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Receive outputs.
   if (outputs) {
     std::vector<Tensor> sorted_outputs;
-    Status s = call_frame.ConsumeRetvals(&sorted_outputs);
+    const Status s = call_frame.ConsumeRetvals(&sorted_outputs);
     if (errors::IsInternal(s)) {
       return errors::InvalidArgument(s.error_message());
     } else if (!s.ok()) {
@@ -1280,19 +1279,19 @@ Status DirectSession::CreateGraphs(
     RunStateArgs* run_state_args, DataTypeVector* input_types,
     DataTypeVector* output_types) {
   mutex_lock l(graph_def_lock_);
-  std::unique_ptr<SimpleClientGraph> client_graph;
+  std::unique_ptr<ClientGraph> client_graph;
 
-  std::unique_ptr<SimpleGraphExecutionState> temp_exec_state_holder;
-  SimpleGraphExecutionState* execution_state = nullptr;
+  std::unique_ptr<GraphExecutionState> temp_exec_state_holder;
+  GraphExecutionState* execution_state = nullptr;
   if (options_.config.graph_options().place_pruned_graph()) {
     // Because we are placing pruned graphs, we need to create a
-    // new SimpleGraphExecutionState for every new unseen graph,
+    // new GraphExecutionState for every new unseen graph,
     // and then place it.
-    SimpleGraphExecutionStateOptions prune_options;
+    GraphExecutionStateOptions prune_options;
     prune_options.device_set = &device_set_;
     prune_options.session_options = &options_;
     prune_options.stateful_placements = stateful_placements_;
-    TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForPrunedGraph(
+    TF_RETURN_IF_ERROR(GraphExecutionState::MakeForPrunedGraph(
         execution_state_->original_graph_def().library(), prune_options,
         execution_state_->original_graph_def(), subgraph_options,
         &temp_exec_state_holder, &client_graph));
@@ -1506,7 +1505,7 @@ bool DirectSession::RunState::PendingDone() const {
 void DirectSession::WaitForNotification(RunState* run_state,
                                         CancellationManager* cm,
                                         int64 timeout_in_ms) {
-  Status status =
+  const Status status =
       WaitForNotification(&run_state->executors_done, timeout_in_ms);
   if (!status.ok()) {
     {
@@ -1524,8 +1523,9 @@ void DirectSession::WaitForNotification(RunState* run_state,
 ::tensorflow::Status DirectSession::WaitForNotification(
     Notification* notification, int64 timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    int64 timeout_in_us = timeout_in_ms * 1000;
-    bool notified = WaitForNotificationWithTimeout(notification, timeout_in_us);
+    const int64 timeout_in_us = timeout_in_ms * 1000;
+    const bool notified =
+        WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
       return Status(error::DEADLINE_EXCEEDED,
                     "Timed out waiting for notification");

@@ -139,6 +139,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "reverse";
     case HloOpcode::kRng:
       return "rng";
+    case HloOpcode::kRoundNearestAfz:
+      return "round-nearest-afz";
     case HloOpcode::kSelectAndScatter:
       return "select-and-scatter";
     case HloOpcode::kSelect:

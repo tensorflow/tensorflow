@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
+#include "tensorflow/python/lib/core/py_seq_tensor.h"
 
 using tensorflow::string;
 
@@ -67,8 +68,8 @@ bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
 #endif
   TF_SetStatus(
       status, TF_INVALID_ARGUMENT,
-      tensorflow::strings::StrCat("Expecting a const char* value for attr ",
-                                  key, ", got ", py_value->ob_type->tp_name)
+      tensorflow::strings::StrCat("Expecting a string value for attr ", key,
+                                  ", got ", py_value->ob_type->tp_name)
           .c_str());
   return false;
 }
@@ -200,8 +201,8 @@ bool SetOpAttrList(TFE_Op* op, const char* key, PyObject* py_list,
   return true;
 }
 
-bool SetOpAttrScalar(TFE_Op* op, const char* key, PyObject* py_value,
-                     TF_AttrType type, TF_Status* status) {
+bool SetOpAttrScalar(TFE_Context* ctx, TFE_Op* op, const char* key,
+                     PyObject* py_value, TF_AttrType type, TF_Status* status) {
   if (type == TF_ATTR_STRING) {
     const char* value;
     if (!ParseStringValue(key, py_value, status, &value)) return false;
@@ -247,6 +248,35 @@ bool SetOpAttrScalar(TFE_Op* op, const char* key, PyObject* py_value,
       TFE_OpSetAttrShape(op, key, dims.get(), num_dims, status);
     }
     if (TF_GetCode(status) != TF_OK) return false;
+  } else if (type == TF_ATTR_FUNC) {
+    // Allow:
+    // (1) String function name, OR
+    // (2) A Python object with a .name attribute
+    //     (A crude test for being a
+    //     tensorflow.python.framework.function._DefinedFunction)
+    //     (which is what the various "defun" or "Defun" decorators do).
+    // And in the future also allow an object that can encapsulate
+    // the function name and its attribute values.
+    const char* func_name = nullptr;
+    if (!ParseStringValue(key, py_value, status, &func_name)) {
+      PyObject* name_attr = PyObject_GetAttrString(py_value, "name");
+      if (name_attr == nullptr ||
+          !ParseStringValue(key, name_attr, status, &func_name)) {
+        TF_SetStatus(
+            status, TF_INVALID_ARGUMENT,
+            tensorflow::strings::StrCat(
+                "unable to set function value attribute from a ",
+                py_value->ob_type->tp_name,
+                " object. If you think this is an error, please file an issue "
+                "at https://github.com/tensorflow/tensorflow/issues/new")
+                .c_str());
+        return false;
+      }
+    }
+    TFE_Op* func = TFE_NewOp(ctx, func_name, status);
+    if (TF_GetCode(status) != TF_OK) return false;
+    TFE_OpSetAttrFunction(op, key, func);
+    TFE_DeleteOp(func);
   } else {
     TF_SetStatus(
         status, TF_UNIMPLEMENTED,
@@ -257,7 +287,8 @@ bool SetOpAttrScalar(TFE_Op* op, const char* key, PyObject* py_value,
   return true;
 }
 
-void SetOpAttrs(TFE_Op* op, PyObject* attrs, TF_Status* out_status) {
+void SetOpAttrs(TFE_Context* ctx, TFE_Op* op, PyObject* attrs,
+                TF_Status* out_status) {
   if (attrs == Py_None) return;
   if (!PyTuple_Check(attrs)) {
     TF_SetStatus(out_status, TF_INVALID_ARGUMENT, "Expecting an attrs tuple.");
@@ -285,7 +316,7 @@ void SetOpAttrs(TFE_Op* op, PyObject* attrs, TF_Status* out_status) {
     if (is_list != 0) {
       if (!SetOpAttrList(op, key, py_value, type, out_status)) return;
     } else {
-      if (!SetOpAttrScalar(op, key, py_value, type, out_status)) return;
+      if (!SetOpAttrScalar(ctx, op, key, py_value, type, out_status)) return;
     }
   }
 }
@@ -297,7 +328,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     TF_Status* out_status) {
   TFE_Op* op = TFE_NewOp(ctx, op_name, out_status);
   if (TF_GetCode(out_status) != TF_OK) return;
-  TFE_OpSetDevice(op, ctx, device_name, out_status);
+  TFE_OpSetDevice(op, device_name, out_status);
   if (TF_GetCode(out_status) == TF_OK) {
     for (int i = 0; i < inputs->size() && TF_GetCode(out_status) == TF_OK;
          ++i) {
@@ -305,7 +336,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
     }
   }
   if (TF_GetCode(out_status) == TF_OK) {
-    SetOpAttrs(op, attrs, out_status);
+    SetOpAttrs(ctx, op, attrs, out_status);
   }
   if (TF_GetCode(out_status) == TF_OK) {
     int num_outputs = outputs->size();
@@ -341,6 +372,16 @@ namespace {
 // Python subclass of Exception that is created on not ok Status.
 tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
 PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
+
+void PyRaiseException(TF_Code error_code, const char* msg) {
+  tensorflow::mutex_lock l(exception_class_mutex);
+  if (exception_class != nullptr) {
+    PyErr_SetObject(exception_class, Py_BuildValue("si", msg, error_code));
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, msg);
+  }
+}
+
 }  // namespace
 
 TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj) {
@@ -349,16 +390,23 @@ TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj) {
   if (cppstatus.ok()) {
     return TFE_NewTensorHandle(t);
   } else {
-    tensorflow::mutex_lock l(exception_class_mutex);
-    auto msg = tensorflow::strings::StrCat(
-        "failed to convert numpy ndarray to a Tensor (",
-        cppstatus.error_message(), ")");
-    if (exception_class != nullptr) {
-      PyErr_SetObject(exception_class,
-                      Py_BuildValue("si", msg.c_str(), TF_INVALID_ARGUMENT));
-    } else {
-      PyErr_SetString(PyExc_RuntimeError, msg.c_str());
-    }
+    PyRaiseException(TF_INVALID_ARGUMENT,
+                     tensorflow::strings::StrCat(
+                         "failed to convert numpy ndarray to a Tensor (",
+                         cppstatus.error_message(), ")")
+                         .c_str());
+  }
+  return nullptr;
+}
+
+TFE_TensorHandle* TFE_Py_SequenceToTensorHandle(PyObject* obj,
+                                                PyObject* dtype) {
+  tensorflow::Tensor t;
+  auto cppstatus = tensorflow::PySeqToTensor(obj, dtype, &t);
+  if (cppstatus.ok()) {
+    return TFE_NewTensorHandle(t);
+  } else {
+    PyRaiseException(TF_INVALID_ARGUMENT, cppstatus.error_message().c_str());
   }
   return nullptr;
 }
@@ -381,19 +429,13 @@ PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
   }
 }
 
-int TFE_Py_MayBeRaiseException(TF_Status* status) {
+int TFE_Py_MaybeRaiseException(TF_Status* status) {
   if (TF_GetCode(status) == TF_OK) return 0;
-  tensorflow::mutex_lock l(exception_class_mutex);
-  if (exception_class != nullptr) {
-    PyErr_SetObject(exception_class, Py_BuildValue("si", TF_Message(status),
-                                                   TF_GetCode(status)));
-  } else {
-    PyErr_SetString(PyExc_RuntimeError, TF_Message(status));
-  }
+  PyRaiseException(TF_GetCode(status), TF_Message(status));
   return -1;
 }
 
-char* TFE_GetPyThonString(PyObject* o) {
+char* TFE_GetPythonString(PyObject* o) {
   if (PyBytes_Check(o)) {
     return PyBytes_AsString(o);
   }

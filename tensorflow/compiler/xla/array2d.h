@@ -165,6 +165,22 @@ class Array2D {
     return tensorflow::str_util::Join(pieces, "");
   }
 
+  bool operator==(const Array2D<T>& other) const {
+    if (n1() != other.n1() || n2() != other.n2()) {
+      return false;
+    }
+    for (int64 i0 = 0; i0 < n1(); ++i0) {
+      for (int64 i1 = 0; i1 < n2(); ++i1) {
+        if ((*this)(i0, i1) != other(i0, i1)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  bool operator!=(const Array2D<T>& other) const { return !(*this == other); }
+
  private:
   int64 n1_;
   int64 n2_;

@@ -71,10 +71,11 @@ class MomentumOptimizerTest(test.TestCase):
       self.assertEqual(["momentum"], mom_opt.get_slot_names())
       slot0 = mom_opt.get_slot(var0, "momentum")
       self.assertEquals(slot0.get_shape(), var0.get_shape())
-      self.assertFalse(slot0 in variables.trainable_variables())
       slot1 = mom_opt.get_slot(var1, "momentum")
       self.assertEquals(slot1.get_shape(), var1.get_shape())
-      self.assertFalse(slot1 in variables.trainable_variables())
+      if context.in_graph_mode():
+        self.assertFalse(slot0 in variables.trainable_variables())
+        self.assertFalse(slot1 in variables.trainable_variables())
 
       # Step 1: the momentum accumulators where 0. So we should see a normal
       # update: v -= grad * learning_rate

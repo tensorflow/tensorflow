@@ -209,6 +209,31 @@ class OpcodeFusionTest : public InstructionFusionTest {
         std::multiset<HloOpcode>(fused_opcodes.begin(), fused_opcodes.end()),
         expected_opcodes);
   }
+
+  HloComputation* CreateAdderToOne(HloModule* module) {
+    HloComputation::Builder builder(TestName());
+    HloInstruction* arg0 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            0, ShapeUtil::MakeShape(F32, {}), "arg0"));
+    HloInstruction* one = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, arg0, one));
+    return module->AddEmbeddedComputation(builder.Build());
+  }
+
+  HloComputation* CreateMax(HloModule* module) {
+    HloComputation::Builder builder(TestName());
+    HloInstruction* arg0 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            0, ShapeUtil::MakeShape(F32, {}), "arg0"));
+    HloInstruction* arg1 =
+        builder.AddInstruction(HloInstruction::CreateParameter(
+            1, ShapeUtil::MakeShape(F32, {}), "arg1"));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kMaximum, arg0, arg1));
+    return module->AddEmbeddedComputation(builder.Build());
+  }
 };
 
 TEST_F(OpcodeFusionTest, Exponential_Bitcast_Negate) {
@@ -402,10 +427,81 @@ TEST_F(OpcodeFusionTest, Exponential_Transpose_Negate) {
                      HloOpcode::kParameter});
 }
 
+TEST_F(OpcodeFusionTest, UnaryMapOfExp) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+
+  HloInstruction* exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param0));
+  builder.AddInstruction(HloInstruction::CreateMap(
+      shape, {exp}, CreateAdderToOne(module.get()), /*static_operands=*/{}));
+
+  module->AddEntryComputation(builder.Build());
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kParameter, HloOpcode::kExp, HloOpcode::kMap});
+}
+
+TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param"));
+
+  HloInstruction* exp0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param0));
+  HloInstruction* exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param1));
+
+  builder.AddInstruction(HloInstruction::CreateMap(
+      shape, {exp0, exp1}, CreateMax(module.get()), /*static_operands=*/{}));
+
+  module->AddEntryComputation(builder.Build());
+
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kParameter, HloOpcode::kParameter,
+                     HloOpcode::kExp, HloOpcode::kExp, HloOpcode::kMap});
+}
+
+TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
+  auto module = CreateNewModule();
+
+  HloComputation::Builder builder(TestName());
+  Shape full_shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {10, 1, 1000});
+
+  HloInstruction* slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+          slice_shape,
+          builder.AddInstruction(
+              HloInstruction::CreateParameter(0, full_shape, "slice_from")),
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
+          /*slice_sizes=*/{10, 1, 1000}));
+
+  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      full_shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(2, full_shape, "to_update")),
+      slice,
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
+
+  module->AddEntryComputation(builder.Build());
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+                     HloOpcode::kParameter, HloOpcode::kParameter,
+                     HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

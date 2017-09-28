@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -59,8 +60,10 @@ Status CheckSignature(const DataTypeVector& types,
 
 bool XlaCompiler::Argument::operator==(
     const XlaCompiler::Argument& other) const {
-  if (std::tie(kind, type, name, tensor_array_size) !=
-      std::tie(other.kind, other.type, other.name, other.tensor_array_size)) {
+  if (std::tie(kind, resource_kind, type, name, tensor_array_size,
+               tensor_array_gradients) !=
+      std::tie(other.kind, other.resource_kind, other.type, other.name,
+               other.tensor_array_size, other.tensor_array_gradients)) {
     return false;
   }
   if (!xla::ShapeUtil::Equal(shape, other.shape)) {
@@ -104,9 +107,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 
 XlaCompiler::~XlaCompiler() = default;
 
-int64 XlaCompiler::NextStepId() {
-  return next_step_id_++;
-}
+int64 XlaCompiler::NextStepId() { return next_step_id_++; }
 
 uint64 XlaCompiler::SignatureHash::operator()(
     const std::pair<string, std::vector<Argument>>& signature) const {
@@ -174,38 +175,6 @@ Status XlaCompiler::CompileFunction(
   return Status::OK();
 }
 
-Status XlaCompiler::BuildExecutable(
-    const XlaCompiler::CompilationResult& result,
-    std::unique_ptr<xla::LocalExecutable>* executable) {
-  VLOG(2) << "Compiling to local executable";
-  xla::Shape opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
-
-  std::vector<const xla::Shape*> argument_layouts(
-      result.xla_input_shapes.size());
-  for (int i = 0; i < result.xla_input_shapes.size(); ++i) {
-    argument_layouts[i] = &result.xla_input_shapes[i];
-  }
-  if (result.requires_runtime_context) {
-    // The final arg is the XlaLocalRuntimeContext*.
-    argument_layouts.push_back(&opaque_shape);
-  }
-  xla::LocalClient* local_client = static_cast<xla::LocalClient*>(client());
-  xla::ExecutableBuildOptions build_options;
-  build_options.set_device_ordinal(local_client->default_device_ordinal());
-  build_options.set_platform(local_client->platform());
-  build_options.set_result_layout(result.xla_output_shape);
-  build_options.set_has_hybrid_result(
-      options_.local_executable_has_hybrid_result);
-
-  auto compile_result = local_client->Compile(*result.computation,
-                                              argument_layouts, build_options);
-  if (!compile_result.ok()) {
-    return compile_result.status();
-  }
-  *executable = std::move(compile_result.ValueOrDie());
-  return Status::OK();
-}
-
 namespace {
 
 Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
@@ -260,10 +229,11 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
 // `args` are the arguments to the computation.
 Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
                       bool use_tuple_arg, xla::ComputationBuilder* builder,
-                      std::vector<XlaContext::Argument>* context_args,
+                      XlaContext* context,
+                      std::vector<XlaExpression>* arg_expressions,
                       std::vector<int>* input_mapping,
                       std::vector<xla::Shape>* input_shapes) {
-  context_args->resize(args.size());
+  arg_expressions->resize(args.size());
 
   // Argument numbers of arguments and resources that are to be passed to the
   // XLA computation as runtime parameters.
@@ -271,33 +241,31 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
   parameters.reserve(args.size());
   resources.reserve(args.size());
 
+  // Fills in constant arguments, and computes non-constant argument order.
   for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
        ++i) {
-    XlaContext::Argument& context_arg = (*context_args)[i];
-    context_arg.kind = args[i].kind;
-    context_arg.name = args[i].name;
-    context_arg.value.constant_value = args[i].constant_value;
-    context_arg.value.type = args[i].type;
-
-    switch (args[i].kind) {
-      case XlaCompiler::Argument::kVariable:
-      case XlaCompiler::Argument::kTensorArray:
-      case XlaCompiler::Argument::kStack:
-        context_arg.is_resource = true;
-        if (args[i].initialized) {
+    const XlaCompiler::Argument& arg = args[i];
+    XlaExpression& arg_expression = (*arg_expressions)[i];
+    switch (arg.kind) {
+      case XlaCompiler::Argument::kResource:
+        TF_RET_CHECK(arg.resource_kind != XlaResource::kInvalid);
+        // TODO(phawkins): this code assumes that resource arguments do not
+        // alias.
+        XlaResource* resource;
+        TF_RETURN_IF_ERROR(
+            context->CreateResource(arg.resource_kind, i, arg.name, arg.type,
+                                    xla::ComputationDataHandle(), &resource));
+        resource->tensor_array_size = arg.tensor_array_size;
+        arg_expression.set_resource(resource);
+        if (arg.initialized) {
           resources.push_back(i);
-          context_arg.value.is_constant = false;
-        } else {
-          context_arg.value.is_constant = true;
         }
-        context_arg.tensor_array_size = args[i].tensor_array_size;
         break;
       case XlaCompiler::Argument::kParameter:
         parameters.push_back(i);
-        context_arg.value.is_constant = false;
         break;
       case XlaCompiler::Argument::kConstant:
-        context_arg.value.is_constant = true;
+        arg_expression.set_constant_value(arg.constant_value);
         break;
       case XlaCompiler::Argument::kInvalid:
         return errors::Internal("Unreachable case in BuildArguments()");
@@ -313,27 +281,60 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
 
   input_shapes->resize(parameters.size());
   input_mapping->resize(parameters.size());
-  for (std::vector<int>::size_type i = 0; i < input_shapes->size(); ++i) {
+  for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
     const XlaCompiler::Argument& arg = args[parameters[i]];
     // Computes the shapes of non-constant arguments.
     (*input_shapes)[i] = arg.shape;
     (*input_mapping)[i] = parameters[i];
   }
 
+  // Build parameter handles for non-constant arguments.
+  std::vector<xla::ComputationDataHandle> arg_handles(parameters.size());
   if (use_tuple_arg) {
     xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(*input_shapes);
     xla::ComputationDataHandle tuple =
         builder->Parameter(0, tuple_shape, "arg_tuple");
-    for (std::vector<int>::size_type i = 0; i < input_shapes->size(); ++i) {
-      (*context_args)[parameters[i]].value.handle =
-          builder->GetTupleElement(tuple, i);
+    for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
+      arg_handles[i] = builder->GetTupleElement(tuple, i);
     }
   } else {
-    for (std::vector<int>::size_type i = 0; i < input_shapes->size(); ++i) {
-      (*context_args)[parameters[i]].value.handle =
+    for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
+      arg_handles[i] =
           builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
     }
   }
+
+  // Fill in the handles in non-constant arguments.
+  VLOG(2) << "XLA computation inputs:";
+  for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
+    const XlaCompiler::Argument& arg = args[parameters[i]];
+    VLOG(2) << "  XLA arg " << i
+            << " shape: " << xla::ShapeUtil::HumanString((*input_shapes)[i])
+            << " name: " << arg.name << " TF arg " << parameters[i];
+    XlaExpression& arg_expression = (*arg_expressions)[parameters[i]];
+    switch (arg.kind) {
+      case XlaCompiler::Argument::kResource: {
+        TF_RET_CHECK(arg.initialized);
+        XlaResource* resource = arg_expression.resource();
+        TF_RETURN_IF_ERROR(resource->SetFromPack(arg.tensor_array_gradients,
+                                                 arg_handles[i], builder));
+        VLOG(2) << "    resource: num_gradients: "
+                << arg.tensor_array_gradients.size();
+        resource->initial_value = resource->value;
+        for (const auto& gradient : resource->tensor_array_gradients) {
+          gradient.second->initial_value = gradient.second->value;
+        }
+        break;
+      }
+      case XlaCompiler::Argument::kParameter:
+        arg_expression.set_handle(arg_handles[i]);
+        break;
+      case XlaCompiler::Argument::kConstant:
+      case XlaCompiler::Argument::kInvalid:
+        return errors::Internal("Unreachable case in BuildArguments()");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -342,8 +343,6 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
 // `retvals` is the list of retvals produced by _Retval operators, in index
 // order. `variable_map` is a map from variable ID numbers to XlaOpContext
 // variable states, generated by the symbolic evaluation.
-// If `has_side_effects` is true, the computation has side effects and should be
-// built even if it has no outputs.
 // If `return_updated_values_for_all_resources` is true, all resources will be
 // included in `resource_updates`, regardless of whether their value changed.
 // Sets `*num_nonconst_outputs` to the number of outputs of the `computation`.
@@ -354,66 +353,71 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
 // index of a resource variable argument to the computation, and `type` is the
 // type of the final output.
 Status BuildComputation(
-    const std::vector<XlaContext::HandleOrConstant>& retvals,
+    const std::vector<XlaCompiler::Argument>& args,
+    const std::vector<XlaExpression>& retvals,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
-    bool has_side_effects, bool return_updated_values_for_all_resources,
+    bool return_updated_values_for_all_resources,
     xla::ComputationBuilder* builder, xla::Computation* computation,
     int* num_computation_outputs, int* num_nonconst_outputs,
     std::vector<XlaCompiler::ResourceUpdate>* resource_updates) {
   std::vector<xla::ComputationDataHandle> elems;
   elems.reserve(retvals.size());
-  for (const XlaContext::HandleOrConstant& retval : retvals) {
-    if (!retval.is_constant) {
-      elems.push_back(retval.handle);
+  for (const XlaExpression& retval : retvals) {
+    if (!retval.has_constant_value()) {
+      elems.push_back(retval.handle());
     }
   }
   *num_nonconst_outputs = elems.size();
 
   // Add return values for resources whose values have changed.
-  std::vector<const XlaResource*> arg_vars;
-  arg_vars.reserve(resources.size());
-  for (const auto& var : resources) {
-    if (var->arg_num >= 0) {
-      arg_vars.push_back(var.get());
+  std::vector<const XlaResource*> arg_resources;
+  arg_resources.reserve(resources.size());
+  for (const auto& resource : resources) {
+    if (resource->arg_num >= 0) {
+      arg_resources.push_back(resource.get());
     }
   }
-  std::sort(arg_vars.begin(), arg_vars.end(),
+  std::sort(arg_resources.begin(), arg_resources.end(),
             [](const XlaResource* a, const XlaResource* b) {
               return a->arg_num < b->arg_num;
             });
 
-  for (const XlaResource* var : arg_vars) {
-    bool modified = var->value.handle() != var->initial_value.handle();
+  for (const XlaResource* resource : arg_resources) {
+    const XlaCompiler::Argument& arg = args[resource->arg_num];
+    bool modified =
+        resource->value.handle() != resource->initial_value.handle();
+    // TensorArray gradients were modified if their values changed or there are
+    // any newly created gradients.
+    for (const auto& grad : resource->tensor_array_gradients) {
+      modified =
+          modified ||
+          grad.second->value.handle() != grad.second->initial_value.handle() ||
+          arg.tensor_array_gradients.count(grad.first) == 0;
+    }
     if (return_updated_values_for_all_resources || modified) {
       resource_updates->emplace_back();
       XlaCompiler::ResourceUpdate& update = resource_updates->back();
-      update.input_index = var->arg_num;
-      update.type = var->type;
+      update.input_index = resource->arg_num;
+      update.type = resource->type;
       update.modified = modified;
-      elems.push_back(var->value);
+      for (const auto& grad : resource->tensor_array_gradients) {
+        update.tensor_array_gradients_accessed.insert(grad.first);
+      }
+      xla::ComputationDataHandle handle;
+      TF_RETURN_IF_ERROR(resource->Pack(&handle, builder));
+      elems.push_back(handle);
     }
   }
 
   *num_computation_outputs = elems.size();
-  if (!elems.empty() || has_side_effects) {
-    // Builds a empty tuple return value for computations that have side effects
-    // but have no return values.
-    xla::ComputationDataHandle handle = builder->Tuple(elems);
 
-    // TODO(b/31775371): to workaround bug, we must build a no-op computation
-    // that is guaranteed to be constructed after all of the formal parameters
-    // to the computation. Once the bug is fixed, we could avoid tupling here.
-    if (elems.size() == 1) {
-      handle = builder->GetTupleElement(handle, 0);
-    }
-
-    // Builds the XLA computation.
-    xla::StatusOr<xla::Computation> computation_status = builder->Build();
-    if (!computation_status.ok()) {
-      return computation_status.status();
-    }
-    *computation = computation_status.ConsumeValueOrDie();
+  // Builds the XLA computation.
+  builder->Tuple(elems);
+  xla::StatusOr<xla::Computation> computation_status = builder->Build();
+  if (!computation_status.ok()) {
+    return computation_status.status();
   }
+  *computation = computation_status.ConsumeValueOrDie();
   return Status::OK();
 }
 
@@ -460,11 +464,11 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
   result->tuple_arg = options.use_tuple_arg;
 
-  std::vector<XlaContext::Argument> context_args;
-  TF_RETURN_IF_ERROR(BuildArguments(args, options.use_tuple_arg, &builder,
-                                    &context_args, &result->input_mapping,
-                                    &result->xla_input_shapes));
-  context->set_args(std::move(context_args));
+  std::vector<XlaExpression> arg_expressions;
+  TF_RETURN_IF_ERROR(BuildArguments(
+      args, options.use_tuple_arg, &builder, context, &arg_expressions,
+      &result->input_mapping, &result->xla_input_shapes));
+  context->set_args(std::move(arg_expressions));
 
   TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
                                   flib_runtime_, NextStepId()));
@@ -473,7 +477,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   int num_computation_outputs;
   result->computation = std::make_shared<xla::Computation>();
   TF_RETURN_IF_ERROR(BuildComputation(
-      context->retvals(), context->resources(), context->has_side_effects(),
+      args, context->retvals(), context->resources(),
       options.return_updated_values_for_all_resources, &builder,
       result->computation.get(), &num_computation_outputs,
       &num_nonconst_outputs, &result->resource_updates));
@@ -486,19 +490,15 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
   result->outputs.resize(context->retvals().size());
-  for (std::vector<XlaContext::HandleOrConstant>::size_type i = 0;
+  for (std::vector<XlaExpression>::size_type i = 0;
        i < context->retvals().size(); ++i) {
-    const XlaContext::HandleOrConstant& retval = context->retvals()[i];
-    if (retval.is_constant) {
+    const XlaExpression& retval = context->retvals()[i];
+    if (retval.has_constant_value()) {
       OutputDescription& output = result->outputs[i];
-      output.shape = retval.constant_value.shape();
+      output.shape = retval.constant_value().shape();
       output.is_constant = true;
-      output.constant_value = retval.constant_value;
+      output.constant_value = retval.constant_value();
     }
-  }
-
-  if (result->computation->IsNull()) {
-    return Status::OK();
   }
 
   // Compute the output shapes, if there is a computation with non-constant
@@ -518,35 +518,25 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
   // Converts the output shapes to TensorShapes.
   int computation_output = 0;
-  for (std::vector<XlaContext::HandleOrConstant>::size_type i = 0;
+  for (std::vector<XlaExpression>::size_type i = 0;
        i < context->retvals().size(); ++i) {
-    const XlaContext::HandleOrConstant& retval = context->retvals()[i];
-    if (!retval.is_constant) {
+    const XlaExpression& retval = context->retvals()[i];
+    if (!retval.has_constant_value()) {
       CHECK_LT(computation_output, num_computation_outputs);
       OutputDescription& output = result->outputs[i];
       output.is_constant = false;
-      if (num_computation_outputs > 1) {
-        TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
-            xla::ShapeUtil::GetTupleElementShape(result->xla_output_shape,
-                                                 computation_output),
-            &output.shape));
-      } else {
-        TF_RETURN_IF_ERROR(
-            XLAShapeToTensorShape(result->xla_output_shape, &output.shape));
-      }
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
+          xla::ShapeUtil::GetTupleElementShape(result->xla_output_shape,
+                                               computation_output),
+          &output.shape));
       ++computation_output;
     }
   }
 
   for (std::vector<ResourceUpdate>::size_type i = 0;
        i < result->resource_updates.size(); ++i) {
-    if (num_computation_outputs > 1) {
-      result->resource_updates[i].shape = xla::ShapeUtil::GetTupleElementShape(
-          result->xla_output_shape, computation_output);
-    } else {
-      CHECK_EQ(0, computation_output);
-      result->resource_updates[i].shape = result->xla_output_shape;
-    }
+    result->resource_updates[i].shape = xla::ShapeUtil::GetTupleElementShape(
+        result->xla_output_shape, computation_output);
     ++computation_output;
   }
   return Status::OK();

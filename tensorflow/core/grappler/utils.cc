@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -218,6 +221,25 @@ string AsControlDependency(const NodeDef& node) {
 
 string AsControlDependency(const string& node) {
   return strings::StrCat("^", node);
+}
+
+int NumOutputs(const NodeDef& node) {
+  int num_outputs = 0;
+  const OpDef* op_def = nullptr;
+  auto status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  if (status.ok()) {
+    for (const auto& output : op_def->output_arg()) {
+      if (!output.type_list_attr().empty()) {
+        num_outputs +=
+            node.attr().at(output.type_list_attr()).list().type_size();
+      } else if (!output.number_attr().empty()) {
+        num_outputs += node.attr().at(output.number_attr()).i();
+      } else {
+        num_outputs++;
+      }
+    }
+  }
+  return num_outputs;
 }
 
 }  // end namespace grappler

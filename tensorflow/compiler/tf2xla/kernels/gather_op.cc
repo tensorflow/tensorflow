@@ -119,7 +119,8 @@ xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
     // Slice from the input array.
     auto index = bodyb.DynamicSlice(indices, bodyb.Reshape(i, {1}), {1});
     auto start_indices =
-        XlaHelpers::PadWithZeros(&bodyb, index, input_shape.dims() - 1);
+        bodyb.Pad(bodyb.Reshape(index, {1}), bodyb.ConstantR0<int32>(0),
+                  xla::MakeEdgePaddingConfig({{0, input_shape.dims() - 1}}));
     auto slice_i = bodyb.Reshape(
         bodyb.DynamicSlice(input, start_indices, slice_shape.dim_sizes()),
         loop_out_slice_shape.dim_sizes());

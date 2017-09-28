@@ -1,6 +1,9 @@
 # -*- Python -*-
 
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl",
+     "tf_binary_additional_srcs",
+     "tf_cc_binary",
+     "tf_copts")
 
 # Given a list of "ops_libs" (a list of files in the core/ops directory
 # without their .cc extensions), generate Java wrapper code for all operations
@@ -27,14 +30,14 @@ def tf_java_op_gen_srcjar(name,
                           visibility=["//tensorflow/java:__pkg__"]):
 
   gen_tools = []
-  gen_cmds = ["rm -rf $(@D)"] # Always start from fresh when generating source files
+  gen_cmds = ["rm -rf $(@D)"]  # Always start from fresh when generating source files
 
   # Construct an op generator binary for each ops library.
   for ops_lib in ops_libs:
-    gen_lib = ops_lib[:ops_lib.rfind('_')]
+    gen_lib = ops_lib[:ops_lib.rfind("_")]
     out_gen_tool = out_dir + ops_lib + "_gen_tool"
 
-    native.cc_binary(
+    tf_cc_binary(
         name=out_gen_tool,
         copts=tf_copts(),
         linkopts=["-lm"],
@@ -50,10 +53,10 @@ def tf_java_op_gen_srcjar(name,
   # Generate a source archive containing generated code for these ops.
   gen_srcjar = out_dir + name + ".srcjar"
   gen_cmds += ["$(location @local_jdk//:jar) cMf $(location :" + gen_srcjar + ") -C $(@D) ."]
-
+  gen_tools += ["@local_jdk//:jar"] + ["@local_jdk//:jdk"]
+  gen_tools += tf_binary_additional_srcs()
   native.genrule(
       name=name,
-      srcs=["@local_jdk//:jar"],
       outs=[gen_srcjar],
       tools=gen_tools,
-      cmd='&&'.join(gen_cmds))
+      cmd="&&".join(gen_cmds))

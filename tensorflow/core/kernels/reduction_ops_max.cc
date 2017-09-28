@@ -39,6 +39,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       ReductionOp<GPUDevice, type, Eigen::internal::MaxReducer<type>>);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
+REGISTER_GPU_KERNELS(int64);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

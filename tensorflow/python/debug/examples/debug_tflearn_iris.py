@@ -113,7 +113,6 @@ def main(_):
   if FLAGS.debug:
     debug_hook = tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
                                             dump_root=FLAGS.dump_root)
-    debug_hook.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
     hooks = [debug_hook]
 
   if not FLAGS.use_experiment:

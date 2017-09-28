@@ -644,6 +644,20 @@ class MaxReductionTest(test.TestCase):
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
 
+  def testInt64Reduce3D(self):
+    # Create a 3D array of int64s and reduce across all possible
+    # dimensions
+    np_arr = np.arange(-31, -1).reshape([2, 3, 5]).astype(np.int64)
+    self._compareAll(np_arr, None)
+    self._compareAll(np_arr, [])
+    self._compareAll(np_arr, [0])
+    self._compareAll(np_arr, [1])
+    self._compareAll(np_arr, [2])
+    self._compareAll(np_arr, [0, 1])
+    self._compareAll(np_arr, [1, 2])
+    self._compareAll(np_arr, [0, 2])
+    self._compareAll(np_arr, [0, 1, 2])
+
   def testFloatReduce3D(self):
     # Create a 3D array of floats and reduce across all possible
     # dimensions

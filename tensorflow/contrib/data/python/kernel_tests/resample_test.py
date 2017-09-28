@@ -21,9 +21,11 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import device_setter
 from tensorflow.python.util import compat
 
 
@@ -39,18 +41,17 @@ class ResampleTest(test.TestCase):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
     initial_dist = [0.2] * 5 if initial_known else None
-    iterator = dataset_ops.Iterator.from_dataset(
-        dataset_ops.rejection_resample(
-            (dataset_ops.Dataset.from_tensor_slices(classes)
-             .shuffle(200, seed=21)
-             .map(lambda c: (c, string_ops.as_string(c)))),
-            target_dist=target_dist,
-            initial_dist=initial_dist,
-            class_func=lambda c, _: c,
-            seed=27))
+    iterator = (dataset_ops.Dataset.from_tensor_slices(classes)
+                .shuffle(200, seed=21)
+                .map(lambda c: (c, string_ops.as_string(c)))
+                .apply(dataset_ops.rejection_resample(target_dist=target_dist,
+                                                      initial_dist=initial_dist,
+                                                      class_func=lambda c, _: c,
+                                                      seed=27))
+                .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    variable_init_op = variables.global_variables_initializer()
+    variable_init_op = variables.local_variables_initializer()
 
     with self.test_session() as sess:
       sess.run(variable_init_op)
@@ -73,6 +74,22 @@ class ResampleTest(test.TestCase):
         for c in range(5)])
     returned_dist = class_counts / total_returned
     self.assertAllClose(target_dist, returned_dist, atol=1e-2)
+
+  def testVariableDevicePlacement(self):
+    classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
+    target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
+    with ops.device(
+        device_setter.replica_device_setter(ps_tasks=1, ps_device="/cpu:0")):
+      _ = (dataset_ops.Dataset.from_tensor_slices(classes)
+           .shuffle(200, seed=21)
+           .map(lambda c: (c, string_ops.as_string(c)))
+           .apply(dataset_ops.rejection_resample(
+               target_dist=target_dist, initial_dist=None,
+               class_func=lambda c, _: c, seed=27)))
+
+      self.assertEqual(1, len(variables.local_variables()))
+      self.assertEqual(b"",
+                       compat.as_bytes(variables.local_variables()[0].device))
 
 
 if __name__ == "__main__":

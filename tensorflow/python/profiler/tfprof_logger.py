@@ -28,6 +28,7 @@ from tensorflow.core.profiler import tfprof_log_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import gfile
+from tensorflow.python.profiler.internal import flops_registry  # pylint: disable=unused-import
 
 TRAINABLE_VARIABLES = '_trainable_variables'
 REGISTERED_FLOP_STATS = 'flops'

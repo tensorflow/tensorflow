@@ -274,30 +274,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         Tensor key_arg(DT_INT64, TensorShape({}));
         key_arg.scalar<int64>()() = key;
 
-        Tensor group_dataset_arg(DT_RESOURCE, TensorShape({}));
-
-        // NOTE(mrry): We cannot use the core `MakeResourceHandle()`,
-        // `LookupResource()` or `DeleteResource()` functions, because
-        // we have an `IteratorContext*` and not an
-        // `OpKernelContext*`, so we replicate the necessary
-        // functionality here.
-        ResourceHandle group_dataset_handle;
-        group_dataset_handle.set_device(
-            dataset()->captured_reduce_func_->device()->attributes().name());
-        group_dataset_handle.set_container(step_container.name());
-        group_dataset_handle.set_name(kWindowResourceName);
-        auto type_index = MakeTypeIndex<DatasetBase>();
-        group_dataset_handle.set_hash_code(type_index.hash_code());
-        group_dataset_handle.set_maybe_type_name(type_index.name());
-        // NOTE(mrry): Ownership of `group_dataset` transfers to
-        // `step_container` here.
-        TF_RETURN_IF_ERROR(dataset()
-                               ->captured_reduce_func_->resource_manager()
-                               ->Create<DatasetBase>(
-                                   group_dataset_handle.container(),
-                                   group_dataset_handle.name(), group_dataset));
-
-        group_dataset_arg.scalar<ResourceHandle>()() = group_dataset_handle;
+        Tensor group_dataset_arg(DT_VARIANT, TensorShape({}));
+        TF_RETURN_IF_ERROR(
+            StoreDatasetInVariantTensor(group_dataset, &group_dataset_arg));
 
         std::vector<Tensor> args(
             {std::move(key_arg), std::move(group_dataset_arg)});
@@ -307,30 +286,20 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             dataset()->captured_reduce_func_->Run(opts, args, &return_values));
 
         if (!(return_values.size() == 1 &&
-              return_values[0].dtype() == DT_RESOURCE &&
+              return_values[0].dtype() == DT_VARIANT &&
               TensorShapeUtils::IsScalar(return_values[0].shape()))) {
           return errors::InvalidArgument(
               "`reduce_func` must return a single scalar of dtype "
-              "DT_RESOURCE.");
+              "DT_VARIANT.");
         }
 
         // Retrieve the dataset that was created in `f`.
+        // `returned_dataset` is borrowed from the `return_values[0]`.
         DatasetBase* returned_dataset;
-        const ResourceHandle& dataset_resource =
-            return_values[0].scalar<ResourceHandle>()();
-        if (type_index.hash_code() != dataset_resource.hash_code()) {
-          return errors::InvalidArgument(
-              "`reduce_func` must return a Dataset resource.");
-        }
         TF_RETURN_IF_ERROR(
-            dataset()->captured_reduce_func_->resource_manager()->Lookup(
-                dataset_resource.container(), dataset_resource.name(),
-                &returned_dataset));
-        core::ScopedUnref unref_returned_dataset(returned_dataset);
+            GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
-        // Create an iterator for the dataset that was returned by
-        // `f`. This transfers ownership of the dataset to the
-        // iterator.
+        // Create an iterator for the dataset that was returned by `f`.
         current_group_iterator_ = returned_dataset->MakeIterator(prefix());
         return Status::OK();
       }
@@ -359,9 +328,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  const NameAttrList* key_func_;
-  const NameAttrList* reduce_func_;
-  const NameAttrList* window_size_func_;
+  NameAttrList key_func_;
+  NameAttrList reduce_func_;
+  NameAttrList window_size_func_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),

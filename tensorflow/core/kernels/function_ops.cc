@@ -290,9 +290,10 @@ class RemoteCallOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* target;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
-    AttrValueMap attr_values = func_->attr();
+    AttrValueMap attr_values = func_.attr();
     AttrValue v;
-    v.set_s(target->scalar<string>()());
+    const string& target_device = target->scalar<string>()();
+    v.set_s(target_device);
     AddAttr("_target", v, &attr_values);
 
     FunctionLibraryRuntime* lib = ctx->function_library();
@@ -301,7 +302,7 @@ class RemoteCallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Handle handle;
     OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(func_->name(), AttrSlice(&attr_values), &handle),
+        ctx, lib->Instantiate(func_.name(), AttrSlice(&attr_values), &handle),
         done);
 
     OpInputList arguments;
@@ -310,6 +311,11 @@ class RemoteCallOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
     opts.runner = ctx->runner();
+    opts.source_device = lib->device()->name();
+    if (opts.source_device != target_device) {
+      opts.remote_execution = true;
+    }
+    opts.rendezvous = ctx->rendezvous();
     std::vector<Tensor> args;
     args.reserve(arguments.size());
     for (const Tensor& argument : arguments) {
@@ -330,14 +336,17 @@ class RemoteCallOp : public AsyncOpKernel {
 
  private:
   string target_;
-  const NameAttrList* func_;
+  NameAttrList func_;
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteCallOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("RemoteCall").Device(DEVICE_CPU), RemoteCallOp);
-REGISTER_KERNEL_BUILDER(Name("RemoteCall").Device(DEVICE_GPU), RemoteCallOp);
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_CPU).HostMemory("target"), RemoteCallOp);
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_GPU).HostMemory("target"), RemoteCallOp);
 #if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("RemoteCall").Device(DEVICE_SYCL), RemoteCallOp);
+REGISTER_KERNEL_BUILDER(
+    Name("RemoteCall").Device(DEVICE_SYCL).HostMemory("target"), RemoteCallOp);
 
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

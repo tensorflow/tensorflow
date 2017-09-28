@@ -327,6 +327,11 @@ class UnaryOpsTest(XLATestCase):
           expected=np.array(
               [[True, False, True], [False, True, True]], dtype=np.bool))
 
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.quantize_and_dequantize_v2(x, -127, 127, True, 8),
+          np.array([-1, -0.5, 0, 0.3], dtype=dtype),
+          expected=np.array([-1, -64.0 / 127, 0, 38.0 / 127], dtype=dtype))
+
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(

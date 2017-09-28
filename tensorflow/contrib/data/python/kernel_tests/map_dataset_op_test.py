@@ -16,6 +16,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from collections import namedtuple
 
 import os
 import threading
@@ -270,8 +271,8 @@ class MapDatasetTest(test.TestCase):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-               .map(lambda x: array_ops.check_numerics(x, "message"))
-               .ignore_errors())
+               .map(lambda x: array_ops.check_numerics(x, "message")).apply(
+                   dataset_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -286,10 +287,10 @@ class MapDatasetTest(test.TestCase):
   def testParallelMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
-    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-               .map(lambda x: array_ops.check_numerics(x, "message"),
-                    num_threads=2, output_buffer_size=2)
-               .ignore_errors())
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components).map(
+        lambda x: array_ops.check_numerics(x, "message"),
+        num_threads=2,
+        output_buffer_size=2).apply(dataset_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -310,9 +311,9 @@ class MapDatasetTest(test.TestCase):
     for filename in filenames:
       write_string_to_file(filename, filename)
 
-    dataset = (dataset_ops.Dataset.from_tensor_slices(filenames)
-               .map(io_ops.read_file, num_threads=2, output_buffer_size=2)
-               .ignore_errors())
+    dataset = (dataset_ops.Dataset.from_tensor_slices(filenames).map(
+        io_ops.read_file, num_threads=2, output_buffer_size=2).apply(
+            dataset_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -489,8 +490,8 @@ class MapDatasetTest(test.TestCase):
     dataset_tuple = dataset_ops.Dataset.zip((labels, images))
 
     # convert dataset of tuples to dataset of namedtuples
-    Example = namedtuple("Example", ["label", "image"])
-    dataset_namedtuple = dataset_tuple.map(Example)
+    example = namedtuple("Example", ["label", "image"])
+    dataset_namedtuple = dataset_tuple.map(example)
 
     def preprocess_tuple(label, image):
       image = 2 * image

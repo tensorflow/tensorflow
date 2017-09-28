@@ -41,6 +41,8 @@ HloModule::HloModule(const string& name,
       entry_computation_handle_(entry_computation_handle) {}
 
 HloModule::HloModule(const string& name) : name_(name) {}
+HloModule::HloModule(const string& name, const HloModuleConfig& config)
+    : name_(name), config_(config) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
@@ -311,7 +313,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) {
+std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = MakeUnique<HloModule>(name_ + "-" + suffix);
   module->config_ = config_;

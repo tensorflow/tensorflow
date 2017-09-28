@@ -144,7 +144,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -736,10 +735,9 @@ def cast(x, dtype, name=None):
       values_cast = cast(x.values, base_type, name=name)
       return sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
     else:
-      # TODO(touts): Handle what Josh said.
-      #
-      # Could return ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
-      # allows some conversions that cast() can't do, e.g.  casting numbers to
+      # TODO(josh11b): If x is not already a Tensor, we could return
+      # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
+      # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype.base_dtype == base_type:
@@ -1114,12 +1112,11 @@ floormod = gen_math_ops._floor_mod
 
 def _mul_dispatch(x, y, name=None):
   """Dispatches cwise mul for "Dense*Dense" and "Dense*Sparse"."""
-  is_tensor_y = isinstance(ag_core.getval(y), ops.Tensor)
+  is_tensor_y = isinstance(y, ops.Tensor)
   if is_tensor_y:
     return gen_math_ops._mul(x, y, name=name)
   else:
-    assert isinstance(ag_core.getval(y),
-                      sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
+    assert isinstance(y, sparse_tensor.SparseTensor)  # Case: Dense * Sparse.
     new_vals = gen_sparse_ops.sparse_dense_cwise_mul(y.indices, y.values,
                                                      y.dense_shape, x, name)
     return sparse_tensor.SparseTensor(y.indices, new_vals, y.dense_shape)
@@ -2092,13 +2089,12 @@ def sigmoid(x, name=None):
   Specifically, `y = 1 / (1 + exp(-x))`.
 
   Args:
-    x: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
-      or `qint32`.
+    x: A Tensor with type `float16`, `float32`, `float64`, `complex64`,
+      or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32`
-      otherwise the return type is `quint8`.
+    A Tensor with the same type as `x`.
 
   @compatibility(numpy)
   Equivalent to np.scipy.special.expit
@@ -2131,8 +2127,8 @@ def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
   Args:
-    x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
-      `complex64`, or `int64`.
+    x: A Tensor or SparseTensor with type `float16`, `float32`, `double`,
+      `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2311,7 +2307,7 @@ def conj(x, name=None):
   If `x` is real, it is returned unchanged.
 
   Args:
-    x: `Tensor` to conjugate.  Must have numeric type.
+    x: `Tensor` to conjugate.  Must have numeric or variant type.
     name: A name for the operation (optional).
 
   Returns:
@@ -2322,12 +2318,13 @@ def conj(x, name=None):
   """
   with ops.name_scope(name, "Conj", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype.is_complex:
+    if x.dtype.is_complex or x.dtype == dtypes.variant:
       return gen_math_ops._conj(x, name=name)
     elif x.dtype.is_floating or x.dtype.is_integer:
       return x
     else:
-      raise TypeError("Expected numeric tensor, got dtype %r" % x.dtype)
+      raise TypeError(
+          "Expected numeric or variant tensor, got dtype %r" % x.dtype)
 
 
 def _BroadcastShape(op):

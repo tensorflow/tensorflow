@@ -40,6 +40,7 @@ tf_kernel_library(
         "pack_op.cc",
         "pad_op.cc",
         "pooling_ops.cc",
+        "quantize_and_dequantize_op.cc",
         "random_ops.cc",
         "reduction_ops.cc",
         "reduction_ops_common.cc",
@@ -83,10 +84,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:concat_lib",
         "//tensorflow/core/kernels:conv_ops",
@@ -112,7 +113,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
     ],
 )
 
@@ -137,9 +137,9 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:bounds_check",
     ],
 )

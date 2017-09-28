@@ -418,6 +418,7 @@ class BaseEstimator(
             "model_dir are set both in constructor and RunConfig, but with "
             "different values. In constructor: '{}', in RunConfig: "
             "'{}' ".format(model_dir, self._config.model_dir))
+        # pylint: enable=g-doc-exception
 
     self._model_dir = model_dir or self._config.model_dir
     if self._model_dir is None:
@@ -1000,6 +1001,8 @@ class BaseEstimator(
             saver.Saver(
                 sharded=True,
                 max_to_keep=self._config.keep_checkpoint_max,
+                keep_checkpoint_every_n_hours=(
+                    self._config.keep_checkpoint_every_n_hours),
                 defer_build=True,
                 save_relative_paths=True))
 

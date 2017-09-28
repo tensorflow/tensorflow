@@ -834,6 +834,32 @@ class ReluTest(test_lib.TestCase):
         self.assertTrue(np.isnan(z).all())
 
 
+class LeakyReluTest(test_lib.TestCase):
+
+  def testRange(self):
+    batch_size = 3
+    height, width = 4, 4
+    np.random.seed(1)  # Make it reproducible.
+    inputs = np.random.uniform(
+        size=(batch_size, height, width, 3)).astype(np.float32)
+    inputs = constant_op.constant(inputs)
+
+    outputs = nn_ops.leaky_relu(inputs)
+    self.assertEquals(inputs.shape, outputs.shape)
+    with self.test_session() as sess:
+      inputs, outputs = sess.run([inputs, outputs])
+    self.assertGreaterEqual(outputs.min(), 0.0)
+    self.assertLessEqual(outputs.max(), 1.0)
+    self.assertAllClose(inputs, outputs)
+
+  def testValues(self):
+    np_values = np.array([-1.0, 0.0, 0.5, 1.0, 2.0], dtype=np.float32)
+    outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
+    with self.test_session() as sess:
+      outputs = sess.run(outputs)
+    self.assertAllClose(outputs, [-0.2, 0.0, 0.5, 1.0, 2.0])
+
+
 class MomentsTest(test_lib.TestCase):
 
   def doOutputTest(self, input_shape, moments_axes, tol=1e-4,

@@ -426,6 +426,10 @@ class FunctionLibraryRuntime {
     StepStatsCollector* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
+
+    // Parameters for remote function execution.
+    bool remote_execution = false;
+    string source_device = "";  // Fully specified device name.
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,

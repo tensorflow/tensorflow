@@ -42,6 +42,8 @@ TF_Tensor* Int32Tensor(const std::vector<int32_t>& values);
 
 TF_Tensor* Int32Tensor(int32_t v);
 
+TF_Tensor* DoubleTensor(double v);
+
 TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
                           const char* name = "feed");
 
@@ -49,6 +51,9 @@ TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
                     const char* name = "const");
 
 TF_Operation* ScalarConst(int32_t v, TF_Graph* graph, TF_Status* s,
+                          const char* name = "scalar");
+
+TF_Operation* ScalarConst(double v, TF_Graph* graph, TF_Status* s,
                           const char* name = "scalar");
 
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
@@ -64,7 +69,8 @@ TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
                   const char* name = "add");
 
-TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s);
+TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
+                  const char* name = "neg");
 
 TF_Operation* LessThan(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s);
 
@@ -88,6 +94,14 @@ bool GetFunctionDef(TF_Function* func, tensorflow::FunctionDef* func_def);
 
 bool GetAttrValue(TF_Operation* oper, const char* attr_name,
                   tensorflow::AttrValue* attr_value, TF_Status* s);
+
+// Returns a sorted vector of std::pair<function_name, gradient_func> from
+// graph_def.library().gradient()
+std::vector<std::pair<string, string>> GetGradDefs(
+    const tensorflow::GraphDef& graph_def);
+
+// Returns a sorted vector of names contained in `grad_def`
+std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def);
 
 class CSession {
  public:
