@@ -93,8 +93,7 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
       }
       if (can_simplify && top_tuple != nullptr) {
         changed = true;
-        TF_RETURN_IF_ERROR(instruction->parent()->ReplaceUsesOfInstruction(
-            instruction, top_tuple));
+        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(top_tuple));
         // No need to add anything to the worklist.
       }
     } else {
@@ -113,8 +112,7 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
         HloInstruction* element_source =
             instruction->mutable_operand(0)->mutable_operand(
                 instruction->tuple_index());
-        TF_RETURN_IF_ERROR(instruction->parent()->ReplaceUsesOfInstruction(
-            instruction, element_source));
+        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(element_source));
         for (HloInstruction* user : element_source->users()) {
           if (user->opcode() == HloOpcode::kTuple ||
               user->opcode() == HloOpcode::kGetTupleElement) {

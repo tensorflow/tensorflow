@@ -1463,6 +1463,9 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
   if (new_producer_is_user) {
     AddUser(new_producer);
   }
+  if (parent_ && parent_->root_instruction() == this) {
+    parent_->set_root_instruction(new_producer);
+  }
 
   return Status::OK();
 }

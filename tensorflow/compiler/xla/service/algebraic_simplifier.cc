@@ -926,11 +926,11 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
                  << "a single broadcast";
         HloInstruction* new_broadcast = computation_->AddInstruction(
             HloInstruction::CreateBroadcast(user->shape(), operand, {}));
-        // Use ReplaceUsesOfInstruction instead of ReplaceWithNewInstruction
-        // because we are replacing an instruction other than the visited
-        // instruction.
+        // Use HloInstruction::ReplaceAllUsesWith instead of
+        // HloComputation::ReplaceWithNewInstruction because we are replacing an
+        // instruction other than the visited instruction.
         changed_ = true;
-        return computation_->ReplaceUsesOfInstruction(user, new_broadcast);
+        return user->ReplaceAllUsesWith(new_broadcast);
       }
     }
   }
@@ -1163,8 +1163,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     }
     VLOG(4) << "  new reshape/broadcast: "
             << new_reshape_or_broadcast->ToString();
-    TF_RETURN_IF_ERROR(
-        computation_->ReplaceUsesOfInstruction(user, new_reshape_or_broadcast));
+    TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(new_reshape_or_broadcast));
     changed = true;
   }
   return changed;

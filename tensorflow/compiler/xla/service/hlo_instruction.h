@@ -422,6 +422,9 @@ class HloInstruction {
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
   // of this instruction to avoid introducing cycles into the graph.
+  //
+  // If this instruction is the root of its computation, sets the computation's
+  // root to new_producer.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
   // Detaches an instruction from its operands. That is, remove the instruction
@@ -669,11 +672,11 @@ class HloInstruction {
   // Predondition: 'instruction_to_merge' must be an operand of 'this'.
   void MergeFusionInstruction(HloInstruction* instruction_to_merge);
 
-  // Merges the fused instructions from 'instruction_to_merge' into the
-  // fused instruction set of 'this' and generate multioutput fusion
-  // instructions. All the user of instruction_to_merge will be redirected
-  // to 'this' instruction. `instruction_to_merge' will be removed from its
-  // parent computation.
+  // Merges the fused instructions from instruction_to_merge into the fused
+  // instruction set of 'this' and generates multioutput fusion instructions.
+  // All the users of instruction_to_merge will be redirected to 'this'
+  // instruction. instruction_to_merge will be removed from its parent
+  // computation.
   //
   // Precondition: opcode() == HloOpcode::kFusion
   void MergeFusionInstructionIntoMultiOutput(

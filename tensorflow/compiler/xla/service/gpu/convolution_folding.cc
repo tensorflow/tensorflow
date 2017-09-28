@@ -178,7 +178,7 @@ MatchBackwardFilter(HloInstruction* conv) {
     transpose =
         parent_computation->AddInstruction(HloInstruction::CreateTranspose(
             conv->shape(), conv, transpose_dimensions));
-    TF_CHECK_OK(parent_computation->ReplaceUsesOfInstruction(conv, transpose));
+    TF_CHECK_OK(conv->ReplaceAllUsesWith(transpose));
   }
 
   // Restore the dimension numbers of the backward convolution from the forward

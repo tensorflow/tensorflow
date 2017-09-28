@@ -245,15 +245,6 @@ Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   return Status::OK();
 }
 
-Status HloComputation::ReplaceUsesOfInstruction(
-    HloInstruction* instruction_to_replace, HloInstruction* instruction) {
-  TF_RETURN_IF_ERROR(instruction_to_replace->ReplaceAllUsesWith(instruction));
-  if (instruction_to_replace == root_instruction()) {
-    set_root_instruction(instruction);
-  }
-  return Status::OK();
-}
-
 void HloComputation::set_root_instruction(
     HloInstruction* new_root_instruction) {
   // The shape of the root (ignoring layout) is an invariant of the computation
@@ -569,8 +560,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
-  TF_RETURN_IF_ERROR(
-      ReplaceUsesOfInstruction(old_instruction, new_instruction));
+  TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 
