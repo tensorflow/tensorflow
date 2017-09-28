@@ -185,14 +185,12 @@ public class ScopeTest {
   private static final class Const<T> {
     private final Output<T> output;
 
-    @SuppressWarnings("unchecked")
     static Const<Integer> create(Scope s, int v) {
-      return create(s, (Tensor<Integer>) Tensor.create(v));
+      return create(s, Tensor.create(v, Integer.class));
     }
 
-    @SuppressWarnings("unchecked")
     static Const<Integer> create(Scope s, int[] v) {
-      return create(s, (Tensor<Integer>) Tensor.create(v));
+      return create(s, Tensor.create(v, Integer.class));
     }
 
     static <T> Const<T> create(Scope s, Tensor<T> value) {
