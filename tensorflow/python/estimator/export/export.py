@@ -133,11 +133,12 @@ def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
       shape_list[0] = default_batch_size
       shape = tensor_shape.TensorShape(shape_list)
 
-      # Reuse the feature tensor name for the placeholder, excluding the index
-      placeholder_name = t.name.split(':')[0]
+      # Reuse the feature tensor's op name (t.op.name) for the placeholder,
+      # excluding the index from the tensor's name (t.name):
+      # t.name = "%s:%d" % (t.op.name, t._value_index)
       receiver_tensors[name] = array_ops.placeholder(dtype=t.dtype,
                                                      shape=shape,
-                                                     name=placeholder_name)
+                                                     name=t.op.name)
     # TODO(b/34885899): remove the unnecessary copy
     # The features provided are simply the placeholders, but we defensively copy
     # the dict because it may be mutated.
