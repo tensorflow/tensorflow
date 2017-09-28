@@ -17,6 +17,8 @@ tasks:
           - pull_request.synchronize
           - pull_request.reopened
           - push
+        branches:
+          - master
 
     scopes: [
       "queue:create-task:lowest:{{ taskcluster.docker.provisionerId }}/deepspeech-worker",
