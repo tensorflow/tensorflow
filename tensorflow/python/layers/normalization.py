@@ -49,7 +49,7 @@ class BatchNormalization(base.Layer):
   Sergey Ioffe, Christian Szegedy
 
   Arguments:
-    axis: Integer, the axis that should be normalized (typically the features
+    axis: An `int`, the axis that should be normalized (typically the features
       axis). For instance, after a `Conv2D` layer with
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
@@ -90,6 +90,11 @@ class BatchNormalization(base.Layer):
       If `None`, use the system recommended implementation.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    num_virtual_batches: An `int`, specifies the number of virtual batches to
+      operate over. If not greater than 1, will perform "ghost batch
+      normalization", which creates virtual sub-batches to operate over for
+      batch norm. Default is 1 virtual batch, in which no virtual batching is
+      performed. Must divide the actual batch size during graph execution.
     name: A string, the name of the layer.
   """
 
@@ -112,6 +117,7 @@ class BatchNormalization(base.Layer):
                renorm_momentum=0.99,
                fused=None,
                trainable=True,
+               num_virtual_batches=1,
                name=None,
                **kwargs):
     super(BatchNormalization, self).__init__(
@@ -135,6 +141,11 @@ class BatchNormalization(base.Layer):
 
     self.fused = fused
     self._bessels_correction_test_only = True
+
+    if num_virtual_batches < 1:
+      raise ValueError('num_virtual_batches must be a positive integer')
+    self.num_virtual_batches = num_virtual_batches
+
     if renorm:
       renorm_clipping = renorm_clipping or {}
       keys = ['rmax', 'rmin', 'dmax']
@@ -179,6 +190,10 @@ class BatchNormalization(base.Layer):
                        input_shape)
     self.input_spec = base.InputSpec(ndim=ndim,
                                      axes={self.axis: param_dim.value})
+
+    if self.num_virtual_batches > 1:
+      # the axis dim is combined with num_virtual_batches
+      param_dim = input_shape[axis] * self.num_virtual_batches
 
     if self.scale:
       self.gamma = self.add_variable(name='gamma',
@@ -389,8 +404,53 @@ class BatchNormalization(base.Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
+    if self.num_virtual_batches > 1:
+      # Virtual batches (aka ghost batches) can be simulated by using some
+      # reshape/transpose tricks on top of base batch normalization.
+      original_shape = [-1] + inputs.shape.as_list()[1:]
+      expanded_shape = [-1, self.num_virtual_batches] + original_shape[1:]
+
+      # Will cause errors if num_virtual_batches does not divide the batch size
+      inputs = array_ops.reshape(inputs, expanded_shape)
+
+      ndims = len(expanded_shape)
+      if self.axis < 0:
+        axis = ndims + self.axis
+      else:
+        axis = self.axis + 1      # Account for the added dimension
+
+      # Permute the num_virtual_batch dimension (dim 1) to be adjacent to axis
+      # TODO(b/66257056): when multi-axis batch normalization is implemented,
+      # this permutation trick and the combined_dim reshape are no longer
+      # necessary and can be reworked to simply use broadcasting.
+      permutation = ([0] + list(range(2, axis)) + [1, axis] +
+                     list(range(axis + 1, ndims)))
+      inverse_permutation = [x[1] for x in
+                             sorted(zip(permutation, range(ndims)))]
+      inputs = array_ops.transpose(inputs, perm=permutation)
+
+      # Combine the axis and num_virtual_batch dimension in order to take
+      # advantage of fused batch normalization
+      combined_dim = expanded_shape[1] * expanded_shape[axis]
+      perm_shape = [-1] + inputs.shape.as_list()[1:]
+      combined_shape = (perm_shape[:axis - 1] +
+                        [combined_dim] +
+                        perm_shape[axis + 1:])
+      inputs = array_ops.reshape(inputs, combined_shape)
+      # After the above reshape, the batch norm axis is the original self.axis
+
+      # Undoes the reshaping and transposing tricks done above
+      def undo_virtual_batching(outputs):
+        outputs = array_ops.reshape(outputs, perm_shape)
+        outputs = array_ops.transpose(outputs, perm=inverse_permutation)
+        outputs = array_ops.reshape(outputs, original_shape)
+        return outputs
+
     if self.fused:
-      return self._fused_batch_norm(inputs, training=training)
+      outputs = self._fused_batch_norm(inputs, training=training)
+      if self.num_virtual_batches > 1:
+        return undo_virtual_batching(outputs)
+      return outputs
 
     # First, compute the axes along which to reduce the mean / variance,
     # as well as the broadcast shape to be used for all parameters.
@@ -454,12 +514,17 @@ class BatchNormalization(base.Layer):
         return array_ops.reshape(v, broadcast_shape)
       return v
 
-    return nn.batch_normalization(inputs,
-                                  _broadcast(mean),
-                                  _broadcast(variance),
-                                  _broadcast(offset),
-                                  _broadcast(scale),
-                                  self.epsilon)
+    outputs = nn.batch_normalization(inputs,
+                                     _broadcast(mean),
+                                     _broadcast(variance),
+                                     _broadcast(offset),
+                                     _broadcast(scale),
+                                     self.epsilon)
+
+    if self.num_virtual_batches > 1:
+      return undo_virtual_batching(outputs)
+
+    return outputs
 
 
 def batch_normalization(inputs,
@@ -483,7 +548,8 @@ def batch_normalization(inputs,
                         renorm=False,
                         renorm_clipping=None,
                         renorm_momentum=0.99,
-                        fused=None):
+                        fused=None,
+                        num_virtual_batches=1):
   """Functional interface for the batch normalization layer.
 
   Reference: http://arxiv.org/abs/1502.03167
@@ -505,7 +571,7 @@ def batch_normalization(inputs,
 
   Arguments:
     inputs: Tensor input.
-    axis: Integer, the axis that should be normalized (typically the features
+    axis: An `int`, the axis that should be normalized (typically the features
       axis). For instance, after a `Convolution2D` layer with
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
@@ -555,6 +621,11 @@ def batch_normalization(inputs,
       to get the means and variances for inference.
     fused: if `True`, use a faster, fused implementation if possible.
       If `None`, use the system recommended implementation.
+    num_virtual_batches: An `int`, specifies the number of virtual batches to
+      operate over. If greater than 1, will perform "ghost batch
+      normalization", which creates virtual sub-batches to operate over for
+      batch norm. Default is 1 virtual batch, in which no virtual batching is
+      performed. Must divide the actual batch size during graph execution.
 
   Returns:
     Output tensor.
@@ -578,6 +649,7 @@ def batch_normalization(inputs,
       renorm_momentum=renorm_momentum,
       fused=fused,
       trainable=trainable,
+      num_virtual_batches=num_virtual_batches,
       name=name,
       _reuse=reuse,
       _scope=name)
