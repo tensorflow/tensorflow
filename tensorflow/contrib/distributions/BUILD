@@ -299,6 +299,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "mixture_same_family_test",
+    size = "small",
+    srcs = ["python/kernel_tests/mixture_same_family_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "negative_binomial_test",
     size = "small",
     srcs = ["python/kernel_tests/negative_binomial_test.py"],

@@ -36,6 +36,7 @@ from tensorflow.contrib.distributions.python.ops.independent import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
+from tensorflow.contrib.distributions.python.ops.mixture_same_family import *
 from tensorflow.contrib.distributions.python.ops.moving_stats import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
@@ -143,6 +144,7 @@ _allowed_symbols = [
     'TransformedDistribution',
     'QuantizedDistribution',
     'Mixture',
+    'MixtureSameFamily',
     'ExpRelaxedOneHotCategorical',
     'OneHotCategorical',
     'RelaxedBernoulli',
