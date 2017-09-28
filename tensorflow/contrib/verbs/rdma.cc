@@ -105,7 +105,7 @@ int get_dev_active_port_count(ibv_device *device) {
 
   context = ibv_open_device(device);
   CHECK(context) << "Open context failed for " << ibv_get_device_name(device);
-  rc = ibv_query_device(context,&device_att);
+  rc = ibv_query_device(context, &device_att);
   CHECK(!rc) << "Failed to query the device";
 
   for (port_index = 1; port_index <= device_att.phys_port_cnt; port_index++) {
@@ -353,7 +353,7 @@ enum ibv_mtu set_mtu(uint8_t port_num, ibv_context* context) {
   mtu_s = get_env_var("RDMA_MTU");
 
   if (!mtu_s.empty()) {
-	  mtu_i = stoi(mtu_s);
+    mtu_i = stoi(mtu_s);
     switch (mtu_i) {
     case 256:
       mtu = IBV_MTU_256;
@@ -799,9 +799,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     struct ibv_qp_attr attr;
     memset(&attr, 0, sizeof(ibv_qp_attr));
     attr.qp_state = IBV_QPS_RTR;
-    struct ibv_port_attr port_attr;
-    CHECK(!ibv_query_port(adapter_->context_, adapter_->params_.port_num, &port_attr))
-        << "Query port failed";
+
     // This assumes both QP's ports are configured with the same MTU
     attr.path_mtu = adapter_->params_.mtu;
     attr.dest_qp_num = remoteAddr.qpn;
