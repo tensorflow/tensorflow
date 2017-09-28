@@ -65,7 +65,6 @@ config_setting(
     # will also need appropriate -mavx*, as required by specific op you use.
     name = "xsmm_backward",
     values = {
-        "define": "tensorflow_xsmm=1",
         "define": "tensorflow_xsmm_backward=1",
     },
 )
