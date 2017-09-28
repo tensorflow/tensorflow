@@ -469,5 +469,39 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(tf_result, expanded_nums)
 
 
+class PowTest(test_util.TensorFlowTestCase):
+
+  def testNegativeExponent(self):
+    for i_dtype in (np.int32, np.int64):
+      x = np.array([2, 3, 4, 5], dtype=i_dtype)
+      y = np.array([-1, -2, -3, 3], dtype=i_dtype)
+      z = np.array([0.5, 1.0 / 9.0, 1.0 / 64.0, 125.0], dtype=np.float64)
+      with self.test_session():
+        z_np = math_ops.pow(x, y).eval()
+        self.assertEqual(z_np.dtype, z.dtype)
+        self.assertAllClose(z_np, z)
+
+  def testTypeInference(self):
+    x = np.array([2, 3], dtype=np.int64)
+    y = [2, 3]
+    z = np.array([4.0, 27.0], dtype=np.float64)
+    with self.test_session():
+      z_np = math_ops.pow(x, y).eval()
+      self.assertEqual(z_np.dtype, z.dtype)
+      self.assertAllClose(z_np, z)
+
+  def testComplex(self):
+    for i_dtype in (np.complex64, np.complex128):
+      x = np.array([2 + 1j, 3 + 2j], dtype=i_dtype)
+      y = np.array([-2, 2], dtype=i_dtype)
+      z = np.array([3.0 / 25.0 - 4.0j / 25.0, 5 + 12j], dtype=i_dtype)
+      with self.test_session():
+        x_tf = constant_op.constant(x, shape=x.shape)
+        y_tf = constant_op.constant(y, shape=y.shape)
+        z_np = math_ops.pow(x_tf, y_tf).eval()
+        self.assertEqual(z_np.dtype, z.dtype)
+        self.assertAllClose(z_np, z)
+
+
 if __name__ == "__main__":
   googletest.main()

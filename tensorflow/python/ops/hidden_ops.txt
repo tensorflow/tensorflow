@@ -261,6 +261,7 @@ Min
 Mul
 Neg
 Pow
+IntegralPow
 Prod
 Range
 RealDiv
