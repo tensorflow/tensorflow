@@ -459,6 +459,11 @@ message MapRequest {
   repeated ComputationDataHandle operands = 2;
   ComputationHandle to_apply = 3;
   repeated ComputationDataHandle static_operands = 4;
+  // The dimensions over which to map.
+  // Example mapping a Dot operation along the batch dimension 0:
+  //   operand0.shape = [2, 2, 2], operand1.shape = [2,2,3]
+  //   Map({operand0, operand1}, Dot, {0})
+  repeated int64 dimensions = 5;
 }
 
 message ReduceRequest {

@@ -604,6 +604,7 @@ class ComputationBuilder {
   ComputationDataHandle Map(
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       const Computation& computation,
+      tensorflow::gtl::ArraySlice<int64> dimensions,
       tensorflow::gtl::ArraySlice<ComputationDataHandle> static_operands = {});
 
   // Enqueues a N(mu, sigma) random number generation instruction onto the
