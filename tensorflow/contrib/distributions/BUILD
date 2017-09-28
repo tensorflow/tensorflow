@@ -373,7 +373,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "vector_sinh_arcsinh_diag_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/vector_sinh_arcsinh_diag_test.py"],
     additional_deps = [
         ":distributions_py",
