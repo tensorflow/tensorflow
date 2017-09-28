@@ -2591,8 +2591,8 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
   // lhs_dims[i] is the symbol of the logical dimension i for the lhs
   // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
   std::vector<string> lhs_dims(2 + dnums.spatial_dimensions().size());
-  lhs_dims[dnums.input_batch_dimension()] = 'b';
-  lhs_dims[dnums.input_feature_dimension()] = 'f';
+  lhs_dims[dnums.batch_dimension()] = 'b';
+  lhs_dims[dnums.feature_dimension()] = 'f';
   for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
     lhs_dims[dnums.spatial_dimensions(i)] = StrCat(i);
   }
@@ -2604,19 +2604,12 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
     rhs_dims[dnums.kernel_spatial_dimensions(i)] = StrCat(i);
   }
 
-  std::vector<string> output_dims(2 + dnums.spatial_dimensions().size());
-  output_dims[dnums.output_batch_dimension()] = 'b';
-  output_dims[dnums.output_feature_dimension()] = 'f';
-  for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
-    output_dims[dnums.spatial_dimensions(i)] = StrCat(i);
-  }
-
   result += "dim_labels=";
   append_dims(lhs_dims, operand(0)->shape());
   result += "_";
   append_dims(rhs_dims, operand(1)->shape());
   result += "->";
-  append_dims(output_dims, shape());
+  append_dims(lhs_dims, shape());
   return result;
 }
 

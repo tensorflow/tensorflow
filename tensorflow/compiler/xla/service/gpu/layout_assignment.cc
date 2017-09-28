@@ -84,8 +84,8 @@ Status GpuLayoutAssignment::AddBackendConstraints(
            --i) {
         input_layout.push_back(dimension_numbers.spatial_dimensions(i));
       }
-      input_layout.push_back(dimension_numbers.input_feature_dimension());
-      input_layout.push_back(dimension_numbers.input_batch_dimension());
+      input_layout.push_back(dimension_numbers.feature_dimension());
+      input_layout.push_back(dimension_numbers.batch_dimension());
       Shape input_shape(input->shape());
       *input_shape.mutable_layout() = LayoutUtil::MakeLayout(input_layout);
 
@@ -106,8 +106,8 @@ Status GpuLayoutAssignment::AddBackendConstraints(
            --i) {
         output_layout.push_back(dimension_numbers.spatial_dimensions(i));
       }
-      output_layout.push_back(dimension_numbers.output_feature_dimension());
-      output_layout.push_back(dimension_numbers.output_batch_dimension());
+      output_layout.push_back(dimension_numbers.feature_dimension());
+      output_layout.push_back(dimension_numbers.batch_dimension());
       Shape output_shape(output->shape());
       *output_shape.mutable_layout() = LayoutUtil::MakeLayout(output_layout);
 

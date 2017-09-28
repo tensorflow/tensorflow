@@ -72,10 +72,8 @@ MatchBackwardFilter(HloInstruction* conv) {
   // Step 2: match paddings and dimension numbers of the forward convolution.
   const ConvolutionDimensionNumbers& conv_dnums =
       conv->convolution_dimension_numbers();
-  auto input_batch_dim = conv_dnums.input_batch_dimension();
-  auto input_feature_dim = conv_dnums.input_feature_dimension();
-  auto output_batch_dim = conv_dnums.output_batch_dimension();
-  auto output_feature_dim = conv_dnums.output_feature_dimension();
+  auto batch_dim = conv_dnums.batch_dimension();
+  auto feature_dim = conv_dnums.feature_dimension();
   auto spatial_dims = conv_dnums.spatial_dimensions();
 
   for (const WindowDimension& window_dim : conv->window().dimensions()) {
@@ -185,10 +183,8 @@ MatchBackwardFilter(HloInstruction* conv) {
   // convolution. The two activation dimensions are reversed (batch and
   // feature).
   ConvolutionDimensionNumbers backward_conv_dnums;
-  backward_conv_dnums.set_input_batch_dimension(input_feature_dim);
-  backward_conv_dnums.set_input_feature_dimension(input_batch_dim);
-  backward_conv_dnums.set_output_batch_dimension(output_feature_dim);
-  backward_conv_dnums.set_output_feature_dimension(output_batch_dim);
+  backward_conv_dnums.set_batch_dimension(feature_dim);
+  backward_conv_dnums.set_feature_dimension(batch_dim);
   for (int i = 0; i < spatial_dims.size(); ++i) {
     backward_conv_dnums.add_spatial_dimensions(spatial_dims[i]);
   }
@@ -202,9 +198,9 @@ MatchBackwardFilter(HloInstruction* conv) {
   // the dimension numbering of the weight gradients. This transposition maps
   // dimension i to PositionInContainer(transpose->dimensions(), i).
   backward_conv_dnums.set_kernel_input_feature_dimension(
-      PositionInContainer(transpose->dimensions(), output_batch_dim));
+      PositionInContainer(transpose->dimensions(), batch_dim));
   backward_conv_dnums.set_kernel_output_feature_dimension(
-      PositionInContainer(transpose->dimensions(), output_feature_dim));
+      PositionInContainer(transpose->dimensions(), feature_dim));
   for (int i = 0; i < spatial_dims.size(); ++i) {
     backward_conv_dnums.add_kernel_spatial_dimensions(
         PositionInContainer(transpose->dimensions(), spatial_dims[i]));
