@@ -1137,6 +1137,20 @@ TEST_F(OpTest, BiasAddV1) {
   });
 }
 
+TEST_F(OpTest, BroadcastArgs) {
+  Repeatedly([this]() {
+    // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
+    // DataType type = Choose<DataType>({DT_INT32, DT_INT64});
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("BroadcastArgs")
+            .Input(AsIntTensor(type, dims.first))
+            .Input(AsIntTensor(type, dims.second))
+            .Attr("T", type));
+  });
+}
+
 TEST_F(OpTest, BroadcastGradientArgs) {
   Repeatedly([this]() {
     // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
@@ -1354,6 +1368,20 @@ TEST_F(OpTest, Conv3DBackpropInput) {
             .Attr("T", DT_FLOAT)
             .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID"));
+  });
+}
+
+TEST_F(OpTest, DepthToSpace) {
+  Repeatedly([this]() {
+    int64 block = RandomDim(2, 5);
+    std::vector<int64> input_dims = RandomDims(4, 4);
+    input_dims[1] = (input_dims[1] + (block - 1)) / block;
+    input_dims[2] = (input_dims[2] + (block - 1)) / block;
+    input_dims[3] *= block * block;
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("DepthToSpace")
+                                             .RandomInput(DT_FLOAT, input_dims)
+                                             .Attr("T", DT_FLOAT)
+                                             .Attr("block_size", block));
   });
 }
 
@@ -2521,6 +2549,20 @@ TEST_F(OpTest, SpaceToBatchND) {
                 std::vector<int32>(block_dims.begin(), block_dims.end())))
             .Input(paddings)
             .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, SpaceToDepth) {
+  Repeatedly([this]() {
+    int64 block = RandomDim(2, 5);
+    std::vector<int64> input_dims = RandomDims(4, 4);
+    // Round spatial dimensions up to a multiple of the block size
+    input_dims[1] = (input_dims[1] + (block - 1)) / block * block;
+    input_dims[2] = (input_dims[2] + (block - 1)) / block * block;
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SpaceToDepth")
+                                             .RandomInput(DT_FLOAT, input_dims)
+                                             .Attr("T", DT_FLOAT)
+                                             .Attr("block_size", block));
   });
 }
 

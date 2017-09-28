@@ -143,8 +143,10 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
                             TF_Status* out_status,
                             std::vector<PyObject*>* py_outputs);
 
-// Retrieves control inputs of this operation.
-// control_inputs should be empty.
+// Retrieves the inputs of this operation.
+std::vector<TF_Output> GetOperationInputs(TF_Operation* oper);
+
+// Retrieves the control inputs of this operation.
 std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
     TF_Operation* oper);
 

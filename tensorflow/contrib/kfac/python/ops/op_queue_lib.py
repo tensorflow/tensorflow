@@ -12,14 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Split handler custom ops."""
+"""Helper for choosing which op to run next in a distributed setting."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-from tensorflow.contrib.boosted_trees.python.ops import boosted_trees_ops_loader
-# pylint: enable=unused-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.boosted_trees.python.ops.gen_ensemble_optimizer_ops import *
-# pylint: enable=wildcard-import
+# pylint: disable=unused-import,line-too-long,wildcard-import
+from tensorflow.contrib.kfac.python.ops.op_queue import *
+from tensorflow.python.util.all_util import remove_undocumented
+# pylint: enable=unused-import,line-too-long,wildcard-import
+
+_allowed_symbols = [
+    'OpQueue',
+]
+
+remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

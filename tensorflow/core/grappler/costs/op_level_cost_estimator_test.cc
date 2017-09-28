@@ -24,7 +24,7 @@ namespace grappler {
 
 namespace {
 // Wrangles the minimum number of proto fields to set up a matrix.
-void DescribeMatrix(int rows, int columns, OpInfo *op_features) {
+void DescribeMatrix(int rows, int columns, OpInfo* op_features) {
   auto input = op_features->add_inputs();
   auto shape = input->mutable_shape();
   auto shape_rows = shape->add_dim();
@@ -43,31 +43,31 @@ void SetCpuDevice(OpInfo* op_features) {
 }
 
 // Returns an OpInfo for MatMul with the minimum set of fields set up.
-OpInfo DescribeMatMul(int m, int n, int l, int k) {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op("MatMul");
+OpContext DescribeMatMul(int m, int n, int l, int k) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("MatMul");
 
-  DescribeMatrix(m, l, &op_features);
-  DescribeMatrix(k, n, &op_features);
-  return op_features;
+  DescribeMatrix(m, l, &op_context.op_info);
+  DescribeMatrix(k, n, &op_context.op_info);
+  return op_context;
 }
 
 // Returns an OpInfo for MatMul with unknown input shapes.
-OpInfo DescribeMatMulUnknownShape() {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op("MatMul");
+OpContext DescribeMatMulUnknownShape() {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("MatMul");
 
-  auto input = op_features.add_inputs();
+  auto input = op_context.op_info.add_inputs();
   auto shape = input->mutable_shape();
   shape->set_unknown_rank(true);
 
-  input = op_features.add_inputs();
+  input = op_context.op_info.add_inputs();
   shape = input->mutable_shape();
   shape->set_unknown_rank(true);
 
-  return op_features;
+  return op_context;
 }
 
 // Wrangles the minimum number of proto fields to set up an input of
@@ -83,21 +83,21 @@ void DescribeArbitraryRankInput(const std::vector<int>& dims, DataType dtype,
 }
 
 // Returns an OpInfo for a BatchMatMul
-OpInfo DescribeBatchMatMul(const std::vector<int>& dims_a,
-                           const std::vector<int>& dims_b) {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op("BatchMatMul");
+OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
+                              const std::vector<int>& dims_b) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("BatchMatMul");
 
-  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_features);
-  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_features);
-  return op_features;
+  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
+  return op_context;
 }
 
 // Wrangles the minimum number of proto fields to set up a 4D Tensor for cost
 // estimation purposes.
 void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
-                      OpInfo *op_features) {
+                      OpInfo* op_features) {
   auto input = op_features->add_inputs();
   auto shape = input->mutable_shape();
   shape->add_dim()->set_size(dim0);
@@ -108,26 +108,26 @@ void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
 }
 
 // Returns an OpInfo for Conv2D with the minimum set of fields set up.
-OpInfo DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2, int kx,
-                           int ky, int oz) {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op("Conv2D");
+OpContext DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2,
+                              int kx, int ky, int oz) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Conv2D");
 
-  DescribeTensor4D(batch, ix, iy, iz1, &op_features);
-  DescribeTensor4D(kx, ky, iz2, oz, &op_features);
-  return op_features;
+  DescribeTensor4D(batch, ix, iy, iz1, &op_context.op_info);
+  DescribeTensor4D(kx, ky, iz2, oz, &op_context.op_info);
+  return op_context;
 }
 
-OpInfo DescribeOp(const string& op, int size1, int size2) {
-  OpInfo op_features;
-  SetCpuDevice(&op_features);
-  op_features.set_op(op);
+OpContext DescribeOp(const string& op, int size1, int size2) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op(op);
 
-  DescribeTensor4D(size1, 1, 1, 1, &op_features);
-  DescribeTensor4D(2 * size1, size2, 1, 1, &op_features);
+  DescribeTensor4D(size1, 1, 1, 1, &op_context.op_info);
+  DescribeTensor4D(2 * size1, size2, 1, 1, &op_context.op_info);
 
-  auto output = op_features.add_outputs();
+  auto output = op_context.op_info.add_outputs();
   auto shape = output->mutable_shape();
   shape->add_dim()->set_size(2 * size1);
   shape->add_dim()->set_size(size2);
@@ -135,15 +135,15 @@ OpInfo DescribeOp(const string& op, int size1, int size2) {
   shape->add_dim()->set_size(1);
   output->set_dtype(DT_FLOAT);
 
-  SetCpuDevice(&op_features);
-  return op_features;
+  SetCpuDevice(&op_context.op_info);
+  return op_context;
 }
 }  // namespace
 
 class OpLevelCostEstimatorTest : public ::testing::Test {
  protected:
-  Costs PredictCosts(const OpInfo& op_features) const {
-    return estimator_.PredictCosts(op_features);
+  Costs PredictCosts(const OpContext& op_context) const {
+    return estimator_.PredictCosts(op_context);
   }
 
   int64 CountMatMulOperations(const OpInfo& op_features,
@@ -228,20 +228,21 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
   bool matmul_inaccurate = false;
   bool batch_matmul_inaccurate = false;
   EXPECT_EQ(
-      CountMatMulOperations(DescribeMatMul(2, 2, 4, 4), &matmul_inaccurate),
-      CountBatchMatMulOperations(DescribeBatchMatMul({2, 4}, {4, 2}),
+      CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
+                            &matmul_inaccurate),
+      CountBatchMatMulOperations(DescribeBatchMatMul({2, 4}, {4, 2}).op_info,
                                  &batch_matmul_inaccurate));
   EXPECT_EQ(matmul_inaccurate, batch_matmul_inaccurate);
-  EXPECT_EQ(10 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4),
+  EXPECT_EQ(10 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
                                        &matmul_inaccurate),
             CountBatchMatMulOperations(
-                DescribeBatchMatMul({10, 2, 4}, {-1, 10, 4, 2}),
+                DescribeBatchMatMul({10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
-  EXPECT_EQ(20 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4),
+  EXPECT_EQ(20 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4).op_info,
                                        &matmul_inaccurate),
             CountBatchMatMulOperations(
-                DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}),
+                DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
 }

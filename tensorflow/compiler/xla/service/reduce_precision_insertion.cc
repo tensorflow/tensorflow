@@ -96,8 +96,7 @@ StatusOr<bool> ReducePrecisionInsertion::insert_after(
   HloInstruction* reduced = instruction->parent()->AddInstruction(
       HloInstruction::CreateReducePrecision(instruction->shape(), instruction,
                                             exponent_bits_, mantissa_bits_));
-  TF_RETURN_IF_ERROR(
-      instruction->parent()->ReplaceUsesOfInstruction(instruction, reduced));
+  TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(reduced));
   return true;
 }
 

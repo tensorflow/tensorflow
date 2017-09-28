@@ -24,6 +24,7 @@ from collections import namedtuple
 
 import numpy as np
 
+from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -272,7 +273,7 @@ class MapDatasetTest(test.TestCase):
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message")).apply(
-                   dataset_ops.ignore_errors()))
+                   error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -290,7 +291,7 @@ class MapDatasetTest(test.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components).map(
         lambda x: array_ops.check_numerics(x, "message"),
         num_threads=2,
-        output_buffer_size=2).apply(dataset_ops.ignore_errors()))
+        output_buffer_size=2).apply(error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -313,7 +314,7 @@ class MapDatasetTest(test.TestCase):
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(filenames).map(
         io_ops.read_file, num_threads=2, output_buffer_size=2).apply(
-            dataset_ops.ignore_errors()))
+            error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()

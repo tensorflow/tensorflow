@@ -229,4 +229,3 @@ def get_temp_export_dir(timestamped_export_dir):
       compat.as_bytes(dirname),
       compat.as_bytes('temp-{}'.format(basename)))
   return temp_export_dir
-
