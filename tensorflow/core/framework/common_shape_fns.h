@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -151,6 +152,14 @@ inline Status MergeBothInputsShapeFn(InferenceContext* c) {
   c->set_output(0, out);
   return Status::OK();
 }
+
+// Returns a new shape with the specified dims arranged in the specified
+// format. The returned value is owned by this context.
+// Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.
+Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
+                           const std::vector<DimensionOrConstant>& spatial,
+                           DimensionOrConstant C, ShapeHandle* out,
+                           shape_inference::InferenceContext* context);
 
 // Shape function for MatMul-like operations.
 Status MatMulShape(shape_inference::InferenceContext* c);

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -218,27 +217,24 @@ Status CheckFormatConstraintsOnShape(const TensorFormat tensor_format,
   return Status::OK();
 }
 
-// Returns a new shape with the specified dims arranged in the specified
-// format. The returned value is owned by this context.
-// Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.
 Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
                            const std::vector<DimensionOrConstant>& spatial,
                            DimensionOrConstant C, ShapeHandle* out,
-                           shape_inference::InferenceContext* c) {
+                           shape_inference::InferenceContext* context) {
   const int num_dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
   std::vector<DimensionHandle> dims_actual(num_dims);
-  dims_actual[GetTensorBatchDimIndex(num_dims, format)] = c->MakeDim(N);
+  dims_actual[GetTensorBatchDimIndex(num_dims, format)] = context->MakeDim(N);
   int outer_c_index = GetTensorFeatureDimIndex(num_dims, format);
-  dims_actual[outer_c_index] = c->MakeDim(C);
+  dims_actual[outer_c_index] = context->MakeDim(C);
   if (format == FORMAT_NCHW_VECT_C) {
     dims_actual[GetTensorInnerFeatureDimIndex(num_dims, format)] =
-        c->MakeDim(4);
+        context->MakeDim(4);
   }
   for (int spatial_dim = 0; spatial_dim < spatial.size(); spatial_dim++) {
     dims_actual[GetTensorSpatialDimIndex(num_dims, format, spatial_dim)] =
-        c->MakeDim(spatial[spatial_dim]);
+        context->MakeDim(spatial[spatial_dim]);
   }
-  *out = c->MakeShape(dims_actual);
+  *out = context->MakeShape(dims_actual);
   return Status::OK();
 }
 
