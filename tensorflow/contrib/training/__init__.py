@@ -54,6 +54,7 @@ from tensorflow.contrib.training.python.training.evaluation import SummaryAtEndH
 from tensorflow.contrib.training.python.training.evaluation import wait_for_new_checkpoint
 from tensorflow.contrib.training.python.training.feeding_queue_runner import FeedingQueueRunner
 from tensorflow.contrib.training.python.training.hparam import *
+from tensorflow.contrib.training.python.training.partial_restore_session import *
 from tensorflow.contrib.training.python.training.resample import *
 from tensorflow.contrib.training.python.training.sampling_ops import *
 from tensorflow.contrib.training.python.training.sequence_queueing_state_saver import *
@@ -73,6 +74,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 _allowed_symbols = [
     'checkpoints_iterator', 'evaluate_once', 'evaluate_repeatedly',
     'FeedingQueueRunner', 'get_or_create_eval_step', 'StopAfterNEvalsHook',
+    'PartialRestoreSession', 'CheckpointRestorerHook',
     'SummaryAtEndHook', 'wait_for_new_checkpoint', 'add_gradients_summaries',
     'clip_gradient_norms', 'clip_gradient_norms_fn', 'create_train_op',
     'multiply_gradients', 'train']
