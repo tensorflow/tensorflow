@@ -1280,6 +1280,13 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_pyclif_proto_library(
+    name = "protobuf/meta_graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/meta_graph.proto",
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
 # Internal targets
 
