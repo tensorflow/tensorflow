@@ -90,6 +90,8 @@ py_library(
         ":saver_test_utils",
         ":subscribe",
         ":test_ops",  # TODO: Break testing code out into separate rule.
+        ":tf_item",
+        ":tf_cluster",
         ":tf_optimizer",
         ":util",
         ":weights_broadcast_ops",
@@ -2957,7 +2959,9 @@ tf_py_wrap_cc(
         "client/tf_sessionrun_wrapper.i",
         "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
+        "grappler/cluster.i",
         "grappler/cost_analyzer.i",
+        "grappler/item.i",
         "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
         "lib/core/py_func.i",
@@ -4151,6 +4155,66 @@ cuda_py_test(
 )
 
 py_library(
+    name = "tf_item",
+    srcs = [
+        "grappler/item.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pywrap_tensorflow_internal",
+        "//tensorflow/core/grappler/costs:op_performance_data_py",
+    ],
+)
+
+py_test(
+    name = "item_test",
+    size = "small",
+    srcs = [
+        "grappler/item_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # tf_optimizer is not available in pip.
+    deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":tf_item",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "tf_cluster",
+    srcs = [
+        "grappler/cluster.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pywrap_tensorflow_internal",
+        "//tensorflow/core/grappler/costs:op_performance_data_py",
+    ],
+)
+
+py_test(
+    name = "cluster_test",
+    size = "small",
+    srcs = [
+        "grappler/cluster_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # tf_optimizer is not available in pip.
+    deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":tf_cluster",
+        ":tf_item",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
     name = "tf_optimizer",
     srcs = [
         "grappler/tf_optimizer.py",
@@ -4163,7 +4227,11 @@ py_library(
 py_test(
     name = "tf_optimizer_test",
     size = "small",
-    srcs = ["grappler/tf_optimizer_test.py"],
+    srcs = [
+        "grappler/cluster_test.py",
+        "grappler/item_test.py",
+        "grappler/tf_optimizer_test.py",
+    ],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],  # tf_optimizer is not available in pip.
     deps = [
