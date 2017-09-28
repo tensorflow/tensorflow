@@ -179,7 +179,7 @@ class CApiFunctionTest : public ::testing::Test {
                bool expect_failure = false) {
     ASSERT_EQ(func_, nullptr);
     const char** output_names_ptr = ToArray(output_names);
-    func_ = TF_GraphToFunction(func_graph_, func_name_, num_opers,
+    func_ = TF_GraphToFunction(func_graph_, func_name_, false, num_opers,
                                num_opers == -1 ? nullptr : opers.data(),
                                inputs.size(), inputs.data(), outputs.size(),
                                outputs.data(), output_names_ptr,
@@ -1200,7 +1200,8 @@ TEST_F(CApiFunctionTest, OutputOpNotInBody) {
 }
 
 void DefineFunction(const char* name, TF_Function** func,
-                    const char* description = nullptr) {
+                    const char* description = nullptr,
+                    bool append_hash = false) {
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
       TF_NewGraph(), TF_DeleteGraph);
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
@@ -1211,7 +1212,7 @@ void DefineFunction(const char* name, TF_Function** func,
 
   TF_Output inputs[] = {{feed, 0}};
   TF_Output outputs[] = {{neg, 0}};
-  *func = TF_GraphToFunction(func_graph.get(), name, -1,
+  *func = TF_GraphToFunction(func_graph.get(), name, append_hash, -1,
                              /*opers=*/nullptr, 1, inputs, 1, outputs,
                              /*output_names=*/nullptr,
                              /*opts=*/nullptr, description, s.get());
@@ -1451,6 +1452,22 @@ TEST_F(CApiFunctionTest, Description) {
   tensorflow::FunctionDef fdef;
   ASSERT_TRUE(GetFunctionDef(func_, &fdef));
   ASSERT_EQ(string("Return something"), fdef.signature().description());
+}
+
+TEST_F(CApiFunctionTest, Name) {
+  DefineFunction("long_func_name", &func_, "Return something",
+                 /*append_hash=*/false);
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+  ASSERT_EQ(string("long_func_name"), fdef.signature().name());
+}
+
+TEST_F(CApiFunctionTest, AppendHash) {
+  DefineFunction("func_name_base", &func_, "Return something",
+                 /*append_hash=*/true);
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+  ASSERT_EQ(string("func_name_base_qaJ8jA8UmGY"), fdef.signature().name());
 }
 
 }  // namespace

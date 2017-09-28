@@ -153,7 +153,7 @@ std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
 // `opers` equaling NULL are converted to `nopers = -1`.
 // `output_names` must be empty or have the same length as `outputs`.
 TF_Function* TF_GraphToFunction_wrapper(
-    const TF_Graph* fn_body, const char* fn_name,
+    const TF_Graph* fn_body, const char* fn_name, bool append_hash_to_fn_name,
     const std::vector<TF_Operation*>* opers,
     const std::vector<TF_Output>& inputs, const std::vector<TF_Output>& outputs,
     const NameVector& output_names, const TF_FunctionOptions* opts,

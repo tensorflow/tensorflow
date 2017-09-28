@@ -1039,12 +1039,14 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 //  fn_body - the graph whose operations (or subset of whose operations) will be
 //            converted to TF_Function.
 //  fn_name - the name of the new TF_Function. Should match the operation
-//            name (OpDef.name) regexp [A-Z][A-Za-z0-9_.\\-/]* and be distinct
-//            from other operation names (at least those registered in graphs
-//            where this function will be used).
-//            TODO(iga): Allow null in here and have C API come up with
-//            a unique name with high probability (similarly to
-//            _create_hash_str in function.py)
+//            name (OpDef.name) regexp [A-Z][A-Za-z0-9_.\\-/]*.
+//            If `append_hash_to_fn_name` is false, `fn_name` must be distinct
+//            from other function and operation names (at least those
+//            registered in graphs where this function will be used).
+//  append_hash_to_fn_name - Must be 0 or 1. If set to 1, the actual name
+//                           of the function will be `fn_name` appended with
+//                           '_<hash_of_this_function's_definition>'.
+//                           If set to 0, the function's name will be `fn_name`.
 //  num_opers - `num_opers` contains the number of elements in the `opers` array
 //              or a special value of -1 meaning that no array is given.
 //              The distinction between an empty array of operations and no
@@ -1114,7 +1116,8 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 //
 //  On failure, null.
 TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
-    const TF_Graph* fn_body, const char* fn_name, int num_opers,
+    const TF_Graph* fn_body, const char* fn_name,
+    unsigned char append_hash_to_fn_name, int num_opers,
     const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,
     int noutputs, const TF_Output* outputs, const char* const* output_names,
     const TF_FunctionOptions* opts, const char* description, TF_Status* status);
