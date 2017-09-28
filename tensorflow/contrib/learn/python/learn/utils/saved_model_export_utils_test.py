@@ -738,6 +738,26 @@ class SavedModelExportUtilsTest(test.TestCase):
       export_strategy.export(test_estimator, export_dir_base, "fake_ckpt_1",
                              None)
 
+  def test_extend_export_strategy(self):
+    def _base_export_fn(unused_estimator, export_dir_base,
+                        unused_checkpoint_path=None):
+      return export_dir_base + "/e1"
+
+    def _post_export_fn(orig_path):
+      return orig_path + "/rewrite"
+
+    base_export_strategy = export_strategy_lib.ExportStrategy(
+        "Servo", _base_export_fn)
+
+    final_export_strategy = saved_model_export_utils.extend_export_strategy(
+        base_export_strategy, _post_export_fn, "Servo2")
+    self.assertEqual(final_export_strategy.name, "Servo2")
+
+    test_estimator = TestEstimator()
+    final_path = final_export_strategy.export(test_estimator, "/path/to/orig",
+                                              "/path/to/checkpoint")
+    self.assertEqual("/path/to/orig/e1/rewrite", final_path)
+
 
 def _create_test_export_dir(export_dir_base):
   export_dir = saved_model_export_utils.get_timestamped_export_dir(
