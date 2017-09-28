@@ -147,6 +147,38 @@ class ShuffleDatasetTest(test.TestCase):
     for i in range(5):
       self.assertEqual(10, counts[i])
 
+  def testShuffleNoReshuffleEachIteration(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .shuffle(10, reshuffle_each_iteration=False)
+                .batch(10)
+                .repeat(3)
+                .make_one_shot_iterator())
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      initial_permutation = sess.run(next_element)
+      self.assertAllEqual(initial_permutation, sess.run(next_element))
+      self.assertAllEqual(initial_permutation, sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def testShuffleReshuffleEachIteration(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .shuffle(10, seed=3, reshuffle_each_iteration=True)
+                .batch(10)
+                .repeat(3)
+                .make_one_shot_iterator())
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      initial_permutation = list(sess.run(next_element))
+      for _ in range(2):
+        next_permutation = list(sess.run(next_element))
+        self.assertNotEqual(initial_permutation, next_permutation)
+        self.assertAllEqual(
+            sorted(initial_permutation), sorted(next_permutation))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
 
 if __name__ == "__main__":
   test.main()

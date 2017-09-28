@@ -814,7 +814,7 @@ class Dataset(object):
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
     return Dataset.zip((Dataset.range(start, max_value), self))
 
-  def shuffle(self, buffer_size, seed=None):
+  def shuffle(self, buffer_size, seed=None, reshuffle_each_iteration=None):
     """Randomly shuffles the elements of this dataset.
 
     Args:
@@ -824,11 +824,14 @@ class Dataset(object):
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         random seed that will be used to create the distribution. See
         @{tf.set_random_seed} for behavior.
+      reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
+        that the dataset should be pseudorandomly reshuffled each time it is
+        iterated over. (Defaults to `True`.)
 
     Returns:
       A `Dataset`.
     """
-    return ShuffleDataset(self, buffer_size, seed)
+    return ShuffleDataset(self, buffer_size, seed, reshuffle_each_iteration)
 
   def cache(self, filename=""):
     """Caches the elements in this dataset.
@@ -1397,7 +1400,8 @@ class CacheDataset(Dataset):
 class ShuffleDataset(Dataset):
   """A `Dataset` that randomly shuffles the elements of its input."""
 
-  def __init__(self, input_dataset, buffer_size, seed=None):
+  def __init__(self, input_dataset, buffer_size, seed=None,
+               reshuffle_each_iteration=None):
     """See `Dataset.shuffle()` for details."""
     super(ShuffleDataset, self).__init__()
     self._input_dataset = input_dataset
@@ -1413,6 +1417,10 @@ class ShuffleDataset(Dataset):
     else:
       self._seed2 = ops.convert_to_tensor(
           seed2, dtype=dtypes.int64, name="seed2")
+    if reshuffle_each_iteration is None:
+      self._reshuffle_each_iteration = True
+    else:
+      self._reshuffle_each_iteration = reshuffle_each_iteration
 
   def make_dataset_resource(self):
     return gen_dataset_ops.shuffle_dataset(
@@ -1420,6 +1428,7 @@ class ShuffleDataset(Dataset):
         buffer_size=self._buffer_size,
         seed=self._seed,
         seed2=self._seed2,
+        reshuffle_each_iteration=self._reshuffle_each_iteration,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
 
