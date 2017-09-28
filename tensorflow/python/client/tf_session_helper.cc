@@ -330,6 +330,15 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
   ClearDecrefCache();
 }
 
+std::vector<TF_Output> GetOperationInputs(TF_Operation* oper) {
+  int num_inputs = TF_OperationNumInputs(oper);
+  std::vector<TF_Output> inputs(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs[i] = TF_OperationInput({oper, i});
+  }
+  return inputs;
+}
+
 std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
     TF_Operation* oper) {
   std::vector<TF_Operation*> control_inputs(TF_OperationNumControlInputs(oper));

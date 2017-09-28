@@ -2029,7 +2029,14 @@ class Operation(object):
   @property
   def inputs(self):
     """The list of `Tensor` objects representing the data inputs of this op."""
-    return Operation._InputList(self)
+    if self._graph._c_graph:  # pylint: disable=protected-access
+      tf_outputs = c_api.GetOperationInputs(self._c_op)
+      # pylint: disable=protected-access
+      return [self.graph._get_tensor_by_tf_output(tf_output)
+              for tf_output in tf_outputs]
+      # pylint: enable=protected-access
+    else:
+      return Operation._InputList(self)
 
   @property
   def _input_dtypes(self):
@@ -3344,6 +3351,23 @@ class Graph(object):
       raise TypeError("Tensor names are strings (or similar), not %s." %
                       type(name).__name__)
     return self.as_graph_element(name, allow_tensor=True, allow_operation=False)
+
+  def _get_tensor_by_tf_output(self, tf_output):
+    """Returns the `Tensor` representing `tf_output`.
+
+    Note that there is only one such `Tensor`, i.e. multiple calls to this
+    function with the same TF_Output value will always return the same `Tensor`
+    object.
+
+    Args:
+      tf_output: A wrapped `TF_Output` (the C API equivalent of `Tensor`).
+
+    Returns:
+      The `Tensor` that represents `tf_output`.
+    """
+    op_name = c_api.TF_OperationName(tf_output.oper)
+    op = self._get_operation_by_name_unsafe(op_name)
+    return op.outputs[tf_output.index]
 
   def _next_id(self):
     """Id for next Operation instance. Also increments the internal id."""

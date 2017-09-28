@@ -431,13 +431,19 @@ class OperationTest(test_util.TensorFlowTestCase):
       x = constant_op.constant(1)
       y = constant_op.constant(2)
       z = x + y
-      z.op._update_input(0, y)  # pylint: disable=protected-access
+
+    z.op._update_input(0, y)  # pylint: disable=protected-access
+    self.assertEquals(z.op.inputs, [y, y])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 4)
-    z.op._update_input(0, x)
+
+    z.op._update_input(0, x)  # pylint: disable=protected-access
+    self.assertEquals(z.op.inputs, [x, y])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 3)
-    z.op._update_input(1, y)
+
+    z.op._update_input(1, y)  # pylint: disable=protected-access
+    self.assertEquals(z.op.inputs, [x, y])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 3)
 
