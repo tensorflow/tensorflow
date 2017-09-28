@@ -280,6 +280,17 @@ class BatchDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testDenseToSparseBatchDatasetWithInvaildShape(self):
+    input_tensor = array_ops.constant([[1]])
+    iterator = (dataset_ops.Dataset.from_tensors(input_tensor)
+                .dense_to_sparse_batch(4, [-2]).make_initializable_iterator())
+    init_op = iterator.initializer
+
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Dimension -2 must be >= -1"):
+        sess.run(init_op)
+
   def testDenseToSparseBatchDatasetShapeErrors(self):
     input_tensor = array_ops.placeholder(dtypes.int32)
     iterator = (dataset_ops.Dataset.from_tensors(input_tensor)
