@@ -85,6 +85,7 @@ class CApiWhileLoopTest : public ::testing::Test {
       inputs[i] = {inputs_[i].oper, Int32Tensor(v)};
       ++i;
     }
+    // TODO(skyewm): use std::make_unique or absl::make_unique when possible.
     csession_.reset(new CSession(graph_, s_));
     csession_->SetInputs(inputs);
     csession_->SetOutputs(run_outputs);

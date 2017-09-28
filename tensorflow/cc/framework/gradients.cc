@@ -98,13 +98,13 @@ class SymbolicGradientBuilder {
   const std::vector<Output>& grad_inputs_;
   std::vector<Output>* grad_outputs_;
 
-  // A vector of output endpoints which represents backpropagated gradients
-  typedef std::vector<Output> BackpropedGradients;
+  // A vector of output endpoints which represents backpropagated gradients.
+  typedef std::vector<Output> BackproppedGradients;
 
   // backprops_ is a map from a node output to its accumulated
   // gradients.  When a node output has accumulated all its
   // gradients, we add a node which sums them up.
-  std::unordered_map<Output, BackpropedGradients, OutputHash, OutputEq>
+  std::unordered_map<Output, BackproppedGradients, OutputHash, OutputEq>
       backprops_;
 
   // pending[i] is count-down counter for i-th node's expected

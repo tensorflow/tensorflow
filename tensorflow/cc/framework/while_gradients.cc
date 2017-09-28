@@ -35,8 +35,9 @@ Output ToOutput(OutputTensor output_tensor) {
 std::vector<Output> ToOutputVector(
     const std::vector<OutputTensor>& output_tensors) {
   size_t n = output_tensors.size();
-  std::vector<Output> result(n);
-  for (int i = 0; i < n; ++i) result[i] = ToOutput(output_tensors[i]);
+  std::vector<Output> result;
+  result.reserve(n);
+  for (int i = 0; i < n; ++i) result.push_back(ToOutput(output_tensors[i]));
   return result;
 }
 
@@ -119,7 +120,7 @@ Status AddBackPropLoopCounter(WhileContext* while_ctx, const Output& loop_count,
   };
 
   string frame_name = BackPropFrameName(while_ctx->frame_name());
-  std::vector<Output> outputs;  // unused
+  std::vector<Output> outputs;
   TF_RETURN_IF_ERROR(BuildWhileLoop(
       scope, {loop_count}, cond_fn, body_fn, frame_name, &outputs,
       /* create_while_ctx */ false, backprop_execution_pred));
