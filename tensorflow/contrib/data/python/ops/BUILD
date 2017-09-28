@@ -8,17 +8,33 @@ py_library(
     name = "dataset_ops",
     srcs = [
         "dataset_ops.py",
-        "readers.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":transformation_ops",
-        "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator",
+        "//tensorflow/python/data/util:nest",
+    ],
+)
+
+py_library(
+    name = "readers",
+    srcs = [
+        "readers.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_ops",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -50,6 +66,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],

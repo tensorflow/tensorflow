@@ -24,7 +24,7 @@ from tensorflow.contrib.data.python.ops import grouping
 
 from tensorflow.python.data.ops import dataset_ops
 # pylint: disable=unused-import
-from tensorflow.python.data.ops.dataset_ops import Iterator
+from tensorflow.python.data.ops.iterator import Iterator
 # pylint: enable=unused-import
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes

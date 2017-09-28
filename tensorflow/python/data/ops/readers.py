@@ -12,19 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python wrappers for reader Datasets."""
+"""Python wrappers for Datasets and Iterators."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
-from tensorflow.python.data.util import nest
+from tensorflow.python.data.ops.dataset_ops import Dataset
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+
+
+# TODO(b/64974358): Increase default buffer size to 256 MB.
+_DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
+
+
+def _convert_optional_param_to_tensor(argument_name,
+                                      argument_value,
+                                      argument_default=0,
+                                      argument_dtype=dtypes.int64):
+  if argument_value is not None:
+    return ops.convert_to_tensor(
+        argument_value, dtype=argument_dtype, name=argument_name)
+  else:
+    return constant_op.constant(
+        argument_default, dtype=argument_dtype, name=argument_name)
 
 
 class TextLineDataset(Dataset):
@@ -41,9 +55,28 @@ class TextLineDataset(Dataset):
         to buffer. A value of 0 results in the default buffering values chosen
         based on the compression type.
     """
-    dataset = readers.TextLineDataset(filenames, compression_type,
-                                      buffer_size)
-    super(TextLineDataset, self).__init__(dataset)
+    super(TextLineDataset, self).__init__()
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtype=dtypes.string, name="filenames")
+    self._compression_type = _convert_optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
+    self._buffer_size = _convert_optional_param_to_tensor(
+        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.text_line_dataset(
+        self._filenames, self._compression_type, self._buffer_size)
+
+  @property
+  def output_shapes(self):
+    return tensor_shape.scalar()
+
+  @property
+  def output_types(self):
+    return dtypes.string
 
 
 class TFRecordDataset(Dataset):
@@ -59,9 +92,31 @@ class TFRecordDataset(Dataset):
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
         bytes in the read buffer. 0 means no buffering.
     """
-    dataset = readers.TFRecordDataset(filenames, compression_type,
-                                      buffer_size)
-    super(TFRecordDataset, self).__init__(dataset)
+    super(TFRecordDataset, self).__init__()
+    # Force the type to string even if filenames is an empty list.
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtypes.string, name="filenames")
+    self._compression_type = _convert_optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
+    self._buffer_size = _convert_optional_param_to_tensor(
+        "buffer_size",
+        buffer_size,
+        argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.tf_record_dataset(
+        self._filenames, self._compression_type, self._buffer_size)
+
+  @property
+  def output_shapes(self):
+    return tensor_shape.TensorShape([])
+
+  @property
+  def output_types(self):
+    return dtypes.string
 
 
 class FixedLengthRecordDataset(Dataset):
@@ -86,70 +141,28 @@ class FixedLengthRecordDataset(Dataset):
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
         bytes to buffer when reading.
     """
-    dataset = readers.FixedLengthRecordDataset(
-        filenames, record_bytes, header_bytes, footer_bytes, buffer_size)
-    super(FixedLengthRecordDataset, self).__init__(dataset)
+    super(FixedLengthRecordDataset, self).__init__()
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtype=dtypes.string, name="filenames")
+    self._record_bytes = ops.convert_to_tensor(
+        record_bytes, dtype=dtypes.int64, name="record_bytes")
 
-
-class SqlDataset(Dataset):
-
-  def __init__(self, driver_name, data_source_name, query, output_types):
-    dataset = _SqlDataset(driver_name, data_source_name, query, output_types)
-    super(SqlDataset, self).__init__(dataset)
-
-
-class _SqlDataset(dataset_ops.Dataset):
-  """A `Dataset` consisting of the results from a SQL query."""
-
-  def __init__(self, driver_name, data_source_name, query, output_types):
-    """Creates a `SqlDataset`.
-
-    `SqlDataset` allows a user to read data from the result set of a SQL query.
-    For example:
-
-    ```python
-    dataset = tf.contrib.data.SqlDataset("sqlite", "/foo/bar.sqlite3",
-                                         "SELECT name, age FROM people",
-                                         (tf.string, tf.int32))
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
-    # Prints the rows of the result set of the above query.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
-    ```
-
-    Args:
-      driver_name: A 0-D `tf.string` tensor containing the database type.
-        Currently, the only supported value is 'sqlite'.
-      data_source_name: A 0-D `tf.string` tensor containing a connection string
-        to connect to the database.
-      query: A 0-D `tf.string` tensor containing the SQL query to execute.
-      output_types: A tuple of `tf.DType` objects representing the types of the
-        columns returned by `query`.
-    """
-    super(_SqlDataset, self).__init__()
-    self._driver_name = ops.convert_to_tensor(
-        driver_name, dtype=dtypes.string, name="driver_name")
-    self._data_source_name = ops.convert_to_tensor(
-        data_source_name, dtype=dtypes.string, name="data_source_name")
-    self._query = ops.convert_to_tensor(
-        query, dtype=dtypes.string, name="query")
-    self._output_types = output_types
+    self._header_bytes = _convert_optional_param_to_tensor(
+        "header_bytes", header_bytes)
+    self._footer_bytes = _convert_optional_param_to_tensor(
+        "footer_bytes", footer_bytes)
+    self._buffer_size = _convert_optional_param_to_tensor(
+        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
 
   def make_dataset_resource(self):
-    return gen_dataset_ops.sql_dataset(self._driver_name,
-                                       self._data_source_name, self._query,
-                                       nest.flatten(self.output_types),
-                                       nest.flatten(self.output_shapes))
+    return gen_dataset_ops.fixed_length_record_dataset(
+        self._filenames, self._header_bytes, self._record_bytes,
+        self._footer_bytes, self._buffer_size)
 
   @property
   def output_shapes(self):
-    return nest.map_structure(lambda _: tensor_shape.TensorShape([]),
-                              self._output_types)
+    return tensor_shape.scalar()
 
   @property
   def output_types(self):
-    return self._output_types
+    return dtypes.string

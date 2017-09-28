@@ -23,6 +23,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import variables
@@ -218,6 +219,134 @@ class RangeDatasetTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
+  def testRestoreWithoutBuildingDatasetGraph(self):
+
+    def _build_graph(start, stop, num_epochs, path):
+      dataset = dataset_ops.Dataset.range(start, stop).repeat(num_epochs)
+      iterator = dataset.make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next, save_op, restore_op
+
+    # Saving and restoring in different sessions.
+    start = 2
+    stop = 10
+    num_epochs = 5
+    break_point = 5
+    break_epoch = 3
+    path = self._iterator_checkpoint_prefix()
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, _ = _build_graph(start, stop, num_epochs,
+                                                   path)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for _ in range(break_epoch):
+          for i in range(start, stop):
+            self.assertEqual(i, sess.run(get_next))
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        sess.run(save_op)
+
+    with ops.Graph().as_default() as g:
+      # Create an empty IteratorResource and restore the Iterator into it.
+      output_types = dtypes.int64
+      output_shapes = tensor_shape.scalar()
+      iterator = dataset_ops.Iterator.from_structure(output_types,
+                                                     output_shapes)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      get_next = iterator.get_next()
+      with self.test_session(graph=g) as sess:
+        sess.run(restore_op)
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        for _ in range(break_epoch + 1, num_epochs):
+          for i in range(start, stop):
+            self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testRestoreInModifiedGraph(self):
+
+    def _build_graph(start, stop):
+      dataset = dataset_ops.Dataset.range(start, stop)
+      iterator = dataset.make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      path = self._iterator_checkpoint_prefix()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next, save_op, restore_op
+
+    # Saving and restoring in different sessions.
+    start = 2
+    stop = 10
+    stop_1 = 8
+    break_point = 5
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, _ = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        sess.run(save_op)
+
+    with ops.Graph().as_default() as g:
+      # Intentionally build a graph with a different value for stop to make sure
+      # the original dataset graph is actually getting loaded.
+      init_op, get_next, _, restore_op = _build_graph(start, stop_1)
+      with self.test_session(graph=g) as sess:
+        sess.run(restore_op)
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testInitThenRestore(self):
+    # Note: Calling init_op before restore_op is redundant. This test just makes
+    # sure we do not fail if restore is called on an already initialized
+    # iterator resource.
+
+    def _build_graph(start, stop):
+      dataset = dataset_ops.Dataset.range(start, stop)
+      iterator = dataset.make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      path = self._iterator_checkpoint_prefix()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next, save_op, restore_op
+
+    # Saving and restoring in different sessions.
+    start = 2
+    stop = 10
+    break_point = 5
+    with ops.Graph().as_default() as g:
+      init_op, get_next, save_op, _ = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        sess.run(save_op)
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next, _, restore_op = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(restore_op)
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
   def testMultipleSaves(self):
 
     def _build_graph(start, stop):
@@ -248,7 +377,6 @@ class RangeDatasetTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
       with self.test_session(graph=g) as sess:
-        sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_point1, break_point2):
           self.assertEqual(i, sess.run(get_next))
@@ -258,7 +386,6 @@ class RangeDatasetTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
       with self.test_session(graph=g) as sess:
-        sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_point2, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -303,7 +430,6 @@ class RangeDatasetTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop, num_epochs)
       with self.test_session(graph=g) as sess:
-        sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_range, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -349,7 +475,6 @@ class RangeDatasetTest(test.TestCase):
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop, num_epochs)
       with self.test_session(graph=g) as sess:
-        sess.run(init_op)
         sess.run(restore_op)
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
