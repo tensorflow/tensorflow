@@ -96,7 +96,7 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
       }
       default: {
         // Default to Add
-        LOG(FATAL);
+        CHECK(false);
       }
     }
   }
