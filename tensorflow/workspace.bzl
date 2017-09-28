@@ -701,15 +701,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "bazel-toolchains-bccee4855c049d34bac481083b4c68e2fab8cc50",
   )
 
-  patched_http_archive(
-      name = "double-conversion",
+  native.http_archive(
+      name = "double_conversion",
       urls = [
-          "https://github.com/google/double-conversion/archive/v3.0.0.zip",
+          "https://github.com/google/double-conversion/archive/5664746c5e64dc265e7fbc1a890a6698e6ad0ebb.zip",
       ],
-      sha256 = "68c2c8048eff023ee0e94adafdd13c7df05154a4dbc5bd8a809c76644779eda6",
-      strip_prefix = "double-conversion-3.0.0",
-
-      # Add patch to double-conversion code for case insensitive nan and infinity values
-      # https://github.com/google/double-conversion/pull/47
-      patch_file = str(Label("//third_party/double-conversion:add_case_insensitive_nan.patch")),
+      sha256 = "a0c49fb3cc8d34b2230d278a115f1bb266bcfcaae10400b84dc2a3b7dc2c8bc6",
+      strip_prefix = "double-conversion-5664746c5e64dc265e7fbc1a890a6698e6ad0ebb",
   )
