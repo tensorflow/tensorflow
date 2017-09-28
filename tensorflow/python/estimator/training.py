@@ -70,15 +70,26 @@ def _validate_export_strategies(export_strategies):
   if isinstance(export_strategies, export_strategy_lib.ExportStrategy):
     return (export_strategies,)
 
+  unique_names = []  # ExportStrategies should have unique names.
+
   try:
     for export_strategy in export_strategies:
       if not isinstance(export_strategy,
                         export_strategy_lib.ExportStrategy):
-        raise TypeError('`export_strategies` must be an ExportStrategy,'
-                        ' an iterable of ExportStrategy, or `None`,'
-                        ' found %s.' % export_strategy)
+        raise TypeError
+
+      if export_strategy.name in unique_names:
+        raise ValueError('`export_strategies` must have unique names.'
+                         ' Attempting to use an ExportStrategy "%s" together'
+                         ' others with names %s' % (export_strategy.name,
+                                                    unique_names))
+      unique_names.append(export_strategy.name)
   except TypeError:
-    # `export_strategies` is neither ExportStrategy nor iterable.
+    # Two possibilities:
+    # - `export_strategies` is neither ExportStrategy nor iterable.  Python has
+    #   raised a TypeError when iterating over 'export_strategies'.
+    # - a single `export_strategy` wasn't of type `ExportStrategy`, so we raised
+    #   TypeError.
     raise TypeError('`export_strategies` must be an ExportStrategy,'
                     ' an iterable of ExportStrategy, or `None`,'
                     ' found %s.' % export_strategies)

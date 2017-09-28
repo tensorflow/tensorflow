@@ -51,6 +51,7 @@ _INVALID_EVAL_DELAY_SECS_MSG = 'Must specify delay_secs >= 0'
 _INVALID_EVAL_THROTTLE_SECS_MSG = 'Must specify throttle_secs >= 0'
 _INVALID_ESTIMATOR_MSG = '`estimator` must have type `tf.estimator.Estimator`'
 _INVALID_EXPORT_STRATEGY_MSG = '`export_strategies` must be an ExportStrategy'
+_DUPLICATE_STRATEGY_NAMES_MSG = '`export_strategies` must have unique names.'
 _INVALID_TRAIN_SPEC_MSG = '`train_spec` must have type `tf.estimator.TrainSpec`'
 _INVALID_EVAL_SPEC_MSG = '`eval_spec` must have type `tf.estimator.EvalSpec`'
 _INVALID_CONFIG_FOR_STD_SERVER_MSG = 'Could not start server; .*TF_CONFIG'
@@ -121,12 +122,11 @@ class _InvalidHook(object):
   """Invalid hook (not a subclass of `SessionRunHook`)."""
 
 
-def _create_fake_export_strategy():
+def _create_fake_export_strategy(name):
   def export_fn(estimator, export_path):
     del estimator, export_path
 
-  return export_strategy_lib.ExportStrategy(name='fake_export_strategy',
-                                            export_fn=export_fn)
+  return export_strategy_lib.ExportStrategy(name=name, export_fn=export_fn)
 
 
 def _create_run_config_with_cluster_spec(tf_config):
@@ -182,7 +182,7 @@ class EvalSpecTest(test.TestCase):
   def testAllArgumentsSet(self):
     """Tests that no errors are raised when all arguments are set."""
     hooks = [_FakeHook()]
-    export_strategy = _create_fake_export_strategy()
+    export_strategy = _create_fake_export_strategy('a')
 
     spec = training.EvalSpec(input_fn=lambda: 1, steps=2, name='name',
                              hooks=hooks, export_strategies=export_strategy,
@@ -197,8 +197,8 @@ class EvalSpecTest(test.TestCase):
 
   def testListOfExportStrategies(self):
     """Tests that no errors are raised with multiple export strategies."""
-    export_strategies = [_create_fake_export_strategy(),
-                         _create_fake_export_strategy()]
+    export_strategies = [_create_fake_export_strategy('a'),
+                         _create_fake_export_strategy('b')]
 
     spec = training.EvalSpec(input_fn=lambda: 1,
                              export_strategies=export_strategies)
@@ -232,12 +232,18 @@ class EvalSpecTest(test.TestCase):
   def testInvalidTypeOfListOfExportStrategies(self):
     with self.assertRaisesRegexp(TypeError, _INVALID_EXPORT_STRATEGY_MSG):
       training.EvalSpec(input_fn=lambda: 1,
-                        export_strategies=[_create_fake_export_strategy(),
+                        export_strategies=[_create_fake_export_strategy('a'),
                                            _FakeHook()])
 
   def testInvalidTypeOfIndividualExportStrategy(self):
     with self.assertRaisesRegexp(TypeError, _INVALID_EXPORT_STRATEGY_MSG):
       training.EvalSpec(input_fn=lambda: 1, export_strategies=_FakeHook())
+
+  def testMultipleExportStrategiesWithTheSameName(self):
+    with self.assertRaisesRegexp(ValueError, _DUPLICATE_STRATEGY_NAMES_MSG):
+      training.EvalSpec(input_fn=lambda: 1,
+                        export_strategies=[_create_fake_export_strategy('a'),
+                                           _create_fake_export_strategy('a')])
 
 
 class TrainAndEvaluteTest(test.TestCase):
