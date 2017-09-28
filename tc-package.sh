@@ -18,7 +18,7 @@ TAR=tar
 TAR_EXCLUDE="--exclude=./dls/*"
 if [ "${OS}" = "Darwin" ]; then
     TAR=gtar
-    TAR_EXCLUDE="--exclude=./dls/* --exclude=./public/* --exclude=./generic-worker/* --exclude=./homebrew/* --exclude=./homebrew.cache/*"
+    TAR_EXCLUDE="--exclude=./dls/* --exclude=./public/* --exclude=./generic-worker/* --exclude=./homebrew/* --exclude=./homebrew.cache/* --exclude=./homebrew.logs/*"
 fi;
 
 # Make a tar of

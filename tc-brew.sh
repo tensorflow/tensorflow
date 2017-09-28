@@ -9,6 +9,7 @@ fi
 
 LOCAL_BREW="${TASKCLUSTER_TASK_DIR}/homebrew"
 export PATH=${LOCAL_BREW}/bin:$PATH
+export HOMEBREW_LOGS="${TASKCLUSTER_TASK_DIR}/homebrew.logs/"
 export HOMEBREW_CACHE="${TASKCLUSTER_TASK_DIR}/homebrew.cache/"
 
 # Never fail on pre-existing homebrew/ directory
