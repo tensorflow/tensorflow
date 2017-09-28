@@ -93,7 +93,7 @@ class _VariantDataset(dataset_ops.Dataset):
     self._output_types = output_types
     self._output_shapes = output_shapes
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return self._dataset_variant
 
   @property
@@ -175,7 +175,7 @@ class GroupByWindowDataset(dataset_ops.Dataset):
         raise TypeError("`reduce_func` must return a `Dataset` object.")
       self._output_types = output_dataset.output_types
       self._output_shapes = output_dataset.output_shapes
-      return output_dataset.make_dataset_resource()
+      return output_dataset._as_variant_tensor()  # pylint: disable=protected-access
 
     self._reduce_func = tf_reduce_func
     self._reduce_func.add_to_graph(ops.get_default_graph())
@@ -188,9 +188,9 @@ class GroupByWindowDataset(dataset_ops.Dataset):
   def output_types(self):
     return self._output_types
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.group_by_window_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._key_func.captured_inputs,
         self._reduce_func.captured_inputs,
         self._window_size_func.captured_inputs,

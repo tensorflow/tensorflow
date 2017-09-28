@@ -139,7 +139,7 @@ class _SqlDataset(dataset_ops.Dataset):
         query, dtype=dtypes.string, name="query")
     self._output_types = output_types
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.sql_dataset(self._driver_name,
                                        self._data_source_name, self._query,
                                        nest.flatten(self.output_types),

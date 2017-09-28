@@ -54,13 +54,13 @@ class Dataset(object):
   # TODO(mrry): Rename this to `make_dataset_variant()`,
   # `make_dataset_tensor()`, or something else more accurate.
   @abc.abstractmethod
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     """Creates a scalar `tf.Tensor` of `tf.variant` representing this dataset.
 
     Returns:
       A scalar `tf.Tensor` of `tf.variant` type, which represents this dataset.
     """
-    raise NotImplementedError("Dataset.make_dataset_resource")
+    raise NotImplementedError("Dataset._as_variant_tensor")
 
   def make_initializable_iterator(self, shared_name=None):
     """Creates an `Iterator` for enumerating the elements of this dataset.
@@ -92,7 +92,7 @@ class Dataset(object):
     # a 0-argument function.
     @function.Defun(capture_by_value=True)
     def _make_dataset():
-      return self.make_dataset_resource()
+      return self._as_variant_tensor()  # pylint: disable=protected-access
 
     _make_dataset.add_to_graph(ops.get_default_graph())
 
@@ -829,7 +829,7 @@ class TensorDataset(Dataset):
           for i, t in enumerate(nest.flatten(tensors))
       ])
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.tensor_dataset(
         nest.flatten(self._tensors),
         output_shapes=nest.flatten(self.output_shapes))
@@ -862,7 +862,7 @@ class TensorSliceDataset(Dataset):
     for t in flat_tensors[1:]:
       batch_dim.assert_is_compatible_with(t.get_shape()[0])
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.tensor_slice_dataset(
         nest.flatten(self._tensors),
         output_shapes=nest.flatten(self.output_shapes))
@@ -890,7 +890,7 @@ class SparseTensorSliceDataset(Dataset):
       raise TypeError("`sparse_tensor` must be a `tf.SparseTensor` object.")
     self._sparse_tensor = sparse_tensor
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.sparse_tensor_slice_dataset(
         self._sparse_tensor.indices, self._sparse_tensor.values,
         self._sparse_tensor.dense_shape)
@@ -918,9 +918,10 @@ class ZipDataset(Dataset):
     super(ZipDataset, self).__init__()
     self._datasets = datasets
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.zip_dataset(
-        [ds.make_dataset_resource() for ds in nest.flatten(self._datasets)],
+        [ds._as_variant_tensor() for ds in nest.flatten(self._datasets)],
         output_shapes=[
             s
             for ds in nest.flatten(self._datasets)
@@ -931,6 +932,7 @@ class ZipDataset(Dataset):
             for ds in nest.flatten(self._datasets)
             for t in nest.flatten(ds.output_types)
         ])
+    # pylint: enable=protected-access
 
   @property
   def output_shapes(self):
@@ -963,12 +965,14 @@ class ConcatenateDataset(Dataset):
             "Two datasets to concatenate have different types %s and %s" %
             (input_dataset.output_types, dataset_to_concatenate.output_types))
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.concatenate_dataset(
-        self._input_dataset.make_dataset_resource(),
-        self._dataset_to_concatenate.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),
+        self._dataset_to_concatenate._as_variant_tensor(),
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
+    # pylint: enable=protected-access
 
   @property
   def output_shapes(self):
@@ -997,9 +1001,9 @@ class RepeatDataset(Dataset):
       self._count = ops.convert_to_tensor(
           count, dtype=dtypes.int64, name="count")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.repeat_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1040,7 +1044,7 @@ class RangeDataset(Dataset):
   def _build_tensor(self, int64_value, name):
     return constant_op.constant(int64_value, dtype=dtypes.int64, name=name)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -1067,9 +1071,9 @@ class CacheDataset(Dataset):
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.cache_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         filename=self._filename,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1108,9 +1112,9 @@ class ShuffleDataset(Dataset):
     else:
       self._reshuffle_each_iteration = reshuffle_each_iteration
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.shuffle_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
         seed=self._seed,
         seed2=self._seed2,
@@ -1136,9 +1140,9 @@ class TakeDataset(Dataset):
     self._input_dataset = input_dataset
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.take_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1161,9 +1165,9 @@ class SkipDataset(Dataset):
     self._input_dataset = input_dataset
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.skip_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1186,9 +1190,9 @@ class BatchDataset(Dataset):
     self._input_dataset = input_dataset
     self._batch_size = batch_size
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.batch_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         batch_size=self._batch_size,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1271,9 +1275,9 @@ class PaddedBatchDataset(Dataset):
 
     return nest.map_structure(make_zero, input_dataset.output_types)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.padded_batch_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         batch_size=self._batch_size,
         padded_shapes=[
             ops.convert_to_tensor(s, dtype=dtypes.int64)
@@ -1351,10 +1355,10 @@ class MapDataset(Dataset):
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
 
-  def make_dataset_resource(self):
-    input_resource = self._input_dataset.make_dataset_resource()
+  def _as_variant_tensor(self):
+    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     return gen_dataset_ops.map_dataset(
-        input_resource,
+        input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
         output_types=nest.flatten(self.output_types),
@@ -1379,11 +1383,11 @@ class ParallelMapDataset(MapDataset):
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
 
-  def make_dataset_resource(self):
-    input_resource = self._input_dataset.make_dataset_resource()
+  def _as_variant_tensor(self):
+    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     # pylint: disable=protected-access
     return gen_dataset_ops.parallel_map_dataset(
-        input_resource,
+        input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
         num_parallel_calls=self._num_parallel_calls,
@@ -1420,14 +1424,14 @@ class FlatMapDataset(Dataset):
       self._output_types = dataset.output_types
       self._output_shapes = dataset.output_shapes
 
-      return dataset.make_dataset_resource()
+      return dataset._as_variant_tensor()  # pylint: disable=protected-access
 
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.flat_map_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._map_func.captured_inputs,
         f=self._map_func,
         output_types=nest.flatten(self.output_types),
@@ -1471,7 +1475,7 @@ class InterleaveDataset(Dataset):
       self._output_types = dataset.output_types
       self._output_shapes = dataset.output_shapes
 
-      return dataset.make_dataset_resource()
+      return dataset._as_variant_tensor()  # pylint: disable=protected-access
 
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
@@ -1479,9 +1483,9 @@ class InterleaveDataset(Dataset):
     self._cycle_length = ops.convert_to_tensor(cycle_length, dtype=dtypes.int64)
     self._block_length = ops.convert_to_tensor(block_length, dtype=dtypes.int64)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.interleave_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._map_func.captured_inputs,
         self._cycle_length,
         self._block_length,
@@ -1530,9 +1534,9 @@ class FilterDataset(Dataset):
     self._predicate = tf_predicate
     self._predicate.add_to_graph(ops.get_default_graph())
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.filter_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         other_arguments=self._predicate.captured_inputs,
         predicate=self._predicate,
         output_types=nest.flatten(self.output_types),
@@ -1556,9 +1560,9 @@ class PrefetchDataset(Dataset):
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(buffer_size, dtype=dtypes.int64)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.prefetch_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))

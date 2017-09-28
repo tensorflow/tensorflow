@@ -500,9 +500,9 @@ class DenseToSparseBatchDataset(dataset_ops.Dataset):
     self._row_shape = dataset_ops._partial_shape_to_tensor(row_shape)
     # pylint: enable=protected-access
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.dense_to_sparse_batch_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._batch_size,
         self._row_shape,
         output_shapes=self.output_shapes,
@@ -579,8 +579,8 @@ class _RestructuredDataset(dataset_ops.Dataset):
       self._output_shapes = nest.map_structure_up_to(
           output_types, tensor_shape.as_shape, output_shapes)
 
-  def make_dataset_resource(self):
-    return self._dataset.make_dataset_resource()
+  def _as_variant_tensor(self):
+    return self._dataset._as_variant_tensor()  # pylint: disable=protected-access
 
   @property
   def output_types(self):

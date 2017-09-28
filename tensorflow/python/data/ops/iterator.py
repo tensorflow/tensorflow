@@ -80,7 +80,7 @@ class Iterator(object):
         output_shapes=nest.flatten(dataset.output_shapes))
     with ops.colocate_with(iterator_resource):
       initializer = gen_dataset_ops.make_iterator(
-          dataset.make_dataset_resource(), iterator_resource)
+          dataset._as_variant_tensor(), iterator_resource)  # pylint: disable=protected-access
     return Iterator(iterator_resource, initializer, dataset.output_types,
                     dataset.output_shapes)
 
@@ -273,7 +273,7 @@ class Iterator(object):
                           (self._output_shapes, dataset.output_shapes))
     with ops.colocate_with(self._iterator_resource):
       return gen_dataset_ops.make_iterator(
-          dataset.make_dataset_resource(), self._iterator_resource, name=name)
+          dataset._as_variant_tensor(), self._iterator_resource, name=name)  # pylint: disable=protected-access
 
   def get_next(self, name=None):
     """Returns a nested structure of `tf.Tensor`s containing the next element.

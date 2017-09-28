@@ -46,7 +46,10 @@ class Dataset(dataset_ops.Dataset):
     self._dataset = dataset
 
   def make_dataset_resource(self):
-    return self._dataset.make_dataset_resource()
+    return self._as_variant_tensor()
+
+  def _as_variant_tensor(self):
+    return self._dataset._as_variant_tensor()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):

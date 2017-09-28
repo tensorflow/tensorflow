@@ -66,7 +66,7 @@ class TextLineDataset(Dataset):
     self._buffer_size = _convert_optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.text_line_dataset(
         self._filenames, self._compression_type, self._buffer_size)
 
@@ -106,7 +106,7 @@ class TFRecordDataset(Dataset):
         buffer_size,
         argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.tf_record_dataset(
         self._filenames, self._compression_type, self._buffer_size)
 
@@ -154,7 +154,7 @@ class FixedLengthRecordDataset(Dataset):
     self._buffer_size = _convert_optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.fixed_length_record_dataset(
         self._filenames, self._header_bytes, self._record_bytes,
         self._footer_bytes, self._buffer_size)
