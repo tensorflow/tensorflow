@@ -49,7 +49,12 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("row_shape", &row_shape_t));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(row_shape_t->shape()),
                 errors::InvalidArgument("row_shape must be a vector"));
-    PartialTensorShape row_shape(row_shape_t->vec<int64>());
+    PartialTensorShape row_shape;
+    OP_REQUIRES_OK(ctx,
+                   PartialTensorShape::MakePartialShape(
+                       row_shape_t->vec<int64>().data(),
+                       row_shape_t->NumElements(),
+                       &row_shape));
 
     *output = nullptr;
 
