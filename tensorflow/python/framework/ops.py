@@ -655,24 +655,24 @@ class EagerTensor(Tensor):
     # explicitly place the int32 tensors in host memory. For example, prior to
     # this change one needed:
     #
-    # with tfe.device('/gpu:0'):
+    # with tf.device('/gpu:0'):
     #   ...  # code here
-    #   with tfe.device('/cpu:0'):
-    #     shape = tfe.Tensor(...)
-    #   y = tfe.ops.random_uniform(.., shape)
+    #   with tf.device('/cpu:0'):
+    #     shape = tf.constant(...)
+    #   y = tf.random_uniform(shape)
     #
     # Without the CPU device block tfe.ops.random_uniform would fail since the
     # kernel expects the shape in host memory.
     #
     # After this change, we simplify the code:
     #
-    # with tfe.device('/gpu:0'):
-    #   y = tfe.ops.random_uniform(, tfe.Tensor(...))
+    # with tf.device('/gpu:0'):
+    #   y = tf.random_uniform(...)
     #
-    # The approximation is not exact since if there are GPU kernels which do not
-    # require host memory for int32 tensors, there will be a discrepancy between
-    # eager execution and TensorFlow graphs. However, as of July 2017, there
-    # were no known GPU kernels that kept int32 tensors in device memory.
+    # The approximation is not exact there are GPU kernels which do not
+    # require host memory for int32 tensors. This will lead to a discrepancy
+    # between eager and graph execution.
+    # TODO(ashankar): Fix this.
     if _in_gpu_device(ctx) and dtype != dtypes.int32:
       # pylint: disable=protected-access
       device_name = ctx.device_name
