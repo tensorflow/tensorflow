@@ -542,8 +542,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
               << " parent: " << fused->parent()
               << " computation: " << computation.get();
         }
-      }
-      if (instruction->opcode() == HloOpcode::kBroadcast) {
+      } else if (instruction->opcode() == HloOpcode::kBroadcast) {
         // If you see this failure then someone has confused the difference
         // between the HLO broadcast op, and the UserComputation broadcast
         // op.  See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
@@ -551,6 +550,40 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
         TF_RET_CHECK(instruction->dimensions().size() ==
                      ShapeUtil::Rank(instruction->operand(0)->shape()))
                 << "Broadcast HLO has invalid number of dimensions.";
+      } else if (instruction->opcode() == HloOpcode::kWhile) {
+        auto* while_cond = instruction->while_condition();
+        auto* while_body = instruction->while_body();
+        TF_RET_CHECK(while_cond->num_parameters() == 1)
+            << "While condition must have exactly 1 parameter; had "
+            << while_cond->num_parameters() << ": " << while_cond->ToString();
+        TF_RET_CHECK(while_body->num_parameters() == 1)
+            << "While body must have exactly 1 parameter; had "
+            << while_body->num_parameters() << ": " << while_body->ToString();
+        TF_RET_CHECK(instruction->operand_count() == 1)
+            << "While loop must have exactly one operand; had "
+            << instruction->operand_count() << ": " << instruction->ToString();
+
+        auto* init = instruction->operand(0);
+        auto* cond_param = while_cond->parameter_instruction(0);
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), cond_param->shape()))
+            << "While condition's parameter must have the same shape as the "
+               "loop's 'init'. init: "
+            << init->ToString() << ", param: " << cond_param->ToString();
+        auto* cond_root = while_cond->root_instruction();
+        TF_RET_CHECK(ShapeUtil::Compatible(cond_root->shape(),
+                                           ShapeUtil::MakeShape(PRED, {})))
+            << "While condition should have shape PRED: "
+            << cond_root->ToString();
+
+        auto* body_param = while_body->parameter_instruction(0);
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_param->shape()))
+            << "While body's parameter must have the same shape as the loop's "
+               "'init'. init: "
+            << init->ToString() << ", param: " << body_param->ToString();
+        auto* body_root = while_body->root_instruction();
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_root->shape()))
+            << "While body should have same shape as the loop's 'init'. init: "
+            << init->ToString() << ", body: " << body_root->ToString();
       }
 
       auto previous = instructions.find(instruction->name());
