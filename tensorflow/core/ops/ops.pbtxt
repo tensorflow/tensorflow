@@ -10809,11 +10809,11 @@ op {
 op {
   name: "InvGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -19611,11 +19611,11 @@ op {
 op {
   name: "ReciprocalGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -22725,11 +22725,11 @@ op {
 op {
   name: "RsqrtGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -24525,6 +24525,14 @@ op {
     type: DT_VARIANT
   }
   attr {
+    name: "reshuffle_each_iteration"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true, each iterator over this dataset will be given\na different pseudorandomly generated seed, based on a sequence seeded by the\n`seed` and `seed2` inputs. If false, each iterator will be given the same\nseed, and repeated iteration over this dataset will yield the exact same\nsequence of results."
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
@@ -24567,11 +24575,11 @@ op {
 op {
   name: "SigmoidGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -28225,11 +28233,11 @@ op {
 op {
   name: "SqrtGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -29729,11 +29737,11 @@ op {
 op {
   name: "TanhGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
