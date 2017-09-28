@@ -272,7 +272,6 @@ class Scaffold(object):
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,
-                             restore_var_list=None,
                              scaffold=None,
                              hooks=None,
                              chief_only_hooks=None,
@@ -298,10 +297,6 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       initialize or recover the TensorFlow session.
     checkpoint_dir: A string.  Optional path to a directory where to restore
       variables.
-    restore_var_list: a list of variables, optional, if not all variables should
-      be recovered from checkpoint.
-      Useful when changing network structures during training, i.e., finetuning
-      a pretrained model with new layers.
     scaffold: A `Scaffold` used for gathering or building supportive ops. If
       not specified, a default one is created. It's used to finalize the graph.
     hooks: Optional list of `SessionRunHook` objects.
@@ -346,18 +341,9 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   all_hooks = []
   if chief_only_hooks:
     all_hooks.extend(chief_only_hooks)
-  if restore_var_list is None:
-    restore_checkpoint_dir = checkpoint_dir
-  else:
-    restore_checkpoint_dir = None
-    all_hooks.append(basic_session_run_hooks.CheckpointRestorerHook(
-        checkpoint_dir, var_list=restore_var_list))
-    all_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    missing_vars = filter(lambda v: not (v in restore_var_list), all_vars)
-    logging.warning("MonitoredTrainingSession not restoring %s", missing_vars)
   session_creator = ChiefSessionCreator(
       scaffold=scaffold,
-      checkpoint_dir=restore_checkpoint_dir,
+      checkpoint_dir=checkpoint_dir,
       master=master,
       config=config)
 

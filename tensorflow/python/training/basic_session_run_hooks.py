@@ -41,7 +41,6 @@ from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
-from tensorflow.python.training import saver
 from tensorflow.python.training import training_util
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
@@ -364,62 +363,6 @@ class CheckpointSaverListener(object):
 
   def end(self, session, global_step_value):
     pass
-
-
-class CheckpointRestorerHook(session_run_hook.SessionRunHook):
-  """Restores checkpoints after tf.Session is created."""
-
-  def __init__(self,
-               checkpoint_dir=None,
-               checkpoint_file=None,
-               var_list=None,
-               wait_for_checkpoint=False,
-               max_wait_secs=7200,
-               recovery_wait_secs=30,
-               ):
-    """Initializes a `CheckpointRestorerHook`.
-
-    Args:
-      checkpoint_dir: `str`, base directory for the checkpoint files.
-      checkpoint_file: `str`, path name for the checkpoint file.
-        only one of `checkpoint_file` and `checkpoint_dir` should be
-        not None.
-      var_list: `list`, optional, the list of variables to be restored.
-        If None, all global variables defined would be restored.
-      wait_for_checkpoint: Whether to wait for checkpoint to become available.
-      max_wait_secs: Maximum time to wait for checkpoints to become available.
-      recovery_wait_secs: Interval between checkpoint checks when waiting for
-        checkpoint.
-    Raises:
-      ValueError: Exactly One of `checkpoint_dir` or `checkpoint_file` should be set.
-    """
-    logging.info("Create CheckpointRestorerHook.")
-    super(CheckpointRestorerHook, self).__init__()
-    self._dir, self._file, self._var_list = checkpoint_dir, checkpoint_file, var_list
-    self._wait_for_checkpoint, self._max_wait_secs, self._recovery_wait_secs = \
-        wait_for_checkpoint, max_wait_secs, recovery_wait_secs
-    self._saver = saver.Saver(var_list=self._var_list)
-
-  def after_create_session(self, session, coord):
-    super(CheckpointRestorerHook, self).after_create_session(session, coord)
-
-    if self._file:
-      self._saver.restore(session, self._file)
-      return
-    wait_time = 0
-    ckpt = saver.get_checkpoint_state(self._dir)
-    while not ckpt or not ckpt.model_checkpoint_path:
-      if self._wait_for_checkpoint and wait_time < self._max_wait_secs:
-        logging.info("Waiting for checkpoint to be available.")
-        time.sleep(self._recovery_wait_secs)
-        wait_time += self._recovery_wait_secs
-        ckpt = saver.get_checkpoint_state(self._dir)
-      else:
-        return
-
-    # Loads the checkpoint.
-    self._saver.restore(session, ckpt.model_checkpoint_path)
-    self._saver.recover_last_checkpoints(ckpt.all_model_checkpoint_paths)
 
 
 class CheckpointSaverHook(session_run_hook.SessionRunHook):

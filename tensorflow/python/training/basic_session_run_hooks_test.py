@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import shutil
 import tempfile
 import threading
@@ -31,7 +30,6 @@ from tensorflow.contrib.testing.python.framework import fake_summary_writer
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -46,7 +44,6 @@ from tensorflow.python.summary import summary as summary_lib
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
 
 
@@ -364,67 +361,6 @@ class LoggingTensorHookTest(test.TestCase):
       sess.run(variables_lib.global_variables_initializer())
       mon_sess.run(train_op)
       self.assertEqual(self.logged_message[0], 'qqq=42.0')
-
-
-class CheckpointRestorerHookTest(test.TestCase):
-
-  def setUp(self):
-    self.model_dir = tempfile.mkdtemp()
-    self.checkpoint_path = os.path.join(self.model_dir, "model.ckpt")
-    self.graph = ops.Graph()
-    with self.graph.as_default():
-      self.global_step = variables.get_or_create_global_step()
-      self.train_op = state_ops.assign_add(self.global_step, 1)
-      self.saver = saver.Saver()
-      with session_lib.Session() as sess:
-        sess.run(variables_lib.global_variables_initializer())
-        sess.run(self.train_op)  # global_step == 1
-        result = self.saver.save(sess, self.checkpoint_path)
-
-  def tearDown(self):
-    shutil.rmtree(self.model_dir, ignore_errors=True)
-    pass
-
-  def test_restore_all_variables(self):
-    with ops.Graph().as_default():
-      global_step = variables.get_or_create_global_step()
-      hook = basic_session_run_hooks.CheckpointRestorerHook(self.model_dir)
-      with session_lib.Session() as sess:
-        sess.run(variables_lib.global_variables_initializer())
-        hook.after_create_session(sess, None)
-        self.assertEqual(1, sess.run(global_step))
-
-  def test_raise_missing_variables_when_restore_all(self):
-    with ops.Graph().as_default():
-      global_step = variables.get_or_create_global_step()
-      new_var = variables_lib.Variable(0.0, name="new_var")
-      hook = basic_session_run_hooks.CheckpointRestorerHook(self.model_dir)
-      with session_lib.Session() as sess:
-        sess.run(variables_lib.global_variables_initializer())
-        with self.assertRaises(errors.NotFoundError):
-          hook.after_create_session(sess, None)
-
-  def test_partial_restore_from_dir(self):
-    with ops.Graph().as_default():
-      global_step = variables.get_or_create_global_step()
-      new_var = variables_lib.Variable(0.0, name="new_var")
-      hook = basic_session_run_hooks.CheckpointRestorerHook(
-        checkpoint_dir=self.model_dir, var_list=[global_step])
-      with session_lib.Session() as sess:
-        sess.run(variables_lib.global_variables_initializer())
-        hook.after_create_session(sess, None)
-        self.assertEqual(1, sess.run(global_step))
-
-  def test_partial_restore_from_file(self):
-    with ops.Graph().as_default():
-      global_step = variables.get_or_create_global_step()
-      new_var = variables_lib.Variable(0.0, name="new_var")
-      hook = basic_session_run_hooks.CheckpointRestorerHook(
-        checkpoint_file=self.checkpoint_path, var_list=[global_step])
-      with session_lib.Session() as sess:
-        sess.run(variables_lib.global_variables_initializer())
-        hook.after_create_session(sess, None)
-        self.assertEqual(1, sess.run(global_step))
 
 
 class CheckpointSaverHookTest(test.TestCase):

@@ -280,46 +280,6 @@ class MonitoredTrainingSessionTest(test.TestCase):
           is_chief=True, checkpoint_dir=logdir) as session:
         self.assertEqual(2, session.run(gstep))
 
-  def test_raise_saving_restoring_partial_checkpoint(self):
-    logdir = _test_dir(self.get_temp_dir(), 'test_saving_restoring_checkpoint')
-    with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
-      do_step = state_ops.assign_add(gstep, 1)
-      with monitored_session.MonitoredTrainingSession(
-          is_chief=True, checkpoint_dir=logdir) as session:
-        self.assertEqual(0, session.run(gstep))
-        self.assertEqual(1, session.run(do_step))
-        self.assertEqual(2, session.run(do_step))
-    with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
-      do_step = state_ops.assign_add(gstep, 1)
-      new_var = variables.Variable(0, name="new_var")
-      # A restart will find the checkpoint and attempt to recover all variables,
-      # and raise error because of missing `new_var`.
-      with self.assertRaises(errors_impl.NotFoundError):
-        with monitored_session.MonitoredTrainingSession(
-            is_chief=True, checkpoint_dir=logdir) as session:
-          self.assertEqual(2, session.run(gstep))
-
-  def test_saving_restoring_partial_checkpoint(self):
-    logdir = _test_dir(self.get_temp_dir(), 'test_saving_restoring_checkpoint')
-    with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
-      do_step = state_ops.assign_add(gstep, 1)
-      with monitored_session.MonitoredTrainingSession(
-          is_chief=True, checkpoint_dir=logdir) as session:
-        self.assertEqual(0, session.run(gstep))
-        self.assertEqual(1, session.run(do_step))
-        self.assertEqual(2, session.run(do_step))
-    with ops.Graph().as_default():
-      gstep = variables_lib.get_or_create_global_step()
-      do_step = state_ops.assign_add(gstep, 1)
-      new_var = variables.Variable(0, name="new_var")
-      # A restart will find the checkpoint and recover automatically.
-      with monitored_session.MonitoredTrainingSession(
-          is_chief=True, checkpoint_dir=logdir, restore_var_list=[gstep]) as session:
-        self.assertEqual(2, session.run(gstep))
-
   def test_summaries_steps(self):
     logdir = _test_dir(self.get_temp_dir(), 'test_summaries_steps')
     with ops.Graph().as_default():
