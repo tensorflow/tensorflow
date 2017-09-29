@@ -877,7 +877,10 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionLibraryDefinition::FunctionDefAndOpRegistration::
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
     : fdef(fdef_in),
-      op_registration_data(fdef.signature(), shape_inference::UnknownShape) {}
+      // Exact shape inference for functions is handled by ShapeRefiner.
+      // Here we pass a dummy shape inference function for legacy code paths.
+      op_registration_data(fdef.signature(), shape_inference::UnknownShape,
+                           true /* is_function */) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
