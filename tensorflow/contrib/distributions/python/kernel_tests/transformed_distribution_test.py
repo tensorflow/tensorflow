@@ -41,6 +41,11 @@ class TransformedDistributionTest(test.TestCase):
   def _cls(self):
     return ds.TransformedDistribution
 
+  def _make_unimplemented(self, name):
+    def _unimplemented(self, *args):  # pylint: disable=unused-argument
+      raise NotImplementedError("{} not implemented".format(name))
+    return _unimplemented
+
   def testTransformedDistribution(self):
     g = ops.Graph()
     with g.as_default():
@@ -75,20 +80,57 @@ class TransformedDistributionTest(test.TestCase):
         with self.test_session(graph=g):
           self.assertAllClose(expected, actual.eval(), atol=0, rtol=0.01)
 
-  def testCachedSamplesWithoutInverse(self):
+  def testCachedSamples(self):
+    exp_forward_only = bs.Exp(event_ndims=0)
+    exp_forward_only._inverse = self._make_unimplemented(
+        "inverse")
+    exp_forward_only._inverse_event_shape_tensor = self._make_unimplemented(
+        "inverse_event_shape_tensor ")
+    exp_forward_only._inverse_event_shape = self._make_unimplemented(
+        "inverse_event_shape ")
+    exp_forward_only._inverse_log_det_jacobian = self._make_unimplemented(
+        "inverse_log_det_jacobian ")
+
     with self.test_session() as sess:
       mu = 3.0
       sigma = 0.02
       log_normal = self._cls()(
           distribution=ds.Normal(loc=mu, scale=sigma),
-          bijector=bs.Exp(event_ndims=0))
+          bijector=exp_forward_only)
 
-      sample = log_normal.sample(1)
+      sample = log_normal.sample([2, 3], seed=42)
       sample_val, log_pdf_val = sess.run([sample, log_normal.log_prob(sample)])
-      self.assertAllClose(
-          stats.lognorm.logpdf(sample_val, s=sigma, scale=np.exp(mu)),
-          log_pdf_val,
-          atol=1e-2)
+      expected_log_pdf = stats.lognorm.logpdf(
+          sample_val, s=sigma, scale=np.exp(mu))
+      self.assertAllClose(expected_log_pdf, log_pdf_val, rtol=1e-4, atol=0.)
+
+  def testCachedSamplesInvert(self):
+    exp_inverse_only = bs.Exp(event_ndims=0)
+    exp_inverse_only._forward = self._make_unimplemented(
+        "forward")
+    exp_inverse_only._forward_event_shape_tensor = self._make_unimplemented(
+        "forward_event_shape_tensor ")
+    exp_inverse_only._forward_event_shape = self._make_unimplemented(
+        "forward_event_shape ")
+    exp_inverse_only._forward_log_det_jacobian = self._make_unimplemented(
+        "forward_log_det_jacobian ")
+
+    log_forward_only = bs.Invert(exp_inverse_only)
+
+    with self.test_session() as sess:
+      # The log bijector isn't defined over the whole real line, so we make
+      # sigma sufficiently small so that the draws are positive.
+      mu = 2.
+      sigma = 1e-2
+      exp_normal = self._cls()(
+          distribution=ds.Normal(loc=mu, scale=sigma),
+          bijector=log_forward_only)
+
+      sample = exp_normal.sample([2, 3], seed=42)
+      sample_val, log_pdf_val = sess.run([sample, exp_normal.log_prob(sample)])
+      expected_log_pdf = sample_val + stats.norm.logpdf(
+          np.exp(sample_val), loc=mu, scale=sigma)
+      self.assertAllClose(expected_log_pdf, log_pdf_val, atol=0.)
 
   def testShapeChangingBijector(self):
     with self.test_session():
