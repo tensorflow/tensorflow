@@ -227,8 +227,8 @@ def evolve(initial_sample,
     init = tf.initialize_all_variables()
     with tf.Session() as sess:
       sess.run(init)
-      # Run the chain for a total of 1000 and print out the mean across the
-      # chains every 100 iterations
+      # Run the chains for a total of 1000 steps and print out the mean across
+      # the chains every 100 iterations.
       for n_iter in range(10):
         # Executing the stepper advances the chain to the next state.
         sess.run(stepper)

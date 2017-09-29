@@ -120,7 +120,7 @@ class McmcStepTest(test.TestCase):
 
     n = 2  # dimension of the problem
 
-    # Generate 500 initial values randomly. Each of these would be an
+    # Generate 300 initial values randomly. Each of these would be an
     # independent starting point for a Markov chain.
     state = variable_scope.get_variable(
         'state', initializer=random_ops.random_normal(
@@ -159,12 +159,13 @@ class McmcStepTest(test.TestCase):
     init = variables.initialize_all_variables()
     with self.test_session() as sess:
       sess.run(init)
-      # Run the chain for a total of 1000 and print out the mean across the
-      # chains every 100 iterations
+      # Run the chains for a total of 1000 steps.
       for _ in range(10):
         sess.run(stepper)
       samples = sess.run(state)
       covariance = np.eye(n)
+      # Verify that the estimated mean and covariance are close to the true
+      # values.
       self.assertAlmostEqual(
           np.max(np.abs(np.mean(samples, 0)
                         - np.zeros(n))), 0,
