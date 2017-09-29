@@ -69,10 +69,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Network"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SeparableConv2D"
     mtype: "<type \'type\'>"
   }
