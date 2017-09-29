@@ -2165,5 +2165,40 @@ TEST_F(AlgebraicSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
   EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
 }
 
+// A dynamic-update-slice is trivial if its start indices are all zeroes and the
+// size of its "update" equals the size of its output.  In this case, the
+// dynamic-update-slice is equal to its update.
+TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
+  HloComputation::Builder builder(TestName());
+
+  Shape full_shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {10, 1, 1000});
+
+  HloInstruction* slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+          slice_shape,
+          builder.AddInstruction(
+              HloInstruction::CreateParameter(0, full_shape, "slice_from")),
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
+          /*slice_sizes=*/{10, 1, 1000}));
+
+  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      slice_shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(2, slice_shape, "to_update")),
+      slice,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR1<int>({0, 0, 0})))));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(),
+              op::DynamicSlice(op::Parameter(), op::Parameter()));
+}
+
 }  // namespace
 }  // namespace xla
