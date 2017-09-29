@@ -160,27 +160,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "hmc_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/hmc_test.py"],
-    additional_deps = [
-        ":bayesflow_py",
-        "//third_party/py/numpy",
-        "//tensorflow/contrib/distributions:distributions_py",
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/python/ops/distributions",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:random_seed",
-    ],
-)
-
-cuda_py_test(
     name = "stochastic_graph_test",
     size = "small",
     srcs = ["python/kernel_tests/stochastic_graph_test.py"],
