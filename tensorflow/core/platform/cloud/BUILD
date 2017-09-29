@@ -228,6 +228,7 @@ tf_cc_test(
     name = "gcs_file_system_test",
     size = "small",
     srcs = ["gcs_file_system_test.cc"],
+    tags = ["nomac"],  # b/67103845
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
@@ -303,6 +304,7 @@ tf_cc_test(
     name = "time_util_test",
     size = "small",
     srcs = ["time_util_test.cc"],
+    tags = ["nomac"],  # b/67103845
     deps = [
         ":time_util",
         "//tensorflow/core:test",
