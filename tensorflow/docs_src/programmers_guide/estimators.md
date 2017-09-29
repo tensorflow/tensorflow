@@ -151,3 +151,26 @@ We recommend the following workflow:
     best results.
 4.  Possibly, further improve your model by building your own custom Estimator.
 
+
+## Creating Estimators from Keras models
+
+You can convert existing Keras models to Estimators. Doing so enables your Keras
+model to access Estimator's strengths, such as distributed training. Call
+@{tf.keras.estimator.model_to_estimator} as in the
+following sample:
+
+```python
+# Instantiate a Keras inception v3 model.
+keras_inception_v3 = tf.keras.applications.inception_v3.InceptionV3(weights=None)
+# Compile model with the optimizer, loss, and metrics you'd like to train with.
+keras_inception_v3.compile(optimizer=tf.keras.optimizers.SGD(lr=0.0001, momentum=0.9),
+                          loss='categorical_crossentropy',
+                          metric='accuracy')
+# Create an Estimator from the compiled Keras model.
+est_inception_v3 = tf.keras.estimator.model_to_estimator(keras_model=keras_inception_v3)
+# Treat the derived Estimator as you would any other Estimator. For example,
+# the following derived Estimator calls the train method:
+est_inception_v3.train(input_fn=my_training_set, steps=2000)
+```
+For more details, please refer to the documentation for
+@{tf.keras.estimator.model_to_estimator}.
