@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import shutil
 import tempfile
@@ -35,7 +36,37 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
 from tensorflow.python.training import saver
-from tensorflow.python.training.monitored_session_test import FakeHook
+from tensorflow.python.training import session_run_hook
+
+
+class FakeHook(session_run_hook.SessionRunHook):
+
+  def __init__(self):
+    self.should_stop = False
+    self.request = None
+    self.call_counter = collections.Counter()
+    self.last_run_context = None
+    self.last_run_values = None
+
+  def begin(self):
+    self.call_counter['begin'] += 1
+
+  def after_create_session(self, session, coord):  # pylint: disable=unused-argument
+    self.call_counter['after_create_session'] += 1
+
+  def before_run(self, run_context):
+    self.call_counter['before_run'] += 1
+    self.last_run_context = run_context
+    return self.request
+
+  def after_run(self, run_context, run_values):
+    self.call_counter['after_run'] += 1
+    self.last_run_values = run_values
+    if self.should_stop:
+      run_context.request_stop()
+
+  def end(self, session):
+    self.call_counter['end'] += 1
 
 
 class CheckpointRestorerHookTest(test.TestCase):
