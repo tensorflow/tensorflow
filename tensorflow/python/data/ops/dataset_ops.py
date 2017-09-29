@@ -23,7 +23,8 @@ import threading
 
 import numpy as np
 
-from tensorflow.python.data.ops.iterator import Iterator
+from tensorflow.python.data.ops import iterator
+from tensorflow.python.data.ops.iterator import Iterator  # pylint: disable=unused-import
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -51,8 +52,6 @@ class Dataset(object):
   def __init__(self):
     pass
 
-  # TODO(mrry): Rename this to `make_dataset_variant()`,
-  # `make_dataset_tensor()`, or something else more accurate.
   @abc.abstractmethod
   def _as_variant_tensor(self):
     """Creates a scalar `tf.Tensor` of `tf.variant` representing this dataset.
@@ -65,19 +64,37 @@ class Dataset(object):
   def make_initializable_iterator(self, shared_name=None):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
-    **N.B.** The returned iterator will be in an uninitialized state,
-    and you must run the `iterator.initializer` operation before using it.
+    Note: The returned iterator will be in an uninitialized state,
+    and you must run the `iterator.initializer` operation before using it:
+
+    ```python
+    dataset = ...
+    iterator = dataset.make_initializable_iterator()
+    # ...
+    sess.run(iterator.initializer)
+    ```
 
     Args:
-      shared_name: (Optional.) If non-empty, this iterator will be shared under
-        the given name across multiple sessions that share the same devices
-        (e.g. when using a remote server).
-
+      shared_name: (Optional.) If non-empty, the returnediterator will be
+        shared under the given name across multiple sessions that share the
+        same devices (e.g. when using a remote server).
 
     Returns:
       An `Iterator` over the elements of this dataset.
     """
-    return Iterator.from_dataset(self, shared_name)
+    if shared_name is None:
+      shared_name = ""
+    iterator_resource = gen_dataset_ops.iterator(
+        container="",
+        shared_name=shared_name,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+    with ops.colocate_with(iterator_resource):
+      initializer = gen_dataset_ops.make_iterator(
+          self._as_variant_tensor(), iterator_resource)
+    return iterator.Iterator(
+        iterator_resource, initializer, self.output_types,
+        self.output_shapes)
 
   def make_one_shot_iterator(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
@@ -96,7 +113,7 @@ class Dataset(object):
 
     _make_dataset.add_to_graph(ops.get_default_graph())
 
-    return Iterator(
+    return iterator.Iterator(
         gen_dataset_ops.one_shot_iterator(
             dataset_factory=_make_dataset,
             output_types=nest.flatten(self.output_types),

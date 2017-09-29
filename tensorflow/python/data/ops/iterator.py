@@ -31,8 +31,9 @@ class Iterator(object):
                output_shapes):
     """Creates a new iterator from the given iterator resource.
 
-    NOTE(mrry): Most users will not call this initializer directly, and will
-    instead use `Iterator.from_dataset()` or `Dataset.make_one_shot_iterator()`.
+    Note: Most users will not call this initializer directly, and will
+    instead use `Dataset.make_initializable_iterator()` or
+    `Dataset.make_one_shot_iterator()`.
 
     Args:
       iterator_resource: A `tf.resource` scalar `tf.Tensor` representing the
@@ -48,41 +49,6 @@ class Iterator(object):
     self._initializer = initializer
     self._output_types = output_types
     self._output_shapes = output_shapes
-
-  @staticmethod
-  def from_dataset(dataset, shared_name=None):
-    """Creates a new, uninitialized `Iterator` from the given `Dataset`.
-
-    To initialize this iterator, you must run its `initializer`:
-
-    ```python
-    dataset = ...
-    iterator = Iterator.from_dataset(dataset)
-    # ...
-    sess.run(iterator.initializer)
-    ```
-
-    Args:
-      dataset: A `Dataset` object.
-      shared_name: (Optional.) If non-empty, this iterator will be shared under
-        the given name across multiple sessions that share the same devices
-        (e.g. when using a remote server).
-
-    Returns:
-      An `Iterator`.
-    """
-    if shared_name is None:
-      shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator(
-        container="",
-        shared_name=shared_name,
-        output_types=nest.flatten(dataset.output_types),
-        output_shapes=nest.flatten(dataset.output_shapes))
-    with ops.colocate_with(iterator_resource):
-      initializer = gen_dataset_ops.make_iterator(
-          dataset._as_variant_tensor(), iterator_resource)  # pylint: disable=protected-access
-    return Iterator(iterator_resource, initializer, dataset.output_types,
-                    dataset.output_shapes)
 
   @staticmethod
   def from_structure(output_types, output_shapes=None, shared_name=None):
