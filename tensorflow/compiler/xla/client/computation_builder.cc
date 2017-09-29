@@ -1307,6 +1307,7 @@ StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
 ComputationDataHandle ComputationBuilder::Map(
     tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
     const Computation& computation,
+    tensorflow::gtl::ArraySlice<int64> dimensions,
     tensorflow::gtl::ArraySlice<ComputationDataHandle> static_operands) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
@@ -1317,6 +1318,9 @@ ComputationDataHandle ComputationBuilder::Map(
     *request.add_operands() = operand;
   }
   *request.mutable_to_apply() = computation.handle();
+  for (int64 dimension : dimensions) {
+    request.add_dimensions(dimension);
+  }
   for (const ComputationDataHandle& sop : static_operands) {
     *request.add_static_operands() = sop;
   }

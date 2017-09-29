@@ -241,12 +241,20 @@ class ShapeVerifier : public DfsHloVisitor {
       HloComputation* function,
       tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override {
     std::vector<const Shape*> operand_shapes;
+    int64 max_operand_rank = 0;
     for (const HloInstruction* operand : operands) {
       operand_shapes.push_back(&operand->shape());
+      max_operand_rank =
+          std::max(max_operand_rank, ShapeUtil::Rank(operand->shape()));
     }
+    // TODO(b/65689298) Remove code below once Map is generalized to accept
+    // arbitrary map dimensions.
+    std::vector<int64> map_dims(max_operand_rank);
+    std::iota(map_dims.begin(), map_dims.end(), 0);
     return CheckShape(
-        map, ShapeInference::InferMapShape(
-                 operand_shapes, map->to_apply()->ComputeProgramShape()));
+        map,
+        ShapeInference::InferMapShape(
+            operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims));
   }
 
   Status HandleReduceWindow(HloInstruction* reduce_window,
