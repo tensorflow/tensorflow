@@ -374,8 +374,7 @@ Status HloAliasAnalysis::Verify() const {
 string HloAliasAnalysis::ToString() const {
   string out = StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
   StrAppend(&out, "  Buffers at each position:\n");
-  for (const std::unique_ptr<HloComputation>& computation :
-       module_->computations()) {
+  for (const HloComputation* computation : module_->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
       if (ShapeUtil::IsTuple(instruction->shape())) {

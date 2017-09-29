@@ -1940,16 +1940,7 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
-  // Make a copy of the computations because we may add computations to the
-  // module, invalidating iteration.
-  std::vector<HloComputation*> computations;
-  for (auto& comp : module->computations()) {
-    if (comp->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(comp.get());
-  }
-  for (auto& comp : computations) {
+  for (auto* comp : module->MakeNonfusionComputations()) {
     if (AlgebraicSimplifierVisitor::Run(comp, is_layout_sensitive_,
                                         valid_bitcast_callback_,
                                         enable_dot_simplification_)) {

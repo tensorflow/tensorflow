@@ -33,7 +33,7 @@ namespace xla {
 StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
   // Initially add all GTE and Tuple instructions to the worklist.
   std::queue<HloInstruction*> worklist;
-  for (auto& computation : module->computations()) {
+  for (auto* computation : module->computations()) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kTuple ||
           instruction->opcode() == HloOpcode::kGetTupleElement) {

@@ -410,11 +410,8 @@ CreateMemoryMinimizingSequence(
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
-  for (const auto& computation : module.computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    TF_ASSIGN_OR_RETURN(sequence[computation.get()],
+  for (const auto* computation : module.MakeNonfusionComputations()) {
+    TF_ASSIGN_OR_RETURN(sequence[computation],
                         CreateMemoryMinimizingSequence(
                             *computation, *points_to_analysis, size_function));
   }

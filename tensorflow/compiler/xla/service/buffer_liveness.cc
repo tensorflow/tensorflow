@@ -46,7 +46,7 @@ StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
 
 tensorflow::Status BufferLiveness::Analyze() {
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     if (computation->IsFusionComputation()) {
       continue;
     }
@@ -63,7 +63,7 @@ tensorflow::Status BufferLiveness::Analyze() {
       }
     }
 
-    if (computation.get() == module_->entry_computation()) {
+    if (computation == module_->entry_computation()) {
       const HloInstruction* root = computation->root_instruction();
       maybe_live_out_buffers_ =
           points_to_analysis_->GetPointsToSet(root).CreateFlattenedSet();

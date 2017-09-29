@@ -388,10 +388,10 @@ Status BufferAssignment::ComputeSummaryStats() {
     const std::vector<const HloInstruction*>* sequence =
         liveness_->hlo_ordering().SequentialOrder(*computation);
     if (sequence != nullptr) {
-      module_sequence.emplace(computation.get(), *sequence);
+      module_sequence.emplace(computation, *sequence);
     }
   }
-  if (module_sequence.size() == module_->computations().size()) {
+  if (module_sequence.size() == module_->computation_count()) {
     TF_ASSIGN_OR_RETURN(
         const int64 min_size,
         MinimumMemoryForSequence(module_sequence, buffer_size_));

@@ -119,11 +119,10 @@ GpuHloOrdering::GpuHloOrdering(
   // postorder, so we can do better and establish the total order here. We don't
   // do that yet since it's hard to ensure that the order here is the order used
   // by IrEmitterNested. And mismatched ordering bugs would be hard to find.
-  for (auto& computation : module->computations()) {
-    if (computation.get() != module->entry_computation() &&
+  for (auto* computation : module->computations()) {
+    if (computation != module->entry_computation() &&
         !computation->IsFusionComputation()) {
-      predecessors_.emplace(computation.get(),
-                            computation->ComputeReachability());
+      predecessors_.emplace(computation, computation->ComputeReachability());
     }
   }
 }

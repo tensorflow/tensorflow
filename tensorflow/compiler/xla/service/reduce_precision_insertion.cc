@@ -197,24 +197,20 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
   bool changed = false;
   VLOG(1) << "Running ReducePrecisionInsertion pass on " << module->name();
 
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-
+  for (auto* computation : module->MakeNonfusionComputations()) {
     StatusOr<bool> computation_changed;
     switch (location_) {
       case HloReducePrecisionOptions::OP_INPUTS:
       case HloReducePrecisionOptions::FUSION_INPUTS_BY_CONTENT:
         computation_changed = ReducePrecisionInsertion::insert_on_inputs(
-            instructions_to_modify(computation.get()));
+            instructions_to_modify(computation));
         break;
 
       case HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT:
       case HloReducePrecisionOptions::OP_OUTPUTS:
       case HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS:
         computation_changed = ReducePrecisionInsertion::insert_on_outputs(
-            instructions_to_modify(computation.get()));
+            instructions_to_modify(computation));
         break;
       default:
         break;

@@ -519,9 +519,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
   ShapeVerifier shape_verifier(shape_size_fn_);
 
-  for (auto& computation : module->computations()) {
+  for (auto* computation : module->computations()) {
     for (const auto& instruction : computation->instructions()) {
-      TF_RET_CHECK(instruction->parent() == computation.get());
+      TF_RET_CHECK(instruction->parent() == computation);
       if (instruction->opcode() == HloOpcode::kFusion) {
         TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
         TF_RET_CHECK(
@@ -540,7 +540,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
                        instruction->fused_instructions_computation())
               << "Fused HLO was missing a parent: " << fused->ToString()
               << " parent: " << fused->parent()
-              << " computation: " << computation.get();
+              << " computation: " << computation;
         }
       } else if (instruction->opcode() == HloOpcode::kBroadcast) {
         // If you see this failure then someone has confused the difference

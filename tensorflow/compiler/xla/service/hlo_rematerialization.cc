@@ -1256,12 +1256,8 @@ StatusOr<bool> HloRematerialization::Run(
 
   // After DCE, the module sequence may include instructions which no longer
   // exist.
-  for (const auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    if (sequence->at(computation.get()).size() !=
-        computation->instruction_count()) {
+  for (const auto* computation : module->MakeNonfusionComputations()) {
+    if (sequence->at(computation).size() != computation->instruction_count()) {
       // A size mismatch between the computation instruction count and the size
       // of the ordering of instructions can only be caused by DCE. Rebuild the
       // order by removing the deleted instructions from the order.
@@ -1271,8 +1267,7 @@ StatusOr<bool> HloRematerialization::Run(
       }
       // Move the old order into a temporary vector, then build new order
       // inplace.
-      std::vector<const HloInstruction*>& order =
-          sequence->at(computation.get());
+      std::vector<const HloInstruction*>& order = sequence->at(computation);
       std::vector<const HloInstruction*> old_order;
       using std::swap;
       swap(order, old_order);
@@ -1281,7 +1276,7 @@ StatusOr<bool> HloRematerialization::Run(
                    [&instruction_set](const HloInstruction* instruction) {
                      return ContainsKey(instruction_set, instruction);
                    });
-      TF_RET_CHECK(sequence->at(computation.get()).size() ==
+      TF_RET_CHECK(sequence->at(computation).size() ==
                    computation->instruction_count());
     }
   }

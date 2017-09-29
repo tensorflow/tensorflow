@@ -91,8 +91,8 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
-  for (auto& computation : module->computations()) {
-    changed |= CombineConstants(computation.get(), is_layout_sensitive_);
+  for (auto* computation : module->computations()) {
+    changed |= CombineConstants(computation, is_layout_sensitive_);
 
     std::list<HloInstruction*> post_order =
         computation->MakeInstructionPostOrder();

@@ -137,10 +137,7 @@ Status TuplePointsToAnalysis::Analyze() {
   logical_buffer_aliases_.resize(
       logical_buffer_analysis_->num_logical_buffers());
 
-  for (auto& computation : module_->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (auto* computation : module_->MakeNonfusionComputations()) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
@@ -452,12 +449,9 @@ PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
 string TuplePointsToAnalysis::ToString() const {
   string output = tensorflow::strings::Printf(
       "TuplePointsToSet for module %s:\n", module_->name().c_str());
-  for (const auto& computation : module_->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (const auto* computation : module_->MakeNonfusionComputations()) {
     const char* entry =
-        computation.get() == module_->entry_computation() ? "entry " : "";
+        computation == module_->entry_computation() ? "entry " : "";
     tensorflow::strings::StrAppend(&output, entry, "computation ",
                                    computation->name(), ":\n");
     for (const HloInstruction* instruction :

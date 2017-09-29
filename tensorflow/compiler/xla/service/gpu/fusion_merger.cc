@@ -293,14 +293,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
 StatusOr<bool> FusionMerger::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "FusionMerger for module: " << module->name();
-  std::vector<HloComputation*> computations;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(computation.get());
-  }
-  for (auto& computation : computations) {
+  for (auto* computation : module->MakeNonfusionComputations()) {
     VLOG(1) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
     XLA_VLOG_LINES(3, computation->ToString());

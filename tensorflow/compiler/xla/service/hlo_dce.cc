@@ -37,10 +37,7 @@ namespace xla {
 StatusOr<bool> HloDCE::Run(HloModule* module) {
   bool changed = false;
 
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (auto* computation : module->MakeNonfusionComputations()) {
     std::unordered_set<HloInstruction*> live_instructions;
     TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
         [&live_instructions](HloInstruction* instruction) {
