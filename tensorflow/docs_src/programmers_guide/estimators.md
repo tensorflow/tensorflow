@@ -1,7 +1,7 @@
 # Estimators
 
-This document introduces **Estimators**--a high-level TensorFlow API that
-greatly simplifies machine learning programming. Estimators encapsulate
+This document introduces @{tf.estimator$**Estimators**}--a high-level TensorFlow
+API that greatly simplifies machine learning programming. Estimators encapsulate
 the following actions:
 
 *   training
@@ -11,10 +11,10 @@ the following actions:
 
 You may either use the pre-made Estimators we provide or write your
 own custom Estimators.  All Estimators--whether pre-made or custom--are
-classes based on the `tf.estimator.Estimator` class.
+classes based on the @{tf.estimator.Estimator} class.
 
-Note: TensorFlow also provides an Estimator class at
-`tf.contrib.learn.Estimator`, which you should not use.</aside>
+Note: TensorFlow also includes a deprecated `Estimator` class at
+@{tf.contrib.learn.Estimator}, which you should not use.
 
 
 ## Advantages of Estimators
@@ -53,10 +53,11 @@ Pre-made Estimators enable you to work at a much higher conceptual level
 than the base TensorFlow APIs. You no longer have to worry about creating
 the computational graph or sessions since Estimators handle all
 the "plumbing" for you.  That is, pre-made Estimators create and manage
-`Graph` and `Session` objects for you.  Furthermore, pre-made Estimators
-let you experiment with different model architectures by making only minimal
-code changes.  `DNNClassifier`, for example, is a pre-made Estimator class that
-trains classification models through dense, feed-forward neural networks.
+@{tf.Graph$`Graph`} and @{tf.Session$`Session`} objects for you.  Furthermore,
+pre-made Estimators let you experiment with different model architectures by
+making only minimal code changes.  @{tf.estimator.DNNClassifier$`DNNClassifier`},
+for example, is a pre-made Estimator class that trains classification models
+through dense, feed-forward neural networks.
 
 
 ### Structure of a pre-made Estimators program
@@ -69,7 +70,7 @@ of the following four steps:
     import the test set. Each dataset importing function must return two
     objects:
 
-    *   a dictionary in which the keys are feature column names and the
+    *   a dictionary in which the keys are feature names and the
         values are Tensors (or SparseTensors) containing the corresponding
         feature data
     *   a Tensor containing one or more labels
@@ -81,8 +82,7 @@ of the following four steps:
            ...  # manipulate dataset, extracting feature names and the label
            return feature_dict, label
 
-    See @{$datasets$Using the `Dataset` API for TensorFlow Input Pipelines}
-    for full details.)
+    (See @{$programmers_guide/datasets} for full details.)
 
 2.  **Define the feature columns.** Each @{tf.feature_column}
     identifies a feature name, its type, and any input pre-processing.
