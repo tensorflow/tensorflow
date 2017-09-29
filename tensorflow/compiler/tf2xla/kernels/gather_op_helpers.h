@@ -31,7 +31,7 @@ namespace tensorflow {
 xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
     XlaOpKernelContext* ctx, const xla::ComputationDataHandle& input,
     const TensorShape& input_shape, const xla::ComputationDataHandle& indices,
-    const TensorShape& indices_shape, DataType dtype,
+    const TensorShape& indices_shape, int64 axis, DataType dtype,
     xla::ComputationBuilder* builder);
 
 }  // namespace tensorflow
