@@ -227,21 +227,21 @@ ifeq ($(TARGET),ANDROID)
 # You need to have an Android version of the protobuf libraries compiled to link
 # in. The compile_android_protobuf.sh script may help.
 
-	ANDROID_OS_ARCH :=
+	ANDROID_HOST_OS_ARCH :=
 	ifeq ($(HOST_OS),LINUX)
-		ANDROID_OS_ARCH=linux
+		ANDROID_HOST_OS_ARCH=linux
 	endif
 	ifeq ($(HOST_OS),OSX)
-		ANDROID_OS_ARCH=darwin
+		ANDROID_HOST_OS_ARCH=darwin
 	endif
 	ifeq ($(HOST_OS),WINDOWS)
     $(error "windows is not supported.")
 	endif
 
 	ifeq ($(HOST_ARCH),x86_32)
-		ANDROID_OS_ARCH := $(ANDROID_OS_ARCH)-x86
+		ANDROID_HOST_OS_ARCH := $(ANDROID_HOST_OS_ARCH)-x86
 	else
-		ANDROID_OS_ARCH := $(ANDROID_OS_ARCH)-$(HOST_ARCH)
+		ANDROID_HOST_OS_ARCH := $(ANDROID_HOST_OS_ARCH)-$(HOST_ARCH)
 	endif
     
 	ifndef ANDROID_ARCH
@@ -294,8 +294,8 @@ ifeq ($(TARGET),ANDROID)
 	ifndef NDK_ROOT
     $(error "NDK_ROOT is not defined.")
 	endif
-	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_OS_ARCH)/bin/$(BIN_PREFIX)-g++
-	CC := $(CC_PREFIX) $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_OS_ARCH)/bin/$(BIN_PREFIX)-gcc
+	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-g++
+	CC := $(CC_PREFIX) $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-gcc
 	CXXFLAGS +=\
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-$(SYSROOT_ARCH) \
 -Wno-narrowing \
@@ -326,7 +326,7 @@ $(TARGET_NSYNC_LIB) \
 -ldl \
 -latomic
 
-	LD := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_OS_ARCH)/$(BIN_PREFIX)/bin/ld
+	LD := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/$(BIN_PREFIX)/bin/ld
 
 	LDFLAGS := \
 $(MARCH_OPTION) \
@@ -336,7 +336,7 @@ $(MARCH_OPTION) \
 -pie \
 -v
 
-	AR := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_OS_ARCH)/bin/$(BIN_PREFIX)-ar
+	AR := $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-ar
 	ARFLAGS := r
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
 
