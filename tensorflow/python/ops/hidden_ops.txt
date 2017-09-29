@@ -207,6 +207,7 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky

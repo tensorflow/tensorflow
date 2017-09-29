@@ -63,6 +63,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
                         r"tensorflow::|"
                         r"functor::|"
+                        r"nsync_|"
                         r"perftools::gputools")
 
 # We want to identify data members explicitly in the DEF file, so that no one

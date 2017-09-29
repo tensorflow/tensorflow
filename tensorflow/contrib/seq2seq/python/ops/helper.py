@@ -309,7 +309,7 @@ class ScheduledEmbeddingTrainingHelper(TrainingHelper):
           gen_array_ops.fill([self.batch_size], -1))
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):
-    with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperSample",
+    with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperNextInputs",
                         [time, outputs, state, sample_ids]):
       (finished, base_next_inputs, state) = (
           super(ScheduledEmbeddingTrainingHelper, self).next_inputs(
