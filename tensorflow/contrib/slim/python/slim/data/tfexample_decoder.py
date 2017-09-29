@@ -347,6 +347,7 @@ class Image(ItemHandler):
                image_key=None,
                format_key=None,
                shape=None,
+               shape_keys=None,
                channels=3,
                dtype=dtypes.uint8,
                repeated=False):
@@ -361,6 +362,9 @@ class Image(ItemHandler):
         [height, width, channels]. If provided, the image is reshaped
         accordingly. If left as None, no reshaping is done. A shape should
         be supplied only if all the stored images have the same shape.
+      shape_keys: Optional name or list of names of the TF-Example feature in
+        which the tensor shape is stored. If a list, then each corresponds to
+        one dimension of the shape.
       channels: the number of channels in the image.
       dtype: images will be decoded at this bit depth. Different formats
         support different bit depths.
@@ -373,11 +377,16 @@ class Image(ItemHandler):
       image_key = 'image/encoded'
     if not format_key:
       format_key = 'image/format'
+    if shape_keys and shape is not None:
+      raise ValueError('Cannot specify both shape_keys and shape parameters.')
+    if shape_keys and not isinstance(shape_keys, list):
+      shape_keys = [shape_keys]
 
     super(Image, self).__init__([image_key, format_key])
     self._image_key = image_key
     self._format_key = format_key
     self._shape = shape
+    self._shape_keys = shape_keys
     self._channels = channels
     self._dtype = dtype
     self._repeated = repeated
@@ -423,8 +432,14 @@ class Image(ItemHandler):
         pred_fn_pairs, default=decode_image, exclusive=True)
 
     image.set_shape([None, None, self._channels])
-    if self._shape is not None:
-      image = array_ops.reshape(image, self._shape)
+
+    if self._shape_keys:
+      shape_dims = [keys_to_tensors[k] for k in self._shape_keys]
+      shape = array_ops.reshape(array_ops.stack(shape_dims), [-1])
+    else:
+      shape = self._shape
+    if shape is not None:
+      image = array_ops.reshape(image, shape)
 
     return image
 
