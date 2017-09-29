@@ -168,7 +168,7 @@ class _Conv(base.Layer):
   def call(self, inputs):
     # TODO(agarwal): do we need this name_scope ?
     with ops.name_scope(None, 'convolution', [inputs, self.kernel]):
-      outputs = self._convolution_op(inputs, self.kernel.value())
+      outputs = self._convolution_op(inputs, self.kernel)
 
     if self.use_bias:
       if self.data_format == 'channels_first':
