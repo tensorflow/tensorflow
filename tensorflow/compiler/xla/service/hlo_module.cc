@@ -47,7 +47,7 @@ HloModule::HloModule(const string& name, const HloModuleConfig& config)
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
   computation->UniquifyName(&computation_name_uniquer_);
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     instruction->UniquifyName(&instruction_name_uniquer_);
     instruction->SetUniqueId(NewUniqueInstructionId());
   }
@@ -94,7 +94,7 @@ void HloModule::ReplaceComputations(
   new_computations.reserve(computations_.size());
 
   for (std::unique_ptr<HloComputation>& computation : computations_) {
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kCall:
         case HloOpcode::kMap:
@@ -266,7 +266,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   VLOG(2) << "as a call " << call->ToString();
   VLOG(2) << "to " << nested_computation->ToString();
 
-  TF_CHECK_OK(computation->ReplaceUsesOfInstruction(output, call));
+  TF_CHECK_OK(output->ReplaceAllUsesWith(call));
   for (auto i = instructions_to_outline.rbegin();
        i != instructions_to_outline.rend(); ++i) {
     TF_CHECK_OK(computation->RemoveInstruction(*i));
@@ -281,7 +281,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // module).
   std::set<HloComputation*> nonroot_computations;
   for (auto& computation : computations_) {
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
            instruction->called_computations()) {
         nonroot_computations.insert(called_computation);
@@ -333,7 +333,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   }
 
   for (auto& cloned_computation : module->computations_) {
-    for (auto& instruction : cloned_computation->instructions()) {
+    for (auto* instruction : cloned_computation->instructions()) {
       // Rewrite instruction's called_computation to point to the cloned
       // computations.
       instruction->ReplaceCalledComputations(

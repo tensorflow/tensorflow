@@ -1596,9 +1596,9 @@ def variable_scope(name_or_scope,
 
   If `name_or_scope` is not None, it is used as is. If `scope` is None, then
   `default_name` is used.  In that case, if the same name has been previously
-  used in the same scope, it will made unique be appending `_N` to it.
+  used in the same scope, it will be made unique by appending `_N` to it.
 
-  Variable scope allows to create new variables and to share already created
+  Variable scope allows you to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
   see the @{$variables$Variable Scope How To},
   here we present only a few basic examples.

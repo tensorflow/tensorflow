@@ -142,7 +142,7 @@ def inference(inp, num_clusters, hidden1_units, hidden2_units):
       # initial_clusters=tf.contrib.factorization.KMEANS_PLUS_PLUS_INIT,
       use_mini_batch=True)
 
-  (all_scores, _, clustering_scores, _, kmeans_init,
+  (all_scores, _, clustering_scores, _, _, kmeans_init,
    kmeans_training_op) = kmeans.training_graph()
   # Some heuristics to approximately whiten this output.
   all_scores = (all_scores[0] - 0.5) * 5

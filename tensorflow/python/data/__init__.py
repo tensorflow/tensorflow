@@ -14,6 +14,8 @@
 # ==============================================================================
 """`tf.data.Dataset` API for input pipelines.
 
+See the @{$datasets$Importing Data} Programmer's Guide for an overview.
+
 @@Dataset
 @@Iterator
 @@TFRecordDataset
@@ -27,10 +29,10 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.python.data.ops.dataset_ops import Dataset
-from tensorflow.python.data.ops.dataset_ops import FixedLengthRecordDataset
-from tensorflow.python.data.ops.dataset_ops import Iterator
-from tensorflow.python.data.ops.dataset_ops import TextLineDataset
-from tensorflow.python.data.ops.dataset_ops import TFRecordDataset
+from tensorflow.python.data.ops.iterator import Iterator
+from tensorflow.python.data.ops.readers import FixedLengthRecordDataset
+from tensorflow.python.data.ops.readers import TextLineDataset
+from tensorflow.python.data.ops.readers import TFRecordDataset
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

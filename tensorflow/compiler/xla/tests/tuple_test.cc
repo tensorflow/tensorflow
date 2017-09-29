@@ -293,7 +293,7 @@ XLA_TEST_F(TupleTest, TuplesInAMap) {
 
   ComputationBuilder b(client_, TestName());
   auto input = b.ConstantR1<float>({-1.0f, 1.0f, 2.1f});
-  b.Map({input}, tuple_computation);
+  b.Map({input}, tuple_computation, {0});
   ComputeAndCompareR1<float>(&b, {-99.0f, 101.0f, 214.41f}, {}, error_spec_);
 }
 

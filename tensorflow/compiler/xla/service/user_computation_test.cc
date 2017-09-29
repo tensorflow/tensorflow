@@ -224,6 +224,11 @@ TEST_F(UserComputationTest, CheckImplicitBroadcastToExplicitBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle b_handle,
                           computation.AddParameterInstruction(b_request));
 
+  OpDeviceAssignment assignment;
+  assignment.set_has_device(true);
+  assignment.set_device(7);
+  TF_EXPECT_OK(computation.SetOpDeviceAssignment(b_handle, assignment));
+
   BinaryOpRequest add;
   add.set_binop(BINOP_ADD);
   *add.mutable_lhs() = a_handle;
@@ -249,11 +254,18 @@ TEST_F(UserComputationTest, CheckImplicitBroadcastToExplicitBroadcast) {
   //     \       /
   //        add
   EXPECT_EQ(5, hlo_computation->instruction_count());
-  EXPECT_THAT(hlo_computation->root_instruction(), op::Add());
-  const auto& operands = hlo_computation->root_instruction()->operands();
-  ASSERT_EQ(2, operands.size());
-  EXPECT_TRUE(operands[0]->opcode() == HloOpcode::kParameter &&
-              operands[1]->opcode() == HloOpcode::kBroadcast);
+  ASSERT_THAT(
+      hlo_computation->root_instruction(),
+      op::Add(op::Parameter(), op::Broadcast(op::Reshape(op::Parameter()))));
+
+  const HloInstruction* broadcast =
+      hlo_computation->root_instruction()->operand(1);
+  EXPECT_TRUE(broadcast->device_assignment().has_device());
+  EXPECT_EQ(assignment.device(), broadcast->device_assignment().device());
+
+  const HloInstruction* reshape = broadcast->operand(0);
+  EXPECT_TRUE(reshape->device_assignment().has_device());
+  EXPECT_EQ(assignment.device(), reshape->device_assignment().device());
 }
 
 TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {

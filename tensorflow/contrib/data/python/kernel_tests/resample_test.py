@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import resampling
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import string_ops
@@ -41,14 +42,13 @@ class ResampleTest(test.TestCase):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
     initial_dist = [0.2] * 5 if initial_known else None
-    iterator = (dataset_ops.Dataset.from_tensor_slices(classes)
-                .shuffle(200, seed=21)
-                .map(lambda c: (c, string_ops.as_string(c)))
-                .apply(dataset_ops.rejection_resample(target_dist=target_dist,
-                                                      initial_dist=initial_dist,
-                                                      class_func=lambda c, _: c,
-                                                      seed=27))
-                .make_initializable_iterator())
+    iterator = (dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
+        200, seed=21).map(lambda c: (c, string_ops.as_string(c))).apply(
+            resampling.rejection_resample(
+                target_dist=target_dist,
+                initial_dist=initial_dist,
+                class_func=lambda c, _: c,
+                seed=27)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
     variable_init_op = variables.local_variables_initializer()
@@ -80,12 +80,13 @@ class ResampleTest(test.TestCase):
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
     with ops.device(
         device_setter.replica_device_setter(ps_tasks=1, ps_device="/cpu:0")):
-      _ = (dataset_ops.Dataset.from_tensor_slices(classes)
-           .shuffle(200, seed=21)
-           .map(lambda c: (c, string_ops.as_string(c)))
-           .apply(dataset_ops.rejection_resample(
-               target_dist=target_dist, initial_dist=None,
-               class_func=lambda c, _: c, seed=27)))
+      _ = (dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
+          200, seed=21).map(lambda c: (c, string_ops.as_string(c))).apply(
+              resampling.rejection_resample(
+                  target_dist=target_dist,
+                  initial_dist=None,
+                  class_func=lambda c, _: c,
+                  seed=27)))
 
       self.assertEqual(1, len(variables.local_variables()))
       self.assertEqual(b"",

@@ -476,7 +476,8 @@ class Estimator(object):
       # Build the SignatureDefs from receivers and all outputs
       signature_def_map = build_all_signature_defs(
           serving_input_receiver.receiver_tensors,
-          estimator_spec.export_outputs)
+          estimator_spec.export_outputs,
+          serving_input_receiver.receiver_tensors_alternatives)
 
       if not checkpoint_path:
         # Locate the latest checkpoint

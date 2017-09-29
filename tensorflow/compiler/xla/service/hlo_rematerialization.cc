@@ -761,9 +761,9 @@ bool MemoryUsageTracker::Check() const {
   };
 
   // Verify buffers_defined per instruction.
-  for (auto& instruction : computation_->instructions()) {
+  for (auto* instruction : computation_->instructions()) {
     const BufferIdList& defined_buffers =
-        instruction_list_.GetItem(instruction.get())->buffers_defined;
+        instruction_list_.GetItem(instruction)->buffers_defined;
     CHECK(elements_are_unique(defined_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique defined buffers: "
@@ -774,7 +774,7 @@ bool MemoryUsageTracker::Check() const {
                });
 
     for (const Buffer& buffer : buffers_) {
-      if (buffer.defining_instruction->instruction == instruction.get()) {
+      if (buffer.defining_instruction->instruction == instruction) {
         CHECK(std::find(defined_buffers.begin(), defined_buffers.end(),
                         buffer.id) != defined_buffers.end())
             << "Instruction " << instruction->name()
@@ -784,9 +784,9 @@ bool MemoryUsageTracker::Check() const {
   }
 
   // Verify buffers_used per instruction.
-  for (auto& instruction : computation_->instructions()) {
+  for (auto* instruction : computation_->instructions()) {
     const BufferIdList& used_buffers =
-        instruction_list_.GetItem(instruction.get())->buffers_used;
+        instruction_list_.GetItem(instruction)->buffers_used;
     CHECK(elements_are_unique(used_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique used buffers: "
@@ -1151,8 +1151,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
   // Verify some invariants on the memory tracker.
   CHECK_EQ(memory_tracker.memory_usage(), 0);
-  for (auto& instruction : computation->instructions()) {
-    CHECK(memory_tracker.IsPlaced(instruction.get()));
+  for (auto* instruction : computation->instructions()) {
+    CHECK(memory_tracker.IsPlaced(instruction));
   }
 
   VLOG(1) << "In computation " << computation->name() << " rematerialized "
@@ -1267,7 +1267,7 @@ StatusOr<bool> HloRematerialization::Run(
       // order by removing the deleted instructions from the order.
       tensorflow::gtl::FlatSet<const HloInstruction*> instruction_set;
       for (const auto& instruction : computation->instructions()) {
-        instruction_set.insert(instruction.get());
+        instruction_set.insert(instruction);
       }
       // Move the old order into a temporary vector, then build new order
       // inplace.

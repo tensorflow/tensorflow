@@ -44,7 +44,7 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<HloModule> hlo_module)
+  explicit Executable(std::unique_ptr<const HloModule> hlo_module)
       : hlo_module_(std::move(hlo_module)) {}
   virtual ~Executable() {}
 
@@ -163,7 +163,7 @@ class Executable {
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
-  std::unique_ptr<HloModule> hlo_module_;
+  const std::unique_ptr<const HloModule> hlo_module_;
 
   // SessionModule this was compiled from. Null if not dumping executions.
   std::unique_ptr<SessionModule> session_module_;

@@ -23,6 +23,7 @@ import tarfile
 import tempfile
 
 import numpy as np
+from scipy import linalg as scp_linalg
 
 from google.protobuf import text_format
 
@@ -49,27 +50,20 @@ def _expected_inception_score(logits):
   return np.exp(np.mean(per_example_logincscore))
 
 
-def _approximate_matrix_sqrt(mat, eps=1e-8):
-  # Unlike tensorflow, numpy's return order is (u, s, v)
-  u, s, v = np.linalg.svd(mat)
-  si = np.where(s < eps, s, np.sqrt(s))
-  # Note the "v" returned by numpy is actually v = V^T
-  # (when referencing the SVD equation A = U S V^T)
-  # This is unlike Tensorflow which returns v = V
-  return np.dot(np.dot(u, np.diag(si)), v)
-
-
 def _expected_fid(real_imgs, gen_imgs):
   m = np.mean(real_imgs, axis=0)
   m_v = np.mean(gen_imgs, axis=0)
   sigma = np.cov(real_imgs, rowvar=False)
   sigma_v = np.cov(gen_imgs, rowvar=False)
-  sqcc = _approximate_matrix_sqrt(np.dot(sigma, sigma_v))
+  sqcc = scp_linalg.sqrtm(np.dot(sigma, sigma_v))
   mean = np.square(m - m_v).sum()
   trace = np.trace(sigma + sigma_v - 2 * sqcc)
   fid = mean + trace
   return fid
 
+
+def _expected_trace_sqrt_product(sigma, sigma_v):
+  return np.trace(scp_linalg.sqrtm(np.dot(sigma, sigma_v)))
 
 # A dummy GraphDef string with the minimum number of Ops.
 graphdef_string = """
@@ -268,8 +262,11 @@ class ClassifierMetricsTest(test.TestCase):
   def test_frechet_classifier_distance_value(self):
     """Test that `frechet_classifier_distance` gives the correct value."""
     np.random.seed(0)
-    test_pool_real_a = np.float32(np.random.randn(64, 256))
-    test_pool_gen_a = np.float32(np.random.randn(64, 256))
+
+    # Make num_examples > num_features to ensure scipy's sqrtm function
+    # doesn't return a complex matrix.
+    test_pool_real_a = np.float32(np.random.randn(512, 256))
+    test_pool_gen_a = np.float32(np.random.randn(512, 256))
 
     fid_op = _run_with_mock(classifier_metrics.frechet_classifier_distance,
                             test_pool_real_a, test_pool_gen_a,
@@ -281,6 +278,29 @@ class ClassifierMetricsTest(test.TestCase):
     expected_fid = _expected_fid(test_pool_real_a, test_pool_gen_a)
 
     self.assertAllClose(expected_fid, actual_fid, 0.01)
+
+  def test_trace_sqrt_product_value(self):
+    """Test that `trace_sqrt_product` gives the correct value."""
+    np.random.seed(0)
+
+    # Make num_examples > num_features to ensure scipy's sqrtm function
+    # doesn't return a complex matrix.
+    test_pool_real_a = np.float32(np.random.randn(512, 256))
+    test_pool_gen_a = np.float32(np.random.randn(512, 256))
+
+    cov_real = np.cov(test_pool_real_a, rowvar=False)
+    cov_gen = np.cov(test_pool_gen_a, rowvar=False)
+
+    trace_sqrt_prod_op = _run_with_mock(classifier_metrics.trace_sqrt_product,
+                                        cov_real, cov_gen)
+
+    with self.test_session() as sess:
+      # trace_sqrt_product: tsp
+      actual_tsp = sess.run(trace_sqrt_prod_op)
+
+    expected_tsp = _expected_trace_sqrt_product(cov_real, cov_gen)
+
+    self.assertAllClose(actual_tsp, expected_tsp, 0.01)
 
   def test_preprocess_image_graph(self):
     """Test `preprocess_image` graph construction."""
