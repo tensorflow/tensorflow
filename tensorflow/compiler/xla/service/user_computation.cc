@@ -2990,10 +2990,10 @@ void ComputationLowerer::Visit(
       HloInstruction* lhs = lookup_instruction(binary_op_request.lhs());
       HloInstruction* rhs = lookup_instruction(binary_op_request.rhs());
       auto hlo_opcode = BinaryOperationToHloOpcode(binary_op_request.binop());
-      if (binary_op_request.broadcast_dimensions_size() > 0) {
+      if (binary_op_request.broadcast_dimensions_size() > 0 &&
+          ShapeUtil::Rank(lhs->shape()) != ShapeUtil::Rank(rhs->shape())) {
         // Emit a broadcast instruction to perform the "broadcast in dimension"
         // operation.
-        CHECK_NE(ShapeUtil::Rank(lhs->shape()), ShapeUtil::Rank(rhs->shape()));
         HloInstruction* operand_to_broadcast =
             ShapeUtil::Rank(lhs->shape()) < ShapeUtil::Rank(rhs->shape()) ? lhs
                                                                           : rhs;

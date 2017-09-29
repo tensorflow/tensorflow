@@ -679,11 +679,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         ShapeUtil::HumanString(rhs).c_str());
   }
 
-  if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
-      !broadcast_dimensions.empty()) {
-    return InvalidArgument(
-        "broadcast dimensions field should not be set on binary "
-        "operations with operands of the same rank");
+  if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs)) {
+    std::vector<int64> identity_dims(ShapeUtil::Rank(lhs));
+    std::iota(identity_dims.begin(), identity_dims.end(), 0);
+    if (!broadcast_dimensions.empty() &&
+        broadcast_dimensions != identity_dims) {
+      return InvalidArgument(
+          "broadcast dimensions field must either be not set or be the "
+          "identity on binary operations with operands of the same rank");
+    }
   }
 
   if (ShapeUtil::Compatible(lhs, rhs)) {
