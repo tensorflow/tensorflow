@@ -849,6 +849,12 @@ class HloInstruction {
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
 
+  // Returns true if this elementwise instruction implicitly broadcasts operand
+  // `operand_idx`.
+  //
+  // Precondition: this instruction should be an elementwise operation.
+  bool ImplicitlyBroadcastsOperand(int64 operand_idx) const;
+
   // Returns true if this instruction is binary and elementwise.
   bool IsElementwiseBinary() const;
 
