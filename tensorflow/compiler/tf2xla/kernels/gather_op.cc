@@ -29,18 +29,22 @@ namespace tensorflow {
 xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
     XlaOpKernelContext* context, const xla::ComputationDataHandle& input,
     const TensorShape& input_shape, const xla::ComputationDataHandle& indices,
-    const TensorShape& indices_shape, DataType dtype,
+    const TensorShape& indices_shape, int64 axis, DataType dtype,
     xla::ComputationBuilder* builder) {
   // Although the indices Tensor is flattened into rank 1 during the lookup,
   // and each scalar entry is used as an index into the first dimension of the
-  // input, the output is returned with shape indices.shape + input.shape[1:]
+  // input, the output is returned with shape:
+  // input.shape[:axis] + indices.shape + input.shape[axis+1:]
   const int num_indices = indices_shape.num_elements();
-  TensorShape input_shape_1(input_shape);
-  input_shape_1.RemoveDim(0);
+  TensorShape input_shape_pre_axis(input_shape);
+  input_shape_pre_axis.RemoveDimRange(axis, input_shape.dims());
+  TensorShape input_shape_post_axis(input_shape);
+  input_shape_post_axis.RemoveDimRange(0, axis + 1);
 
-  // Each slice of the input tensor is [1, <input shape_1>]
+  // Each slice of the input tensor has shape:
+  // [<input_shape_pre_axis>, 1, <input shape_post_axis>]
   TensorShape slice_shape(input_shape);
-  slice_shape.set_dim(0, 1);
+  slice_shape.set_dim(axis, 1);
 
   // TODO(b/37575001) The tensor in which we construct the output during
   // the loop must have rank >= 3 as a workaround for lowering issues.
@@ -49,19 +53,23 @@ xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
 
   TensorShape loop_out_shape;
   for (int64 k = 0; k < extra_dims; ++k) loop_out_shape.AddDim(1);
+  loop_out_shape.AppendShape(input_shape_pre_axis);
   loop_out_shape.AddDim(num_indices);
-  loop_out_shape.AppendShape(input_shape_1);
+  loop_out_shape.AppendShape(input_shape_post_axis);
 
   // Slices are reshaped into the rank >= 3 shape of the loop carried output.
   TensorShape loop_out_slice_shape;
   for (int64 k = 0; k < extra_dims; ++k) loop_out_slice_shape.AddDim(1);
+  loop_out_slice_shape.AppendShape(input_shape_pre_axis);
   loop_out_slice_shape.AddDim(1);
-  loop_out_slice_shape.AppendShape(input_shape_1);
+  loop_out_slice_shape.AppendShape(input_shape_post_axis);
 
   // Finally, the loop-carried rank >= 3 output is reshaped to the op's
   // specified result shape.
-  TensorShape out_shape(indices_shape);
-  out_shape.AppendShape(input_shape_1);
+  TensorShape out_shape;
+  out_shape.AppendShape(input_shape_pre_axis);
+  out_shape.AppendShape(indices_shape);
+  out_shape.AppendShape(input_shape_post_axis);
 
   // Degenerate case: empty indices.
   if (num_indices == 0) {
@@ -118,9 +126,10 @@ xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
 
     // Slice from the input array.
     auto index = bodyb.DynamicSlice(indices, bodyb.Reshape(i, {1}), {1});
-    auto start_indices =
-        bodyb.Pad(bodyb.Reshape(index, {1}), bodyb.ConstantR0<int32>(0),
-                  xla::MakeEdgePaddingConfig({{0, input_shape.dims() - 1}}));
+    auto start_indices = bodyb.Pad(
+        bodyb.Reshape(index, {1}), bodyb.ConstantR0<int32>(0),
+        xla::MakeEdgePaddingConfig(
+            {{input_shape_pre_axis.dims(), input_shape_post_axis.dims()}}));
     auto slice_i = bodyb.Reshape(
         bodyb.DynamicSlice(input, start_indices, slice_shape.dim_sizes()),
         loop_out_slice_shape.dim_sizes());
@@ -128,7 +137,8 @@ xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
     // Construct the index into the R3+ output Tensor 0, ..., <index>, 0, ...
     std::vector<xla::ComputationDataHandle> out_index_vals(
         loop_out_shape.dims(), bodyb.ConstantR1<int32>({0}));
-    out_index_vals[extra_dims] = bodyb.Reshape(i, {1});
+    out_index_vals[input_shape_pre_axis.dims() + extra_dims] =
+        bodyb.Reshape(i, {1});
     auto out_index = bodyb.ConcatInDim(out_index_vals, 0);
 
     // Update the output Tensor
@@ -273,12 +283,38 @@ void GatherOpDynamicSlice::Compile(XlaOpKernelContext* context) {
   auto input_shape = context->InputShape(0);
   auto indices = context->Input(1);
   auto indices_shape = context->InputShape(1);
-  xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-      context, input, input_shape, indices, indices_shape, DT_FLOAT, builder);
+  int64 axis = 0;
+  if (context->num_inputs() == 3) {
+    const TensorShape axis_shape = context->InputShape(2);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(axis_shape),
+                errors::InvalidArgument("axis must be scalar"));
+    DataType axis_type = input_type(2);
+    OP_REQUIRES(context, axis_type == DT_INT32 || axis_type == DT_INT64,
+                errors::InvalidArgument("axis must be int32 or int64"));
+
+    OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &axis));
+    const auto params_dims = input_shape.dims();
+    if (axis < 0) {
+      axis += params_dims;
+    }
+    OP_REQUIRES(
+        context, 0 <= axis && axis < params_dims,
+        errors::InvalidArgument("Expected axis in the range [", -params_dims,
+                                ", ", params_dims, "), but got ", axis));
+  }
+
+  xla::ComputationDataHandle gather =
+      XlaComputeGatherDynamicSlice(context, input, input_shape, indices,
+                                   indices_shape, axis, DT_FLOAT, builder);
   context->SetOutput(0, gather);
 }
 
 REGISTER_XLA_OP(Name("Gather")
+                    .TypeConstraint("Tparams", DT_FLOAT)
+                    .Device(DEVICE_GPU_XLA_JIT),
+                GatherOpDynamicSlice);
+
+REGISTER_XLA_OP(Name("GatherV2")
                     .TypeConstraint("Tparams", DT_FLOAT)
                     .Device(DEVICE_GPU_XLA_JIT),
                 GatherOpDynamicSlice);
