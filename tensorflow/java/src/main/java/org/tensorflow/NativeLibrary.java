@@ -115,8 +115,7 @@ final class NativeLibrary {
   }
 
   private static String extractResource(
-      InputStream resource, String resourceName, String extractToDirectory)
-      throws IOException {
+      InputStream resource, String resourceName, String extractToDirectory) throws IOException {
     final File dst = new File(extractToDirectory, System.mapLibraryName(resourceName));
     dst.deleteOnExit();
     final String dstPath = dst.toString();
@@ -177,8 +176,7 @@ final class NativeLibrary {
   // compatibility.
   private static File createTemporaryDirectory() {
     File baseDirectory = new File(System.getProperty("java.io.tmpdir"));
-    String directoryName
-        = "tensorflow_native_libraries-" + System.currentTimeMillis() + "-";
+    String directoryName = "tensorflow_native_libraries-" + System.currentTimeMillis() + "-";
     for (int attempt = 0; attempt < 1000; attempt++) {
       File temporaryDirectory = new File(baseDirectory, directoryName + attempt);
       if (temporaryDirectory.mkdir()) {
@@ -187,7 +185,8 @@ final class NativeLibrary {
     }
     throw new IllegalStateException(
         "Could not create a temporary directory (tried to make "
-        + directoryName + "*) to extract TensorFlow native libraries.");
+            + directoryName
+            + "*) to extract TensorFlow native libraries.");
   }
 
   private NativeLibrary() {}
