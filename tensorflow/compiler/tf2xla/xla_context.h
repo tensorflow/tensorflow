@@ -76,11 +76,6 @@ class XlaContext : public ResourceBase {
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::Literal& literal);
 
-  // Mark the computation as having side effects (e.g., Send operators).
-  void AddSideEffects();
-
-  bool has_side_effects() const { return has_side_effects_; }
-
   // Creates a resource with resource `kind` and initial type `type` and
   // value `handle`. `name` is a descriptive name for use in error messages.
   // Fails if the resource already exists.
@@ -96,6 +91,11 @@ class XlaContext : public ResourceBase {
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateMax(const DataType type);
+
+  // Get an XLA lambda to compute Min. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMin(const DataType type);
 
   // Get an XLA lambda to compute Add. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
@@ -133,9 +133,6 @@ class XlaContext : public ResourceBase {
   // Return values of the Tensorflow graph, indexed by _Retval index.
   std::vector<XlaExpression> retvals_;
 
-  // Does the computation have side effects, i.e., Send() calls?
-  bool has_side_effects_ = false;
-
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
 
@@ -151,6 +148,9 @@ class XlaContext : public ResourceBase {
 
   // Cached computation to compute Max of two elements, specialized by type.
   ComputationMap max_func_;
+
+  // Cached computation to compute Min of two elements, specialized by type.
+  ComputationMap min_func_;
 
   // Cached computation to compute Sum of two elements, specialized by type.
   ComputationMap add_func_;

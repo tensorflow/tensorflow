@@ -61,6 +61,14 @@ class IteratorTest(test.TestCase):
     got = [x.numpy() for x in it]
     self.assertAllEqual([0, 4, 16, 36], got)
 
+  def testMultipleIteratorsOnADatasetThatUsesFunctions(self):
+    ds = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(math_ops.square)
+
+    got1 = [x.numpy() for x in datasets.Iterator(ds)]
+    self.assertAllEqual([1, 4, 9, 16, 25, 36], got1)
+    got2 = [x.numpy() for x in datasets.Iterator(ds)]
+    self.assertAllEqual(got1, got2)
+
 
 if __name__ == '__main__':
   test.main()

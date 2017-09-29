@@ -21,6 +21,8 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "global_data",
     srcs = ["global_data.cc"],
@@ -44,7 +46,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "padding_test",
     srcs = ["padding_test.cc"],
     deps = [
@@ -94,7 +96,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:support",
@@ -114,7 +115,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:compile_only_service",
         "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:support",
     ],

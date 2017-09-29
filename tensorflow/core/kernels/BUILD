@@ -30,6 +30,7 @@ load(
     "if_android",
     "tf_cc_test",
     "tf_cc_tests",
+    "tf_cc_binary",
     "tf_copts",
     "tf_opts_nortti_if_android",
     "tf_kernel_library",
@@ -220,6 +221,7 @@ cc_library(
         ":initializable_lookup_table",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -665,7 +667,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_band_part_op",
     prefix = "matrix_band_part_op",
-    deps = ARRAY_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+    ]) + ARRAY_DEPS,
 )
 
 tf_kernel_library(
@@ -1193,6 +1197,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/debug:debug_io_utils",
+        "//tensorflow/core/debug:debug_node_key",
     ],
 )
 
@@ -1332,7 +1337,7 @@ tf_kernel_library(
         "transpose_functor_gpu.cu.cc",
         "transpose_functor.h",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         ":ops_util",
         "//tensorflow/core:framework",
@@ -2295,7 +2300,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "self_adjoint_eig_v2_op",
     prefix = "self_adjoint_eig_v2_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":cast_op",
+        ":cwise_op",
+        ":cuda_solvers",
+        ":transpose_functor",
+    ]),
 )
 
 tf_kernel_library(
@@ -2332,7 +2342,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "qr_op",
     prefix = "qr_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_solvers",
+        ":cwise_op",
+        ":matrix_band_part_op",
+        ":transpose_functor",
+    ]),
 )
 
 tf_kernel_library(
@@ -3658,7 +3673,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "loss_test",
     size = "small",
     srcs = ["loss_test.cc"],
@@ -4001,7 +4016,6 @@ tf_kernel_library(
     name = "word2vec_kernels",
     prefix = "word2vec_kernels",
     deps = [
-        "//tensorflow/core",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -4047,7 +4061,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "spectrogram_convert_test_data",
     testonly = 1,
     srcs = ["spectrogram_convert_test_data.cc"],
@@ -4415,6 +4429,7 @@ filegroup(
         "depthtospace_op.h",
         "depthwise_conv_op.h",
         "fake_quant_ops_functor.h",
+        "fused_batch_norm_op.h",
         "gemm_functors.h",
         "image_resizer_state.h",
         "maxpooling_op.h",
@@ -4725,11 +4740,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:android_tensorflow_lib_lite",
-        "//tensorflow/core:protos_cc",
+        "//tensorflow/core:protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d//:fft2d",
         "@gemmlowp//:gemmlowp",
+        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -4791,8 +4807,8 @@ tf_kernel_library(
         ":image_resizer_state",
         ":ops_util",
         ":pooling_ops",
-        "//tensorflow/core",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -4871,7 +4887,7 @@ tf_cc_test(
 )
 
 # Android-only test for quantization utilities.
-cc_binary(
+tf_cc_binary(
     name = "quantization_utils_test_android_only",
     testonly = 1,
     srcs = ["quantization_utils_test.cc"],
@@ -6056,7 +6072,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "summary_interface_test",
     srcs = ["summary_interface_test.cc"],
     deps = [

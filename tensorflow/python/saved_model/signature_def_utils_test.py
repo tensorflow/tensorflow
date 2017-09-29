@@ -24,8 +24,21 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.saved_model import signature_def_utils_impl
 from tensorflow.python.saved_model import utils
+
+
+def _make_signature(inputs, outputs, name=None):
+  input_info = {
+      input_name: utils.build_tensor_info(tensor)
+      for input_name, tensor in inputs.items()
+  }
+  output_info = {
+      output_name: utils.build_tensor_info(tensor)
+      for output_name, tensor in outputs.items()
+  }
+  return signature_def_utils_impl.build_signature_def(input_info, output_info,
+                                                      name)
 
 
 class SignatureDefUtilsTest(test.TestCase):
@@ -41,8 +54,8 @@ class SignatureDefUtilsTest(test.TestCase):
     outputs = dict()
     outputs["foo-output"] = y_tensor_info
 
-    signature_def = signature_def_utils.build_signature_def(inputs, outputs,
-                                                            "foo-method-name")
+    signature_def = signature_def_utils_impl.build_signature_def(
+        inputs, outputs, "foo-method-name")
     self.assertEqual("foo-method-name", signature_def.method_name)
 
     # Check inputs in signature def.
@@ -63,8 +76,8 @@ class SignatureDefUtilsTest(test.TestCase):
   def testRegressionSignatureDef(self):
     input1 = constant_op.constant("a", name="input-1")
     output1 = constant_op.constant("b", name="output-1")
-    signature_def = signature_def_utils.regression_signature_def(input1,
-                                                                 output1)
+    signature_def = signature_def_utils_impl.regression_signature_def(
+        input1, output1)
 
     self.assertEqual(signature_constants.REGRESS_METHOD_NAME,
                      signature_def.method_name)
@@ -89,9 +102,8 @@ class SignatureDefUtilsTest(test.TestCase):
     input1 = constant_op.constant("a", name="input-1")
     output1 = constant_op.constant("b", name="output-1")
     output2 = constant_op.constant("c", name="output-2")
-    signature_def = signature_def_utils.classification_signature_def(input1,
-                                                                     output1,
-                                                                     output2)
+    signature_def = signature_def_utils_impl.classification_signature_def(
+        input1, output1, output2)
 
     self.assertEqual(signature_constants.CLASSIFY_METHOD_NAME,
                      signature_def.method_name)
@@ -122,7 +134,7 @@ class SignatureDefUtilsTest(test.TestCase):
     input2 = constant_op.constant("b", name="input-2")
     output1 = constant_op.constant("c", name="output-1")
     output2 = constant_op.constant("d", name="output-2")
-    signature_def = signature_def_utils.predict_signature_def({
+    signature_def = signature_def_utils_impl.predict_signature_def({
         "input-1": input1,
         "input-2": input2
     }, {"output-1": output1,
@@ -152,6 +164,44 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertEqual("output-2:0", output2_tensor_info_actual.name)
     self.assertEqual(types_pb2.DT_STRING, output2_tensor_info_actual.dtype)
     self.assertEqual(0, len(output2_tensor_info_actual.tensor_shape.dim))
+
+  def testGetShapeAndTypes(self):
+    inputs = {
+        "input-1": constant_op.constant(["a", "b"]),
+        "input-2": array_ops.placeholder(dtypes.float32, [10, 11]),
+    }
+    outputs = {
+        "output-1": array_ops.placeholder(dtypes.float32, [10, 32]),
+        "output-2": constant_op.constant([["b"]]),
+    }
+    signature_def = _make_signature(inputs, outputs)
+    self.assertEqual(
+        signature_def_utils_impl.get_signature_def_input_shapes(signature_def),
+        {"input-1": [2], "input-2": [10, 11]})
+    self.assertEqual(
+        signature_def_utils_impl.get_signature_def_output_shapes(signature_def),
+        {"output-1": [10, 32], "output-2": [1, 1]})
+    self.assertEqual(
+        signature_def_utils_impl.get_signature_def_input_types(signature_def),
+        {"input-1": dtypes.string, "input-2": dtypes.float32})
+    self.assertEqual(
+        signature_def_utils_impl.get_signature_def_output_types(signature_def),
+        {"output-1": dtypes.float32, "output-2": dtypes.string})
+
+  def testGetNonFullySpecifiedShapes(self):
+    outputs = {
+        "output-1": array_ops.placeholder(dtypes.float32, [None, 10, None]),
+        "output-2": array_ops.sparse_placeholder(dtypes.float32),
+    }
+    signature_def = _make_signature({}, outputs)
+    shapes = signature_def_utils_impl.get_signature_def_output_shapes(
+        signature_def)
+    self.assertEqual(len(shapes), 2)
+    # Must compare shapes with as_list() since 2 equivalent non-fully defined
+    # shapes are not equal to each other.
+    self.assertEqual(shapes["output-1"].as_list(), [None, 10, None])
+    # Must compare `dims` since its an unknown shape.
+    self.assertEqual(shapes["output-2"].dims, None)
 
 
 if __name__ == "__main__":

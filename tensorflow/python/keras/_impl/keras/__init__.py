@@ -25,6 +25,7 @@ from tensorflow.python.keras._impl.keras import callbacks
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import datasets
 from tensorflow.python.keras._impl.keras import engine
+from tensorflow.python.keras._impl.keras import estimator
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import layers
 from tensorflow.python.keras._impl.keras import losses

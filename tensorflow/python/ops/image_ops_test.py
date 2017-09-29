@@ -1260,6 +1260,19 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       y = image_ops.central_crop(x, 0.5)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+      self.assertAllEqual(y_tf.shape, y_np.shape)
+
+  def testCropping2(self):
+    # Test case for 10315
+    x_shape = [240, 320, 3]
+    x_np = np.zeros(x_shape, dtype=np.int32)
+    y_np = np.zeros([80, 106, 3], dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      x = array_ops.placeholder(shape=x_shape, dtype=dtypes.int32)
+      y = image_ops.central_crop(x, 0.33)
+      y_tf = y.eval(feed_dict={x:x_np})
+      self.assertAllEqual(y_tf, y_np)
+      self.assertAllEqual(y_tf.shape, y_np.shape)
 
   def testShapeInference(self):
     # Test no-op fraction=1.0
@@ -2655,6 +2668,12 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       y = image_ops.convert_image_dtype(image, output_dtype)
       self.assertTrue(y.dtype == output_dtype)
       self.assertAllClose(y.eval(), y_np, atol=1e-5)
+      if output_dtype in [dtypes.float32, dtypes.float64,
+                          dtypes.int32, dtypes.int64]:
+        y_saturate = image_ops.convert_image_dtype(
+            image, output_dtype, saturate=True)
+        self.assertTrue(y_saturate.dtype == output_dtype)
+        self.assertAllClose(y_saturate.eval(), y_np, atol=1e-5)
 
   def testNoConvert(self):
     # Make sure converting to the same data type creates only an identity op
@@ -2670,6 +2689,8 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       self._convert([0, 255], dtypes.uint8, dtypes.int16, [0, 255 * 128])
       self._convert([0, 32767], dtypes.int16, dtypes.uint8, [0, 255])
+      self._convert([0, 2 ** 32], dtypes.int64, dtypes.int32, [0, 1])
+      self._convert([0, 1], dtypes.int32, dtypes.int64, [0, 2 ** 32])
 
   def testConvertBetweenFloat(self):
     # Make sure converting to between float types does nothing interesting

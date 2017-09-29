@@ -197,8 +197,8 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
       .SetShapeFn(shape_inference::UnchangedShape)
 
 #define UNARY_GRADIENT_COMPLEX()                               \
-  Input("x: T")                                                \
-      .Input("y: T")                                           \
+  Input("y: T")                                                \
+      .Input("dy: T")                                           \
       .Output("z: T")                                          \
       .Attr("T: {half, float, double, complex64, complex128}") \
       .SetShapeFn(shape_inference::UnchangedShape)
@@ -2172,7 +2172,7 @@ Equivalent to np.angle.
 REGISTER_OP("Conj")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {complex64, complex128} = DT_COMPLEX64")
+    .Attr("T: {complex64, complex128, variant} = DT_COMPLEX64")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns the complex conjugate of a complex number.

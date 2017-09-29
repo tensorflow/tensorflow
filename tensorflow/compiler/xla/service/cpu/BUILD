@@ -15,6 +15,8 @@ package_group(
 )
 
 load(":build_defs.bzl", "runtime_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -53,6 +55,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:batchnorm_rewriter",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:buffer_liveness",
+        "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -180,15 +183,18 @@ cc_library(
 
 cc_library(
     name = "ir_emitter",
-    srcs = ["ir_emitter.cc"],
+    srcs = [
+        "elemental_ir_emitter.cc",
+        "ir_emitter.cc",
+    ],
     hdrs = [
+        "elemental_ir_emitter.h",
         "ir_emitter.h",
     ],
     deps = [
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
-        ":elemental_ir_emitter",
         ":ir_emission_utils",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:shape_util",
@@ -239,7 +245,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "sample_harness",
     srcs = ["sample_harness.cc"],
     deps = [
@@ -451,7 +457,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "cpu_runtime_test",
     srcs = ["cpu_runtime_test.cc"],
     deps = [
@@ -470,7 +476,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
     deps = [
@@ -483,7 +489,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "xfeed_manager_test",
     size = "small",
     srcs = ["xfeed_manager_test.cc"],
@@ -526,22 +532,6 @@ cc_library(
 )
 
 cc_library(
-    name = "elemental_ir_emitter",
-    srcs = ["elemental_ir_emitter.cc"],
-    hdrs = ["elemental_ir_emitter.h"],
-    deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:elemental_ir_emitter",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "@llvm//:core",
-    ],
-)
-
-cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
@@ -566,7 +556,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "layout_assignment_test",
     size = "small",
     srcs = ["layout_assignment_test.cc"],
@@ -605,7 +595,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "conv_canonicalization_test",
     srcs = ["conv_canonicalization_test.cc"],
     deps = [
@@ -628,7 +618,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "shape_partition_test",
     srcs = ["shape_partition_test.cc"],
     deps = [

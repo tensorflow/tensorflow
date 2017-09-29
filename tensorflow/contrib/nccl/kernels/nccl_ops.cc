@@ -121,14 +121,7 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
       : NcclReduceOpBase(c) {}
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
-    const Tensor& in_t = c->input(0);
-    std::unique_ptr<Tensor> temp_ptr(new Tensor());
-    OP_REQUIRES_OK_ASYNC(
-        c, c->allocate_temp(in_t.dtype(), in_t.shape(), temp_ptr.get()), done);
-    Tensor* temp_t = temp_ptr.release();
-
-    auto actual_done = [c, done, temp_t](Status s) {
-      delete temp_t;
+    auto actual_done = [c, done](Status s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
     };
@@ -138,7 +131,7 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
     NcclManager::instance()->AddReduceSend(
         num_devices(), GetCollectiveKey(c), reduction_op(),
         compute_stream->parent(), gpu_info->gpu_id, gpu_info->event_mgr,
-        compute_stream, &in_t, temp_t, std::move(actual_done));
+        compute_stream, &c->input(0), std::move(actual_done));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("NcclReduceSend").Device(DEVICE_GPU),

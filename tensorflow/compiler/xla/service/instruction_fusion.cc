@@ -67,6 +67,7 @@ namespace xla {
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
     case HloOpcode::kSin:

@@ -29,6 +29,7 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import run_config as run_config_lib
+from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
@@ -201,6 +202,22 @@ class EvalSpec(
         throttle_secs=throttle_secs)
 
 
+class _StopAtSecsHook(session_run_hook.SessionRunHook):
+  """Stops given secs after begin is called."""
+
+  def __init__(self, stop_after_secs):
+    self._stop_after_secs = stop_after_secs
+    self._start_time = None
+
+  def begin(self):
+    self._start_time = time.time()
+
+  def after_run(self, run_context, run_values):
+    del run_values
+    if time.time() - self._start_time >= self._stop_after_secs:
+      run_context.request_stop()
+
+
 class UnimplementedError(Exception):
   pass
 
@@ -241,15 +258,52 @@ class _TrainingExecutor(object):
 
   def run_evaluator(self):
     """Runs task evaluator."""
-    raise UnimplementedError('Method run_evaluator has not been implemented.')
+    # TODO(xiejw): To allow execution framework to add continuous eval listener.
+    return self._start_continuous_evaluation()
 
   def run_ps(self):
     """Runs task parameter server (in training cluster spec)."""
-    raise UnimplementedError('Method run_ps has not been implemented.')
+    config = self._estimator.config
+    server = self._start_std_server(config)
+    server.join()
 
   def run_local(self):
     """Runs training and evaluation locally (non-distributed)."""
-    raise UnimplementedError('Method run_local has not been implemented.')
+
+    def _should_stop_local_train(global_step):
+      if self._train_spec.max_steps is None:
+        return False
+      if global_step >= self._train_spec.max_steps:
+        return True
+      return False
+
+    if self._eval_spec.throttle_secs <= 0:
+      raise ValueError('eval_spec.throttle_secs should be positive, given: {}.'
+                       'It is used do determine how long each training '
+                       'iteration should go when train and evaluate '
+                       'locally.'.format(
+                           self._eval_spec.throttle_secs))
+
+    stop_hook = _StopAtSecsHook(self._eval_spec.throttle_secs)
+    train_hooks = list(self._train_spec.hooks) + [stop_hook]
+    logging.info('Start train and evaluate loop. The evaluate will happen '
+                 'after {} secs (eval_spec.throttle_secs) or training is '
+                 'finished.'.format(self._eval_spec.throttle_secs))
+    while True:
+      self._estimator.train(
+          input_fn=self._train_spec.input_fn,
+          max_steps=self._train_spec.max_steps,
+          hooks=train_hooks)
+      metrics = self._estimator.evaluate(
+          input_fn=self._eval_spec.input_fn,
+          steps=self._eval_spec.steps,
+          hooks=self._eval_spec.hooks,
+          name=self._eval_spec.name)
+
+      # TODO(b/65169058): Adds export once export strategies are moved.
+
+      if _should_stop_local_train(metrics[ops.GraphKeys.GLOBAL_STEP]):
+        break
 
   def _start_std_server(self, config):
     """Creates, starts, and returns a server_lib.Server."""
@@ -293,3 +347,88 @@ class _TrainingExecutor(object):
     self._estimator.train(input_fn=self._train_spec.input_fn,
                           max_steps=self._train_spec.max_steps,
                           hooks=self._train_spec.hooks)
+
+  def _start_continuous_evaluation(self):
+    """Repeatedly calls `Estimator` evaluate and export until training ends."""
+    delay_secs = self._eval_spec.delay_secs
+    if delay_secs:
+      logging.info('Waiting %f secs before starting eval.', delay_secs)
+      time.sleep(delay_secs)
+
+    latest_eval_result = None
+    evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec)
+
+    while True:
+      if latest_eval_result:
+        global_step = latest_eval_result.get(ops.GraphKeys.GLOBAL_STEP)
+        if (global_step and self._train_spec.max_steps and
+            global_step >= self._train_spec.max_steps):
+          logging.info(
+              'Exiting evaluation, global_step=%s >= train max_steps=%s',
+              global_step,
+              self._train_spec.max_steps)
+          return
+
+      start = time.time()
+      latest_eval_result = evaluator.evaluate_and_export()
+
+      # Throttle if necessary.
+      elapsed_time = time.time() - start
+      difference = self._eval_spec.throttle_secs  - elapsed_time
+      if difference > 0:
+        logging.info('Waiting %f secs before starting next eval run.',
+                     difference)
+        time.sleep(difference)
+
+  class _Evaluator(object):
+    """A helper class to call `Estimator.evaluate` and export model."""
+
+    def __init__(self, estimator, eval_spec):
+      self._estimator = estimator
+      self._eval_spec = eval_spec
+      self._previous_ckpt_path = None
+      self._last_warning_time = 0
+
+    def evaluate_and_export(self):
+      """Evaluate and (maybe) export the current model.
+
+      Returns:
+        Evaluation results. Returns `None` if current round of evaluation is
+        skipped.
+      """
+      latest_ckpt_path = self._estimator.latest_checkpoint()
+      if not latest_ckpt_path:
+        self._log_err_msg('Estimator is not trained yet. Will start an '
+                          'evaluation when a checkpoint is ready.')
+        return None
+
+      if latest_ckpt_path == self._previous_ckpt_path:
+        self._log_err_msg(
+            'No new checkpoint ready for evaluation. Skip the current '
+            'evaluation pass as evaluation results are expected to be same '
+            'for the same checkpoint.')
+        return None
+
+      eval_result = self._estimator.evaluate(
+          input_fn=self._eval_spec.input_fn,
+          steps=self._eval_spec.steps,
+          name=self._eval_spec.name,
+          checkpoint_path=latest_ckpt_path,
+          hooks=self._eval_spec.hooks)
+
+      if not eval_result:
+        self._log_err_msg('Estimator evaluate returns empty result.')
+        return None
+
+      # TODO(b/65169058): Adds export once export strategies are moved.
+
+      self._last_warning_time = 0
+      self._previous_ckpt_path = latest_ckpt_path
+      return eval_result
+
+    def _log_err_msg(self, message):
+      """Prints warning `message` every 10 mins."""
+      current_time = time.time()
+      if current_time - self._last_warning_time > 600:
+        logging.warning(message)
+        self._last_warning_time = current_time

@@ -188,8 +188,7 @@ class SvdOpGpu : public AsyncOpKernel {
                         int64 n, int64 p, const gtl::ArraySlice<int32>& perm,
                         const Tensor& M, Tensor* S, Tensor* U, Tensor* V) {
     TensorShape shapeRaw = M.shape();
-    shapeRaw.RemoveDim(shapeRaw.dims() - 1);
-    shapeRaw.RemoveDim(shapeRaw.dims() - 1);
+    shapeRaw.RemoveLastDims(2);
 
     // Transpose M, because cuSolver expects it to be column-major
     TensorShape input_shape = shapeRaw;
@@ -279,8 +278,7 @@ class SvdOpGpu : public AsyncOpKernel {
         v_shape = V->shape();
       } else {
         TensorShape shapeRaw = M.shape();
-        shapeRaw.RemoveDim(shapeRaw.dims() - 1);
-        shapeRaw.RemoveDim(shapeRaw.dims() - 1);
+        shapeRaw.RemoveLastDims(2);
         v_shape = shapeRaw;
         v_shape.AddDim(p);
         v_shape.AddDim(n);
@@ -342,8 +340,7 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // compute  shapes
     TensorShape shapeRaw = input.shape();
-    shapeRaw.RemoveDim(shapeRaw.dims() - 1);
-    shapeRaw.RemoveDim(shapeRaw.dims() - 1);
+    shapeRaw.RemoveLastDims(2);
     TensorShape shapeS = shapeRaw;
     TensorShape shapeU = shapeRaw;
     TensorShape shapeV = shapeRaw;

@@ -60,7 +60,7 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node,
                              std::vector<NodeDef>* outputs);
 
-  Status FoldNode(NodeDef* node);
+  Status FoldNode(NodeDef* node, GraphDef* output_graph);
 
   Status FoldGraph(GraphDef* output);
 
@@ -68,6 +68,9 @@ class ConstantFolding : public GraphOptimizer {
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
   Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
+
+  Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
+                             GraphDef* output);
 
   // Points to an externally provided device or to owned_device_;
   DeviceBase* cpu_device_;
@@ -77,7 +80,7 @@ class ConstantFolding : public GraphOptimizer {
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
-  GraphDef added_graph_;
+  std::unordered_set<string> nodes_whitelist_;
   bool has_fetch_;
 };
 

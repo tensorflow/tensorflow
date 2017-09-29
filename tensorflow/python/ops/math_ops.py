@@ -2089,13 +2089,12 @@ def sigmoid(x, name=None):
   Specifically, `y = 1 / (1 + exp(-x))`.
 
   Args:
-    x: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
-      or `qint32`.
+    x: A Tensor with type `float16`, `float32`, `float64`, `complex64`,
+      or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32`
-      otherwise the return type is `quint8`.
+    A Tensor with the same type as `x`.
 
   @compatibility(numpy)
   Equivalent to np.scipy.special.expit
@@ -2128,8 +2127,8 @@ def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
   Args:
-    x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
-      `complex64`, or `int64`.
+    x: A Tensor or SparseTensor with type `float16`, `float32`, `double`,
+      `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2308,7 +2307,7 @@ def conj(x, name=None):
   If `x` is real, it is returned unchanged.
 
   Args:
-    x: `Tensor` to conjugate.  Must have numeric type.
+    x: `Tensor` to conjugate.  Must have numeric or variant type.
     name: A name for the operation (optional).
 
   Returns:
@@ -2319,12 +2318,13 @@ def conj(x, name=None):
   """
   with ops.name_scope(name, "Conj", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype.is_complex:
+    if x.dtype.is_complex or x.dtype == dtypes.variant:
       return gen_math_ops._conj(x, name=name)
     elif x.dtype.is_floating or x.dtype.is_integer:
       return x
     else:
-      raise TypeError("Expected numeric tensor, got dtype %r" % x.dtype)
+      raise TypeError(
+          "Expected numeric or variant tensor, got dtype %r" % x.dtype)
 
 
 def _BroadcastShape(op):

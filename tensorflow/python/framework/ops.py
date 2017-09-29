@@ -75,8 +75,8 @@ def tensor_id(tensor):
   return tensor._id  # pylint: disable=protected-access
 
 
-def _in_gpu_device():
-  return "GPU" == context.context().device_spec.device_type
+def _in_gpu_device(ctx):
+  return "GPU" == ctx.device_spec.device_type
 
 
 @tf_contextlib.contextmanager
@@ -578,44 +578,31 @@ class Tensor(_TensorLike):
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
-
-# TODO(apassos): unify this logic that in constant_op.py
-def _maybe_modify_numpy_dtype_determination(np_array):
-  """Tweak numpy dtype determination.
-
-  numpy prefers int64 and float64, we prefer int32 and float32.
-  (int32 is often used as the "shape" input to various operations,
-  many of which only support int32 shapes).
-  This preference is copied from tensor_util.make_tensor_proto
-  (https://goto.google.com/numpy_prefs_156503903)
-
-  Args:
-    np_array: A numpy ndarray
-  Returns:
-    A numpy ndarray whose dtype may have been modified.
-  """
-  if np_array.dtype == np.float64:
-    return np_array.astype(np.float32)
-  if np_array.dtype == np.int64:
-    # Downcast iff there is no precision loss.
-    downcasted = np_array.astype(np.int32)
-    if np.array_equal(downcasted, np_array):
-      return downcasted
-  return np_array
+  def _dup(self):
+    ret = copy.copy(self)
+    ret._id = uid()  # pylint: disable=protected-access
+    return ret
 
 
-def _has_string(value):
-  if isinstance(value, compat.bytes_or_text_types): return True
-  if isinstance(value, collections.Sequence) and value:
-    return _has_string(value[0])
-  return False
+def _eager_cast(tensor_handle, src_type_enum, dest_type_enum, ctx):
+  """Cast tensor_handle from src_type_enum to dest_type_enum."""
+  # pylint: disable=protected-access
+  try:
+    out_handle, = c_api.TFE_Py_Execute(
+        ctx._handle, b"/job:localhost/replica:0/task:0/device:CPU:0", b"Cast",
+        [tensor_handle], (b"SrcT", src_type_enum, b"DstT", dest_type_enum), 1)
+  except core._NotOkStatusException as e:
+    six.raise_from(core._status_to_exception(e.code, e.message), None)
+  # pylint: enable=protected-access
+  # TODO(josh11b): Should we support tracing or post_execution_callbacks here?
+  return out_handle
 
 
 # TODO(agarwal): rename to TensorHandle.
 class EagerTensor(Tensor):
   """A TensorFlow Eager Tensor."""
 
-  def __init__(self, value, dtype=None):  # pylint: disable=super-init-not-called
+  def __init__(self, value, ctx, dtype=None):  # pylint: disable=super-init-not-called
     """Creates a Tensor object from a Python object or numpy array.
 
     May share storage with the numpy array, in which case changes to the numpy
@@ -624,6 +611,7 @@ class EagerTensor(Tensor):
 
     Arguments:
       value: A numpy.array or a Python object to create a Tensor for.
+      ctx: The value of context.context().
       dtype: TensorFlow dtype for the returned Tensor. If None, one will be
         automatically selected.
     """
@@ -631,26 +619,33 @@ class EagerTensor(Tensor):
     # tf.constant defined in
     # https://www.tensorflow.org/code/tensorflow/python/framework/constant_op.py
     self._id = uid()
-    if not isinstance(value, np.ndarray):
-      if dtype is None and _has_string(value):
-        dtype = dtypes.string
-      npt = None if dtype is None else dtype.as_numpy_dtype
+    # pylint: disable=protected-access
+    if isinstance(value, np.ndarray):
+      if dtype is not None:
+        npt = dtype.as_numpy_dtype
+        if npt != value.dtype:
+          value = value.astype(npt)
       try:
-        value = np.array(value, dtype=npt)
-      except ValueError as e:
-        raise ValueError(
-            "Cannot convert %s to array. Error: %s" % (str(value), e))
-      if dtype is None:
-        value = _maybe_modify_numpy_dtype_determination(value)
-    elif dtype is not None:
-      npt = dtype.as_numpy_dtype
-      if npt != value.dtype:
-        value = value.astype(npt)
-    try:
-      value = np.asarray(value, order="C")
-      self._handle = c_api.TFE_Py_NumpyToTensorHandle(value)
-    except core._NotOkStatusException as e:  # pylint: disable=protected-access
-      raise core._status_to_exception(e.code, e.message)  # pylint: disable=protected-access
+        value = np.asarray(value, order="C")
+        self._handle = c_api.TFE_Py_NumpyToTensorHandle(value)
+      except core._NotOkStatusException as e:
+        six.raise_from(core._status_to_exception(e.code, e.message), None)
+      dtype = dtypes.as_dtype(c_api.TFE_TensorHandleDataType(self._handle))
+    else:
+      dtype_enum = None if dtype is None else dtype.as_datatype_enum
+      try:
+        self._handle = c_api.TFE_Py_SequenceToTensorHandle(value, dtype_enum)
+      except core._NotOkStatusException as e:
+        six.raise_from(core._status_to_exception(e.code, e.message), None)
+
+      dtype_enum = c_api.TFE_TensorHandleDataType(self._handle)
+      dtype_actual = dtypes.as_dtype(dtype_enum)
+      if dtype is not None and dtype != dtype_actual:
+        self._handle = _eager_cast(self._handle, dtype_enum,
+                                   dtype.as_datatype_enum, ctx)
+      else:
+        dtype = dtype_actual
+    # pylint: enable=protected-access
 
     # Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
     # memory.  This change approximates the same behavior for eager execution -
@@ -678,8 +673,7 @@ class EagerTensor(Tensor):
     # require host memory for int32 tensors, there will be a discrepancy between
     # eager execution and TensorFlow graphs. However, as of July 2017, there
     # were no known GPU kernels that kept int32 tensors in device memory.
-    if _in_gpu_device() and value.dtype != np.int32:
-      ctx = context.context()
+    if _in_gpu_device(ctx) and dtype != dtypes.int32:
       # pylint: disable=protected-access
       device_name = ctx.device_name
       with errors.raise_exception_on_not_ok_status() as status:
@@ -687,7 +681,7 @@ class EagerTensor(Tensor):
             self._handle, ctx._handle, device_name, status)
       # pylint: enable=protected-access
 
-    self._dtype = dtypes.as_dtype(c_api.TFE_TensorHandleDataType(self._handle))
+    self._dtype = dtype
 
     # This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
     # be None for tensors of type other than DT_REOSURCE. For DT_RESOURCE
@@ -779,9 +773,12 @@ class EagerTensor(Tensor):
           grad_h = c_api.TFE_TensorHandleCopyToDevice(
               dresult._handle, ctx._handle, self_device, status)
         return _tensor_from_handle(grad_h)
-      tape.record_operation([new_tensor], [self], [], grad_fun)
+      tape.record_operation("_copy", [new_tensor], [self], [], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
+
+  def _dup(self):
+    return self._copy(device_name=self.device)
 
   @property
   def device(self):
@@ -1011,7 +1008,8 @@ def internal_convert_to_tensor(value,
                                dtype=None,
                                name=None,
                                as_ref=False,
-                               preferred_dtype=None):
+                               preferred_dtype=None,
+                               ctx=None):
   """Converts the given `value` to an `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1034,6 +1032,7 @@ def internal_convert_to_tensor(value,
       dtype in mind when converting to a tensor, so preferred_dtype
       can be used as a soft preference.  If the conversion to
       `preferred_dtype` is not possible, this argument has no effect.
+    ctx: Optional: The value of context.context().
 
   Returns:
     A `Tensor` based on `value`.
@@ -1043,7 +1042,8 @@ def internal_convert_to_tensor(value,
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
-  if context.in_eager_mode():
+  if ctx is None: ctx = context.context()
+  if ctx.in_eager_mode():
     # Fast path for EagerTensors that don't need any conversion.
     if isinstance(value, EagerTensor):
       # Note that we don't check that value's dtype matches the dtype
@@ -1077,7 +1077,8 @@ def internal_convert_to_tensor(value,
       try:
         ret = conversion_func(
             value, dtype=preferred_dtype, name=name, as_ref=as_ref)
-      except (TypeError, ValueError):
+      except (TypeError, ValueError, errors.UnimplementedError,
+              errors.InvalidArgumentError):
         # Could not coerce the conversion to use the preferred dtype.
         ret = None
 
@@ -1115,7 +1116,8 @@ def internal_convert_n_to_tensor(values,
                                  dtype=None,
                                  name=None,
                                  as_ref=False,
-                                 preferred_dtype=None):
+                                 preferred_dtype=None,
+                                 ctx=None):
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -1130,6 +1132,7 @@ def internal_convert_n_to_tensor(values,
       dtype in mind when converting to a tensor, so preferred_dtype
       can be used as a soft preference.  If the conversion to
       `preferred_dtype` is not possible, this argument has no effect.
+    ctx: The value of context.context().
 
   Returns:
     A list of `Tensor` and/or `IndexedSlices` objects.
@@ -1143,6 +1146,7 @@ def internal_convert_n_to_tensor(values,
   if not isinstance(values, collections.Sequence):
     raise TypeError("values must be a list.")
   ret = []
+  if ctx is None: ctx = context.context()
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
     ret.append(
@@ -1151,7 +1155,8 @@ def internal_convert_n_to_tensor(values,
             dtype=dtype,
             name=n,
             as_ref=as_ref,
-            preferred_dtype=preferred_dtype))
+            preferred_dtype=preferred_dtype,
+            ctx=ctx))
   return ret
 
 
@@ -1316,6 +1321,7 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
       values=values, dtype=dtype, name=name, as_ref=False)
 
 
+# TODO(josh11b): Add ctx argument to conversion_func() signature.
 def register_tensor_conversion_function(base_type,
                                         conversion_func,
                                         priority=100):
@@ -2967,7 +2973,9 @@ class Graph(object):
           "Cannot add function created without C API support to graph "
           "created with C API support")
       with errors.raise_exception_on_not_ok_status() as status:
-        c_api.TF_GraphAddFunction(self._c_graph, function._c_func, status)
+        gradient = function._grad_func._c_func if function._grad_func else None
+        c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient,
+                                   status)
       # pylint: enable=protected-access
 
   @property
@@ -3630,7 +3638,7 @@ class Graph(object):
       old_stack = self._name_stack
       if not name:  # Both for name=None and name="" we re-set to empty scope.
         new_stack = None
-      elif name and name[-1] == "/":
+      elif name[-1] == "/":
         new_stack = _name_from_scope_name(name)
       else:
         new_stack = self.unique_name(name)
@@ -5002,8 +5010,8 @@ def name_scope(name, default_name=None, values=None):
       but `values` are.
   """
   name = default_name if name is None else name
-  if context.in_eager_mode():
-    ctx = context.context()
+  ctx = context.context()
+  if ctx.in_eager_mode():
     old_name = ctx.scope_name
     if name is None:
       scope_name = ""

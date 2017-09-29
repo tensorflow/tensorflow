@@ -69,9 +69,9 @@ class SloppyInterleaveDatasetTest(test.TestCase):
 
     self.dataset = (dataset_ops.Dataset.from_tensor_slices(self.input_values)
                     .repeat(self.repeat_count).apply(
-                        sloppy_ops.sloppy_interleave,
-                        args=(interleave_fn, self.cycle_length,
-                              self.block_length)))
+                        sloppy_ops.sloppy_interleave(
+                            interleave_fn, self.cycle_length,
+                            self.block_length)))
     self.iterator = self.dataset.make_initializable_iterator()
     self.init_op = self.iterator.initializer
     self.next_element = self.iterator.get_next()
@@ -455,10 +455,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
     dataset = dataset.repeat(self.repeat_count)
     dataset = dataset.apply(
-        sloppy_ops.sloppy_interleave,
-        args=(interleave_fn,),
-        kwargs={"cycle_length": 16,
-                "block_length": 2})
+        sloppy_ops.sloppy_interleave(interleave_fn, cycle_length=16,
+                                     block_length=2))
     iterator = dataset.make_one_shot_iterator()
 
     with self.test_session() as sess:

@@ -204,6 +204,9 @@ add_python_module("tensorflow/examples/tutorials")
 add_python_module("tensorflow/examples/tutorials/mnist")
 add_python_module("tensorflow/python")
 add_python_module("tensorflow/python/client")
+add_python_module("tensorflow/python/data")
+add_python_module("tensorflow/python/data/ops")
+add_python_module("tensorflow/python/data/util")
 add_python_module("tensorflow/python/debug")
 add_python_module("tensorflow/python/debug/cli")
 add_python_module("tensorflow/python/debug/examples")
@@ -237,6 +240,7 @@ add_python_module("tensorflow/python/keras/datasets/cifar100")
 add_python_module("tensorflow/python/keras/datasets/imdb")
 add_python_module("tensorflow/python/keras/datasets/mnist")
 add_python_module("tensorflow/python/keras/datasets/reuters")
+add_python_module("tensorflow/python/keras/estimator")
 add_python_module("tensorflow/python/keras/initializers")
 add_python_module("tensorflow/python/keras/layers")
 add_python_module("tensorflow/python/keras/losses")
@@ -285,6 +289,8 @@ add_python_module("tensorflow/python/util/protobuf")
 add_python_module("tensorflow/tools")
 add_python_module("tensorflow/tools/graph_transforms")
 add_python_module("tensorflow/contrib")
+add_python_module("tensorflow/contrib/all_reduce")
+add_python_module("tensorflow/contrib/all_reduce/python")
 add_python_module("tensorflow/contrib/android")
 add_python_module("tensorflow/contrib/android/java")
 add_python_module("tensorflow/contrib/android/java/org")
@@ -329,10 +335,8 @@ add_python_module("tensorflow/contrib/cudnn_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/ops")
 add_python_module("tensorflow/contrib/data")
 add_python_module("tensorflow/contrib/data/python")
-add_python_module("tensorflow/contrib/data/python/framework")
 add_python_module("tensorflow/contrib/data/python/kernel_tests")
 add_python_module("tensorflow/contrib/data/python/ops")
-add_python_module("tensorflow/contrib/data/python/util")
 add_python_module("tensorflow/contrib/decision_trees")
 add_python_module("tensorflow/contrib/decision_trees/proto")
 add_python_module("tensorflow/contrib/deprecated")
@@ -362,6 +366,8 @@ add_python_module("tensorflow/contrib/framework/python/framework")
 add_python_module("tensorflow/contrib/framework/python/ops")
 add_python_module("tensorflow/contrib/gan")
 add_python_module("tensorflow/contrib/gan/python")
+add_python_module("tensorflow/contrib/gan/python/eval")
+add_python_module("tensorflow/contrib/gan/python/eval/python")
 add_python_module("tensorflow/contrib/gan/python/features")
 add_python_module("tensorflow/contrib/gan/python/features/python")
 add_python_module("tensorflow/contrib/gan/python/losses")
@@ -849,6 +855,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/safe_ptr.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/safe_ptr.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_reader.h"
@@ -906,6 +914,7 @@ if(WIN32)
         $<TARGET_FILE:pywrap_tensorflow_internal_static>
         $<TARGET_FILE:tf_protos_cc>
         $<TARGET_FILE:tf_python_protos_cc>
+	${nsync_STATIC_LIBRARIES}
     )
 
     set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")

@@ -22,7 +22,6 @@
 #tensorflow/contrib/graph_editor/* @purpledog
 # NEED OWNER: tensorflow/contrib/grid_rnn/*
 #tensorflow/contrib/hvx/* @satok16
-#tensorflow/contrib/imperative/* @keveman
 #tensorflow/contrib/integrate/* @shoyer
 #tensorflow/contrib/kernel_methods/* @petrosmol
 #tensorflow/contrib/ios_examples/* @petewarden

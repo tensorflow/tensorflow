@@ -36,40 +36,46 @@ set -e
 
 yes '' | ./configure
 
-# We need to update the Eigen version, because of compiler failures on ARM when
-# using the version currently (Aug 10th 2017) pulled by mainline TensorFlow. We
-# should be able to get rid of this hack once
-# https://github.com/tensorflow/tensorflow/issues/9697 is addressed.
-sed -i 's/f3a22f35b044/d781c1de9834/g' tensorflow/workspace.bzl
-sed -i 's/ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4/a34b208da6ec18fa8da963369e166e4a368612c14d956dd2f9d7072904675d9b/g' tensorflow/workspace.bzl
-
 # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
 sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
 sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
 
+# The system-installed OpenSSL headers get pulled in by the latest BoringSSL
+# release on this configuration, so move them before we build:
+if [ -d /usr/include/openssl ]; then
+  sudo mv /usr/include/openssl /usr/include/openssl.original
+fi
+
+WORKSPACE_PATH=`pwd`
+
 # Build the OpenBLAS library, which is faster than Eigen on the Pi Zero/One.
 # TODO(petewarden) - It would be nicer to move this into the main Bazel build
 # process if we can maintain a build file for this.
-mkdir toolchain
-cd toolchain
+TOOLCHAIN_INSTALL_PATH=/tmp/toolchain_install/
+sudo rm -rf ${TOOLCHAIN_INSTALL_PATH}
+mkdir ${TOOLCHAIN_INSTALL_PATH}
+cd ${TOOLCHAIN_INSTALL_PATH}
 curl -L https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz -o toolchain.tar.gz
 tar xzf toolchain.tar.gz
 mv tools-0e906ebc527eab1cdbf7adabff5b474da9562e9f/ tools
-cd ..
 
-CROSSTOOL_CC=$(pwd)/toolchain/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
+CROSSTOOL_CC=${TOOLCHAIN_INSTALL_PATH}/tools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
 
-git clone https://github.com/xianyi/OpenBLAS openblas
-cd openblas
+OPENBLAS_SRC_PATH=/tmp/openblas_src/
+sudo rm -rf ${OPENBLAS_SRC_PATH}
+git clone https://github.com/xianyi/OpenBLAS ${OPENBLAS_SRC_PATH}
+cd ${OPENBLAS_SRC_PATH}
+# If this path is changed, you'll also need to update
+# cxx_builtin_include_directory in third_party/toolchains/cpus/arm/CROSSTOOL.tpl
+OPENBLAS_INSTALL_PATH=/tmp/openblas_install/
 make CC=${CROSSTOOL_CC} FC=${CROSSTOOL_CC} HOSTCC=gcc TARGET=ARMV6
-make PREFIX=$(pwd)/toolchain/openblas/ install
-cd ..
+make PREFIX=${OPENBLAS_INSTALL_PATH} install
 
 if [[ $1 == "PI_ONE" ]]; then
   PI_COPTS="--copt=-march=armv6 --copt=-mfpu=vfp
   --copt=-DUSE_GEMM_FOR_CONV --copt=-DUSE_OPENBLAS
-  --copt=-isystem=$(pwd)/toolchain/openblas/include/
-  --linkopt=-L$(pwd)/toolchain/openblas/lib/
+  --copt=-isystem --copt=${OPENBLAS_INSTALL_PATH}/include/
+  --linkopt=-L${OPENBLAS_INSTALL_PATH}/lib/
   --linkopt=-l:libopenblas.a"
   echo "Building for the Pi One/Zero, with no NEON support"
 else
@@ -80,7 +86,9 @@ else
   echo "Building for the Pi Two/Three, with NEON acceleration"
 fi
 
+cd ${WORKSPACE_PATH}
 bazel build -c opt ${PI_COPTS} \
+  --config=monolithic \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
@@ -88,15 +96,15 @@ bazel build -c opt ${PI_COPTS} \
   //tensorflow/tools/benchmark:benchmark_model \
   //tensorflow/tools/pip_package:build_pip_package
 
-OUTDIR=bazel-out/pi
-mkdir -p ${OUTDIR}
+OUTDIR=output-artifacts
+mkdir -p "${OUTDIR}"
 echo "Final outputs will go to ${OUTDIR}"
 
 # Build a universal wheel.
 BDIST_OPTS="--universal" \
   bazel-bin/tensorflow/tools/pip_package/build_pip_package "${OUTDIR}"
 
-OLD_FN=$(ls "${OUTDIR}" | grep \.whl)
+OLD_FN=$(ls "${OUTDIR}" | grep -m 1 \.whl)
 SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-any.whl/; print'
 NEW_FN=$(echo "${OLD_FN}" | perl -ne "${SUB}")
 mv "${OUTDIR}/${OLD_FN}" "${OUTDIR}/${NEW_FN}"

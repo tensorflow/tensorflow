@@ -42,6 +42,10 @@ func TestNewTensor(t *testing.T) {
 		{[]int64{2}, []bool{true, false}},
 		{[]int64{1}, []float64{1}},
 		{[]int64{1}, [1]float64{1}},
+		{[]int64{1, 1}, [1][1]float64{{1}}},
+		{[]int64{1, 1, 1}, [1][1][]float64{{{1}}}},
+		{[]int64{1, 1, 2}, [1][][2]float64{{{1, 2}}}},
+		{[]int64{1, 1, 1, 1}, [1][][1][]float64{{{{1}}}}},
 		{[]int64{2}, []string{"string", "slice"}},
 		{[]int64{2}, [2]string{"string", "array"}},
 		{[]int64{3, 2}, [][]float64{{1, 2}, {3, 4}, {5, 6}}},
@@ -74,6 +78,12 @@ func TestNewTensor(t *testing.T) {
 		[]uint64{5},
 		// Mismatched dimensions
 		[][]float32{{1, 2, 3}, {4}},
+		// Mismatched dimensions. Should return "mismatched slice lengths" error instead of "BUG"
+		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}},
+		// Mismatched dimensions. Should return error instead of valid tensor
+		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}, {{1, 2, 3}, {2, 3, 4}}},
+		// Mismatched dimensions for strings
+		[][]string{{"abc"}, {"abcd", "abcd"}},
 	}
 
 	for _, test := range tests {

@@ -308,6 +308,31 @@ def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
 # pylint: disable=protected-access
 
 
+def c_api_and_cuda_enabled():
+  return ops._USE_C_API and IsGoogleCudaEnabled()
+
+
+def skip_if(condition):
+  """Skips the decorated function if condition is or evaluates to True.
+
+  Args:
+    condition: Either an expression that can be used in "if not condition"
+               statement, or a callable whose result should be a boolean.
+  Returns:
+    The wrapped function
+  """
+  def real_skip_if(fn):
+    def wrapper(*args, **kwargs):
+      if callable(condition):
+        skip = condition()
+      else:
+        skip = condition
+      if not skip:
+        fn(*args, **kwargs)
+    return wrapper
+  return real_skip_if
+
+
 # TODO(skyewm): remove this eventually
 def disable_c_api(fn):
   """Decorator for disabling the C API on a test.
@@ -321,7 +346,9 @@ def disable_c_api(fn):
   Returns:
     The wrapped function
   """
-  return lambda *args, **kwargs: _use_c_api_wrapper(fn, False, *args, **kwargs)
+  def wrapper(*args, **kwargs):
+    _use_c_api_wrapper(fn, False, *args, **kwargs)
+  return wrapper
 
 
 # TODO(skyewm): remove this eventually
@@ -337,7 +364,31 @@ def enable_c_api(fn):
   Returns:
     The wrapped function
   """
-  return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
+  def wrapper(*args, **kwargs):
+    _use_c_api_wrapper(fn, True, *args, **kwargs)
+  return wrapper
+
+
+# This decorator is a hacky way to run all the test methods in a decorated
+# class with and without C API enabled.
+# TODO(iga): Remove this and its uses once we switch to using C API by default.
+def with_c_api(cls):
+  """Adds methods that call original methods but with C API enabled.
+
+  Note this enables the C API in new methods after running the test class's
+  setup method. This can be a problem if some objects are created in it
+  before the C API is enabled.
+
+  Args:
+    cls: class to decorate
+
+  Returns:
+    cls with new test methods added
+  """
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name + "WithCApi", enable_c_api(value))
+  return cls
 
 
 def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
@@ -472,7 +523,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def tearDown(self):
     for thread in self._threads:
-      self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+      thread.check_termination()
 
     self._ClearCachedSession()
 
@@ -726,6 +777,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self._thread = threading.Thread(target=self._protected_run)
       self._exception = None
 
+      self._is_thread_joined = False
+
     def _protected_run(self):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
@@ -748,6 +801,7 @@ class TensorFlowTestCase(googletest.TestCase):
         self._testcase.failureException: If the thread terminates with due to
           an exception.
       """
+      self._is_thread_joined = True
       self._thread.join()
       if self._exception is not None:
         self._testcase.fail("Error in checkedThread: %s" % str(self._exception))
@@ -762,6 +816,28 @@ class TensorFlowTestCase(googletest.TestCase):
         True if the thread is alive, otherwise False.
       """
       return self._thread.is_alive()
+
+    def check_termination(self):
+      """Returns whether the checked thread was properly used and did terminate.
+
+      Every checked thread should be "join"ed after starting, and before the
+      test tears down. If it is not joined, it is possible the thread will hang
+      and cause flaky failures in tests.
+
+      Raises:
+        self._testcase.failureException: If check_termination was called before
+        thread was joined.
+
+        RuntimeError: If the thread is not terminated. This means thread was not
+        joined with the main thread.
+      """
+      if self._is_thread_joined:
+        if self.is_alive():
+          raise RuntimeError(
+              "Thread was not joined with main thread, and is still running "
+              "when the test finished.")
+      else:
+        self._testcase.fail("A checked thread was not joined.")
 
   def checkedThread(self, target, args=None, kwargs=None):
     """Returns a Thread wrapper that asserts 'target' completes successfully.

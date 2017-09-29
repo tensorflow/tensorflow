@@ -129,6 +129,8 @@ BAZEL_CMD="bazel test"
 BAZEL_BUILD_ONLY_CMD="bazel build"
 BAZEL_CLEAN_CMD="bazel clean"
 
+DEFAULT_BAZEL_CONFIGS="--config=gcp --config=hdfs"
+
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
@@ -326,7 +328,7 @@ OPT_FLAG=$(str_strip "${OPT_FLAG}")
 
 # 1) Filter out benchmark tests if this is not a benchmarks job;
 # 2) Filter out tests with the "nomac" tag if the build is on Mac OS X.
-EXTRA_ARGS=""
+EXTRA_ARGS=${DEFAULT_BAZEL_CONFIGS}
 IS_MAC=0
 if [[ "$(uname)" == "Darwin" ]]; then
   IS_MAC=1
@@ -349,7 +351,7 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
     fi
   done
 else
-  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
+  EXTRA_ARGS="${EXTRA_ARGS} ${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
     EXTRA_ARGS="${EXTRA_ARGS},-nomac"
   fi

@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -57,10 +56,10 @@ class ComputationBuilder {
   ~ComputationBuilder();
 
   // Returns the client the builder was initialized with.
-  Client* client() { return client_; }
+  Client* client() const { return client_; }
 
   // Returns the computation name.
-  const string& name() { return name_; }
+  const string& name() const { return name_; }
 
   // Sets OpMetadata that will be added to all instructions until cleared.
   //
@@ -69,15 +68,21 @@ class ComputationBuilder {
   // instructions generated via this Computation Builder will have the same
   // OpMetadata attached until a call to ClearOpMetdata.
   void SetOpMetadata(const OpMetadata& metadata) {
-    tensorflow::mutex_lock lock(mutex_);
     metadata_ = metadata;
   }
 
-  // Clears the HloMetdata state.
+  // Clears the HloMetadata state.
   void ClearOpMetadata() {
-    tensorflow::mutex_lock lock(mutex_);
     metadata_.Clear();
   }
+
+  // Sets an OpDeviceAssignment that will be attached to all instructions
+  // until cleared.
+  void SetDeviceAssignment(const OpDeviceAssignment& assignment);
+
+  // Clears the device assignment. Ops will be placed according to the default
+  // placement policy.
+  void ClearDeviceAssignment();
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -463,6 +468,12 @@ class ComputationBuilder {
       const ComputationDataHandle& init_value, const Computation& computation,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
 
+  // Convenience wrapper around the above that reduces all the dimensions in the
+  // operand shape.
+  ComputationDataHandle ReduceAll(const ComputationDataHandle& operand,
+                                  const ComputationDataHandle& init_value,
+                                  const Computation& computation);
+
   // Enqueues a windowed reduce instruction onto the computation.
   ComputationDataHandle ReduceWindow(
       const ComputationDataHandle& operand,
@@ -513,6 +524,10 @@ class ComputationBuilder {
 
   // Enqueues a ceil instruction onto the computation.
   ComputationDataHandle Ceil(const ComputationDataHandle& operand);
+
+  // Enqueues a round instruction onto the computation, rounding to nearest even
+  // with half-way cases rounding away from zero.
+  ComputationDataHandle Round(const ComputationDataHandle& operand);
 
   // Enqueues an log instruction (natural logarithm) onto the computation.
   ComputationDataHandle Log(const ComputationDataHandle& operand);
@@ -808,7 +823,7 @@ class ComputationBuilder {
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
-  void AddOpMetadata(OpRequest* request) const;
+  void AddCommonFieldsToOpRequest(OpRequest* request) const;
 
   string name_;  // Name to use for the built computation.
 
@@ -826,15 +841,15 @@ class ComputationBuilder {
   Client* client_;
 
   // Mode bit that indicates whether to die when a first error is encountered.
-  bool die_immediately_on_error_{false};
-
-  // Mutex to guard against concurrent access to metadata_.
-  mutable tensorflow::mutex mutex_;
+  bool die_immediately_on_error_ = false;
 
   // The metadata to attach to each op. This is structured as a "modal"-like
   // operation, in order to simplify client code (and not sprinkle this metadata
   // throughout the TensorFlow op kernel implementations).
-  OpMetadata metadata_ GUARDED_BY(mutex_);
+  OpMetadata metadata_;
+
+  // Device assignment for the operator.
+  OpDeviceAssignment device_assignment_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationBuilder);
 };
