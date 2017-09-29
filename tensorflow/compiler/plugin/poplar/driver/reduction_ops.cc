@@ -19,6 +19,7 @@
 #include <poplar/Engine.hpp>
 #include <popnn/PoolingDef.hpp>
 #include <popnn/Pooling.hpp>
+#include <popreduce/Reduce.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -133,6 +134,27 @@ GetIdentityConstantTensor(const HloInstruction* root) {
   }
 }
 
+static popreduce::Operation
+PoplibsReductionOperation(const HloInstruction* inst) {
+  switch (inst->opcode()) {
+    case HloOpcode::kAdd:
+      return popreduce::Operation::ADD;
+    case HloOpcode::kMultiply:
+      return popreduce::Operation::MUL;
+    case HloOpcode::kMaximum:
+      return popreduce::Operation::MAX;
+    case HloOpcode::kMinimum:
+      return popreduce::Operation::MIN;
+    case HloOpcode::kLogicalAnd:
+      return popreduce::Operation::AND;
+    case HloOpcode::kLogicalOr:
+      return popreduce::Operation::OR;
+    default:
+      // Cannot reach here
+      return popreduce::Operation::ADD;
+  }
+}
+
 static const std::string&
 ReductionVertexBaseName(const HloInstruction* inst) {
   switch (inst->opcode()) {
@@ -213,65 +235,16 @@ CreateSimpleReduction(poplar::Graph &graph,
     poplar::Tensor to_reduce;
     TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
 
-    // Find the type and vertex
     HloInstruction* root(inst->to_apply()->root_instruction());
-    std::string vertex_name = templateVertex(ReductionVertexBaseName(root),
-                                             to_reduce.elementType());
+    popreduce::Operation op = PoplibsReductionOperation(root);
 
-
-    // Convert the tensor into a NxM 2D tensor with the dimensions
-    // to reduce in the minor part
-    int64 reduction_flatten_elements = 1;
-    std::set<unsigned> reduction_dims;
+    std::vector<std::size_t> reduction_dims;
     for (auto d : inst->dimensions()) {
-      reduction_dims.insert(d);
-      reduction_flatten_elements *= to_reduce.dim(d);
+      reduction_dims.push_back(d);
     }
 
-    std::vector<unsigned int> dim_shuffle(to_reduce.rank());
-    std::iota(dim_shuffle.begin(), dim_shuffle.end(), 0);
-
-    std::sort(dim_shuffle.begin(), dim_shuffle.end(),
-              [&reduction_dims](unsigned a, unsigned b) {
-                bool a_is_reduction =
-                        (reduction_dims.find(a) != reduction_dims.end());
-                bool b_is_reduction =
-                        (reduction_dims.find(b) != reduction_dims.end());
-                if (a_is_reduction && !b_is_reduction) return false;
-                if (b_is_reduction && !a_is_reduction) return true;
-                return a < b;
-              });
-
-    poplar::Tensor shuffled = to_reduce.dimShuffle(dim_shuffle);
-
-    // Reshape to a 2D tensor
-    std::vector<size_t> reshaped(2);
-    reshaped[0] = to_reduce.numElements() / reduction_flatten_elements;
-    reshaped[1] = reduction_flatten_elements;
-    shuffled = shuffled.reshape(reshaped);
-
-    // Allocate the output tensor
-    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
-    poplar::Tensor out_flat = out.flatten();
-
-    // One vertex per non-reduced element
-    auto cs = graph.addComputeSet(inst->name());
-
-    // TODO - this?
-    // reduceByDstMapping(graph, shuffled, out, graph.getTileMapping(out), cs);
-
-    const unsigned long N = out_flat.dim(0);
-    const auto &device_info = graph.getDevice().getDeviceInfo();
-
-    for (unsigned i = 0; i < N; ++i) {
-      auto v = graph.addVertex(cs, vertex_name,
-                               {{"a", shuffled[i]},
-                                {"out", out_flat.slice(i, i+1)}});
-      graph.setTileMapping(v, (i / device_info.numWorkerContexts)
-                              % device_info.getNumTiles());
-    }
-
-    seq.add(poplar::program::Execute(cs));
+    poplar::Tensor out = popreduce::reduce(graph, to_reduce, reduction_dims,
+                                           op, seq, inst->name());
 
     // Apply initial value
     Literal identity_literal = GetIdentityConstantTensor(inst);
