@@ -30,6 +30,8 @@ namespace cpu {
 namespace {
 
 using InstructionFusionTest = HloTestBase;
+using ::testing::Eq;
+using ::testing::status::IsOkAndHolds;
 
 TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
   HloComputation::Builder builder(TestName());
@@ -553,6 +555,59 @@ TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
        HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
+// Tests that we do not fuse instructions in cases where instructions in the
+// fusion would reuse elements from its operand due to an implicit broadcast.
+TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastUnary) {
+  Shape small_shape = ShapeUtil::MakeShape(F32, {1, 4});
+  Shape large_shape = ShapeUtil::MakeShape(F32, {3, 4});
+
+  HloComputation::Builder builder(TestName());
+
+  HloInstruction* small_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, small_shape, "param"));
+  HloInstruction* small_exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(small_shape, HloOpcode::kExp, small_param));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(large_shape, HloOpcode::kExp, small_exp));
+
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(CpuInstructionFusion().Run(module.get()),
+              IsOkAndHolds(Eq(false)));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
+// Like ReuseViaImplicitBroadcastUnary but with a binary operation.
+TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastBinary) {
+  Shape small_shape = ShapeUtil::MakeShape(F32, {1, 4});
+  Shape large_shape = ShapeUtil::MakeShape(F32, {3, 4});
+
+  HloComputation::Builder builder(TestName());
+
+  HloInstruction* small_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, small_shape, "param"));
+  HloInstruction* large_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/1, large_shape, "param"));
+  HloInstruction* small_exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(small_shape, HloOpcode::kExp, small_param));
+
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      large_shape, HloOpcode::kAdd, small_exp, large_param));
+
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(CpuInstructionFusion().Run(module.get()),
+              IsOkAndHolds(Eq(false)));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
 }
 
 }  // namespace
