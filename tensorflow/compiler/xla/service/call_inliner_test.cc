@@ -141,5 +141,28 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
               ElementsAre(op::Constant()));
 }
 
+TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
+  const Shape f32 = ShapeUtil::MakeShape(F32, {});
+  auto module = CreateNewModule();
+
+  HloComputation::Builder outfeeder(TestName() + ".outfeeder");
+  auto value = outfeeder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+  outfeeder.AddInstruction(
+      HloInstruction::CreateOutfeed(f32, value, /*outfeed_config=*/""));
+
+  auto outfeed_computation = module->AddEmbeddedComputation(outfeeder.Build());
+
+  HloComputation::Builder outer(TestName() + ".outer");
+  outer.AddInstruction(HloInstruction::CreateCall(
+      ShapeUtil::MakeNil(), /*operands=*/{}, outfeed_computation));
+
+  module->AddEntryComputation(outer.Build());
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+}
+
 }  // namespace
 }  // namespace xla

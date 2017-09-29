@@ -198,7 +198,8 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
-  TF_RET_CHECK(IsRemovable(instruction));
+  TF_RET_CHECK(IsRemovable(instruction))
+      << "Cannot remove instruction: " << instruction->ToString();
   std::unordered_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
   worklist.push(instruction);
