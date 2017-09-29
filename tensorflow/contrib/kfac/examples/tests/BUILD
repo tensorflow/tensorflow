@@ -27,7 +27,10 @@ py_test(
     size = "large",
     srcs = ["convnet_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/kfac",
