@@ -185,7 +185,7 @@ bool HloComputation::IsRemovable(const HloInstruction* instruction) {
 }
 
 bool HloComputation::HasSideEffect() const {
-  for (auto& instruction : instructions()) {
+  for (auto* instruction : instructions()) {
     if (instruction->HasSideEffect()) {
       return true;
     }
@@ -314,7 +314,7 @@ void ComputeComputationPostOrder(
     return;
   }
 
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     for (HloComputation* called_computation :
          instruction->called_computations()) {
       ComputeComputationPostOrder(called_computation, visited, post_order);
@@ -608,11 +608,11 @@ void HloComputation::UpdateReachabilityThroughInstruction(
 
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   std::vector<HloInstruction*> unreachable_roots;
-  for (auto& instruction : instructions()) {
+  for (auto* instruction : instructions()) {
     if (instruction->user_count() == 0 &&
         instruction->control_successors().empty() &&
-        instruction.get() != root_instruction()) {
-      unreachable_roots.push_back(instruction.get());
+        instruction != root_instruction()) {
+      unreachable_roots.push_back(instruction);
     }
   }
   VLOG(3) << "Unreachable roots:"

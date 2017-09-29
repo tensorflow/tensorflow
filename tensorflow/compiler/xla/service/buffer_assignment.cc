@@ -535,7 +535,7 @@ Status GatherComputationsByAllocationType(
       global_set.insert(computation);
     }
 
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       for (HloComputation* subcomputation :
            instruction->called_computations()) {
         switch (instruction->opcode()) {
@@ -688,13 +688,13 @@ Status BufferAssigner::AssignBuffersForComputation(
   // Buffers are sorted and assigned to BufferAllocations in decreasing order of
   // size.
   std::vector<const LogicalBuffer*> sorted_buffers;
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     // Add all buffers which this instruction defines. Instruction which don't
     // define buffers (eg, bitcast which just forwards a pointer) don't need
     // any allocations.
     for (const LogicalBuffer* buffer :
          assignment->points_to_analysis().GetBuffersDefinedByInstruction(
-             instruction.get())) {
+             instruction)) {
       sorted_buffers.push_back(buffer);
     }
   }

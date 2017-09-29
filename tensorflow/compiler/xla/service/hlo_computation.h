@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -142,8 +143,24 @@ class HloComputation {
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
-  const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
-    return instructions_;
+  // Gets the instructions in this computation.
+  //
+  // The returned type is a range of HloInstruction*s, so you can iterate over
+  // it using a range-based for loop in the natural way:
+  //
+  //   for (HloInstruction* instr : computation->instructions()) { ... }
+  //
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+  instructions() const {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
+  }
+  tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+  instructions() {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
   }
 
   // Compute and return a post-order of the instructions in the computation. In

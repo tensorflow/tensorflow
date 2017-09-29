@@ -392,9 +392,9 @@ MatchBackwardInput(HloInstruction* conv) {
 StatusOr<bool> ConvolutionFolding::Run(HloModule* module) {
   HloComputation* entry_computation = module->entry_computation();
   std::vector<HloInstruction*> convs;
-  for (const auto& hlo : entry_computation->instructions()) {
+  for (auto* hlo : entry_computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kConvolution) {
-      convs.push_back(hlo.get());
+      convs.push_back(hlo);
     }
   }
 

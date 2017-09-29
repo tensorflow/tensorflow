@@ -51,7 +51,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
 
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
-    HloInstruction* instruction = inst_it->get();
+    HloInstruction* instruction = *inst_it;
 
     // Advance list iterator before loop body because iterator may be
     // invalidated due to deletion.

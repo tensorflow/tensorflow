@@ -145,7 +145,7 @@ Status TuplePointsToAnalysis::Analyze() {
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
     // Run points-to analysis on fusion instructions in 'computation'.
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kFusion) {
         continue;
       }
@@ -160,21 +160,21 @@ Status TuplePointsToAnalysis::Analyze() {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
-    const std::list<std::unique_ptr<HloInstruction>>& instructions) {
-  for (auto& instruction : instructions) {
-    PerInstruction* pi = PerInst(instruction.get());
+Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(const decltype(
+    std::declval<HloComputation>().instructions())& instructions) {
+  for (auto* instruction : instructions) {
+    PerInstruction* pi = PerInst(instruction);
     TF_RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
-        instruction.get(), &pi->instruction_defined_buffers));
+        instruction, &pi->instruction_defined_buffers));
 
-    const PointsToSet& points_to_set = GetPointsToSet(instruction.get());
+    const PointsToSet& points_to_set = GetPointsToSet(instruction);
     points_to_set.ForEachElement(
         [this, &instruction](
             const ShapeIndex& index,
             const PointsToSet::BufferList& pointed_to_buffers) {
           for (const LogicalBuffer* buffer : pointed_to_buffers) {
-            logical_buffer_aliases_[buffer->id()].emplace_back(
-                instruction.get(), index);
+            logical_buffer_aliases_[buffer->id()].emplace_back(instruction,
+                                                               index);
           }
         });
   }
@@ -464,8 +464,8 @@ string TuplePointsToAnalysis::ToString() const {
          computation->MakeInstructionPostOrder()) {
       InstructionToString(instruction, &output);
       if (instruction->opcode() == HloOpcode::kFusion) {
-        for (auto& fused : instruction->fused_instructions()) {
-          InstructionToString(fused.get(), &output);
+        for (auto* fused : instruction->fused_instructions()) {
+          InstructionToString(fused, &output);
         }
       }
     }

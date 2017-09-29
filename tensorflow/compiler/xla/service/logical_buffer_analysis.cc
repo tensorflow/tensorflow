@@ -46,7 +46,7 @@ Status LogicalBufferAnalysis::Analyze() {
       continue;
     }
     TF_RETURN_IF_ERROR(computation->Accept(this));
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kFusion) {
         continue;
       }

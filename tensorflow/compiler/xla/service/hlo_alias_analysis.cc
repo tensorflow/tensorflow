@@ -376,8 +376,7 @@ string HloAliasAnalysis::ToString() const {
   StrAppend(&out, "  Buffers at each position:\n");
   for (const std::unique_ptr<HloComputation>& computation :
        module_->computations()) {
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
       if (ShapeUtil::IsTuple(instruction->shape())) {
         ShapeUtil::ForEachSubshape(
@@ -385,13 +384,13 @@ string HloAliasAnalysis::ToString() const {
             [&out, &instruction, this](const Shape&, const ShapeIndex& index) {
               StrAppend(&out, "      tuple index ", index.ToString(), ":\n");
               for (const HloBuffer* buffer :
-                   ComputeBuffersAt(instruction.get(), index)) {
+                   ComputeBuffersAt(instruction, index)) {
                 StrAppend(&out, "        ", buffer->ToString(), "\n");
               }
             });
       } else {
         for (const HloBuffer* buffer :
-             ComputeBuffersAt(instruction.get(), /*index=*/{})) {
+             ComputeBuffersAt(instruction, /*index=*/{})) {
           StrAppend(&out, "      ", buffer->ToString(), "\n");
         }
       }

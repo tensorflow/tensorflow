@@ -415,8 +415,8 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
       fusion->fused_parameters();
   const HloInstruction* fused_root = fusion->fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters.size(), false);
-  for (auto& instruction : fused_computation->instructions()) {
-    if (fused_root == instruction.get()) {
+  for (auto* instruction : fused_computation->instructions()) {
+    if (fused_root == instruction) {
       if (root_owned) {
         return FailedPrecondition("Root appears more than once in %s.",
                                   fusion->ToString().c_str());
@@ -424,7 +424,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
       root_owned = true;
     }
     for (int i = 0; i < fused_parameters.size(); ++i) {
-      if (fused_parameters[i] == instruction.get()) {
+      if (fused_parameters[i] == instruction) {
         if (parameter_owned[i]) {
           return FailedPrecondition("Parameter appears more than once in %s.",
                                     fusion->ToString().c_str());
@@ -453,9 +453,9 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
 
   // All uses of fused instructions must be in the fusion computation, and every
   // non-root instruction must have at least one use.
-  for (auto& instruction :
+  for (auto* instruction :
        fusion->fused_instructions_computation()->instructions()) {
-    if (instruction.get() != fused_root) {
+    if (instruction != fused_root) {
       if (instruction->user_count() == 0) {
         return FailedPrecondition(
             "Non-root instruction %s in %s must have users.",
@@ -523,7 +523,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     for (const auto& instruction : computation->instructions()) {
       TF_RET_CHECK(instruction->parent() == computation.get());
       if (instruction->opcode() == HloOpcode::kFusion) {
-        TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction.get()));
+        TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
         TF_RET_CHECK(
             ContainersEqual(instruction->called_computations(),
                             {instruction->fused_instructions_computation()}))
@@ -594,7 +594,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
           << "\nPrevious HLO with same name:\n"
           << previous->second->ToString()
           << " in computation: " << previous->second->parent()->name();
-      instructions[instruction->name()] = instruction.get();
+      instructions[instruction->name()] = instruction;
     }
 
     TF_RETURN_IF_ERROR(computation->Accept(&shape_verifier));

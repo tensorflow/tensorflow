@@ -2709,10 +2709,10 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
     auto* computation = root->parent();
     auto* entry_computation = computation->parent()->entry_computation();
     if (computation != entry_computation) {
-      for (auto& instruction : entry_computation->instructions()) {
+      for (HloInstruction* instruction : entry_computation->instructions()) {
         if (instruction->opcode() == HloOpcode::kCall &&
             instruction->to_apply()->root_instruction() == root) {
-          hlo_to_lookup = instruction.get();
+          hlo_to_lookup = instruction;
           break;
         }
       }

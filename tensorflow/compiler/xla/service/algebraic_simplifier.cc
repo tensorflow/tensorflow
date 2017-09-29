@@ -1860,8 +1860,8 @@ static bool IsOrContainsSendOrRecv(const HloInstruction* instr);
 
 // Determines whether the given computation contains a send or recv node.
 static bool ContainsSendOrRecv(const HloComputation* comp) {
-  for (const auto& instr : comp->instructions()) {
-    if (IsOrContainsSendOrRecv(instr.get())) {
+  for (const auto* instr : comp->instructions()) {
+    if (IsOrContainsSendOrRecv(instr)) {
       return true;
     }
   }

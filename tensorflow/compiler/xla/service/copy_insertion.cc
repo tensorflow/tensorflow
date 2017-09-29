@@ -533,10 +533,10 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   FlatSet<const HloComputation*> while_body_computations;
   std::vector<HloInstruction*> while_instructions;
   for (auto& computation : module->computations()) {
-    for (auto& instruction : computation->instructions()) {
+    for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
         while_body_computations.insert(instruction->while_body());
-        while_instructions.push_back(instruction.get());
+        while_instructions.push_back(instruction);
       }
     }
   }

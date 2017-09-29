@@ -29,27 +29,27 @@ std::vector<HloInstruction*> ReducePrecisionInsertion::instructions_to_modify(
     case HloReducePrecisionOptions::OP_INPUTS:
     case HloReducePrecisionOptions::OP_OUTPUTS:
     case HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS:
-      for (auto& instruction : computation->instructions()) {
+      for (auto* instruction : computation->instructions()) {
         VLOG(4) << "Visited instruction: " << instruction->ToString();
-        if (instruction_filter_function_(instruction.get())) {
-          instruction_list.push_back(instruction.get());
+        if (instruction_filter_function_(instruction)) {
+          instruction_list.push_back(instruction);
         }
       }
       break;
 
     case HloReducePrecisionOptions::FUSION_INPUTS_BY_CONTENT:
     case HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT:
-      for (auto& instruction : computation->instructions()) {
+      for (auto* instruction : computation->instructions()) {
         VLOG(4) << "Visited instruction: " << instruction->ToString();
         if (instruction->opcode() != HloOpcode::kFusion) {
           continue;
         }
-        for (auto& fused_instruction :
+        for (auto* fused_instruction :
              instruction->fused_instructions_computation()->instructions()) {
           VLOG(4) << "Checking sub-instruction: "
                   << fused_instruction->ToString();
-          if (instruction_filter_function_(fused_instruction.get())) {
-            instruction_list.push_back(instruction.get());
+          if (instruction_filter_function_(fused_instruction)) {
+            instruction_list.push_back(instruction);
             break;
           }
         }

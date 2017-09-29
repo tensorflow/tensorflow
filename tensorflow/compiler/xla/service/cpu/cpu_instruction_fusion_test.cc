@@ -198,12 +198,10 @@ class OpcodeFusionTest : public InstructionFusionTest {
     ASSERT_THAT(root, op::Fusion());
     EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
 
-    std::vector<HloOpcode> fused_opcodes(root->fused_instructions().size());
+    std::vector<HloOpcode> fused_opcodes(root->fused_instruction_count());
     std::transform(root->fused_instructions().begin(),
                    root->fused_instructions().end(), fused_opcodes.begin(),
-                   [](const std::unique_ptr<HloInstruction>& hlo) {
-                     return hlo->opcode();
-                   });
+                   [](const HloInstruction* hlo) { return hlo->opcode(); });
 
     EXPECT_EQ(
         std::multiset<HloOpcode>(fused_opcodes.begin(), fused_opcodes.end()),
