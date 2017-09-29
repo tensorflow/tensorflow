@@ -55,6 +55,8 @@ _INVALID_EVALUATOR_IN_CLUSTER_WITH_MASTER_ERR = (
     'supported.')
 _INVALID_CHIEF_IN_CLUSTER_WITH_MASTER_ERR = (
     'If `master` node exists in `cluster`, job `chief` is not supported.')
+_INVALID_SERVICE_TYPE_ERR = (
+    'If "service" is set in TF_CONFIG, it must be a dict. Given')
 
 
 def _create_run_config_with_cluster_spec(tf_config, **kwargs):
@@ -74,6 +76,7 @@ class RunConfigTest(test.TestCase):
     self.assertIsNone(config.save_checkpoints_steps)
     self.assertEqual(5, config.keep_checkpoint_max)
     self.assertEqual(10000, config.keep_checkpoint_every_n_hours)
+    self.assertIsNone(config.service)
 
   def test_model_dir(self):
     empty_config = run_config_lib.RunConfig()
@@ -760,6 +763,34 @@ class RunConfigSaveCheckpointsTest(test.TestCase):
     config_without_ckpt = config_with_steps.replace(save_checkpoints_steps=None)
     self.assertIsNone(config_without_ckpt.save_checkpoints_steps)
     self.assertIsNone(config_without_ckpt.save_checkpoints_secs)
+
+
+class RunConfigServiceKeyTest(test.TestCase):
+
+  def test_arbitrary_key_value_pairs(self):
+    tf_config = {
+        'service': {
+            'key1': [1, 2],
+            'key2': {'a': 3, 'b': 4},
+            'key3': 789,
+        },
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertEqual(tf_config['service'], run_config.service)
+
+  def test_missing_service_key(self):
+    tf_config = {
+        'model_dir': '/tmp/123',
+    }
+    run_config = _create_run_config_with_cluster_spec(tf_config)
+    self.assertIsNone(run_config.service)
+
+  def test_fail_with_non_dict(self):
+    tf_config = {
+        'service': 789,
+    }
+    with self.assertRaisesRegexp(TypeError, _INVALID_SERVICE_TYPE_ERR):
+      _create_run_config_with_cluster_spec(tf_config)
 
 
 if __name__ == '__main__':

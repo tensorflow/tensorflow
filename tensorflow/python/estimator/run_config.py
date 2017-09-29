@@ -53,6 +53,7 @@ _TASK_ENV_KEY = 'task'
 _TASK_TYPE_KEY = 'type'
 _TASK_ID_KEY = 'index'
 _CLUSTER_KEY = 'cluster'
+_SERVICE_KEY = 'service'
 _LOCAL_MASTER = ''
 _GRPC_SCHEME = 'grpc://'
 
@@ -99,6 +100,15 @@ def _count_worker(cluster_spec, chief_task_type):
 
   return (len(cluster_spec.as_dict().get(TaskType.WORKER, [])) +
           len(cluster_spec.as_dict().get(chief_task_type, [])))
+
+
+def _validate_service(service):
+  """Validates the service key."""
+  if service is not None and not isinstance(service, dict):
+    raise TypeError(
+        'If "service" is set in TF_CONFIG, it must be a dict. Given %s' %
+        type(service))
+  return service
 
 
 def _validate_task_type_and_task_id(cluster_spec, task_env, chief_task_type):
@@ -370,6 +380,7 @@ class RunConfig(object):
     if tf_config:
       logging.info('TF_CONFIG environment variable: %s', tf_config)
 
+    self._service = _validate_service(tf_config.get(_SERVICE_KEY))
     self._cluster_spec = server_lib.ClusterSpec(tf_config.get(_CLUSTER_KEY, {}))
     task_env = tf_config.get(_TASK_ENV_KEY, {})
 
@@ -507,6 +518,11 @@ class RunConfig(object):
   @property
   def model_dir(self):
     return self._model_dir
+
+  @property
+  def service(self):
+    """Returns the platform defined (in TF_CONFIG) service dict."""
+    return self._service
 
   def replace(self, **kwargs):
     """Returns a new instance of `RunConfig` replacing specified properties.
