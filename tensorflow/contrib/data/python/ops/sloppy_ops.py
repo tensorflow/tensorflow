@@ -82,7 +82,7 @@ class SloppyInterleaveDataset(dataset_ops.Dataset):
     return self._output_types
 
 
-def sloppy_interleave(map_func, cycle_length, block_length):
+def sloppy_interleave(map_func, cycle_length, block_length=1):
   """A non-deterministic version of the `Dataset.interleave()` transformation.
 
   `sloppy_interleave()` maps `map_func` across `dataset`, and
