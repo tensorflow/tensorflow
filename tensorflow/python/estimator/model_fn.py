@@ -54,9 +54,9 @@ AVERAGE_LOSS_METRIC_KEY = 'average_loss'
 
 class EstimatorSpec(
     collections.namedtuple('EstimatorSpec', [
-        'predictions', 'loss', 'train_op', 'eval_metric_ops',
-        'export_outputs', 'training_chief_hooks', 'training_hooks',
-        'scaffold', 'evaluation_hooks'
+        'mode', 'predictions', 'loss', 'train_op', 'eval_metric_ops',
+        'export_outputs', 'training_chief_hooks', 'training_hooks', 'scaffold',
+        'evaluation_hooks'
     ])):
   """Ops and objects returned from a `model_fn` and passed to an `Estimator`.
 
@@ -295,6 +295,7 @@ class EstimatorSpec(
 
     return super(EstimatorSpec, cls).__new__(
         cls,
+        mode=mode,
         predictions=predictions,
         loss=loss,
         train_op=train_op,
@@ -304,6 +305,14 @@ class EstimatorSpec(
         training_hooks=training_hooks,
         scaffold=scaffold,
         evaluation_hooks=evaluation_hooks)
+
+  def _replace(self, **kwds):
+    """Return a new EstimatorSpec replacing specified fields with new values."""
+    if 'mode' in kwds:
+      if self.mode != kwds['mode']:
+        raise ValueError('mode of EstimatorSpec cannot be changed.')
+    new_fields = map(kwds.pop, self._fields, list(self))
+    return EstimatorSpec(*new_fields)
 
 
 def _check_is_tensor_or_operation(x, name):
