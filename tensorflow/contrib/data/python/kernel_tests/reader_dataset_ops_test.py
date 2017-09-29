@@ -21,7 +21,6 @@ import gzip
 import os
 import zlib
 
-from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.example import example_pb2
@@ -729,7 +728,7 @@ class ReadBatchFeaturesTest(test.TestCase):
     self.num_epochs = num_epochs
     self.batch_size = batch_size
 
-    return batching.read_batch_features(
+    return readers.read_batch_features(
         file_pattern=self.filenames,
         batch_size=self.batch_size,
         features={

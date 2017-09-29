@@ -19,8 +19,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import resampling
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import string_ops
@@ -44,7 +44,7 @@ class ResampleTest(test.TestCase):
     initial_dist = [0.2] * 5 if initial_known else None
     iterator = (dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
         200, seed=21).map(lambda c: (c, string_ops.as_string(c))).apply(
-            batching.rejection_resample(
+            resampling.rejection_resample(
                 target_dist=target_dist,
                 initial_dist=initial_dist,
                 class_func=lambda c, _: c,
@@ -82,7 +82,7 @@ class ResampleTest(test.TestCase):
         device_setter.replica_device_setter(ps_tasks=1, ps_device="/cpu:0")):
       _ = (dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
           200, seed=21).map(lambda c: (c, string_ops.as_string(c))).apply(
-              batching.rejection_resample(
+              resampling.rejection_resample(
                   target_dist=target_dist,
                   initial_dist=None,
                   class_func=lambda c, _: c,

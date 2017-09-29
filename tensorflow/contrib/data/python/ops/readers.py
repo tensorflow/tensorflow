@@ -17,17 +17,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
+from tensorflow.contrib.data.python.ops import dataset_ops as contrib_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.platform import gfile
 
 
-class TextLineDataset(Dataset):
+class TextLineDataset(contrib_dataset_ops.Dataset):
   """A `Dataset` comprising lines from one or more text files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -46,7 +49,7 @@ class TextLineDataset(Dataset):
     super(TextLineDataset, self).__init__(dataset)
 
 
-class TFRecordDataset(Dataset):
+class TFRecordDataset(contrib_dataset_ops.Dataset):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -64,7 +67,7 @@ class TFRecordDataset(Dataset):
     super(TFRecordDataset, self).__init__(dataset)
 
 
-class FixedLengthRecordDataset(Dataset):
+class FixedLengthRecordDataset(contrib_dataset_ops.Dataset):
   """A `Dataset` of fixed-length records from one or more binary files."""
 
   def __init__(self,
@@ -91,7 +94,154 @@ class FixedLengthRecordDataset(Dataset):
     super(FixedLengthRecordDataset, self).__init__(dataset)
 
 
-class SqlDataset(Dataset):
+def read_batch_features(file_pattern,
+                        batch_size,
+                        features,
+                        reader,
+                        reader_args=None,
+                        randomize_input=True,
+                        num_epochs=None,
+                        capacity=10000):
+  """Reads batches of Examples.
+
+  Example:
+
+  ```
+  serialized_examples = [
+    features {
+      feature { key: "age" value { int64_list { value: [ 0 ] } } }
+      feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
+      feature { key: "kws" value { bytes_list { value: [ "code", "art" ] } } }
+    },
+    features {
+      feature { key: "age" value { int64_list { value: [] } } }
+      feature { key: "gender" value { bytes_list { value: [ "f" ] } } }
+      feature { key: "kws" value { bytes_list { value: [ "sports" ] } } }
+    }
+  ]
+  ```
+
+  We can use arguments:
+
+  ```
+  features: {
+    "age": FixedLenFeature([], dtype=tf.int64, default_value=-1),
+    "gender": FixedLenFeature([], dtype=tf.string),
+    "kws": VarLenFeature(dtype=tf.string),
+  }
+  ```
+
+  And the expected output is:
+
+  ```python
+  {
+    "age": [[0], [-1]],
+    "gender": [["f"], ["f"]],
+    "kws": SparseTensor(
+      indices=[[0, 0], [0, 1], [1, 0]],
+      values=["code", "art", "sports"]
+      dense_shape=[2, 2]),
+  }
+  ```
+
+  Args:
+    file_pattern: List of files or patterns of file paths containing
+      `Example` records. See `tf.gfile.Glob` for pattern rules.
+    batch_size: An int representing the number of consecutive elements of this
+      dataset to combine in a single batch.
+    features: A `dict` mapping feature keys to `FixedLenFeature` or
+      `VarLenFeature` values. See `tf.parse_example`.
+    reader: A function or class that can be called with a `filenames` tensor
+      and (optional) `reader_args` and returns a `Dataset` of serialized
+      Examples.
+    reader_args: Additional arguments to pass to the reader class.
+    randomize_input: Whether the input should be randomized.
+    num_epochs: Integer specifying the number of times to read through the
+      dataset. If None, cycles through the dataset forever.
+    capacity: Capacity of the ShuffleDataset. A large capacity ensures better
+      shuffling but would increase memory usage and startup time.
+
+  Returns:
+    A dict from keys in features to Tensor or SparseTensor objects.
+  """
+  filenames = _get_file_names(file_pattern, randomize_input)
+  if reader_args:
+    dataset = reader(filenames, *reader_args)
+  else:
+    dataset = reader(filenames)
+  if dataset.output_types == (dtypes.string, dtypes.string):
+    dataset = dataset.map(lambda unused_k, v: v)
+  elif dataset.output_types != dtypes.string:
+    raise TypeError("`reader` must be a dataset of `tf.string` values, "
+                    "or `(tf.string, tf.string)` key-value pairs.")
+  if num_epochs != 1:
+    dataset = dataset.repeat(num_epochs)
+  if randomize_input:
+    dataset = dataset.shuffle(capacity)
+  dataset = dataset.batch(batch_size)
+  dataset = dataset.map(lambda x: _parse_example(x, features))
+  iterator = dataset.make_one_shot_iterator()
+  outputs = iterator.get_next()
+  index = 0
+  result = {}
+  for key in sorted(features.keys()):
+    feature = features[key]
+    if isinstance(feature, parsing_ops.FixedLenFeature):
+      result[key] = outputs[index]
+      index += 1
+    else:
+      result[key] = sparse_tensor_lib.SparseTensor(
+          indices=outputs[index],
+          values=outputs[index + 1],
+          dense_shape=outputs[index + 2])
+      index += 3
+  return result
+
+
+def _get_file_names(file_pattern, randomize_input):
+  """Parse list of file names from pattern, optionally shuffled.
+
+  Args:
+    file_pattern: File glob pattern, or list of glob patterns.
+    randomize_input: Whether to shuffle the order of file names.
+
+  Returns:
+    List of file names matching `file_pattern`.
+
+  Raises:
+    ValueError: If `file_pattern` is empty, or pattern matches no files.
+  """
+  if isinstance(file_pattern, list):
+    if not file_pattern:
+      raise ValueError("File pattern is empty.")
+    file_names = []
+    for entry in file_pattern:
+      file_names.extend(gfile.Glob(entry))
+  else:
+    file_names = list(gfile.Glob(file_pattern))
+
+  if not file_names:
+    raise ValueError("No files match %s." % file_pattern)
+
+  # Sort files so it will be deterministic for unit tests.
+  if not randomize_input:
+    file_names = sorted(file_names)
+  return file_names
+
+
+def _parse_example(serialized, features):
+  parsed = parsing_ops.parse_example(serialized, features)
+  result = []
+  for key in sorted(features.keys()):
+    val = parsed[key]
+    if isinstance(val, sparse_tensor_lib.SparseTensor):
+      result.extend([val.indices, val.values, val.dense_shape])
+    else:
+      result.append(val)
+  return tuple(result)
+
+
+class SqlDataset(contrib_dataset_ops.Dataset):
 
   def __init__(self, driver_name, data_source_name, query, output_types):
     dataset = _SqlDataset(driver_name, data_source_name, query, output_types)
