@@ -20,6 +20,77 @@ limitations under the License.
 
 namespace tensorflow {
 
+std::shared_ptr<FileBlockCache::Block> FileBlockCache::Lookup(const Key& key) {
+  mutex_lock lock(mu_);
+  auto entry = block_map_.find(key);
+  if (entry == block_map_.end()) {
+    return std::shared_ptr<Block>();
+  }
+  // If we're enforcing max staleness and the block is stale, remove all of the
+  // file's cached blocks so we reload them.
+  if (max_staleness_ > 0 &&
+      env_->NowSeconds() - entry->second->timestamp > max_staleness_) {
+    RemoveFile_Locked(key.first);
+    return std::shared_ptr<Block>();
+  }
+  return entry->second;
+}
+
+std::shared_ptr<FileBlockCache::Block> FileBlockCache::Insert(
+    const Key& key, std::shared_ptr<Block> block) {
+  mutex_lock lock(mu_);
+  auto entry = block_map_.find(key);
+  if (entry != block_map_.end()) {
+    // Use the block that's already in the cache.
+    return entry->second;
+  }
+  // Sanity check to detect interrupted reads leading to partial blocks: a
+  // partial block must have a higher key than the highest existing key in the
+  // block map for the file. Note that since this check relies on the existence
+  // of a cached block with a higher key, some incomplete reads may still go
+  // undetected (if their key happens to be higher than anything in the cache).
+  if (block->data.size() < block_size_ && !block_map_.empty()) {
+    Key fmax = std::make_pair(key.first, std::numeric_limits<size_t>::max());
+    auto fcmp = block_map_.upper_bound(fmax);
+    if (fcmp != block_map_.begin() && key < (--fcmp)->first) {
+      // We expected to read a full block at this position.
+      return std::shared_ptr<Block>();
+    }
+  }
+  // Add the block to the cache (with necessary bookkeeping).
+  lru_list_.push_front(key);
+  lra_list_.push_front(key);
+  block->lru_iterator = lru_list_.begin();
+  block->lra_iterator = lra_list_.begin();
+  block->timestamp = env_->NowSeconds();
+  cache_size_ += block->data.size();
+  block_map_.emplace(std::make_pair(key, block));
+  return block;
+}
+
+// Remove blocks from the cache until there is space for a full sized block.
+void FileBlockCache::Trim() {
+  mutex_lock lock(mu_);
+  while (!lru_list_.empty() && cache_size_ + block_size_ > max_bytes_) {
+    RemoveBlock(block_map_.find(lru_list_.back()));
+  }
+}
+
+/// Move the block to the front of the LRU list if it isn't already there.
+void FileBlockCache::UpdateLRU(const Key& key,
+                               const std::shared_ptr<Block>& block) {
+  mutex_lock lock(mu_);
+  if (block->timestamp == 0) {
+    // The block was evicted from another thread. Allow it to remain evicted.
+    return;
+  }
+  if (block->lru_iterator != lru_list_.begin()) {
+    lru_list_.erase(block->lru_iterator);
+    lru_list_.push_front(key);
+    block->lru_iterator = lru_list_.begin();
+  }
+}
+
 Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
                             std::vector<char>* out) {
   out->clear();
@@ -37,58 +108,23 @@ Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
   if (finish < offset + n) {
     finish += block_size_;
   }
-  mutex_lock lock(mu_);
-  // Now iterate through the blocks, reading them one at a time. Reads are
-  // locked so that only one block_fetcher call is active at any given time.
+  // Now iterate through the blocks, reading them one at a time.
   for (size_t pos = start; pos < finish; pos += block_size_) {
     Key key = std::make_pair(filename, pos);
-    auto entry = block_map_.find(key);
-    // If we're enforcing max staleness and the block is stale, remove all of
-    // the file's cached blocks so we reload them.
-    if (entry != block_map_.end() && max_staleness_ > 0 &&
-        env_->NowSeconds() - entry->second->timestamp > max_staleness_) {
-      RemoveFile_Locked(filename);
-      entry = block_map_.end();
-    }
-    if (entry == block_map_.end()) {
-      // We need to fetch the block from the remote filesystem. Trim the LRU
-      // cache if needed - we do this up front in order to avoid any period of
-      // time during which the cache size exceeds its desired limit. The
-      // tradeoff is that if the fetcher fails, the cache may evict blocks
-      // prematurely.
-      while (!lru_list_.empty() && cache_size_ + block_size_ > max_bytes_) {
-        RemoveBlock(block_map_.find(lru_list_.back()));
+    // Look up the block, fetching and inserting it if necessary, and update the
+    // LRU iterator for the key and block.
+    std::shared_ptr<Block> block = Lookup(key);
+    if (!block) {
+      Trim();
+      auto fetch = std::make_shared<Block>();
+      auto status = block_fetcher_(filename, pos, block_size_, &fetch->data);
+      if (!(block = Insert(key, fetch))) {
+        return errors::Internal("File contents are inconsistent");
       }
-      std::unique_ptr<Block> block(new Block);
-      TF_RETURN_IF_ERROR(
-          block_fetcher_(filename, pos, block_size_, &block->data));
-      // Sanity check to detect interrupted reads leading to partial blocks: a
-      // partial block must have a higher key than the highest existing key in
-      // the block map for the file.
-      if (block->data.size() < block_size_ && !block_map_.empty()) {
-        Key fmax = std::make_pair(filename, std::numeric_limits<size_t>::max());
-        auto fcmp = block_map_.upper_bound(fmax);
-        if (fcmp != block_map_.begin() && key < (--fcmp)->first) {
-          // We expected to read a full block at this position.
-          return errors::Internal("File contents are inconsistent");
-        }
-      }
-      // Record the block timestamp, update the cache size, and add the block to
-      // the cache.
-      block->timestamp = env_->NowSeconds();
-      lra_list_.push_front(key);
-      block->lra_iterator = lra_list_.begin();
-      cache_size_ += block->data.size();
-      entry = block_map_.emplace(std::make_pair(key, std::move(block))).first;
-    } else {
-      // Cache hit. Remove the block from the LRU list at its prior location.
-      lru_list_.erase(entry->second->lru_iterator);
     }
-    // Push the block to the front of the LRU list.
-    lru_list_.push_front(key);
-    entry->second->lru_iterator = lru_list_.begin();
+    UpdateLRU(key, block);
     // Copy the relevant portion of the block into the result buffer.
-    const auto& data = entry->second->data;
+    const auto& data = block->data;
     if (offset >= pos + data.size()) {
       // The requested offset is at or beyond the end of the file. This can
       // happen if `offset` is not block-aligned, and the read returns the last
@@ -156,6 +192,9 @@ void FileBlockCache::RemoveFile_Locked(const string& filename) {
 void FileBlockCache::RemoveBlock(BlockMap::iterator entry) {
   lru_list_.erase(entry->second->lru_iterator);
   lra_list_.erase(entry->second->lra_iterator);
+  // This signals that the block is removed, and should not be inadvertently
+  // reinserted into the cache in UpdateLRU.
+  entry->second->timestamp = 0;
   cache_size_ -= entry->second->data.size();
   block_map_.erase(entry);
 }

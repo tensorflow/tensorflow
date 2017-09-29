@@ -564,7 +564,7 @@ def _confusion_matrix_at_thresholds(
 
 def auc(labels, predictions, weights=None, num_thresholds=200,
         metrics_collections=None, updates_collections=None,
-        curve='ROC', name=None):
+        curve='ROC', name=None, summation_method='trapezoidal'):
   """Computes the approximate AUC via a Riemann sum.
 
   The `auc` function creates four local variables, `true_positives`,
@@ -584,7 +584,9 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
 
   For best results, `predictions` should be distributed approximately uniformly
   in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
-  approximation may be poor if this is not the case.
+  approximation may be poor if this is not the case. Setting `summation_method`
+  to 'minoring' or 'majoring' can help quantify the error in the approximation
+  by providing lower or upper bound estimate of the AUC.
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `auc`.
@@ -606,8 +608,12 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
     updates_collections: An optional list of collections that `update_op` should
       be added to.
     curve: Specifies the name of the curve to be computed, 'ROC' [default] or
-    'PR' for the Precision-Recall-curve.
+      'PR' for the Precision-Recall-curve.
     name: An optional variable_scope name.
+    summation_method: Specifies the Riemann summation method used, 'trapezoidal'
+      [default] that applies the trapezoidal rule, 'minoring' that applies
+      left summation for increasing intervals and right summation for decreasing
+      intervals or 'majoring' that applies the opposite.
 
   Returns:
     auc: A scalar `Tensor` representing the current area-under-curve.
@@ -647,9 +653,23 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
         prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
         x = rec
         y = prec
-      return math_ops.reduce_sum(math_ops.multiply(
-          x[:num_thresholds - 1] - x[1:],
-          (y[:num_thresholds - 1] + y[1:]) / 2.), name=name)
+      if summation_method == 'trapezoidal':
+        return math_ops.reduce_sum(
+            math_ops.multiply(x[:num_thresholds - 1] - x[1:],
+                              (y[:num_thresholds - 1] + y[1:]) / 2.),
+            name=name)
+      elif summation_method == 'minoring':
+        return math_ops.reduce_sum(
+            math_ops.multiply(x[:num_thresholds - 1] - x[1:],
+                              math_ops.minimum(y[:num_thresholds - 1], y[1:])),
+            name=name)
+      elif summation_method == 'majoring':
+        return math_ops.reduce_sum(
+            math_ops.multiply(x[:num_thresholds - 1] - x[1:],
+                              math_ops.maximum(y[:num_thresholds - 1], y[1:])),
+            name=name)
+      else:
+        raise ValueError('Invalid summation_method: %s' % summation_method)
 
     # sum up the areas of all the trapeziums
     auc_value = compute_auc(

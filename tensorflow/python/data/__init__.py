@@ -14,6 +14,8 @@
 # ==============================================================================
 """`tf.data.Dataset` API for input pipelines.
 
+See the @{$datasets$Importing Data} Programmer's Guide for an overview.
+
 @@Dataset
 @@Iterator
 @@TFRecordDataset

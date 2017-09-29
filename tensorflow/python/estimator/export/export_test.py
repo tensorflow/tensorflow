@@ -189,16 +189,15 @@ class ExportTest(test_util.TensorFlowTestCase):
                             sparse_result["float_feature"].values)
 
   def test_build_raw_serving_input_receiver_fn_name(self):
-    """Test case for #12755"""
+    """Test case for issue #12755."""
     f = {
-        'feature':
+        "feature":
             array_ops.placeholder(
-                name='feature', shape=[32], dtype=dtypes.float32)
+                name="feature", shape=[32], dtype=dtypes.float32)
     }
     serving_input_receiver_fn = export.build_raw_serving_input_receiver_fn(f)
     v = serving_input_receiver_fn()
     self.assertTrue(isinstance(v, export.ServingInputReceiver))
-
 
   def test_build_raw_serving_input_receiver_fn(self):
     features = {"feature_1": constant_op.constant(["hello"]),

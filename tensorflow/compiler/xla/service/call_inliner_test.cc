@@ -115,5 +115,31 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
               op::Constant());
 }
 
+// Check CallInliner::Inline, which inlines a specific call without running the
+// whole pass.
+TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
+  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  auto module = CreateNewModule();
+
+  HloComputation::Builder just_false(TestName() + ".false");
+  auto* true_constant = just_false.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<bool>({true})));
+  auto* false_constant = just_false.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  TF_ASSERT_OK(false_constant->AddControlDependencyTo(true_constant));
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(just_false.Build());
+
+  HloComputation::Builder call_false_builder(TestName() + ".call_false");
+  HloInstruction* call = call_false_builder.AddInstruction(
+      HloInstruction::CreateCall(pred, {}, false_computation));
+  auto computation = module->AddEntryComputation(call_false_builder.Build());
+
+  TF_ASSERT_OK(CallInliner::Inline(call));
+  EXPECT_THAT(computation->root_instruction(), op::Constant());
+  EXPECT_THAT(computation->root_instruction()->control_successors(),
+              ElementsAre(op::Constant()));
+}
+
 }  // namespace
 }  // namespace xla

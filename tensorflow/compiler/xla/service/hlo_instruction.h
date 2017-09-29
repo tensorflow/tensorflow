@@ -422,6 +422,9 @@ class HloInstruction {
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
   // of this instruction to avoid introducing cycles into the graph.
+  //
+  // If this instruction is the root of its computation, sets the computation's
+  // root to new_producer.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
   // Detaches an instruction from its operands. That is, remove the instruction
@@ -669,11 +672,11 @@ class HloInstruction {
   // Predondition: 'instruction_to_merge' must be an operand of 'this'.
   void MergeFusionInstruction(HloInstruction* instruction_to_merge);
 
-  // Merges the fused instructions from 'instruction_to_merge' into the
-  // fused instruction set of 'this' and generate multioutput fusion
-  // instructions. All the user of instruction_to_merge will be redirected
-  // to 'this' instruction. `instruction_to_merge' will be removed from its
-  // parent computation.
+  // Merges the fused instructions from instruction_to_merge into the fused
+  // instruction set of 'this' and generates multioutput fusion instructions.
+  // All the users of instruction_to_merge will be redirected to 'this'
+  // instruction. instruction_to_merge will be removed from its parent
+  // computation.
   //
   // Precondition: opcode() == HloOpcode::kFusion
   void MergeFusionInstructionIntoMultiOutput(
@@ -798,12 +801,12 @@ class HloInstruction {
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
   // the instruction to form the name of the cloned instruction.
-  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone");
+  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone") const;
 
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) const;
 
   // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
@@ -982,7 +985,7 @@ class HloInstruction {
   // Clones a fusion instruction with a new shape and operands.
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(
       const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) const;
 
   // Returns true if this instruction can legally have the dimensions field
   // set. Used for checking precondition of dimensions field accessors.

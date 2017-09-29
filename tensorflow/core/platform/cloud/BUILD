@@ -204,6 +204,7 @@ tf_cc_test(
         ":file_block_cache",
         ":now_seconds_env",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

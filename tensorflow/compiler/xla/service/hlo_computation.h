@@ -106,12 +106,6 @@ class HloComputation {
   // must have no users. Instruction is deallocated with this call.
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
-  // Replace all uses of "instruction_to_replace" with "instruction". Also, if
-  // instruction_to_replace is the root of this computation then the root is set
-  // to "instruction". Does not remove "instruction_to_replace".
-  Status ReplaceUsesOfInstruction(HloInstruction* instruction_to_replace,
-                                  HloInstruction* instruction);
-
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
   // the result of the computation for non fusion computations.

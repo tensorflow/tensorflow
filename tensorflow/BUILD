@@ -186,6 +186,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_s3_support",
+    values = {"define": "with_s3_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_xla_support",
     values = {"define": "with_xla_support=true"},
     visibility = ["//visibility:public"],
@@ -378,6 +384,11 @@ filegroup(
         "//tensorflow/contrib/integrate:all_files",
         "//tensorflow/contrib/keras:all_files",
         "//tensorflow/contrib/kernel_methods:all_files",
+        "//tensorflow/contrib/kfac:all_files",
+        "//tensorflow/contrib/kfac/examples:all_files",
+        "//tensorflow/contrib/kfac/examples/tests:all_files",
+        "//tensorflow/contrib/kfac/python/kernel_tests:all_files",
+        "//tensorflow/contrib/kfac/python/ops:all_files",
         "//tensorflow/contrib/labeled_tensor:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",

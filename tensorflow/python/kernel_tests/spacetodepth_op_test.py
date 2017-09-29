@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
@@ -31,9 +33,22 @@ from tensorflow.python.platform import test
 class SpaceToDepthTest(test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs):
-    with self.test_session(use_gpu=True):
-      x_tf = array_ops.space_to_depth(math_ops.to_float(inputs), block_size)
+    input_nhwc = math_ops.to_float(inputs)
+    with self.test_session(use_gpu=False):
+      # test NHWC (default) on CPU
+      x_tf = array_ops.space_to_depth(input_nhwc, block_size)
       self.assertAllEqual(x_tf.eval(), outputs)
+    if test.is_gpu_available():
+      with self.test_session(use_gpu=True):
+        # test NHWC (default) on GPU
+        x_tf = array_ops.space_to_depth(input_nhwc, block_size)
+        self.assertAllEqual(x_tf.eval(), outputs)
+        # test NCHW on GPU
+        input_nchw = test_util.NHWCToNCHW(input_nhwc)
+        output_nchw = array_ops.space_to_depth(
+            input_nchw, block_size, data_format="NCHW")
+        output_nhwc = test_util.NCHWToNHWC(output_nchw)
+        self.assertAllEqual(output_nhwc.eval(), outputs)
 
   def testBasic(self):
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -184,6 +199,67 @@ class SpaceToDepthTest(test.TestCase):
     t = array_ops.space_to_depth(
         array_ops.placeholder(dtypes.float32), block_size=4)
     self.assertEqual(4, t.get_shape().ndims)
+
+  def spaceToDepthUsingTranspose(self, tensor, block_size, data_format):
+    block_size_sq = block_size * block_size
+    if data_format == "NHWC":
+      b, ih, iw, ic = tensor.shape.as_list()
+      assert ih % block_size == 0, (ih, block_size)
+      assert iw % block_size == 0, (iw, block_size)
+      ow, oh, oc = iw // block_size, ih // block_size, ic * block_size_sq
+      tensor = array_ops.reshape(tensor,
+                                 [b, oh, block_size, ow, block_size, ic])
+      tensor = array_ops.transpose(tensor, [0, 1, 3, 2, 4, 5])
+      tensor = array_ops.reshape(tensor, [b, oh, ow, oc])
+    elif data_format == "NCHW":
+      b, ic, ih, iw = tensor.shape.as_list()
+      assert ih % block_size == 0, (ih, block_size)
+      assert iw % block_size == 0, (iw, block_size)
+      ow, oh, oc = iw // block_size, ih // block_size, ic * block_size_sq
+      tensor = array_ops.reshape(tensor,
+                                 [b, ic, oh, block_size, ow, block_size])
+      tensor = array_ops.transpose(tensor, [0, 3, 5, 1, 2, 4])
+      tensor = array_ops.reshape(tensor, [b, oc, oh, ow])
+    return tensor
+
+  def compareToTranspose(self, data_format, use_gpu):
+    if use_gpu and not test.is_gpu_available():
+      print("gpu not available")
+      return
+
+    dtype = dtypes.float32
+    batch_size = 3
+    height = 4
+    width = 6
+    channels = 4
+    block_size = 2
+
+    if data_format == "NHWC":
+      input_shape = [batch_size, height, width, channels]
+    elif data_format == "NCHW":
+      input_shape = [batch_size, channels, height, width]
+    else:
+      print("unsupported format")
+
+    # Initialize the input tensor with ascending whole numbers.
+    total_size = 1
+    for dim_size in input_shape:
+      total_size *= dim_size
+    x = [f for f in range(total_size)]
+    inputs = constant_op.constant(x, shape=input_shape, dtype=dtype)
+
+    expected = self.spaceToDepthUsingTranspose(inputs, block_size, data_format)
+    actual = array_ops.space_to_depth(
+        inputs, block_size, data_format=data_format)
+
+    with self.test_session(use_gpu=use_gpu) as sess:
+      actual_vals, expected_vals = sess.run([actual, expected])
+      self.assertTrue(np.array_equal(actual_vals, expected_vals))
+
+  def testAgainstTranspose(self):
+    self.compareToTranspose("NHWC", False)
+    self.compareToTranspose("NHWC", True)
+    self.compareToTranspose("NCHW", True)
 
 
 class SpaceToDepthGradientTest(test.TestCase):

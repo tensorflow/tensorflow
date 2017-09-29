@@ -706,7 +706,8 @@ def meta_graph_transform(
     output_names: Names of output nodes.
     transforms: A list of strings naming the graph transforms to be applied in
       order.  These transform names are exactly those supported by the Graph
-      Transform Tool, with the addition of the 'freeze_graph' transform.
+      Transform Tool, with the addition of the 'freeze_graph' and
+      'sparsify_gather' transforms.
     tags: A list of tags with which to annotate the transformed MetaGraphDef.
     checkpoint_path: A path to a checkpoint to restore during freezing,
       if needed (default None).

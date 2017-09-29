@@ -810,8 +810,16 @@ def fused_batch_norm(
   # prevent exception (see cudnn.h).
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
+  # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
+  # currently only use the V2 version for float16 inputs, which is not supported
+  # by the V1 version.
   # pylint: disable=protected-access
-  y, batch_mean, batch_var, _, _ = gen_nn_ops._fused_batch_norm(
+  if x.dtype == dtypes.float16:
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm_v2
+  else:
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm
+  # pylint: enable=protected-access
+  y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
       x,
       scale,
       offset,
@@ -822,7 +830,6 @@ def fused_batch_norm(
       is_training=is_training,
       name=name)
   return y, batch_mean, batch_var
-  # pylint: enable=protected-access
 
 
 def batch_norm_with_global_normalization(t,

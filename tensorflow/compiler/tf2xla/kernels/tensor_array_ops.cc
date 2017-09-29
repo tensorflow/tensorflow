@@ -311,7 +311,7 @@ class TensorArrayGatherOp : public XlaOpKernel {
     xla::ComputationDataHandle ta = resource->value;
 
     xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-        ctx, ta, ta_shape, indices, indices_shape, dtype_, b);
+        ctx, ta, ta_shape, indices, indices_shape, 0, dtype_, b);
     ctx->SetOutput(0, gather);
   }
 
