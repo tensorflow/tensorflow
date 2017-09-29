@@ -202,7 +202,7 @@ cc_library(
         "-Wl,-rpath,../local_config_sycl/sycl/lib",
     ]),
     deps = if_ccpp(["@local_config_sycl//sycl:syclrt"],
-                   ["@local_config_sycl//sycl:sycl_headers"]
+                   ["@local_config_sycl//sycl:sycl_headers"],
     ),
 )
 
