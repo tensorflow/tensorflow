@@ -363,6 +363,7 @@ class _DefinedFunction(object):
         self._c_func = c_api.TF_GraphToFunction_wrapper(
             temp_graph._c_graph,
             self._func_name,
+            False,  # append_hash_to_fn_name
             None,  # opers
             [t._as_tf_output() for t in inputs],
             [t._as_tf_output() for t in outputs],

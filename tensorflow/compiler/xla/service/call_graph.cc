@@ -253,9 +253,8 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
     call_graph->nodes_.emplace_back(computation.get());
 
     // Add all callsites in this computation.
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
-      call_graph->nodes_.back().AddCallSiteForInstruction(instruction.get());
+    for (HloInstruction* instruction : computation->instructions()) {
+      call_graph->nodes_.back().AddCallSiteForInstruction(instruction);
     }
   }
 

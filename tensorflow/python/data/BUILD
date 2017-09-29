@@ -11,6 +11,8 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator",
+        "//tensorflow/python/data/ops:readers",
     ],
 )
 

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -43,6 +44,17 @@ template <typename Device, typename T>
 class DepthToSpaceOp : public OpKernel {
  public:
   explicit DepthToSpaceOp(OpKernelConstruction* context) : OpKernel(context) {
+    string data_format_str;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+
+    // TODO(pauldonnelly): Implement NCHW and NCHW_VECT_C for the GPU.
+    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                errors::InvalidArgument(
+                    "Only NHWC data_format currently implemented. Got ",
+                    data_format_str));
+
     OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
 
     OP_REQUIRES(
@@ -94,6 +106,7 @@ class DepthToSpaceOp : public OpKernel {
 
  private:
   int block_size_;
+  TensorFormat data_format_;
 };
 
 // Partial specialization of DepthToSpaceOpFunctor for a CPUDevice.

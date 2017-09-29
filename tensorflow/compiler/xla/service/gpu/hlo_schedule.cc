@@ -160,9 +160,9 @@ void BFSLaunchOrder(const HloComputation* computation,
   std::unordered_map<const HloInstruction*, int64> incoming_edge_count;
   for (const auto& hlo : computation->instructions()) {
     if (hlo->operand_count() == 0) {
-      queue.push_back(hlo.get());
+      queue.push_back(hlo);
     } else {
-      incoming_edge_count[hlo.get()] =
+      incoming_edge_count[hlo] =
           std::set<HloInstruction*>(hlo->operands().begin(),
                                     hlo->operands().end())
               .size();

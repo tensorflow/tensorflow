@@ -286,7 +286,9 @@ XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
   auto dummy_factory = [](OpKernelConstruction* context) -> OpKernel* {
     return new XlaDeviceDummyOp(context);
   };
-  for (const KernelDef* jit_def : XlaOpRegistry::DeviceKernels(jit_device)) {
+  for (const KernelDef* jit_def : XlaOpRegistry::DeviceKernels(
+           jit_device,
+           /*include_compilation_only_kernels=*/false)) {
     KernelDef* def = new KernelDef(*jit_def);
     def->set_device_type(device);
     registrations->op_kernel_registrars.emplace_back(

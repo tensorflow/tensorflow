@@ -21,12 +21,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 
 
 class _Conv(base.Layer):
@@ -151,16 +153,22 @@ class _Conv(base.Layer):
       self.bias = None
     self.input_spec = base.InputSpec(ndim=self.rank + 2,
                                      axes={channel_axis: input_dim})
+    with ops.name_scope(None, 'convolution', [self.kernel]) as name:
+      self._convolution_op = nn_ops.Convolution(
+          input_shape,
+          filter_shape=self.kernel.get_shape(),
+          dilation_rate=self.dilation_rate,
+          strides=self.strides,
+          padding=self.padding.upper(),
+          data_format=utils.convert_data_format(self.data_format,
+                                                self.rank + 2),
+          name=name)
     self.built = True
 
   def call(self, inputs):
-    outputs = nn.convolution(
-        input=inputs,
-        filter=self.kernel,
-        dilation_rate=self.dilation_rate,
-        strides=self.strides,
-        padding=self.padding.upper(),
-        data_format=utils.convert_data_format(self.data_format, self.rank + 2))
+    # TODO(agarwal): do we need this name_scope ?
+    with ops.name_scope(None, 'convolution', [inputs, self.kernel]):
+      outputs = self._convolution_op(inputs, self.kernel.value())
 
     if self.use_bias:
       if self.data_format == 'channels_first':

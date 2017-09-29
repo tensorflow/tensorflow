@@ -68,7 +68,9 @@ final class NativeLibrary {
     log("frameworkResourceName: " + frameworkResourceName);
     final InputStream frameworkResource =
         NativeLibrary.class.getClassLoader().getResourceAsStream(frameworkResourceName);
-    if (jniResource == null || frameworkResource == null) {
+    // Do not complain if the framework resource wasn't found. This may just mean that we're
+    // building with --config=monolithic (in which case it's not needed and not included).
+    if (jniResource == null) {
       throw new UnsatisfiedLinkError(
           String.format(
               "Cannot find TensorFlow native library for OS: %s, architecture: %s. See "
@@ -85,7 +87,12 @@ final class NativeLibrary {
       // deleted first, so that it is empty when the request is fulfilled.
       tempPath.deleteOnExit();
       final String tempDirectory = tempPath.toString();
-      extractResource(frameworkResource, FRAMEWORK_LIBNAME, tempDirectory);
+      if (frameworkResource != null) {
+        extractResource(frameworkResource, FRAMEWORK_LIBNAME, tempDirectory);
+      } else {
+        log(frameworkResourceName + " not found. This is fine assuming " + jniResourceName
+            + " is not built to depend on it.");
+      }
       System.load(extractResource(jniResource, JNI_LIBNAME, tempDirectory));
     } catch (IOException e) {
       throw new UnsatisfiedLinkError(
