@@ -12,19 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// GENERATED FILE. To update, edit tftypes.pl instead.
 
 package org.tensorflow.types;
 
-import org.tensorflow.DataType;
-
-/** Represents a 32-bit signed integer. */
-public class TFInt32 implements TFType {
-  private TFInt32() {}
-  static {
-    Types.typeCodes.put(TFInt32.class, DataType.INT32);
-  }
-  static {
-    Types.scalars.put(TFInt32.class, 0);
-  }
+/** Represents an 8-bit unsigned integer. */
+public class UInt8 {
+  private UInt8() {}
 }

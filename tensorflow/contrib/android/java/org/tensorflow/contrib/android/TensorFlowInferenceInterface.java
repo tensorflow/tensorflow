@@ -31,12 +31,12 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
 import java.util.List;
-import org.tensorflow.DataType;
 import org.tensorflow.Graph;
 import org.tensorflow.Operation;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
 import org.tensorflow.TensorFlow;
+import org.tensorflow.types.UInt8;
 
 /**
  * Wrapper over the TensorFlow API ({@link Graph}, {@link Session}) providing a smaller API surface
@@ -328,7 +328,7 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, byte[] src, long... dims) {
-    addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
+    addFeed(inputName, Tensor.create(UInt8.class, dims, ByteBuffer.wrap(src)));
   }
 
   /**
@@ -403,7 +403,7 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, ByteBuffer src, long... dims) {
-    addFeed(inputName, Tensor.create(DataType.UINT8, dims, src));
+    addFeed(inputName, Tensor.create(UInt8.class, dims, src));
   }
 
   /**
@@ -544,7 +544,7 @@ public class TensorFlowInferenceInterface {
         "Model load took " + (endMs - startMs) + "ms, TensorFlow version: " + TensorFlow.version());
   }
 
-  private void addFeed(String inputName, Tensor t) {
+  private void addFeed(String inputName, Tensor<?> t) {
     // The string format accepted by TensorFlowInferenceInterface is node_name[:output_index].
     TensorId tid = TensorId.parse(inputName);
     runner.feed(tid.name, tid.outputIndex, t);
@@ -578,7 +578,7 @@ public class TensorFlowInferenceInterface {
     }
   }
 
-  private Tensor getTensor(String outputName) {
+  private Tensor<?> getTensor(String outputName) {
     int i = 0;
     for (String n : fetchNames) {
       if (n.equals(outputName)) {
@@ -591,7 +591,7 @@ public class TensorFlowInferenceInterface {
   }
 
   private void closeFeeds() {
-    for (Tensor t : feedTensors) {
+    for (Tensor<?> t : feedTensors) {
       t.close();
     }
     feedTensors.clear();
@@ -599,7 +599,7 @@ public class TensorFlowInferenceInterface {
   }
 
   private void closeFetches() {
-    for (Tensor t : fetchTensors) {
+    for (Tensor<?> t : fetchTensors) {
       t.close();
     }
     fetchTensors.clear();
@@ -614,9 +614,9 @@ public class TensorFlowInferenceInterface {
   // State reset on every call to run.
   private Session.Runner runner;
   private List<String> feedNames = new ArrayList<String>();
-  private List<Tensor> feedTensors = new ArrayList<Tensor>();
+  private List<Tensor<?>> feedTensors = new ArrayList<Tensor<?>>();
   private List<String> fetchNames = new ArrayList<String>();
-  private List<Tensor> fetchTensors = new ArrayList<Tensor>();
+  private List<Tensor<?>> fetchTensors = null;
 
   // Mutable state.
   private RunStats runStats;
