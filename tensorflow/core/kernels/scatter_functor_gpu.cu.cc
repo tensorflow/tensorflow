@@ -37,6 +37,8 @@ typedef Eigen::GpuDevice GPUDevice;
   DEFINE_GPU_SPECS_INDEX(T, int32); \
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
+DEFINE_GPU_SPECS(int32);
+//DEFINE_GPU_SPECS(int64);
 DEFINE_GPU_SPECS(float);
 DEFINE_GPU_SPECS(double);
 // TODO(b/27222123): The following fails to compile due to lack of support for
