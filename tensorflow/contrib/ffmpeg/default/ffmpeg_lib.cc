@@ -208,7 +208,13 @@ string GetTempFilename(const string& extension) {
     }
     struct stat statbuf;
     if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
-      return io::JoinPath(dir, StrCat("tmp_file_", getpid(), ".", extension));
+      string tmp_filename = StrCat("tmp_file_XXXXXX", ".", extension);
+      int fd = mkstemps(&tmp_filename[0], extension.length() + 1);
+      if (fd < 0) {
+        LOG(FATAL) << "Failed to create temp filename.";
+      } else {
+        return io::JoinPath(dir, tmp_filename);
+      }
     }
   }
   LOG(FATAL) << "No temp directory found.";
