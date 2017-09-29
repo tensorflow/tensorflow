@@ -105,21 +105,6 @@ def _is_google_env():
   return tf_config.get(_ENVIRONMENT_KEY) == _ENVIRONMENT_GOOGLE_VALUE
 
 
-def _export_eval_result(eval_result, checkpoint_path, estimator, eval_spec):
-  """Export `eval_result` according to strategies in `EvalSpec`."""
-  export_dir_base = os.path.join(
-      compat.as_str_any(estimator.model_dir), compat.as_str_any('export'))
-
-  for strategy in eval_spec.export_strategies:
-    strategy.export(
-        estimator,
-        os.path.join(
-            compat.as_str_any(export_dir_base), compat.as_str_any(
-                strategy.name)),
-        checkpoint_path=checkpoint_path,
-        eval_result=eval_result)
-
-
 class TrainSpec(
     collections.namedtuple('TrainSpec', ['input_fn', 'max_steps', 'hooks'])):
   """Objects passed to `train_and_evaluate`.
@@ -384,18 +369,16 @@ class _TrainingExecutor(object):
     logging.info('Start train and evaluate loop. The evaluate will happen '
                  'after {} secs (eval_spec.throttle_secs) or training is '
                  'finished.'.format(self._eval_spec.throttle_secs))
+
+    evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec)
+
     while True:
       self._estimator.train(
           input_fn=self._train_spec.input_fn,
           max_steps=self._train_spec.max_steps,
           hooks=train_hooks)
-      metrics = self._estimator.evaluate(
-          input_fn=self._eval_spec.input_fn,
-          steps=self._eval_spec.steps,
-          hooks=self._eval_spec.hooks,
-          name=self._eval_spec.name)
 
-      # TODO(b/65169058): Adds export once export strategies are moved.
+      metrics = evaluator.evaluate_and_export()
 
       if _should_stop_local_train(metrics[ops.GraphKeys.GLOBAL_STEP]):
         break
@@ -503,7 +486,6 @@ class _TrainingExecutor(object):
             'evaluation pass as evaluation results are expected to be same '
             'for the same checkpoint.')
         return None
-
       eval_result = self._estimator.evaluate(
           input_fn=self._eval_spec.input_fn,
           steps=self._eval_spec.steps,
@@ -515,8 +497,7 @@ class _TrainingExecutor(object):
         self._log_err_msg('Estimator evaluate returns empty result.')
         return None
 
-      _export_eval_result(eval_result, latest_ckpt_path, self._estimator,
-                          self._eval_spec)
+      self._export_eval_result(eval_result, latest_ckpt_path)
 
       self._last_warning_time = 0
       self._previous_ckpt_path = latest_ckpt_path
@@ -528,3 +509,18 @@ class _TrainingExecutor(object):
       if current_time - self._last_warning_time > 600:
         logging.warning(message)
         self._last_warning_time = current_time
+
+    def _export_eval_result(self, eval_result, checkpoint_path):
+      """Export `eval_result` according to strategies in `EvalSpec`."""
+      export_dir_base = os.path.join(
+          compat.as_str_any(self._estimator.model_dir),
+          compat.as_str_any('export'))
+
+      for strategy in self._eval_spec.export_strategies:
+        strategy.export(
+            self._estimator,
+            os.path.join(
+                compat.as_str_any(export_dir_base),
+                compat.as_str_any(strategy.name)),
+            checkpoint_path=checkpoint_path,
+            eval_result=eval_result)
