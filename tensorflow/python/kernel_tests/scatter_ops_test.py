@@ -110,7 +110,7 @@ class ScatterTest(test.TestCase):
           self.assertAllClose(ref.eval(), new)
 
   def _VariableRankTests(self, tf_scatter, repeat_indices=False):
-    for vtype in (np.float32, np.float64):
+    for vtype in (np.int32, np.float32, np.float64):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices)
 

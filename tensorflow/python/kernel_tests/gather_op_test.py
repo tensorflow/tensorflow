@@ -27,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
 
-_TEST_TYPES = (dtypes.float32, dtypes.complex64, dtypes.complex128)
+_TEST_TYPES = (dtypes.int32, dtypes.int64, dtypes.float32, dtypes.complex64, dtypes.complex128)
 
 
 class GatherTest(test.TestCase):
