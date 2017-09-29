@@ -33,6 +33,7 @@ Status BackwardsConstAnalysis(const Graph& g,
   const std::unordered_multimap<string, string> compile_time_const_inputs = {
       {"All", "reduction_indices"},
       {"Any", "reduction_indices"},
+      {"ArgMin", "dimension"},
       {"ArgMax", "dimension"},
       {"AvgPoolGrad", "orig_input_shape"},
       {"AvgPool3DGrad", "orig_input_shape"},

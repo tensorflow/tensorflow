@@ -32,7 +32,6 @@ limitations under the License.
 //   --tf_xla_test_repetitions=20
 
 // TODO(phawkins): add tests for:
-// * ArgMax
 // * DepthwiseConv2DNative
 // * Gather
 // * InvertPermutation
@@ -895,6 +894,38 @@ TEST_F(OpTest, ApproximateEqual) {
                                              .RandomInput(DT_FLOAT, dims)
                                              .RandomInput(DT_FLOAT, dims)
                                              .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, ArgMax) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1, 5);
+    int num_dims = dims.size();
+    int reduce_dim =
+        std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ArgMax")
+            .RandomInput(DT_FLOAT, dims)
+            .Input(test::AsScalar<int32>(reduce_dim))
+            .Attr("T", DT_FLOAT)
+            .Attr("Tidx", DT_INT32)
+            .Attr("output_type", DT_INT32));
+  });
+}
+
+TEST_F(OpTest, ArgMin) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1, 5, 1);
+    int num_dims = dims.size();
+    int reduce_dim =
+        std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ArgMin")
+            .RandomInput(DT_FLOAT, dims)
+            .Input(test::AsScalar<int32>(reduce_dim))
+            .Attr("T", DT_FLOAT)
+            .Attr("Tidx", DT_INT32)
+            .Attr("output_type", DT_INT32));
   });
 }
 

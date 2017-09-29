@@ -24,6 +24,7 @@ tf_kernel_library(
         "conv_ops.cc",
         "cross_op.cc",
         "cwise_ops.cc",
+        "cwise_ops.h",
         "depthtospace_op.cc",
         "diag_op.cc",
         "dynamic_stitch_op.cc",
@@ -31,7 +32,9 @@ tf_kernel_library(
         "fill_op.cc",
         "function_ops.cc",
         "gather_op.cc",
+        "gather_op_helpers.h",
         "identity_op.cc",
+        "index_ops.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
@@ -44,6 +47,7 @@ tf_kernel_library(
         "quantize_and_dequantize_op.cc",
         "random_ops.cc",
         "reduction_ops.cc",
+        "reduction_ops.h",
         "reduction_ops_common.cc",
         "relu_op.cc",
         "reshape_op.cc",
@@ -70,10 +74,8 @@ tf_kernel_library(
         "variable_ops.cc",
     ],
     hdrs = [
-        "cwise_ops.h",
         "gather_op.h",
-        "gather_op_helpers.h",
-        "reduction_ops.h",
+        "index_ops.h",
     ],
     deps = [
         ":while_op",
@@ -126,14 +128,9 @@ tf_kernel_library(
 
 # Kernels that only work on CPU, because they use XLA custom calls.
 # Only link this when using the CPU backend for XLA.
-#
-# TODO(cwhipkey): move into xla_ops when ops can be registered for
-# CPU compilation only (b/31363654).
 tf_kernel_library(
     name = "xla_cpu_only_ops",
-    srcs = [
-        "index_ops.cc",
-    ],
+    srcs = ["index_ops_cpu.cc"],
     deps = [
         ":gather_op_kernel_float_int32",
         ":gather_op_kernel_float_int64",
