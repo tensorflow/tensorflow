@@ -28,7 +28,6 @@ package_group(name = "friends")
 cc_library(
     name = "boosted_trees_kernels",
     deps = [
-        ":ensemble_optimizer_ops_kernels",
         ":model_ops_kernels",
         ":prediction_ops_kernels",
         ":quantile_ops_kernels",
@@ -42,7 +41,6 @@ cc_library(
 cc_library(
     name = "boosted_trees_ops_op_lib",
     deps = [
-        ":ensemble_optimizer_ops_op_lib",
         ":model_ops_op_lib",
         ":prediction_ops_op_lib",
         ":quantile_ops_op_lib",
@@ -128,29 +126,6 @@ py_test(
 # Kernel tests
 
 py_test(
-    name = "ensemble_optimizer_ops_test",
-    size = "small",
-    srcs = ["python/kernel_tests/ensemble_optimizer_ops_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
-    deps = [
-        ":ensemble_optimizer_ops_py",
-        ":model_ops_py",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:resources",
-        "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "model_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/model_ops_test.py"],
@@ -159,7 +134,6 @@ py_test(
         "nomac",  # b/63258195
     ],
     deps = [
-        ":ensemble_optimizer_ops_py",
         ":model_ops_py",
         ":prediction_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
@@ -304,7 +278,6 @@ py_library(
     name = "boosted_trees_ops_py",
     srcs_version = "PY2AND3",
     deps = [
-        ":ensemble_optimizer_ops_py",
         ":model_ops_py",
         ":prediction_ops_py",
         ":quantile_ops_py",
@@ -361,14 +334,12 @@ tf_kernel_library(
 tf_custom_op_library(
     name = "python/ops/_boosted_trees_ops.so",
     srcs = [
-        "kernels/ensemble_optimizer_ops.cc",
         "kernels/model_ops.cc",
         "kernels/prediction_ops.cc",
         "kernels/quantile_ops.cc",
         "kernels/split_handler_ops.cc",
         "kernels/stats_accumulator_ops.cc",
         "kernels/training_ops.cc",
-        "ops/ensemble_optimizer_ops.cc",
         "ops/model_ops.cc",
         "ops/prediction_ops.cc",
         "ops/quantile_ops.cc",
@@ -579,52 +550,6 @@ tf_kernel_library(
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
         "//tensorflow/contrib/boosted_trees/resources:quantile_stream_resource",
-        "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-# Ensemble optimizer ops
-tf_gen_op_libs(
-    op_lib_names = ["ensemble_optimizer_ops"],
-)
-
-tf_gen_op_wrapper_py(
-    name = "gen_ensemble_optimizer_ops_py",
-    out = "python/ops/gen_ensemble_optimizer_ops.py",
-    deps = [
-        ":ensemble_optimizer_ops_op_lib",
-    ],
-)
-
-tf_custom_op_py_library(
-    name = "ensemble_optimizer_ops_py",
-    srcs = ["python/ops/ensemble_optimizer_ops.py"],
-    kernels = [
-        ":ensemble_optimizer_ops_kernels",
-        ":ensemble_optimizer_ops_op_lib",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":boosted_trees_ops_loader",
-        ":gen_ensemble_optimizer_ops_py",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
-    ],
-)
-
-tf_kernel_library(
-    name = "ensemble_optimizer_ops_kernels",
-    srcs = [
-        "kernels/ensemble_optimizer_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
-        "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -218,27 +217,24 @@ Status CheckFormatConstraintsOnShape(const TensorFormat tensor_format,
   return Status::OK();
 }
 
-// Returns a new shape with the specified dims arranged in the specified
-// format. The returned value is owned by this context.
-// Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.
 Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
                            const std::vector<DimensionOrConstant>& spatial,
                            DimensionOrConstant C, ShapeHandle* out,
-                           shape_inference::InferenceContext* c) {
+                           shape_inference::InferenceContext* context) {
   const int num_dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
   std::vector<DimensionHandle> dims_actual(num_dims);
-  dims_actual[GetTensorBatchDimIndex(num_dims, format)] = c->MakeDim(N);
+  dims_actual[GetTensorBatchDimIndex(num_dims, format)] = context->MakeDim(N);
   int outer_c_index = GetTensorFeatureDimIndex(num_dims, format);
-  dims_actual[outer_c_index] = c->MakeDim(C);
+  dims_actual[outer_c_index] = context->MakeDim(C);
   if (format == FORMAT_NCHW_VECT_C) {
     dims_actual[GetTensorInnerFeatureDimIndex(num_dims, format)] =
-        c->MakeDim(4);
+        context->MakeDim(4);
   }
   for (int spatial_dim = 0; spatial_dim < spatial.size(); spatial_dim++) {
     dims_actual[GetTensorSpatialDimIndex(num_dims, format, spatial_dim)] =
-        c->MakeDim(spatial[spatial_dim]);
+        context->MakeDim(spatial[spatial_dim]);
   }
-  *out = c->MakeShape(dims_actual);
+  *out = context->MakeShape(dims_actual);
   return Status::OK();
 }
 
@@ -609,6 +605,87 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
                                          {output_rows, output_cols}, depth_dim,
                                          &output_shape, c));
   c->set_output(0, output_shape);
+  return Status::OK();
+}
+
+Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+  bool is_training;
+  TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
+  int number_inputs = (is_training) ? 3 : 5;
+  string data_format;
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
+  DimensionHandle channel_dim =
+      (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
+
+  // covers scale, offset, and if is_training is false, mean, variance
+  for (int i = 1; i < number_inputs; ++i) {
+    ShapeHandle vec;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+  }
+
+  ShapeHandle y;
+  if (data_format == "NHWC") {
+    TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
+  } else {
+    TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
+  }
+  c->set_output(0, y);
+  ShapeHandle vector_shape = c->Vector(channel_dim);
+  c->set_output(1, vector_shape);
+  c->set_output(2, vector_shape);
+  c->set_output(3, vector_shape);
+  c->set_output(4, vector_shape);
+  return Status::OK();
+}
+
+Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
+  ShapeHandle y_backprop;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
+  ShapeHandle x;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
+
+  bool is_training;
+  string data_format;
+  TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
+  TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
+  DimensionHandle channel_dim =
+      (data_format == "NHWC") ? c->Dim(y_backprop, 3) : c->Dim(y_backprop, 1);
+  if (data_format == "NHWC") {
+    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 3), &channel_dim));
+  } else {
+    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 1), &channel_dim));
+  }
+
+  // covers scale, mean (reserve_space_1), variance (reserve_space_2)
+  for (int i = 2; i < 5; ++i) {
+    ShapeHandle vec;
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+    TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+  }
+
+  ShapeHandle x_backprop;
+  if (data_format == "NHWC") {
+    TF_RETURN_IF_ERROR(c->ReplaceDim(y_backprop, 3, channel_dim, &x_backprop));
+  } else {
+    TF_RETURN_IF_ERROR(c->ReplaceDim(y_backprop, 1, channel_dim, &x_backprop));
+  }
+  c->set_output(0, x_backprop);
+  c->set_output(1, c->Vector(channel_dim));
+  c->set_output(2, c->Vector(channel_dim));
+  // Set the correct shapes for reserve_spaces
+  // so that gradients can be performed when
+  // the op is in a symbolic condition.
+  if (is_training) {
+    c->set_output(3, c->Vector(0));
+    c->set_output(4, c->Vector(0));
+  } else {
+    c->set_output(3, c->Vector(channel_dim));
+    c->set_output(4, c->Vector(channel_dim));
+  }
   return Status::OK();
 }
 

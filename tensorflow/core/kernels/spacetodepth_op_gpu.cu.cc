@@ -27,13 +27,15 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
+// Space2Depth kernel for FORMAT_NHWC.
+// See 'spacetodepth_op.h' for a more detailed description.
 template <typename dtype>
-__global__ void S2D(const int32 nthreads, const dtype* input_ptr,
-                    const int block_size, const int batch_size,
-                    const int input_height, const int input_width,
-                    const int input_depth, const int output_height,
-                    const int output_width, const int output_depth,
-                    dtype* output_ptr) {
+__global__ void S2D_NHWC(const int32 nthreads, const dtype* input_ptr,
+                         const int block_size, const int batch_size,
+                         const int input_height, const int input_width,
+                         const int input_depth, const int output_height,
+                         const int output_width, const int output_depth,
+                         dtype* output_ptr) {
   CUDA_1D_KERNEL_LOOP(inp_idx, nthreads) {
     // inp_idx = d + input_depth * (w + input_width * (h + input_height * b))
     const int d = inp_idx % input_depth;
@@ -56,10 +58,52 @@ __global__ void S2D(const int32 nthreads, const dtype* input_ptr,
   }
 }
 
+// Space2Depth kernel for FORMAT_NCHW.
+// See 'spacetodepth_op.h' for a more detailed description.
+template <typename dtype>
+__global__ void S2D_NCHW(const int32 nthreads,
+                         const dtype* __restrict__ input_ptr,
+                         const int block_size, const int output_width,
+                         const int input_depth_by_output_height,
+                         dtype* __restrict__ output_ptr) {
+  // TODO(pauldonnelly): This kernel gets input coalescing, but not output
+  // coalescing. We could use shared memory to get both. It may also help
+  // to amortize the address calculations via an inner loop over block_size.
+  // A template parameter for the block_size is another potential optimization.
+  CUDA_1D_KERNEL_LOOP(input_idx, nthreads) {
+    // We assume both the input and output are packed NCHW tensors.
+    // input_idx represents an index within the flattened input tensor.
+    // We can consider the block width and height as extra tensor dimensions,
+    // then isolate the relevant components of input_idx and recombine them to
+    // form output_idx. The layout transform performed is:
+    // n, iC, oY, bY, oX, bX    (== input_idx)   to
+    // n, bY, bX, iC, oY, oX    (== output_idx).
+
+    const int n_iC_oY_bY_oX = input_idx / block_size;
+    const int bX = input_idx - n_iC_oY_bY_oX * block_size;
+
+    const int n_iC_oY_bY = n_iC_oY_bY_oX / output_width;
+    const int oX = n_iC_oY_bY_oX - n_iC_oY_bY * output_width;
+
+    const int n_iC_oY = n_iC_oY_bY / block_size;
+    const int bY = n_iC_oY_bY - n_iC_oY * block_size;
+
+    const int n = n_iC_oY / input_depth_by_output_height;
+    const int iC_oY = n_iC_oY - n * input_depth_by_output_height;
+
+    const int output_idx = oX + (((n * block_size + bY) * block_size + bX) *
+                                     input_depth_by_output_height +
+                                 iC_oY) *
+                                    output_width;
+
+    *(output_ptr + output_idx) = ldg(input_ptr + input_idx);
+  }
+}
+
 // Specialization of SpaceToDepthOpFunctor for a CPUDevice.
 namespace functor {
 template <typename T>
-struct SpaceToDepthOpFunctor<GPUDevice, T> {
+struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NHWC> {
   void operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output) {
     const int batch_size = output.dimension(0);
@@ -73,16 +117,36 @@ struct SpaceToDepthOpFunctor<GPUDevice, T> {
     const int total_count =
         batch_size * input_height * input_width * input_depth;
     CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
-    S2D<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+    S2D_NHWC<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
         config.virtual_thread_count, input.data(), block_size, batch_size,
         input_height, input_width, input_depth, output_height, output_width,
         output_depth, output.data());
   }
 };
+
+template <typename T>
+struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
+  void operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+                  int block_size, typename TTypes<T, 4>::Tensor output) {
+    const int batch_size = output.dimension(0);
+    const int input_depth = input.dimension(1);
+    const int output_depth = output.dimension(1);
+    const int output_height = output.dimension(2);
+    const int output_width = output.dimension(3);
+
+    const int total_count =
+        batch_size * output_height * output_width * output_depth;
+    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+    S2D_NCHW<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+        config.virtual_thread_count, input.data(), block_size, output_width,
+        input_depth * output_height, output.data());
+  }
+};
 }  // end namespace functor
 
-// Instantiate the GPU implementation for float.
-template struct functor::SpaceToDepthOpFunctor<GPUDevice, float>;
+// Instantiate the GPU implementations for float.
+template struct functor::SpaceToDepthOpFunctor<GPUDevice, float, FORMAT_NCHW>;
+template struct functor::SpaceToDepthOpFunctor<GPUDevice, float, FORMAT_NHWC>;
 
 }  // end namespace tensorflow
 

@@ -55,12 +55,8 @@ bool PotentiallyImplementedAsEigenConvolution(
       std::is_sorted(dnums.kernel_spatial_dimensions().begin(),
                      dnums.kernel_spatial_dimensions().end());
 
-  const Shape& output_shape = convolution.shape();
-  return dnums.input_batch_dimension() == 0 &&
-         dnums.input_feature_dimension() == input_shape.dimensions_size() - 1 &&
-         dnums.output_batch_dimension() == 0 &&
-         dnums.output_feature_dimension() ==
-             output_shape.dimensions_size() - 1 &&
+  return dnums.batch_dimension() == 0 &&
+         dnums.feature_dimension() == input_shape.dimensions_size() - 1 &&
          input_spatial_dims_ascending == kernel_spatial_dims_ascending &&
          dnums.kernel_input_feature_dimension() ==
              kernel_shape.dimensions_size() - 2 &&

@@ -1530,7 +1530,7 @@ class EstimatorExportTest(test.TestCase):
     # hack in an op that uses the asset, in order to test asset export.
     # this is not actually valid, of course.
     def serving_input_receiver_with_asset_fn():
-      features, receiver_tensor = serving_input_receiver_fn()
+      features, receiver_tensor, _ = serving_input_receiver_fn()
       filename = ops.convert_to_tensor(vocab_file_name,
                                        dtypes.string,
                                        name='asset_filepath')

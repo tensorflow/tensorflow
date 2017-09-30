@@ -272,11 +272,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status Analyze();
 
   // Populates instruction-defined buffers and aliases for each instruction
-  // in 'instructions'. The parameter 'instructions' is passed in a form
-  // common to how both HloComputation, and fusion instructions maintain a
-  // list of instructions.
-  Status PopulateDefinedBuffersAndAliases(
-      const std::list<std::unique_ptr<HloInstruction>>& instructions);
+  // in 'instructions'.
+  Status PopulateDefinedBuffersAndAliases(const decltype(
+      std::declval<HloComputation>().instructions())& instructions);
 
   // Creates an empty PointsToSet in the points_to_ map for the given
   // instruction.

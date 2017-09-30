@@ -322,10 +322,8 @@ TEST_F(ReferenceUtilTest, ConvGeneralDimensionsWithSamePadding) {
 
   // Set the convolution dimension numbers.
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_input_batch_dimension(2);
-  dimension_numbers.set_input_feature_dimension(0);
-  dimension_numbers.set_output_batch_dimension(2);
-  dimension_numbers.set_output_feature_dimension(0);
+  dimension_numbers.set_batch_dimension(2);
+  dimension_numbers.set_feature_dimension(0);
   dimension_numbers.add_spatial_dimensions(1);
   dimension_numbers.add_spatial_dimensions(3);
   dimension_numbers.set_kernel_output_feature_dimension(0);
@@ -376,10 +374,8 @@ TEST_F(ReferenceUtilTest, ConvGeneralDimensionsWithValidPadding) {
 
   // Set the convolution dimension numbers.
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_input_batch_dimension(2);
-  dimension_numbers.set_input_feature_dimension(0);
-  dimension_numbers.set_output_batch_dimension(2);
-  dimension_numbers.set_output_feature_dimension(0);
+  dimension_numbers.set_batch_dimension(2);
+  dimension_numbers.set_feature_dimension(0);
   dimension_numbers.add_spatial_dimensions(1);
   dimension_numbers.add_spatial_dimensions(3);
 

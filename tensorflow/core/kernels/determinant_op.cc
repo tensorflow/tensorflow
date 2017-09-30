@@ -115,12 +115,15 @@ class DeterminantOpGpu : public AsyncOpKernel {
       return;
     }
 
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+
     // Reuse the input buffer or make a copy for the factorization step,
     // depending on whether this ops owns it exclusively.
     Tensor input_copy;
     OP_REQUIRES_OK_ASYNC(
         context,
-        context->forward_input_or_allocate_temp(
+        solver->forward_input_or_allocate_scoped_tensor(
             {0}, DataTypeToEnum<Scalar>::value, input.shape(), &input_copy),
         done);
     if (!input.SharesBufferWith(input_copy)) {
@@ -131,17 +134,23 @@ class DeterminantOpGpu : public AsyncOpKernel {
     const int64 batch_size = input_copy_reshaped.dimension(0);
 
     // Allocate pivots on the device.
-    ScratchSpace<int> pivots(context, n * batch_size, /* on_host */ false);
+    Tensor pivots;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        solver->allocate_scoped_tensor(DataTypeToEnum<int>::value,
+                                       TensorShape{batch_size, n}, &pivots),
+        done);
+    auto pivots_mat = pivots.template matrix<int>();
 
     // Prepare pointer arrays for cuBlas' batch interface.
     // TODO(rmlarsen): Find a way to encode pointer arrays in pinned host memory
     // without the ugly casting.
-    ScratchSpace<uint8> input_copy_ptrs(context, sizeof(Scalar*) * batch_size,
-                                        /* on_host */ true);
+    auto input_copy_ptrs = solver->GetScratchSpace<uint8>(
+        sizeof(Scalar*) * batch_size, "input_copy_ptrs",
+        /* on_host */ true);
     auto output_reshaped = out->template flat_inner_dims<Scalar, 1>();
 
     // Compute the partially pivoted LU factorization(s) of the matrix/matrices.
-    CudaSolver solver(context);
     std::vector<DeviceLapackInfo> dev_info;
     if (n / batch_size <= 128) {
       // For small matrices or large batch sizes, we use the batched interface
@@ -149,30 +158,25 @@ class DeterminantOpGpu : public AsyncOpKernel {
       const Scalar** input_copy_ptrs_base =
           reinterpret_cast<const Scalar**>(input_copy_ptrs.mutable_data());
       for (int batch = 0; batch < batch_size; ++batch) {
-        input_copy_ptrs_base[batch] =
-            input_copy_reshaped.data() + batch * n * n;
+        input_copy_ptrs_base[batch] = &input_copy_reshaped(batch, 0, 0);
       }
-      dev_info.emplace_back(context, batch_size, "getrfBatched");
+      dev_info.push_back(
+          solver->GetDeviceLapackInfo(batch_size, "getrfBatched"));
       OP_REQUIRES_OK_ASYNC(
           context,
-          solver.GetrfBatched(n, input_copy_ptrs_base, n, pivots.mutable_data(),
-                              &dev_info.back(), batch_size),
+          solver->GetrfBatched(n, input_copy_ptrs_base, n, pivots_mat.data(),
+                               &dev_info.back(), batch_size),
           done);
     } else {
       // For small batch sizes we use the non-batched interface from cuSolver,
       // which is much faster for large matrices.
-      dev_info.emplace_back(context, batch_size, "getrf");
-      int* dev_info_ptr = dev_info.back().mutable_data();
-      Scalar* input_copy_ptr = input_copy.flat<Scalar>().data();
-      int* pivots_ptr = pivots.mutable_data();
+      dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrf"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.Getrf(n, n, input_copy_ptr, n, pivots_ptr, dev_info_ptr),
+            solver->Getrf(n, n, &input_copy_reshaped(batch, 0, 0), n,
+                          &pivots_mat(batch, 0), &dev_info.back()(batch)),
             done);
-        input_copy_ptr += n * n;
-        pivots_ptr += n;
-        ++dev_info_ptr;
       }
     }
 
@@ -184,15 +188,12 @@ class DeterminantOpGpu : public AsyncOpKernel {
     functor(d,
             const_cast<const Tensor*>(&input_copy)
                 ->template flat_inner_dims<Scalar, 3>(),
-            pivots.data(), output_reshaped, dev_info.back().mutable_data());
+            pivots_mat.data(), output_reshaped, dev_info.back().mutable_data());
 
-    // Register callback to check info after kernels finish. Also capture the
-    // temporary Tensors/ScratchSpace so they don't get deallocated before the
-    // kernels run. TODO(rmlarsen): Use move capture once C++14 becomes
-    // available.
-    auto info_checker = [context, dev_info, input_copy, pivots, input_copy_ptrs,
-                         done](const Status& status,
-                               const std::vector<HostLapackInfo>& host_infos) {
+    // Register callback to check info after kernels finish.
+    auto info_checker = [context, done](
+                            const Status& status,
+                            const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && errors::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         for (int i = 0; i < host_infos[0].size(); ++i) {
@@ -214,11 +215,8 @@ class DeterminantOpGpu : public AsyncOpKernel {
       }
       done();
     };
-
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
-        done);
+    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                    std::move(info_checker));
   }
 };
 

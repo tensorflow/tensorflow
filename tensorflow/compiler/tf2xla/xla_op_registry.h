@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
@@ -116,7 +117,8 @@ class XlaOpRegistry {
   // 'compilation_device_name'.
   // Does not include kernels registered as CompilationOnly.
   static std::vector<const KernelDef*> DeviceKernels(
-      const string& compilation_device_name);
+      const string& compilation_device_name,
+      bool include_compilation_only_kernels);
 
  private:
   friend class XlaBackendRegistrar;

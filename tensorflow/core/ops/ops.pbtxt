@@ -6550,8 +6550,22 @@ op {
     has_minimum: true
     minimum: 2
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+        s: "NCHW_VECT_C"
+      }
+    }
+  }
   summary: "DepthToSpace for tensors of type T."
-  description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height*block_size, width*block_size, depth/(block_size*block_size)]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and that `block_size * block_size` be a divisor of the\ninput depth.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:\n\n```\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```\nx = [[[ [1],   [2],  [5],  [6]],\n      [ [3],   [4],  [7],  [8]],\n      [ [9],  [10], [13],  [14]],\n      [ [11], [12], [15],  [16]]]]\n\n```"
+  description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The Y, X coordinates within each block of the output image are determined\n    by the high order component of the input channel index.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThe `data_format` attr specifies the layout of the input and output tensors\nwith the following options:\n  \"NHWC\": `[ batch, height, width, channels ]`\n  \"NCHW\": `[ batch, channels, height, width ]`\n  \"NCHW_VECT_C\":\n      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`\n\nIt is useful to consider the operation as transforming a 6-D Tensor.\ne.g. for data_format = NHWC,\n     Each element in the input tensor can be specified via 6 coordinates,\n     ordered by decreasing memory layout significance as:\n     n,iY,iX,bY,bX,oC  (where n=batch index, iX, iY means X or Y coordinates\n                        within the input image, bX, bY means coordinates\n                        within the output block, oC means output channels).\n     The output would be the input transposed to the following layout:\n     n,iY,bY,iX,bX,oC\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given an input of shape `[1, 1, 1, 4]`, data_format = \"NHWC\" and\nblock_size = 2:\n\n```\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```\nx = [[[ [1],   [2],  [5],  [6]],\n      [ [3],   [4],  [7],  [8]],\n      [ [9],  [10], [13],  [14]],\n      [ [11], [12], [15],  [16]]]]\n\n```"
 }
 op {
   name: "DepthwiseConv2dNative"
@@ -9178,12 +9192,12 @@ op {
   }
   input_arg {
     name: "reserve_space_1"
-    description: "When is_training is True, a 1D Tensor for the computed batch mean\nto be reused in gradient computation.\nWhen is_training is False, a 1D Tensor for the population mean\nto be reused in both 1st and 2nd order gradient computation."
+    description: "When is_training is True, a 1D Tensor for the computed batch\nmean to be reused in gradient computation. When is_training is\nFalse, a 1D Tensor for the population mean to be reused in both\n1st and 2nd order gradient computation."
     type_attr: "T"
   }
   input_arg {
     name: "reserve_space_2"
-    description: "When is_training is True, a 1D Tensor for the computed batch variance\n(inverted variance in the cuDNN case) to be reused in gradient computation.\nWhen is_training is False, a 1D Tensor for the population variance\nto be reused in both 1st and 2nd order gradient computation."
+    description: "When is_training is True, a 1D Tensor for the computed batch\nvariance (inverted variance in the cuDNN case) to be reused in\ngradient computation. When is_training is False, a 1D Tensor\nfor the population variance to be reused in both 1st and 2nd\norder gradient computation."
     type_attr: "T"
   }
   output_arg {
@@ -9246,6 +9260,206 @@ op {
     description: "A bool value to indicate the operation is for training (default)\nor inference."
   }
   summary: "Gradient for batch normalization."
+  description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
+}
+op {
+  name: "FusedBatchNormGradV2"
+  input_arg {
+    name: "y_backprop"
+    description: "A 4D Tensor for the gradient with respect to y."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x"
+    description: "A 4D Tensor for input data."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    description: "A 1D Tensor for scaling factor, to scale the normalized x."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "reserve_space_1"
+    description: "When is_training is True, a 1D Tensor for the computed batch\nmean to be reused in gradient computation. When is_training is\nFalse, a 1D Tensor for the population mean to be reused in both\n1st and 2nd order gradient computation."
+    type_attr: "U"
+  }
+  input_arg {
+    name: "reserve_space_2"
+    description: "When is_training is True, a 1D Tensor for the computed batch\nvariance (inverted variance in the cuDNN case) to be reused in\ngradient computation. When is_training is False, a 1D Tensor\nfor the population variance to be reused in both 1st and 2nd\norder gradient computation."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "x_backprop"
+    description: "A 4D Tensor for the gradient with respect to x."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "scale_backprop"
+    description: "A 1D Tensor for the gradient with respect to scale."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "offset_backprop"
+    description: "A 1D Tensor for the gradient with respect to offset."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "reserve_space_3"
+    description: "Unused placeholder to match the mean input in FusedBatchNorm."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "reserve_space_4"
+    description: "Unused placeholder to match the variance input\nin FusedBatchNorm."
+    type_attr: "U"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The data type for the elements of input and output Tensors."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "U"
+    type: "type"
+    description: "The data type for the scale, offset, mean, and variance."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+    default_value {
+      f: 0.0001
+    }
+    description: "A small float number added to the variance of x."
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "The data format for y_backprop, x, x_backprop.\nEither \"NHWC\" (default) or \"NCHW\"."
+  }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "A bool value to indicate the operation is for training (default)\nor inference."
+  }
+  summary: "Gradient for batch normalization."
+  description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
+}
+op {
+  name: "FusedBatchNormV2"
+  input_arg {
+    name: "x"
+    description: "A 4D Tensor for input data."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    description: "A 1D Tensor for scaling factor, to scale the normalized x."
+    type_attr: "U"
+  }
+  input_arg {
+    name: "offset"
+    description: "A 1D Tensor for offset, to shift to the normalized x."
+    type_attr: "U"
+  }
+  input_arg {
+    name: "mean"
+    description: "A 1D Tensor for population mean. Used for inference only;\nmust be empty for training."
+    type_attr: "U"
+  }
+  input_arg {
+    name: "variance"
+    description: "A 1D Tensor for population variance. Used for inference only;\nmust be empty for training."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "y"
+    description: "A 4D Tensor for output data."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "batch_mean"
+    description: "A 1D Tensor for the computed batch mean, to be used by TensorFlow\nto compute the running mean."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "batch_variance"
+    description: "A 1D Tensor for the computed batch variance, to be used by\nTensorFlow to compute the running variance."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "reserve_space_1"
+    description: "A 1D Tensor for the computed batch mean, to be reused\nin the gradient computation."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "reserve_space_2"
+    description: "A 1D Tensor for the computed batch variance (inverted variance\nin the cuDNN case), to be reused in the gradient computation."
+    type_attr: "U"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The data type for the elements of input and output Tensors."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "U"
+    type: "type"
+    description: "The data type for the scale, offset, mean, and variance."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+    default_value {
+      f: 0.0001
+    }
+    description: "A small float number added to the variance of x."
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "The data format for x and y. Either \"NHWC\" (default) or \"NCHW\"."
+  }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "A bool value to indicate the operation is for training (default)\nor inference."
+  }
+  summary: "Batch normalization."
   description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
 }
 op {
@@ -10235,6 +10449,7 @@ op {
         type: DT_UINT8
         type: DT_FLOAT
         type: DT_HALF
+        type: DT_DOUBLE
       }
     }
   }
@@ -10594,11 +10809,11 @@ op {
 op {
   name: "InvGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -19396,11 +19611,11 @@ op {
 op {
   name: "ReciprocalGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -22510,11 +22725,11 @@ op {
 op {
   name: "RsqrtGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -24310,6 +24525,14 @@ op {
     type: DT_VARIANT
   }
   attr {
+    name: "reshuffle_each_iteration"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true, each iterator over this dataset will be given\na different pseudorandomly generated seed, based on a sequence seeded by the\n`seed` and `seed2` inputs. If false, each iterator will be given the same\nseed, and repeated iteration over this dataset will yield the exact same\nsequence of results."
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
@@ -24352,11 +24575,11 @@ op {
 op {
   name: "SigmoidGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -24987,8 +25210,22 @@ op {
     has_minimum: true
     minimum: 2
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+        s: "NCHW_VECT_C"
+      }
+    }
+  }
   summary: "SpaceToDepth for tensors of type T."
-  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `input_depth * block_size * block_size`.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height/block_size, width/block_size, depth*block_size*block_size]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and a divisor of both the input `height` and `width`.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:\n\n```\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
+  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `block_size * block_size * input_depth`.\n  * The Y, X coordinates within each block of the input become the high order\n    component of the output channel index.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThe `data_format` attr specifies the layout of the input and output tensors\nwith the following options:\n  \"NHWC\": `[ batch, height, width, channels ]`\n  \"NCHW\": `[ batch, channels, height, width ]`\n  \"NCHW_VECT_C\":\n      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`\n\nIt is useful to consider the operation as transforming a 6-D Tensor.\ne.g. for data_format = NHWC,\n     Each element in the input tensor can be specified via 6 coordinates,\n     ordered by decreasing memory layout significance as:\n     n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates\n                        within the output image, bX, bY means coordinates\n                        within the input block, iC means input channels).\n     The output would be a transpose to the following layout:\n     n,oY,oX,bY,bX,iC\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given an input of shape `[1, 2, 2, 1]`, data_format = \"NHWC\" and\nblock_size = 2:\n\n```\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
 }
 op {
   name: "SparseAccumulatorApplyGradient"
@@ -27996,11 +28233,11 @@ op {
 op {
   name: "SqrtGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -29500,11 +29737,11 @@ op {
 op {
   name: "TanhGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {

@@ -84,6 +84,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Same as Evaluate, except returning nullptr on error.
   std::unique_ptr<Literal> TryEvaluate(HloInstruction* instruction);
 
+  // Evaluates a single HLO instruction, substituting the given literals for
+  // some of the instruction's operands.
+  //
+  // For example, given instruction = op(A, B, C) and the map
+  // {A = x, C = y}, this evaluates op(x, B, y).
+  StatusOr<std::unique_ptr<Literal>> EvaluateWithSubstitutions(
+      const HloInstruction* instruction,
+      const std::unordered_map<const HloInstruction*, const Literal*>&
+          substitutions);
+
  protected:
   // Templated DfsHloVisitor. Typically ReturnT here indicates the resulting
   // literal type of each evaluated Handle* method of a TypedVisitor.

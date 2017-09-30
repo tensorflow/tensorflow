@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -106,12 +107,6 @@ class HloComputation {
   // must have no users. Instruction is deallocated with this call.
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
-  // Replace all uses of "instruction_to_replace" with "instruction". Also, if
-  // instruction_to_replace is the root of this computation then the root is set
-  // to "instruction". Does not remove "instruction_to_replace".
-  Status ReplaceUsesOfInstruction(HloInstruction* instruction_to_replace,
-                                  HloInstruction* instruction);
-
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
   // the result of the computation for non fusion computations.
@@ -148,8 +143,24 @@ class HloComputation {
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
-  const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
-    return instructions_;
+  // Gets the instructions in this computation.
+  //
+  // The returned type is a range of HloInstruction*s, so you can iterate over
+  // it using a range-based for loop in the natural way:
+  //
+  //   for (HloInstruction* instr : computation->instructions()) { ... }
+  //
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+  instructions() const {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
+  }
+  tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+  instructions() {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
   }
 
   // Compute and return a post-order of the instructions in the computation. In

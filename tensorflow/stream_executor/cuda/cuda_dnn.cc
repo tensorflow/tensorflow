@@ -2551,24 +2551,44 @@ bool CudnnSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* saved_inv_var, bool is_training,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
-  return DoBatchNormalizationForwardImpl<float>(
-      stream, dnn::DataType::kFloat, x, scale, offset, estimated_mean,
-      estimated_variance, x_desc, scale_offset_desc, epsilon, y, batch_mean,
-      batch_var, saved_mean, saved_inv_var, is_training,
+  return DoBatchNormalizationForwardImpl<float, float>(
+      stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale, offset,
+      estimated_mean, estimated_variance, x_desc, scale_offset_desc, epsilon, y,
+      batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
       std::move(var_to_inv_var), std::move(inv_var_to_var));
 }
 
-template <class T>
-bool CudnnSupport::DoBatchNormalizationForwardImpl(
-    Stream* stream, dnn::DataType data_type, const DeviceMemory<T>& x,
-    const DeviceMemory<T>& scale, const DeviceMemory<T>& offset,
-    const DeviceMemory<T>& estimated_mean,
-    const DeviceMemory<T>& estimated_variance,
+bool CudnnSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::half>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<T>* y, DeviceMemory<T>* batch_mean, DeviceMemory<T>* batch_var,
-    DeviceMemory<T>* saved_mean, DeviceMemory<T>* saved_inv_var,
-    bool is_training, std::function<const DeviceMemory<T>&()> var_to_inv_var,
+    DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
+    DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
+    DeviceMemory<float>* saved_inv_var, bool is_training,
+    std::function<const DeviceMemory<float>&()> var_to_inv_var,
+    std::function<void()> inv_var_to_var) {
+  return DoBatchNormalizationForwardImpl<Eigen::half, float>(
+      stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
+      estimated_mean, estimated_variance, x_desc, scale_offset_desc, epsilon, y,
+      batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
+      std::move(var_to_inv_var), std::move(inv_var_to_var));
+}
+
+template <class T, class U>
+bool CudnnSupport::DoBatchNormalizationForwardImpl(
+    Stream* stream, dnn::DataType input_data_type,
+    dnn::DataType scale_data_type, const DeviceMemory<T>& x,
+    const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
+    const DeviceMemory<U>& estimated_mean,
+    const DeviceMemory<U>& estimated_variance,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    DeviceMemory<T>* y, DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
+    DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
+    bool is_training, std::function<const DeviceMemory<U>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
@@ -2579,9 +2599,9 @@ bool CudnnSupport::DoBatchNormalizationForwardImpl(
   }
 
   ScopedTensorDescriptor x_descriptor{parent_, x_desc,
-                                      ToCudnnDataType(data_type)};
-  ScopedTensorDescriptor scale_offset_descriptor{parent_, scale_offset_desc,
-                                                 ToCudnnDataType(data_type)};
+                                      ToCudnnDataType(input_data_type)};
+  ScopedTensorDescriptor scale_offset_descriptor{
+      parent_, scale_offset_desc, ToCudnnDataType(scale_data_type)};
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
   float one = 1.0;
   float zero = 0.0;
@@ -2629,19 +2649,34 @@ bool CudnnSupport::DoBatchNormalizationBackward(
     DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
     DeviceMemory<float>* offset_backprop) {
   return DoBatchNormalizationBackwardImpl(
-      stream, CUDNN_DATA_FLOAT, y_backprop, x, scale, mean, variance, x_desc,
-      scale_offset_desc, epsilon, x_backprop, scale_backprop, offset_backprop);
+      stream, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, y_backprop, x, scale, mean,
+      variance, x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      offset_backprop);
 }
 
-template <class T>
-bool CudnnSupport::DoBatchNormalizationBackwardImpl(
-    Stream* stream, int cudnn_type, const DeviceMemory<T>& y_backprop,
-    const DeviceMemory<T>& x, const DeviceMemory<T>& scale,
-    const DeviceMemory<T>& mean, const DeviceMemory<T>& variance,
+bool CudnnSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
+    const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<T>* x_backprop, DeviceMemory<T>* scale_backprop,
-    DeviceMemory<T>* offset_backprop) {
+    DeviceMemory<Eigen::half>* x_backprop, DeviceMemory<float>* scale_backprop,
+    DeviceMemory<float>* offset_backprop) {
+  return DoBatchNormalizationBackwardImpl(
+      stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop, x, scale, mean,
+      variance, x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      offset_backprop);
+}
+
+template <class T, class U>
+bool CudnnSupport::DoBatchNormalizationBackwardImpl(
+    Stream* stream, int cudnn_input_type, int cudnn_scale_type,
+    const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
+    const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
+    const DeviceMemory<U>& variance, const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
+    DeviceMemory<U>* offset_backprop) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
                                      AsCUDAStreamValue(stream));
@@ -2650,10 +2685,11 @@ bool CudnnSupport::DoBatchNormalizationBackwardImpl(
     return false;
   }
 
-  ScopedTensorDescriptor x_descriptor{parent_, x_desc,
-                                      static_cast<cudnnDataType_t>(cudnn_type)};
+  ScopedTensorDescriptor x_descriptor{
+      parent_, x_desc, static_cast<cudnnDataType_t>(cudnn_input_type)};
   ScopedTensorDescriptor scale_offset_descriptor{
-      parent_, scale_offset_desc, static_cast<cudnnDataType_t>(cudnn_type)};
+      parent_, scale_offset_desc,
+      static_cast<cudnnDataType_t>(cudnn_scale_type)};
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
   float one = 1.0;
   float zero = 0.0;
