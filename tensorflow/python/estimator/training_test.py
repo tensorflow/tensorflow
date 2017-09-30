@@ -50,6 +50,13 @@ _INVALID_ESTIMATOR_MSG = '`estimator` must have type `tf.estimator.Estimator`'
 _INVALID_TRAIN_SPEC_MSG = '`train_spec` must have type `tf.estimator.TrainSpec`'
 _INVALID_EVAL_SPEC_MSG = '`eval_spec` must have type `tf.estimator.EvalSpec`'
 _INVALID_CONFIG_FOR_STD_SERVER_MSG = 'Could not start server; .*TF_CONFIG'
+_INVALID_LOCAL_TASK_WITH_CLUSTER = '`task.type` in TF_CONFIG cannot be `local`'
+_INVALID_TASK_TYPE = '`estimator.config` must have task_type set.'
+# The message should NOT have 'local' word as part of it. As (?!word) is looking
+# ahead, so, the $ (ending) check is required; otherwise, it will match
+# partially and return successuful.
+_INVALID_TASK_TO_RUN = (
+    'Task type .* is not supported. Supported task types are ((?!local).)*$')
 
 _TF_CONFIG_FOR_CHIEF = {
     'cluster': {
@@ -83,6 +90,18 @@ _TF_CONFIG_FOR_PS = {
     },
     'task': {
         'type': run_config_lib.TaskType.PS,
+        'index': 1
+    }
+}
+
+_TF_CONFIG_FOR_EVALUATOR = {
+    'cluster': {
+        run_config_lib.TaskType.CHIEF: ['host0:0'],
+        run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+        run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4']
+    },
+    'task': {
+        'type': run_config_lib.TaskType.EVALUATOR,
         'index': 1
     }
 }
@@ -187,6 +206,163 @@ class EvalSpecTest(test.TestCase):
   def testInvalidThrottleSecs(self):
     with self.assertRaisesRegexp(ValueError, _INVALID_EVAL_THROTTLE_SECS_MSG):
       training.EvalSpec(input_fn=lambda: 1, throttle_secs=-1)
+
+
+class TrainAndEvaluteTest(test.TestCase):
+
+  def _mock_executor_instance(self):
+    def task_fn(name):
+      def _fn():
+        return name
+      return _fn
+
+    mock_instance = test.mock.Mock()
+    mock_instance.run_chief = task_fn('chief')
+    mock_instance.run_master = task_fn('master')
+    mock_instance.run_ps = task_fn('ps')
+    mock_instance.run_evaluator = task_fn('evaluator')
+    mock_instance.run_worker = task_fn('worker')
+    mock_instance.run_local = task_fn('local')
+
+    return mock_instance
+
+  def _test_run_task_in_distributed_training(self, run_config):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = run_config
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
+      mock_executor.return_value = self._mock_executor_instance()
+      return_value = training.train_and_evaluate(
+          mock_est, mock_train_spec, mock_eval_spec)
+
+      self.assertEqual(mock_est.config.task_type, return_value)
+      mock_executor.assert_called_with(estimator=mock_est,
+                                       train_spec=mock_train_spec,
+                                       eval_spec=mock_eval_spec)
+
+  def test_run_chief(self):
+    self._test_run_task_in_distributed_training(
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_CHIEF))
+
+  def test_run_worker(self):
+    self._test_run_task_in_distributed_training(
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_WORKER))
+
+  def test_run_ps(self):
+    self._test_run_task_in_distributed_training(
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_PS))
+
+  def test_run_evaluator(self):
+    self._test_run_task_in_distributed_training(
+        run_config=_create_run_config_with_cluster_spec(
+            _TF_CONFIG_FOR_EVALUATOR))
+
+  def test_run_local(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = run_config_lib.RunConfig()
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
+      mock_executor.return_value = self._mock_executor_instance()
+      return_value = training.train_and_evaluate(
+          mock_est, mock_train_spec, mock_eval_spec)
+
+      self.assertEqual('local', return_value)
+      mock_executor.assert_called_with(estimator=mock_est,
+                                       train_spec=mock_train_spec,
+                                       eval_spec=mock_eval_spec)
+
+  def test_invalid_local_task(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            'local': ['hos1:1'],
+        },
+        'task': {
+            'type': 'local',
+            'index': 0
+        }
+    }
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = _create_run_config_with_cluster_spec(tf_config)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with self.assertRaisesRegexp(ValueError, _INVALID_LOCAL_TASK_WITH_CLUSTER):
+      training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
+
+  def test_unsupported_task_due_to_missing_run_task(self):
+    unsupported_task = 'alloc'
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            unsupported_task: ['hos1:1'],
+        },
+        'task': {
+            'type': unsupported_task,
+            'index': 0
+        }
+    }
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = _create_run_config_with_cluster_spec(tf_config)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
+      # mock_instance has no run_alloc method.
+      mock_instance = self._mock_executor_instance()
+      mock_executor.return_value = mock_instance
+      with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TO_RUN):
+        training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
+
+  def test_unsupported_task_due_to_not_callable(self):
+    unsupported_task = 'alloc'
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            unsupported_task: ['hos1:1'],
+        },
+        'task': {
+            'type': unsupported_task,
+            'index': 0
+        }
+    }
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = _create_run_config_with_cluster_spec(tf_config)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
+      mock_instance = self._mock_executor_instance()
+      mock_instance.run_alloc = 123  # not callable
+      mock_executor.return_value = mock_instance
+      with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TO_RUN):
+        training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
+
+  def test_invalid_estimator(self):
+    invalid_estimator = object()
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with self.assertRaisesRegexp(TypeError, _INVALID_ESTIMATOR_MSG):
+      training.train_and_evaluate(invalid_estimator, mock_train_spec,
+                                  mock_eval_spec)
+
+  def test_invalid_task_type(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = test.mock.Mock()
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.Mock()
+    mock_est.config.cluster_spec = {'1': 'dummy'}
+    mock_est.config.task_type = ''
+
+    with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TYPE):
+      training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
 
 
 class TrainingExecutorConstructorTest(test.TestCase):

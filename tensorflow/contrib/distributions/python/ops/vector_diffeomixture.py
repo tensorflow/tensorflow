@@ -31,13 +31,14 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
+
+static_value = distribution_util.static_value
 
 
 __all__ = [
@@ -338,11 +339,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       mix_scale = maybe_check_mix_param(
           mix_scale, "mix_scale", dtype, validate_args)
 
-      distribution_assertions = maybe_check_distribution(
+      asserts = distribution_util.maybe_check_scalar_distribution(
           distribution, dtype, validate_args)
-      if distribution_assertions:
-        mix_loc = control_flow_ops.with_dependencies(
-            distribution_assertions, mix_loc)
+      if asserts:
+        mix_loc = control_flow_ops.with_dependencies(asserts, mix_loc)
       self._distribution = distribution
 
       # shape: [B, deg]
@@ -672,43 +672,6 @@ def maybe_check_mix_param(param, name, expected_base_dtype, validate_args):
     return param
 
 
-def maybe_check_distribution(distribution, expected_base_dtype, validate_args):
-  """Helper which checks validity of `distribution` init arg."""
-  if distribution.dtype != expected_base_dtype:
-    raise TypeError("dtype mismatch; "
-                    "distribution.dtype=\"{}\" is not \"{}\"".format(
-                        distribution.dtype.name, expected_base_dtype.name))
-
-  # Although `reparameterization_type` is a static property, we guard it by
-  # `validate_args`. This allows users to use a `distribution` which is not
-  # reparameterized itself. However, we tacitly assume that although the
-  # distribution is not reparameterized, it only depends on non-trainable
-  # variables.
-  if validate_args and (distribution.reparameterization_type
-                        != distribution_lib.FULLY_REPARAMETERIZED):
-    raise ValueError("Base distribution should be reparameterized or be "
-                     "a function of non-trainable variables; "
-                     "distribution.reparameterization_type = \"{}\" "
-                     "!= \"FULLY_REPARAMETERIZED\".".format(
-                         distribution.reparameterization_type))
-  with ops.name_scope(name="check_distribution"):
-    assertions = []
-    def check_is_scalar(is_scalar, name):
-      is_scalar_ = static_value(is_scalar)
-      if is_scalar_ is not None:
-        if not is_scalar_:
-          raise ValueError("distribution must be scalar; "
-                           "distribution.{}=False is not True".format(name))
-      elif validate_args:
-        assertions.append(check_ops.assert_equal(
-            is_scalar, True,
-            message=("distribution must be scalar; "
-                     "distribution.{}=False is not True".format(name))))
-    check_is_scalar(distribution.is_scalar_event(), "is_scalar_event")
-    check_is_scalar(distribution.is_scalar_batch(), "is_scalar_batch")
-    return assertions
-
-
 def determine_batch_event_shapes(mix_loc, mix_scale, endpoint_affine):
   """Helper to infer batch_shape and event_shape."""
   with ops.name_scope(name="determine_batch_event_shapes"):
@@ -817,11 +780,6 @@ def linop_scale(w, op):
           is_positive_definite=op.is_positive_definite)
     raise NotImplementedError(
         "Unsupported Linop type ({})".format(type(op).__name__))
-
-
-def static_value(x):
-  """Returns the static value of a `Tensor` or `None`."""
-  return tensor_util.constant_value(ops.convert_to_tensor(x))
 
 
 def concat_vectors(*args):
