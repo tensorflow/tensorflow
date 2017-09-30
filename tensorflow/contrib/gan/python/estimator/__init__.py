@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc. All Rights Reserved.
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,27 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Collapse TFGAN into a tiered namespace.
-from tensorflow.contrib.gan.python import estimator
-from tensorflow.contrib.gan.python import eval  # pylint:disable=redefined-builtin
-from tensorflow.contrib.gan.python import features
-from tensorflow.contrib.gan.python import losses
-from tensorflow.contrib.gan.python import namedtuples
-from tensorflow.contrib.gan.python import train
-
+# Collapse `estimator` into a single namespace.
 # pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.gan.python.namedtuples import *
-from tensorflow.contrib.gan.python.train import *
+from tensorflow.contrib.gan.python.estimator.python import gan_estimator
+from tensorflow.contrib.gan.python.estimator.python import head
+
+from tensorflow.contrib.gan.python.estimator.python.gan_estimator import *
+from tensorflow.contrib.gan.python.estimator.python.head import *
 # pylint: enable=unused-import,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'estimator',
-    'eval',
-    'features',
-    'losses',
-]
-_allowed_symbols += train.__all__
-_allowed_symbols += namedtuples.__all__
+    'gan_estimator',
+    'head',
+] + gan_estimator.__all__ + head.__all__
 remove_undocumented(__name__, _allowed_symbols)
