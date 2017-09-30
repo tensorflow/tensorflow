@@ -1496,7 +1496,8 @@ class ControlFlowContext(object):
 
   def AddInnerOp(self, op):
     """Notifies a scope about an operator added to an inner scope."""
-    pass
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
 
   def GetControlPivot(self):
     """Returns the pivot node for this context, or None."""

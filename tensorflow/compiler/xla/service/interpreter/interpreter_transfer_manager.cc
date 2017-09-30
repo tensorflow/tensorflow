@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/interpreter_transfer_manager.h"
+#include "tensorflow/compiler/xla/service/interpreter/interpreter_transfer_manager.h"
 
 #include <memory>
 
@@ -26,7 +26,8 @@ namespace sei = ::perftools::gputools::interpreter;
 namespace xla {
 
 InterpreterTransferManager::InterpreterTransferManager()
-    : GenericTransferManager(sei::kInterpreterPlatformId) {}
+    : GenericTransferManager(sei::kInterpreterPlatformId,
+                             /*pointer_size=*/sizeof(void*)) {}
 
 }  // namespace xla
 
