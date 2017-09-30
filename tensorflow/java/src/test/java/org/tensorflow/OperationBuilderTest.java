@@ -48,7 +48,7 @@ public class OperationBuilderTest {
   @Test
   public void failOnUseAfterBuild() {
     try (Graph g = new Graph();
-        Tensor<Integer> t = Tensor.create(1).expect(Integer.class)) {
+        Tensor<Integer> t = Tensors.create(1)) {
       OperationBuilder b =
           g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
       b.build();
@@ -64,7 +64,7 @@ public class OperationBuilderTest {
   public void failOnUseAfterGraphClose() {
     OperationBuilder b = null;
     try (Graph g = new Graph();
-        Tensor<Integer> t = Tensor.create(1).expect(Integer.class)) {
+        Tensor<Integer> t = Tensors.create(1)) {
       b = g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
     }
     try {
@@ -85,7 +85,7 @@ public class OperationBuilderTest {
     // types that aren't inferred from the input arguments.
     try (Graph g = new Graph()) {
       // dtype, tensor attributes.
-      try (Tensor<Integer> t = Tensor.create(1).expect(Integer.class)) {
+      try (Tensor<Integer> t = Tensors.create(1)) {
         g.opBuilder("Const", "DataTypeAndTensor")
             .setAttr("dtype", DataType.INT32)
             .setAttr("value", t)
@@ -136,8 +136,7 @@ public class OperationBuilderTest {
       assertEquals(-1, n.shape().numDimensions());
       assertEquals(DataType.FLOAT, n.dataType());
 
-      n =
-          g.opBuilder("Placeholder", "batch_of_vectors")
+      n = g.opBuilder("Placeholder", "batch_of_vectors")
               .setAttr("dtype", DataType.FLOAT)
               .setAttr("shape", Shape.make(-1, 784))
               .build()
@@ -153,8 +152,8 @@ public class OperationBuilderTest {
   public void addControlInput() {
     try (Graph g = new Graph();
         Session s = new Session(g);
-        Tensor<Boolean> yes = Tensor.create(true).expect(Boolean.class);
-        Tensor<Boolean> no = Tensor.create(false).expect(Boolean.class)) {
+        Tensor<Boolean> yes = Tensors.create(true);
+        Tensor<Boolean> no = Tensors.create(false)) {
       Output<Boolean> placeholder = TestUtil.placeholder(g, "boolean", Boolean.class);
       Operation check =
           g.opBuilder("Assert", "assert")

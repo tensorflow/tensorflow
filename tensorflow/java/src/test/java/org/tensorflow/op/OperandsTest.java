@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -36,7 +36,8 @@ public class OperandsTest {
   public void createOutputArrayFromOperandList() {
     try (Graph g = new Graph()) {
       Operation split = TestUtil.split(g, "split", new int[] {0, 1, 2}, 3);
-      List<Output<Integer>> list = Arrays.asList(split.<Integer>output(0), split.<Integer>output(2));
+      List<Output<Integer>> list =
+          Arrays.asList(split.<Integer>output(0), split.<Integer>output(2));
       Output<?>[] array = Operands.asOutputs(list);
       assertEquals(list.size(), array.length);
       assertSame(array[0], list.get(0));
