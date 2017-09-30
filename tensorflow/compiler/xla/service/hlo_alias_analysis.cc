@@ -34,6 +34,7 @@ limitations under the License.
 
 namespace xla {
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
@@ -447,6 +448,58 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
 
   XLA_VLOG_LINES(1, alias_analysis->ToString());
   return std::move(alias_analysis);
+}
+
+bool HloAliasAnalysis::HasLiveRangeInterference(
+    const HloOrdering& ordering) const {
+  for (const HloBuffer& buffer : buffers()) {
+    // Check that the values in the buffer are totally ordered with respect to
+    // 'ordering'. Begin by sorting the values with respect to 'ordering' with a
+    // tie-break using value ID. The tie-break is necessary because we need a
+    // strict weak order for std::sort.
+    std::vector<const HloValue*> values = buffer.values();
+    std::sort(values.begin(), values.end(),
+              [&ordering](const HloValue* a, const HloValue* b) {
+                if (ordering.IsDefinedBefore(*a, *b)) {
+                  return true;
+                } else if (ordering.IsDefinedBefore(*b, *a)) {
+                  return false;
+                } else {
+                  return a->id() < b->id();
+                }
+              });
+
+    // Walk through the ordered vector of values. First verify that the values
+    // are totally ordered with respect to 'ordering', then check that no
+    // adjacent values have overlapping live ranges. Only adjacent values must
+    // be checked because of the property of live range interference. For
+    // example, if you have values A, B, and C (in program order) contained in
+    // a buffer and A interferes with C, then necessarily A also interferes
+    // with B. So to check interference you only need to check interference
+    // between A and B, and between B and C.
+    CHECK(!values.empty());
+    for (int i = 1; i < values.size(); ++i) {
+      if (!ordering.IsDefinedBefore(*values[i - 1], *values[i])) {
+        VLOG(1) << values[i - 1]->ToShortString() << " and "
+                << values[i]->ToShortString() << " are not ordered";
+        return true;
+      }
+      if (ordering.MayInterfere(*values[i - 1], *values[i],
+                                dataflow_analysis())) {
+        VLOG(1) << "In buffer " << buffer.id() << " containing values:\n  "
+                << Join(values, ", ",
+                        [](string* out, const HloValue* value) {
+                          StrAppend(out, value->ToShortString());
+                        })
+
+                << "\nValue " << values[i - 1]->ToShortString()
+                << " may interfere with value " << values[i]->ToShortString();
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 }  // namespace xla

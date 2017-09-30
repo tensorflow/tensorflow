@@ -81,6 +81,11 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
 
         if (top_tuple == nullptr) {
           top_tuple = operand->mutable_operand(0);
+          if (!ShapeUtil::Compatible(top_tuple->shape(),
+                                     instruction->shape())) {
+            can_simplify = false;
+            break;
+          }
         } else if (top_tuple != operand->operand(0)) {
           can_simplify = false;
           break;

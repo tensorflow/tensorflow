@@ -1268,6 +1268,30 @@ std::unique_ptr<Literal> HloEvaluator::TryEvaluate(
   return result_or.ConsumeValueOrDie();
 }
 
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
+    const HloInstruction* instruction,
+    const std::unordered_map<const HloInstruction*, const Literal*>&
+        substitutions) {
+  std::vector<std::unique_ptr<HloInstruction>> owned_operands;
+  for (const HloInstruction* operand : instruction->operands()) {
+    auto it = substitutions.find(operand);
+    if (it == substitutions.end()) {
+      owned_operands.push_back(operand->Clone());
+    } else {
+      owned_operands.push_back(
+          HloInstruction::CreateConstant(it->second->CloneToUnique()));
+    }
+  }
+
+  std::vector<HloInstruction*> operands;
+  for (auto& operand : owned_operands) {
+    operands.push_back(operand.get());
+  }
+
+  return Evaluate(
+      instruction->CloneWithNewOperands(instruction->shape(), operands).get());
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
   VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();

@@ -798,12 +798,12 @@ class HloInstruction {
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
   // the instruction to form the name of the cloned instruction.
-  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone");
+  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone") const;
 
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) const;
 
   // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
@@ -982,7 +982,7 @@ class HloInstruction {
   // Clones a fusion instruction with a new shape and operands.
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(
       const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) const;
 
   // Returns true if this instruction can legally have the dimensions field
   // set. Used for checking precondition of dimensions field accessors.

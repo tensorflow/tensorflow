@@ -857,7 +857,7 @@ bool HloInstruction::HasSideEffect() const {
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) {
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
@@ -1026,7 +1026,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 
 HloInstruction::~HloInstruction() {}
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
+std::unique_ptr<HloInstruction> HloInstruction::Clone(
+    const string& suffix) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
   if (suffix.empty()) {
@@ -1062,13 +1063,14 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
       }
     }
   }
-  clone->set_parent(parent());
+  clone->set_parent(parent_);
   clone->set_metadata(metadata_);
   return clone;
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(parent() != nullptr);
 
@@ -1106,7 +1108,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
         old_fused_instruction->CloneWithNewOperands(
             old_fused_instruction->shape(), new_operands));
     HloInstruction* new_fused_instruction = new_fused_instructions.back().get();
-    new_fused_instruction->set_parent(parent());
+    new_fused_instruction->set_parent(parent_);
     InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
   }
   new_instruction->fusion_kind_ = fusion_kind_;
@@ -1125,7 +1127,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
       CHECK_NOTNULL(GetModule())
           ->AddEmbeddedComputation(
               computation_builder.Build(FindOrDie(old_to_new, fused_root_))));
-  new_instruction->set_parent(parent());
+  new_instruction->set_parent(parent_);
   return new_instruction;
 }
 
