@@ -149,9 +149,8 @@ class _BaseAttentionMechanism(AttentionMechanism):
                memory_sequence_length=None,
                memory_layer=None,
                check_inner_dims_defined=True,
-               score_mask_value=float("-inf"),
-               name=None,
-               dtype=dtypes.float32):
+               score_mask_value=None,
+               name=None):
     """Construct base AttentionMechanism class.
 
     Args:
@@ -188,9 +187,12 @@ class _BaseAttentionMechanism(AttentionMechanism):
           "memory_layer is not a Layer: %s" % type(memory_layer).__name__)
     self._query_layer = query_layer
     self._memory_layer = memory_layer
+    self.dtype = memory_layer.dtype
     if not callable(probability_fn):
       raise TypeError("probability_fn must be callable, saw type: %s" %
                       type(probability_fn).__name__)
+    if score_mask_value is None:
+      score_mask_value = self._memory_layer.dtype.as_numpy_dtype(-np.inf)
     self._probability_fn = lambda score, prev: (  # pylint:disable=g-long-lambda
         probability_fn(
             _maybe_mask_score(score, memory_sequence_length, score_mask_value),
@@ -207,7 +209,6 @@ class _BaseAttentionMechanism(AttentionMechanism):
           self._keys.shape[0].value or array_ops.shape(self._keys)[0])
       self._alignments_size = (self._keys.shape[1].value or
                                array_ops.shape(self._keys)[1])
-      self.dtype = dtypes.as_dtype(dtype).name
 
   @property
   def memory_layer(self):
@@ -336,8 +337,8 @@ class LuongAttention(_BaseAttentionMechanism):
                memory_sequence_length=None,
                scale=False,
                probability_fn=None,
-               score_mask_value=float("-inf"),
-               dtype=dtypes.float32,
+               score_mask_value=None,
+               dtype=None,
                name="LuongAttention"):
     """Construct the AttentionMechanism mechanism.
 
@@ -363,6 +364,8 @@ class LuongAttention(_BaseAttentionMechanism):
     # num_units **must** match expected the query depth.
     if probability_fn is None:
       probability_fn = nn_ops.softmax
+    if dtype is None:
+      dtype = dtypes.float32
     wrapped_probability_fn = lambda score, _: probability_fn(score)
     super(LuongAttention, self).__init__(
         query_layer=None,
@@ -372,7 +375,6 @@ class LuongAttention(_BaseAttentionMechanism):
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
         score_mask_value=score_mask_value,
-        dtype=dtype,
         name=name)
     self._num_units = num_units
     self._scale = scale
@@ -480,8 +482,8 @@ class BahdanauAttention(_BaseAttentionMechanism):
                memory_sequence_length=None,
                normalize=False,
                probability_fn=None,
-               score_mask_value=float("-inf"),
-               dtype=dtypes.float32,
+               score_mask_value=None,
+               dtype=None,
                name="BahdanauAttention"):
     """Construct the Attention mechanism.
 
@@ -506,6 +508,8 @@ class BahdanauAttention(_BaseAttentionMechanism):
     """
     if probability_fn is None:
       probability_fn = nn_ops.softmax
+    if dtype is None:
+      dtype = dtypes.float32
     wrapped_probability_fn = lambda score, _: probability_fn(score)
     super(BahdanauAttention, self).__init__(
         query_layer=layers_core.Dense(
@@ -516,7 +520,6 @@ class BahdanauAttention(_BaseAttentionMechanism):
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
         score_mask_value=score_mask_value,
-        dtype=dtype,
         name=name)
     self._num_units = num_units
     self._normalize = normalize
@@ -743,12 +746,12 @@ class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
                memory,
                memory_sequence_length=None,
                normalize=False,
-               score_mask_value=float("-inf"),
+               score_mask_value=None,
                sigmoid_noise=0.,
                sigmoid_noise_seed=None,
                score_bias_init=0.,
                mode="parallel",
-               dtype=dtypes.float32,
+               dtype=None,
                name="BahdanauMonotonicAttention"):
     """Construct the Attention mechanism.
 
@@ -777,6 +780,8 @@ class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
       name: Name to use when creating ops.
     """
     # Set up the monotonic probability fn with supplied parameters
+    if dtype is None:
+      dtype = dtypes.float32
     wrapped_probability_fn = functools.partial(
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
@@ -789,7 +794,6 @@ class BahdanauMonotonicAttention(_BaseMonotonicAttentionMechanism):
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
         score_mask_value=score_mask_value,
-        dtype=dtype,
         name=name)
     self._num_units = num_units
     self._normalize = normalize
@@ -843,12 +847,12 @@ class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
                memory,
                memory_sequence_length=None,
                scale=False,
-               score_mask_value=float("-inf"),
+               score_mask_value=None,
                sigmoid_noise=0.,
                sigmoid_noise_seed=None,
                score_bias_init=0.,
                mode="parallel",
-               dtype=dtypes.float32,
+               dtype=None,
                name="LuongMonotonicAttention"):
     """Construct the Attention mechanism.
 
@@ -877,6 +881,8 @@ class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
       name: Name to use when creating ops.
     """
     # Set up the monotonic probability fn with supplied parameters
+    if dtype is None:
+      dtype = dtypes.float32
     wrapped_probability_fn = functools.partial(
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
@@ -889,7 +895,6 @@ class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
         score_mask_value=score_mask_value,
-        dtype=dtype,
         name=name)
     self._num_units = num_units
     self._scale = scale
