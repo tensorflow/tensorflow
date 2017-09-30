@@ -193,21 +193,19 @@ def _dnn_linear_combined_model_fn(
 
     if model == "combined":
       all_vars = ops.trainable_variables()
-      lr_vars = ops.get_collection(
+      linear_vars = ops.get_collection(
         ops.GraphKeys.TRAINABLE_VARIABLES,
         scope=linear_parent_scope)
       # variables left is optimized by dnn
-      dnn_vars = list(set(all_vars) - set(lr_vars))
+      dnn_vars = list(set(all_vars) - set(linear_vars))
       train_ops = [
-        linear_optimizer.minimize(loss, var_list=lr_vars),
+        linear_optimizer.minimize(loss, var_list=linear_vars),
         dnn_optimizer.minimize(loss, var_list=dnn_vars)]
       train_op = control_flow_ops.group(*train_ops)
     elif model == "dnn":
       train_op = dnn_optimizer.minimize(loss)
-    elif model == "linear":
-      train_op = linear_optimizer.minimize(loss)
     else:
-      raise ValueError("Invalid model")
+      train_op = linear_optimizer.minimize(loss)
 
     with ops.control_dependencies([train_op]):
       with ops.colocate_with(global_step):
