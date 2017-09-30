@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -708,6 +709,97 @@ void RemoveDescriptionsFromOpList(OpList* op_list) {
     OpDef* op_def = op_list->mutable_op(i);
     RemoveDescriptionsFromOpDef(op_def);
   }
+}
+
+bool AttrDefEqual(const OpDef::AttrDef& a1, const OpDef::AttrDef& a2) {
+#ifndef TENSORFLOW_LITE_PROTOS
+  DCHECK_EQ(7, a1.GetDescriptor()->field_count())
+      << "Please modify these equality and hash functions to reflect the "
+         "changes to the AttrDef protobuf";
+#endif  // TENSORFLOW_LITE_PROTOS
+
+  if (a1.name() != a2.name()) return false;
+  if (a1.type() != a2.type()) return false;
+  if (a1.description() != a2.description()) return false;
+  if (a1.has_minimum() != a2.has_minimum()) return false;
+  if (a1.has_minimum() && a1.minimum() != a2.minimum()) return false;
+  if (!AreAttrValuesEqual(a1.default_value(), a2.default_value())) return false;
+  if (!AreAttrValuesEqual(a1.allowed_values(), a2.allowed_values()))
+    return false;
+  return true;
+}
+
+uint64 AttrDefHash(const OpDef::AttrDef& a) {
+  uint64 h = Hash64(a.name());
+  h = Hash64(a.type().data(), a.type().size(), h);
+  h = Hash64Combine(AttrValueHash(a.default_value()), h);
+  h = Hash64(a.description().data(), a.description().size(), h);
+  h = Hash64Combine(static_cast<uint64>(a.has_minimum()), h);
+  h = Hash64Combine(static_cast<uint64>(a.minimum()), h);
+  h = Hash64Combine(AttrValueHash(a.allowed_values()), h);
+  return h;
+}
+
+bool RepeatedAttrDefEqual(
+    const protobuf::RepeatedPtrField<OpDef::AttrDef>& a1,
+    const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2) {
+  std::unordered_map<string, const OpDef::AttrDef*> a1_set;
+  for (const OpDef::AttrDef& def : a1) {
+    DCHECK(a1_set.find(def.name()) == a1_set.end())
+        << "AttrDef names must be unique, but '" << def.name()
+        << "' appears more than once";
+    a1_set[def.name()] = &def;
+  }
+  for (const OpDef::AttrDef& def : a2) {
+    auto iter = a1_set.find(def.name());
+    if (iter == a1_set.end()) return false;
+    if (!AttrDefEqual(*iter->second, def)) return false;
+    a1_set.erase(iter);
+  }
+  if (!a1_set.empty()) return false;
+  return true;
+}
+
+uint64 RepeatedAttrDefHash(
+    const protobuf::RepeatedPtrField<OpDef::AttrDef>& a) {
+  // Insert AttrDefs into map to deterministically sort by name
+  std::map<string, const OpDef::AttrDef*> a_set;
+  for (const OpDef::AttrDef& def : a) {
+    a_set[def.name()] = &def;
+  }
+  // Iterate and combines hashes of keys and values
+  uint64 h = 0xDECAFCAFFE;
+  for (const auto& pair : a_set) {
+    h = Hash64(pair.first.data(), pair.first.size(), h);
+    h = Hash64Combine(AttrDefHash(*pair.second), h);
+  }
+  return h;
+}
+
+bool OpDefEqual(const OpDef& o1, const OpDef& o2) {
+  // attr order doesn't matter.
+  // Compare it separately here instead of serializing below.
+  if (!RepeatedAttrDefEqual(o1.attr(), o2.attr())) return false;
+
+  // Clear attr field, serialize, and compare serialized strings
+  OpDef o1_copy = o1;
+  OpDef o2_copy = o2;
+  o1_copy.clear_attr();
+  o2_copy.clear_attr();
+  string s1, s2;
+  SerializeToStringDeterministic(o1_copy, &s1);
+  SerializeToStringDeterministic(o2_copy, &s2);
+  if (s1 != s2) return false;
+  return true;
+}
+
+uint64 OpDefHash(const OpDef& o) {
+  uint64 h = RepeatedAttrDefHash(o.attr());
+  OpDef o_copy = o;
+  o_copy.clear_attr();
+  string s;
+  SerializeToStringDeterministic(o_copy, &s);
+  return Hash64(s.data(), s.size(), h);
 }
 
 }  // namespace tensorflow
