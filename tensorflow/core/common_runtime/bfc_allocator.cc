@@ -114,10 +114,10 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
     static constexpr float kBackpedalFactor = 0.9;
 
     // Try allocating less memory.
-    bytes = RoundedBytes(bytes * kBackpedalFactor);
-    while (mem_addr == nullptr && bytes > rounded_bytes) {
-      mem_addr = suballocator_->Alloc(32, bytes);
+    while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
+      if (bytes < rounded_bytes) break;
+      mem_addr = suballocator_->Alloc(32, bytes);
     }
   }
 

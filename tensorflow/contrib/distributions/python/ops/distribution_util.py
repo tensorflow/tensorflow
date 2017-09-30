@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions.util import *  # pylint: disable=wildcard-import
 
 
@@ -395,3 +396,70 @@ def is_diagonal_scale(scale):
   return (isinstance(scale, linalg.LinearOperatorIdentity) or
           isinstance(scale, linalg.LinearOperatorScaledIdentity) or
           isinstance(scale, linalg.LinearOperatorDiag))
+
+
+def maybe_check_scalar_distribution(
+    distribution, expected_base_dtype, validate_args):
+  """Helper which checks validity of a scalar `distribution` init arg.
+
+  Valid here means:
+
+  * `distribution` has scalar batch and event shapes.
+  * `distribution` is `FULLY_REPARAMETERIZED`
+  * `distribution` has expected dtype.
+
+  Args:
+    distribution:  `Distribution`-like object.
+    expected_base_dtype:  `TensorFlow` `dtype`.
+    validate_args:  Python `bool`.  Whether to do additional checks:
+      (i)  check that reparameterization_type is `FULLY_REPARAMETERIZED`.
+      (ii) add `tf.Assert` ops to the graph to enforce that distribution
+           is scalar in the event that this cannot be determined statically.
+
+  Returns:
+    List of `tf.Assert` ops to run to enforce validity checks that could not
+      be statically determined.  Empty if `not validate_args`.
+
+  Raises:
+    ValueError:  If validate_args and distribution is not FULLY_REPARAMETERIZED
+    ValueError:  If distribution is statically determined to not have both
+      scalar batch and scalar event shapes.
+  """
+  if distribution.dtype != expected_base_dtype:
+    raise TypeError("dtype mismatch; "
+                    "distribution.dtype=\"{}\" is not \"{}\"".format(
+                        distribution.dtype.name, expected_base_dtype.name))
+
+  # Although `reparameterization_type` is a static property, we guard it by
+  # `validate_args`. This allows users to use a `distribution` which is not
+  # reparameterized itself. However, we tacitly assume that although the
+  # distribution is not reparameterized, it only depends on non-trainable
+  # variables.
+  if validate_args and (distribution.reparameterization_type
+                        != distribution_lib.FULLY_REPARAMETERIZED):
+    raise ValueError("Base distribution should be reparameterized or be "
+                     "a function of non-trainable variables; "
+                     "distribution.reparameterization_type = \"{}\" "
+                     "!= \"FULLY_REPARAMETERIZED\".".format(
+                         distribution.reparameterization_type))
+  with ops.name_scope(name="check_distribution"):
+    assertions = []
+    def check_is_scalar(is_scalar, name):
+      is_scalar_ = static_value(is_scalar)
+      if is_scalar_ is not None:
+        if not is_scalar_:
+          raise ValueError("distribution must be scalar; "
+                           "distribution.{}=False is not True".format(name))
+      elif validate_args:
+        assertions.append(check_ops.assert_equal(
+            is_scalar, True,
+            message=("distribution must be scalar; "
+                     "distribution.{}=False is not True".format(name))))
+    check_is_scalar(distribution.is_scalar_event(), "is_scalar_event")
+    check_is_scalar(distribution.is_scalar_batch(), "is_scalar_batch")
+    return assertions
+
+
+def static_value(x):
+  """Returns the static value of a `Tensor` or `None`."""
+  return tensor_util.constant_value(ops.convert_to_tensor(x))

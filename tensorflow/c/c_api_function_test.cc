@@ -1097,7 +1097,7 @@ TEST_F(CApiFunctionTest, InvalidInputTensor_HighIndex) {
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
   DefineT(-1, {}, {{feed1, 0}, {feed2, 2}}, {{add, 0}}, {}, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s_));
   EXPECT_EQ(string("Node 'feed2' (type: 'Placeholder', num of outputs: 1) does "
                    "not have output 2\n\tEncountered while processing "
                    "input 1 into function 'MyFunc'"),
@@ -1134,7 +1134,7 @@ TEST_F(CApiFunctionTest, InvalidOutputTensor_HighIndex) {
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
   DefineT(-1, {}, {{feed1, 0}, {feed2, 0}}, {{add, 3}}, {}, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s_));
   EXPECT_EQ(string("Node 'add' (type: 'AddN', num of outputs: 1) does "
                    "not have output 3\n\tEncountered while processing "
                    "output 0 from function 'MyFunc'"),

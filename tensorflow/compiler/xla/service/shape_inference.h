@@ -78,7 +78,8 @@ class ShapeInference {
   // to the given operand shapes.
   static StatusOr<Shape> InferMapShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
-      const ProgramShape& to_apply);
+      const ProgramShape& to_apply,
+      tensorflow::gtl::ArraySlice<int64> dimensions);
 
   // Infers the shape produced by InferBatchNormTraining with the given
   // operands.
