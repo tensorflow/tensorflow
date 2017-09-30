@@ -97,8 +97,8 @@ class ScatterTest(test.TestCase):
             sign = np.sign(x)
 
             if type(x)==np.int32:
-                threshold = 1
-                sign = np.random.choice([-1,1])
+              threshold = 1
+              sign = np.random.choice([-1,1])
             return threshold * sign if np.abs(x) < threshold else x
 
           updates = np.vectorize(clip_small_values)(updates)
@@ -118,7 +118,7 @@ class ScatterTest(test.TestCase):
   def _VariableRankTests(self, tf_scatter, repeat_indices=False):
     vtypes = [np.float32, np.float64]
     if not tf_scatter == state_ops.scatter_div:
-        vtypes.append(np.int32)
+      vtypes.append(np.int32)
 
     for vtype in vtypes:
       for itype in (np.int32, np.int64):
