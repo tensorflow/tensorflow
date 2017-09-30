@@ -71,35 +71,40 @@ def _mixture_stddev_np(pi_vector, mu_vector, sigma_vector):
 
 @contextlib.contextmanager
 def _test_capture_mvndiag_sample_outputs():
-  """Use monkey-patching to capture the output of an MVNDiag _sample_n."""
+  """Use monkey-patching to capture the output of an MVNDiag _call_sample_n."""
   data_container = []
-  true_mvndiag_sample_n = distributions_py.MultivariateNormalDiag._sample_n
+  true_mvndiag_call_sample_n = (
+      distributions_py.MultivariateNormalDiag._call_sample_n)
 
-  def _capturing_mvndiag_sample_n(self, n, seed=None):
-    samples = true_mvndiag_sample_n(self, n=n, seed=seed)
+  def _capturing_mvndiag_call_sample_n(
+      self, sample_shape, seed, name, **kwargs):
+    samples = true_mvndiag_call_sample_n(
+        self, sample_shape, seed, name, **kwargs)
     data_container.append(samples)
     return samples
 
-  distributions_py.MultivariateNormalDiag._sample_n = (
-      _capturing_mvndiag_sample_n)
+  distributions_py.MultivariateNormalDiag._call_sample_n = (
+      _capturing_mvndiag_call_sample_n)
   yield data_container
-  distributions_py.MultivariateNormalDiag._sample_n = true_mvndiag_sample_n
+  distributions_py.MultivariateNormalDiag._call_sample_n = (
+      true_mvndiag_call_sample_n)
 
 
 @contextlib.contextmanager
 def _test_capture_normal_sample_outputs():
-  """Use monkey-patching to capture the output of an Normal _sample_n."""
+  """Use monkey-patching to capture the output of an Normal _call_sample_n."""
   data_container = []
-  true_normal_sample_n = distributions_py.Normal._sample_n
+  true_normal_call_sample_n = distributions_py.Normal._call_sample_n
 
-  def _capturing_normal_sample_n(self, n, seed=None):
-    samples = true_normal_sample_n(self, n=n, seed=seed)
+  def _capturing_normal_call_sample_n(self, sample_shape, seed, name, **kwargs):
+    samples = true_normal_call_sample_n(
+        self, sample_shape, seed, name, **kwargs)
     data_container.append(samples)
     return samples
 
-  distributions_py.Normal._sample_n = _capturing_normal_sample_n
+  distributions_py.Normal._call_sample_n = _capturing_normal_call_sample_n
   yield data_container
-  distributions_py.Normal._sample_n = true_normal_sample_n
+  distributions_py.Normal._call_sample_n = true_normal_call_sample_n
 
 
 def make_univariate_mixture(batch_shape, num_components):

@@ -46,7 +46,7 @@ namespace tensorflow {
 // see comment on `AllowsAsynchronousDeallocation()`.
 class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
-  XlaAllocator(const gpu::Platform* platform, OpKernelContext* op_context);
+  XlaAllocator(gpu::Platform* platform, OpKernelContext* op_context);
   ~XlaAllocator() override;
   xla::StatusOr<gpu::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
                                                 bool retry_on_failure) override;
@@ -80,8 +80,7 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
   std::unordered_map<void*, Tensor> tensors_;
 };
 
-XlaAllocator::XlaAllocator(const gpu::Platform* platform,
-                           OpKernelContext* op_context)
+XlaAllocator::XlaAllocator(gpu::Platform* platform, OpKernelContext* op_context)
     : xla::DeviceMemoryAllocator(platform), op_context_(op_context) {}
 
 XlaAllocator::~XlaAllocator() = default;
@@ -331,7 +330,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     return;
   }
 
-  output = std::move(run_result.ValueOrDie());
+  output = run_result.ConsumeValueOrDie()->release();
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 

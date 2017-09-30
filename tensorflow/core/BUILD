@@ -2859,9 +2859,11 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:resource_variable_ops",
         "//third_party/eigen3",
     ],
 )

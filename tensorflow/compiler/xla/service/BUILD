@@ -511,9 +511,9 @@ cc_library(
 cc_library(
     name = "cpu_plugin",
     deps = [
-        ":cpu_transfer_manager",
         ":service",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:cpu_transfer_manager",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
@@ -521,9 +521,9 @@ cc_library(
 cc_library(
     name = "gpu_plugin",
     deps = [
-        ":gpu_transfer_manager",
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
     ],
@@ -532,9 +532,9 @@ cc_library(
 cc_library(
     name = "interpreter_plugin",
     deps = [
-        ":interpreter_transfer_manager",
         ":service",
         "//tensorflow/compiler/xla/service/interpreter:compiler",
+        "//tensorflow/compiler/xla/service/interpreter:interpreter_transfer_manager",
         "//tensorflow/compiler/xla/service/interpreter:platform",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
@@ -546,6 +546,7 @@ cc_library(
     hdrs = ["shaped_buffer.h"],
     deps = [
         ":device_memory_allocator",
+        ":transfer_manager",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1054,6 +1055,36 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tuple_simplifier",
+    srcs = ["tuple_simplifier.cc"],
+    hdrs = ["tuple_simplifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "tuple_simplifier_test",
+    srcs = ["tuple_simplifier_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":tuple_simplifier",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "reshape_mover",
     srcs = ["reshape_mover.cc"],
     hdrs = ["reshape_mover.h"],
@@ -1172,75 +1203,17 @@ cc_library(
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
-cc_library(
-    name = "cpu_transfer_manager",
-    srcs = ["cpu_transfer_manager.cc"],
-    hdrs = ["cpu_transfer_manager.h"],
-    deps = [
-        ":generic_transfer_manager",
-        ":transfer_manager",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-    ],
-    alwayslink = True,  # Contains per-platform transfer manager registration
-)
-
-cc_library(
-    name = "gpu_transfer_manager",
-    srcs = ["gpu_transfer_manager.cc"],
-    hdrs = ["gpu_transfer_manager.h"],
-    deps = [
-        ":generic_transfer_manager",
-        ":transfer_manager",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service/gpu:infeed_manager",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-    ],
-    alwayslink = True,  # Contains per-platform transfer manager registration
-)
-
-cc_library(
-    name = "interpreter_transfer_manager",
-    srcs = ["interpreter_transfer_manager.cc"],
-    hdrs = ["interpreter_transfer_manager.h"],
-    deps = [
-        ":generic_transfer_manager",
-        ":transfer_manager",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service/interpreter:platform_id",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-    ],
-    alwayslink = True,  # Contains per-platform transfer manager registration
-)
-
 tf_cc_test(
     name = "transfer_manager_test",
     srcs = ["transfer_manager_test.cc"],
     deps = [
-        ":cpu_transfer_manager",
         ":generic_transfer_manager",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/cpu:cpu_transfer_manager",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
