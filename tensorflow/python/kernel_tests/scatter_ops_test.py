@@ -66,7 +66,6 @@ _TF_OPS_TO_NUMPY = {
     state_ops.scatter_div: _NumpyDiv,
 }
 
-
 class ScatterTest(test.TestCase):
 
   def _VariableRankTest(self, tf_scatter, vtype, itype, repeat_indices=False):
@@ -94,13 +93,20 @@ class ScatterTest(test.TestCase):
 
           # Clips small values to avoid division by zero.
           def clip_small_values(x):
-            return 1e-4 * np.sign(x) if np.abs(x) < 1e-4 else x
+            threshold = 1e-4
+            sign = np.sign(x)
+
+            if type(x)==np.int32:
+                threshold = 1
+                sign = np.random.choice([-1,1])
+            return threshold * sign if np.abs(x) < threshold else x
 
           updates = np.vectorize(clip_small_values)(updates)
           old = _AsType(np.random.randn(*((first_dim,) + extra_shape)), vtype)
 
           # Scatter via numpy
           new = old.copy()
+
           np_scatter = _TF_OPS_TO_NUMPY[tf_scatter]
           np_scatter(new, indices, updates)
           # Scatter via tensorflow
@@ -110,7 +116,11 @@ class ScatterTest(test.TestCase):
           self.assertAllClose(ref.eval(), new)
 
   def _VariableRankTests(self, tf_scatter, repeat_indices=False):
-    for vtype in (np.int32, np.float32, np.float64):
+    vtypes = [np.float32, np.float64]
+    if not tf_scatter == state_ops.scatter_div:
+        vtypes.append(np.int32)
+
+    for vtype in vtypes:
       for itype in (np.int32, np.int64):
         self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices)
 
