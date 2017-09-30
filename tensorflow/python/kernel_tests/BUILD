@@ -293,7 +293,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "determinant_op_test",
     size = "small",
     srcs = ["determinant_op_test.py"],
@@ -503,7 +503,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "matrix_inverse_op_test",
     size = "small",
     srcs = ["matrix_inverse_op_test.py"],
@@ -516,7 +516,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "matrix_solve_ls_op_test",
     size = "medium",
     srcs = ["matrix_solve_ls_op_test.py"],
@@ -530,7 +530,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "matrix_solve_op_test",
     size = "small",
     srcs = ["matrix_solve_op_test.py"],

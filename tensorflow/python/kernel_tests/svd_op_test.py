@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -46,6 +47,35 @@ class SvdOpTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "Shape must be at least rank 2 but is rank 1"):
       linalg_ops.svd(vector)
+
+  def testConcurrentExecutesWithoutError(self):
+    with self.test_session(use_gpu=True) as sess:
+      all_ops = []
+      for compute_uv_ in True, False:
+        for full_matrices_ in True, False:
+          matrix1 = random_ops.random_normal([5, 5], seed=42)
+          matrix2 = random_ops.random_normal([5, 5], seed=42)
+          if compute_uv_:
+            s1, u1, v1 = linalg_ops.svd(
+                matrix1, compute_uv=compute_uv_, full_matrices=full_matrices_)
+            s2, u2, v2 = linalg_ops.svd(
+                matrix2, compute_uv=compute_uv_, full_matrices=full_matrices_)
+            all_ops += [s1, u1, v1, s2, u2, v2]
+          else:
+            s1 = linalg_ops.svd(
+                matrix1, compute_uv=compute_uv_, full_matrices=full_matrices_)
+            s2 = linalg_ops.svd(
+                matrix2, compute_uv=compute_uv_, full_matrices=full_matrices_)
+            all_ops += [s1, s2]
+      val = sess.run(all_ops)
+      for i in range(2):
+        s = 6 * i
+        self.assertAllEqual(val[s], val[s + 3])  # s1 == s2
+        self.assertAllEqual(val[s + 1], val[s + 4])  # u1 == u2
+        self.assertAllEqual(val[s + 2], val[s + 5])  # v1 == v2
+      for i in range(2):
+        s = 12 + 2 * i
+        self.assertAllEqual(val[s], val[s + 1])  # s1 == s2
 
 
 def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
