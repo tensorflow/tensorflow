@@ -70,11 +70,10 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
 
   Costs node_costs;
   do {
-    NodeInfo node_info = scheduler.GetCurrNodeInfo();
-    auto& op_info = node_info.op_info;
-    const string& op_name = node_info.name;
+    OpContext op_context = scheduler.GetCurrNode();
+    const string& op_name = op_context.name;
 
-    node_costs = node_estimator_->PredictCosts(op_info);
+    node_costs = node_estimator_->PredictCosts(op_context);
     if (node_costs.inaccurate) {
       inaccurate_nodes.push_back(op_name);
     }
@@ -87,14 +86,14 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
         cost_node = cost_graph->add_node();
         cost_node->set_name(op_name);
       }
-      cost_node->set_device(node_info.device_name);
+      cost_node->set_device(op_context.device_name);
       cost_node->set_compute_cost(
           node_costs.execution_time.asMicroSeconds().count());
       cost_node->set_compute_time(
           node_costs.compute_time.asMicroSeconds().count());
       cost_node->set_memory_time(
           node_costs.memory_time.asMicroSeconds().count());
-      for (const auto& output : node_info.op_info.outputs()) {
+      for (const auto& output : op_context.op_info.outputs()) {
         auto output_info = cost_node->add_output_info();
         output_info->set_dtype(output.dtype());
         auto shape = output_info->mutable_shape();
