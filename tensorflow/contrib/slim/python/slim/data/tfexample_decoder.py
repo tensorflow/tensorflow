@@ -135,7 +135,10 @@ class BoundingBox(ItemHandler):
     """
     sides = []
     for key in self._full_keys:
-      side = array_ops.expand_dims(keys_to_tensors[key].values, 0)
+      side = keys_to_tensors[key]
+      if isinstance(side, sparse_tensor.SparseTensor):
+        side = side.values
+      side = array_ops.expand_dims(side, 0)
       sides.append(side)
 
     bounding_box = array_ops.concat(sides, 0)
