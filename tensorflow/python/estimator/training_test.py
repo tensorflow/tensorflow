@@ -75,6 +75,18 @@ _TF_CONFIG_FOR_CHIEF = {
     }
 }
 
+_TF_CONFIG_FOR_MASTER = {
+    'cluster': {
+        run_config_lib.TaskType.MASTER: ['host0:0'],
+        run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+        run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4']
+    },
+    'task': {
+        'type': run_config_lib.TaskType.MASTER,
+        'index': 0
+    }
+}
+
 _TF_CONFIG_FOR_WORKER = {
     'cluster': {
         run_config_lib.TaskType.CHIEF: ['host0:0'],
@@ -595,6 +607,31 @@ class TrainingExecutorRunChiefTest(_TrainingExecutorTrainingTest,
 
   @test.mock.patch.object(server_lib, 'Server')
   def test_no_delay_for_chief(self, _):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = self._run_config
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec,
+                                          mock_eval_spec)
+
+    with test.mock.patch.object(time, 'sleep') as mock_sleep:
+      self._run_task(executor)
+      mock_sleep.assert_not_called()
+
+
+class TrainingExecutorRunMasterTest(_TrainingExecutorTrainingTest,
+                                    test.TestCase):
+  """Tests run_chief of _TrainingExecutor."""
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    _TrainingExecutorTrainingTest.__init__(
+        self,
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_MASTER))
+
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_no_delay_for_master(self, _):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_est.config = self._run_config
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
