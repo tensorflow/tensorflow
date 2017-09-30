@@ -858,7 +858,7 @@ def convolution(inputs,
       with "NC".
     num_outputs: Integer, the number of output filters.
     kernel_size: A sequence of N positive integers specifying the spatial
-      dimensions of of the filters.  Can be a single integer to specify the same
+      dimensions of the filters.  Can be a single integer to specify the same
       value for all spatial dimensions.
     stride: A sequence of N positive integers specifying the stride at which to
       compute output.  Can be a single integer to specify the same value for all
@@ -1097,7 +1097,7 @@ def convolution2d_transpose(
       `[batch, height, width, in_channels]` for `NHWC` data format or
       `[batch, in_channels, height, width]` for `NCHW` data format.
     num_outputs: Integer, the number of output filters.
-    kernel_size: A list of length 2 holding the [kernel_height, kernel_width] of
+    kernel_size: A list of length 2 holding the [kernel_height, kernel_width] 
       of the filters. Can be an int if both values are the same.
     stride: A list of length 2: [stride_height, stride_width].
       Can be an int if both strides are the same.  Note that presently
@@ -1858,7 +1858,7 @@ def separable_convolution2d(
     inputs: A tensor of size [batch_size, height, width, channels].
     num_outputs: The number of pointwise convolution output filters. If is
       None, then we skip the pointwise convolution stage.
-    kernel_size: A list of length 2: [kernel_height, kernel_width] of
+    kernel_size: A list of length 2: [kernel_height, kernel_width] 
       of the filters. Can be an int if both values are the same.
     depth_multiplier: The number of depthwise convolution output channels for
       each input channel. The total number of depthwise convolution output
