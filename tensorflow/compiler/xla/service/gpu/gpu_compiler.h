@@ -62,6 +62,13 @@ class GpuCompiler : public LLVMCompiler {
     };
   }
 
+  // The triple that represents our target.
+  static const char* kTargetTriple;
+
+  // The data layout of the emitted module. Copied from computeDataLayout in
+  // NVPTXTargetMachine.cpp.
+  static const char* kDataLayout;
+
  private:
   // The parent directory of libdevice IR libraries.
   string libdevice_dir_;

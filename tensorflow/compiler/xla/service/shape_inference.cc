@@ -852,7 +852,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
 /* static */ StatusOr<Shape> ShapeInference::InferMapShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
-    const ProgramShape& to_apply) {
+    const ProgramShape& to_apply,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
   if (arg_shapes.empty()) {
     return InvalidArgument("Map expects at least one argument");
   }
@@ -886,6 +887,24 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Map operation requires all operands to have the same shape; got: "
         "%s",
         tensorflow::str_util::Join(pieces, ", ").c_str());
+  }
+
+  // Check that dimensions.size == arg_shape.dimensions_size() (we currently
+  // only support mapping across all dimensions: i.e. scalar map functions).
+  if (dimensions.size() != arg_shape->dimensions_size()) {
+    return InvalidArgument(
+        "Map applied to a subset of dimensions currently not supported: "
+        "arg_dimension_size: %d, requested_map_dimensions_size: %zu",
+        arg_shape->dimensions_size(), dimensions.size());
+  }
+
+  // Check that requested map dimensions numbers are monotonically increasing.
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (dimensions[i] != i) {
+      return InvalidArgument(
+          "Map requires monotonically increasing dimension numbers, found: %s ",
+          tensorflow::str_util::Join(dimensions, ", ").c_str());
+    }
   }
 
   // The applied function's arity equals the number of arguments.
@@ -1383,8 +1402,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   // Verifies that the input and window dimensions are a permutation of
   // the dimension numbers.
   std::vector<int64> input_dnums(num_dims);
-  input_dnums[0] = dnums.batch_dimension();
-  input_dnums[1] = dnums.feature_dimension();
+  input_dnums[0] = dnums.input_batch_dimension();
+  input_dnums[1] = dnums.input_feature_dimension();
   std::copy(dnums.spatial_dimensions().begin(),
             dnums.spatial_dimensions().end(), input_dnums.begin() + 2);
   std::sort(input_dnums.begin(), input_dnums.end());
@@ -1424,8 +1443,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int i = 0; i < num_spatial_dims; ++i) {
     input_spatial_dims[i] = lhs.dimensions(dnums.spatial_dimensions(i));
   }
-  const int64 input_features = lhs.dimensions(dnums.feature_dimension());
-  const int64 input_batch = lhs.dimensions(dnums.batch_dimension());
+  const int64 input_features = lhs.dimensions(dnums.input_feature_dimension());
+  const int64 input_batch = lhs.dimensions(dnums.input_batch_dimension());
 
   std::vector<int64> kernel_spatial_dims(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
@@ -1467,8 +1486,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                              /*allow_negative_padding=*/true));
 
   std::vector<int64> dimensions(num_dims);
-  dimensions[dnums.batch_dimension()] = input_batch;
-  dimensions[dnums.feature_dimension()] = kernel_output_features;
+  dimensions[dnums.output_batch_dimension()] = input_batch;
+  dimensions[dnums.output_feature_dimension()] = kernel_output_features;
   for (int i = 0; i < num_spatial_dims; ++i) {
     dimensions[dnums.spatial_dimensions(i)] = window_output_shape.dimensions(i);
   }
