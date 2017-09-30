@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <set>
 #include <vector>
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -408,6 +409,42 @@ TEST_F(GraphTest, IsValidNode) {
   EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
                    "Does it belong to a different graph?"),
             s.error_message());
+}
+
+TEST_F(GraphTest, UpdateEdge) {
+  // Build a little graph
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* b = FromNodeDef("B", "OneInputTwoOutputs", 1);
+  Node* c = FromNodeDef("C", "OneInputTwoOutputs", 1);
+  Node* d = FromNodeDef("D", "OneInput", 1);
+
+  graph_.AddControlEdge(graph_.source_node(), a);
+  graph_.AddControlEdge(a, graph_.sink_node());
+  graph_.AddEdge(a, 0, c, 0);
+
+  graph_.AddControlEdge(c, graph_.sink_node());
+  graph_.AddEdge(c, 0, b, 0);
+  graph_.AddEdge(c, 1, d, 0);
+
+  // Initial edge connections
+  EXPECT_EQ("0->1;0->2;2->1;2->4;4->1;4->3;4->5;", EdgeIter(graph_));
+
+  // Update the inputs, expect that Edge a to b (2->3) is now in the graph
+  // and c to b (4->3) no longer appears.
+  TF_EXPECT_OK(graph_.UpdateEdge(a, 0, b, 0));
+  // Check that the edge is connecting the correct nodes.
+  EXPECT_EQ("0->1;0->2;2->1;2->3;2->4;4->1;4->5;", EdgeIter(graph_));
+
+  // Update a's 0th output again.
+  TF_EXPECT_OK(graph_.UpdateEdge(a, 0, d, 0));
+  EXPECT_EQ("0->1;0->2;2->1;2->3;2->4;2->5;4->1;", EdgeIter(graph_));
+
+  // Update a's 1st output which is out of range.
+  Status s = graph_.UpdateEdge(a, 1, d, 0);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(
+      s.error_message(),
+      "Node 'A' (type: 'OneOutput', num of outputs: 1) does not have output 1");
 }
 
 TEST_F(GraphTest, InputEdges) {
