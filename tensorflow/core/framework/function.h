@@ -349,7 +349,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   }
 
  private:
-  // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
+  // Shape inference for functions is handled separately by ShapeRefiner.
+
   struct FunctionDefAndOpRegistration {
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 

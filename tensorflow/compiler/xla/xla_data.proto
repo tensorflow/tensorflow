@@ -392,13 +392,17 @@ message DynamicUpdateSliceRequest {
 }
 
 message ConvolutionDimensionNumbers {
-  // The number of the dimension that represents batch in the input
-  // (lhs) and output.
-  int64 batch_dimension = 1;
+  // The number of the dimension that represents batch in the input.
+  int64 input_batch_dimension = 7;
 
-  // The number of the dimension that represents features in the input
-  // (lhs) and output.
-  int64 feature_dimension = 2;
+  // The number of the dimension that represents features in the input.
+  int64 input_feature_dimension = 8;
+
+  // The number of the dimension that represents batch in the output.
+  int64 output_batch_dimension = 9;
+
+  // The number of the dimension that represents features in the output.
+  int64 output_feature_dimension = 10;
 
   // The dimension numbers for the spatial dimensions that the window
   // moves through in the input (lhs) and output.
@@ -459,6 +463,11 @@ message MapRequest {
   repeated ComputationDataHandle operands = 2;
   ComputationHandle to_apply = 3;
   repeated ComputationDataHandle static_operands = 4;
+  // The dimensions over which to map.
+  // Example mapping a Dot operation along the batch dimension 0:
+  //   operand0.shape = [2, 2, 2], operand1.shape = [2,2,3]
+  //   Map({operand0, operand1}, Dot, {0})
+  repeated int64 dimensions = 5;
 }
 
 message ReduceRequest {

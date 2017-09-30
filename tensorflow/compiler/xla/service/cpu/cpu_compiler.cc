@@ -80,6 +80,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -279,6 +280,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_simplification=*/false);
+    pass.AddPass<TupleSimplifier>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
   }
