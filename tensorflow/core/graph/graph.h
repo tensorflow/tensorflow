@@ -443,6 +443,11 @@ class Graph {
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 
+  // Updates the input to a node.  The existing edge to `dst` is removed
+  // and an edge from `new_src` to `dst` is created. The NodeDef associated with
+  // `dst` is also updated.
+  Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
+
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
   // imported function differs from an existing function or op with the same
@@ -630,6 +635,10 @@ class Graph {
   // nested loops). The stored contexts are usually accessed via
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;
+
+  // Searches through edges_ for the Edge whose destination node and index
+  // matches dst. An edge with destination `dst` must exist in the graph.
+  const Edge* FindEdge(const Node* dst, int index);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };
