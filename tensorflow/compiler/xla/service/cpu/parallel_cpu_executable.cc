@@ -377,7 +377,6 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     HloExecutionProfile* hlo_execution_profile) {
   std::vector<se::DeviceMemoryBase> argument_buffers(arguments.size());
   for (int i = 0; i < arguments.size(); ++i) {
-    TF_RET_CHECK(!ShapeUtil::IsTuple(arguments[i]->shape()));
     argument_buffers[i] = arguments[i]->buffer(/*index=*/{});
   }
   return ExecuteComputeFunctions(run_options, argument_buffers, buffers,
@@ -546,10 +545,9 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result_buffer,
-                      ShapedBuffer::MakeShapedBuffer(
-                          result_shape(), stream->parent()->platform(),
-                          stream->parent()->device_ordinal()));
+  auto result_buffer =
+      MakeUnique<ShapedBuffer>(result_shape(), stream->parent()->platform(),
+                               stream->parent()->device_ordinal());
 
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
@@ -557,15 +555,14 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   TF_RETURN_IF_ERROR(ExecuteComputeFunctions(run_options, arguments, buffers,
                                              hlo_execution_profile));
 
-  // Copy DeviceMemoryBase values which contain the array(s) of the result into
-  // the respective location in ShapedBuffer which is returned to the caller.
+  // Copy DeviceMemoryBase values which into the respective location in
+  // ShapedBuffer which is returned to the caller.
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_RETURN_IF_ERROR(
       result_buffer->mutable_shape_index_to_buffer_entry()
           ->ForEachMutableElementWithStatus(
               [&buffers, &buffers_in_result, &result_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
-                if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
                   const auto& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
@@ -590,7 +587,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
                   *buffer_entry = result_buffer->mutable_buffers()->size();
                   result_buffer->mutable_buffers()->push_back(buffer);
                   buffers_in_result[buffer_index] = true;
-                }
                 return Status::OK();
               }));
 

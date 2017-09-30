@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu_transfer_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_transfer_manager.h"
 
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -39,7 +41,10 @@ namespace xla {
 // folding back the cpu and gpu infeed implementations into a generic
 // one if possible.
 GpuTransferManager::GpuTransferManager()
-    : GenericTransferManager(se::cuda::kCudaPlatformId) {}
+    : GenericTransferManager(
+          se::cuda::kCudaPlatformId,
+          /*pointer_size=*/llvm::DataLayout(gpu::GpuCompiler::kDataLayout)
+              .getPointerSize()) {}
 
 Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                                                    const Literal& literal) {

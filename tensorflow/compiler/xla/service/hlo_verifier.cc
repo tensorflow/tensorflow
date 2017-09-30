@@ -241,12 +241,20 @@ class ShapeVerifier : public DfsHloVisitor {
       HloComputation* function,
       tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override {
     std::vector<const Shape*> operand_shapes;
+    int64 max_operand_rank = 0;
     for (const HloInstruction* operand : operands) {
       operand_shapes.push_back(&operand->shape());
+      max_operand_rank =
+          std::max(max_operand_rank, ShapeUtil::Rank(operand->shape()));
     }
+    // TODO(b/65689298) Remove code below once Map is generalized to accept
+    // arbitrary map dimensions.
+    std::vector<int64> map_dims(max_operand_rank);
+    std::iota(map_dims.begin(), map_dims.end(), 0);
     return CheckShape(
-        map, ShapeInference::InferMapShape(
-                 operand_shapes, map->to_apply()->ComputeProgramShape()));
+        map,
+        ShapeInference::InferMapShape(
+            operand_shapes, map->to_apply()->ComputeProgramShape(), map_dims));
   }
 
   Status HandleReduceWindow(HloInstruction* reduce_window,
@@ -534,6 +542,44 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
               << " parent: " << fused->parent()
               << " computation: " << computation.get();
         }
+      } else if (instruction->opcode() == HloOpcode::kConvolution) {
+        const auto& dnums = instruction->convolution_dimension_numbers();
+        const int64 rank = ShapeUtil::Rank(instruction->shape());
+        TF_RET_CHECK(rank == dnums.spatial_dimensions_size() + 2)
+            << "Convolution rank and spatial dimensions don't agree: "
+            << instruction->ToString() << " rank: " << rank
+            << " spatial_dimensions_size: " << dnums.spatial_dimensions_size();
+        TF_RET_CHECK(rank == dnums.kernel_spatial_dimensions_size() + 2)
+            << "Convolution rank and kernel spatial dimensions don't agree: "
+            << instruction->ToString() << " rank: " << rank
+            << " kernel_spatial_dimensions_size: "
+            << dnums.kernel_spatial_dimensions_size();
+        std::unordered_set<int64> kernel_dnums{
+            dnums.kernel_spatial_dimensions().begin(),
+            dnums.kernel_spatial_dimensions().end()};
+        kernel_dnums.insert(dnums.kernel_input_feature_dimension());
+        kernel_dnums.insert(dnums.kernel_output_feature_dimension());
+        TF_RET_CHECK(kernel_dnums.size() == rank)
+            << "Convolution kernel dimension numbers are not unique: "
+            << instruction->ToString() << " dnums: " << dnums.DebugString();
+
+        std::unordered_set<int64> input_dnums{
+            dnums.spatial_dimensions().begin(),
+            dnums.spatial_dimensions().end()};
+        input_dnums.insert(dnums.input_batch_dimension());
+        input_dnums.insert(dnums.input_feature_dimension());
+        TF_RET_CHECK(input_dnums.size() == rank)
+            << "Convolution input dimension numbers are not unique: "
+            << instruction->ToString() << " dnums: " << dnums.DebugString();
+
+        std::unordered_set<int64> output_dnums{
+            dnums.spatial_dimensions().begin(),
+            dnums.spatial_dimensions().end()};
+        output_dnums.insert(dnums.output_batch_dimension());
+        output_dnums.insert(dnums.output_feature_dimension());
+        TF_RET_CHECK(output_dnums.size() == rank)
+            << "Convolution output dimension numbers are not unique: "
+            << instruction->ToString() << " dnums: " << dnums.DebugString();
       }
       if (instruction->opcode() == HloOpcode::kBroadcast) {
         // If you see this failure then someone has confused the difference
