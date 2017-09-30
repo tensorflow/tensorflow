@@ -130,7 +130,39 @@ def _check_maybe(t):
 
 
 class BeamSearchDecoder(decoder.Decoder):
-  """BeamSearch sampling decoder."""
+  """BeamSearch sampling decoder.
+
+    **NOTE** If you are using the `BeamSearchDecoder` with a cell wrapped in
+    `AttentionWrapper`, then you must ensure that:
+
+    - The encoder output has been tiled to `beam_width` via
+      @{tf.contrib.seq2seq.tile_batch} (NOT `tf.tile`).
+    - The `batch_size` argument passed to the `zero_state` method of this
+      wrapper is equal to `true_batch_size * beam_width`.
+    - The initial state created with `zero_state` above contains a
+      `cell_state` value containing properly tiled final state from the
+      encoder.
+
+    An example:
+
+    ```
+    tiled_encoder_outputs = tf.contrib.seq2seq.tile_batch(
+        encoder_outputs, multiplier=beam_width)
+    tiled_encoder_final_state = tf.conrib.seq2seq.tile_batch(
+        encoder_final_state, multiplier=beam_width)
+    tiled_sequence_length = tf.contrib.seq2seq.tile_batch(
+        sequence_length, multiplier=beam_width)
+    attention_mechanism = MyFavoriteAttentionMechanism(
+        num_units=attention_depth,
+        memory=tiled_inputs,
+        memory_sequence_length=tiled_sequence_length)
+    attention_cell = AttentionWrapper(cell, attention_mechanism, ...)
+    decoder_initial_state = attention_cell.zero_state(
+        dtype, batch_size=true_batch_size * beam_width)
+    decoder_initial_state = decoder_initial_state.clone(
+        cell_state=tiled_encoder_final_state)
+    ```
+  """
 
   def __init__(self,
                cell,
@@ -141,7 +173,7 @@ class BeamSearchDecoder(decoder.Decoder):
                beam_width,
                output_layer=None,
                length_penalty_weight=0.0):
-    """Initialize BeamSearchDecoder.
+    """Initialize the BeamSearchDecoder.
 
     Args:
       cell: An `RNNCell` instance.
