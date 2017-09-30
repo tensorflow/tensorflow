@@ -179,31 +179,36 @@ def _dnn_linear_combined_model_fn(
   # Combine logits and build full model.
   if dnn_logits is not None and linear_logits is not None:
     logits = dnn_logits + linear_logits
+    model = "combined"
   elif dnn_logits is not None:
     logits = dnn_logits
+    model = "dnn"
   else:
     logits = linear_logits
+    model = "linear"
 
   def _train_op_fn(loss):
     """Returns the op to optimize the loss."""
-    train_ops = []
     global_step = training_util.get_global_step()
-    if dnn_logits is not None:
-      train_ops.append(
-          dnn_optimizer.minimize(
-              loss,
-              var_list=ops.get_collection(
-                  ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=dnn_parent_scope)))
-    if linear_logits is not None:
-      train_ops.append(
-          linear_optimizer.minimize(
-              loss,
-              var_list=ops.get_collection(
-                  ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=linear_parent_scope)))
 
-    train_op = control_flow_ops.group(*train_ops)
+    if model == "combined":
+      all_vars = ops.trainable_variables()
+      lr_vars = ops.get_collection(
+        ops.GraphKeys.TRAINABLE_VARIABLES,
+        scope=linear_parent_scope)
+      # variables left is optimized by dnn
+      dnn_vars = list(set(all_vars) - set(lr_vars))
+      train_ops = [
+        linear_optimizer.minimize(loss, var_list=lr_vars),
+        dnn_optimizer.minimize(loss, var_list=dnn_vars)]
+      train_op = control_flow_ops.group(*train_ops)
+    elif model == "dnn":
+      train_op = dnn_optimizer.minimize(loss)
+    elif model == "linear":
+      train_op = linear_optimizer.minimize(loss)
+    else:
+      raise ValueError("Invalid model")
+
     with ops.control_dependencies([train_op]):
       with ops.colocate_with(global_step):
         return state_ops.assign_add(global_step, 1)
