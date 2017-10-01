@@ -206,16 +206,6 @@ uint8_t set_port(ibv_context* context) {
   return port_num;
 }
 
-// Function to check if GID is null
-// Args:
-//   GID
-// Returns:
-//   if GID is null - true, otherwise - false
-bool is_gid_null(union ibv_gid *gid) {
-  return !(gid->raw[8] | gid->raw[9] | gid->raw[10] | gid->raw[11] |
-    gid->raw[12] | gid->raw[13] | gid->raw[14] | gid->raw[15]);
-}
-
 // Function read from sysfs file
 // Args:
 //   dir - directory
@@ -289,9 +279,9 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
   for (i = 0; i < port_attr.gid_tbl_len; i++) {
     rc = ibv_query_gid(context, port_num, i, &gid);
     CHECK(!rc) << "Failed to query gid to port " << (int)port_num << " index " <<  i;
-    if (!is_gid_null(&gid)) {
+    if (gid.global.interface_id) {
       gids_num++;
-      if (gid.raw[0] == 0 && gid.raw[1] == 0 && is_gid_type_roce_v2(context, port_num, i)) {
+      if (gid.global.subnet_prefix == 0 && is_gid_type_roce_v2(context, port_num, i)) {
         if (v2_ip_num == 0) {
         //can be overwritten by RDMA_GID_INDEX later
           gid_index = i;
