@@ -53,6 +53,7 @@ from tensorflow.contrib.distributions.python.ops.test_util import *
 from tensorflow.contrib.distributions.python.ops.vector_diffeomixture import *
 from tensorflow.contrib.distributions.python.ops.vector_exponential_diag import *
 from tensorflow.contrib.distributions.python.ops.vector_laplace_diag import *
+from tensorflow.contrib.distributions.python.ops.vector_sinh_arcsinh_diag import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
 from tensorflow.python.ops.distributions.bernoulli import *
 from tensorflow.python.ops.distributions.beta import *
@@ -134,6 +135,7 @@ _allowed_symbols = [
     'Multinomial',
     'VectorDiffeomixture',
     'VectorLaplaceDiag',
+    'VectorSinhArcsinhDiag',
     'WishartCholesky',
     'WishartFull',
     'TransformedDistribution',
