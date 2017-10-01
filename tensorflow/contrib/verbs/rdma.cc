@@ -126,7 +126,7 @@ int get_dev_active_port_count(ibv_device *device) {
 ibv_device* set_device() {
   ibv_device** dev_list;
   int dev_num, device_index, device_to_open = 0;
-  bool found_active_port = false;
+  int num_devs_with_active_port = 0;
   string env_p_rdma_device, str_port_num;
 
   dev_list = ibv_get_device_list(&dev_num);
@@ -150,15 +150,13 @@ ibv_device* set_device() {
     for (device_index = 0; device_index < dev_num; device_index++) {
       //get port_num
       if (get_dev_active_port_count(dev_list[device_index]) > 0){
-        CHECK(found_active_port != true)  << "More than one device with active port in the system. Please enter RDMA_DEVICE";
-      }
-      else {
+        num_devs_with_active_port++;
+        CHECK(num_devs_with_active_port <= 1)  << ". More than one device with active port in the system. Please enter RDMA_DEVICE";
         //found device with at least 1 active port
-        found_active_port = true;
         device_to_open = device_index;
       }
     }
-    CHECK(found_active_port) << "There is no active port in the system";
+    CHECK(num_devs_with_active_port > 0) << "There is no active port in the system";
     return dev_list[device_to_open];
   }
   CHECK(false) << "No device was set!";
