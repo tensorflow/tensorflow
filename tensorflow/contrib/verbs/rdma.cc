@@ -198,8 +198,7 @@ uint8_t set_port(ibv_context* context) {
       rc = ibv_query_port(context, port_index, &port_attr);
       CHECK(!rc) << "Failed to query the port" << port_index;
       if (port_attr.state == IBV_PORT_ACTIVE) {
-        port_num = port_index;
-        break;
+        return port_index;
       }
     }
     CHECK(port_index != device_att.phys_port_cnt) << "No active ports";
@@ -295,7 +294,7 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
       if (gid.raw[0] == 0 && gid.raw[1] == 0 && is_gid_type_roce_v2(context, port_num, i)) {
         if (v2_ip_num == 0) {
         //can be overwritten by RDMA_GID_INDEX later
-        gid_index = i;
+          gid_index = i;
         }
         v2_ip_num++;
       }
@@ -374,7 +373,7 @@ enum ibv_mtu set_mtu(uint8_t port_num, ibv_context* context) {
       CHECK(0) << "Error: MTU input value must be one of the following: 256, 512, 1024, 2048, 4096. MTU " << mtu << " is invalid\n";
       break;
     }
-    CHECK(mtu<port_attr.active_mtu) <<"MTU configuration for the QPs is larger than active MTU";
+    CHECK(mtu < port_attr.active_mtu) << "MTU configuration for the QPs is larger than active MTU";
   }
   else {
     mtu = port_attr.active_mtu;
@@ -392,7 +391,7 @@ RdmaParams params_init(ibv_context* context){
   params.timeout = (uint8_t)set_param(TIMEOUT_DEFAULT, "RDMA_TIMEOUT");
   params.retry_cnt = (uint8_t)set_param(RETRY_CNT_DEFAULT, "RDMA_RETRY_CNT");
   params.sl = (uint8_t)set_param(SL_DEFAULT, "RDMA_SL");
-  CHECK(params.sl<=7)<<"SL value is " << (int)params.sl <<". Valid values are 0-7.";
+  CHECK(params.sl <= 7) << "SL value is " << (int)params.sl << ". Valid values are 0-7.";
   params.mtu = set_mtu(params.port_num, context);
   return params;
 }
