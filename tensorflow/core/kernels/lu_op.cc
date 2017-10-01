@@ -47,18 +47,18 @@ class LuOp : public LinearAlgebraOp<Scalar> {
       return;
     }
     // Perform the actual LU decomposition.
-    /*
+    
     Eigen::FullPivLU<
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 
-        lu_decomposition;
-    */
+        lu_decomposition(input);
+    
     //lu_decomposition.compute(input);
     LOG(WARNING) << " in LU before outputs assignment.";
-    
+    /*
     Eigen::LLT<
     Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
       llt_decomposition(input); 
-    
+    */
     LOG(WARNING) << " factorization LU after outputs assignment.";
     //OP_REQUIRES(context, lu_decomposition.isInvertible() == true, errors::InvalidArgument(kErrMsg)); 
            
@@ -66,13 +66,13 @@ class LuOp : public LinearAlgebraOp<Scalar> {
     //LOG(WARNING) << "isInvertible? ";
     //std::cout<<lu_decomposition.matrixLU().template triangularView<Eigen::Upper>()<<std::endl;
     // Output the lower triangular in a dense form.
-    //outputs->at(0) = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
-    //outputs->at(1) = lu_decomposition.matrixLU().template triangularView<Eigen::Lower>();
-    OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
-                        errors::InvalidArgument(kErrMsg));
-    
+
     LOG(WARNING) << " before L assignment.";
-    outputs->at(0) = llt_decomposition.matrixL();
+    outputs->at(0) = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
+    //outputs->at(1) = lu_decomposition.matrixLU().template triangularView<Eigen::Lower>();
+    //OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success, errors::InvalidArgument(kErrMsg));
+    
+    //outputs->at(0) = llt_decomposition.matrixL();
     LOG(WARNING) << " after L assignment.";
     //outputs->at(1) = llt_decomposition.matrixU();
     LOG(WARNING) << " in LU after outputs assignment.";
