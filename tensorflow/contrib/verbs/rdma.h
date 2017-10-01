@@ -41,6 +41,7 @@ namespace tensorflow {
 #define TIMEOUT_DEFAULT     14
 #define RETRY_CNT_DEFAULT   7
 #define SL_DEFAULT          0
+#define TRAFFIC_CLASS       0
 
 struct RdmaParams{
   uint8_t port_num;
@@ -51,6 +52,7 @@ struct RdmaParams{
   uint8_t retry_cnt;
   uint8_t sl;
   enum ibv_mtu mtu;
+  uint8_t traffic_class;
 };
 // structure to save the address of remote channels.
 struct RdmaAddress {

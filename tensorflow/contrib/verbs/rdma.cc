@@ -381,6 +381,7 @@ RdmaParams params_init(ibv_context* context){
   params.sl = (uint8_t)set_param(SL_DEFAULT, "RDMA_SL");
   CHECK(params.sl <= 7) << "SL value is " << (int)params.sl << ". Valid values are 0-7.";
   params.mtu = set_mtu(params.port_num, context);
+  params.traffic_class = set_param(TRAFFIC_CLASS, "RDMA_TRAFFIC_CLASS");
   return params;
 }
 
@@ -803,6 +804,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.ah_attr.src_path_bits = 0;
     attr.ah_attr.port_num = adapter_->params_.port_num;
     attr.ah_attr.grh.sgid_index = adapter_->params_.sgid_index;
+    attr.ah_attr.grh.traffic_class = adapter_->params_.traffic_class;
 
     int r;
     CHECK(!(r = ibv_modify_qp(qp_, &attr,
