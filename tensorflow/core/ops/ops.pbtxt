@@ -10235,6 +10235,7 @@ op {
         type: DT_UINT8
         type: DT_FLOAT
         type: DT_HALF
+        type: DT_DOUBLE
       }
     }
   }

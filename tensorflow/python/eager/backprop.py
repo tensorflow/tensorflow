@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
+import operator
 import threading
 
 import six
@@ -37,6 +39,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
+
+# If over MIN_AGGREGATE_COUNT gradients are accumulated and the total
+# memory consumption is over MIN_AGGREGATE_BYTES, do an early aggregation
+# so as to release the gradient tensor to save memory.
+_MIN_AGGREGATE_COUNT = 4
+_MIN_AGGREGATE_BYTES = 128 * 1024 * 1024
 
 # Terminology:
 #
@@ -189,6 +197,39 @@ def _aggregate_grads(gradients):
     return ops.IndexedSlices(values, indices, dense_shape)
 
 
+def _add_new_grads(gradients, gradients_size, tid, grad):
+  """Adds a new gradient and maybe aggregate the gradients.
+
+  Args:
+    gradients: A dict map from tensor id to list of gradients.
+    gradients_size: A dict map from tensor id to its total units. Might
+       not be initialized.
+    tid: Tensor id.
+    grad: New gradient for the `tid`, either a Tensor or IndexedSlices.
+
+  Raises:
+    ValueError: if `grad` is neight Tensor nor IndexedSlices.
+  """
+  tensor_grads = gradients[tid]
+  tensor_grads.append(grad)
+  if len(tensor_grads) < _MIN_AGGREGATE_COUNT:
+    return
+  elif tid not in gradients_size:
+    if isinstance(grad, ops.Tensor):
+      size = functools.reduce(operator.mul, grad._shape_tuple(), 1)  # pylint: disable=protected-access
+    elif isinstance(grad, ops.IndexedSlices):
+      size = functools.reduce(operator.mul, grad.values._shape_tuple(), 1)  # pylint: disable=protected-access
+    else:
+      raise ValueError("Unexpected gradient type: %s" % type(grad))
+    gradients_size[tid] = size
+  else:
+    size = gradients_size[tid]
+
+  # For simplicity, assume each element to be 4 bytes now.
+  if len(tensor_grads) * size * 4 > _MIN_AGGREGATE_BYTES:
+    gradients[tid] = [_aggregate_grads(tensor_grads)]
+
+
 def imperative_grad(
     target,
     sources,
@@ -229,6 +270,7 @@ def imperative_grad(
   ready_ops = _initialize_backprop_stack(op_to_entry, op_missing_tensor)
   gradients = _initial_gradients(target, output_gradients,
                                  tensor_usage_counts)
+  gradients_size = dict()
   # Now exhaust the backprop stack
   while ready_ops:
     op = ready_ops.pop()
@@ -254,7 +296,7 @@ def imperative_grad(
                     else in_gradients)
     for i, t in enumerate(op_trace.input_ids):
       if in_gradients[i] is not None:
-        gradients[t].append(in_gradients[i])
+        _add_new_grads(gradients, gradients_size, t, in_gradients[i])
       if tensor_usage_counts.get(t, 0) > 0:
         tensor_usage_counts[t] -= 1
         if (t in tensor_to_op
