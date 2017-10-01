@@ -113,7 +113,7 @@ StatusOr<bool> ParallelizationPreparation::RunParallelTaskAssignment(
   HloCostAnalysis cost_analysis(shape_size_);
   HloComputation* computation = module->entry_computation();
   Status cost_status = computation->root_instruction()->Accept(&cost_analysis);
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     // Currently, we do not assign parallel tasks to instructions with at least
     // one of the following properties:
     // *) Internal threading (library calls to kConv, kDot, and kCustomCall).
@@ -136,7 +136,7 @@ StatusOr<bool> ParallelizationPreparation::RunParallelTaskAssignment(
 
     // Calculate target parallel task count in [1, max_parallelism_].
     const int64 target_parallel_task_count = GetTargetParallelTaskCount(
-        cost_status.ok() ? &cost_analysis : nullptr, instruction.get());
+        cost_status.ok() ? &cost_analysis : nullptr, instruction);
     if (target_parallel_task_count == 1) {
       continue;
     }

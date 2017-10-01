@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include <cstring>
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/env.h"
@@ -398,6 +399,40 @@ TEST(FileBlockCacheTest, Prune) {
   } while (cache.CacheSize() == 8 && Env::Default()->NowSeconds() - start < 3);
   // The cache should now be empty.
   EXPECT_EQ(cache.CacheSize(), 0);
+}
+
+TEST(FileBlockCacheTest, ParallelReads) {
+  // This fetcher won't respond until either `callers` threads are calling it
+  // concurrently (at which point it will respond with success to all callers),
+  // or 10 seconds have elapsed (at which point it will respond with an error).
+  const int callers = 4;
+  BlockingCounter counter(callers);
+  auto fetcher = [&counter](const string& filename, size_t offset, size_t n,
+                            std::vector<char>* out) {
+    counter.DecrementCount();
+    if (!counter.WaitFor(std::chrono::seconds(10))) {
+      // This avoids having the test time out, which is harder to debug.
+      return errors::FailedPrecondition("desired concurrency not reached");
+    }
+    out->clear();
+    out->resize(n, 'x');
+    return Status::OK();
+  };
+  const int block_size = 8;
+  FileBlockCache cache(block_size, 2 * callers * block_size, 0, fetcher);
+  std::vector<std::unique_ptr<Thread>> threads;
+  for (int i = 0; i < callers; i++) {
+    threads.emplace_back(
+        Env::Default()->StartThread({}, "caller", [&cache, i, block_size]() {
+          std::vector<char> out;
+          TF_EXPECT_OK(cache.Read("a", i * block_size, block_size, &out));
+          std::vector<char> x(block_size, 'x');
+          EXPECT_EQ(out, x);
+        }));
+  }
+  // The `threads` destructor blocks until the threads can be joined, once their
+  // respective reads finish (which happens once they are all concurrently being
+  // executed, or 10 seconds have passed).
 }
 
 }  // namespace

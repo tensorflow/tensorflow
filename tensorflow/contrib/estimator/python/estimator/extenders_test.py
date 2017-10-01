@@ -22,11 +22,12 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.estimator.python.estimator import extenders
-from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import linear
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -82,7 +83,7 @@ class AddMetricsTest(test.TestCase):
       self.assertIn('x', features)
       self.assertIsNotNone(labels)
       self.assertIn('logistic', predictions)
-      self.assertTrue(isinstance(config, run_config.RunConfig))
+      self.assertTrue(isinstance(config, estimator_lib.RunConfig))
       return {}
 
     estimator = extenders.add_metrics(estimator, metric_fn)
@@ -98,7 +99,7 @@ class AddMetricsTest(test.TestCase):
       self.assertIn('x', features)
       self.assertIsNotNone(labels)
       self.assertIn('logistic', predictions)
-      self.assertTrue(isinstance(config, run_config.RunConfig))
+      self.assertTrue(isinstance(config, estimator_lib.RunConfig))
       return {}
 
     estimator = extenders.add_metrics(estimator, metric_fn)
@@ -157,6 +158,142 @@ class ClipGradientsByNormTest(test.TestCase):
     optimizer = extenders.clip_gradients_by_norm(
         training.GradientDescentOptimizer(1.0), clip_norm=3.)
     self.assertEqual('ClipByNormGradientDescent', optimizer.get_name())
+
+
+class ForwardFeaturesTest(test.TestCase):
+  """Tests forward_features."""
+
+  def test_forward_single_key(self):
+
+    def input_fn():
+      return {'x': [[3.], [5.]], 'id': [[101], [102]]}, [[1.], [2.]]
+
+    estimator = linear.LinearRegressor([fc.numeric_column('x')])
+    estimator.train(input_fn=input_fn, steps=1)
+
+    self.assertNotIn('id', next(estimator.predict(input_fn=input_fn)))
+    estimator = extenders.forward_features(estimator, 'id')
+    predictions = next(estimator.predict(input_fn=input_fn))
+    self.assertIn('id', predictions)
+    self.assertEqual(101, predictions['id'])
+
+  def test_forward_list(self):
+
+    def input_fn():
+      return {'x': [[3.], [5.]], 'id': [[101], [102]]}, [[1.], [2.]]
+
+    estimator = linear.LinearRegressor([fc.numeric_column('x')])
+    estimator.train(input_fn=input_fn, steps=1)
+
+    self.assertNotIn('id', next(estimator.predict(input_fn=input_fn)))
+    estimator = extenders.forward_features(estimator, ['x', 'id'])
+    predictions = next(estimator.predict(input_fn=input_fn))
+    self.assertIn('id', predictions)
+    self.assertIn('x', predictions)
+    self.assertEqual(101, predictions['id'])
+    self.assertEqual(3., predictions['x'])
+
+  def test_forward_all(self):
+
+    def input_fn():
+      return {'x': [[3.], [5.]], 'id': [[101], [102]]}, [[1.], [2.]]
+
+    estimator = linear.LinearRegressor([fc.numeric_column('x')])
+    estimator.train(input_fn=input_fn, steps=1)
+
+    self.assertNotIn('id', next(estimator.predict(input_fn=input_fn)))
+    self.assertNotIn('x', next(estimator.predict(input_fn=input_fn)))
+    estimator = extenders.forward_features(estimator)
+    predictions = next(estimator.predict(input_fn=input_fn))
+    self.assertIn('id', predictions)
+    self.assertIn('x', predictions)
+    self.assertEqual(101, predictions['id'])
+    self.assertEqual(3., predictions['x'])
+
+  def test_key_should_be_string(self):
+    estimator = linear.LinearRegressor([fc.numeric_column('x')])
+    with self.assertRaisesRegexp(TypeError, 'keys should be either a string'):
+      extenders.forward_features(estimator, estimator)
+
+  def test_key_should_be_list_of_string(self):
+    estimator = linear.LinearRegressor([fc.numeric_column('x')])
+    with self.assertRaisesRegexp(TypeError, 'should be a string'):
+      extenders.forward_features(estimator, ['x', estimator])
+
+  def test_key_should_be_in_features(self):
+
+    def input_fn():
+      return {'x': [[3.], [5.]], 'id': [[101], [102]]}, [[1.], [2.]]
+
+    estimator = linear.LinearRegressor([fc.numeric_column('x')])
+    estimator.train(input_fn=input_fn, steps=1)
+
+    estimator = extenders.forward_features(estimator, 'y')
+    with self.assertRaisesRegexp(ValueError,
+                                 'keys should be exist in features'):
+      next(estimator.predict(input_fn=input_fn))
+
+  def test_forwarded_feature_should_not_be_a_sparse_tensor(self):
+
+    def input_fn():
+      return {
+          'x': [[3.], [5.]],
+          'id':
+              sparse_tensor.SparseTensor(
+                  values=['1', '2'],
+                  indices=[[0, 0], [1, 0]],
+                  dense_shape=[2, 1])
+      }, [[1.], [2.]]
+
+    estimator = linear.LinearRegressor([fc.numeric_column('x')])
+    estimator.train(input_fn=input_fn, steps=1)
+
+    estimator = extenders.forward_features(estimator)
+    with self.assertRaisesRegexp(ValueError,
+                                 'Forwarded feature.* should be a Tensor.'):
+      next(estimator.predict(input_fn=input_fn))
+
+  def test_predictions_should_be_dict(self):
+
+    def input_fn():
+      return {'x': [[3.], [5.]], 'id': [[101], [102]]}
+
+    def model_fn(features, mode):
+      del features
+      global_step = training.get_global_step()
+      return estimator_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant([5.]),
+          predictions=constant_op.constant([5.]),
+          train_op=global_step.assign_add(1))
+
+    estimator = estimator_lib.Estimator(model_fn=model_fn)
+    estimator.train(input_fn=input_fn, steps=1)
+
+    estimator = extenders.forward_features(estimator)
+    with self.assertRaisesRegexp(ValueError, 'Predictions should be a dict'):
+      next(estimator.predict(input_fn=input_fn))
+
+  def test_should_not_conflict_with_existing_predictions(self):
+
+    def input_fn():
+      return {'x': [[3.], [5.]], 'id': [[101], [102]]}
+
+    def model_fn(features, mode):
+      del features
+      global_step = training.get_global_step()
+      return estimator_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant([5.]),
+          predictions={'x': constant_op.constant([5.])},
+          train_op=global_step.assign_add(1))
+
+    estimator = estimator_lib.Estimator(model_fn=model_fn)
+    estimator.train(input_fn=input_fn, steps=1)
+
+    estimator = extenders.forward_features(estimator)
+    with self.assertRaisesRegexp(ValueError, 'Cannot forward feature key'):
+      next(estimator.predict(input_fn=input_fn))
 
 
 if __name__ == '__main__':

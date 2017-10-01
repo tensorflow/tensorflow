@@ -129,6 +129,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
+        ":export_strategy",
         "//tensorflow/python:training",
         "@six_archive//:six",
     ],
@@ -140,8 +141,10 @@ py_test(
     srcs = ["training_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":export_strategy",
         ":training",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
     ],
 )
 

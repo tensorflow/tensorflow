@@ -242,16 +242,18 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       buffer_size = 256 << 10;  // 256 kB as default.
     }
 
-    *output = new Dataset(std::move(filenames), header_bytes, record_bytes,
+    *output = new Dataset(ctx, std::move(filenames), header_bytes, record_bytes,
                           footer_bytes, buffer_size);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    explicit Dataset(std::vector<string> filenames, int64 header_bytes,
-                     int64 record_bytes, int64 footer_bytes, int64 buffer_size)
-        : filenames_(std::move(filenames)),
+    explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
+                     int64 header_bytes, int64 record_bytes, int64 footer_bytes,
+                     int64 buffer_size)
+        : GraphDatasetBase(ctx),
+          filenames_(std::move(filenames)),
           header_bytes_(header_bytes),
           record_bytes_(record_bytes),
           footer_bytes_(footer_bytes),
@@ -276,6 +278,26 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
 
     string DebugString() override {
       return "FixedLengthRecordDatasetOp::Dataset";
+    }
+
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* filenames = nullptr;
+      Node* header_bytes = nullptr;
+      Node* record_bytes = nullptr;
+      Node* footer_bytes = nullptr;
+      Node* buffer_size = nullptr;
+      TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
+      TF_RETURN_IF_ERROR(b->AddScalar(header_bytes_, &header_bytes));
+      TF_RETURN_IF_ERROR(b->AddScalar(record_bytes_, &record_bytes));
+      TF_RETURN_IF_ERROR(b->AddScalar(footer_bytes_, &footer_bytes));
+      TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this,
+          {filenames, header_bytes, record_bytes, footer_bytes, buffer_size},
+          output));
+      return Status::OK();
     }
 
    private:
@@ -334,31 +356,31 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       }
 
      protected:
-      Status SaveStateInternal(OpKernelContext* ctx,
-                               IteratorBundleWriter* writer) override {
+      Status SaveInternal(OpKernelContext* ctx,
+                          IteratorBundleWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar<int64>(
-            current_file_index_, full_name("current_file_index")));
+            full_name("current_file_index"), current_file_index_));
 
         // `input_buffer_` is empty if
         // 1. GetNext has not been called even once.
         // 2. All files have been read and iterator has been exhausted.
         int64 current_pos = input_buffer_ ? input_buffer_->Tell() : -1;
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar<int64>(current_pos, full_name("current_pos")));
+            writer->WriteScalar<int64>(full_name("current_pos"), current_pos));
         return Status::OK();
       }
 
-      Status RestoreStateInternal(OpKernelContext* ctx,
-                                  IteratorBundleReader* reader) override {
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorBundleReader* reader) override {
         mutex_lock l(mu_);
         int64 current_file_index;
         TF_RETURN_IF_ERROR(reader->ReadScalar<int64>(
-            &current_file_index, full_name("current_file_index")));
+            full_name("current_file_index"), &current_file_index));
         current_file_index_ = size_t(current_file_index);
         int64 current_pos;
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar<int64>(&current_pos, full_name("current_pos")));
+            reader->ReadScalar<int64>(full_name("current_pos"), &current_pos));
 
         // Seek to current_pos.
         input_buffer_.reset();

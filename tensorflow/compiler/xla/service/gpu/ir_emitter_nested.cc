@@ -98,10 +98,10 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
       llvm::ReturnInst::Create(function->getContext(), entry_bb));
 
   std::vector<const HloInstruction*> non_io_hlos;
-  for (const auto& hlo : nested_computation.instructions()) {
+  for (const auto* hlo : nested_computation.instructions()) {
     if (hlo->opcode() != HloOpcode::kParameter &&
-        hlo.get() != nested_computation.root_instruction()) {
-      non_io_hlos.push_back(hlo.get());
+        hlo != nested_computation.root_instruction()) {
+      non_io_hlos.push_back(hlo);
     }
   }
   bindings_.EmitBasePointersForHlos(*io_hlos, non_io_hlos);

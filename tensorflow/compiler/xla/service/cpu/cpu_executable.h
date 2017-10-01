@@ -49,8 +49,8 @@ class CpuExecutable : public Executable {
  public:
   CpuExecutable(
       std::unique_ptr<SimpleOrcJIT> jit,
-      std::unique_ptr<BufferAssignment> assignment,
-      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<const HloModule> hlo_module,
       const string& entry_function_name,
       std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx);
   ~CpuExecutable() override {}
@@ -118,10 +118,10 @@ class CpuExecutable : public Executable {
   const PointsToSet& GetRootPointsToSet() const;
 
   // The JIT containing compiled modules.
-  std::unique_ptr<SimpleOrcJIT> jit_;
+  const std::unique_ptr<SimpleOrcJIT> jit_;
 
   // Buffer assignment for the buffers we need to allocate.
-  std::unique_ptr<BufferAssignment> assignment_;
+  const std::unique_ptr<const BufferAssignment> assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving

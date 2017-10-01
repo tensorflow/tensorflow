@@ -289,7 +289,7 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
       CHECK(node->node_case() == TreeNode::kLeaf);
       return node->mutable_leaf();
     } else {
-      CHECK(false) << "Unable to center bias on an already grown ensemble";
+      LOG(FATAL) << "Unable to center bias on an already grown ensemble";
     }
   }
 

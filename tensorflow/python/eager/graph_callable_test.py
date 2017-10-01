@@ -50,7 +50,7 @@ class GraphCallableTest(test.TestCase):
     @graph_callable.graph_callable(
         [graph_callable.ShapeAndDtype(shape=(1), dtype=dtypes.float32)])
     def my_function(x):
-      s = x.get_shape()
+      _ = x.get_shape()
       v = variable_scope.get_variable(
           "v", initializer=init_ops.zeros_initializer(), shape=[x.shape[0]])
       return v + x
@@ -59,6 +59,7 @@ class GraphCallableTest(test.TestCase):
                      my_function(
                          constant_op.constant([2.],
                                               dtype=dtypes.float32)).numpy())
+
   def testMismatchingNumArgs(self):
     # pylint: disable=anomalous-backslash-in-string
     with self.assertRaisesRegexp(TypeError,

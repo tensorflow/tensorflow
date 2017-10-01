@@ -443,9 +443,13 @@ CUDA_ATOMIC_WRAPPER(Add, std::complex<float>) {
   CudaAtomicAdd(&(addr_as_float2->x), val_as_float2->x);
   CudaAtomicAdd(&(addr_as_float2->y), val_as_float2->y);
 #else
-  static_assert(false,
+  static_assert(sizeof(std::complex<float>) == 2 * sizeof(float),
                 "Unable to compile CudaAtomicAdd for complex64 because "
-                "architectures < sm35 are not supported");
+                "sizeof(complex64) != 2*sizeof(float32)");
+  float* addr_as_float = reinterpret_cast<float*>(address);
+  float* val_as_float = reinterpret_cast<float*>(&val);
+  CudaAtomicAdd(addr_as_float, *val_as_float);
+  CudaAtomicAdd(addr_as_float + 1, *(val_as_float + 1));
 #endif
 #endif
   return *address;
@@ -462,9 +466,13 @@ CUDA_ATOMIC_WRAPPER(Add, complex128) {
   CudaAtomicAdd(&(addr_as_double2->x), val_as_double2->x);
   CudaAtomicAdd(&(addr_as_double2->y), val_as_double2->y);
 #else
-  static_assert(false,
+  static_assert(sizeof(std::complex<double>) == 2 * sizeof(double),
                 "Unable to compile CudaAtomicAdd for complex128 because "
-                "architectures < sm35 are not supported");
+                "sizeof(complex128) != 2*sizeof(float64)");
+  double* addr_as_double = reinterpret_cast<double*>(address);
+  double* val_as_double = reinterpret_cast<double*>(&val);
+  CudaAtomicAdd(addr_as_double, *val_as_double);
+  CudaAtomicAdd(addr_as_double + 1, *(val_as_double + 1));
 #endif
 #endif
   return *address;

@@ -80,15 +80,15 @@ Status FlattenNode(const CallGraphNode& node) {
     while (!worklist.empty()) {
       auto current = worklist.back();
       worklist.pop_back();
-      for (auto& instruction : current->instructions()) {
-        if (GetInstructionCallContext(instruction.get()) !=
+      for (auto* instruction : current->instructions()) {
+        if (GetInstructionCallContext(instruction) !=
             CallContext::kSequential) {
           continue;
         }
         for (auto callee : instruction->called_computations()) {
           HloComputation* callee_clone =
               module->AddEmbeddedComputation(callee->Clone());
-          ReplaceCalledComputation(instruction.get(), callee, callee_clone);
+          ReplaceCalledComputation(instruction, callee, callee_clone);
           worklist.push_back(callee_clone);
         }
       }

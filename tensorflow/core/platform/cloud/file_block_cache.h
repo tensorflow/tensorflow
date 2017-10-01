@@ -134,10 +134,25 @@ class FileBlockCache {
   /// \brief The block map type for the file block cache.
   ///
   /// The block map is an ordered map from Key to Block.
-  typedef std::map<Key, std::unique_ptr<Block>> BlockMap;
+  typedef std::map<Key, std::shared_ptr<Block>> BlockMap;
 
   /// Prune the cache by removing files with expired blocks.
   void Prune() LOCKS_EXCLUDED(mu_);
+
+  /// Look up a Key in the block cache.
+  std::shared_ptr<Block> Lookup(const Key& key) LOCKS_EXCLUDED(mu_);
+
+  /// Insert a block in the block cache with the given key.
+  std::shared_ptr<FileBlockCache::Block> Insert(const Key& key,
+                                                std::shared_ptr<Block> block)
+      LOCKS_EXCLUDED(mu_);
+
+  /// Trim the block cache to make room for another entry.
+  void Trim() LOCKS_EXCLUDED(mu_);
+
+  /// Update LRU and LRA iterators for the block at `key`.
+  void UpdateLRU(const Key& key, const std::shared_ptr<Block>& block)
+      LOCKS_EXCLUDED(mu_);
 
   /// Remove all blocks of a file, with mu_ already held.
   void RemoveFile_Locked(const string& filename) EXCLUSIVE_LOCKS_REQUIRED(mu_);

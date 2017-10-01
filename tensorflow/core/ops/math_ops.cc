@@ -198,7 +198,7 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
 
 #define UNARY_GRADIENT_COMPLEX()                               \
   Input("y: T")                                                \
-      .Input("dy: T")                                           \
+      .Input("dy: T")                                          \
       .Output("z: T")                                          \
       .Attr("T: {half, float, double, complex64, complex128}") \
       .SetShapeFn(shape_inference::UnchangedShape)

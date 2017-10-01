@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
-#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -179,7 +178,7 @@ class CApiFunctionTest : public ::testing::Test {
                bool expect_failure = false) {
     ASSERT_EQ(func_, nullptr);
     const char** output_names_ptr = ToArray(output_names);
-    func_ = TF_GraphToFunction(func_graph_, func_name_, num_opers,
+    func_ = TF_GraphToFunction(func_graph_, func_name_, false, num_opers,
                                num_opers == -1 ? nullptr : opers.data(),
                                inputs.size(), inputs.data(), outputs.size(),
                                outputs.data(), output_names_ptr,
@@ -364,12 +363,10 @@ class CApiFunctionTest : public ::testing::Test {
     TF_DeleteFunction(func_);
 
     // fdef -> func_
-    TF_Buffer* buf = TF_NewBuffer();
-    Status s = MessageToBuffer(fdef, buf);
-    ASSERT_EQ(Status::OK(), s) << s.error_message();
-    func_ = TF_FunctionImportFunctionDef(buf, s_);
+    string buf;
+    ASSERT_TRUE(fdef.SerializeToString(&buf));
+    func_ = TF_FunctionImportFunctionDef(buf.data(), buf.size(), s_);
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-    TF_DeleteBuffer(buf);
   }
 
   void GetAttr(const char* attr_name, AttrValue* out_attr) {
@@ -1097,7 +1094,7 @@ TEST_F(CApiFunctionTest, InvalidInputTensor_HighIndex) {
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
   DefineT(-1, {}, {{feed1, 0}, {feed2, 2}}, {{add, 0}}, {}, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s_));
   EXPECT_EQ(string("Node 'feed2' (type: 'Placeholder', num of outputs: 1) does "
                    "not have output 2\n\tEncountered while processing "
                    "input 1 into function 'MyFunc'"),
@@ -1134,7 +1131,7 @@ TEST_F(CApiFunctionTest, InvalidOutputTensor_HighIndex) {
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
   DefineT(-1, {}, {{feed1, 0}, {feed2, 0}}, {{add, 3}}, {}, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s_));
   EXPECT_EQ(string("Node 'add' (type: 'AddN', num of outputs: 1) does "
                    "not have output 3\n\tEncountered while processing "
                    "output 0 from function 'MyFunc'"),
@@ -1200,7 +1197,8 @@ TEST_F(CApiFunctionTest, OutputOpNotInBody) {
 }
 
 void DefineFunction(const char* name, TF_Function** func,
-                    const char* description = nullptr) {
+                    const char* description = nullptr,
+                    bool append_hash = false) {
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
       TF_NewGraph(), TF_DeleteGraph);
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
@@ -1211,7 +1209,7 @@ void DefineFunction(const char* name, TF_Function** func,
 
   TF_Output inputs[] = {{feed, 0}};
   TF_Output outputs[] = {{neg, 0}};
-  *func = TF_GraphToFunction(func_graph.get(), name, -1,
+  *func = TF_GraphToFunction(func_graph.get(), name, append_hash, -1,
                              /*opers=*/nullptr, 1, inputs, 1, outputs,
                              /*output_names=*/nullptr,
                              /*opts=*/nullptr, description, s.get());
@@ -1405,9 +1403,7 @@ TEST_F(CApiFunctionTest, ImportFunctionDef) {
 TEST_F(CApiFunctionTest, ImportFunctionDef_InvalidProto) {
   // Invalid protobuf data (protos cannot start with 4 bytes of zeros)
   char proto[] = {0x0, 0x0, 0x0, 0x0};
-  TF_Buffer* buf = TF_NewBufferFromString(proto, 4);
-  func_ = TF_FunctionImportFunctionDef(buf, s_);
-  TF_DeleteBuffer(buf);
+  func_ = TF_FunctionImportFunctionDef(proto, 4, s_);
   EXPECT_TRUE(func_ == nullptr);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("Invalid FunctionDef given to TF_FunctionImportFunctionDef"),
@@ -1451,6 +1447,22 @@ TEST_F(CApiFunctionTest, Description) {
   tensorflow::FunctionDef fdef;
   ASSERT_TRUE(GetFunctionDef(func_, &fdef));
   ASSERT_EQ(string("Return something"), fdef.signature().description());
+}
+
+TEST_F(CApiFunctionTest, Name) {
+  DefineFunction("long_func_name", &func_, "Return something",
+                 /*append_hash=*/false);
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+  ASSERT_EQ(string("long_func_name"), fdef.signature().name());
+}
+
+TEST_F(CApiFunctionTest, AppendHash) {
+  DefineFunction("func_name_base", &func_, "Return something",
+                 /*append_hash=*/true);
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+  ASSERT_EQ(string("func_name_base_qaJ8jA8UmGY"), fdef.signature().name());
 }
 
 }  // namespace

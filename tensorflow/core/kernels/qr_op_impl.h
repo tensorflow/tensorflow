@@ -166,23 +166,27 @@ class QrOpGpu : public AsyncOpKernel {
       return;
     }
 
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+
     // Allocate temporaries.
     Tensor input_transposed;
     TensorShape transposed_shape = input.shape();
     transposed_shape.set_dim(ndims - 2, input.dim_size(ndims - 1));
     transposed_shape.set_dim(ndims - 1, input.dim_size(ndims - 2));
+
     OP_REQUIRES_OK_ASYNC(
         context,
-        context->allocate_temp(DataTypeToEnum<Scalar>::value, transposed_shape,
-                               &input_transposed),
+        solver->allocate_scoped_tensor(DataTypeToEnum<Scalar>::value,
+                                       transposed_shape, &input_transposed),
         done);
 
     Tensor tau;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_temp(DataTypeToEnum<Scalar>::value,
-                               TensorShape({batch_size, min_size}), &tau),
-        done);
+    OP_REQUIRES_OK_ASYNC(context,
+                         solver->allocate_scoped_tensor(
+                             DataTypeToEnum<Scalar>::value,
+                             TensorShape({batch_size, min_size}), &tau),
+                         done);
 
     // Transpose input, since cuSolver uses column-major, while TensorFlow uses
     // row-major storage.
@@ -194,9 +198,8 @@ class QrOpGpu : public AsyncOpKernel {
         context, DoTranspose(device, input, perm, &input_transposed), done);
 
     // Compute QR decomposition in-place in input_transposed.
-    CudaSolver solver(context);
     std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "geqrf");
+    dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "geqrf"));
     auto input_transposed_reshaped =
         input_transposed.flat_inner_dims<Scalar, 3>();
     auto tau_matrix = tau.matrix<Scalar>();
@@ -204,9 +207,9 @@ class QrOpGpu : public AsyncOpKernel {
     for (int batch = 0; batch < batch_size; ++batch) {
       OP_REQUIRES_OK_ASYNC(
           context,
-          solver.Geqrf(m, n, &input_transposed_reshaped(batch, 0, 0), m,
-                       &tau_matrix(batch, 0),
-                       dev_info.back().mutable_data() + batch),
+          solver->Geqrf(m, n, &input_transposed_reshaped(batch, 0, 0), m,
+                        &tau_matrix(batch, 0),
+                        dev_info.back().mutable_data() + batch),
           done);
     }
 
@@ -223,10 +226,10 @@ class QrOpGpu : public AsyncOpKernel {
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.Geam(CUBLAS_OP_T, CUBLAS_OP_N, n,
-                        full_matrices_ ? m : min_size, &alpha,
-                        &input_transposed_reshaped(batch, 0, 0), m, &beta,
-                        dummy, n, &r_reshaped(batch, 0, 0), n),
+            solver->Geam(CUBLAS_OP_T, CUBLAS_OP_N, n,
+                         full_matrices_ ? m : min_size, &alpha,
+                         &input_transposed_reshaped(batch, 0, 0), m, &beta,
+                         dummy, n, &r_reshaped(batch, 0, 0), n),
             done);
       }
     }
@@ -253,10 +256,10 @@ class QrOpGpu : public AsyncOpKernel {
         // zeroed by Geqrf above.
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.Unmqr(CUBLAS_SIDE_LEFT, CublasAdjointOp<Scalar>(), m, m,
-                         min_size, &input_transposed_reshaped(batch, 0, 0), m,
-                         &tau_matrix(batch, 0), &q_reshaped(batch, 0, 0), m,
-                         dev_info.back().mutable_data() + batch),
+            solver->Unmqr(CUBLAS_SIDE_LEFT, CublasAdjointOp<Scalar>(), m, m,
+                          min_size, &input_transposed_reshaped(batch, 0, 0), m,
+                          &tau_matrix(batch, 0), &q_reshaped(batch, 0, 0), m,
+                          dev_info.back().mutable_data() + batch),
             done);
       }
       if (Eigen::NumTraits<Scalar>::IsComplex) {
@@ -267,11 +270,11 @@ class QrOpGpu : public AsyncOpKernel {
     } else {
       // Generate m x n matrix Q. In this case we can use the more efficient
       // algorithm in Ungqr to generate Q in place.
-      dev_info.emplace_back(context, batch_size, "orgqr");
+      dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "orgqr"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.Ungqr(
+            solver->Ungqr(
                 m, n, min_size, &input_transposed_reshaped(batch, 0, 0), m,
                 &tau_matrix(batch, 0), dev_info.back().mutable_data() + batch),
             done);
@@ -281,20 +284,8 @@ class QrOpGpu : public AsyncOpKernel {
     }
 
     // Asynchronously check return status from cuSolver kernels.
-    TensorReference input_transposed_ref(input_transposed);
-    TensorReference tau_ref(tau);
-    auto info_checker = [context, dev_info, input_transposed_ref, tau_ref,
-                         done](const Status& status,
-                               const std::vector<HostLapackInfo>& host_infos) {
-      input_transposed_ref.Unref();
-      tau_ref.Unref();
-      OP_REQUIRES_OK_ASYNC(context, status, done);
-      done();
-    };
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
-        done);
+    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                    std::move(done));
   }
 
  private:
