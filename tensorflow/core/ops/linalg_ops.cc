@@ -47,17 +47,7 @@ Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
   c->set_output(0, out);
   return Status::OK();
 }
-
-// TOREMOVE
-Status BatchUnchangedSquareShapeFnTmp(InferenceContext* c) {
-  ShapeHandle out0;
-  //ShapeHandle out1;
-  //TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &out));
-  c->set_output(0, out0);
-  //c->set_output(1, out1);
-  return Status::OK();
-}
-
+  
 // The first input is [...,M,N] and second input is either [...,M,K] or [...,M].
 // Output is [...,N,K] or [...,N]. If <square>, then input is [...,M,M].
 Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
@@ -155,38 +145,10 @@ Status QrShapeFn(InferenceContext* c) {
 // First and second outputs are:
 //   [...,M,M]; [...,M,M]
 Status LuShapeFn(InferenceContext* c) {
-  /*
-  ShapeHandle input;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
-  DimensionHandle m = c->Dim(input, -2);  
-  //DimensionHandle p;  
-  ShapeHandle batch_shape;
-  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
   ShapeHandle l_shape;
-  ShapeHandle u_shape;     
-  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &l_shape));
-  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &u_shape));  
+  ShapeHandle u_shape;
   c->set_output(0, l_shape);
   c->set_output(1, u_shape);
-  LOG(WARNING) << "In LuShapeFu";
-  return Status::OK();
-  */
-  ShapeHandle input;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
-  DimensionHandle m = c->Dim(input, -2);
-  DimensionHandle n = c->Dim(input, -1);
-  DimensionHandle p;
-  TF_RETURN_IF_ERROR(c->Min(m, n, &p));
-  ShapeHandle batch_shape;
-  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
-  ShapeHandle q_shape;
-  ShapeHandle r_shape;
-   
-  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &q_shape));
-  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, n), &r_shape));
-  
-  c->set_output(0, q_shape);
-  c->set_output(1, r_shape);
   return Status::OK();
 }
 
@@ -563,16 +525,17 @@ full_matrices: If true, compute full-sized `q` and `r`. If false
   (the default), compute only the leading `P` columns of `q`.
 )doc");
 
-//     .SetShapeFn(LuShapeFn)  
+// .SetShapeFn(LuShapeFn)      .SetShapeFn(BatchUnchangedSquareShapeFnTmp)    
 //.Output("u: T") 
 //u: Shape is `[..., M, M]`.
 
 
 REGISTER_OP("Lu")
     .Input("input: T")
-    .Output("output: T")
+    .Output("l: T")
+    .Output("u: T")
     .Attr("T: {double, float, complex64, complex128}")
-    .SetShapeFn(BatchUnchangedSquareShapeFnTmp)    
+    .SetShapeFn(LuShapeFn)  
     .Doc(R"doc(
 Computes the LU decomposition of one or more square matrices.
 
@@ -585,7 +548,8 @@ The output is a tensor of the same shape as the input
 containing the LU decompositions for all input submatrices `[..., :, :]`.
 
 input: Shape is `[..., M, M]`.
-output: Shape is `[..., M, M]`.
+l: Shape is `[..., M, M]`.
+u: Shape is `[..., M, M]`.
 )doc");
 
 REGISTER_OP("Svd")

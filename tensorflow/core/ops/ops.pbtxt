@@ -11860,8 +11860,13 @@ op {
     type_attr: "T"
   }
   output_arg {
-    name: "output"
+    name: "l"
     description: "The lower triangular matrix."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "u"
+    description: "The upper triangular matrix."
     type_attr: "T"
   }
   attr {

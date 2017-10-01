@@ -15,7 +15,6 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Cholesky"
 #include "third_party/eigen3/Eigen/LU"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -39,6 +38,14 @@ class LuOp : public LinearAlgebraOp<Scalar> {
   INHERIT_LINALG_TYPEDEFS(Scalar);
 
   explicit LuOp(OpKernelConstruction* context) : Base(context) {}
+ 
+  //using TensorShapes = typename Base::TensorShapes;
+  
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
+    int64 m = input_matrix_shapes[0].dim_size(0); 
+    return TensorShapes({TensorShape({m, m}), TensorShape({m, m})});
+  }
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {    
@@ -52,31 +59,12 @@ class LuOp : public LinearAlgebraOp<Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 
         lu_decomposition(input);
     
-    //lu_decomposition.compute(input);
-    LOG(WARNING) << " in LU before outputs assignment.";
-    /*
-    Eigen::LLT<
-    Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-      llt_decomposition(input); 
-    */
-    LOG(WARNING) << " factorization LU after outputs assignment.";
-    //OP_REQUIRES(context, lu_decomposition.isInvertible() == true, errors::InvalidArgument(kErrMsg)); 
-           
+    OP_REQUIRES(context, lu_decomposition.isInvertible() == true, errors::InvalidArgument(kErrMsg));
+    //std::cout<<lu_decomposition.permutationP()<<std::endl;
     // Output the lower triangular in a dense form.
-    //LOG(WARNING) << "isInvertible? ";
-    //std::cout<<lu_decomposition.matrixLU().template triangularView<Eigen::Upper>()<<std::endl;
-    // Output the lower triangular in a dense form.
-
-    LOG(WARNING) << " before L assignment.";
-    outputs->at(0) = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
-    //outputs->at(1) = lu_decomposition.matrixLU().template triangularView<Eigen::Lower>();
-    //OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success, errors::InvalidArgument(kErrMsg));
-    
-    //outputs->at(0) = llt_decomposition.matrixL();
-    LOG(WARNING) << " after L assignment.";
-    //outputs->at(1) = llt_decomposition.matrixU();
-    LOG(WARNING) << " in LU after outputs assignment.";
-    //return;
+    outputs->at(0) = lu_decomposition.matrixLU();//.template triangularView<Eigen::StrictlyLower>();
+    outputs->at(1) = lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
+    //LOG(WARNING) << " in LU after outputs assignment.";
   }
 };
 
