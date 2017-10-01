@@ -112,11 +112,8 @@ char* DoubleToBuffer(double value, char* buffer) {
     // larger than the precision we asked for.
     DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
 
-    int processed_characters_count = 0;
-    full_precision_needed =
-        StringToFloatConverter().StringToDouble(buffer,
-                                                kFastToBufferSize,
-                                                &processed_characters_count) != value;
+    auto parsed_value = double{};
+    full_precision_needed = !safe_strtod(buffer, &parsed_value) || parsed_value != value;
   }
 
   if (full_precision_needed) {
