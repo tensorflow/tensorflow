@@ -299,7 +299,8 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        ('', _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
+        (_DEFAULT_SERVING_KEY, 'predict', 'classification'),
+        spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
     with self.test_session() as sess:
@@ -986,7 +987,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertIsNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
-    self.assertItemsEqual(('', 'classification', 'regression',
+    self.assertItemsEqual(('classification', 'regression', 'predict',
                            _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
     _assert_no_hooks(self, spec)
 
@@ -1813,7 +1814,9 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
     self.assertItemsEqual(
-        ('', signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY),
+        (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+         'predict',
+         'regression'),
         spec.export_outputs.keys())
     _assert_no_hooks(self, spec)
 

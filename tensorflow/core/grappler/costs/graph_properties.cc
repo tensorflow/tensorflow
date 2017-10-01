@@ -116,6 +116,21 @@ Status PropagateShapes(ShapeRefiner* shape_refiner, bool relax,
   return Status::OK();
 }
 
+bool IsQueue(const Node& node) {
+  StringPiece type(node.type_string());
+  return type.ends_with("QueueV2");
+}
+
+// Returns true if the node is an Enter op AND its input is a Queue.
+bool IsEnterWithQueue(const Node& node) {
+  if (node.IsEnter()) {
+    const Node* in_node;
+    TF_CHECK_OK(node.input_node(0, &in_node));
+    return IsQueue(*in_node);
+  }
+  return false;
+}
+
 }  // namespace
 
 void GraphProperties::Relax(InferenceContext* c, ShapeHandle s0, ShapeHandle s1,
@@ -285,8 +300,8 @@ Status GraphProperties::InferStatically() {
       new_shapes = std::queue<const Node*>();
       for (const auto& resource_data : resources) {
         const Node* qnode = resource_data.first;
-        StringPiece type(qnode->type_string());
-        if (!type.ends_with("QueueV2") && !qnode->IsEnter()) {
+        // Proceed only if qnode is a queue or an Enter with queue input.
+        if (!IsQueue(*qnode) && !IsEnterWithQueue(*qnode)) {
           continue;
         }
         auto qctx = shape_refiner.GetContext(qnode);

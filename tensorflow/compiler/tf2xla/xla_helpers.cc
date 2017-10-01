@@ -155,6 +155,30 @@ static Tensor MakeLinspaceTensor(const TensorShape& shape, int64 depth) {
   return linspace;
 }
 
+Status XlaHelpers::Iota(xla::ComputationBuilder* builder, DataType dtype,
+                        int64 size, xla::ComputationDataHandle* iota) {
+  TensorShape linspace_shape({size});
+  Tensor linspace;
+  switch (dtype) {
+    case DT_UINT8:
+      linspace = MakeLinspaceTensor<uint8>(linspace_shape, size);
+      break;
+    case DT_INT32:
+      linspace = MakeLinspaceTensor<int32>(linspace_shape, size);
+      break;
+    case DT_INT64:
+      linspace = MakeLinspaceTensor<int64>(linspace_shape, size);
+      break;
+    default:
+      return errors::InvalidArgument("Invalid argument type ",
+                                     DataTypeString(dtype));
+  }
+  xla::Literal linspace_literal;
+  TF_RETURN_IF_ERROR(HostTensorToLiteral(linspace, &linspace_literal));
+  *iota = builder->ConstantLiteral(linspace_literal);
+  return Status::OK();
+}
+
 Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
                           int axis, DataType index_type,
                           const TensorShape& indices_shape,
