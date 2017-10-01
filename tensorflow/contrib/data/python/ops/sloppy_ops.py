@@ -53,7 +53,7 @@ class SloppyInterleaveDataset(dataset_ops.Dataset):
       self._output_types = dataset.output_types
       self._output_shapes = dataset.output_shapes
 
-      return dataset.make_dataset_resource()
+      return dataset._as_variant_tensor()  # pylint: disable=protected-access
 
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
@@ -63,9 +63,9 @@ class SloppyInterleaveDataset(dataset_ops.Dataset):
     self._block_length = ops.convert_to_tensor(
         block_length, dtype=dtypes.int64, name="block_length")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.sloppy_interleave_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._map_func.captured_inputs,
         self._cycle_length,
         self._block_length,
@@ -82,7 +82,7 @@ class SloppyInterleaveDataset(dataset_ops.Dataset):
     return self._output_types
 
 
-def sloppy_interleave(map_func, cycle_length, block_length):
+def sloppy_interleave(map_func, cycle_length, block_length=1):
   """A non-deterministic version of the `Dataset.interleave()` transformation.
 
   `sloppy_interleave()` maps `map_func` across `dataset`, and

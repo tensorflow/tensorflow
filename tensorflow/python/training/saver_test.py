@@ -1244,7 +1244,8 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
     gfile.MakeDirs(test_dir)
     return test_dir
 
-  def testNonSharded(self):
+  @test.mock.patch.object(saver_module, "time")
+  def testNonSharded(self, mock_time):
     save_dir = self._get_test_dir("keep_checkpoint_every_n_hours")
 
     with self.test_session() as sess:
@@ -1255,14 +1256,16 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
       # Create a saver that will keep the last 2 checkpoints plus one every 0.7
       # seconds.
       start_time = time.time()
+      mock_time.time.return_value = start_time
       save = saver_module.Saver(
           {
               "v": v
           }, max_to_keep=2, keep_checkpoint_every_n_hours=0.7 / 3600)
       self.assertEqual([], save.last_checkpoints)
 
-      # Wait till 0.7 second have elapsed so s1 will be old enough to keep.
-      time.sleep((time.time() + 0.7) - start_time)
+      # Wait till 1 seconds have elapsed so s1 will be old enough to keep.
+      # sleep may return early, don't trust it.
+      mock_time.time.return_value = start_time + 1.0
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
       self.assertEqual([s1], save.last_checkpoints)
 
@@ -2026,7 +2029,7 @@ class MetaGraphTest(test.TestCase):
       new_saver.restore(sess, filename)
       sess.run(["new_model/optimize"], {
           "new_model/image:0": np.random.random([1, 784]),
-          "new_model/label:0": np.random.random_integers(
+          "new_model/label:0": np.random.randint(
               10, size=[1, 10])
       })
 
@@ -2059,7 +2062,7 @@ class MetaGraphTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       sess.run(["new_model/optimize"], {
           "new_model/image:0": np.random.random([1, 784]),
-          "new_model/label:0": np.random.random_integers(
+          "new_model/label:0": np.random.randint(
               10, size=[1, 10])
       })
 
@@ -2086,7 +2089,7 @@ class MetaGraphTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       sess.run(["new_model/optimize"], {
           "new_model/image:0": np.random.random([1, 784]),
-          "new_model/label:0": np.random.random_integers(
+          "new_model/label:0": np.random.randint(
               10, size=[1, 10])
       })
 
@@ -2125,8 +2128,8 @@ class CheckpointReaderTest(test.TestCase):
       self.assertTrue(compat.as_bytes("v1 (DT_FLOAT) [3,2,1]") in debug_string)
       # Verifies get_variable_to_shape_map() returns the correct information.
       var_map = reader.get_variable_to_shape_map()
-      self.assertEquals([2, 3], var_map["v0"])
-      self.assertEquals([3, 2, 1], var_map["v1"])
+      self.assertEqual([2, 3], var_map["v0"])
+      self.assertEqual([3, 2, 1], var_map["v1"])
       # Verifies get_tensor() returns the tensor value.
       v0_tensor = reader.get_tensor("v0")
       v1_tensor = reader.get_tensor("v1")

@@ -56,16 +56,16 @@ namespace cpu {
 
 ParallelCpuExecutable::ParallelCpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
-    std::unique_ptr<BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<std::map<HloInstruction*, string>> function_names,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<const std::map<HloInstruction*, string>> function_names,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
     : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
-      functions_names_(std::move(function_names)),
+      function_names_(std::move(function_names)),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
       aligned_constants_(std::move(aligned_constants)) {}
 
@@ -106,7 +106,7 @@ class Executor {
            const ServiceExecutableRunOptions* run_options,
            std::list<HloInstruction*>* pending,
            std::map<HloInstruction*, const void*>* results, void** temps_array,
-           uint64* profile_counters_array, BufferAssignment* assignment)
+           uint64* profile_counters_array, const BufferAssignment* assignment)
       : functions_(functions),
         run_options_(run_options),
         pending_(pending),
@@ -149,7 +149,7 @@ class Executor {
   void** temps_array_;
   uint64* profile_counters_array_;
   tensorflow::thread::ThreadPool* thread_pool_;
-  BufferAssignment* assignment_;
+  const BufferAssignment* assignment_;
 
   // Members used to manage instruction execution.
   tensorflow::mutex completion_queue_lock_;
@@ -401,7 +401,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
 
   // Resolve functions for all the HLO instructions ahead of time.
   std::map<HloInstruction*, ComputeFunctionType> functions;
-  for (auto& entry : *functions_names_) {
+  for (auto& entry : *function_names_) {
     tensorflow::mutex_lock lock(jit_mutex_);
     HloInstruction* instruction = entry.first;
     llvm::JITSymbol sym = jit_->FindSymbol(entry.second);

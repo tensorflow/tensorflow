@@ -62,6 +62,7 @@ cc_library(
         ":bigquery_table_partition_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform/cloud:curl_http_request",
         "//tensorflow/core/platform/cloud:google_auth_provider",
         "//tensorflow/core/platform/cloud:http_request",
     ],

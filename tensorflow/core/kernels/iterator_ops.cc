@@ -15,14 +15,18 @@ limitations under the License.
 #include "tensorflow/core/kernels/dataset.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
@@ -89,28 +93,63 @@ class IteratorResource : public ResourceBase {
     }
   }
 
-  Status SaveState(OpKernelContext* ctx, StringPiece path) {
+  Status Save(OpKernelContext* ctx, const string& path) {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
     if (captured_iterator) {
-      return captured_iterator->SaveState(ctx, path);
+      return captured_iterator->Save(ctx, path);
     } else {
       return errors::FailedPrecondition(
-          "SaveState() failed because the iterator has not been initialized. "
+          "Save() failed because the iterator has not been initialized. "
           "Ensure that you have run the initializer operation for this "
-          "iterator before getting the next element.");
+          "iterator before saving it.");
     }
   }
 
-  Status RestoreState(OpKernelContext* ctx, StringPiece path) {
+  Status Restore(OpKernelContext* ctx, const string& path) {
+    if (!(ctx->env()->FileExists(MetaFilename(path)).ok())) {
+      return errors::NotFound(
+          "Failed to restore Iterator state. No file found at ",
+          MetaFilename(path));
+    }
+
+    BundleReader bundle_reader(ctx->env(), path);
+    TF_RETURN_IF_ERROR(bundle_reader.status());
+    BundleReaderWrapper reader(&bundle_reader);
+    if (reader.Contains(GraphDatasetBase::kDatasetGraphKey)) {
+      string serialized_graph_def;
+      TF_RETURN_IF_ERROR(reader.ReadScalar(GraphDatasetBase::kDatasetGraphKey,
+                                           &serialized_graph_def));
+      GraphDef graph_def;
+      graph_def.ParseFromString(serialized_graph_def);
+      // TODO(srbs): Is there a way of getting the op registry of the original
+      // graph.
+      Graph graph(OpRegistry::Global());
+      TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
+      string output_node;
+      TF_RETURN_IF_ERROR(reader.ReadScalar(
+          GraphDatasetBase::kDatasetGraphOutputNodeKey, &output_node));
+      std::vector<Tensor> outputs;
+      GraphRunner graph_runner(ctx->env());
+      TF_RETURN_IF_ERROR(graph_runner.Run(&graph, ctx->function_library(), {},
+                                          {output_node}, &outputs));
+      DatasetBase* dataset;
+      TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
+      TF_RETURN_IF_ERROR(set_iterator(dataset->MakeIterator("Iterator")));
+    } else if (reader.Contains(IteratorBase::kIteratorExhausted)) {
+      TF_RETURN_IF_ERROR(set_iterator(std::unique_ptr<IteratorBase>(
+          new ExhaustedIterator(output_dtypes_, output_shapes_))));
+    }
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
+
     if (captured_iterator) {
-      return captured_iterator->RestoreState(ctx, path);
+      // TODO(srbs): Figure a way to pass bundle_reader here.
+      return captured_iterator->Restore(ctx, path);
     } else {
       return errors::FailedPrecondition(
-          "RestoreState() failed because the iterator has not been "
-          "initialized. "
-          "Ensure that you have run the initializer operation for this "
-          "iterator before getting the next element.");
+          "Failed to restore iterator from ", path,
+          ". Make sure the checkpoint ",
+          "is not corrupt. If the checkpoint does not contain the GraphDef, ",
+          "you will need to initialize your iterator before restoring.");
     }
   }
 
@@ -135,6 +174,38 @@ class IteratorResource : public ResourceBase {
   }
 
  private:
+  // A no-op iterator which always sets end_of_sequence = true. An instance of
+  // this is returned when attempting to restore an exhausted iterator. This is
+  // needed because the Dataset GraphDef may not have been saved for exhausted
+  // iterators so the actual Iterator can not be built.
+  class ExhaustedIterator : public IteratorBase {
+   public:
+    ExhaustedIterator(const DataTypeVector& output_dtypes,
+                      const std::vector<PartialTensorShape>& output_shapes)
+        : output_dtypes_(output_dtypes), output_shapes_(output_shapes) {}
+    Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                   bool* end_of_sequence) final {
+      *end_of_sequence = true;
+      return Status::OK();
+    }
+
+    const DataTypeVector& output_dtypes() const override {
+      return output_dtypes_;
+    }
+
+    const std::vector<PartialTensorShape>& output_shapes() const override {
+      return output_shapes_;
+    }
+
+    virtual const std::vector<PartialTensorShape>& output_shapes() {
+      return output_shapes_;
+    }
+
+   private:
+    const DataTypeVector output_dtypes_;
+    const std::vector<PartialTensorShape> output_shapes_;
+  };
+
   std::shared_ptr<IteratorBase> iterator_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -193,8 +264,10 @@ class SaveIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
+                errors::InvalidArgument("SaveIteratorOp: path must be scalar"));
     const string& path = ctx->input(1).scalar<string>()();
-    OP_REQUIRES_OK(ctx, iterator_resource->SaveState(ctx, path));
+    OP_REQUIRES_OK(ctx, iterator_resource->Save(ctx, path));
   }
 };
 
@@ -206,8 +279,11 @@ class RestoreIteratorOp : public OpKernel {
     IteratorResource* iterator_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
+        errors::InvalidArgument("RestoreIteratorOp: path must be scalar"));
     const string& path = ctx->input(1).scalar<string>()();
-    OP_REQUIRES_OK(ctx, iterator_resource->RestoreState(ctx, path));
+    OP_REQUIRES_OK(ctx, iterator_resource->Restore(ctx, path));
   }
 };
 

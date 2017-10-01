@@ -424,6 +424,76 @@ class OperationTest(test_util.TensorFlowTestCase):
           "Graph is invalid, contains a cycle with 2 nodes"):
         sess.run(x)
 
+  @test_util.enable_c_api
+  def testUpdateInput(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+      y = constant_op.constant(2)
+      z = x + y
+
+    z.op._update_input(0, y)  # pylint: disable=protected-access
+    self.assertEquals(z.op.inputs, [y, y])
+    with session.Session(graph=g) as sess:
+      self.assertEquals(sess.run(z), 4)
+
+    z.op._update_input(0, x)  # pylint: disable=protected-access
+    self.assertEquals(z.op.inputs, [x, y])
+    with session.Session(graph=g) as sess:
+      self.assertEquals(sess.run(z), 3)
+
+    z.op._update_input(1, y)  # pylint: disable=protected-access
+    self.assertEquals(z.op.inputs, [x, y])
+    with session.Session(graph=g) as sess:
+      self.assertEquals(sess.run(z), 3)
+
+  @test_util.enable_c_api
+  def testUpdateInputGraphError(self):
+    g_0 = ops.Graph()
+    g_1 = ops.Graph()
+    with g_0.as_default():
+      x = constant_op.constant(1)
+    with g_1.as_default():
+      y = constant_op.constant(2)
+      z = y * 2
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        z.op._update_input(0, x)  # pylint: disable=protected-access
+
+  # TODO(nolivia): check the shape/type in _update_input() instead of depending
+  # on run to do that.
+  @test_util.enable_c_api
+  def testUpdateInputTypeError(self):
+    g = ops.Graph()
+    with g.as_default():
+      w = constant_op.constant(0)
+      x = constant_op.constant("")
+      y = constant_op.constant(1)
+      z = y + w
+      z.op._update_input(0, x)  # pylint: disable=protected-access
+    with session.Session(graph=g) as sess:
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Input 0 of node add was passed string from Const_1:0 incompatible "
+          "with expected int32"):
+        sess.run(z)
+
+  # C-API throws the error differently.
+  def testUpdateInputOutOfRange(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+    with self.assertRaises(IndexError):
+      x.op._update_input(1, x)  # pylint: disable=protected-access
+
+  @test_util.enable_c_api
+  def testUpdateInputOutOfRangeC(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+    with self.assertRaisesRegexp(errors.OutOfRangeError,
+                                 "does not have input 1"):
+      x.op._update_input(1, x)  # pylint: disable=protected-access
+
 
 class CreateOpTest(test_util.TensorFlowTestCase):
 

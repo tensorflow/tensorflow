@@ -41,7 +41,7 @@ namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::interpreter;
 
 InterpreterExecutable::InterpreterExecutable(
-    std::unique_ptr<HloModule> hlo_module)
+    std::unique_ptr<const HloModule> hlo_module)
     : Executable(std::move(hlo_module)) {}
 
 InterpreterExecutable::~InterpreterExecutable() {}

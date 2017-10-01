@@ -253,7 +253,7 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
 string PredecessorHloOrdering::ToStringHelper(const string& name) const {
   std::vector<string> pieces;
   pieces.push_back(name);
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s:",
                                                  computation->name().c_str()));
     const auto all = computation->MakeInstructionPostOrder();
@@ -261,7 +261,7 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
       pieces.push_back(tensorflow::strings::Printf(
           "  %s predecessors:", instruction->name().c_str()));
       for (auto predecessor : all) {
-        if (predecessors_.at(computation.get())
+        if (predecessors_.at(computation)
                 ->IsReachable(predecessor, instruction)) {
           pieces.push_back(
               tensorflow::strings::Printf("  %s", predecessor->name().c_str()));
@@ -277,12 +277,8 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // Compute predecessor relationships between all instructions to determine
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    predecessors_.emplace(computation.get(),
-                          computation->ComputeReachability());
+  for (auto* computation : module->MakeNonfusionComputations()) {
+    predecessors_.emplace(computation, computation->ComputeReachability());
   }
 }
 
@@ -323,7 +319,7 @@ SequentialHloOrdering::SequentialOrder(
 string SequentialHloOrdering::ToString() const {
   std::vector<string> pieces;
   pieces.push_back("SequentialHloOrdering");
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s order:",
                                                  computation->name().c_str()));
     // Gather all instructions in the module sequence for this computation and
@@ -331,7 +327,7 @@ string SequentialHloOrdering::ToString() const {
     std::vector<const HloInstruction*> instructions;
     for (auto& instruction_position : order_position_) {
       const HloInstruction* instruction = instruction_position.first;
-      if (instruction->parent() == computation.get()) {
+      if (instruction->parent() == computation) {
         instructions.push_back(instruction);
       }
     }

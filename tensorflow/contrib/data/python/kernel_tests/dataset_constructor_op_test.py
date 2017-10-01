@@ -21,6 +21,7 @@ import threading
 
 import numpy as np
 
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -523,8 +524,7 @@ class DatasetConstructorTest(test.TestCase):
 
     for new_types, new_shape_lists in test_cases:
       # pylint: disable=protected-access
-      new = dataset_ops._RestructuredDataset(
-          dataset, new_types, new_shape_lists)
+      new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
       # pylint: enable=protected-access
       self.assertEqual(new_types, new.output_types)
       if new_shape_lists is not None:
@@ -544,8 +544,7 @@ class DatasetConstructorTest(test.TestCase):
     for new_types, new_shape_lists in fail_cases:
       with self.assertRaises(ValueError):
         # pylint: disable=protected-access
-        new = dataset_ops._RestructuredDataset(
-            dataset, new_types, new_shape_lists)
+        new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
         # pylint: enable=protected-access
 
 
