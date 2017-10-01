@@ -302,7 +302,7 @@ uint8_t set_gid(uint8_t port_num, ibv_context* context) {
     case (IBV_LINK_LAYER_INFINIBAND): //no need in GID index
       break;
     default:
-      CHECK(false) << "Unknown port link layer!";
+      LOG(INFO) << "Unknown port link layer. Currently supporting Ethernet and InfiniBand only. ";
   }
   if (!is_gid_type_roce_v2(context, port_num, gid_index)) {
     LOG(INFO) << "RoCE v2 is not configured for GID_INDEX " << (int)gid_index;
