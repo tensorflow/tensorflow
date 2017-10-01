@@ -570,6 +570,7 @@ cc_library(
         ":extract_image_patches_op",
         ":gather_nd_op",
         ":gather_op",
+        ":gather_disjoint_op",
         ":identity_n_op",
         ":identity_op",
         ":inplace_ops",
@@ -643,6 +644,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "gather_op",
     prefix = "gather_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "gather_disjoint_op",
+    prefix = "gather_disjoint_op",
     deps = ARRAY_DEPS,
 )
 
@@ -1132,6 +1139,24 @@ tf_cuda_cc_test(
     srcs = ["gather_nd_op_test.cc"],
     deps = [
         ":gather_nd_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "gather_disjoint_op_test",
+    size = "small",
+    srcs = ["gather_disjoint_op_test.cc"],
+    deps = [
+        ":gather_disjoint_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",

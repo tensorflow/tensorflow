@@ -331,6 +331,26 @@ TEST(ArrayOpsTest, GatherNd_ShapeFn) {
   INFER_ERROR("indices.shape[-1] must be <= params.rank", op, "[1,2,3];[4]");
 }
 
+TEST(ArrayOpsTest, GatherDisjoint_ShapeFn) {
+  ShapeInferenceTestOp op("GatherDisjoint");
+  int n = 2;
+  std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(n);
+  for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
+  TF_ASSERT_OK(NodeDefBuilder("test", "GatherDisjoint")
+                   .Input({"a", 0, DT_FLOAT})
+                   .Input(src_list)
+                   .Attr("N", n)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "?;?;?", "?;?");
+  INFER_OK(op, "[3];[3];[3]", "[d1_0];[d2_0]");
+  INFER_OK(op, "[1,?,2];[3];[2]", "[d1_0,d0_1,d0_2];[d2_0,d0_1,d0_2]");
+  INFER_OK(op, "[7,8,9];[3];[?]", "[d1_0,d0_1,d0_2];[d2_0,d0_1,d0_2]");
+  INFER_OK(op, "[7,8,9];[3];?", "[d1_0,d0_1,d0_2];?");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op,
+              "[];[1,2,3];[1]");
+}
+
 TEST(ArrayOpsTest, Shape_ShapeFn) {
   ShapeInferenceTestOp op("Shape");
   INFER_OK(op, "?", "[?]");

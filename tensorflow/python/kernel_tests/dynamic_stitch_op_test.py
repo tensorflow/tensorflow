@@ -22,11 +22,12 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradient_checker
 import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
-from tensorflow.python.framework import dtypes
 
 
 class DynamicStitchTestBase(object):
@@ -37,7 +38,7 @@ class DynamicStitchTestBase(object):
   def testScalar(self):
     with self.test_session(use_gpu=True):
       indices = [constant_op.constant(0), constant_op.constant(1)]
-      data = [constant_op.constant(40), constant_op.constant(60)]
+      data = [constant_op.constant(40.0), constant_op.constant(60.0)]
       for step in -1, 1:
         stitched_t = self.stitch_op(indices[::step], data)
         stitched_val = stitched_t.eval()
@@ -47,14 +48,21 @@ class DynamicStitchTestBase(object):
         # length.
         self.assertEqual([None], stitched_t.get_shape().as_list())
 
+        # Test gradients
+        self.assertLess(
+            gradient_checker.compute_gradient_error(
+                data, [x.get_shape().as_list() for x in data],
+                stitched_t, array_ops.shape(stitched_t).eval()),
+            1e-4)
+
   def testSimpleOneDimensional(self):
     with self.test_session(use_gpu=True):
       indices = [
           constant_op.constant([0, 4, 7]), constant_op.constant([1, 6, 2, 3, 5])
       ]
       data = [
-          constant_op.constant([0, 40, 70]),
-          constant_op.constant([10, 60, 20, 30, 50])
+          constant_op.constant([0, 40, 70], dtypes.float32),
+          constant_op.constant([10, 60, 20, 30, 50], dtypes.float32)
       ]
       stitched_t = self.stitch_op(indices, data)
       stitched_val = stitched_t.eval()
@@ -64,10 +72,18 @@ class DynamicStitchTestBase(object):
       # length.
       self.assertEqual([None], stitched_t.get_shape().as_list())
 
+      # Test gradients
+      self.assertLess(
+          gradient_checker.compute_gradient_error(
+              data, [x.get_shape().as_list() for x in data],
+              stitched_t, array_ops.shape(stitched_t).eval()),
+          1e-4)
+
   def testOneListOneDimensional(self):
     with self.test_session(use_gpu=True):
       indices = [constant_op.constant([1, 6, 2, 3, 5, 0, 4, 7])]
-      data = [constant_op.constant([10, 60, 20, 30, 50, 0, 40, 70])]
+      data = [constant_op.constant([10, 60, 20, 30, 50, 0, 40, 70],
+                                   dtypes.float32)]
       stitched_t = self.stitch_op(indices, data)
       stitched_val = stitched_t.eval()
       self.assertAllEqual([0, 10, 20, 30, 40, 50, 60, 70], stitched_val)
@@ -75,6 +91,13 @@ class DynamicStitchTestBase(object):
       # can only infer that the output is a vector of some unknown
       # length.
       self.assertEqual([None], stitched_t.get_shape().as_list())
+
+      # Test gradients
+      self.assertLess(
+          gradient_checker.compute_gradient_error(
+              data, [x.get_shape().as_list() for x in data],
+              stitched_t, array_ops.shape(stitched_t).eval()),
+          1e-4)
 
   def testSimpleTwoDimensional(self):
     with self.test_session(use_gpu=True):
@@ -83,9 +106,9 @@ class DynamicStitchTestBase(object):
           constant_op.constant([2, 3, 5])
       ]
       data = [
-          constant_op.constant([[0, 1], [40, 41], [70, 71]]),
-          constant_op.constant([[10, 11], [60, 61]]),
-          constant_op.constant([[20, 21], [30, 31], [50, 51]])
+          constant_op.constant([[0, 1], [40, 41], [70, 71]], dtypes.float32),
+          constant_op.constant([[10, 11], [60, 61]], dtypes.float32),
+          constant_op.constant([[20, 21], [30, 31], [50, 51]], dtypes.float32)
       ]
       stitched_t = self.stitch_op(indices, data)
       stitched_val = stitched_t.eval()
@@ -95,6 +118,13 @@ class DynamicStitchTestBase(object):
       # can only infer that the output is a matrix with 2 columns and
       # some unknown number of rows.
       self.assertEqual([None, 2], stitched_t.get_shape().as_list())
+
+      # Test gradients
+      self.assertLess(
+          gradient_checker.compute_gradient_error(
+              data, [x.get_shape().as_list() for x in data],
+              stitched_t, array_ops.shape(stitched_t).eval()),
+          1e-4)
 
   def testHigherRank(self):
     with self.test_session(use_gpu=True) as sess:
@@ -119,6 +149,34 @@ class DynamicStitchTestBase(object):
       self.assertEqual(grads[:3], [None] * 3)  # Indices have no gradients
       for datum, grad in zip(data, sess.run(grads[3:])):
         self.assertAllEqual(7 * datum.eval(), grad)
+
+  def testDuplicates(self):
+    with self.test_session(use_gpu=True):
+      indices = [
+          constant_op.constant([0, 1, 0]),
+          constant_op.constant([1, 2, 3]),
+          constant_op.constant([4, 3, 4]),
+          constant_op.constant([[5, 6], [6, 7], [7, 5]])
+      ]
+      data = [
+          constant_op.constant([1, 2, 3], dtypes.float32),
+          constant_op.constant([12, 13, 14], dtypes.float32),
+          constant_op.constant([24, 25, 26], dtypes.float32),
+          constant_op.constant([[31, 32], [33, 34], [35, 36]],
+                               dtypes.float32)
+      ]
+      stitched_t = data_flow_ops.dynamic_stitch(indices, data)
+      stitched_val = stitched_t.eval()
+      correct = [3, 12, 13, 25, 26, 36, 33, 35]
+      self.assertAllEqual(correct, stitched_val)
+      self.assertEqual([None], stitched_t.get_shape().as_list())
+
+      # Test gradients
+      self.assertLess(
+          gradient_checker.compute_gradient_error(
+              data, [x.get_shape().as_list() for x in data],
+              stitched_t, array_ops.shape(stitched_t).eval()),
+          1e-4)
 
   def testErrorIndicesMultiDimensional(self):
     indices = [
@@ -240,7 +298,8 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
       data = [
           constant_op.constant([61, 62], dtype=dtypes.float32),
           constant_op.constant([[41, 42], [11, 12]], dtype=dtypes.float32),
-          constant_op.constant([[[51, 52], [21, 22]], [[1, 2], [31, 32]]], dtype=dtypes.float32)
+          constant_op.constant([[[51, 52], [21, 22]], [[1, 2], [31, 32]]],
+                               dtype=dtypes.float32)
       ]
       stitched_t = data_flow_ops.dynamic_stitch(indices, data)
       stitched_val = stitched_t.eval()

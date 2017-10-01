@@ -1627,6 +1627,62 @@ output: Values from `params` gathered from indices given by `indices`, with
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("GatherDisjoint")
+    .Input("params: Tparams")
+    .Input("indices: N * Tindices")
+    .Attr("reverse_order: bool = false")
+    .Output("output: N * Tparams")
+    .Attr("Tparams: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("N : int >= 1")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused));
+
+      ShapeHandle params_subshape;
+      TF_RETURN_IF_ERROR(c->Subshape(c->input(0), 1, &params_subshape));
+      ShapeHandle out;
+      for (int i = 1; i < c->num_inputs(); ++i) {
+        TF_RETURN_IF_ERROR(c->Concatenate(c->input(i), params_subshape, &out));
+        c->set_output(i - 1, out);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Gather disjoint slices from `params` according to `indices`.
+
+`indices` must be a list of integer tensors of possibly different dimensions.
+Produces a list of output tensors of the same length, with tensor `i`
+having shape `indices[i].shape + params.shape[1:]`.
+
+This operation is similar to @{tf.gather}, except that once a slice of
+params is taken, it is never used again. For any other reference,
+the output will be filled with `0` instead. The list of indices
+is traversed in order, hence if an index appears in both `indices[m][i]` and
+`indices[n][j]` for `(m, i) < (n, j)`, the slice `output[n][j]` will be filled
+with `0`.
+
+Here is an example:
+
+```python
+    indices[0] = [0, 1, 0]
+    indices[1] = [[2, 3], [0, 1]]
+    indices[2] = 2
+    params = [[0.0, 1.0], [2.0, 3.0], [4.0, 5.0], [6.0, 7.0]]
+    output[0] = [[0.0, 1.0], [2.0, 3.0], [0.0, 0.0]]
+    output[1] = [[[4.0, 5.0], [6.0, 7.0]], [[0.0, 0.0], [0.0, 0.0]]]
+    output[2] = [0.0, 0.0]
+```
+
+Setting `reverse_order` to `True` inverses the order in which indices are
+considered.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+</div>
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("Identity")
     .Input("input: T")
     .Output("output: T")

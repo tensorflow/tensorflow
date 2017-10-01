@@ -60,7 +60,7 @@ def _DynamicStitchGrads(op, grad):
     output_shape = array_ops.shape(op.outputs[0])
     output_rows = output_shape[0]
     grad = math_ops.unsorted_segment_sum(grad.values, grad.indices, output_rows)
-  values_grad = [array_ops.gather(grad, inp) for inp in inputs]
+  values_grad = array_ops.gather_disjoint(grad, inputs, reverse_order=True)
   return indices_grad + values_grad
 
 

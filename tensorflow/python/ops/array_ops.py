@@ -58,6 +58,7 @@ See the @{$python/array_ops} guide.
 @@depth_to_space
 @@gather
 @@gather_nd
+@@gather_disjoint
 @@unique_with_counts
 @@scatter_nd
 @@dynamic_partition
