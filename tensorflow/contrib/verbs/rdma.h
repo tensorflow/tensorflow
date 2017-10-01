@@ -36,14 +36,14 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
-#define PKEY_DEFAULT        0
+#define PKEY_DEFAULT 0
 #define QUEUE_DEPTH_DEFAULT 1024
-#define TIMEOUT_DEFAULT     14
-#define RETRY_CNT_DEFAULT   7
-#define SL_DEFAULT          0
-#define TRAFFIC_CLASS       0
+#define TIMEOUT_DEFAULT 14
+#define RETRY_CNT_DEFAULT 7
+#define SL_DEFAULT 0
+#define TRAFFIC_CLASS 0
 
-struct RdmaParams{
+struct RdmaParams {
   uint8_t port_num;
   uint8_t sgid_index;
   uint8_t pkey_index;
@@ -67,9 +67,20 @@ struct RemoteMR {
   uint64_t remote_addr;
   uint32_t rkey;
 };
-enum BufferStatus { none, idle, busy };
-enum Location { local, remote };
-enum BufferType { ACK, MESSAGE, TENSOR };
+enum BufferStatus {
+  none,
+  idle,
+  busy
+};
+enum Location {
+  local,
+  remote
+};
+enum BufferType {
+  ACK,
+  MESSAGE,
+  TENSOR
+};
 enum RdmaMessageType {
   RDMA_MESSAGE_ACK,
   RDMA_MESSAGE_BUFFER_IDLE,
@@ -202,7 +213,7 @@ class RdmaBuffer {
   }
   void FreeBuffer();
   void EnqueueItem(string Item);
-  virtual void SendNextItem(){};
+  virtual void SendNextItem() {};
   void CreateCPUBuffer(size_t size, bool lock = true);
   void SetRemoteMR(RemoteMR rmi, bool override);
   uint32_t LookupBufferIndex(const string& buffer_name) {
