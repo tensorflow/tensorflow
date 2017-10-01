@@ -48,6 +48,16 @@ Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// TOREMOVE
+Status BatchUnchangedSquareShapeFnTmp(InferenceContext* c) {
+  ShapeHandle out0;
+  //ShapeHandle out1;
+  //TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &out));
+  c->set_output(0, out0);
+  //c->set_output(1, out1);
+  return Status::OK();
+}
+
 // The first input is [...,M,N] and second input is either [...,M,K] or [...,M].
 // Output is [...,N,K] or [...,N]. If <square>, then input is [...,M,M].
 Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
@@ -553,12 +563,16 @@ full_matrices: If true, compute full-sized `q` and `r`. If false
   (the default), compute only the leading `P` columns of `q`.
 )doc");
 
+//     .SetShapeFn(LuShapeFn)  
+//.Output("u: T") 
+//u: Shape is `[..., M, M]`.
+
+
 REGISTER_OP("Lu")
     .Input("input: T")
-    .Output("l: T")
-    .Output("u: T")
+    .Output("output: T")
     .Attr("T: {double, float, complex64, complex128}")
-    .SetShapeFn(LuShapeFn)
+    .SetShapeFn(BatchUnchangedSquareShapeFnTmp)    
     .Doc(R"doc(
 Computes the LU decomposition of one or more square matrices.
 
@@ -570,21 +584,8 @@ The input has to be square matrix.
 The output is a tensor of the same shape as the input
 containing the LU decompositions for all input submatrices `[..., :, :]`.
 
-```python
-# a is a tensor containing a batch of matrices.
-# l is a tensor of singular values for each matrix.
-# u is the tensor containing of left singular vectors for each matrix.
-l, u = lu(a)
-```
-
-input: A tensor of shape `[..., M, N]` whose inner-most 2 dimensions
-  form matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`.
-l: Lower matrix. 
-u: Upper matrix.
-
 input: Shape is `[..., M, M]`.
-l: Shape is `[..., M, M]`.
-u: Shape is `[..., M, M]`.
+output: Shape is `[..., M, M]`.
 )doc");
 
 REGISTER_OP("Svd")
