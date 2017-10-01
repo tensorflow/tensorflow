@@ -298,8 +298,11 @@ class OperationTest(test_util.TensorFlowTestCase):
 
   def testConvertToTensorEager(self):
     with context.eager_mode():
-      t = ops.EagerTensor(1, context.context())
+      t = constant_op.constant(1)
+      self.assertTrue(isinstance(t, ops.EagerTensor))
       converted = ops.convert_to_tensor(t)
+      self.assertTrue(isinstance(converted, ops.EagerTensor))
+      converted = ops.convert_to_tensor(1)
       self.assertTrue(isinstance(converted, ops.EagerTensor))
 
   def testConvertToTensorNestedTuple(self):

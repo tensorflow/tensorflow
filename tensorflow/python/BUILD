@@ -266,6 +266,7 @@ cc_library(
     hdrs = ["lib/core/safe_ptr.h"],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
         "//util/python:python_headers",
     ],
 )

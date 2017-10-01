@@ -842,6 +842,7 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.h"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.cc"
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe.h"
+    "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe_src.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"

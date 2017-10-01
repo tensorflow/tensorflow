@@ -33,7 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 
 
-class TargetTest(test_util.TensorFlowTestCase):
+class OpsTest(test_util.TensorFlowTestCase):
 
   def testExecuteBasic(self):
     three = constant_op.constant(3)
