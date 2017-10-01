@@ -240,7 +240,7 @@ func shapeAndDataTypeOf(val reflect.Value) (shape []int64, dt DataType, err erro
 			// In order to check tensor structure properly in general case we need to iterate over all slices of the tensor to check sizes match
 			// Since we already going to iterate over all elements in encodeTensor() let's
 			// 1) do the actual check in encodeTensor() to save some cpu cycles here
-			// 2) assume the shape is represented by lenghts of elements with zero index in each dimension
+			// 2) assume the shape is represented by lengths of elements with zero index in each dimension
 			val = val.Index(0)
 		}
 		typ = typ.Elem()
