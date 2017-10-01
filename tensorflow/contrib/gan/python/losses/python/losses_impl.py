@@ -86,8 +86,9 @@ def wasserstein_generator_loss(
     discriminator_gen_outputs: Discriminator output on generated data. Expected
       to be in the range of (-inf, inf).
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
+      `discriminator_gen_outputs`, and must be broadcastable to
+      `discriminator_gen_outputs` (i.e., all dimensions must be either `1`, or
+      the same as the corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -127,10 +128,12 @@ def wasserstein_discriminator_loss(
     discriminator_real_outputs: Discriminator output on real data.
     discriminator_gen_outputs: Discriminator output on generated data. Expected
       to be in the range of (-inf, inf).
-    real_weights: A scalar or a `Tensor` of size [batch_size, K] used to rescale
-      the real loss.
-    generated_weights: A scalar or a `Tensor` of size [batch_size, K] used to
-      rescale the generated loss.
+    real_weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `discriminator_real_outputs`, and must be broadcastable to
+      `discriminator_real_outputs` (i.e., all dimensions must be either `1`, or
+      the same as the corresponding dimension).
+    generated_weights: Same as `real_weights`, but for
+      `discriminator_gen_outputs`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -197,10 +200,12 @@ def acgan_discriminator_loss(
     label_smoothing: A float in [0, 1]. If greater than 0, smooth the labels for
       "discriminator on real data" as suggested in
       https://arxiv.org/pdf/1701.00160
-    real_weights: A scalar or a `Tensor` of size [batch_size, K] used to rescale
-      the real loss.
-    generated_weights: A scalar or a `Tensor` of size [batch_size, K] used to
-      rescale the generated loss.
+    real_weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `discriminator_real_outputs`, and must be broadcastable to
+      `discriminator_real_outputs` (i.e., all dimensions must be either `1`, or
+      the same as the corresponding dimension).
+    generated_weights: Same as `real_weights`, but for
+      `discriminator_gen_classification_logits`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -255,8 +260,9 @@ def acgan_generator_loss(
       data.
     one_hot_labels: A Tensor holding one-hot labels for the batch.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
+      `discriminator_gen_classification_logits`, and must be broadcastable to
+      `discriminator_gen_classification_logits` (i.e., all dimensions must be
+      either `1`, or the same as the corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -311,8 +317,9 @@ def wasserstein_gradient_penalty(
     epsilon: A small positive number added for numerical stability when
       computing the gradient norm.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
+      `real_data` and `generated_data`, and must be broadcastable to
+      them (i.e., all dimensions must be either `1`, or the same as the
+      corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -398,10 +405,11 @@ def minimax_discriminator_loss(
     label_smoothing: The amount of smoothing for positive labels. This technique
       is taken from `Improved Techniques for Training GANs`
       (https://arxiv.org/abs/1606.03498). `0.0` means no smoothing.
-    real_weights: A scalar or a `Tensor` of size [batch_size, K] used to rescale
-      the real loss.
-    generated_weights: A scalar or a `Tensor` of size [batch_size, K] used to
-      rescale the generated loss.
+    real_weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `real_data`, and must be broadcastable to `real_data` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding
+      dimension).
+    generated_weights: Same as `real_weights`, but for `generated_data`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -460,8 +468,10 @@ def minimax_generator_loss(
     label_smoothing: The amount of smoothing for positive labels. This technique
       is taken from `Improved Techniques for Training GANs`
       (https://arxiv.org/abs/1606.03498). `0.0` means no smoothing.
-    weights: A scalar or a `Tensor` of size [batch_size, K] used to rescale
-      the loss.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `discriminator_gen_outputs`, and must be broadcastable to
+      `discriminator_gen_outputs` (i.e., all dimensions must be either `1`, or
+      the same as the corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -504,10 +514,12 @@ def modified_discriminator_loss(
     label_smoothing: The amount of smoothing for positive labels. This technique
       is taken from `Improved Techniques for Training GANs`
       (https://arxiv.org/abs/1606.03498). `0.0` means no smoothing.
-    real_weights: A scalar or a `Tensor` of size [batch_size, K] used to rescale
-      the real loss.
-    generated_weights: A scalar or a `Tensor` of size [batch_size, K] used to
-      rescale the generated loss.
+    real_weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `discriminator_gen_outputs`, and must be broadcastable to
+      `discriminator_gen_outputs` (i.e., all dimensions must be either `1`, or
+      the same as the corresponding dimension).
+    generated_weights: Same as `real_weights`, but for
+      `discriminator_gen_outputs`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -551,8 +563,9 @@ def modified_generator_loss(
       is taken from `Improved Techniques for Training GANs`
       (https://arxiv.org/abs/1606.03498). `0.0` means no smoothing.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
+      `discriminator_gen_outputs`, and must be broadcastable to `labels` (i.e.,
+      all dimensions must be either `1`, or the same as the corresponding
+      dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -598,8 +611,9 @@ def least_squares_generator_loss(
     real_label: The value that the generator is trying to get the discriminator
       to output on generated data.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
+      `discriminator_gen_outputs`, and must be broadcastable to
+      `discriminator_gen_outputs` (i.e., all dimensions must be either `1`, or
+      the same as the corresponding dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -649,10 +663,12 @@ def least_squares_discriminator_loss(
       to be in the range of (-inf, inf).
     real_label: The value that the discriminator tries to output for real data.
     fake_label: The value that the discriminator tries to output for fake data.
-    real_weights: A scalar or a `Tensor` of size [batch_size, K] used to rescale
-      the real loss.
-    generated_weights: A scalar or a `Tensor` of size [batch_size, K] used to
-      rescale the generated loss.
+    real_weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `discriminator_real_outputs`, and must be broadcastable to
+      `discriminator_real_outputs` (i.e., all dimensions must be either `1`, or
+      the same as the corresponding dimension).
+    generated_weights: Same as `real_weights`, but for
+      `discriminator_gen_outputs`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
@@ -736,9 +752,8 @@ def mutual_information_penalty(
     predicted_distributions: A list of tf.Distributions. Predicted by the
       recognizer, and used to evaluate the likelihood of the structured noise.
       List length should match `structured_generator_inputs`.
-    weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
-      be either `1`, or the same as the corresponding `losses` dimension).
+    weights: Optional `Tensor` whose rank is either 0, or the same dimensions as
+      `structured_generator_inputs`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: A `tf.losses.Reduction` to apply to loss.
