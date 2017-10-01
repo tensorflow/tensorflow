@@ -196,7 +196,7 @@ def _dnn_linear_combined_model_fn(
       linear_vars = ops.get_collection(
         ops.GraphKeys.TRAINABLE_VARIABLES,
         scope=linear_parent_scope)
-      # variables left is optimized by dnn
+      # variables left are optimized by dnn
       dnn_vars = list(set(all_vars) - set(linear_vars))
       train_ops = [
         linear_optimizer.minimize(loss, var_list=linear_vars),
