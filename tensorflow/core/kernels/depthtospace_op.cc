@@ -49,11 +49,17 @@ class DepthToSpaceOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
 
-    // TODO(pauldonnelly): Implement NCHW and NCHW_VECT_C for the GPU.
-    OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
-                errors::InvalidArgument(
-                    "Only NHWC data_format currently implemented. Got ",
-                    data_format_str));
+    if (std::is_same<Device, CPUDevice>::value) {
+      OP_REQUIRES(
+          context, data_format_ == FORMAT_NHWC,
+          errors::InvalidArgument(
+              "Only NHWC data_format supported on CPU. Got ", data_format_str));
+    }
+
+    // TODO(pauldonnelly): Implement NCHW_VECT_C kernel for the GPU.
+    OP_REQUIRES(
+        context, data_format_ != FORMAT_NCHW_VECT_C,
+        errors::InvalidArgument("NHWC_VECT_C kernel not yet implemented."));
 
     OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
 
@@ -68,15 +74,20 @@ class DepthToSpaceOp : public OpKernel {
     // Check on the input dimensions first.
     // The input is presumed to be [batch, height, width, depth]
     const int dims = input.dims();
-    static const int kRequiredDims = 4;
+    constexpr int kRequiredDims = 4;
     OP_REQUIRES(context, kRequiredDims == dims,
                 errors::InvalidArgument("Input rank should be: ", kRequiredDims,
                                         " instead of: ", dims));
 
-    const int batch_size = input.dim_size(0);
-    const int input_height = input.dim_size(1);
-    const int input_width = input.dim_size(2);
-    const int input_depth = input.dim_size(3);
+    constexpr int kNumSpatialDims = 2;
+    const int batch_size =
+        input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'N'));
+    const int input_height =
+        input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'H'));
+    const int input_width =
+        input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'W'));
+    const int input_depth =
+        input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'C'));
 
     const int block_size_sq = block_size_ * block_size_;
 
@@ -91,17 +102,23 @@ class DepthToSpaceOp : public OpKernel {
     const int output_height = input_height * block_size_;
 
     // Allocate output tensor.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({batch_size, output_height,
-                                                output_width, output_depth}),
-                                &output));
+    Tensor* outputs_tensor = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       0,
+                       ShapeFromFormat(data_format_, batch_size, output_height,
+                                       output_width, output_depth),
+                       &outputs_tensor));
+    auto Tinput = input.tensor<T, kRequiredDims>();
+    auto Toutput = outputs_tensor->tensor<T, kRequiredDims>();
 
-    typename TTypes<T, 4>::ConstTensor Tinput = input.tensor<T, 4>();
-    typename TTypes<T, 4>::Tensor Toutput = output->tensor<T, 4>();
-
-    functor::DepthToSpaceOpFunctor<Device, T> functor;
-    functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
+    if (std::is_same<Device, GPUDevice>::value && data_format_ == FORMAT_NCHW) {
+      functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NCHW> functor;
+      functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
+    } else {
+      functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NHWC> functor;
+      functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
+    }
   };
 
  private:
@@ -109,10 +126,11 @@ class DepthToSpaceOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-// Partial specialization of DepthToSpaceOpFunctor for a CPUDevice.
+// Partial specialization of DepthToSpaceOpFunctor for a CPUDevice
+// with FORMAT_NHWC.
 namespace functor {
 template <typename T>
-struct DepthToSpaceOpFunctor<CPUDevice, T> {
+struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NHWC> {
   void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output) {
     const int batch_size = output.dimension(0);
