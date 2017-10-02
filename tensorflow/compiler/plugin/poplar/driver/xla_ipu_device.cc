@@ -75,4 +75,10 @@ REGISTER_XLA_OP(Name("Gather")
         .Device(DEVICE_IPU_XLA_JIT),
         GatherOpDynamicSlice);
 
+REGISTER_XLA_OP(Name("GatherV2")
+        .TypeConstraint("Tparams", DT_FLOAT)
+        .Device(DEVICE_IPU_XLA_JIT),
+        GatherOpDynamicSlice);
+
+
 }  // namespace tensorflow
