@@ -26,7 +26,9 @@ import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import dnn_linear_combined
+from tensorflow.python.estimator.canned.utils import common_combined_model_fn
 from tensorflow.python.estimator.canned import dnn_testing_utils
 from tensorflow.python.estimator.canned import linear_testing_utils
 from tensorflow.python.estimator.canned import prediction_keys
@@ -36,7 +38,6 @@ from tensorflow.python.estimator.inputs import pandas_io
 from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
@@ -62,31 +63,30 @@ class DNNOnlyModelFnTest(dnn_testing_utils.BaseDNNModelFnTest, test.TestCase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
-    dnn_testing_utils.BaseDNNModelFnTest.__init__(self, self._dnn_only_model_fn)
+    dnn_testing_utils.BaseDNNModelFnTest.__init__(
+        self,
+        self._dnn_only_model_fn,
+        dnn._dnn_logit_fn_builder) # pylint: disable=protected-access
 
   def _dnn_only_model_fn(self,
+                         name,
                          features,
                          labels,
                          mode,
                          head,
-                         hidden_units,
-                         feature_columns,
+                         logit_fn,
                          optimizer='Adagrad',
-                         activation_fn=nn.relu,
-                         dropout=None,
                          input_layer_partitioner=None,
                          config=None):
-    return dnn_linear_combined._dnn_linear_combined_model_fn(
+
+    return common_combined_model_fn(
+        name=name,
         features=features,
         labels=labels,
         mode=mode,
         head=head,
-        linear_feature_columns=[],
-        dnn_hidden_units=hidden_units,
-        dnn_feature_columns=feature_columns,
-        dnn_optimizer=optimizer,
-        dnn_activation_fn=activation_fn,
-        dnn_dropout=dropout,
+        logit_fn=logit_fn,
+        optimizer=optimizer,
         input_layer_partitioner=input_layer_partitioner,
         config=config)
 
@@ -105,7 +105,7 @@ def _linear_regressor_fn(feature_columns,
       linear_optimizer=optimizer,
       label_dimension=label_dimension,
       weight_column=weight_column,
-      input_layer_partitioner=partitioner,
+      partitioner=partitioner,
       config=config)
 
 
