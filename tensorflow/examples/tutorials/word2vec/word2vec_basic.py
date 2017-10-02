@@ -105,12 +105,10 @@ def generate_batch(batch_size, num_skips, skip_window):
   buffer.extend(data[data_index:data_index + span])
   data_index += span
   for i in range(batch_size // num_skips):
-    target = skip_window  # target label at the center of the buffer
-    targets_to_avoid = [skip_window]
-    for j in range(num_skips):
-      while target in targets_to_avoid:
-        target = random.randint(0, span - 1)
-      targets_to_avoid.append(target)
+    targets = list(range(span))
+    del targets[skip_window]
+    targets = random.sample(targets, num_skips)
+    for j, target in enumerate(targets):
       batch[i * num_skips + j] = buffer[skip_window]
       labels[i * num_skips + j, 0] = buffer[target]
     if data_index == len(data):
