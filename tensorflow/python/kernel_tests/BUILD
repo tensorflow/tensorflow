@@ -971,7 +971,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "where_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["where_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
