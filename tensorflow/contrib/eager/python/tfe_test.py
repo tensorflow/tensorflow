@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.contrib.eager.python import tfe
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -76,9 +77,9 @@ class TFETest(test_util.TensorFlowTestCase):
 
     # tf.Tensor.as_gpu_device() moves a tensor to GPU.
     x = constant_op.constant([[1., 2.], [3., 4.]]).as_gpu_tensor()
-    # Alternatively, tfe.device() as a context manager places tensors and
+    # Alternatively, tf.device() as a context manager places tensors and
     # operations.
-    with tfe.device('gpu:0'):
+    with ops.device('gpu:0'):
       x += 1.
     # Without a device context, heuristics are used to place ops.
     # In this case, ops.reduce_mean runs on the GPU.

@@ -24,6 +24,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -32,6 +33,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -158,8 +160,9 @@ class CholeskyOpTest(test.TestCase):
 
   def testNotInvertibleCPU(self):
     # The input should be invertible.
-    with self.test_session(use_gpu=False):
-      with self.assertRaisesOpError(
+    with self.test_session(use_gpu=True):
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
           "Cholesky decomposition was not successful. The"
           " input might not be valid."):
         # All rows of the matrix below add to zero
@@ -169,6 +172,17 @@ class CholeskyOpTest(test.TestCase):
   def testEmpty(self):
     self._verifyCholesky(np.empty([0, 2, 2]))
     self._verifyCholesky(np.empty([2, 0, 0]))
+
+  def testConcurrentExecutesWithoutError(self):
+    with self.test_session(use_gpu=True) as sess:
+      matrix1 = random_ops.random_normal([5, 5], seed=42)
+      matrix2 = random_ops.random_normal([5, 5], seed=42)
+      matrix1 = math_ops.matmul(matrix1, matrix1, adjoint_a=True)
+      matrix2 = math_ops.matmul(matrix2, matrix2, adjoint_a=True)
+      c1 = linalg_ops.cholesky(matrix1)
+      c2 = linalg_ops.cholesky(matrix2)
+      c1_val, c2_val = sess.run([c1, c2])
+      self.assertAllEqual(c1_val, c2_val)
 
 
 class CholeskyGradTest(test.TestCase):

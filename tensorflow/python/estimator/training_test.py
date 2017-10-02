@@ -21,9 +21,11 @@ from __future__ import print_function
 
 
 import json
+import random
 import time
 
 from tensorflow.python.estimator import estimator as estimator_lib
+from tensorflow.python.estimator import export_strategy as export_strategy_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator import training
 from tensorflow.python.framework import ops
@@ -33,6 +35,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import compat
 
 _DEFAULT_EVAL_STEPS = 100
 _DEFAULT_EVAL_DELAY_SECS = 120
@@ -47,9 +50,18 @@ _INVALID_NAME_MSG = '`name` must be string'
 _INVALID_EVAL_DELAY_SECS_MSG = 'Must specify delay_secs >= 0'
 _INVALID_EVAL_THROTTLE_SECS_MSG = 'Must specify throttle_secs >= 0'
 _INVALID_ESTIMATOR_MSG = '`estimator` must have type `tf.estimator.Estimator`'
+_INVALID_EXPORT_STRATEGY_MSG = '`export_strategies` must be an ExportStrategy'
+_DUPLICATE_STRATEGY_NAMES_MSG = '`export_strategies` must have unique names.'
 _INVALID_TRAIN_SPEC_MSG = '`train_spec` must have type `tf.estimator.TrainSpec`'
 _INVALID_EVAL_SPEC_MSG = '`eval_spec` must have type `tf.estimator.EvalSpec`'
 _INVALID_CONFIG_FOR_STD_SERVER_MSG = 'Could not start server; .*TF_CONFIG'
+_INVALID_LOCAL_TASK_WITH_CLUSTER = '`task.type` in TF_CONFIG cannot be `local`'
+_INVALID_TASK_TYPE = '`estimator.config` must have task_type set.'
+# The message should NOT have 'local' word as part of it. As (?!word) is looking
+# ahead, so, the $ (ending) check is required; otherwise, it will match
+# partially and return successuful.
+_INVALID_TASK_TO_RUN = (
+    'Task type .* is not supported. Supported task types are ((?!local).)*$')
 
 _TF_CONFIG_FOR_CHIEF = {
     'cluster': {
@@ -87,6 +99,18 @@ _TF_CONFIG_FOR_PS = {
     }
 }
 
+_TF_CONFIG_FOR_EVALUATOR = {
+    'cluster': {
+        run_config_lib.TaskType.CHIEF: ['host0:0'],
+        run_config_lib.TaskType.PS: ['host1:1', 'host2:2'],
+        run_config_lib.TaskType.WORKER: ['host3:3', 'host4:4']
+    },
+    'task': {
+        'type': run_config_lib.TaskType.EVALUATOR,
+        'index': 1
+    }
+}
+
 _TF_CONFIG_FOR_GOOGLE = {'environment': 'google'}
 
 
@@ -96,6 +120,13 @@ class _FakeHook(session_run_hook.SessionRunHook):
 
 class _InvalidHook(object):
   """Invalid hook (not a subclass of `SessionRunHook`)."""
+
+
+def _create_fake_export_strategy(name):
+  def export_fn(estimator, export_path):
+    del estimator, export_path
+
+  return export_strategy_lib.ExportStrategy(name=name, export_fn=export_fn)
 
 
 def _create_run_config_with_cluster_spec(tf_config):
@@ -151,18 +182,28 @@ class EvalSpecTest(test.TestCase):
   def testAllArgumentsSet(self):
     """Tests that no errors are raised when all arguments are set."""
     hooks = [_FakeHook()]
+    export_strategy = _create_fake_export_strategy('a')
 
-    # TODO(b/65169058): Replace the export_strategies with valid instances.
     spec = training.EvalSpec(input_fn=lambda: 1, steps=2, name='name',
-                             hooks=hooks, export_strategies=hooks,
+                             hooks=hooks, export_strategies=export_strategy,
                              delay_secs=3, throttle_secs=4)
     self.assertEqual(1, spec.input_fn())
     self.assertEqual(2, spec.steps)
     self.assertEqual('name', spec.name)
     self.assertEqual(tuple(hooks), spec.hooks)
-    self.assertEqual(tuple(hooks), spec.export_strategies)
+    self.assertEqual((export_strategy,), spec.export_strategies)
     self.assertEqual(3, spec.delay_secs)
     self.assertEqual(4, spec.throttle_secs)
+
+  def testListOfExportStrategies(self):
+    """Tests that no errors are raised with multiple export strategies."""
+    export_strategies = [_create_fake_export_strategy('a'),
+                         _create_fake_export_strategy('b')]
+
+    spec = training.EvalSpec(input_fn=lambda: 1,
+                             export_strategies=export_strategies)
+    self.assertEqual(1, spec.input_fn())
+    self.assertEqual(tuple(export_strategies), spec.export_strategies)
 
   def testInvalidInputFn(self):
     with self.assertRaisesRegexp(TypeError, _INVALID_INPUT_FN_MSG):
@@ -187,6 +228,179 @@ class EvalSpecTest(test.TestCase):
   def testInvalidThrottleSecs(self):
     with self.assertRaisesRegexp(ValueError, _INVALID_EVAL_THROTTLE_SECS_MSG):
       training.EvalSpec(input_fn=lambda: 1, throttle_secs=-1)
+
+  def testInvalidTypeOfListOfExportStrategies(self):
+    with self.assertRaisesRegexp(TypeError, _INVALID_EXPORT_STRATEGY_MSG):
+      training.EvalSpec(input_fn=lambda: 1,
+                        export_strategies=[_create_fake_export_strategy('a'),
+                                           _FakeHook()])
+
+  def testInvalidTypeOfIndividualExportStrategy(self):
+    with self.assertRaisesRegexp(TypeError, _INVALID_EXPORT_STRATEGY_MSG):
+      training.EvalSpec(input_fn=lambda: 1, export_strategies=_FakeHook())
+
+  def testMultipleExportStrategiesWithTheSameName(self):
+    with self.assertRaisesRegexp(ValueError, _DUPLICATE_STRATEGY_NAMES_MSG):
+      training.EvalSpec(input_fn=lambda: 1,
+                        export_strategies=[_create_fake_export_strategy('a'),
+                                           _create_fake_export_strategy('a')])
+
+
+class TrainAndEvaluteTest(test.TestCase):
+
+  def _mock_executor_instance(self):
+    def task_fn(name):
+      def _fn():
+        return name
+      return _fn
+
+    mock_instance = test.mock.Mock()
+    mock_instance.run_chief = task_fn('chief')
+    mock_instance.run_master = task_fn('master')
+    mock_instance.run_ps = task_fn('ps')
+    mock_instance.run_evaluator = task_fn('evaluator')
+    mock_instance.run_worker = task_fn('worker')
+    mock_instance.run_local = task_fn('local')
+
+    return mock_instance
+
+  def _test_run_task_in_distributed_training(self, run_config):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = run_config
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
+      mock_executor.return_value = self._mock_executor_instance()
+      return_value = training.train_and_evaluate(
+          mock_est, mock_train_spec, mock_eval_spec)
+
+      self.assertEqual(mock_est.config.task_type, return_value)
+      mock_executor.assert_called_with(estimator=mock_est,
+                                       train_spec=mock_train_spec,
+                                       eval_spec=mock_eval_spec)
+
+  def test_run_chief(self):
+    self._test_run_task_in_distributed_training(
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_CHIEF))
+
+  def test_run_worker(self):
+    self._test_run_task_in_distributed_training(
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_WORKER))
+
+  def test_run_ps(self):
+    self._test_run_task_in_distributed_training(
+        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_PS))
+
+  def test_run_evaluator(self):
+    self._test_run_task_in_distributed_training(
+        run_config=_create_run_config_with_cluster_spec(
+            _TF_CONFIG_FOR_EVALUATOR))
+
+  def test_run_local(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = run_config_lib.RunConfig()
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
+      mock_executor.return_value = self._mock_executor_instance()
+      return_value = training.train_and_evaluate(
+          mock_est, mock_train_spec, mock_eval_spec)
+
+      self.assertEqual('local', return_value)
+      mock_executor.assert_called_with(estimator=mock_est,
+                                       train_spec=mock_train_spec,
+                                       eval_spec=mock_eval_spec)
+
+  def test_invalid_local_task(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            'local': ['hos1:1'],
+        },
+        'task': {
+            'type': 'local',
+            'index': 0
+        }
+    }
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = _create_run_config_with_cluster_spec(tf_config)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with self.assertRaisesRegexp(ValueError, _INVALID_LOCAL_TASK_WITH_CLUSTER):
+      training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
+
+  def test_unsupported_task_due_to_missing_run_task(self):
+    unsupported_task = 'alloc'
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            unsupported_task: ['hos1:1'],
+        },
+        'task': {
+            'type': unsupported_task,
+            'index': 0
+        }
+    }
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = _create_run_config_with_cluster_spec(tf_config)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
+      # mock_instance has no run_alloc method.
+      mock_instance = self._mock_executor_instance()
+      mock_executor.return_value = mock_instance
+      with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TO_RUN):
+        training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
+
+  def test_unsupported_task_due_to_not_callable(self):
+    unsupported_task = 'alloc'
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+            unsupported_task: ['hos1:1'],
+        },
+        'task': {
+            'type': unsupported_task,
+            'index': 0
+        }
+    }
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = _create_run_config_with_cluster_spec(tf_config)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
+      mock_instance = self._mock_executor_instance()
+      mock_instance.run_alloc = 123  # not callable
+      mock_executor.return_value = mock_instance
+      with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TO_RUN):
+        training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
+
+  def test_invalid_estimator(self):
+    invalid_estimator = object()
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    with self.assertRaisesRegexp(TypeError, _INVALID_ESTIMATOR_MSG):
+      training.train_and_evaluate(invalid_estimator, mock_train_spec,
+                                  mock_eval_spec)
+
+  def test_invalid_task_type(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.config = test.mock.Mock()
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.Mock()
+    mock_est.config.cluster_spec = {'1': 'dummy'}
+    mock_est.config.task_type = ''
+
+    with self.assertRaisesRegexp(ValueError, _INVALID_TASK_TYPE):
+      training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
 
 
 class TrainingExecutorConstructorTest(test.TestCase):
@@ -429,6 +643,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     training_max_step = 200
 
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.model_dir = compat.as_bytes(test.get_temp_dir())
     mock_est.evaluate.side_effect = [
         {_GLOBAL_STEP_KEY: training_max_step // 2},
         {_GLOBAL_STEP_KEY: training_max_step}
@@ -438,12 +653,25 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     mock_train_spec.max_steps = training_max_step
 
+    mock_est.times_export_fn_was_called = 0
+    def export_fn(estimator, *args, **kwargs):
+      del args, kwargs
+      estimator.times_export_fn_was_called += 1
+
+    export_strategy = export_strategy_lib.ExportStrategy(
+        name='see_whether_export_fn_is_called', export_fn=export_fn)
+
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1, delay_secs=0, throttle_secs=0)
+        input_fn=lambda: 1,
+        delay_secs=0,
+        throttle_secs=0,
+        export_strategies=export_strategy)
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     executor.run_evaluator()
+
     self.assertEqual(2, mock_est.evaluate.call_count)
+    self.assertEqual(2, mock_est.times_export_fn_was_called)
 
   def test_skip_evaluation_due_to_ckpt(self):
     training_max_step = 200
@@ -483,6 +711,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
 
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: training_max_step}
+    mock_est.model_dir = compat.as_bytes(test.get_temp_dir())
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     mock_train_spec.max_steps = training_max_step
 
@@ -517,6 +746,31 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
       executor.run_evaluator()
     mock_sleep.assert_called_with(throttle_secs - operation_secs)
     self.assertTrue(mock_est.evaluate.called)
+
+  def test_that_export_fn_is_called(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
+
+    def export_fn(estimator, *args, **kwargs):
+      del args, kwargs
+      estimator.export_fn_was_called = True
+
+    export_strategy = export_strategy_lib.ExportStrategy(
+        name='see_whether_export_fn_is_called', export_fn=export_fn)
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1,
+        steps=2,
+        delay_secs=0,
+        throttle_secs=0,
+        export_strategies=export_strategy)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    executor.run_evaluator()
+
+    # Verify that export_fn was called on the right estimator.
+    self.assertTrue(mock_est.export_fn_was_called)
 
 
 class TrainingExecutorRunPsTest(test.TestCase):
@@ -640,8 +894,12 @@ class StopAtSecsHookTest(test.TestCase):
 class TrainingExecutorRunLocalTest(test.TestCase):
   """Tests run_local of _TrainingExecutor."""
 
+  def unique_checkpoint_every_time_fn(self):
+    return 'checkpoint_path_%s/' % random.random()
+
   def test_send_stop_at_secs_to_train(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+    mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
     train_spec = training.TrainSpec(
         input_fn=lambda: 1, max_steps=2, hooks=[_FakeHook()])
     eval_spec = training.EvalSpec(
@@ -656,11 +914,24 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     self.assertEqual(eval_spec.throttle_secs, stop_hook._stop_after_secs)
 
   def test_runs_in_a_loop_until_max_steps(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+    mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
+
+    mock_est.times_export_fn_was_called = 0
+    def export_fn(estimator, *args, **kwargs):
+      del args, kwargs
+      estimator.times_export_fn_was_called += 1
+
+    export_strategy = export_strategy_lib.ExportStrategy(
+        name='see_whether_export_fn_is_called', export_fn=export_fn)
+
     train_spec = training.TrainSpec(
         input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1, hooks=[_FakeHook()], throttle_secs=100)
+        input_fn=lambda: 1,
+        hooks=[_FakeHook()],
+        throttle_secs=100,
+        export_strategies=export_strategy)
     # should be called 3 times.
     mock_est.evaluate.side_effect = [{
         _GLOBAL_STEP_KEY: train_spec.max_steps - 100
@@ -675,9 +946,11 @@ class TrainingExecutorRunLocalTest(test.TestCase):
 
     self.assertEqual(3, mock_est.train.call_count)
     self.assertEqual(3, mock_est.evaluate.call_count)
+    self.assertEqual(3, mock_est.times_export_fn_was_called)
 
   def test_train_and_evaluate_args(self):
-    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+    mock_est.latest_checkpoint.return_value = 'checkpoint_path/'
     train_spec = training.TrainSpec(
         input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
     eval_spec = training.EvalSpec(
@@ -691,6 +964,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
         name=eval_spec.name,
         input_fn=eval_spec.input_fn,
         steps=eval_spec.steps,
+        checkpoint_path='checkpoint_path/',
         hooks=eval_spec.hooks)
 
     train_args = mock_est.train.call_args[1]
@@ -706,6 +980,36 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     with self.assertRaisesRegexp(ValueError, 'throttle_secs'):
       executor.run_local()
+
+  def test_that_export_fn_is_called_with_run_local(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_train_spec.max_steps = 200
+    mock_est.evaluate.return_value = {
+        _GLOBAL_STEP_KEY: mock_train_spec.max_steps
+    }
+    # _validate_hooks would have made sure that train_spec.hooks is [], when
+    # None were passed.
+    mock_train_spec.hooks = []
+
+    def export_fn(estimator, *args, **kwargs):
+      del args, kwargs
+      estimator.export_fn_was_called = True
+
+    export_strategy = export_strategy_lib.ExportStrategy(
+        name='see_whether_export_fn_is_called', export_fn=export_fn)
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1,
+        steps=2,
+        delay_secs=0,
+        throttle_secs=213,
+        export_strategies=export_strategy)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    executor.run_local()
+
+    self.assertTrue(mock_est.export_fn_was_called)
 
 
 if __name__ == '__main__':

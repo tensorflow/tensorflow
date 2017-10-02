@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -735,10 +736,8 @@ TEST_F(HloEvaluatorTest, SimpleConv1D) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_input_batch_dimension(0);
-  dnums.set_output_batch_dimension(0);
-  dnums.set_input_feature_dimension(1);
-  dnums.set_output_feature_dimension(1);
+  dnums.set_batch_dimension(0);
+  dnums.set_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
 
   dnums.set_kernel_output_feature_dimension(0);
@@ -869,10 +868,8 @@ TEST_F(HloEvaluatorTest, Conv2DGeneralDimensions) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_input_batch_dimension(2);
-  dnums.set_output_batch_dimension(2);
-  dnums.set_input_feature_dimension(0);
-  dnums.set_output_feature_dimension(0);
+  dnums.set_batch_dimension(2);
+  dnums.set_feature_dimension(0);
   dnums.add_spatial_dimensions(1);
   dnums.add_spatial_dimensions(3);
 
@@ -1598,6 +1595,51 @@ TEST_F(HloEvaluatorTest, Reverse) {
   // clang-format on
 
   LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
+TEST_F(HloEvaluatorTest, EvaluateWithSubstitutions) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+
+  HloInstruction* param0 =
+      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param0"));
+  HloInstruction* square = b.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kMultiply, param0, param0));
+  HloInstruction* add = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, square));
+
+  // Evaluate add with param0 = {1, 2, 3, 4}, square = {10, 20, 30, 40}.
+  HloEvaluator evaluator;
+  auto result = evaluator.EvaluateWithSubstitutions(
+      add, {{param0, Literal::CreateR1<float>({1, 2, 3, 4}).get()},
+            {square, Literal::CreateR1<float>({10, 20, 30, 40}).get()}});
+  TF_ASSERT_OK(result.status());
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<float>({11, 22, 33, 44}),
+                               *result.ValueOrDie());
+}
+
+// Check that EvaluateWithSubstitutions works if one of the operands to the op
+// we're evaluating is a constant.
+TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsWithConstantOperand) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+
+  HloInstruction* param0 =
+      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param0"));
+  HloInstruction* square = b.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kMultiply, param0, param0));
+  HloInstruction* constant = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3, 4})));
+  HloInstruction* add = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, constant, square));
+
+  // Evaluate add with square = {10, 20, 30, 40}.
+  HloEvaluator evaluator;
+  auto result = evaluator.EvaluateWithSubstitutions(
+      add, {{square, Literal::CreateR1<float>({10, 20, 30, 40}).get()}});
+  TF_ASSERT_OK(result.status());
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<float>({11, 22, 33, 44}),
+                               *result.ValueOrDie());
 }
 
 }  // namespace

@@ -141,8 +141,8 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   BatchDescriptor input_descriptor(effective_num_dimensions);
   input_descriptor.set_layout(DataLayout::kBatchDepthYX)
       .set_feature_map_count(
-          input_shape_.dimensions(dim_nums_.input_feature_dimension()))
-      .set_count(input_shape_.dimensions(dim_nums_.input_batch_dimension()));
+          input_shape_.dimensions(dim_nums_.feature_dimension()))
+      .set_count(input_shape_.dimensions(dim_nums_.batch_dimension()));
   for (int dim = 0; dim < num_dimensions; ++dim) {
     // Note that the dimensions are reversed. The same holds below.
     input_descriptor.set_spatial_dim(
@@ -176,8 +176,8 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   BatchDescriptor output_descriptor(effective_num_dimensions);
   output_descriptor.set_layout(DataLayout::kBatchDepthYX)
       .set_feature_map_count(
-          output_shape_.dimensions(dim_nums_.output_feature_dimension()))
-      .set_count(output_shape_.dimensions(dim_nums_.output_batch_dimension()));
+          output_shape_.dimensions(dim_nums_.feature_dimension()))
+      .set_count(output_shape_.dimensions(dim_nums_.batch_dimension()));
   for (int dim = 0; dim < num_dimensions; ++dim) {
     output_descriptor.set_spatial_dim(
         static_cast<se::dnn::DimIndex>(effective_num_dimensions - dim - 1),

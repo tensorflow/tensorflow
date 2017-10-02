@@ -198,12 +198,10 @@ class OpcodeFusionTest : public InstructionFusionTest {
     ASSERT_THAT(root, op::Fusion());
     EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
 
-    std::vector<HloOpcode> fused_opcodes(root->fused_instructions().size());
+    std::vector<HloOpcode> fused_opcodes(root->fused_instruction_count());
     std::transform(root->fused_instructions().begin(),
                    root->fused_instructions().end(), fused_opcodes.begin(),
-                   [](const std::unique_ptr<HloInstruction>& hlo) {
-                     return hlo->opcode();
-                   });
+                   [](const HloInstruction* hlo) { return hlo->opcode(); });
 
     EXPECT_EQ(
         std::multiset<HloOpcode>(fused_opcodes.begin(), fused_opcodes.end()),
@@ -500,6 +498,114 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
       module.get(), {HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
                      HloOpcode::kParameter, HloOpcode::kParameter,
                      HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
+TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
+  auto module = CreateNewModule();
+  HloComputation::Builder builder(TestName());
+
+  Shape full_shape = ShapeUtil::MakeShape(F32, {4, 100, 10, 100, 50});
+
+  auto loop_idx = builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(S32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(S32, {}), "param0"))));
+
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(S32, {1}), "param1"));
+  auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
+      ShapeUtil::MakeShape(S32, {5}),
+      {loop_idx, param1, param1, param1, param1}, /*dimension=*/0));
+
+  auto idx_choice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(S32, {1}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          2, ShapeUtil::MakeShape(S32, {4}), "param2")),
+      loop_idx,
+      /*slice_sizes=*/{1}));
+
+  PaddingConfig padding_config;
+  padding_config.add_dimensions()->set_edge_padding_high(4);
+  auto pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(S32, {5}), idx_choice,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0(0))),
+      padding_config));
+
+  auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ShapeUtil::MakeShape(F32, {1, 100, 10, 100, 50}),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(F32, {100, 100, 10, 100, 50}), "param3")),
+      pad, /*slice_sizes=*/{1, 100, 10, 100, 50}));
+
+  builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      full_shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(4, full_shape, "param4")),
+      slice, concat));
+
+  module->AddEntryComputation(builder.Build());
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(),
+      {HloOpcode::kConcatenate, HloOpcode::kPad, HloOpcode::kDynamicSlice,
+       HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
+}
+
+// Tests that we do not fuse instructions in cases where instructions in the
+// fusion would reuse elements from its operand due to an implicit broadcast.
+TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastUnary) {
+  Shape small_shape = ShapeUtil::MakeShape(F32, {1, 4});
+  Shape large_shape = ShapeUtil::MakeShape(F32, {3, 4});
+
+  HloComputation::Builder builder(TestName());
+
+  HloInstruction* small_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, small_shape, "param"));
+  HloInstruction* small_exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(small_shape, HloOpcode::kExp, small_param));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(large_shape, HloOpcode::kExp, small_exp));
+
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto did_fusion = CpuInstructionFusion().Run(module.get());
+  ASSERT_TRUE(did_fusion.ok());
+  EXPECT_FALSE(did_fusion.ValueOrDie());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
+}
+
+// Like ReuseViaImplicitBroadcastUnary but with a binary operation.
+TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastBinary) {
+  Shape small_shape = ShapeUtil::MakeShape(F32, {1, 4});
+  Shape large_shape = ShapeUtil::MakeShape(F32, {3, 4});
+
+  HloComputation::Builder builder(TestName());
+
+  HloInstruction* small_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/0, small_shape, "param"));
+  HloInstruction* large_param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          /*parameter_number=*/1, large_shape, "param"));
+  HloInstruction* small_exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(small_shape, HloOpcode::kExp, small_param));
+
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      large_shape, HloOpcode::kAdd, small_exp, large_param));
+
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto did_fusion = CpuInstructionFusion().Run(module.get());
+  ASSERT_TRUE(did_fusion.ok());
+  EXPECT_FALSE(did_fusion.ValueOrDie());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              Not(op::Fusion()));
 }
 
 }  // namespace

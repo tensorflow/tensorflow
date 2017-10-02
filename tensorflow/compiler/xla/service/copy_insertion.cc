@@ -532,11 +532,11 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   // Gather all while body computations and while instructions.
   FlatSet<const HloComputation*> while_body_computations;
   std::vector<HloInstruction*> while_instructions;
-  for (auto& computation : module->computations()) {
-    for (auto& instruction : computation->instructions()) {
+  for (auto* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
         while_body_computations.insert(instruction->while_body());
-        while_instructions.push_back(instruction.get());
+        while_instructions.push_back(instruction);
       }
     }
   }
@@ -546,14 +546,11 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   // Add copies of computation root instructions, if needed.
   FlatMap<const HloComputation*, ShapeTree<bool>> while_body_read_only_indices;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (auto* computation : module->MakeNonfusionComputations()) {
     VLOG(2) << "computation " << computation->name();
     InstructionCopier root_copier(computation->root_instruction(),
                                   /*copy_users=*/{});
-    if (while_body_computations.count(computation.get()) > 0) {
+    if (while_body_computations.count(computation) > 0) {
       // Record root indices to copy for while body sub-computations. We do not
       // need to call RecordIndicesWhichPointToParamOrConstant for the while
       // body root instruction here, because any necessary copies needed to
@@ -563,7 +560,7 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
       ShapeTree<bool> read_only_indices(while_body_param->shape());
       TF_RETURN_IF_ERROR(root_copier.RecordIndicesToCopyForColocatingBuffers(
           *liveness, while_body_param, &read_only_indices));
-      while_body_read_only_indices[computation.get()] = read_only_indices;
+      while_body_read_only_indices[computation] = read_only_indices;
 
       // Mark control predecessors, based on the body param, for any copies
       // we'll be inserting. This ensures the copy doesn't run too early.

@@ -14,6 +14,8 @@
 # ==============================================================================
 """`tf.contrib.data.Dataset` API for input pipelines.
 
+See the @{$datasets$Importing Data} Programmer's Guide for an overview.
+
 @@Dataset
 @@Iterator
 @@TFRecordDataset
@@ -37,19 +39,20 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops.dataset_ops import batch_and_drop_remainder
+
+from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
+from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
+from tensorflow.contrib.data.python.ops.batching import unbatch
 from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
-from tensorflow.contrib.data.python.ops.dataset_ops import dense_to_sparse_batch
-from tensorflow.contrib.data.python.ops.dataset_ops import enumerate_dataset
-from tensorflow.contrib.data.python.ops.dataset_ops import FixedLengthRecordDataset
-from tensorflow.contrib.data.python.ops.dataset_ops import group_by_window
-from tensorflow.contrib.data.python.ops.dataset_ops import ignore_errors
-from tensorflow.contrib.data.python.ops.dataset_ops import read_batch_features
-from tensorflow.contrib.data.python.ops.dataset_ops import rejection_resample
-from tensorflow.contrib.data.python.ops.dataset_ops import SqlDataset
-from tensorflow.contrib.data.python.ops.dataset_ops import TextLineDataset
-from tensorflow.contrib.data.python.ops.dataset_ops import TFRecordDataset
-from tensorflow.contrib.data.python.ops.dataset_ops import unbatch
+from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
+from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
+from tensorflow.contrib.data.python.ops.grouping import group_by_window
+from tensorflow.contrib.data.python.ops.readers import FixedLengthRecordDataset
+from tensorflow.contrib.data.python.ops.readers import read_batch_features
+from tensorflow.contrib.data.python.ops.readers import SqlDataset
+from tensorflow.contrib.data.python.ops.readers import TextLineDataset
+from tensorflow.contrib.data.python.ops.readers import TFRecordDataset
+from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.sloppy_ops import sloppy_interleave
 from tensorflow.python.data.ops.dataset_ops import Iterator
 # pylint: enable=unused-import
