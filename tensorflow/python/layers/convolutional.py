@@ -101,8 +101,9 @@ class _Conv(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(_Conv, self).__init__(trainable=trainable,
-                                name=name, **kwargs)
+    super(_Conv, self).__init__(trainable=trainable, name=name,
+                                activity_regularizer=activity_regularizer,
+                                **kwargs)
     self.rank = rank
     self.filters = filters
     self.kernel_size = utils.normalize_tuple(kernel_size, rank, 'kernel_size')
@@ -117,7 +118,6 @@ class _Conv(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.activity_regularizer = activity_regularizer
     self.kernel_constraint = kernel_constraint
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(ndim=self.rank + 2)
