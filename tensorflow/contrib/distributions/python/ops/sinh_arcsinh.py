@@ -27,14 +27,14 @@ from tensorflow.python.ops.distributions import normal
 from tensorflow.python.ops.distributions import transformed_distribution
 
 __all__ = [
-    "VectorSinhArcsinhDiag",
+    "SinhArcsinh",
 ]
 
 
-class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
-  """The (diagonal) SinhArcsinh transformation of a distribution on `R^k`.
+class SinhArcsinh(transformed_distribution.TransformedDistribution):
+  """The SinhArcsinh transformation of a distribution on `(-inf, inf)`.
 
-  This distribution models a random vector `Y = (Y1,...,Yk)`, making use of
+  This distribution models a random variable, making use of
   a `SinhArcsinh` transformation (which has adjustable tailweight and skew),
   a rescaling, and a shift.
 
@@ -46,18 +46,17 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
 
   #### Mathematical Details
 
-  Given iid random vector `Z = (Z1,...,Zk)`, we define the VectorSinhArcsinhDiag
+  Given random variable `Z`, we define the SinhArcsinh
   transformation of `Z`, `Y`, parameterized by
-  `(loc, scale, skewness, tailweight)`, via the relation (with `@` denoting
-  matrix multiplication):
+  `(loc, scale, skewness, tailweight)`, via the relation:
 
   ```
-  Y := loc + scale @ F(Z) * (2 / F(2))
+  Y := loc + scale * F(Z) * (2 / F(2))
   F(Z) := Sinh( (Arcsinh(Z) + skewness) * tailweight )
   ```
 
   This distribution is similar to the location-scale transformation
-  `L(Z) := loc + scale @ Z` in the following ways:
+  `L(Z) := loc + scale * Z` in the following ways:
 
   * If `skewness = 0` and `tailweight = 1` (the defaults), `F(Z) = Z`, and then
     `Y = L(Z)` exactly.
@@ -67,7 +66,7 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
     Thus it can be said that the weights in the tails of `Y` and `L(Z)` beyond
     `loc + 2 * scale` are the same.
 
-  This distribution is different than `loc + scale @ Z` due to the
+  This distribution is different than `loc + scale * Z` due to the
   reshaping done by `F`:
 
   * Positive (negative) `skewness` leads to positive (negative) skew.
@@ -95,58 +94,31 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
   """
 
   def __init__(self,
-               loc=None,
-               scale_diag=None,
-               scale_identity_multiplier=None,
+               loc,
+               scale,
                skewness=None,
                tailweight=None,
                distribution=None,
                validate_args=False,
                allow_nan_stats=True,
                name="MultivariateNormalLinearOperator"):
-    """Construct VectorSinhArcsinhDiag distribution on `R^k`.
+    """Construct SinhArcsinh distribution on `(-inf, inf)`.
 
-    The arguments `scale_diag` and `scale_identity_multiplier` combine to
-    define the diagonal `scale` referred to in this class docstring:
-
-    ```none
-    scale = diag(scale_diag + scale_identity_multiplier * ones(k))
-    ```
-
-    The `batch_shape` is the broadcast shape between `loc` and `scale`
-    arguments.
-
-    The `event_shape` is given by last dimension of the matrix implied by
-    `scale`. The last dimension of `loc` (if provided) must broadcast with this
-
-    Additional leading dimensions (if any) will index batches.
+    Arguments `(loc, scale, skewness, tailweight)` must have broadcastable shape
+    (indexing batch dimensions).  They must all have the same `dtype`.
 
     Args:
-      loc: Floating-point `Tensor`. If this is set to `None`, `loc` is
-        implicitly `0`. When specified, may have shape `[B1, ..., Bb, k]` where
-        `b >= 0` and `k` is the event size.
-      scale_diag: Non-zero, floating-point `Tensor` representing a diagonal
-        matrix added to `scale`. May have shape `[B1, ..., Bb, k]`, `b >= 0`,
-        and characterizes `b`-batches of `k x k` diagonal matrices added to
-        `scale`. When both `scale_identity_multiplier` and `scale_diag` are
-        `None` then `scale` is the `Identity`.
-      scale_identity_multiplier: Non-zero, floating-point `Tensor` representing
-        a scale-identity-matrix added to `scale`. May have shape
-        `[B1, ..., Bb]`, `b >= 0`, and characterizes `b`-batches of scale
-        `k x k` identity matrices added to `scale`. When both
-        `scale_identity_multiplier` and `scale_diag` are `None` then `scale`
-        is the `Identity`.
-      skewness:  Skewness parameter.  floating-point `Tensor` with shape
-        broadcastable with `event_shape`.
-      tailweight:  Tailweight parameter.  floating-point `Tensor` with shape
-        broadcastable with `event_shape`.
-      distribution: `tf.Distribution`-like instance. Distribution from which `k`
-        iid samples are used as input to transformation `F`.  Default is
-        `ds.Normal(0., 1.)`.
+      loc: Floating-point `Tensor`.
+      scale:  `Tensor` of same `dtype` as `loc`.
+      skewness:  Skewness parameter.  Default is `0.0` (no skew).
+      tailweight:  Tailweight parameter. Default is `1.0` (unchanged tailweight)
+      distribution: `tf.Distribution`-like instance. Distribution that is
+        transformed to produce this distribution.
+        Default is `ds.Normal(0., 1.)`.
         Must be a scalar-batch, scalar-event distribution.  Typically
         `distribution.reparameterization_type = FULLY_REPARAMETERIZED` or it is
         a function of non-trainable parameters. WARNING: If you backprop through
-        a VectorSinhArcsinhDiag sample and `distribution` is not
+        a `SinhArcsinh` sample and `distribution` is not
         `FULLY_REPARAMETERIZED` yet is a function of trainable variables, then
         the gradient will be incorrect!
       validate_args: Python `bool`, default `False`. When `True` distribution
@@ -158,43 +130,26 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
         indicate the result is undefined. When `False`, an exception is raised
         if one or more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
-
-    Raises:
-      ValueError: if at most `scale_identity_multiplier` is specified.
     """
     parameters = locals()
 
-    with ops.name_scope(
-        name,
-        values=[
-            loc, scale_diag, scale_identity_multiplier, skewness, tailweight
-        ]):
-      loc = ops.convert_to_tensor(loc, name="loc") if loc is not None else loc
+    with ops.name_scope(name, values=[loc, scale, skewness, tailweight]):
+      loc = ops.convert_to_tensor(loc, name="loc")
+      dtype = loc.dtype
+      scale = ops.convert_to_tensor(scale, name="scale", dtype=dtype)
       tailweight = 1. if tailweight is None else tailweight
       skewness = 0. if skewness is None else skewness
+      tailweight = ops.convert_to_tensor(
+          tailweight, name="tailweight", dtype=dtype)
+      skewness = ops.convert_to_tensor(skewness, name="skewness", dtype=dtype)
+
+      batch_shape = distribution_util.get_broadcast_shape(
+          loc, scale, tailweight, skewness)
 
       # Recall, with Z a random variable,
       #   Y := loc + C * F(Z),
       #   F(Z) := Sinh( (Arcsinh(Z) + skewness) * tailweight )
       #   C := 2 * scale / F(2)
-
-      # Construct shapes and 'scale' out of the scale_* and loc kwargs.
-      # scale_linop is only an intermediary to:
-      #  1. get shapes from looking at loc and the two scale args.
-      #  2. combine scale_diag with scale_identity_multiplier, which gives us
-      #     'scale', which in turn gives us 'C'.
-      scale_linop = distribution_util.make_diag_scale(
-          loc=loc,
-          scale_diag=scale_diag,
-          scale_identity_multiplier=scale_identity_multiplier,
-          validate_args=False,
-          assert_positive=False)
-      batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
-          loc, scale_linop)
-      # scale_linop.diag_part() is efficient since it is a diag type linop.
-      scale_diag_part = scale_linop.diag_part()
-      dtype = scale_diag_part.dtype
-
       if distribution is None:
         distribution = normal.Normal(
             loc=array_ops.zeros([], dtype=dtype),
@@ -204,33 +159,31 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
         asserts = distribution_util.maybe_check_scalar_distribution(
             distribution, dtype, validate_args)
         if asserts:
-          scale_diag_part = control_flow_ops.with_dependencies(
-              asserts, scale_diag_part)
+          loc = control_flow_ops.with_dependencies(asserts, loc)
 
       # Make the SAS bijector, 'F'.
-      skewness = ops.convert_to_tensor(skewness, dtype=dtype, name="skewness")
-      tailweight = ops.convert_to_tensor(
-          tailweight, dtype=dtype, name="tailweight")
       f = bijectors.SinhArcsinh(
-          skewness=skewness, tailweight=tailweight, event_ndims=1)
+          skewness=skewness, tailweight=tailweight, event_ndims=0)
 
       # Make the Affine bijector, Z --> loc + C * Z.
-      c = 2 * scale_diag_part / f.forward(ops.convert_to_tensor(2, dtype=dtype))
+      c = 2 * scale / f.forward(ops.convert_to_tensor(2, dtype=dtype))
       affine = bijectors.Affine(
-          shift=loc, scale_diag=c, validate_args=validate_args, event_ndims=1)
+          shift=loc,
+          scale_identity_multiplier=c,
+          validate_args=validate_args,
+          event_ndims=0)
 
       bijector = bijectors.Chain([affine, f])
 
-      super(VectorSinhArcsinhDiag, self).__init__(
+      super(SinhArcsinh, self).__init__(
           distribution=distribution,
           bijector=bijector,
           batch_shape=batch_shape,
-          event_shape=event_shape,
           validate_args=validate_args,
           name=name)
     self._parameters = parameters
     self._loc = loc
-    self._scale = scale_linop
+    self._scale = scale
     self._tailweight = tailweight
     self._skewness = skewness
 
