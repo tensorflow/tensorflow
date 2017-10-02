@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -73,7 +74,7 @@ class HloDataflowAnalysisTest : public HloTestBase,
     EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
     EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
     return ordering.MayInterfere(analysis_->GetValueDefinedAt(a),
-                                 analysis_->GetValueDefinedAt(b));
+                                 analysis_->GetValueDefinedAt(b), *analysis_);
   }
 
   std::unique_ptr<HloModule> module_;

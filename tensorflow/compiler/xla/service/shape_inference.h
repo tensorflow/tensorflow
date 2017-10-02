@@ -37,8 +37,6 @@ namespace xla {
 // the expected result type for computations that are built up via the API --
 // the shape that results from an operation is inferred. Some methods have
 // overloads for inferring shape at the HLO level.
-// TODO(b/166374537): Complete HLO level inference overloads and use to
-// automatically infer shape in HloInstruction::Create* methods.
 class ShapeInference {
  public:
   // Infers the shape produced by applying the given unary operation to the
@@ -80,20 +78,21 @@ class ShapeInference {
   // to the given operand shapes.
   static StatusOr<Shape> InferMapShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
-      const ProgramShape& to_apply);
+      const ProgramShape& to_apply,
+      tensorflow::gtl::ArraySlice<int64> dimensions);
 
   // Infers the shape produced by InferBatchNormTraining with the given
   // operands.
   static StatusOr<Shape> InferBatchNormTrainingShape(const Shape& operand_shape,
-                                                     const Shape& offset_shape,
                                                      const Shape& scale_shape,
+                                                     const Shape& offset_shape,
                                                      int64 feature_index);
 
   // Infers the shape produced by InferBatchNormInference with the given
   // operands.
   static StatusOr<Shape> InferBatchNormInferenceShape(
-      const Shape& operand_shape, const Shape& offset_shape,
-      const Shape& scale_shape, const Shape& mean_shape,
+      const Shape& operand_shape, const Shape& scale_shape,
+      const Shape& offset_shape, const Shape& mean_shape,
       const Shape& variance_shape, int64 feature_index);
 
   // Infers the shape produced by InferBatchNormGrad with the given operands.

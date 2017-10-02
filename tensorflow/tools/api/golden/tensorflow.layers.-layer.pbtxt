@@ -3,6 +3,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "graph"
     mtype: "<type \'property\'>"
   }
@@ -60,7 +64,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'trainable\', \'name\', \'dtype\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'None\', \"<dtype: \'float32\'>\"], "
+    argspec: "args=[\'self\', \'trainable\', \'name\', \'dtype\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

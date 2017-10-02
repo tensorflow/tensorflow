@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -261,6 +263,10 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   // where we will take this pass in future.
   // pipeline.AddPass<Inliner>();
 
+  // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
+  // pass.
+  pipeline.AddPass<CallInliner>();
+
   pipeline.AddPass<ConvCanonicalization>();
   {
     auto& pass =
@@ -274,6 +280,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_simplification=*/false);
+    pass.AddPass<TupleSimplifier>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
   }
@@ -363,7 +370,7 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
 Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(ir_module_string));
   TF_RETURN_IF_ERROR(f->Close());
   return Status::OK();
@@ -494,6 +501,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         BufferAssigner::Run(module.get(),
                             MakeUnique<DependencyHloOrdering>(module.get()),
                             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
@@ -597,6 +607,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
             module.get(),
             MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
@@ -765,6 +778,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         BufferAssigner::Run(
             module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     const string dump_debug_json_to =
         module->config().debug_options().xla_dump_debug_json_to();
@@ -797,7 +813,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                    /*is_entry_computation=*/true,
                                    &module_sequence.at(computation)));
 
-    entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
+    CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 
     ModuleHook pre_optimization_ir_dump_hook;
     ModuleHook post_optimization_ir_dump_hook;

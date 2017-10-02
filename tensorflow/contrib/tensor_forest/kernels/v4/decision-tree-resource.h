@@ -31,10 +31,7 @@ namespace tensorforest {
 class DecisionTreeResource : public ResourceBase {
  public:
   // Constructor.
-  explicit DecisionTreeResource(const TensorForestParams& params)
-      : params_(params), decision_tree_(new decision_trees::Model()) {
-    model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(params_);
-  }
+  explicit DecisionTreeResource(const TensorForestParams& params);
 
   string DebugString() override {
     return strings::StrCat("DecisionTree[size=",

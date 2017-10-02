@@ -167,7 +167,15 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleAbs(HloInstruction* abs, HloInstruction* operand) override {
     return HandleAbs<ReturnT>(abs, operand);
-  };
+  }
+
+  Status HandleRound(HloInstruction* round) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[round],
+                        ElementWiseUnaryOp(round, [](ReturnT elem_operand) {
+                          return std::round(elem_operand);
+                        }));
+    return Status::OK();
+  }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
     parent_->evaluated_[broadcast] =
@@ -177,16 +185,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
     std::vector<int64> broadcast_indices(
         ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
-
-    // Special case for broadcasting scalars: ignore broadcast dimension and
-    // broadcast to whatever the output dimension is.
-    // TODO(b/64533549): Remove the need of this once this bug is resolved.
-    if (ShapeUtil::IsScalar(operand_to_broadcast.shape())) {
-      return output->Populate<ReturnT>(
-          [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-            return operand_to_broadcast.Get<ReturnT>({});
-          });
-    }
 
     TF_RET_CHECK(broadcast->dimensions().size() ==
                  ShapeUtil::Rank(operand_to_broadcast.shape()))
@@ -483,14 +481,17 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
-    // Dimension number applicable for both input (lhs), and output.
-    const int64 batch_dim = dnums.batch_dimension();
-    const int64 z_dim = dnums.feature_dimension();
+    // Dimension number applicable for input (lhs).
+    const int64 input_batch_dim = dnums.input_batch_dimension();
+    const int64 input_z_dim = dnums.input_feature_dimension();
     // Dimension number applicable for kernel (rhs).
     const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
     const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+    // Dimension number applicable for output.
+    const int64 output_batch_dim = dnums.output_batch_dimension();
+    const int64 output_z_dim = dnums.output_feature_dimension();
 
-    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, z_dim);
+    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, input_z_dim);
 
     std::vector<int64> window_dimension_sizes;
     for (auto i : dnums.kernel_spatial_dimensions()) {
@@ -511,13 +512,13 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       std::fill(rhs_index.begin(), rhs_index.end(), 0);
       std::fill(rhs_spatial_index.begin(), rhs_spatial_index.end(), 0);
 
-      lhs_index[batch_dim] = out_index[batch_dim];
-      rhs_index[kernel_output_z_dim] = out_index[z_dim];
+      lhs_index[input_batch_dim] = out_index[output_batch_dim];
+      rhs_index[kernel_output_z_dim] = out_index[output_z_dim];
 
       // Convolve input feature with kernel.
       do {
         for (int64 iz = 0; iz < z_size; ++iz) {
-          lhs_index[z_dim] = iz;
+          lhs_index[input_z_dim] = iz;
           rhs_index[kernel_input_z_dim] = iz;
 
           // Find corresponding spatial dimension index for input (lhs).

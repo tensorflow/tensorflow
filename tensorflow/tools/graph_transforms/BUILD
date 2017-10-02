@@ -9,6 +9,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
     "tf_copts",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_py_test",
 )
@@ -124,6 +125,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":transform_utils",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -174,13 +177,13 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -216,7 +219,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "transform_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -262,7 +265,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "summarize_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -272,7 +275,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "compare_graphs",
     srcs = ["compare_graphs.cc"],
     copts = tf_copts(),

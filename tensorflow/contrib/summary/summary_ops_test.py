@@ -24,6 +24,7 @@ from tensorflow.contrib.summary import summary_ops
 from tensorflow.core.util import event_pb2
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.platform import gfile
@@ -31,6 +32,12 @@ from tensorflow.python.training import training_util
 
 
 class TargetTest(test_util.TensorFlowTestCase):
+
+  def testInvalidDirectory(self):
+    logdir = '/tmp/apath/that/doesnt/exist'
+    self.assertFalse(gfile.Exists(logdir))
+    with self.assertRaises(errors.NotFoundError):
+      summary_ops.create_summary_file_writer(logdir, max_queue=0, name='t0')
 
   def testShouldRecordSummary(self):
     self.assertFalse(summary_ops.should_record_summaries().numpy())

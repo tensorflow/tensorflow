@@ -33,11 +33,10 @@ namespace xla {
 
 namespace {
 void DumpModule(const HloModule& module,
-
                 const string& message) {
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
-  VLOG(2) << "HLO " << message << ":";
-  XLA_VLOG_LINES(2, module.ToString());
+  VLOG(3) << "HLO " << message << ":";
+  XLA_VLOG_LINES(3, module.ToString());
 }
 }  // namespace
 
@@ -61,6 +60,8 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
       VLOG(1) << "    Invariant checker " << invariant_checker->name();
       StatusOr<bool> changed_status = invariant_checker->Run(module);
       if (!changed_status.ok()) {
+        VLOG(2) << "Module failed invariant check:";
+        XLA_VLOG_LINES(2, module->ToString());
         return Status(changed_status.status().code(),
                       StrCat(changed_status.status().error_message(),
                              "\n\nFailed ", message));

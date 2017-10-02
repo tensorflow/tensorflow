@@ -1376,7 +1376,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     // try to get more fancy about proving equivalence in cases beyond that.
     if (pad_value->opcode() != HloOpcode::kConstant ||
         reduce_init_value->opcode() != HloOpcode::kConstant ||
-        !pad_value->literal().Equal(reduce_init_value->literal())) {
+        pad_value->literal() != reduce_init_value->literal()) {
       VLOG(10) << "Not folding pad into reduce-window due to different pad "
                   "values.";
       return Status::OK();
@@ -1486,7 +1486,10 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   // still convert Conv into more efficient Matmul with operand transposition
   // (such as the transposition flags in cuBLAS SGEMM).
   if (!LayoutUtil::Equal(input_shape.layout(), convolution_shape.layout()) ||
-      input_shape.layout().minor_to_major(0) != dnums.feature_dimension() ||
+      input_shape.layout().minor_to_major(0) !=
+          dnums.input_feature_dimension() ||
+      convolution_shape.layout().minor_to_major(0) !=
+          dnums.output_feature_dimension() ||
       // The input feature dimension should come later in the minor-to-major
       // order.
       (PositionInContainer(filter_shape.layout().minor_to_major(),
@@ -1505,14 +1508,14 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
 
   // Replace it with a dot, with bitcasts around it to get the right shape.
   const int64 input_channels =
-      input_shape.dimensions(dnums.feature_dimension());
+      input_shape.dimensions(dnums.input_feature_dimension());
   const int64 output_channels =
       filter_shape.dimensions(dnums.kernel_output_feature_dimension());
 
   // Computes the product of the non-feature dimensions.
   int64 conv_width = 1;
   for (int i = 0; i < input_shape.dimensions_size(); ++i) {
-    if (i != dnums.feature_dimension()) {
+    if (i != dnums.input_feature_dimension()) {
       conv_width *= input_shape.dimensions(i);
     }
   }

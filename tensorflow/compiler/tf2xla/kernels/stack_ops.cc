@@ -150,7 +150,9 @@ class StackPushOp : public XlaOpKernel {
     xla::ComputationDataHandle value = ctx->Input(1);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices = XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
+    auto start_indices =
+        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+               xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
@@ -209,7 +211,8 @@ class StackPopOp : public XlaOpKernel {
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
     auto start_indices =
-        XlaHelpers::PadWithZeros(b, index, stack_shape.dims() - 1);
+        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+               xla::MakeEdgePaddingConfig({{0, stack_shape.dims() - 1}}));
 
     auto slice_shape = stack_shape.dim_sizes();
     slice_shape[0] = 1LL;

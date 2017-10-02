@@ -67,6 +67,7 @@ namespace xla {
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -415,14 +416,6 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
       consumer->fusion_kind() != HloInstruction::FusionKind::kLoop &&
       consumer->fusion_kind() != HloInstruction::FusionKind::kInput &&
       consumer->fusion_kind() != HloInstruction::FusionKind::kOutput) {
-    return false;
-  }
-
-  // Cost condition: not fuse (simple, expensive producers) and (consumers who
-  // reuse operand elements).
-  if (producer->opcode() != HloOpcode::kFusion &&
-      consumer->ReusesOperandElements(operand_index) &&
-      is_expensive_(*producer)) {
     return false;
   }
 

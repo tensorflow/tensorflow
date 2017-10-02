@@ -911,6 +911,20 @@ class HloInstruction {
   void set_outer_dimension_partitions(
       const std::vector<int64>& outer_dimension_partitions);
 
+  // Change the layout for an Constant Hlo instruction to match new_layout.  For
+  // tuple shaped constants shape_index is the path to the internal array
+  // subshape whose layout needs to be changed.
+  void RelayoutConstant(const Layout& new_layout,
+                        const ShapeIndex& shape_index = {});
+
+  // Gets/sets the device assignment.
+  const OpDeviceAssignment& device_assignment() const {
+    return device_assignment_;
+  }
+  void set_device_assignment(const OpDeviceAssignment& device_assignment) {
+    device_assignment_ = device_assignment;
+  }
+
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
 
@@ -1102,6 +1116,9 @@ class HloInstruction {
   // The number of partitions per outer dimension (listed in order from
   // outer-most dimension first).
   std::vector<int64> outer_dimension_partitions_;
+
+  // Device assignment for the instruction.
+  OpDeviceAssignment device_assignment_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };

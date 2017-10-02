@@ -26,8 +26,11 @@ from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator.canned import linear
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import metrics as metrics_lib
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import training
 
 
 def get_input_fn(x, y):
@@ -129,6 +132,31 @@ class AddMetricsTest(test.TestCase):
     estimator = extenders.add_metrics(estimator, metric_fn)
     metrics = estimator.evaluate(input_fn=input_fn)
     self.assertEqual(2., metrics['auc'])
+
+
+class ClipGradientsByNormTest(test.TestCase):
+  """Tests clip_gradients_by_norm."""
+
+  def test_applies_norm(self):
+    optimizer = extenders.clip_gradients_by_norm(
+        training.GradientDescentOptimizer(1.0), clip_norm=3.)
+    with ops.Graph().as_default():
+      w = variables.Variable(1., name='weight')
+      x = constant_op.constant(5.)
+      y = -x * w
+      grads = optimizer.compute_gradients(y, var_list=[w])[0]
+      opt_op = optimizer.minimize(y, var_list=[w])
+      with training.MonitoredSession() as sess:
+        grads_value = sess.run(grads)
+        self.assertEqual(-5., grads_value[0])
+        sess.run(opt_op)
+        new_w = sess.run(w)
+        self.assertEqual(4., new_w)  # 1 + 1*3 (w - lr * clipped_grad)
+
+  def test_name(self):
+    optimizer = extenders.clip_gradients_by_norm(
+        training.GradientDescentOptimizer(1.0), clip_norm=3.)
+    self.assertEqual('ClipByNormGradientDescent', optimizer.get_name())
 
 
 if __name__ == '__main__':

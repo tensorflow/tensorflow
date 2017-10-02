@@ -378,10 +378,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
   // layouts.
   for (auto& instruction : computation->instructions()) {
     Shape const* shape_with_layout = nullptr;
-    if (instruction->opcode() == HloOpcode::kConstant) {
-      // Constant layouts must match the layout of their literal.
-      shape_with_layout = &instruction->literal().shape();
-    } else if (instruction->opcode() == HloOpcode::kInfeed) {
+    if (instruction->opcode() == HloOpcode::kInfeed) {
       // Infeed layouts must match the layout of the original inserted
       // instruction.
       // TODO(b/31425034): Change infeeds to be more like parameters, with
@@ -1073,7 +1070,8 @@ StatusOr<Layout> InferArrayLayout(
 
   // The instruction should not define the buffer at this index.
   TF_RET_CHECK(
-      !points_to_analysis.InstructionDefinesBufferAtIndex(instruction, index));
+      !points_to_analysis.InstructionDefinesBufferAtIndex(instruction, index))
+      << instruction->ToString();
 
   const auto& source_buffers =
       points_to_analysis.GetPointsToSet(instruction).element(index);
@@ -1117,7 +1115,10 @@ StatusOr<Layout> InferArrayLayout(
 StatusOr<HloInstruction*> CreateCopyWithNewLayout(
     const Shape& shape_with_layout, HloInstruction* instruction) {
   TF_RET_CHECK(LayoutUtil::HasLayout(shape_with_layout));
-  DCHECK(ShapeUtil::Compatible(shape_with_layout, instruction->shape()));
+  DCHECK(ShapeUtil::Compatible(shape_with_layout, instruction->shape()))
+      << ShapeUtil::HumanString(shape_with_layout) << " "
+      << ShapeUtil::HumanString(instruction->shape())
+      << " instruction: " << instruction->ToString();
 
   if (ShapeUtil::IsTuple(instruction->shape())) {
     // Deep-copy tuples.
@@ -1237,11 +1238,10 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
       }
     }
 
-    // Set the layouts of the array shapes this instruction defines as
-    // indicated by the respective BufferLayoutConstraints. Any array shapes
-    // in the output of the instruction which are not defined by the instruction
-    // (eg, array elements in a Tuple instruction) will be assigned below via
-    // inference.
+    // Set the layouts of the array shapes this instruction defines as indicated
+    // by the respective BufferLayoutConstraints. Any array shapes in the output
+    // of the instruction which are not defined by the instruction (eg, array
+    // elements in a Tuple instruction) will be assigned below via inference.
     for (const LogicalBuffer* buffer :
          constraints.points_to_analysis().GetBuffersDefinedByInstruction(
              instruction)) {
@@ -1250,11 +1250,18 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
       }
 
       TF_RET_CHECK(buffer->instruction() == instruction);
-      Shape* buffer_subshape = ShapeUtil::GetMutableSubshape(
-          instruction->mutable_shape(), buffer->index());
       const Layout* buffer_layout = constraints.BufferLayout(*buffer);
       TF_RET_CHECK(buffer_layout != nullptr);
-      *buffer_subshape->mutable_layout() = *buffer_layout;
+
+      if (instruction->opcode() == HloOpcode::kConstant) {
+        // For constants, we also need to change the layout of the internal
+        // literal.
+        instruction->RelayoutConstant(*buffer_layout, buffer->index());
+      } else {
+        Shape* buffer_subshape = ShapeUtil::GetMutableSubshape(
+            instruction->mutable_shape(), buffer->index());
+        *buffer_subshape->mutable_layout() = *buffer_layout;
+      }
     }
 
     // Any remaining layouts in the output of the instruction must be
@@ -1331,13 +1338,19 @@ Status LayoutAssignment::RunOnComputation(
     int unconstrained_count = constraints.unconstrained_buffer_ids().size();
 
     // Arbitrarily pick the first unconstrained buffer and give it the default
-    // layout. By construction unconstrained_buffers() has a stable sort based
-    // on LogicalBuffer::Id.
+    // layout (or the literal layout, in case of constants). By construction
+    // unconstrained_buffers() has a stable sort based on LogicalBuffer::Id.
     const LogicalBuffer& buffer = points_to_analysis.GetBuffer(
         *constraints.unconstrained_buffer_ids().begin());
-    TF_RETURN_IF_ERROR(constraints.SetBufferLayout(
-        LayoutUtil::GetDefaultLayoutForShape(buffer.shape()), buffer,
-        /*mandatory=*/false));
+    const HloInstruction* instruction = buffer.instruction();
+    Layout new_layout =
+        instruction->opcode() == HloOpcode::kConstant
+            ? ShapeUtil::GetSubshape(instruction->literal().shape(),
+                                     buffer.index())
+                  .layout()
+            : LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+    TF_RETURN_IF_ERROR(constraints.SetBufferLayout(new_layout, buffer,
+                                                   /*mandatory=*/false));
 
     TF_RETURN_IF_ERROR(PropagateConstraints(&constraints));
 

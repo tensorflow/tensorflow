@@ -327,6 +327,11 @@ class UnaryOpsTest(XLATestCase):
           expected=np.array(
               [[True, False, True], [False, True, True]], dtype=np.bool))
 
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.quantize_and_dequantize_v2(x, -127, 127, True, 8),
+          np.array([-1, -0.5, 0, 0.3], dtype=dtype),
+          expected=np.array([-1, -64.0 / 127, 0, 38.0 / 127], dtype=dtype))
+
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -486,6 +491,57 @@ class UnaryOpsTest(XLATestCase):
             np.array([2., 4., 6.], dtype=np.float32),
         ],
         equality_test=self.ListsAreClose)
+
+  def testDepthToSpace(self):
+    for dtype in self.numeric_types:
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.depth_to_space(x, block_size=2),
+          np.array([[[[1, 2, 3, 4]]]], dtype=dtype),
+          expected=np.array([[[[1], [2]],
+                              [[3], [4]]]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.depth_to_space(x, block_size=2),
+          np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]], dtype=dtype),
+          expected=np.array([[[[1, 2, 3], [4, 5, 6]],
+                              [[7, 8, 9], [10, 11, 12]]]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.depth_to_space(x, block_size=2),
+          np.array([[[[1, 2, 3, 4],
+                      [5, 6, 7, 8]],
+                     [[9, 10, 11, 12],
+                      [13, 14, 15, 16]]]], dtype=dtype),
+          expected=np.array([[[[1], [2], [5], [6]],
+                              [[3], [4], [7], [8]],
+                              [[9], [10], [13], [14]],
+                              [[11], [12], [15], [16]]]], dtype=dtype))
+
+  def testSpaceToDepth(self):
+    for dtype in self.numeric_types:
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.space_to_depth(x, block_size=2),
+          np.array([[[[1], [2]],
+                     [[3], [4]]]], dtype=dtype),
+          expected=np.array([[[[1, 2, 3, 4]]]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.space_to_depth(x, block_size=2),
+          np.array([[[[1, 2, 3], [4, 5, 6]],
+                     [[7, 8, 9], [10, 11, 12]]]], dtype=dtype),
+          expected=np.array([[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]],
+                            dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.space_to_depth(x, block_size=2),
+          np.array([[[[1], [2], [5], [6]],
+                     [[3], [4], [7], [8]],
+                     [[9], [10], [13], [14]],
+                     [[11], [12], [15], [16]]]], dtype=dtype),
+          expected=np.array([[[[1, 2, 3, 4],
+                               [5, 6, 7, 8]],
+                              [[9, 10, 11, 12],
+                               [13, 14, 15, 16]]]], dtype=dtype))
 
 
 if __name__ == "__main__":

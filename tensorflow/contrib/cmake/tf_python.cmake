@@ -204,6 +204,9 @@ add_python_module("tensorflow/examples/tutorials")
 add_python_module("tensorflow/examples/tutorials/mnist")
 add_python_module("tensorflow/python")
 add_python_module("tensorflow/python/client")
+add_python_module("tensorflow/python/data")
+add_python_module("tensorflow/python/data/ops")
+add_python_module("tensorflow/python/data/util")
 add_python_module("tensorflow/python/debug")
 add_python_module("tensorflow/python/debug/cli")
 add_python_module("tensorflow/python/debug/examples")
@@ -237,6 +240,7 @@ add_python_module("tensorflow/python/keras/datasets/cifar100")
 add_python_module("tensorflow/python/keras/datasets/imdb")
 add_python_module("tensorflow/python/keras/datasets/mnist")
 add_python_module("tensorflow/python/keras/datasets/reuters")
+add_python_module("tensorflow/python/keras/estimator")
 add_python_module("tensorflow/python/keras/initializers")
 add_python_module("tensorflow/python/keras/layers")
 add_python_module("tensorflow/python/keras/losses")
@@ -285,6 +289,8 @@ add_python_module("tensorflow/python/util/protobuf")
 add_python_module("tensorflow/tools")
 add_python_module("tensorflow/tools/graph_transforms")
 add_python_module("tensorflow/contrib")
+add_python_module("tensorflow/contrib/all_reduce")
+add_python_module("tensorflow/contrib/all_reduce/python")
 add_python_module("tensorflow/contrib/android")
 add_python_module("tensorflow/contrib/android/java")
 add_python_module("tensorflow/contrib/android/java/org")
@@ -329,10 +335,8 @@ add_python_module("tensorflow/contrib/cudnn_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/ops")
 add_python_module("tensorflow/contrib/data")
 add_python_module("tensorflow/contrib/data/python")
-add_python_module("tensorflow/contrib/data/python/framework")
 add_python_module("tensorflow/contrib/data/python/kernel_tests")
 add_python_module("tensorflow/contrib/data/python/ops")
-add_python_module("tensorflow/contrib/data/python/util")
 add_python_module("tensorflow/contrib/decision_trees")
 add_python_module("tensorflow/contrib/decision_trees/proto")
 add_python_module("tensorflow/contrib/deprecated")
@@ -362,6 +366,8 @@ add_python_module("tensorflow/contrib/framework/python/framework")
 add_python_module("tensorflow/contrib/framework/python/ops")
 add_python_module("tensorflow/contrib/gan")
 add_python_module("tensorflow/contrib/gan/python")
+add_python_module("tensorflow/contrib/gan/python/eval")
+add_python_module("tensorflow/contrib/gan/python/eval/python")
 add_python_module("tensorflow/contrib/gan/python/features")
 add_python_module("tensorflow/contrib/gan/python/features/python")
 add_python_module("tensorflow/contrib/gan/python/losses")
@@ -626,6 +632,16 @@ add_python_module("tensorflow/contrib/reduce_slice_ops/python")
 add_python_module("tensorflow/contrib/reduce_slice_ops/python/kernel_tests")
 add_python_module("tensorflow/contrib/reduce_slice_ops/python/ops")
 
+# Generate the tensorflow.python.platform.build_info module.
+set(BUILD_INFO_PY "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/platform/build_info.py")
+if(tensorflow_ENABLE_GPU)
+  set(BUILD_CONFIG_STRING "cuda")
+else(tensorflow_ENABLE_GPU)
+  set(BUILD_CONFIG_STRING "cpu")
+endif(tensorflow_ENABLE_GPU)
+add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+  COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/build_info/gen_build_info.py --build_config ${BUILD_CONFIG_STRING} --raw_generate ${BUILD_INFO_PY})
+
 
 ########################################################
 # tf_python_op_gen_main library
@@ -844,6 +860,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/py_seq_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/safe_ptr.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/safe_ptr.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_reader.h"
@@ -901,6 +919,7 @@ if(WIN32)
         $<TARGET_FILE:pywrap_tensorflow_internal_static>
         $<TARGET_FILE:tf_protos_cc>
         $<TARGET_FILE:tf_python_protos_cc>
+	${nsync_STATIC_LIBRARIES}
     )
 
     set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
@@ -1192,3 +1211,4 @@ else()
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
   endif(${tensorflow_ENABLE_GPU})
 endif(${tensorflow_TF_NIGHTLY})
+

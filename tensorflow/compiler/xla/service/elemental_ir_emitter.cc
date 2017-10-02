@@ -194,6 +194,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::fabs, {operand_value}, {operand_value->getType()},
           ir_builder_);
+    case HloOpcode::kRoundNearestAfz:
+      return llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::round, {operand_value}, {operand_value->getType()},
+          ir_builder_);
     case HloOpcode::kSign: {
       // TODO(b/32151903): Ensure consistent sign behavior for -0.0
       auto type = operand_value->getType();
@@ -293,18 +297,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  // TODO(b/64580527): We can do better here if fast-math is enabled.
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
-                                      {lhs_value, rhs_value},
-                                      {lhs_value->getType()}, ir_builder_);
+  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, ir_builder_);
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) const {
-  // TODO(b/64580527): We can do better here if fast-math is enabled.
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
-                                      {lhs_value, rhs_value},
-                                      {lhs_value->getType()}, ir_builder_);
+  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, ir_builder_);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
@@ -722,10 +720,10 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
           llvm::BasicBlock* out_block;
 
           if (ir_builder_->GetInsertPoint() == in_block->end()) {
-            body_block =
-                llvm_ir::CreateBasicBlock(nullptr, "rng_body", ir_builder_);
-            out_block =
-                llvm_ir::CreateBasicBlock(nullptr, "rng_out", ir_builder_);
+            body_block = llvm_ir::CreateBasicBlock(
+                nullptr, llvm_ir::IrName(hlo, "rng_body"), ir_builder_);
+            out_block = llvm_ir::CreateBasicBlock(
+                nullptr, llvm_ir::IrName(hlo, "rng_out"), ir_builder_);
             llvm::BranchInst::Create(body_block, in_block);
           } else {
             body_block = in_block->splitBasicBlock(
@@ -785,6 +783,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     const {
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
@@ -1164,7 +1163,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
 
         std::unique_ptr<llvm_ir::ForLoop> inner_loop =
             llvm_ir::ForLoop::EmitForLoop(
-                "dot.inner", ir_builder_->getInt64(0),
+                llvm_ir::IrName(hlo, "inner"), ir_builder_->getInt64(0),
                 ir_builder_->getInt64(contracted_dim_size),
                 ir_builder_->getInt64(1), ir_builder_);
 
@@ -1221,7 +1220,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       };
     default:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
-        return Unimplemented("%s", HloOpcodeString(hlo->opcode()).c_str());
+        return Unimplemented("Unhandled opcode for elemental IR emission: %s",
+                             HloOpcodeString(hlo->opcode()).c_str());
       };
   }
 }

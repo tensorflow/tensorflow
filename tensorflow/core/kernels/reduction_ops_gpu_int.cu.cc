@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/reduction_ops_gpu_kernels.h"
+#include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 
 namespace tensorflow {
 namespace functor {
@@ -59,6 +59,7 @@ typedef TTypes<float>::Tensor::Index Index;
   DEFINE_FOR_TYPE_AND_R(T, Eigen::internal::ProdReducer<T>)
 
 DEFINE_FOR_ALL_REDUCERS(int32);
+DEFINE_FOR_ALL_REDUCERS(int64);
 #undef DEFINE_FOR_ALL_REDUCERS
 #undef DEFINE_FOR_TYPE_AND_R
 #undef DEFINE

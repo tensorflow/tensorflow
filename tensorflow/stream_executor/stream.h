@@ -70,7 +70,7 @@ class BatchDescriptor;
 class FilterDescriptor;
 class ConvolutionDescriptor;
 class ProfileResult;
-typedef int64 AlgorithmType;
+struct AlgorithmDesc;
 }  // namespace dnn
 
 class StreamExecutor;

@@ -1678,9 +1678,14 @@ class _MultiHead(Head):
       ModelFnOps that merges all heads for TRAIN.
     """
     losses = []
+    metrics = {}
     additional_train_ops = []
     for m in all_model_fn_ops:
       losses.append(m.loss)
+      if m.eval_metric_ops is not None:
+        for k, v in six.iteritems(m.eval_metric_ops):
+          # metrics["%s/%s" % (k, head_name)] = v
+          metrics[k] = v
       additional_train_ops.append(m.train_op)
     loss = self._loss_merger(losses)
 
@@ -1689,7 +1694,8 @@ class _MultiHead(Head):
     return model_fn.ModelFnOps(
         mode=model_fn.ModeKeys.TRAIN,
         loss=loss,
-        train_op=train_op)
+        train_op=train_op,
+        eval_metric_ops=metrics)
 
   def _merge_infer(self, all_model_fn_ops):
     """Merges list of ModelFnOps for inference.
@@ -1758,9 +1764,8 @@ def _weight_tensor(features, weight_column_name):
     # We don't bother with expanding dims of non-staticly shaped tensors or
     # scalars, and >1d is already in a good format.
     if rank == 1:
-      logging.warning(
-          "Weights {} has shape {}, expanding to make it 2d.",
-          weight_column_name, shape)
+      logging.warning("Weights {} has shape {}, expanding to make it 2d.".
+                      format(weight_column_name, shape))
       return (
           sparse_ops.sparse_reshape(weight_tensor, (-1, 1))
           if isinstance(weight_tensor, sparse_tensor.SparseTensor) else

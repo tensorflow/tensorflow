@@ -245,6 +245,18 @@ class SqrtDecayTest(test_util.TensorFlowTestCase):
       expected = (lr - end_lr) * 0.25 ** power + end_lr
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
+class PolynomialDecayTest(test_util.TensorFlowTestCase):
+
+  def testBeginWithCycle(self):
+    with self.test_session():
+      lr = 0.001
+      decay_steps = 10
+      step = 0
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step,
+                                                        decay_steps, cycle=True)
+      expected = lr
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
 
 class ExponentialDecayTest(test_util.TensorFlowTestCase):
 

@@ -68,6 +68,7 @@ def freeze_graph_with_def_protos(input_graph_def,
                                  output_graph,
                                  clear_devices,
                                  initializer_nodes,
+                                 variable_names_whitelist="",
                                  variable_names_blacklist="",
                                  input_meta_graph_def=None,
                                  input_saved_model_dir=None,
@@ -128,6 +129,8 @@ def freeze_graph_with_def_protos(input_graph_def,
       if initializer_nodes:
         sess.run(initializer_nodes.split(","))
 
+    variable_names_whitelist = (variable_names_whitelist.split(",")
+                                if variable_names_whitelist else None)
     variable_names_blacklist = (variable_names_blacklist.split(",")
                                 if variable_names_blacklist else None)
 
@@ -136,12 +139,14 @@ def freeze_graph_with_def_protos(input_graph_def,
           sess,
           input_meta_graph_def.graph_def,
           output_node_names.split(","),
+          variable_names_whitelist=variable_names_whitelist,
           variable_names_blacklist=variable_names_blacklist)
     else:
       output_graph_def = graph_util.convert_variables_to_constants(
           sess,
           input_graph_def,
           output_node_names.split(","),
+          variable_names_whitelist=variable_names_whitelist,
           variable_names_blacklist=variable_names_blacklist)
 
   # Write GraphDef to file if output path has been given.
@@ -208,6 +213,7 @@ def freeze_graph(input_graph,
                  output_graph,
                  clear_devices,
                  initializer_nodes,
+                 variable_names_whitelist="",
                  variable_names_blacklist="",
                  input_meta_graph=None,
                  input_saved_model_dir=None,
@@ -229,8 +235,8 @@ def freeze_graph(input_graph,
   freeze_graph_with_def_protos(
       input_graph_def, input_saver_def, input_checkpoint, output_node_names,
       restore_op_name, filename_tensor_name, output_graph, clear_devices,
-      initializer_nodes, variable_names_blacklist, input_meta_graph_def,
-      input_saved_model_dir, saved_model_tags.split(","))
+      initializer_nodes, variable_names_whitelist, variable_names_blacklist,
+      input_meta_graph_def, input_saved_model_dir, saved_model_tags.split(","))
 
 
 def main(unused_args):
@@ -238,8 +244,9 @@ def main(unused_args):
                FLAGS.input_checkpoint, FLAGS.output_node_names,
                FLAGS.restore_op_name, FLAGS.filename_tensor_name,
                FLAGS.output_graph, FLAGS.clear_devices, FLAGS.initializer_nodes,
-               FLAGS.variable_names_blacklist, FLAGS.input_meta_graph,
-               FLAGS.input_saved_model_dir, FLAGS.saved_model_tags)
+               FLAGS.variable_names_whitelist, FLAGS.variable_names_blacklist,
+               FLAGS.input_meta_graph, FLAGS.input_saved_model_dir,
+               FLAGS.saved_model_tags)
 
 
 if __name__ == "__main__":
@@ -281,12 +288,18 @@ if __name__ == "__main__":
       "--restore_op_name",
       type=str,
       default="save/restore_all",
-      help="The name of the master restore operator.")
+      help="""\
+      The name of the master restore operator. Deprecated, unused by updated \
+      loading code.
+      """)
   parser.add_argument(
       "--filename_tensor_name",
       type=str,
       default="save/Const:0",
-      help="The name of the tensor holding the save path.")
+      help="""\
+      The name of the tensor holding the save path. Deprecated, unused by \
+      updated loading code.
+      """)
   parser.add_argument(
       "--clear_devices",
       nargs="?",
@@ -298,13 +311,21 @@ if __name__ == "__main__":
       "--initializer_nodes",
       type=str,
       default="",
-      help="comma separated list of initializer nodes to run before freezing.")
+      help="Comma separated list of initializer nodes to run before freezing.")
+  parser.add_argument(
+      "--variable_names_whitelist",
+      type=str,
+      default="",
+      help="""\
+      Comma separated list of variables to convert to constants. If specified, \
+      only those variables will be converted to constants.\
+      """)
   parser.add_argument(
       "--variable_names_blacklist",
       type=str,
       default="",
       help="""\
-      comma separated list of variables to skip converting to constants\
+      Comma separated list of variables to skip converting to constants.\
       """)
   parser.add_argument(
       "--input_meta_graph",

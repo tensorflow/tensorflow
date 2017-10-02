@@ -930,9 +930,10 @@ tensorflow::Status Service::TransferToClient(const TransferToClientRequest* arg,
   }
 
   Literal literal;
-  auto status = LiteralFromAllocation(allocation, *literal_shape, &literal);
+  TF_RETURN_IF_ERROR(
+      LiteralFromAllocation(allocation, *literal_shape, &literal));
   *result->mutable_literal() = literal.ToProto();
-  return status;
+  return tensorflow::Status::OK();
 }
 
 tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
@@ -1387,6 +1388,8 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
   // proto in the above switch statement.
   TF_ASSIGN_OR_RETURN(ComputationDataHandle handle, handle_status);
   TF_RETURN_IF_ERROR(computation->SetOpMetadata(handle, arg->metadata()));
+  TF_RETURN_IF_ERROR(
+      computation->SetOpDeviceAssignment(handle, arg->device_assignment()));
 
   return tensorflow::Status::OK();
 }
