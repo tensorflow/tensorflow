@@ -35,20 +35,6 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
-    name = "mfcc_ops_test",
-    srcs = ["python/kernel_tests/mfcc_ops_test.py"],
-    additional_deps = [
-        ":signal_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:spectral_ops_test_util",
-    ],
-)
-
-cuda_py_tests(
     name = "reconstruction_ops_test",
     srcs = ["python/kernel_tests/reconstruction_ops_test.py"],
     additional_deps = [
