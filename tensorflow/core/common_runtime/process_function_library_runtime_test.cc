@@ -118,7 +118,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ObtainFunctionTarget) {
   AddAttr("_target", v, &attr_values);
   AttrSlice attrs(&attr_values);
   target = ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
-  EXPECT_EQ("/job:a/replica:0/task:0/cpu:1", target);
+  EXPECT_EQ("/job:a/replica:0/task:0/device:CPU:1", target);
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetDeviceIncarnation) {
@@ -160,7 +160,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   TF_CHECK_OK(Run("FindDevice", opts,
                   {{"_target", "/job:a/replica:0/task:0/cpu:0"}}, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/cpu:0"},
+      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:0"},
                                 TensorShape({})));
   rendezvous_->Unref();
 }
@@ -196,12 +196,12 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceFindDevice) {
   TF_CHECK_OK(Run("FindDevice", opts,
                   {{"_target", "/job:a/replica:0/task:0/cpu:1"}}, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/cpu:1"},
+      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
                                 TensorShape({})));
   TF_CHECK_OK(Run("FindDevice", opts,
                   {{"_target", "/job:a/replica:0/task:0/cpu:1"}}, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/cpu:1"},
+      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
                                 TensorShape({})));
   rendezvous_->Unref();
 }
@@ -216,12 +216,12 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsDiffDeviceFindDevice) {
   TF_CHECK_OK(Run("FindDevice", opts,
                   {{"_target", "/job:a/replica:0/task:0/cpu:0"}}, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/cpu:0"},
+      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:0"},
                                 TensorShape({})));
   TF_CHECK_OK(Run("FindDevice", opts,
                   {{"_target", "/job:a/replica:0/task:0/cpu:1"}}, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/cpu:1"},
+      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
                                 TensorShape({})));
   rendezvous_->Unref();
 }
