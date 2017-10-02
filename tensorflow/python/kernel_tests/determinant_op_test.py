@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -127,6 +128,15 @@ class DeterminantOpTest(test.TestCase):
   def testEmpty(self):
     self._compareDeterminant(np.empty([0, 2, 2]))
     self._compareDeterminant(np.empty([2, 0, 0]))
+
+  def testConcurrentExecutesWithoutError(self):
+    with self.test_session(use_gpu=True) as sess:
+      matrix1 = random_ops.random_normal([5, 5], seed=42)
+      matrix2 = random_ops.random_normal([5, 5], seed=42)
+      det1 = linalg_ops.matrix_determinant(matrix1)
+      det2 = linalg_ops.matrix_determinant(matrix2)
+      det1_val, det2_val = sess.run([det1, det2])
+      self.assertEqual(det1_val, det2_val)
 
 
 class MatrixDeterminantBenchmark(test.Benchmark):

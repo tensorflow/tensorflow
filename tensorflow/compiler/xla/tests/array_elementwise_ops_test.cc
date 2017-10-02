@@ -2142,6 +2142,33 @@ XLA_TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
                   "Expected non-opaque argument for lhs of binary operation"));
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, IdentityBroadcastOfSameRankIsAllowed) {
+  ComputationBuilder builder(client_, TestName());
+  auto a =
+      builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
+  auto b =
+      builder.ConstantR2<float>({{-1.5f, 8.14f, 42.0}, {-1.0f, -4.0f, 5.55f}});
+  auto add = builder.Add(a, b, /*broadcast_dimensions=*/{0, 1});
+
+  Array2D<float> expected_array(
+      {{-4.0f, 11.28f, 43.0f}, {1.25f, -14.0f, 8.88f}});
+  ComputeAndCompareR2<float>(&builder, expected_array, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
+  ComputationBuilder builder(client_, TestName());
+  auto a =
+      builder.ConstantR2<float>({{-2.5f, 3.14f, 1.0f}, {2.25f, -10.0f, 3.33f}});
+  auto b =
+      builder.ConstantR2<float>({{-1.5f, 8.14f, 42.0}, {-1.0f, -4.0f, 5.55f}});
+  auto add = builder.Add(a, b, /*broadcast_dimensions=*/{1, 0});
+
+  StatusOr<Computation> computation_status = builder.Build();
+  ASSERT_FALSE(computation_status.ok());
+  EXPECT_THAT(computation_status.status().error_message(),
+              ::testing::ContainsRegex("must.*be the identity"));
+}
+
 // Regression test for b/31927799. "slice - y" is fused and requires implicit
 // broadcast.
 XLA_TEST_F(ArrayElementwiseOpTest, ImplictBroadcastInFusedExpressions) {

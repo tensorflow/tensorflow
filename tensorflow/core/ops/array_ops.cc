@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/strided_slice_op.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -4046,28 +4047,49 @@ REGISTER_OP("SpaceToDepth")
     .Output("output: T")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
+    .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
+    // TODO(pauldonnelly): Implement GPU kernels for NCHW_VECT_C.
     .SetShapeFn([](InferenceContext* c) {
+      string data_format_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+      TensorFormat data_format;
+      FormatFromString(data_format_str, &data_format);
+
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
       int32 block_size;
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
+      constexpr int num_spatial_dims = 2;
+      DimensionHandle batch_size =
+          c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'N'));
+      DimensionHandle input_height =
+          c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'H'));
+      DimensionHandle input_width =
+          c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'W'));
+      DimensionHandle input_depth =
+          c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'C'));
+
       DimensionHandle output_height;
       DimensionHandle output_width;
       DimensionHandle output_depth;
-      // Will return an error if does not evenly divide
-      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 1), block_size,
+      // Will return an error if input height or width are not evenly divisible.
+      TF_RETURN_IF_ERROR(c->Divide(input_height, block_size,
                                    true /* evenly_divisible */,
                                    &output_height));
-      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 2), block_size,
+      TF_RETURN_IF_ERROR(c->Divide(input_width, block_size,
                                    true /* evenly_divisible */, &output_width));
 
-      TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, 3), block_size * block_size,
-                                     &output_depth));
+      TF_RETURN_IF_ERROR(
+          c->Multiply(input_depth, block_size * block_size, &output_depth));
 
-      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
-                                     output_width, output_depth}));
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size,
+                                             {output_height, output_width},
+                                             output_depth, &output_shape, c));
+
+      c->set_output(0, output_shape);
       return Status::OK();
     })
     .Doc(R"doc(
@@ -4076,26 +4098,38 @@ SpaceToDepth for tensors of type T.
 Rearranges blocks of spatial data, into depth. More specifically,
 this op outputs a copy of the input tensor where values from the `height`
 and `width` dimensions are moved to the `depth` dimension.
-The attr `block_size` indicates the input block size and how the data is moved.
+The attr `block_size` indicates the input block size.
 
   * Non-overlapping blocks of size `block_size x block size` are rearranged
     into depth at each location.
-  * The depth of the output tensor is `input_depth * block_size * block_size`.
+  * The depth of the output tensor is `block_size * block_size * input_depth`.
+  * The Y, X coordinates within each block of the input become the high order
+    component of the output channel index.
   * The input tensor's height and width must be divisible by block_size.
 
-That is, assuming the input is in the shape:
-`[batch, height, width, depth]`,
-the shape of the output will be:
-`[batch, height/block_size, width/block_size, depth*block_size*block_size]`
+The `data_format` attr specifies the layout of the input and output tensors
+with the following options:
+  "NHWC": `[ batch, height, width, channels ]`
+  "NCHW": `[ batch, channels, height, width ]`
+  "NCHW_VECT_C":
+      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
 
-This operation requires that the input tensor be of rank 4, and that
-`block_size` be >=1 and a divisor of both the input `height` and `width`.
+It is useful to consider the operation as transforming a 6-D Tensor.
+e.g. for data_format = NHWC,
+     Each element in the input tensor can be specified via 6 coordinates,
+     ordered by decreasing memory layout significance as:
+     n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates
+                        within the output image, bX, bY means coordinates
+                        within the input block, iC means input channels).
+     The output would be a transpose to the following layout:
+     n,oY,oX,bY,bX,iC
 
 This operation is useful for resizing the activations between convolutions
 (but keeping all data), e.g. instead of pooling. It is also useful for training
 purely convolutional models.
 
-For example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:
+For example, given an input of shape `[1, 2, 2, 1]`, data_format = "NHWC" and
+block_size = 2:
 
 ```
 x = [[[[1], [2]],
@@ -4154,25 +4188,46 @@ REGISTER_OP("DepthToSpace")
     .Output("output: T")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
+    .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
+    // TODO(pauldonnelly): Implement GPU kernels for NCHW and NCHW_VECT_C.
     .SetShapeFn([](InferenceContext* c) {
+      string data_format_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+      TensorFormat data_format;
+      FormatFromString(data_format_str, &data_format);
+
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
       int32 block_size;
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
+      constexpr int num_spatial_dims = 2;
+      DimensionHandle batch_size =
+          c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'N'));
+      DimensionHandle input_height =
+          c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'H'));
+      DimensionHandle input_width =
+          c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'W'));
+      DimensionHandle input_depth =
+          c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'C'));
+
       DimensionHandle output_height;
       DimensionHandle output_width;
       DimensionHandle output_depth;
-      TF_RETURN_IF_ERROR(
-          c->Multiply(c->Dim(input, 1), block_size, &output_height));
-      TF_RETURN_IF_ERROR(
-          c->Multiply(c->Dim(input, 2), block_size, &output_width));
-      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 3), block_size * block_size,
+      TF_RETURN_IF_ERROR(c->Multiply(input_height, block_size, &output_height));
+      TF_RETURN_IF_ERROR(c->Multiply(input_width, block_size, &output_width));
+
+      // Will return an error if input_depth is not evenly divisible.
+      TF_RETURN_IF_ERROR(c->Divide(input_depth, block_size * block_size,
                                    true /* evenly_divisible */, &output_depth));
 
-      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
-                                     output_width, output_depth}));
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size,
+                                             {output_height, output_width},
+                                             output_depth, &output_shape, c));
+
+      c->set_output(0, output_shape);
       return Status::OK();
     })
     .Doc(R"doc(
@@ -4188,23 +4243,34 @@ The attr `block_size` indicates the input block size and how the data is moved.
     into non-overlapping blocks of size `block_size x block_size`
   * The width the output tensor is `input_depth * block_size`, whereas the
     height is `input_height * block_size`.
+  * The Y, X coordinates within each block of the output image are determined
+    by the high order component of the input channel index.
   * The depth of the input tensor must be divisible by
     `block_size * block_size`.
 
-That is, assuming the input is in the shape:
-`[batch, height, width, depth]`,
-the shape of the output will be:
-`[batch, height*block_size, width*block_size, depth/(block_size*block_size)]`
+The `data_format` attr specifies the layout of the input and output tensors
+with the following options:
+  "NHWC": `[ batch, height, width, channels ]`
+  "NCHW": `[ batch, channels, height, width ]`
+  "NCHW_VECT_C":
+      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
 
-This operation requires that the input tensor be of rank 4, and that
-`block_size` be >=1 and that `block_size * block_size` be a divisor of the
-input depth.
+It is useful to consider the operation as transforming a 6-D Tensor.
+e.g. for data_format = NHWC,
+     Each element in the input tensor can be specified via 6 coordinates,
+     ordered by decreasing memory layout significance as:
+     n,iY,iX,bY,bX,oC  (where n=batch index, iX, iY means X or Y coordinates
+                        within the input image, bX, bY means coordinates
+                        within the output block, oC means output channels).
+     The output would be the input transposed to the following layout:
+     n,iY,bY,iX,bX,oC
 
 This operation is useful for resizing the activations between convolutions
 (but keeping all data), e.g. instead of pooling. It is also useful for training
 purely convolutional models.
 
-For example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:
+For example, given an input of shape `[1, 1, 1, 4]`, data_format = "NHWC" and
+block_size = 2:
 
 ```
 x = [[[[1, 2, 3, 4]]]]

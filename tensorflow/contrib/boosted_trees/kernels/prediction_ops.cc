@@ -128,7 +128,7 @@ class GradientTreesPredictionOp : public OpKernel {
           break;
         }
         case AveragingConfig::CONFIG_NOT_SET: {
-          QCHECK(false) << "We should never get here.";
+          LOG(QFATAL) << "We should never get here.";
           break;
         }
       }

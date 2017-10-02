@@ -64,6 +64,8 @@ class FuncRegistry(object):
     components of a tensor have different lengths.  This is bad: ignoring the
     padding is wrong for text data, and removing the padding is wrong for binary
     data.  To avoid this bug, we redo the conversion using an object dtype.
+    Additionally, we convert unicode strings to (byte-)strings for Python3
+    compatibility.
 
     Args:
       value: Value to convert to a numpy array.
@@ -72,9 +74,15 @@ class FuncRegistry(object):
       A numpy array.
     """
     result = np.asarray(value, order="C")
-    if result.dtype.char in "SU" and result is not value:
+    if result.dtype.char == "S" and result is not value:
       return np.asarray(value, order="C", dtype=object)
-    return result
+    elif result.dtype.char == "U" and result is not value:
+      value = np.vectorize(lambda x: x.encode())(value)
+      return np.asarray(value, order="C", dtype=object)
+    elif result.dtype.char == "U":
+      return result.astype(np.bytes_)
+    else:
+      return result
 
   def __call__(self, token, args):
     """Calls the registered function for `token` with args."""
