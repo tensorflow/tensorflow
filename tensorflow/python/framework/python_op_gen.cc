@@ -326,6 +326,9 @@ string DataTypeToPython(DataType dtype, const string& dtype_module) {
 }
 
 string ShapeToPython(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) {
+    return "None";
+  }
   string python = "[";
   for (const auto& dim : shape.dim()) {
     if (python.size() > 1) strings::StrAppend(&python, ", ");
@@ -392,6 +395,9 @@ string AttrListToPython(const AttrValue& value,
   return ret;
 }
 
+// NOTE: The return value may contain spaces (for example, it could be
+// a string "foo bar" with an embedded space) and is not safe to pass
+// to WordWrap().
 string AttrValueToPython(const string& type, const AttrValue& value,
                          const string& dtype_module) {
   if (type == "string") {
@@ -399,7 +405,11 @@ string AttrValueToPython(const string& type, const AttrValue& value,
   } else if (type == "int") {
     return strings::StrCat(value.i());
   } else if (type == "float") {
-    return strings::StrCat(value.f());
+    if (std::isnan(value.f()) || std::isinf(value.f())) {
+      return strings::StrCat("float('", value.f(), "')");
+    } else {
+      return strings::StrCat(value.f());
+    }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";
   } else if (type == "type") {
@@ -521,9 +531,7 @@ string GenPythonOp::Code() {
 }
 
 void GenPythonOp::AddDefLine(const string& parameters) {
-  const string def_prefix = strings::StrCat("def ", function_name_, "(");
-  strings::StrAppend(
-      &result_, WordWrap(def_prefix, parameters + "):", kRightMargin), "\n");
+  strings::StrAppend(&result_, "def ", function_name_, "(", parameters, "):\n");
 }
 
 void GenPythonOp::AddDocStringDescription() {
@@ -722,8 +730,6 @@ This file is MACHINE GENERATED! Do not edit.
 
 import collections as _collections
 
-from google.protobuf import text_format as _text_format
-
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
 
 # Needed to trigger the call to _set_call_cpp_shape_fn.
@@ -772,21 +778,24 @@ from tensorflow.python.framework import op_def_library as _op_def_library
     RemoveNonDeprecationDescriptionsFromOpDef(added);
   }
 
-  strings::Appendf(&result, R"(def _InitOpDefLibrary():
+  result.append(R"(def _InitOpDefLibrary(op_list_proto_bytes):
   op_list = _op_def_pb2.OpList()
-  _text_format.Merge(_InitOpDefLibrary.op_list_ascii, op_list)
+  op_list.ParseFromString(op_list_proto_bytes)
   _op_def_registry.register_op_list(op_list)
   op_def_lib = _op_def_library.OpDefLibrary()
   op_def_lib.add_op_list(op_list)
   return op_def_lib
 
 
-_InitOpDefLibrary.op_list_ascii = """%s"""
+)");
 
-
-_op_def_lib = _InitOpDefLibrary()
-)",
-                   ProtoDebugString(cleaned_ops).c_str());
+  result.append("# ");
+  auto ops_text = ProtoDebugString(cleaned_ops);
+  str_util::StripTrailingWhitespace(&ops_text);
+  result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
+  result.append("\n");
+  strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
+                   str_util::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;
 }
 

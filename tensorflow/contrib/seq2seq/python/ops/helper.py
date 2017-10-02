@@ -26,7 +26,7 @@ import six
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import base as layers_base
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -45,6 +45,7 @@ __all__ = [
     "CustomHelper",
     "ScheduledEmbeddingTrainingHelper",
     "ScheduledOutputTrainingHelper",
+    "InferenceHelper",
 ]
 
 _transpose_batch_time = decoder._transpose_batch_time  # pylint: disable=protected-access
@@ -71,6 +72,22 @@ class Helper(object):
     """
     raise NotImplementedError("batch_size has not been implemented")
 
+  @abc.abstractproperty
+  def sample_ids_shape(self):
+    """Shape of tensor returned by `sample`, excluding the batch dimension.
+
+    Returns a `TensorShape`.
+    """
+    raise NotImplementedError("sample_ids_shape has not been implemented")
+
+  @abc.abstractproperty
+  def sample_ids_dtype(self):
+    """DType of tensor returned by `sample`.
+
+    Returns a DType.
+    """
+    raise NotImplementedError("sample_ids_dtype has not been implemented")
+
   @abc.abstractmethod
   def initialize(self, name=None):
     """Returns `(initial_finished, initial_inputs)`."""
@@ -90,7 +107,8 @@ class Helper(object):
 class CustomHelper(Helper):
   """Base abstract class that allows the user to customize sampling."""
 
-  def __init__(self, initialize_fn, sample_fn, next_inputs_fn):
+  def __init__(self, initialize_fn, sample_fn, next_inputs_fn,
+               sample_ids_shape=None, sample_ids_dtype=None):
     """Initializer.
 
     Args:
@@ -100,17 +118,31 @@ class CustomHelper(Helper):
         and emits tensor `sample_ids`.
       next_inputs_fn: callable that takes `(time, outputs, state, sample_ids)`
         and emits `(finished, next_inputs, next_state)`.
+      sample_ids_shape: Either a list of integers, or a 1-D Tensor of type
+        `int32`, the shape of each value in the `sample_ids` batch. Defaults to
+        a scalar.
+      sample_ids_dtype: The dtype of the `sample_ids` tensor. Defaults to int32.
     """
     self._initialize_fn = initialize_fn
     self._sample_fn = sample_fn
     self._next_inputs_fn = next_inputs_fn
     self._batch_size = None
+    self._sample_ids_shape = tensor_shape.TensorShape(sample_ids_shape or [])
+    self._sample_ids_dtype = sample_ids_dtype or dtypes.int32
 
   @property
   def batch_size(self):
     if self._batch_size is None:
       raise ValueError("batch_size accessed before initialize was called")
     return self._batch_size
+
+  @property
+  def sample_ids_shape(self):
+    return self._sample_ids_shape
+
+  @property
+  def sample_ids_dtype(self):
+    return self._sample_ids_dtype
 
   def initialize(self, name=None):
     with ops.name_scope(name, "%sInitialize" % type(self).__name__):
@@ -171,6 +203,14 @@ class TrainingHelper(Helper):
   @property
   def batch_size(self):
     return self._batch_size
+
+  @property
+  def sample_ids_shape(self):
+    return tensor_shape.TensorShape([])
+
+  @property
+  def sample_ids_dtype(self):
+    return dtypes.int32
 
   def initialize(self, name=None):
     with ops.name_scope(name, "TrainingHelperInitialize"):
@@ -269,7 +309,7 @@ class ScheduledEmbeddingTrainingHelper(TrainingHelper):
           gen_array_ops.fill([self.batch_size], -1))
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):
-    with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperSample",
+    with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperNextInputs",
                         [time, outputs, state, sample_ids]):
       (finished, base_next_inputs, state) = (
           super(ScheduledEmbeddingTrainingHelper, self).next_inputs(
@@ -310,7 +350,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
   """
 
   def __init__(self, inputs, sequence_length, sampling_probability,
-               time_major=False, seed=None, next_input_layer=None,
+               time_major=False, seed=None, next_inputs_fn=None,
                auxiliary_inputs=None, name=None):
     """Initializer.
 
@@ -322,9 +362,9 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
       time_major: Python bool.  Whether the tensors in `inputs` are time major.
         If `False` (default), they are assumed to be batch major.
       seed: The sampling seed.
-      next_input_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
-        `tf.layers.Dense`.  Optional layer to apply to the RNN output to create
-        the next input.
+      next_inputs_fn: (Optional) callable to apply to the RNN outputs to create
+        the next input when sampling. If `None` (default), the RNN outputs will
+        be used as the next inputs.
       auxiliary_inputs: An optional (structure of) auxiliary input tensors with
         a shape that matches `inputs` in all but (potentially) the final
         dimension. These tensors will be concatenated to the sampled output or
@@ -362,11 +402,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
 
       self._seed = seed
 
-      if (next_input_layer is not None and not isinstance(next_input_layer,
-                                                          layers_base.Layer)):
-        raise TypeError("next_input_layer must be a Layer, received: %s" %
-                        type(next_input_layer))
-      self._next_input_layer = next_input_layer
+      self._next_inputs_fn = next_inputs_fn
 
       super(ScheduledOutputTrainingHelper, self).__init__(
           inputs=maybe_concatenated_inputs,
@@ -412,7 +448,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
               lambda x, y: array_ops.concat((x, y), -1),
               outputs_, auxiliary_inputs)
 
-        if self._next_input_layer is None:
+        if self._next_inputs_fn is None:
           return array_ops.where(
               sample_ids, maybe_concatenate_auxiliary_inputs(outputs),
               base_next_inputs)
@@ -425,7 +461,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
         inputs_not_sampling = array_ops.gather_nd(base_next_inputs,
                                                   where_not_sampling)
         sampled_next_inputs = maybe_concatenate_auxiliary_inputs(
-            self._next_input_layer(outputs_sampling), where_sampling)
+            self._next_inputs_fn(outputs_sampling), where_sampling)
 
         base_shape = array_ops.shape(base_next_inputs)
         return (array_ops.scatter_nd(indices=where_sampling,
@@ -485,6 +521,14 @@ class GreedyEmbeddingHelper(Helper):
   def batch_size(self):
     return self._batch_size
 
+  @property
+  def sample_ids_shape(self):
+    return tensor_shape.TensorShape([])
+
+  @property
+  def sample_ids_dtype(self):
+    return dtypes.int32
+
   def initialize(self, name=None):
     finished = array_ops.tile([False], [self._batch_size])
     return (finished, self._start_inputs)
@@ -520,7 +564,8 @@ class SampleEmbeddingHelper(GreedyEmbeddingHelper):
   result through an embedding layer to get the next input.
   """
 
-  def __init__(self, embedding, start_tokens, end_token, seed=None):
+  def __init__(self, embedding, start_tokens, end_token,
+               softmax_temperature=None, seed=None):
     """Initializer.
 
     Args:
@@ -529,7 +574,12 @@ class SampleEmbeddingHelper(GreedyEmbeddingHelper):
         will be passed to the decoder input.
       start_tokens: `int32` vector shaped `[batch_size]`, the start tokens.
       end_token: `int32` scalar, the token that marks end of decoding.
-      seed: The sampling seed.
+      softmax_temperature: (Optional) `float32` scalar, value to divide the
+        logits by before computing the softmax. Larger values (above 1.0) result
+        in more random samples, while smaller values push the sampling
+        distribution towards the argmax. Must be strictly greater than 0.
+        Defaults to 1.0.
+      seed: (Optional) The sampling seed.
 
     Raises:
       ValueError: if `start_tokens` is not a 1D tensor or `end_token` is not a
@@ -537,6 +587,7 @@ class SampleEmbeddingHelper(GreedyEmbeddingHelper):
     """
     super(SampleEmbeddingHelper, self).__init__(
         embedding, start_tokens, end_token)
+    self._softmax_temperature = softmax_temperature
     self._seed = seed
 
   def sample(self, time, outputs, state, name=None):
@@ -546,7 +597,70 @@ class SampleEmbeddingHelper(GreedyEmbeddingHelper):
     if not isinstance(outputs, ops.Tensor):
       raise TypeError("Expected outputs to be a single Tensor, got: %s" %
                       type(outputs))
-    sample_id_sampler = categorical.Categorical(logits=outputs)
+    if self._softmax_temperature is None:
+      logits = outputs
+    else:
+      logits = outputs / self._softmax_temperature
+
+    sample_id_sampler = categorical.Categorical(logits=logits)
     sample_ids = sample_id_sampler.sample(seed=self._seed)
 
     return sample_ids
+
+
+class InferenceHelper(Helper):
+  """A helper to use during inference with a custom sampling function."""
+
+  def __init__(self, sample_fn, sample_shape, sample_dtype,
+               start_inputs, end_fn, next_inputs_fn=None):
+    """Initializer.
+
+    Args:
+      sample_fn: A callable that takes `outputs` and emits tensor `sample_ids`.
+      sample_shape: Either a list of integers, or a 1-D Tensor of type `int32`,
+        the shape of the each sample in the batch returned by `sample_fn`.
+      sample_dtype: the dtype of the sample returned by `sample_fn`.
+      start_inputs: The initial batch of inputs.
+      end_fn: A callable that takes `sample_ids` and emits a `bool` vector
+        shaped `[batch_size]` indicating whether each sample is an end token.
+      next_inputs_fn: (Optional) A callable that takes `sample_ids` and returns
+        the next batch of inputs. If not provided, `sample_ids` is used as the
+        next batch of inputs.
+    """
+    self._sample_fn = sample_fn
+    self._end_fn = end_fn
+    self._sample_shape = tensor_shape.TensorShape(sample_shape)
+    self._sample_dtype = sample_dtype
+    self._next_inputs_fn = next_inputs_fn
+    self._batch_size = array_ops.shape(start_inputs)[0]
+    self._start_inputs = ops.convert_to_tensor(
+        start_inputs, name="start_inputs")
+
+  @property
+  def batch_size(self):
+    return self._batch_size
+
+  @property
+  def sample_ids_shape(self):
+    return self._sample_shape
+
+  @property
+  def sample_ids_dtype(self):
+    return self._sample_dtype
+
+  def initialize(self, name=None):
+    finished = array_ops.tile([False], [self._batch_size])
+    return (finished, self._start_inputs)
+
+  def sample(self, time, outputs, state, name=None):
+    del time, state  # unused by sample
+    return self._sample_fn(outputs)
+
+  def next_inputs(self, time, outputs, state, sample_ids, name=None):
+    del time, outputs  # unused by next_inputs
+    if self._next_inputs_fn is None:
+      next_inputs = sample_ids
+    else:
+      next_inputs = self._next_inputs_fn(sample_ids)
+    finished = self._end_fn(sample_ids)
+    return (finished, next_inputs, state)

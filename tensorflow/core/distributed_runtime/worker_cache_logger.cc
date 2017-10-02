@@ -89,7 +89,7 @@ void WorkerCacheLogger::RecordRecvTensor(int64 step_id, int64 start_usecs,
                                          const string& dst_device,
                                          int64 bytes) {
   RecordDataTransfer(step_id, start_usecs, end_usecs, tensor_name, src_device,
-    dst_device, bytes, "", "RecvTensor");
+                     dst_device, bytes, "", "RecvTensor");
 }
 
 void WorkerCacheLogger::RecordDataTransfer(int64 step_id, int64 start_usecs,
@@ -101,26 +101,32 @@ void WorkerCacheLogger::RecordDataTransfer(int64 step_id, int64 start_usecs,
                                            const string& details,
                                            const string& transfer_method_name){
   NodeExecStats* ns = new NodeExecStats;
-    ns->set_node_name(transfer_method_name);
-    string byte_string = strings::StrCat("[", bytes, "B] ");
+  ns->set_node_name(transfer_method_name);
+  if (details.empty()) {
+    auto byte_string = strings::StrCat("[", bytes, "B] ");
     if (bytes >= 0.1 * 1048576.0) {
       byte_string = strings::Printf("[%.1fMB] ", bytes / 1048576.0);
     }
-    ns->set_timeline_label(strings::StrCat(byte_string, tensor_name, " from ",
-                                           src_device, " to ", dst_device,
-                                           details));
-    ns->set_all_start_micros(start_usecs);
-    ns->set_op_start_rel_micros(0);
-    int64 elapsed = end_usecs - start_usecs;
-    ns->set_op_end_rel_micros(elapsed);
-    ns->set_all_end_rel_micros(elapsed);
-    NodeOutput* no = ns->add_output();
-    no->set_slot(0);
-    // TODO(tucker): Maybe set the dimensions too, but then they'll
-    // need to be passed in.
-    no->mutable_tensor_description()
-        ->mutable_allocation_description()
-        ->set_requested_bytes(bytes);
-    Save(dst_device, step_id, ns);
+    auto label = strings::StrCat(byte_string, tensor_name, " from ", src_device,
+                                 " to ", dst_device);
+    ns->set_timeline_label(label);
+  } else {
+    ns->set_timeline_label(details);
   }
+
+  ns->set_all_start_micros(start_usecs);
+  ns->set_op_start_rel_micros(0);
+  int64 elapsed = end_usecs - start_usecs;
+  ns->set_op_end_rel_micros(elapsed);
+  ns->set_all_end_rel_micros(elapsed);
+  NodeOutput* no = ns->add_output();
+  no->set_slot(0);
+  // TODO(tucker): Maybe set the dimensions too, but then they'll
+  // need to be passed in.
+  no->mutable_tensor_description()
+      ->mutable_allocation_description()
+      ->set_requested_bytes(bytes);
+  Save(dst_device, step_id, ns);
+}
+
 }  // namespace tensorflow

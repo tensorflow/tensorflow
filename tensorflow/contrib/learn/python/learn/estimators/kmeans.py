@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Implementation of k-means clustering on top of tf.learn API."""
+"""Implementation of k-means clustering on top of `Estimator` API."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -106,7 +106,7 @@ def _kmeans_clustering_model_fn(features, labels, mode, params, config):
   """Model function for KMeansClustering estimator."""
   assert labels is None, labels
   (all_scores, model_predictions, losses,
-   is_initialized, init_op, training_op) = clustering_ops.KMeans(
+   is_initialized, _, init_op, training_op) = clustering_ops.KMeans(
        _parse_tensor_or_dict(features),
        params.get('num_clusters'),
        initial_clusters=params.get('training_initial_clusters'),

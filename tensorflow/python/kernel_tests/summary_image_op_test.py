@@ -80,7 +80,7 @@ class SummaryImageOpTest(test.TestCase):
                                        .image.encoded_image_string).eval()
           self.assertAllEqual(image[1, 2], bad_color)
           image[1, 2] = adjusted[0, 1, 2]
-          self.assertAllClose(image, adjusted[0])
+          self.assertAllClose(image, adjusted[0], rtol=2e-5, atol=2e-5)
 
           # Check the rest of the proto
           self._CheckProto(image_summ, shape)

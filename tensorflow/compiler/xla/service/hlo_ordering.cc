@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -31,66 +32,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
-// Returns the nearest call graph ancestors of instructions 'a' and 'b' for
-// which the ancestors are in the same computation. An instruction is an call
-// graph ancestor of 'a' if the instruction calls the computation containing 'a'
-// either directly or transitively. Degeneratively an instruction is an ancestor
-// of itself. nullptr is returned if there is no common ancestor or if the
-// caller chain of 'a' or 'b' diverges (has multiple callers) before the nearest
-// common ancestor.
-//
-// Example:
-//
-// Entry computation:
-//   %x = Call(A, {Constant(42.0)})
-//   %y = Call(B, {%x})
-//
-// Computation A:
-//   %a = Negate(Param())
-//
-// Computation B:
-//   %b = Exp(Param());
-//
-// If called with %a and %b, this function would return (%x, %y). %x is an
-// ancestor of %a, and %y is an ancestor of %b, and %x and %y are in the same
-// computation.
-std::pair<const HloInstruction*, const HloInstruction*>
-GetNearestCallGraphAncestorsInSameComputation(const HloInstruction* a,
-                                              const HloInstruction* b,
-                                              const CallGraph& call_graph) {
-  // Lambda which returns the next instruction in the callee->caller chain in
-  // the call graph. This is the unique instruction which calls the computation
-  // containing 'instruction'. If more than one instruction calls the
-  // computation containing 'instruction' or no instructions call the
-  // computation then nullptr is returned.
-  auto next_caller =
-      [&call_graph](
-          const HloInstruction* instruction) -> const HloInstruction* {
-    const CallGraphNode& node = call_graph.GetNode(instruction->parent());
-    if (node.caller_callsites().size() != 1) {
-      return nullptr;
-    }
-    return node.caller_callsites()[0].instruction();
-  };
-
-  // Iterate through the callee->caller chains and find the earliest common
-  // element.
-  for (const HloInstruction* a_ancestor = a; a_ancestor != nullptr;
-       a_ancestor = next_caller(a_ancestor)) {
-    for (const HloInstruction* b_ancestor = b; b_ancestor != nullptr;
-         b_ancestor = next_caller(b_ancestor)) {
-      if (a_ancestor->parent() == b_ancestor->parent()) {
-        return {a_ancestor, b_ancestor};
-      }
-    }
-  }
-  return {nullptr, nullptr};
-}
-
-}  // namespace
-
 bool HloOrdering::ExecutesBefore(const HloInstruction* a,
                                  const HloInstruction* b) const {
   // 'a' and 'b' may be in different computations. In this case, find the
@@ -100,7 +41,8 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
   const HloInstruction* a_ancestor;
   const HloInstruction* b_ancestor;
   std::tie(a_ancestor, b_ancestor) =
-      GetNearestCallGraphAncestorsInSameComputation(a, b, *call_graph_);
+      call_graph_->NearestAncestorsInSameComputation(
+          const_cast<HloInstruction*>(a), const_cast<HloInstruction*>(b));
 
   if (a_ancestor == nullptr) {
     // Ancestors in a common computation could not be found so consider the
@@ -125,6 +67,159 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
   }
 
   return ExecutesBeforeInSameComputation(a_ancestor, b_ancestor);
+}
+
+bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
+  // If 'b' is an entry param then 'a' cannot be defined before 'b' because 'b'
+  // is live into the module.
+  const HloModule* module = b.defining_instruction()->parent()->parent();
+  if (b.defining_instruction()->parent() == module->entry_computation() &&
+      b.defining_instruction()->opcode() == HloOpcode::kParameter) {
+    return false;
+  }
+
+  // Phi values require special handling. Because XLA does not have a phi
+  // instruction, the definition instruction of the phis values are
+  // placeholders: either the subcomputation parameter (body or condition) or
+  // the while instruction. However, the program point where these values are
+  // logically defined does not necessarily coincide exactly with program point
+  // of these place-holder instructions. So we explicitly define the following
+  // order for phi values:
+  //
+  //   body/condition parameter phi:
+  //     Defined before all values defined in its computation excepting other
+  //     phis.
+  //
+  //   while phi:
+  //     defined after all values defined in the condition or body.
+  //
+  auto is_body_or_condition_phi = [](const HloValue& v) {
+    return v.is_phi() &&
+           v.defining_instruction()->opcode() == HloOpcode::kParameter;
+  };
+  if (is_body_or_condition_phi(a) && !is_body_or_condition_phi(b) &&
+      call_graph_->InstructionIsNestedIn(b.defining_instruction(),
+                                         a.defining_instruction()->parent())) {
+    return true;
+  }
+  if (is_body_or_condition_phi(b) &&
+      call_graph_->InstructionIsNestedIn(a.defining_instruction(),
+                                         b.defining_instruction()->parent())) {
+    return false;
+  }
+
+  // If 'b' is a while phi and 'a' is in the body or condition, then 'a'
+  // executes before 'b'.
+  if (b.is_phi() && b.defining_instruction()->opcode() == HloOpcode::kWhile &&
+      (call_graph_->InstructionIsNestedIn(
+           a.defining_instruction(), b.defining_instruction()->while_body()) ||
+       call_graph_->InstructionIsNestedIn(
+           a.defining_instruction(),
+           b.defining_instruction()->while_condition()))) {
+    return true;
+  }
+
+  return ExecutesBefore(a.defining_instruction(), b.defining_instruction());
+}
+
+/* static */
+bool HloOrdering::UseIsBeforeValueDefinition(
+    const HloUse& use, const HloValue& value,
+    const HloDataflowAnalysis& dataflow) const {
+  VLOG(4) << "UseIsBeforeValueDefinition(use=" << use
+          << ", value=" << value.ToShortString() << ")";
+  if (ExecutesBefore(use.instruction, value.defining_instruction())) {
+    VLOG(4) << "  use instruction executes before value-defining instruction";
+    return true;
+  }
+
+  // If the use is at the instruction where the value is defined, then the use
+  // is before the def if the instruction allows buffer sharing (in place
+  // computation).
+  if (use.instruction == value.defining_instruction() &&
+      CanShareOperandBufferWithUser(
+          use.instruction->mutable_operand(use.operand_number),
+          use.operand_index, value.defining_instruction(),
+          value.defining_index(), dataflow)) {
+    VLOG(4) << "  use is value def, and instruction can share use buffer";
+    return true;
+  }
+
+  // The use at a while is an input to a phi, and logically occurs before values
+  // are defined in the body or condition computations.
+  if (use.instruction->opcode() == HloOpcode::kWhile) {
+    const HloInstruction* xla_while = use.instruction;
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           xla_while->while_body()) ||
+        call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           xla_while->while_condition())) {
+      VLOG(4) << "  use is while " << use.instruction->name()
+              << " and def is in condition or body";
+      return true;
+    }
+  }
+
+  // Similarly if the value is defined at a while, it logically occurs after any
+  // uses in the body or condition computations.
+  if (value.defining_instruction()->opcode() == HloOpcode::kWhile) {
+    CHECK(value.is_phi());
+    const HloInstruction* xla_while = value.defining_instruction();
+    if (call_graph_->InstructionIsNestedIn(use.instruction,
+                                           xla_while->while_body()) ||
+        call_graph_->InstructionIsNestedIn(use.instruction,
+                                           xla_while->while_condition())) {
+      VLOG(4) << "  value is while " << value.defining_instruction()->name()
+              << " and use is in condition or body";
+      return true;
+    }
+  }
+  VLOG(4) << "  use is not before value";
+  return false;
+}
+
+bool HloOrdering::LiveRangeStrictlyBefore(
+    const HloValue& a, const HloValue& b,
+    const HloDataflowAnalysis& dataflow) const {
+  VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
+          << ", b = " << b.ToShortString() << ")";
+  if (!IsDefinedBefore(a, b)) {
+    VLOG(4) << "a not defined before b";
+    return false;
+  }
+
+  // Live-out values from the module can never have ranges strictly before any
+  // other value.
+  if (a.live_out_of_module()) {
+    VLOG(4) << "a is live out of module";
+    return false;
+  }
+
+  // Live-out values of computations can never have ranges strictly before any
+  // other value in the computation (including values nested in
+  // subcomputations).
+  if (a.live_out_of_computation() &&
+      call_graph_->InstructionIsNestedIn(b.defining_instruction(),
+                                         a.defining_instruction()->parent())) {
+    VLOG(4) << "a is live out of computation containing b";
+    return false;
+  }
+
+  // All uses of 'a' must be before 'b' is defined.
+  for (const HloUse& use : a.uses()) {
+    if (!UseIsBeforeValueDefinition(use, b, dataflow)) {
+      VLOG(4) << "use of a (" << use << ") not before b is defined";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool HloOrdering::MayInterfere(const HloValue& a, const HloValue& b,
+                               const HloDataflowAnalysis& dataflow) const {
+  // Buffers without disjoint liveness may interfere.
+  return !LiveRangeStrictlyBefore(a, b, dataflow) &&
+         !LiveRangeStrictlyBefore(b, a, dataflow);
 }
 
 HloOrderingProto HloOrdering::ToProto() const {
@@ -158,7 +253,7 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
 string PredecessorHloOrdering::ToStringHelper(const string& name) const {
   std::vector<string> pieces;
   pieces.push_back(name);
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s:",
                                                  computation->name().c_str()));
     const auto all = computation->MakeInstructionPostOrder();
@@ -166,7 +261,7 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
       pieces.push_back(tensorflow::strings::Printf(
           "  %s predecessors:", instruction->name().c_str()));
       for (auto predecessor : all) {
-        if (predecessors_.at(computation.get())
+        if (predecessors_.at(computation)
                 ->IsReachable(predecessor, instruction)) {
           pieces.push_back(
               tensorflow::strings::Printf("  %s", predecessor->name().c_str()));
@@ -182,12 +277,8 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // Compute predecessor relationships between all instructions to determine
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    predecessors_.emplace(computation.get(),
-                          computation->ComputeReachability());
+  for (auto* computation : module->MakeNonfusionComputations()) {
+    predecessors_.emplace(computation, computation->ComputeReachability());
   }
 }
 
@@ -228,7 +319,7 @@ SequentialHloOrdering::SequentialOrder(
 string SequentialHloOrdering::ToString() const {
   std::vector<string> pieces;
   pieces.push_back("SequentialHloOrdering");
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s order:",
                                                  computation->name().c_str()));
     // Gather all instructions in the module sequence for this computation and
@@ -236,7 +327,7 @@ string SequentialHloOrdering::ToString() const {
     std::vector<const HloInstruction*> instructions;
     for (auto& instruction_position : order_position_) {
       const HloInstruction* instruction = instruction_position.first;
-      if (instruction->parent() == computation.get()) {
+      if (instruction->parent() == computation) {
         instructions.push_back(instruction);
       }
     }

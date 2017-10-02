@@ -70,6 +70,53 @@ TEST(TensorShapeTest, RemoveAndAddDim) {
   ASSERT_EQ(3, s.dims());
 }
 
+TEST(TensorShapeTest, RemoveLastDims) {
+  TensorShape s({2, 3, 5, 7});
+  s.RemoveLastDims(1);
+
+  ASSERT_EQ(3, s.dims());
+  EXPECT_EQ(30, s.num_elements());
+
+  s.RemoveLastDims(2);
+  ASSERT_EQ(1, s.dims());
+  EXPECT_EQ(2, s.dim_size(0));
+}
+
+TEST(TensorShapeTest, RemoveDimRange) {
+  TensorShape s0({2, 3, 5, 7});
+  // Empty interval => noop.
+  for (int i = -4; i <= 4; ++i) {
+    s0.RemoveDimRange(i, i);
+    ASSERT_EQ(4, s0.dims());
+    ASSERT_EQ(210, s0.num_elements());
+  }
+
+  // Positive begin and end.
+  s0.RemoveDimRange(3, 1);  // Empty interval.
+  ASSERT_EQ(4, s0.dims());
+  ASSERT_EQ(210, s0.num_elements());
+  s0.RemoveDimRange(0, 3);
+  ASSERT_EQ(1, s0.dims());
+  EXPECT_EQ(7, s0.dim_size(0));
+  TensorShape s1({2, 3, 5, 7});
+  s1.RemoveDimRange(2, 3);
+  ASSERT_EQ(3, s1.dims());
+  ASSERT_EQ(42, s1.num_elements());
+
+  // Negative begin or end.
+  TensorShape s2({2, 3, 5, 7});
+  s2.RemoveDimRange(-2, -3);  // Empty interval.
+  ASSERT_EQ(4, s2.dims());
+  ASSERT_EQ(210, s2.num_elements());
+  s2.RemoveDimRange(0, -2);
+  ASSERT_EQ(1, s2.dims());
+  ASSERT_EQ(7, s2.dim_size(0));
+  TensorShape s3({2, 3, 5, 7});
+  s3.RemoveDimRange(-3, -2);
+  ASSERT_EQ(3, s3.dims());
+  ASSERT_EQ(42, s3.num_elements());
+}
+
 TEST(TensorShapeTest, InvalidShapeProto) {
   TensorShapeProto proto;
   EXPECT_TRUE(TensorShape::IsValid(proto));
@@ -635,14 +682,6 @@ static void BM_TensorShape_Assign(int iters, int arg) {
   }
 }
 BENCHMARK(BM_TensorShape_Assign)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
-
-static void BM_TensorShapeOld_Assign(int iters, int arg) {
-  TensorShapeOld sold(MakeSizes(arg));
-  while (--iters > 0) {
-    TensorShapeOld sold2 = sold;
-  }
-}
-BENCHMARK(BM_TensorShapeOld_Assign)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
 
 }  // namespace
 }  // namespace tensorflow

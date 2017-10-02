@@ -31,6 +31,7 @@ import time
 
 import portpicker
 
+from tensorflow.core.debug import debug_service_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session
@@ -40,6 +41,7 @@ from tensorflow.python.debug.lib import grpc_debug_server
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import variables
+from tensorflow.python.util import compat
 
 
 def _get_dump_file_path(dump_root, device_name, debug_node_name):
@@ -75,6 +77,7 @@ class EventListenerTestStreamHandler(
   """Implementation of EventListenerBaseStreamHandler that dumps to file."""
 
   def __init__(self, dump_dir, event_listener_servicer):
+    super(EventListenerTestStreamHandler, self).__init__()
     self._dump_dir = dump_dir
     self._event_listener_servicer = event_listener_servicer
     if self._dump_dir:
@@ -86,6 +89,8 @@ class EventListenerTestStreamHandler(
     self._cached_graph_def_wall_times = []
 
   def on_core_metadata_event(self, event):
+    self._event_listener_servicer.toggle_watch()
+
     core_metadata = json.loads(event.log_message.message)
 
     if not self._grpc_path:
@@ -137,13 +142,26 @@ class EventListenerTestStreamHandler(
 
     Args:
       event: The Event proto carrying a tensor value.
+
+    Returns:
+      If the debug node belongs to the set of currently activated breakpoints,
+      a `EventReply` proto will be returned.
     """
     if self._dump_dir:
       self._write_value_event(event)
     else:
       value = event.summary.value[0]
+      tensor_value = debug_data.load_tensor_from_event(event)
       self._event_listener_servicer.debug_tensor_values[value.node_name].append(
-          debug_data.load_tensor_from_event(event))
+          tensor_value)
+
+      items = event.summary.value[0].node_name.split(":")
+      node_name = items[0]
+      output_slot = int(items[1])
+      debug_op = items[2]
+      if ((node_name, output_slot, debug_op) in
+          self._event_listener_servicer.breakpoints):
+        return debug_service_pb2.EventReply()
 
   def _try_makedirs(self, dir_path):
     if not os.path.isdir(dir_path):
@@ -183,7 +201,7 @@ class EventListenerTestStreamHandler(
     if not summary_metadata.plugin_data:
       raise ValueError("The value lacks plugin data.")
     try:
-      content = json.loads(summary_metadata.plugin_data[0].content)
+      content = json.loads(compat.as_text(summary_metadata.plugin_data.content))
     except ValueError as err:
       raise ValueError("Could not parse content into JSON: %r, %r" % (content,
                                                                       err))
@@ -199,7 +217,7 @@ class EventListenerTestStreamHandler(
 class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
   """An implementation of EventListenerBaseServicer for testing."""
 
-  def __init__(self, server_port, dump_dir):
+  def __init__(self, server_port, dump_dir, toggle_watch_on_core_metadata=None):
     """Constructor of EventListenerTestServicer.
 
     Args:
@@ -207,14 +225,35 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
       dump_dir: (str) The root directory to which the data files will be
         dumped. If empty or None, the received debug data will not be dumped
         to the file system: they will be stored in memory instead.
+      toggle_watch_on_core_metadata: A list of
+        (node_name, output_slot, debug_op) tuples to toggle the
+        watchpoint status during the on_core_metadata calls (optional).
     """
     self.core_metadata_json_strings = []
     self.partition_graph_defs = []
     self.debug_tensor_values = collections.defaultdict(list)
+    self._initialize_toggle_watch_state(toggle_watch_on_core_metadata)
 
     grpc_debug_server.EventListenerBaseServicer.__init__(
         self, server_port,
         functools.partial(EventListenerTestStreamHandler, dump_dir, self))
+
+  def _initialize_toggle_watch_state(self, toggle_watches):
+    self._toggle_watches = toggle_watches
+    self._toggle_watch_state = dict()
+    if self._toggle_watches:
+      for watch_key in self._toggle_watches:
+        self._toggle_watch_state[watch_key] = False
+
+  def toggle_watch(self):
+    for watch_key in self._toggle_watch_state:
+      node_name, output_slot, debug_op = watch_key
+      if self._toggle_watch_state[watch_key]:
+        self.request_unwatch(node_name, output_slot, debug_op)
+      else:
+        self.request_watch(node_name, output_slot, debug_op)
+      self._toggle_watch_state[watch_key] = (
+          not self._toggle_watch_state[watch_key])
 
   def clear_data(self):
     self.core_metadata_json_strings = []
@@ -224,7 +263,9 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
 
 def start_server_on_separate_thread(dump_to_filesystem=True,
                                     server_start_delay_sec=0.0,
-                                    poll_server=False):
+                                    poll_server=False,
+                                    blocking=True,
+                                    toggle_watch_on_core_metadata=None):
   """Create a test gRPC debug server and run on a separate thread.
 
   Args:
@@ -234,6 +275,10 @@ def start_server_on_separate_thread(dump_to_filesystem=True,
       start up for.
     poll_server: (bool) whether the server will be polled till success on
       startup.
+    blocking: (bool) whether the server should be started in a blocking mode.
+    toggle_watch_on_core_metadata: A list of
+        (node_name, output_slot, debug_op) tuples to toggle the
+        watchpoint status during the on_core_metadata calls (optional).
 
   Returns:
     server_port: (int) Port on which the server runs.
@@ -250,12 +295,15 @@ def start_server_on_separate_thread(dump_to_filesystem=True,
   debug_server_url = "grpc://localhost:%d" % server_port
 
   server_dump_dir = tempfile.mkdtemp() if dump_to_filesystem else None
-  server = EventListenerTestServicer(server_port=server_port,
-                                     dump_dir=server_dump_dir)
+  server = EventListenerTestServicer(
+      server_port=server_port,
+      dump_dir=server_dump_dir,
+      toggle_watch_on_core_metadata=toggle_watch_on_core_metadata)
 
   def delay_then_run_server():
     time.sleep(server_start_delay_sec)
-    server.run_server()
+    server.run_server(blocking=blocking)
+
   server_thread = threading.Thread(target=delay_then_run_server)
   server_thread.start()
 

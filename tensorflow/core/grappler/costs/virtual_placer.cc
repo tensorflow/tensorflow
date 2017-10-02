@@ -34,15 +34,62 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
     DeviceProperties& prop = devices_["UNKNOWN"];
     prop.set_type("UNKNOWN");
 
-  } else {
+  } else if (devices_.size() == 1) {
+    // If there is only one device in the cluster, use it as default device,
+    // whatever it is.
     default_device_ = devices_.begin()->first;
-    VLOG(1) << "Number of devices: " << devices_.size();
+  } else {
+    // Default device is set from the devices in the cluster in the following
+    // priority: /gpu:0, /cpu:0, or any device.
+    // TODO(dyoon): This logic assumes single machine with CPU and GPU devices.
+    // Make it more general to support multiple machines, job types, and devices
+    // other than CPU and GPU.
+    std::map<int, string> cpu_devices;  // CPU device map: id -> device name.
+    std::map<int, string> gpu_devices;  // GPU device map: id -> device name.
     for (const auto& device : devices_) {
-      if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
-        default_device_ = device.first;
-        break;
+      DeviceNameUtils::ParsedName parsed_name;
+      bool parsed = DeviceNameUtils::ParseFullName(device.first, &parsed_name);
+      if (parsed) {
+        // Parsed devices are stored to cpu_devices or gpu_devices map,
+        // addressed (and orderd) by device id.
+        if (str_util::Lowercase(parsed_name.type) == "gpu") {
+          gpu_devices[parsed_name.id] = device.first;
+        } else if (str_util::Lowercase(parsed_name.type) == "cpu") {
+          cpu_devices[parsed_name.id] = device.first;
+        }
       }
     }
+    if (!gpu_devices.empty()) {
+      // GPU:0 (or GPU with smallest device id).
+      default_device_ = gpu_devices.begin()->second;
+    } else if (!cpu_devices.empty()) {
+      // CPU:0 (or CPU with smallest device id).
+      default_device_ = cpu_devices.begin()->second;
+    } else {
+      default_device_ = devices_.begin()->first;  // Any device.
+    }
+  }
+
+  // Default job name for canonical device name.
+  default_job_name_ = "localhost";
+  // Scan the device names from the cluster, and if there is one job name used,
+  // use it for canonical device name.
+  std::unordered_set<string> job_names_from_cluster;
+  for (const auto& device : devices_) {
+    const auto& device_name = device.first;
+    DeviceNameUtils::ParsedName parsed_name;
+    bool parsed = DeviceNameUtils::ParseFullName(device_name, &parsed_name);
+    if (parsed && !parsed_name.job.empty()) {
+      job_names_from_cluster.insert(parsed_name.job);
+    }
+  }
+  // If there is only  type of job name in all the devices in the cluster, use
+  // that one as default job name; otherwise, use localhost.
+  // TODO(dyoon): this should be improved, especially when the cluster is
+  // composed of multiple worker, PS, and other types of jobs.
+  if (job_names_from_cluster.size() == 1) {
+    auto it = job_names_from_cluster.begin();
+    default_job_name_ = *it;
   }
 }
 
@@ -78,7 +125,7 @@ string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
       return get_default_device_name();
     } else {
       if (parsed_name.job.empty()) {
-        parsed_name.job = "localhost";
+        parsed_name.job = default_job_name_;
       }
       device = strings::StrCat(
           "/job:", parsed_name.job, "/replica:", parsed_name.replica,

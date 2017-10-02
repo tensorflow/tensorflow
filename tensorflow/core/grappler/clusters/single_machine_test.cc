@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -39,7 +38,12 @@ class SingleMachineTest : public ::testing::Test {
     // Provision a single machine with 3 cpu cores, and a short timeout of 5
     // seconds: since there isn't much work to process a test graph that should
     // be plenty.
-    cluster_.reset(new SingleMachine(5, 3, 0));
+    int timeout_s = 5;
+#ifdef THREAD_SANITIZER
+    timeout_s *= 5;
+#endif
+    cluster_.reset(
+        new SingleMachine(timeout_s, 3 /* num_cpu_cores */, 0 /* num_gpus */));
     TF_CHECK_OK(cluster_->Provision());
   }
 

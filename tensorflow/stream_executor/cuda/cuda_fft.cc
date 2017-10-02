@@ -253,14 +253,14 @@ port::Status CUDAFftPlan::Initialize(
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
-                            "Failed to create cuFFT bacthed plan."};
+                            "Failed to create cuFFT batched plan."};
       }
     } else {
       auto ret = wrap::cufftCreate(parent, &plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
-                            "Failed to create cuFFT bacthed plan."};
+                            "Failed to create cuFFT batched plan."};
       }
       ret = wrap::cufftSetAutoAllocation(parent, plan_, 0);
       if (ret != CUFFT_SUCCESS) {
@@ -268,7 +268,7 @@ port::Status CUDAFftPlan::Initialize(
                    << ret;
         return port::Status{
             port::error::INTERNAL,
-            "Failed to set auto allocation for cuFFT bacthed plan."};
+            "Failed to set auto allocation for cuFFT batched plan."};
       }
       size_t size_in_bytes;
       ret = wrap::cufftMakePlanMany(
@@ -279,7 +279,7 @@ port::Status CUDAFftPlan::Initialize(
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to make cuFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
-                            "Failed to make cuFFT bacthed plan."};
+                            "Failed to make cuFFT batched plan."};
       }
       if (size_in_bytes != 0) {
         auto allocated =
@@ -294,7 +294,7 @@ port::Status CUDAFftPlan::Initialize(
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to set work area for cuFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
-                            "Failed to set work area for cuFFT bacthed plan."};
+                            "Failed to set work area for cuFFT batched plan."};
       }
     }
   }

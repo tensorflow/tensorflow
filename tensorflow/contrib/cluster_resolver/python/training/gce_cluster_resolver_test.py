@@ -126,6 +126,7 @@ class GceClusterResolverTest(test.TestCase):
         zone='us-east1-d',
         instance_group='test-instance-group',
         port=8470,
+        credentials=None,
         service=self.standard_mock_service_client())
 
     actual_cluster_spec = gce_cluster_resolver.cluster_spec()
@@ -141,6 +142,7 @@ class GceClusterResolverTest(test.TestCase):
         instance_group='test-instance-group',
         job_name='custom',
         port=2222,
+        credentials=None,
         service=self.standard_mock_service_client())
 
     actual_cluster_spec = gce_cluster_resolver.cluster_spec()
@@ -161,6 +163,7 @@ class GceClusterResolverTest(test.TestCase):
         zone='us-east1-d',
         instance_group='test-instance-group',
         port=8470,
+        credentials=None,
         service=self.gen_standard_mock_service_client(name_to_ip))
 
     actual_cluster_spec = gce_cluster_resolver.cluster_spec()
@@ -195,6 +198,7 @@ class GceClusterResolverTest(test.TestCase):
         instance_group='test-instance-group',
         job_name='worker',
         port=8470,
+        credentials=None,
         service=self.gen_standard_mock_service_client(worker1_name_to_ip))
 
     worker2_gce_cluster_resolver = GceClusterResolver(
@@ -203,6 +207,7 @@ class GceClusterResolverTest(test.TestCase):
         instance_group='test-instance-group',
         job_name='worker',
         port=8470,
+        credentials=None,
         service=self.gen_standard_mock_service_client(worker2_name_to_ip))
 
     ps_gce_cluster_resolver = GceClusterResolver(
@@ -211,6 +216,7 @@ class GceClusterResolverTest(test.TestCase):
         instance_group='test-instance-group',
         job_name='ps',
         port=2222,
+        credentials=None,
         service=self.gen_standard_mock_service_client(ps_name_to_ip))
 
     union_cluster_resolver = UnionClusterResolver(worker1_gce_cluster_resolver,

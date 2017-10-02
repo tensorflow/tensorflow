@@ -17,18 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -415,6 +423,165 @@ class IteratorTest(test.TestCase):
         print(sess.run(
             feedable_int_vector.get_next(),
             feed_dict={handle_placeholder: handle_float_vector}))
+
+  def testRemoteIteratorUsingRemoteCallOpDirectSession(self):
+    worker_config = config_pb2.ConfigProto()
+    worker_config.device_count["CPU"] = 3
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:1"):
+      dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_3_handle = iterator_3.string_handle()
+
+    @function.Defun(dtypes.string)
+    def _remote_fn(h):
+      remote_iterator = dataset_ops.Iterator.from_string_handle(
+          h, dataset_3.output_types, dataset_3.output_shapes)
+      return remote_iterator.get_next()
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
+      target_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+      remote_op = functional_ops.remote_call(
+          args=[iterator_3_handle],
+          Tout=[dtypes.int32],
+          f=_remote_fn,
+          target=target_placeholder)
+
+    with self.test_session(config=worker_config) as sess:
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+          })
+      self.assertEqual(elem, [1])
+      # Fails when target is cpu:2 where the resource is not located.
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(
+            remote_op,
+            feed_dict={
+                target_placeholder: "/job:localhost/replica:0/task:0/cpu:2"
+            })
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+          })
+      self.assertEqual(elem, [2])
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+          })
+      self.assertEqual(elem, [3])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(
+            remote_op,
+            feed_dict={
+                target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
+            })
+
+  def testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
+      dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_3_handle = iterator_3.string_handle()
+
+    def _encode_raw(byte_array):
+      return bytes(bytearray(byte_array))
+
+    @function.Defun(dtypes.uint8)
+    def _remote_fn(h):
+      handle = script_ops.py_func(_encode_raw, [h], dtypes.string)
+      remote_iterator = dataset_ops.Iterator.from_string_handle(
+          handle, dataset_3.output_types, dataset_3.output_shapes)
+      return remote_iterator.get_next()
+
+    with ops.device("/job:localhost/replica:0/task:0/device:GPU:0"):
+      target_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+      iterator_3_handle_uint8 = parsing_ops.decode_raw(
+          bytes=iterator_3_handle, out_type=dtypes.uint8)
+      remote_op = functional_ops.remote_call(
+          args=[iterator_3_handle_uint8],
+          Tout=[dtypes.int32],
+          f=_remote_fn,
+          target=target_placeholder)
+
+    with self.test_session() as sess:
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+          })
+      self.assertEqual(elem, [1])
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+          })
+      self.assertEqual(elem, [2])
+      elem = sess.run(
+          remote_op,
+          feed_dict={
+              target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+          })
+      self.assertEqual(elem, [3])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(
+            remote_op,
+            feed_dict={
+                target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
+            })
+
+  def testIncorrectIteratorRestore(self):
+
+    def _iterator_checkpoint_prefix():
+      return os.path.join(self.get_temp_dir(), "iterator")
+
+    def _build_range_dataset_graph():
+      start = 1
+      stop = 10
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      path = _iterator_checkpoint_prefix()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next, save_op, restore_op
+
+    def _build_reader_dataset_graph():
+      filenames = ["test"]  # Does not exist but we don't care in this test.
+      path = _iterator_checkpoint_prefix()
+      iterator = readers.FixedLengthRecordDataset(
+          filenames, 1, 0, 0).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next_op = iterator.get_next()
+      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
+      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
+                                                    path)
+      return init_op, get_next_op, save_op, restore_op
+
+    # Saving iterator for RangeDataset graph.
+    with ops.Graph().as_default() as g:
+      init_op, _, save_op, _ = _build_range_dataset_graph()
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        sess.run(save_op)
+
+    # Attempt to restore the saved iterator into an IteratorResource of
+    # incompatible type. An iterator of RangeDataset has output type int64,
+    # while an iterator of FixedLengthRecordDataset has output type string.
+    # So an InvalidArgumentError should be raised by
+    # IteratorResource::set_iterator.
+    with ops.Graph().as_default() as g:
+      _, _, _, restore_op = _build_reader_dataset_graph()
+      with self.test_session(graph=g) as sess:
+        with self.assertRaises(errors.InvalidArgumentError):
+          sess.run(restore_op)
 
 
 if __name__ == "__main__":

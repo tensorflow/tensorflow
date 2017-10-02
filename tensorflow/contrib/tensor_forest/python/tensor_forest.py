@@ -437,7 +437,7 @@ class RandomForestGraphs(object):
           if processed_sparse_features is not None:
             raise NotImplementedError(
                 'Bagging not supported with sparse features.')
-          # TODO(thomaswc): This does sampling without replacment.  Consider
+          # TODO(thomaswc): This does sampling without replacement.  Consider
           # also allowing sampling with replacement as an option.
           batch_size = array_ops.strided_slice(
               array_ops.shape(processed_dense_features), [0], [1])
@@ -514,7 +514,8 @@ class RandomForestGraphs(object):
         expected_squares = math_ops.div(
             math_ops.reduce_sum(all_predict * all_predict, 1),
             self.params.num_trees)
-        regression_variance = expected_squares - average_values * average_values
+        regression_variance = math_ops.maximum(
+            0., expected_squares - average_values * average_values)
       return average_values, tree_paths, regression_variance
 
   def average_size(self):

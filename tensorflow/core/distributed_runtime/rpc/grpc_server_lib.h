@@ -45,6 +45,10 @@ typedef std::function<RendezvousMgrInterface*(const WorkerEnv*)>
 typedef std::function<void(const WorkerEnv*, ::grpc::ServerBuilder*)>
     ServiceInitFunction;
 
+// function that creates a grpc based worker implementation.
+typedef std::function<std::unique_ptr<GrpcWorker>(WorkerEnv*)>
+    WorkerCreationFunction;
+
 class GrpcServer : public ServerInterface {
  protected:
   GrpcServer(const ServerDef& server_def, Env* env);
@@ -64,6 +68,10 @@ class GrpcServer : public ServerInterface {
   const string target() const override;
 
  protected:
+  Status Init(ServiceInitFunction service_func,
+              const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+              const WorkerCreationFunction& worker_func);
+
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func);
 

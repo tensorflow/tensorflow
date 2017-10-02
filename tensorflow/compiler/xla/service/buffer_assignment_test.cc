@@ -86,7 +86,7 @@ class BufferAssignmentTest : public HloTestBase {
                                                         int64 alignment = 1) {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
-               backend_->compiler()->BufferSizeBytesFunction(),
+               backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
   }
@@ -95,7 +95,7 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
-               backend_->compiler()->BufferSizeBytesFunction(),
+               backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; }, false,
                std::move(colorer))
         .ConsumeValueOrDie();
@@ -296,6 +296,34 @@ TEST_F(BufferAssignmentTest, BufferForConst) {
   GetAssignedOutputAllocation(*buffers, add);
 }
 
+TEST_F(BufferAssignmentTest, HasAllocationAt) {
+  // Create a tuple with non-const and const elements and check that
+  // HasAllocationAt works correctly.
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "param0"));
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<int>(1)));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
+  auto tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({negate, param0, constant}));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignment(module.get());
+  // Make sure that HasAllocationAt() agrees with what HasTopLevelAllocation()
+  // reports for the instruction directly.
+  EXPECT_EQ(buffers->HasTopLevelAllocation(tuple),
+            buffers->HasAllocationAt(tuple, /*index=*/{}));
+  EXPECT_EQ(buffers->HasTopLevelAllocation(negate),
+            buffers->HasAllocationAt(tuple, /*index=*/{0}));
+  EXPECT_EQ(buffers->HasTopLevelAllocation(param0),
+            buffers->HasAllocationAt(tuple, /*index=*/{1}));
+  EXPECT_EQ(buffers->HasTopLevelAllocation(constant),
+            buffers->HasAllocationAt(tuple, /*index=*/{2}));
+}
+
 TEST_F(BufferAssignmentTest, BufferForOutputConst) {
   // This computation copies a constant to output.
   auto builder = HloComputation::Builder(TestName());
@@ -382,9 +410,12 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
 
   auto colorer = [](const BufferLiveness& buffer_liveness) {
     int color = 0;
-    for (auto& buffer :
-         buffer_liveness.points_to_analysis().logical_buffers()) {
-      buffer->set_color(LogicalBuffer::Color(color++));
+
+    for (LogicalBuffer::Id id = 0;
+         id < buffer_liveness.points_to_analysis().num_logical_buffers();
+         id++) {
+      auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
+      buffer.set_color(LogicalBuffer::Color(color++));
     }
     return Status::OK();
   };
@@ -437,18 +468,20 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
   module->AddEntryComputation(builder.Build());
 
   auto colorer = [](const BufferLiveness& buffer_liveness) {
-    for (auto& buffer :
-         buffer_liveness.points_to_analysis().logical_buffers()) {
+    for (LogicalBuffer::Id id = 0;
+         id < buffer_liveness.points_to_analysis().num_logical_buffers();
+         id++) {
+      auto& buffer = buffer_liveness.points_to_analysis().logical_buffer(id);
       const auto& aliases =
-          buffer_liveness.points_to_analysis().GetBufferAliases(*buffer);
+          buffer_liveness.points_to_analysis().GetBufferAliases(buffer);
       for (const auto& alias : aliases) {
         if (alias.instruction()->opcode() == HloOpcode::kAdd ||
             alias.instruction()->opcode() == HloOpcode::kMultiply) {
-          buffer->set_color(LogicalBuffer::Color(1));
+          buffer.set_color(LogicalBuffer::Color(1));
         }
       }
-      if (!buffer->has_color()) {
-        buffer->set_color(LogicalBuffer::Color(0));
+      if (!buffer.has_color()) {
+        buffer.set_color(LogicalBuffer::Color(0));
       }
     }
     return Status::OK();
@@ -547,12 +580,12 @@ TEST_F(BufferAssignmentTest, TrivialMap) {
       HloInstruction::CreateParameter(0, f32a100x10_, ""));
   auto map = builder.AddInstruction(
       HloInstruction::CreateMap(f32a100x10_, {param0}, map_computation));
+  module->AddEntryComputation(builder.Build());
+
   const std::vector<const HloInstruction*> level0 = GetInstructions(map);
   EXPECT_EQ(2, level0.size()) << "Invalid main kernel size";
   const std::vector<const HloInstruction*> level1 = GetInstructions(inner_last);
   EXPECT_EQ(3, level1.size()) << "Invalid nested add+1 size";
-
-  module->AddEntryComputation(builder.Build());
 
   // Assigns buffers and fetches sizes.
   auto buffers = RunBufferAssignment(module.get());
@@ -658,6 +691,7 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
       builder.AddInstruction(HloInstruction::CreateTuple({const3, const4}));
   auto while_op = builder.AddInstruction(HloInstruction::CreateWhile(
       t_s32_f32v4_, condition_computation, body_computation, tuple));
+  module->AddEntryComputation(builder.Build());
 
   const std::vector<const HloInstruction*> level0 = GetInstructions(while_op);
   EXPECT_EQ(4, level0.size()) << "Invalid while kernel size";
@@ -667,8 +701,6 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
   const std::vector<const HloInstruction*> levelb =
       GetInstructions(body_computation->root_instruction());
   EXPECT_EQ(8, levelb.size()) << "Invalid nested body size";
-
-  module->AddEntryComputation(builder.Build());
 
   // Assigns buffers and fetches sizes.
   auto buffers = RunBufferAssignment(module.get());
@@ -1091,8 +1123,8 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
 // TODO(b/32248867): Enable when buffer assignment gives allocations to
 // constants.
 TEST_F(BufferAssignmentTest, DISABLED_TupleConstantAsOutput) {
-  // Test that a tuple constant which is forwarded to the computation output is
-  // properly handled.
+  // Test that a tuple constant which is forwarded to the computation output
+  // is properly handled.
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateConstant(Literal::MakeTuple(
       {Literal::CreateR0<int64>(0).get(), Literal::CreateR0<int64>(1).get()})));
@@ -1247,8 +1279,8 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
 }
 
 TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
-  // Test a computation with an output that has an ambiguous points-to set. This
-  // is constructed using a select among tuple shapes.
+  // Test a computation with an output that has an ambiguous points-to set.
+  // This is constructed using a select among tuple shapes.
   auto builder = HloComputation::Builder(TestName());
   auto tuple_shape =
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(PRED, {1, 2, 3, 4})});
@@ -1312,8 +1344,8 @@ TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
 }
 
 TEST_F(BufferAssignmentTest, OneTempAllocation) {
-  // Test a computation that requires multiple temp buffers, and ensure they are
-  // combined into a single allocation.
+  // Test a computation that requires multiple temp buffers, and ensure they
+  // are combined into a single allocation.
   auto builder = HloComputation::Builder(TestName());
   Shape shape_2x3 = ShapeUtil::MakeShape(F32, {2, 3});
   Shape shape_2x4 = ShapeUtil::MakeShape(F32, {2, 4});
@@ -1732,9 +1764,62 @@ TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }
 
+TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
+  auto module = MakeUnique<HloModule>(TestName());
+  auto builder = HloComputation::Builder("entry");
+
+  auto input0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape_, "input0"));
+  auto weights0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "weights0"));
+
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0)));
+  auto output0 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+  auto output1 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+
+  auto cond0 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body0 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple0 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input0, weights0, output0}));
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond0, body0, tuple0));
+
+  // Get output of 'while0' and feed as input to 'while1'.
+  auto while0_out = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while0, 2));
+
+  auto cond1 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body1 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple1 = builder.AddInstruction(
+      HloInstruction::CreateTuple({while0_out, weights0, output1}));
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond1, body1, tuple1));
+
+  // Get output of 'while1' so that it is live out of computation.
+  auto while1_out = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while1, 2));
+
+  module->AddEntryComputation(builder.Build());
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
+  // Get BufferAllocation for root instruction.
+  auto* root_alloc = assignment->GetUniqueTopLevelSlice(while1_out)
+                         .ConsumeValueOrDie()
+                         .allocation();
+  // Test that root instruction allocation is live out.
+  EXPECT_TRUE(root_alloc->maybe_live_out());
+  // Test that root instruction allocation is not an entry parameter.
+  EXPECT_FALSE(root_alloc->is_entry_computation_parameter());
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

@@ -53,6 +53,38 @@ static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
 XlaOpRegistry::XlaOpRegistry() = default;
 XlaOpRegistry::~XlaOpRegistry() = default;
 
+// TODO(b/64575122) consider adding more sophisticated definitions of
+// compatibility if needed by future use cases.
+/* static */ bool XlaOpRegistry::IsCompatible(const OpRegistration& x,
+                                              const OpRegistration& y) {
+  if (x.name != y.name) return true;
+  // The registrations refer to the same Op: ensures they are compatible and
+  // are restricted to different device whitelists.
+  if (x.compilation_only != y.compilation_only) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " have incompatible compilation_only settings.";
+    return false;
+  }
+  if (x.allow_resource_types != y.allow_resource_types) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " have incompatible allow_resource_types settings.";
+    return false;
+  }
+  if (!x.has_device_whitelist || !y.has_device_whitelist) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " do not both have device whitelists.";
+    return false;
+  }
+  for (const auto& device : x.device_whitelist) {
+    if (y.device_whitelist.count(device) != 0) {
+      LOG(WARNING) << "Multiple registrations of " << x.name << " on device "
+                   << device;
+      return false;
+    }
+  }
+  return true;
+}
+
 /* static */ void XlaOpRegistry::RegisterCompilationDevice(
     const string& device_name, const DeviceRegistration& registration) {
   XlaOpRegistry& registry = Instance();
@@ -120,8 +152,10 @@ void XlaOpRegistry::RegisterCompilationKernels() {
 
   OpRegistryInterface* op_registry = OpRegistry::Global();
   for (const auto& op : registry.ops_) {
+    const string& op_name = op.first;
+    const std::unique_ptr<OpRegistration>& op_registration = op.second;
     const OpDef* op_def;
-    TF_CHECK_OK(op_registry->LookUpOpDef(op.first, &op_def));
+    TF_CHECK_OK(op_registry->LookUpOpDef(op_name, &op_def));
 
     std::unordered_set<string> type_attrs;
     for (const OpDef::AttrDef& attr_def : op_def->attr()) {
@@ -131,24 +165,24 @@ void XlaOpRegistry::RegisterCompilationKernels() {
     }
 
     // Checks there are no type constraints referring to unknown attributes.
-    for (const auto& constraint : op.second->type_constraints) {
+    for (const auto& constraint : op_registration->type_constraints) {
       if (type_attrs.find(constraint.first) == type_attrs.end()) {
         LOG(FATAL) << "Unknown type attribute " << constraint.first
-                   << " in XLA op registration for " << op.first;
+                   << " in XLA op registration for " << op_name;
       }
     }
 
     for (auto& backend : registry.backends_) {
       // If the operator has a device whitelist, only register on whitelisted
       // devices.
-      if (op.second->has_device_whitelist &&
-          op.second->device_whitelist.find(backend.first) ==
-              op.second->device_whitelist.end()) {
+      if (op_registration->has_device_whitelist &&
+          op_registration->device_whitelist.find(backend.first) ==
+              op_registration->device_whitelist.end()) {
         continue;
       }
 
       std::unique_ptr<KernelDef> kdef(new KernelDef);
-      kdef->set_op(op.second->name);
+      kdef->set_op(op_registration->name);
       kdef->set_device_type(backend.first);
 
       // Constrain each type attribute to the intersection of:
@@ -162,15 +196,15 @@ void XlaOpRegistry::RegisterCompilationKernels() {
         auto* allowed_values =
             attr_constraint->mutable_allowed_values()->mutable_list();
 
-        auto it = op.second->type_constraints.find(type_attr);
+        auto it = op_registration->type_constraints.find(type_attr);
         for (DataType dtype : backend.second.supported_types) {
-          if (it == op.second->type_constraints.end() ||
-              (it != op.second->type_constraints.end() &&
+          if (it == op_registration->type_constraints.end() ||
+              (it != op_registration->type_constraints.end() &&
                it->second.find(dtype) != it->second.end())) {
             allowed_values->add_type(dtype);
           }
         }
-        if (op.second->allow_resource_types) {
+        if (op_registration->allow_resource_types) {
           allowed_values->add_type(DT_RESOURCE);
         }
       }
@@ -179,17 +213,18 @@ void XlaOpRegistry::RegisterCompilationKernels() {
         continue;
       }
       VLOG(2) << "XLA op registration: device: " << backend.first
-              << " op: " << op.first;
+              << " op: " << op_name;
       registry.kernel_registrars_.emplace_back(
           new kernel_factory::OpKernelRegistrar(
-              new KernelDef(*kdef), "XlaJitOp", op.second->factory));
+              new KernelDef(*kdef), "XlaJitOp", op_registration->factory));
       backend.second.kernel_defs.push_back(std::move(kdef));
     }
   }
 }
 
 std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
-    const string& compilation_device_name) {
+    const string& compilation_device_name,
+    bool include_compilation_only_kernels) {
   std::vector<const KernelDef*> kernels;
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
@@ -197,7 +232,13 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   CHECK(it != registry.backends_.end())
       << "Unknown backend " << compilation_device_name;
   for (const std::unique_ptr<KernelDef>& k : it->second.kernel_defs) {
-    if (!registry.ops_.at(k->op())->compilation_only) {
+    auto op_iter = registry.ops_.find(k->op());
+    CHECK(op_iter != registry.ops_.end());
+    // The test in IsCompatible ensures that if there are multiple matching
+    // registrations for this op name, they all have the same value of
+    // compilation_only, so only the first match needs to be tested.
+    if (include_compilation_only_kernels ||
+        !op_iter->second->compilation_only) {
       kernels.push_back(k.get());
     }
   }
@@ -272,11 +313,16 @@ XlaOpRegistrar::XlaOpRegistrar(
     std::unique_ptr<XlaOpRegistry::OpRegistration> registration) {
   XlaOpRegistry& registry = XlaOpRegistry::Instance();
   mutex_lock lock(registry.mutex_);
-  auto result = registry.ops_.emplace(registration->name, nullptr);
-  if (!result.second) {
-    LOG(FATAL) << "Duplicate XLA op registration " << registration->name;
+  auto existing_ops = registry.ops_.equal_range(registration->name);
+  for (auto existing = existing_ops.first; existing != existing_ops.second;
+       ++existing) {
+    if (!XlaOpRegistry::IsCompatible(*existing->second, *registration)) {
+      LOG(FATAL)
+          << "XLA op registration " << registration->name
+          << " is incompatible with existing registration of the same name.";
+    }
   }
-  result.first->second = std::move(registration);
+  registry.ops_.emplace(registration->name, std::move(registration));
 }
 
 XlaBackendRegistrar::XlaBackendRegistrar(
@@ -285,36 +331,5 @@ XlaBackendRegistrar::XlaBackendRegistrar(
   XlaOpRegistry& registry = XlaOpRegistry::Instance();
   registry.RegisterBackend(name.ToString(), types, op_filter);
 }
-
-bool CpuOpFilter(KernelDef* kdef) {
-  // TODO(b/34339814): implement inverse erf for double types and remove this
-  // workaround.
-  if (kdef->op() == "RandomStandardNormal") {
-    kdef->clear_constraint();
-    // Change the type constraint to permit only DTD_FLOAT.
-    KernelDef::AttrConstraint* attr_constraint = kdef->add_constraint();
-    attr_constraint->set_name("dtype");
-    attr_constraint->mutable_allowed_values()->mutable_list()->add_type(
-        DT_FLOAT);
-    return true;
-  }
-  return true;
-}
-
-REGISTER_XLA_BACKEND(DEVICE_CPU_XLA_JIT, kCpuAllTypes, CpuOpFilter);
-
-bool GpuOpFilter(KernelDef* kdef) {
-  // TODO(b/31361304): The GPU backend does not parallelize PRNG ops, leading to
-  // slow code.
-  // TODO(b/34969189) The implementation of TruncatedNormal generates illegal
-  // code on GPU.
-  if (kdef->op() == "RandomStandardNormal" || kdef->op() == "RandomUniform" ||
-      kdef->op() == "RandomUniformInt" || kdef->op() == "TruncatedNormal") {
-    return false;
-  }
-  return true;
-}
-
-REGISTER_XLA_BACKEND(DEVICE_GPU_XLA_JIT, kGpuAllTypes, GpuOpFilter);
 
 }  // namespace tensorflow

@@ -84,6 +84,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Same as Evaluate, except returning nullptr on error.
   std::unique_ptr<Literal> TryEvaluate(HloInstruction* instruction);
 
+  // Evaluates a single HLO instruction, substituting the given literals for
+  // some of the instruction's operands.
+  //
+  // For example, given instruction = op(A, B, C) and the map
+  // {A = x, C = y}, this evaluates op(x, B, y).
+  StatusOr<std::unique_ptr<Literal>> EvaluateWithSubstitutions(
+      const HloInstruction* instruction,
+      const std::unordered_map<const HloInstruction*, const Literal*>&
+          substitutions);
+
  protected:
   // Templated DfsHloVisitor. Typically ReturnT here indicates the resulting
   // literal type of each evaluated Handle* method of a TypedVisitor.
@@ -101,6 +111,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     return hlo->Visit(typed_visitors_.at(hlo->shape().element_type()).get());
   }
 
+  Status Preprocess(HloInstruction* hlo) override;
+
+  Status Postprocess(HloInstruction* hlo) override;
+
   // Operations that are type-agnostic or always return a specific type, such as
   // HandleIsFinite where boolean is always returned.
   //
@@ -115,8 +129,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleReshape(HloInstruction* reshape) override;
 
-  Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
-
   Status HandleTranspose(HloInstruction* transpose) override;
 
   Status HandleIsFinite(HloInstruction* is_finite,
@@ -124,6 +136,14 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCompare(HloInstruction* compare, HloOpcode opcode,
                        HloInstruction* lhs, HloInstruction* rhs) override;
+  Status HandleTuple(
+      HloInstruction* tuple,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
+                               HloInstruction* operand) override;
+
+  Status HandleCopy(HloInstruction* copy) override;
 
  private:
   // Returns the already-evaluated literal result for the instruction.

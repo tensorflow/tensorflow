@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/padding.h"
@@ -35,12 +34,100 @@ namespace tensorflow {
 
 namespace {
 
+// Returns the expanded size of a filter used for depthwise convolution.
+// If `shape` is [H, W, ..., M, N] returns [H, W, ..., M, M*N].
+TensorShape ExpandedFilterShapeForDepthwiseConvolution(
+    const TensorShape& shape) {
+  int num_dims = shape.dims();
+  CHECK_GE(num_dims, 2);
+  TensorShape expanded_shape = shape;
+  expanded_shape.set_dim(num_dims - 1, shape.dim_size(num_dims - 2) *
+                                           shape.dim_size(num_dims - 1));
+  return expanded_shape;
+}
+
+// Expands a filter of shape [H, W, ..., M, N] to [H, W, ..., M, M*N] by adding
+// zeros for the cross-depth filters. Used to build a depthwise convolution.
+xla::ComputationDataHandle ExpandFilterForDepthwiseConvolution(
+    const TensorShape& filter_shape, DataType dtype,
+    const xla::ComputationDataHandle& filter,
+    xla::ComputationBuilder* builder) {
+  // Filter has shape [H, W, ..., M, N]
+  // Dilate to [H, W, ..., M*M, N] using M inter-element padding, and then
+  // reshape to [H, W, ..., M, M*N].
+  int num_spatial_dims = filter_shape.dims() - 2;
+  const int64 in_depth = filter_shape.dim_size(num_spatial_dims);
+  xla::PaddingConfig padding = xla::MakeNoPaddingConfig(filter_shape.dims());
+  padding.mutable_dimensions(num_spatial_dims)->set_interior_padding(in_depth);
+  auto dilated_filter =
+      builder->Pad(filter, XlaHelpers::Zero(builder, dtype), padding);
+
+  TensorShape expanded_filter_shape =
+      ExpandedFilterShapeForDepthwiseConvolution(filter_shape);
+  return builder->Reshape(dilated_filter, expanded_filter_shape.dim_sizes());
+}
+
+// Inverse of ExpandFilterForDepthwiseConvolution.
+xla::ComputationDataHandle ContractFilterForDepthwiseBackprop(
+    const TensorShape& filter_shape, DataType dtype,
+    const xla::ComputationDataHandle& filter_backprop,
+    xla::ComputationBuilder* builder) {
+  int num_spatial_dims = filter_shape.dims() - 2;
+
+  // Reshape to [H, W, ..., M*M, N]
+  TensorShape shape = filter_shape;
+  int64 in_depth = filter_shape.dim_size(num_spatial_dims);
+  shape.set_dim(num_spatial_dims, in_depth * in_depth);
+  auto reshaped = builder->Reshape(filter_backprop, shape.dim_sizes());
+
+  std::vector<int64> zeros(filter_shape.dims());
+  std::vector<int64> strides(filter_shape.dims(), 1LL);
+  strides[num_spatial_dims] = in_depth + 1;
+  return builder->Slice(reshaped, zeros, shape.dim_sizes(), strides);
+
+  // Alternate implementation for backends without strided Slice() support.
+  // TODO(phawkins): Remove when all backends support strided slice.
+  //   // Pad [..., M * (M + 1), N]
+  //   xla::PaddingConfig config =
+  //   xla::MakeNoPaddingConfig(filter_shape.dims());
+  //   config.mutable_dimensions(num_spatial_dims)
+  //     ->set_edge_padding_high(in_depth);
+  //   auto zero = XlaHelpers::Zero(builder, dtype);
+  //   auto padded = builder->Pad(reshaped, zero, config);
+  //
+  //   // Reshape to [..., M, M + 1, N]
+  //   shape = filter_shape;
+  //   shape.set_dim(num_spatial_dims, in_depth);
+  //   shape.set_dim(num_spatial_dims + 1, in_depth + 1);
+  //   int64 out_depth = filter_shape.dim_size(num_spatial_dims + 1);
+  //   shape.AddDim(out_depth);
+  //   reshaped = builder->Reshape(padded, shape.dim_sizes());
+  //
+  //   // Slice to [..., M, 1, N]
+  //   std::vector<int64> zeros(shape.dims());
+  //   std::vector<int64> strides(shape.dims(), 1LL);
+  //   shape.set_dim(num_spatial_dims + 1, 1);
+  //   auto sliced = builder->Slice(reshaped, zeros, shape.dim_sizes(),
+  //   strides);
+  //
+  //   // Reshape to [..., M, N]
+  //   return builder->Reshape(sliced, filter_shape.dim_sizes());
+}
+
 class ConvOp : public XlaOpKernel {
  public:
-  explicit ConvOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
+  explicit ConvOp(OpKernelConstruction* ctx, int num_spatial_dims,
+                  bool depthwise)
+      : XlaOpKernel(ctx),
+        num_spatial_dims_(num_spatial_dims),
+        depthwise_(depthwise) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &strides_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+
+    string data_format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -82,9 +169,16 @@ class ConvOp : public XlaOpKernel {
                     "input and filter must have the same depth: ", in_depth,
                     " vs ", input_shape.dim_size(feature_dim)));
 
+    xla::ComputationBuilder* b = ctx->builder();
+
+    xla::ComputationDataHandle filter = ctx->Input(1);
+    if (depthwise_) {
+      filter = ExpandFilterForDepthwiseConvolution(
+          filter_shape, ctx->input_type(0), filter, b);
+    }
+
     xla::ConvolutionDimensionNumbers dims;
     std::vector<int64> window_strides;
-
     dims.set_batch_dimension(GetTensorBatchDimIndex(num_dims(), data_format_));
     dims.set_feature_dimension(feature_dim);
     for (int i = 0; i < num_spatial_dims_; ++i) {
@@ -99,13 +193,14 @@ class ConvOp : public XlaOpKernel {
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
-    xla::ComputationDataHandle conv = ctx->builder()->ConvWithGeneralDimensions(
-        ctx->Input(0), ctx->Input(1), window_strides, xla_padding, dims);
+    xla::ComputationDataHandle conv = b->ConvWithGeneralDimensions(
+        ctx->Input(0), filter, window_strides, xla_padding, dims);
     ctx->SetOutput(0, conv);
   }
 
  protected:
   const int num_spatial_dims_;
+  const bool depthwise_;
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
@@ -117,29 +212,38 @@ class ConvOp : public XlaOpKernel {
 class Conv2DOp : public ConvOp {
  public:
   explicit Conv2DOp(OpKernelConstruction* ctx)
-      : ConvOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
-    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-  }
+      : ConvOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/false) {}
 };
 REGISTER_XLA_OP(Name("Conv2D"), Conv2DOp);
 
 class Conv3DOp : public ConvOp {
  public:
   explicit Conv3DOp(OpKernelConstruction* ctx)
-      : ConvOp(ctx, /*num_spatial_dims=*/3) {}
+      : ConvOp(ctx, /*num_spatial_dims=*/3, /*depthwise=*/false) {}
 };
 REGISTER_XLA_OP(Name("Conv3D"), Conv3DOp);
+
+class DepthwiseConv2DOp : public ConvOp {
+ public:
+  explicit DepthwiseConv2DOp(OpKernelConstruction* ctx)
+      : ConvOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/true) {}
+};
+REGISTER_XLA_OP(Name("DepthwiseConv2dNative"), DepthwiseConv2DOp);
 
 // Backprop for input.
 class ConvBackpropInputOp : public XlaOpKernel {
  public:
-  explicit ConvBackpropInputOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
+  explicit ConvBackpropInputOp(OpKernelConstruction* ctx, int num_spatial_dims,
+                               bool depthwise)
+      : XlaOpKernel(ctx),
+        num_spatial_dims_(num_spatial_dims),
+        depthwise_(depthwise) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &strides_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    string data_format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -162,13 +266,17 @@ class ConvBackpropInputOp : public XlaOpKernel {
     const TensorShape filter_shape = ctx->InputShape(1);
     const TensorShape out_backprop_shape = ctx->InputShape(2);
 
+    const TensorShape expanded_filter_shape =
+        depthwise_ ? ExpandedFilterShapeForDepthwiseConvolution(filter_shape)
+                   : filter_shape;
     // Reuse dimension computation logic from conv_grad_ops.cc.
     ConvBackpropDimensions dims;
-    OP_REQUIRES_OK(
-        ctx, ConvBackpropComputeDimensions(
-                 type_string(), num_spatial_dims_, input_shape, filter_shape,
-                 out_backprop_shape, strides_, padding_, data_format_, &dims));
+    OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensions(
+                            type_string(), num_spatial_dims_, input_shape,
+                            expanded_filter_shape, out_backprop_shape, strides_,
+                            padding_, data_format_, &dims));
 
+    xla::ComputationBuilder* b = ctx->builder();
     auto filter = ctx->Input(1);
     auto out_backprop = ctx->Input(2);
 
@@ -200,13 +308,19 @@ class ConvBackpropInputOp : public XlaOpKernel {
       lhs_dilation[i] = dims.spatial_dims[i].stride;
     }
 
+    // If this is a depthwise convolution, expand the filter.
+    if (depthwise_) {
+      filter = ExpandFilterForDepthwiseConvolution(
+          filter_shape, ctx->input_type(1), filter, b);
+    }
+
     // Mirror the filter in the spatial dimensions.
     xla::ComputationDataHandle mirrored_weights =
-        ctx->builder()->Rev(filter, kernel_spatial_dims);
+        b->Rev(filter, kernel_spatial_dims);
 
     // activation gradients
     //   = gradients (with padding and dilation) <conv> mirrored_weights
-    xla::ComputationDataHandle in_backprop = ctx->builder()->ConvGeneralDilated(
+    xla::ComputationDataHandle in_backprop = b->ConvGeneralDilated(
         out_backprop, mirrored_weights, /*window_strides=*/ones, padding,
         lhs_dilation, /*rhs_dilation=*/ones, dnums);
 
@@ -215,6 +329,7 @@ class ConvBackpropInputOp : public XlaOpKernel {
 
  protected:
   const int num_spatial_dims_;
+  const bool depthwise_;
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
@@ -226,28 +341,38 @@ class ConvBackpropInputOp : public XlaOpKernel {
 class Conv2DBackpropInputOp : public ConvBackpropInputOp {
  public:
   explicit Conv2DBackpropInputOp(OpKernelConstruction* ctx)
-      : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
-    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-  }
+      : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/false) {}
 };
 REGISTER_XLA_OP(Name("Conv2DBackpropInput"), Conv2DBackpropInputOp);
 
 class Conv3DBackpropInputOp : public ConvBackpropInputOp {
  public:
   explicit Conv3DBackpropInputOp(OpKernelConstruction* ctx)
-      : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/3) {}
+      : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/3, /*depthwise=*/false) {}
 };
 REGISTER_XLA_OP(Name("Conv3DBackpropInputV2"), Conv3DBackpropInputOp);
 
+class DepthwiseConv2DBackpropInputOp : public ConvBackpropInputOp {
+ public:
+  explicit DepthwiseConv2DBackpropInputOp(OpKernelConstruction* ctx)
+      : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/true) {}
+};
+REGISTER_XLA_OP(Name("DepthwiseConv2dNativeBackpropInput"),
+                DepthwiseConv2DBackpropInputOp);
+
 class ConvBackpropFilterOp : public XlaOpKernel {
  public:
-  explicit ConvBackpropFilterOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
+  explicit ConvBackpropFilterOp(OpKernelConstruction* ctx, int num_spatial_dims,
+                                bool depthwise)
+      : XlaOpKernel(ctx),
+        num_spatial_dims_(num_spatial_dims),
+        depthwise_(depthwise) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &strides_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    string data_format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -266,13 +391,18 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(1, &filter_shape));
     const TensorShape out_backprop_shape = ctx->InputShape(2);
 
+    const TensorShape expanded_filter_shape =
+        depthwise_ ? ExpandedFilterShapeForDepthwiseConvolution(filter_shape)
+                   : filter_shape;
+
     // Reuse dimension computation logic from conv_grad_ops.cc.
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensions(
                             type_string(), num_spatial_dims_, activations_shape,
-                            filter_shape, out_backprop_shape, strides_,
+                            expanded_filter_shape, out_backprop_shape, strides_,
                             padding_, data_format_, &dims));
 
+    xla::ComputationBuilder* b = ctx->builder();
     xla::ComputationDataHandle activations = ctx->Input(0);
     xla::ComputationDataHandle gradients = ctx->Input(2);
 
@@ -357,10 +487,10 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     //
     // This is done by specifying the window dilation factors in the
     // convolution HLO below.
-    auto filter_backprop = ctx->builder()->ConvGeneralDilated(
-        activations, gradients,
-        /*window_strides=*/ones, padding, /*lhs_dilation=*/ones, rhs_dilation,
-        dnums);
+    auto filter_backprop =
+        b->ConvGeneralDilated(activations, gradients,
+                              /*window_strides=*/ones, padding,
+                              /*lhs_dilation=*/ones, rhs_dilation, dnums);
 
     // The layout of filter_backprop will match the layout of
     // padded_activations
@@ -375,12 +505,18 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     transpose_dims.push_back(c_dim);
     transpose_dims.push_back(n_dim);
     xla::ComputationDataHandle filter_backprop_reshaped =
-        ctx->builder()->Transpose(filter_backprop, transpose_dims);
+        b->Transpose(filter_backprop, transpose_dims);
+
+    if (depthwise_) {
+      filter_backprop_reshaped = ContractFilterForDepthwiseBackprop(
+          filter_shape, ctx->input_type(0), filter_backprop_reshaped, b);
+    }
     ctx->SetOutput(0, filter_backprop_reshaped);
   }
 
  protected:
-  int num_spatial_dims_;
+  const int num_spatial_dims_;
+  const bool depthwise_;
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
@@ -392,11 +528,7 @@ class ConvBackpropFilterOp : public XlaOpKernel {
 class Conv2DBackpropFilterOp : public ConvBackpropFilterOp {
  public:
   explicit Conv2DBackpropFilterOp(OpKernelConstruction* ctx)
-      : ConvBackpropFilterOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
-    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
+      : ConvBackpropFilterOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/false) {
   }
 };
 REGISTER_XLA_OP(Name("Conv2DBackpropFilter"), Conv2DBackpropFilterOp);
@@ -404,9 +536,18 @@ REGISTER_XLA_OP(Name("Conv2DBackpropFilter"), Conv2DBackpropFilterOp);
 class Conv3DBackpropFilterOp : public ConvBackpropFilterOp {
  public:
   explicit Conv3DBackpropFilterOp(OpKernelConstruction* ctx)
-      : ConvBackpropFilterOp(ctx, /*num_spatial_dims=*/3) {}
+      : ConvBackpropFilterOp(ctx, /*num_spatial_dims=*/3, /*depthwise=*/false) {
+  }
 };
 REGISTER_XLA_OP(Name("Conv3DBackpropFilterV2"), Conv3DBackpropFilterOp);
+
+class DepthwiseConv2DBackpropFilterOp : public ConvBackpropFilterOp {
+ public:
+  explicit DepthwiseConv2DBackpropFilterOp(OpKernelConstruction* ctx)
+      : ConvBackpropFilterOp(ctx, /*num_spatial_dims=*/2, /*depthwise=*/true) {}
+};
+REGISTER_XLA_OP(Name("DepthwiseConv2dNativeBackpropFilter"),
+                DepthwiseConv2DBackpropFilterOp);
 
 }  // namespace
 }  // namespace tensorflow

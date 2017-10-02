@@ -12,6 +12,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "model_fn"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "params"
     mtype: "<type \'property\'>"
   }
@@ -26,6 +30,10 @@ tf_class {
   member_method {
     name: "export_savedmodel"
     argspec: "args=[\'self\', \'export_dir_base\', \'serving_input_receiver_fn\', \'assets_extra\', \'as_text\', \'checkpoint_path\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "latest_checkpoint"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "predict"

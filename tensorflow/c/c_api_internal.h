@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -36,7 +37,6 @@ namespace tensorflow {
 class Device;
 class DeviceMgr;
 }  // namespace tensorflow
-class TF_BufferAndDevice;
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -50,7 +50,7 @@ struct TF_Tensor {
 
   TF_DataType dtype;
   tensorflow::TensorShape shape;
-  TF_BufferAndDevice* buffer;
+  tensorflow::TensorBuffer* buffer;
 };
 
 struct TF_SessionOptions {
@@ -100,7 +100,7 @@ struct TF_OperationDescription {
 
   tensorflow::NodeBuilder node_builder;
   TF_Graph* graph;
-  std::vector<tensorflow::string> colocation_constraints;
+  std::set<tensorflow::string> colocation_constraints;
 };
 
 struct TF_Operation {
@@ -120,7 +120,6 @@ struct TF_Session {
   // buffers of a TF_Tensor pinned in device memory.
   const tensorflow::DeviceMgr* device_mgr;   // Owned by session.
   std::vector<tensorflow::Device*> devices;  // Owned by device_mgr.
-  int num_outstanding_buffers GUARDED_BY(mu);
 };
 
 struct TF_ImportGraphDefOptions {
@@ -131,26 +130,8 @@ struct TF_DeviceList {
   std::vector<tensorflow::DeviceAttributes> response;
 };
 
-// TF_BufferAndDevice encapsulates the memory addresses of data backing a Tensor
-// and the device (e.g., GPU or host) whose memory the addresses refer to.
-class TF_BufferAndDevice {
- public:
-  explicit TF_BufferAndDevice(tensorflow::TensorBuffer* buffer);
-  TF_BufferAndDevice(tensorflow::TensorBuffer* buffer, TF_Session* session,
-                     int device_index);
-  ~TF_BufferAndDevice();
-
-  tensorflow::TensorBuffer* buffer() const { return buffer_; }
-  tensorflow::Device* device() const {
-    if (device_owner_ == nullptr) return nullptr;
-    return device_owner_->devices[device_index_];
-  }
-  bool on_cpu() const { return device() == nullptr; }
-
- private:
-  tensorflow::TensorBuffer* buffer_;
-  TF_Session* device_owner_;
-  const int device_index_;
+struct TF_Function {
+  tensorflow::FunctionDef fdef;
 };
 
 namespace tensorflow {
@@ -163,6 +144,12 @@ class TensorCApi {
     return Tensor(static_cast<DataType>(type), shape, buf);
   }
 };
+
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
+
+Status MessageToBuffer(const tensorflow::protobuf::Message& in, TF_Buffer* out);
 
 }  // end namespace tensorflow
 

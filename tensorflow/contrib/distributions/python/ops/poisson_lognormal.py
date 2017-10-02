@@ -176,7 +176,7 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
                         + np.sqrt(2.) * scale[..., array_ops.newaxis] * grid)
 
       self._distribution = poisson_lib.Poisson(
-          rate=math_ops.exp(self._log_rate, name="rate"),
+          log_rate=self._log_rate,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats)
 

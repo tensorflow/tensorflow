@@ -931,6 +931,33 @@ TEST_F(ShapeInferenceTest, UnknownShape) {
   EXPECT_FALSE(SameHandle(u0, u1));
 }
 
+TEST_F(ShapeInferenceTest, KnownShapeToProto) {
+  NodeDef def;
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(kVersion, &def, MakeOpDef(0, 2), empty, {}, {}, {});
+
+  auto s = c.MakeShape({1, 2, 3});
+  TensorShapeProto proto;
+  c.ShapeHandleToProto(s, &proto);
+
+  EXPECT_FALSE(proto.unknown_rank());
+  EXPECT_EQ(3, proto.dim_size());
+  EXPECT_EQ(1, proto.dim(0).size());
+}
+
+TEST_F(ShapeInferenceTest, UnknownShapeToProto) {
+  NodeDef def;
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(kVersion, &def, MakeOpDef(0, 2), empty, {}, {}, {});
+
+  auto u0 = c.UnknownShape();
+  TensorShapeProto proto;
+  c.ShapeHandleToProto(u0, &proto);
+
+  EXPECT_TRUE(proto.unknown_rank());
+  EXPECT_EQ(0, proto.dim_size());
+}
+
 TEST_F(ShapeInferenceTest, Scalar) {
   NodeDef def;
   std::vector<ShapeHandle> empty;

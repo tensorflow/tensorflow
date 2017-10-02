@@ -233,7 +233,7 @@ class MetricSpec(object):
   `Estimator` then knows which predictions, labels, and weight to use to call a
   given metric function.
 
-  When building the ops to run in evaluation, `Estimator` will call
+  When building the ops to run in evaluation, an `Estimator` will call
   `create_metric_ops`, which will connect the given `metric_fn` to the model
   as detailed in the docstring for `create_metric_ops`, and return the metric.
 

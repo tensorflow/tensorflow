@@ -402,7 +402,7 @@ class ARModel(model.TimeSeriesModel):
     original_values = values
 
     # Extra shape checking for the window size (above that in
-    # model_utils.make_model_fn).
+    # `head.create_estimator_spec`).
     expected_times_shape = [None, self.window_size]
     if not times.get_shape().is_compatible_with(expected_times_shape):
       raise ValueError(

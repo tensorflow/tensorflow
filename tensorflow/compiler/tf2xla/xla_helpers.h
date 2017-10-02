@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines helper routines for the TLA device.
+// This file defines helper routines for the XLA device.
 
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
@@ -67,6 +67,10 @@ class XlaHelpers {
                                gtl::ArraySlice<int64> shape,
                                xla::Literal* output);
 
+  // Sets *iota to a rank 1 tensor with values [0, 1, 2, ...] of `dtype`.
+  static Status Iota(xla::ComputationBuilder* builder, DataType dtype,
+                     int64 size, xla::ComputationDataHandle* iota);
+
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
   // axis. `indices_shape` is the shape of `indices`. `on_value` and `off_value`
@@ -77,11 +81,6 @@ class XlaHelpers {
                        const xla::ComputationDataHandle& on_value,
                        const xla::ComputationDataHandle& off_value,
                        xla::ComputationDataHandle* one_hot);
-
-  // Pads 'x' with 'count' zeros. 'x' must have 1 element.
-  static xla::ComputationDataHandle PadWithZeros(
-      xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
-      int count);
 };
 
 }  // end namespace tensorflow

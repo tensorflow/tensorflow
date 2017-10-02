@@ -79,6 +79,9 @@ Status MakeArgTuple(PyCall* call, PyObject** tuple) {
 // module.
 Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   switch (np) {
+    case NPY_FLOAT16:
+      *tf = DT_HALF;
+      break;
     case NPY_FLOAT32:
       *tf = DT_FLOAT;
       break;

@@ -1,4 +1,21 @@
+# Release 1.4.0
+
+## Major Features And Improvements
+
+## Bug Fixes and Other Changes
+* `tf.nn.rnn_cell.DropoutWrapper` is now more careful about dropping out LSTM
+  states.  Specifically, it no longer ever drops the `c` (memory) state of an
+  `LSTMStateTuple`.  The new behavior leads to proper dropout behavior
+  for LSTMs and stacked LSTMs.  This bug fix follows recommendations from
+  published literature, but is a behavioral change.  State dropout behavior
+  may be customized via the new `dropout_state_filter_visitor` argument.
+* Removed `tf.contrib.training.python_input`.  The same behavior, in a more
+  flexible and reproducible package, is available via the new
+  `tf.contrib.data.Dataset.from_generator` method!
+
 # Release 1.3.0
+
+See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/tag/0.1.4) release notes.
 
 ## Major Features and Improvements
 * Added canned estimators to Tensorflow library. List of added estimators:
@@ -8,7 +25,8 @@
   * `LinearRegressor`
   * `DNNLinearCombinedClassifier`
   * `DNNLinearCombinedRegressor`.
-* All our prebuilt binaries have been built with cuDNN 6.
+* All our prebuilt binaries have been built with cuDNN 6. We anticipate releasing TensorFlow 1.4 with cuDNN 7.
+* `import tensorflow` now goes much faster.
 * Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
 * Added an axis parameter to `tf.gather`.
 * Added a `constant_values` keyword argument to `tf.pad`.
@@ -28,9 +46,10 @@
   * Display feed values with the `print_feed` or `pf` command and clickable links in the curses UI.
   * Runtime profiler at the op level and the Python source line level with the `run -p` command.
 * Initial release of the statistical distribution library `tf.distributions`.
-* GPU kernels and speed improvements for for unary `tf.where` and `tf.nn.top_k`.
+* GPU kernels and speed improvements for unary `tf.where` and `tf.nn.top_k`.
 * Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
 * Added `tf.contrib.signal`, a library for signal processing primitives.
+* Added `tf.contrib.resampler`, containing CPU and GPU ops for differentiable resampling of images.
 
 ## Breaking Changes to the API
 * `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
@@ -41,6 +60,9 @@
 * `tf.contrib.metrics`.{streaming_covariance,streaming_pearson_correlation} modified to return nan when they have seen less or equal to 1 unit of weight.
 * Adds time series models to contrib. See contrib/timeseries/README.md for details.
 * Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
+
+## Known Issues
+* Tensorflow_gpu compilation fails with Bazel 0.5.3.
 
 ## Bug Fixes and Other Changes
 * Fixes `strides` and `begin` dtype mismatch when slicing using int64 Tensor index in python.
@@ -64,7 +86,7 @@
 * Exported model signatures using the 'predict' method will no longer have their input and output keys silently ignored and rewritten to 'inputs' and 'outputs'. If a model was exported with different names before 1.2, and is now served with tensorflow/serving, it will accept requests using 'inputs' and 'outputs'. Starting at 1.2, such a model will accept the keys specified during export. Therefore, inference requests using 'inputs' and 'outputs' may start to fail. To fix this, either update any inference clients to send requests with the actual input and output keys used by the trainer code, or conversely, update the trainer code to name the input and output Tensors 'inputs' and 'outputs', respectively. Signatures using the 'classify' and 'regress' methods are not affected by this change; they will continue to standardize their input and output keys as before.
 * Add in-memory caching to the Dataset API.
 * Set default end_of_sequence variable in datasets iterators to false.
-* [Performance] Increase performance of `tf.layers.con2d` when setting use_bias=True by 2x by using nn.bias_add.
+* [Performance] Increase performance of `tf.layers.conv2d` when setting use_bias=True by 2x by using nn.bias_add.
 * Update iOS examples to use CocoaPods, and moved to tensorflow/examples/ios.
 * Adds a family= attribute in `tf.summary` ops to allow controlling the tab name used in Tensorboard for organizing summaries.
 * When GPU is configured, do not require --config=cuda, instead, automatically build for GPU if this is requested in the configure script.

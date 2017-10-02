@@ -155,6 +155,30 @@ static Tensor MakeLinspaceTensor(const TensorShape& shape, int64 depth) {
   return linspace;
 }
 
+Status XlaHelpers::Iota(xla::ComputationBuilder* builder, DataType dtype,
+                        int64 size, xla::ComputationDataHandle* iota) {
+  TensorShape linspace_shape({size});
+  Tensor linspace;
+  switch (dtype) {
+    case DT_UINT8:
+      linspace = MakeLinspaceTensor<uint8>(linspace_shape, size);
+      break;
+    case DT_INT32:
+      linspace = MakeLinspaceTensor<int32>(linspace_shape, size);
+      break;
+    case DT_INT64:
+      linspace = MakeLinspaceTensor<int64>(linspace_shape, size);
+      break;
+    default:
+      return errors::InvalidArgument("Invalid argument type ",
+                                     DataTypeString(dtype));
+  }
+  xla::Literal linspace_literal;
+  TF_RETURN_IF_ERROR(HostTensorToLiteral(linspace, &linspace_literal));
+  *iota = builder->ConstantLiteral(linspace_literal);
+  return Status::OK();
+}
+
 Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
                           int axis, DataType index_type,
                           const TensorShape& indices_shape,
@@ -203,15 +227,6 @@ Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
       one_hot_bool, builder->Broadcast(on_value, output_shape.dim_sizes()),
       builder->Broadcast(off_value, output_shape.dim_sizes()));
   return Status::OK();
-}
-
-xla::ComputationDataHandle XlaHelpers::PadWithZeros(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
-    int count) {
-  xla::ComputationDataHandle zero = builder->ConstantR1<int32>({0});
-  std::vector<xla::ComputationDataHandle> xs(count + 1, zero);
-  xs[0] = builder->Reshape(x, {1});
-  return builder->ConcatInDim(xs, 0);
 }
 
 }  // end namespace tensorflow

@@ -47,6 +47,12 @@ tensorflow/contrib/makefile/download_dependencies.sh
 # Compile protobuf for the target iOS device architectures.
 tensorflow/contrib/makefile/compile_ios_protobuf.sh
 
+# Compile nsync for the target iOS device architectures.
+# Don't use  export var=`something` syntax; it swallows the exit status.
+HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
+TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
+export HOST_NSYNC_LIB TARGET_NSYNC_LIB
+
 # Build the iOS TensorFlow libraries.
 tensorflow/contrib/makefile/compile_ios_tensorflow.sh "-O3"
 

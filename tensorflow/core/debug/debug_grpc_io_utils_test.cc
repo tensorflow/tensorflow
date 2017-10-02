@@ -65,10 +65,6 @@ class GrpcDebugTest : public ::testing::Test {
 
   void ClearEnabledWatchKeys() { DebugGrpcIO::ClearEnabledWatchKeys(); }
 
-  void CreateEmptyEnabledSet(const string& grpc_debug_url) {
-    DebugGrpcIO::CreateEmptyEnabledSet(grpc_debug_url);
-  }
-
   const int64 GetChannelConnectionTimeoutMicros() {
     return DebugGrpcIO::channel_connection_timeout_micros;
   }
@@ -261,7 +257,7 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
   }
 }
 
-TEST_F(GrpcDebugTest, SendeDebugTensorsThroughMultipleRoundsUsingGrpcGating) {
+TEST_F(GrpcDebugTest, SendDebugTensorsThroughMultipleRoundsUsingGrpcGating) {
   // Prepare the tensor to send.
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "test_namescope/test_node", 0,
@@ -283,8 +279,60 @@ TEST_F(GrpcDebugTest, SendeDebugTensorsThroughMultipleRoundsUsingGrpcGating) {
     TF_ASSERT_OK(DebugIO::PublishDebugTensor(kDebugNodeKey, tensor, wall_time,
                                              urls, enable_gated_grpc));
 
-    server_data_.server->RequestDebugOpStateChangeAtNextStream(i == 0,
-                                                               kDebugNodeKey);
+    server_data_.server->RequestDebugOpStateChangeAtNextStream(
+        i == 0 ? EventReply::DebugOpStateChange::READ_ONLY
+               : EventReply::DebugOpStateChange::DISABLED,
+        kDebugNodeKey);
+
+    // Close the debug gRPC stream.
+    Status close_status = DebugIO::CloseDebugURL(server_data_.url);
+    ASSERT_TRUE(close_status.ok());
+
+    // Check dumped files according to the expected gating results.
+    if (i < 2) {
+      ASSERT_EQ(1, server_data_.server->node_names.size());
+      ASSERT_EQ(1, server_data_.server->output_slots.size());
+      ASSERT_EQ(1, server_data_.server->debug_ops.size());
+      EXPECT_EQ(kDebugNodeKey.device_name,
+                server_data_.server->device_names[0]);
+      EXPECT_EQ(kDebugNodeKey.node_name, server_data_.server->node_names[0]);
+      EXPECT_EQ(kDebugNodeKey.output_slot,
+                server_data_.server->output_slots[0]);
+      EXPECT_EQ(kDebugNodeKey.debug_op, server_data_.server->debug_ops[0]);
+    } else {
+      ASSERT_EQ(0, server_data_.server->node_names.size());
+    }
+  }
+}
+
+TEST_F(GrpcDebugTest, SendDebugTensorsThroughMultipleRoundsUnderReadWriteMode) {
+  // Prepare the tensor to send.
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "test_namescope/test_node", 0,
+                                   "DebugIdentity");
+  Tensor tensor(DT_INT32, TensorShape({1, 1}));
+  tensor.flat<int>()(0) = 42;
+
+  const std::vector<string> urls({server_data_.url});
+  for (int i = 0; i < 3; ++i) {
+    server_data_.server->ClearReceivedDebugData();
+    const uint64 wall_time = Env::Default()->NowMicros();
+
+    // On the 1st send (i == 0), gating is disabled, so data should be sent.
+    // On the 2nd send (i == 1), gating is enabled, and the server has enabled
+    //   the watch key in the previous send (READ_WRITE), so data should be
+    //   sent. In this iteration, the server response with a EventReply proto to
+    //   unblock the debug node.
+    // On the 3rd send (i == 2), gating is enabled, but the server has disabled
+    //   the watch key in the previous send, so data should not be sent.
+    const bool enable_gated_grpc = (i != 0);
+    TF_ASSERT_OK(DebugIO::PublishDebugTensor(kDebugNodeKey, tensor, wall_time,
+                                             urls, enable_gated_grpc));
+
+    server_data_.server->RequestDebugOpStateChangeAtNextStream(
+        i == 0 ? EventReply::DebugOpStateChange::READ_WRITE
+               : EventReply::DebugOpStateChange::DISABLED,
+        kDebugNodeKey);
 
     // Close the debug gRPC stream.
     Status close_status = DebugIO::CloseDebugURL(server_data_.url);
@@ -308,8 +356,6 @@ TEST_F(GrpcDebugTest, SendeDebugTensorsThroughMultipleRoundsUsingGrpcGating) {
 }
 
 TEST_F(GrpcDebugTest, TestGateDebugNodeOnEmptyEnabledSet) {
-  CreateEmptyEnabledSet("grpc://localhost:3333");
-
   ASSERT_FALSE(DebugIO::IsDebugNodeGateOpen("foo:0:DebugIdentity",
                                             {"grpc://localhost:3333"}));
 
@@ -322,8 +368,12 @@ TEST_F(GrpcDebugTest, TestGateDebugNodeOnNonEmptyEnabledSet) {
   const string kGrpcUrl1 = "grpc://localhost:3333";
   const string kGrpcUrl2 = "grpc://localhost:3334";
 
-  DebugGrpcIO::EnableWatchKey(kGrpcUrl1, "foo:0:DebugIdentity");
-  DebugGrpcIO::EnableWatchKey(kGrpcUrl1, "bar:0:DebugIdentity");
+  DebugGrpcIO::SetDebugNodeKeyGrpcState(
+      kGrpcUrl1, "foo:0:DebugIdentity",
+      EventReply::DebugOpStateChange::READ_ONLY);
+  DebugGrpcIO::SetDebugNodeKeyGrpcState(
+      kGrpcUrl1, "bar:0:DebugIdentity",
+      EventReply::DebugOpStateChange::READ_ONLY);
 
   ASSERT_FALSE(
       DebugIO::IsDebugNodeGateOpen("foo:1:DebugIdentity", {kGrpcUrl1}));
@@ -350,9 +400,12 @@ TEST_F(GrpcDebugTest, TestGateDebugNodeOnMultipleEmptyEnabledSets) {
   const string kGrpcUrl2 = "grpc://localhost:3334";
   const string kGrpcUrl3 = "grpc://localhost:3335";
 
-  DebugGrpcIO::EnableWatchKey(kGrpcUrl1, "foo:0:DebugIdentity");
-  DebugGrpcIO::EnableWatchKey(kGrpcUrl2, "bar:0:DebugIdentity");
-  CreateEmptyEnabledSet(kGrpcUrl3);
+  DebugGrpcIO::SetDebugNodeKeyGrpcState(
+      kGrpcUrl1, "foo:0:DebugIdentity",
+      EventReply::DebugOpStateChange::READ_ONLY);
+  DebugGrpcIO::SetDebugNodeKeyGrpcState(
+      kGrpcUrl2, "bar:0:DebugIdentity",
+      EventReply::DebugOpStateChange::READ_ONLY);
 
   ASSERT_TRUE(DebugIO::IsDebugNodeGateOpen("foo:0:DebugIdentity", {kGrpcUrl1}));
   ASSERT_TRUE(DebugIO::IsDebugNodeGateOpen("bar:0:DebugIdentity", {kGrpcUrl2}));
@@ -375,7 +428,9 @@ TEST_F(GrpcDebugTest, TestGateDebugNodeOnMultipleEmptyEnabledSets) {
 }
 
 TEST_F(GrpcDebugTest, TestGateDebugNodeOnNonEmptyEnabledSetAndEmptyURLs) {
-  DebugGrpcIO::EnableWatchKey("grpc://localhost:3333", "foo:0:DebugIdentity");
+  DebugGrpcIO::SetDebugNodeKeyGrpcState(
+      "grpc://localhost:3333", "foo:0:DebugIdentity",
+      EventReply::DebugOpStateChange::READ_ONLY);
 
   std::vector<string> debug_urls_1;
   ASSERT_FALSE(
@@ -385,7 +440,6 @@ TEST_F(GrpcDebugTest, TestGateDebugNodeOnNonEmptyEnabledSetAndEmptyURLs) {
 TEST_F(GrpcDebugTest, TestGateCopyNodeOnEmptyEnabledSet) {
   const string kGrpcUrl1 = "grpc://localhost:3333";
   const string kWatch1 = "foo:0:DebugIdentity";
-  CreateEmptyEnabledSet(kGrpcUrl1);
 
   ASSERT_FALSE(DebugIO::IsCopyNodeGateOpen(
       {DebugWatchAndURLSpec(kWatch1, kGrpcUrl1, true)}));
@@ -404,9 +458,8 @@ TEST_F(GrpcDebugTest, TestGateCopyNodeOnNonEmptyEnabledSet) {
   const string kGrpcUrl2 = "grpc://localhost:3334";
   const string kWatch1 = "foo:0:DebugIdentity";
   const string kWatch2 = "foo:1:DebugIdentity";
-  CreateEmptyEnabledSet(kGrpcUrl1);
-  CreateEmptyEnabledSet(kGrpcUrl2);
-  DebugGrpcIO::EnableWatchKey(kGrpcUrl1, kWatch1);
+  DebugGrpcIO::SetDebugNodeKeyGrpcState(
+      kGrpcUrl1, kWatch1, EventReply::DebugOpStateChange::READ_ONLY);
 
   ASSERT_TRUE(DebugIO::IsCopyNodeGateOpen(
       {DebugWatchAndURLSpec(kWatch1, kGrpcUrl1, true)}));

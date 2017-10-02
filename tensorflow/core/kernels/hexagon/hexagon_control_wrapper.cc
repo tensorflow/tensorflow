@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/soc_interface.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"

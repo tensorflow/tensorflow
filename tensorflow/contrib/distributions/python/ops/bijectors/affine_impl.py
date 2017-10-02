@@ -349,7 +349,7 @@ class Affine(bijector.Bijector):
       y *= self._scale
       if self.shift is not None:
         return y + self.shift
-      return  y
+      return y
     y, sample_shape = self._shaper.make_batch_of_event_sample_matrices(
         y, expand_batch_dim=False)
     with ops.control_dependencies(self._maybe_check_scale() if

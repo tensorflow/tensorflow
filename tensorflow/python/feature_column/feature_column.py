@@ -204,7 +204,7 @@ def input_layer(features,
   Raises:
     ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   for column in feature_columns:
     if not isinstance(column, _DenseColumn):
       raise ValueError(
@@ -294,7 +294,7 @@ def linear_model(features,
     ValueError: if an item in `feature_columns` is neither a `_DenseColumn`
       nor `_CategoricalColumn`.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   for column in feature_columns:
     if not isinstance(column, (_DenseColumn, _CategoricalColumn)):
       raise ValueError('Items of feature_columns must be either a _DenseColumn '
@@ -367,7 +367,7 @@ def _transform_features(features, feature_columns):
   Returns:
     A `dict` mapping `_FeatureColumn` to `Tensor` and `SparseTensor` values.
   """
-  _check_feature_columns(feature_columns)
+  feature_columns = _clean_feature_columns(feature_columns)
   outputs = {}
   with ops.name_scope(
       None, default_name='transform_features', values=features.values()):
@@ -1468,11 +1468,11 @@ class _LazyBuilder(object):
   We're trying to use the following `_FeatureColumn`s:
 
   ```python
-    bucketized_age = fc.bucketized_column(fc.numeric_column("age"), ...)
-    keywords = fc.categorical_column_with_hash_buckets("keywords", ...)
-    age_X_keywords = fc.crossed_column([bucketized_age, "keywords"])
-    ... = linear_model(features,
-                            [bucketized_age, keywords, age_X_keywords]
+  bucketized_age = fc.bucketized_column(fc.numeric_column("age"), ...)
+  keywords = fc.categorical_column_with_hash_buckets("keywords", ...)
+  age_X_keywords = fc.crossed_column([bucketized_age, "keywords"])
+  ... = linear_model(features,
+                          [bucketized_age, keywords, age_X_keywords]
   ```
 
   If we transform each column independently, then we'll get duplication of
@@ -1647,10 +1647,17 @@ def _to_sparse_input(input_tensor, ignore_value=None):
     return sparse_tensor_lib.SparseTensor(indices, values, dense_shape)
 
 
-def _check_feature_columns(feature_columns):
-  """Verifies feature_columns input."""
+def _clean_feature_columns(feature_columns):
+  """Verifies and normalizes `feature_columns` input."""
+  if isinstance(feature_columns, _FeatureColumn):
+    feature_columns = [feature_columns]
+
+  if isinstance(feature_columns, collections.Iterator):
+    feature_columns = list(feature_columns)
+
   if isinstance(feature_columns, dict):
     raise ValueError('Expected feature_columns to be iterable, found dict.')
+
   for column in feature_columns:
     if not isinstance(column, _FeatureColumn):
       raise ValueError('Items of feature_columns must be a _FeatureColumn. '
@@ -1667,6 +1674,8 @@ def _check_feature_columns(feature_columns):
                        'features dict.'.format(column,
                                                name_to_column[column.name]))
     name_to_column[column.name] = column
+
+  return feature_columns
 
 
 class _NumericColumn(_DenseColumn,
@@ -2473,7 +2482,10 @@ class _IndicatorColumn(_DenseColumn,
       weighted_column = sparse_ops.sparse_merge(
           sp_ids=id_tensor,
           sp_values=weight_tensor,
-          vocab_size=self._variable_shape[-1])
+          vocab_size=int(self._variable_shape[-1]))
+      # Remove (?, -1) index
+      weighted_column = sparse_ops.sparse_slice(weighted_column, [0, 0],
+                                                weighted_column.dense_shape)
       return sparse_ops.sparse_tensor_to_dense(weighted_column)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(

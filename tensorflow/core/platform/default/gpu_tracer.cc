@@ -205,7 +205,7 @@ Status CUPTIManager::DisableTrace() {
   CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY));
   CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY2));
   CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMSET));
-  CUPTI_CALL(ActivityFlushAll(0));
+  CUPTI_CALL(ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
   {
     // Don't acquire this lock until Flush returns, since Flush
     // will potentially cause callbacks into BufferCompleted.
@@ -579,8 +579,8 @@ Status GPUTracerImpl::Collect(StepStatsCollector *collector) {
   // TODO(pbar) Handle device IDs and prefix properly.
   const string prefix = "";
   const int id = 0;
-  const string stream_device = strings::StrCat(prefix, "/gpu:", id, "/stream:");
-  const string memcpy_device = strings::StrCat(prefix, "/gpu:", id, "/memcpy");
+  const string stream_device = strings::StrCat(prefix, "/device:GPU:", id, "/stream:");
+  const string memcpy_device = strings::StrCat(prefix, "/device:GPU:", id, "/memcpy");
 
   mutex_lock l2(trace_mu_);
   for (const auto &rec : kernel_records_) {

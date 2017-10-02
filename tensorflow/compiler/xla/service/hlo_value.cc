@@ -159,12 +159,6 @@ void HloValue::AddPosition(HloInstruction* instruction,
   for (const HloPosition& position : positions_) {
     DCHECK_NE(position, new_position);
   }
-  // The shape of the new position must match existing positions.
-  if (!positions_.empty()) {
-    CHECK(
-        ShapeUtil::Compatible(positions_.front().shape(), new_position.shape()))
-        << "front: " << positions_.front() << " new: " << new_position;
-  }
 
   positions_.push_back(std::move(new_position));
 
@@ -244,6 +238,19 @@ void HloValue::RemovePosition(HloInstruction* instruction,
   }
 }
 
+void HloValue::RecomputeUses() {
+  uses_.clear();
+  for (const HloPosition& position : positions()) {
+    for (HloInstruction* user : position.instruction->users()) {
+      for (int64 operand_number : user->OperandIndices(position.instruction)) {
+        if (MayUseOperandValue(operand_number, position.index, user)) {
+          uses_.push_back(HloUse{user, operand_number, position.index});
+        }
+      }
+    }
+  }
+}
+
 std::ostream& operator<<(std::ostream& out, const HloValue& value) {
   out << value.ToShortString();
   return out;
@@ -262,8 +269,7 @@ string HloValueSet::ToString() const {
                 }));
 }
 
-/*static */
-HloValueSet HloValueSet::Union(
+bool HloValueSet::AssignUnionOf(
     tensorflow::gtl::ArraySlice<const HloValueSet*> inputs) {
   HloValueSet union_set;
   for (const HloValueSet* input : inputs) {
@@ -272,7 +278,11 @@ HloValueSet HloValueSet::Union(
     }
   }
   union_set.SortAndUniquifyValues();
-  return union_set;
+  if (*this != union_set) {
+    *this = union_set;
+    return true;
+  }
+  return false;
 }
 
 bool HloValueSet::AddValue(const HloValue* value) {
@@ -290,22 +300,25 @@ std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
   return out;
 }
 
-InstructionValueSet InstructionValueSet::Union(
+bool InstructionValueSet::AssignUnionOf(
     tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs) {
   CHECK_GT(inputs.size(), 0);
   for (int i = 1; i < inputs.size(); ++i) {
-    CHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
+    DCHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
   }
-  InstructionValueSet union_set(inputs[0]->shape());
-  union_set.ForEachMutableElement(
-      [&inputs](const ShapeIndex& index, HloValueSet* value_set) {
-        std::vector<const HloValueSet*> input_sets;
-        for (const InstructionValueSet* input : inputs) {
-          input_sets.push_back(&input->element(index));
-        }
-        *value_set = HloValueSet::Union(input_sets);
-      });
-  return union_set;
+  bool changed = false;
+  for (auto& pair : *this) {
+    const ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+
+    std::vector<const HloValueSet*> input_value_sets;
+    for (const InstructionValueSet* input : inputs) {
+      input_value_sets.push_back(&input->element(index));
+    }
+    changed |= value_set.AssignUnionOf(input_value_sets);
+  }
+
+  return changed;
 }
 
 std::ostream& operator<<(std::ostream& out,

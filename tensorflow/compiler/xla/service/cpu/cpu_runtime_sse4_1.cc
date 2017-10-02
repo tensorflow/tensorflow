@@ -21,22 +21,16 @@ limitations under the License.
 
 #ifdef __SSE4_1__
 
-xla::cpu::runtime::V4F32 __xla_cpu_runtime_ExpV4F32(
-    xla::cpu::runtime::V4F32 x) {
+xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_ExpV4F32SSE(
+    xla::cpu::runtime::V4F32SSE x) {
   Eigen::internal::Packet4f p = x;
   return Eigen::internal::pexp(p);
 }
 
-xla::cpu::runtime::V4F32 __xla_cpu_runtime_LogV4F32(
-    xla::cpu::runtime::V4F32 x) {
+xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_LogV4F32SSE(
+    xla::cpu::runtime::V4F32SSE x) {
   Eigen::internal::Packet4f p = x;
   return Eigen::internal::plog(p);
-}
-
-xla::cpu::runtime::V4F32 __xla_cpu_runtime_TanhV4F32(
-    xla::cpu::runtime::V4F32 x) {
-  Eigen::internal::Packet4f p = x;
-  return Eigen::internal::ptanh(p);
 }
 
 #endif  // __SSE4_1__
@@ -45,9 +39,8 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-const char *const kExpV4F32SymbolName = "__xla_cpu_runtime_ExpV4F32";
-const char *const kLogV4F32SymbolName = "__xla_cpu_runtime_LogV4F32";
-const char *const kTanhV4F32SymbolName = "__xla_cpu_runtime_TanhV4F32";
+const char *const kExpV4F32SSESymbolName = "__xla_cpu_runtime_ExpV4F32SSE";
+const char *const kLogV4F32SSESymbolName = "__xla_cpu_runtime_LogV4F32SSE";
 
 }  // namespace runtime
 }  // namespace cpu

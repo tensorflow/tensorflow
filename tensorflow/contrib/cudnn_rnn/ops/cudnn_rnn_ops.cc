@@ -51,7 +51,7 @@ constexpr auto kRNNModeAttrs =
 
 constexpr auto kRNNInputModeAttrs =
     "input_mode: {'linear_input', 'skip_input', 'auto_select'} = "
-    "'auto_select'";
+    "'linear_input'";
 
 constexpr auto kRNNDirectionAttrs =
     "direction: {'unidirectional', 'bidirectional'} = 'unidirectional'";

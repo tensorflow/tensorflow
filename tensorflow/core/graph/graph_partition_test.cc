@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
+#include "tensorflow/cc/ops/while_loop.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -50,7 +52,7 @@ extern Status TopologicalSortNodesWithTimePriority(
 
 namespace {
 
-const char gpu_device[] = "/job:a/replica:0/task:0/gpu:0";
+const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
 
 string SplitByDevice(const Node* node) { return node->assigned_device_name(); }
 
@@ -71,10 +73,13 @@ void Partition(const GraphDef& graph_def,
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &g));
 
-  // Assigns devices to each node. Uses 1st letter of the node name as
-  // the device index.
+  // Assigns devices to each node. Uses 1st letter of the node name as the
+  // device index if no device is specified.
   for (Node* node : g.nodes()) {
-    node->set_assigned_device_name(DeviceName(node));
+    string device_name = !node->requested_device().empty()
+                             ? node->requested_device()
+                             : DeviceName(node);
+    node->set_assigned_device_name(device_name);
   }
 
   PartitionOptions popts;
@@ -141,9 +146,17 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
   }
 }
 
-REGISTER_OP("FloatInput").Output("o: float");
-REGISTER_OP("BoolInput").Output("o: bool");
-REGISTER_OP("Combine").Input("a: float").Input("b: float").Output("o: float");
+REGISTER_OP("FloatInput")
+    .Output("o: float")
+    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("BoolInput")
+    .Output("o: bool")
+    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("Combine")
+    .Input("a: float")
+    .Input("b: float")
+    .Output("o: float")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 Output ConstructOp(const Scope& scope, const string& op_type,
                    const gtl::ArraySlice<Input>& inputs) {
@@ -157,6 +170,8 @@ Output ConstructOp(const Scope& scope, const string& op_type,
   scope.UpdateBuilder(&builder);
   Node* ret;
   scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  if (!scope.ok()) return Output();
+  scope.UpdateStatus(scope.DoShapeInference(ret));
   if (!scope.ok()) return Output();
   return Output(ret);
 }
@@ -357,7 +372,7 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   ExpectMatchB();
 }
 
-TEST_F(GraphPartitionTest, CrossDeviceLoop) {
+TEST_F(GraphPartitionTest, CrossDeviceLoopSimple) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
   auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("A2"), a1, "foo");
@@ -371,7 +386,7 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop) {
   CheckLoopConstruction(ToGraphDef());
 }
 
-TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
+TEST_F(GraphPartitionTest, CrossDeviceLoopSimple1) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = BoolInput(in_.WithOpName("A1"));
   auto a2 = ::tensorflow::ops::internal::Enter(in_.WithOpName("B2"), a1, "foo");
@@ -394,6 +409,29 @@ TEST_F(GraphPartitionTest, CrossDeviceLoop1) {
       }
     }
   }
+}
+
+TEST_F(GraphPartitionTest, CrossDeviceLoopFull) {
+  Scope cpu0 = in_.WithDevice("/job:a/replica:0/task:0/cpu:0");
+  auto p1 = ops::Placeholder(cpu0, DT_INT32);
+  auto p2 = ops::Placeholder(cpu0, DT_INT32);
+  OutputList outputs;
+  // while i1 < 10: i1 += i2
+  TF_ASSERT_OK(ops::BuildWhileLoop(
+      cpu0, {p1, p2},
+      [](const Scope& s, const std::vector<Output>& inputs, Output* output) {
+        *output = ops::Less(s, inputs[0], 10);
+        return s.status();
+      },
+      [](const Scope& s, const std::vector<Output>& inputs,
+         std::vector<Output>* outputs) {
+        Scope cpu1 = s.WithDevice("/job:a/replica:0/task:0/cpu:1");
+        outputs->push_back(ops::AddN(cpu1, {inputs[0], inputs[1]}));
+        outputs->push_back(inputs[1]);
+        return s.status();
+      },
+      "test_loop", &outputs));
+  CheckLoopConstruction(ToGraphDef());
 }
 
 TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {

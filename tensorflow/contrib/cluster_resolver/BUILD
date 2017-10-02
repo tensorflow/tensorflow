@@ -23,7 +23,10 @@ filegroup(
 
 py_library(
     name = "cluster_resolver_pip",
-    srcs = ["python/training/__init__.py"],
+    srcs = [
+        "__init__.py",
+        "python/training/__init__.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":cluster_resolver_py",
@@ -69,7 +72,6 @@ py_library(
 
 tf_py_test(
     name = "cluster_resolver_py_test",
-    size = "small",
     srcs = ["python/training/cluster_resolver_test.py"],
     additional_deps = [
         ":cluster_resolver_py",

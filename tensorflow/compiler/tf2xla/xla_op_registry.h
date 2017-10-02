@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
@@ -116,7 +117,8 @@ class XlaOpRegistry {
   // 'compilation_device_name'.
   // Does not include kernels registered as CompilationOnly.
   static std::vector<const KernelDef*> DeviceKernels(
-      const string& compilation_device_name);
+      const string& compilation_device_name,
+      bool include_compilation_only_kernels);
 
  private:
   friend class XlaBackendRegistrar;
@@ -175,8 +177,17 @@ class XlaOpRegistry {
     Factory factory;
   };
 
+  // Returns true if registrations x and y can both be added to the registry.
+  // This is always the case if they refer to different ops. If they refer to
+  // the same op name, they must: have the same values for compilation_only and
+  // allow_resource_types; use a device_whitelist; and their
+  // whitelists must not intersect.
+  static bool IsCompatible(const OpRegistration& x, const OpRegistration& y);
+
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
-  std::unordered_map<string, std::unique_ptr<OpRegistration>> ops_
+  // Registrations present under the same key must satisfy IsCompatible above,
+  // and this is checked during registration.
+  std::unordered_multimap<string, std::unique_ptr<OpRegistration>> ops_
       GUARDED_BY(mutex_);
 
   // Have we already registered the JIT kernels on the JIT devices?

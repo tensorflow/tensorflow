@@ -748,7 +748,8 @@ XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
   ComputationBuilder builder(client_, TestName());
   const auto& bounds = GetParam().bounds;
   Array3D<float> input_array(bounds[0], bounds[1], bounds[2]);
-  input_array.FillRandom(3.14f, 0.05);
+  //  input_array.FillRandom(3.14f, 0.05);
+  input_array.Fill(1.0f);
 
   auto input_literal = Literal::CreateR3FromArray3D(input_array);
   input_literal =

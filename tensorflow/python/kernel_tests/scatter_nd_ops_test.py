@@ -140,7 +140,7 @@ class StatefulScatterNdTest(test.TestCase):
         self.assertAllClose(new, ref_var.eval())
 
   def _VariableRankTests(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64):
+    for vtype in (np.float32, np.float64, np.complex64, np.complex128):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
@@ -194,13 +194,13 @@ class StatefulScatterNdTest(test.TestCase):
   def testVariableRankSub(self):
     self._VariableRankTests(_NumpySub, state_ops.scatter_nd_sub)
 
-  # TODO(simister): Re-enable once binary size increase due to
-  # scatter_nd ops is under control.
+  # TODO(ebrevdo): Re-enable when we need ScatterNdMul.
   # def testVariableRankMul(self):
-  #   self._VariableRankTests(_NumpyMul, tf.scatter_nd_mul)
+  #   self._VariableRankTests(_NumpyMul, state_ops.scatter_nd_mul)
 
+  # TODO(ebrevdo): Re-enable when we need ScatterNdDiv.
   # def testVariableRankDiv(self):
-  #   self._VariableRankTests(_NumpyDiv, tf.scatter_nd_div)
+  #   self._VariableRankTests(_NumpyDiv, state_ops.scatter_nd_div)
 
   def _ScatterRepeatIndicesTest(self, np_scatter, tf_scatter):
     for vtype in (np.float32, np.float64):
@@ -212,10 +212,9 @@ class StatefulScatterNdTest(test.TestCase):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
     self._ScatterRepeatIndicesTest(_NumpySub, state_ops.scatter_nd_sub)
-    # TODO(simister): Re-enable once binary size increase due to
-    # extra templating is back under control.
-    # self._ScatterRepeatIndicesTest(_NumpyMul, tf.scatter_nd_mul)
-    # self._ScatterRepeatIndicesTest(_NumpyDiv, tf.scatter_nd_div)
+    # TODO(ebrevdo): Re-enable when we need ScatterNdMul and ScatterNdDiv.
+    # self._ScatterRepeatIndicesTest(_NumpyMul, state_ops.scatter_nd_mul)
+    # self._ScatterRepeatIndicesTest(_NumpyDiv, state_ops.scatter_nd_div)
 
   # TODO(simister): Re-enable once binary size increase due to
   # extra templating is back under control and this op is re-enabled
@@ -249,12 +248,12 @@ class StatefulScatterNdTest(test.TestCase):
         # Test some out of range errors.
         indices = np.array([[-1], [0], [5]])
         with self.assertRaisesOpError(
-            r"Invalid indices: \[0,0\] = \[-1\] is not in \[0, 6\)"):
+            r"Invalid indices: \[0,0\] = \[-1\] does not index into \[6\]"):
           op(ref, indices, updates).eval()
 
         indices = np.array([[2], [0], [6]])
         with self.assertRaisesOpError(
-            r"Invalid indices: \[2,0\] = \[6\] is not in \[0, 6\)"):
+            r"Invalid indices: \[2,0\] = \[6\] does not index into \[6\]"):
           op(ref, indices, updates).eval()
 
   def testRank3ValidShape(self):

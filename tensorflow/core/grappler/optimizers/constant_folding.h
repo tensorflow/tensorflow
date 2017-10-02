@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
-#include <regex>
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -33,7 +32,7 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
-  ConstantFolding();
+  ConstantFolding(DeviceBase* cpu_device);
 
   ~ConstantFolding() override {}
 
@@ -61,7 +60,7 @@ class ConstantFolding : public GraphOptimizer {
   Status EvaluateOneFoldable(const NodeDef& node,
                              std::vector<NodeDef>* outputs);
 
-  Status FoldNode(const NodeDef& node, GraphDef* output);
+  Status FoldNode(NodeDef* node, GraphDef* output_graph);
 
   Status FoldGraph(GraphDef* output);
 
@@ -70,12 +69,19 @@ class ConstantFolding : public GraphOptimizer {
                              const GraphProperties& properties) const;
   Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
 
-  std::unique_ptr<DeviceBase> device_;
+  Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
+                             GraphDef* output);
+
+  // Points to an externally provided device or to owned_device_;
+  DeviceBase* cpu_device_;
+  std::unique_ptr<DeviceBase> owned_device_;
+
   std::unique_ptr<ResourceMgr> resource_mgr_;
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
-  std::set<string> nodes_to_preserve_;
-  std::regex ops_to_preserve_;
+  std::unordered_set<string> nodes_to_preserve_;
+  std::unordered_set<string> nodes_whitelist_;
+  bool has_fetch_;
 };
 
 }  // end namespace grappler

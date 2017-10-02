@@ -9,6 +9,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
     "tf_copts",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_py_test",
 )
@@ -94,12 +95,14 @@ cc_library(
         "add_default_attributes.cc",
         "backports.cc",
         "fake_quantize_training.cc",
+        "flatten_atrous.cc",
         "fold_batch_norms.cc",
         "fold_constants_lib.cc",
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
         "insert_logging.cc",
+        "remove_ema.cc",
         "obfuscate_names.cc",
         "remove_attribute.cc",
         "remove_device.cc",
@@ -122,6 +125,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":transform_utils",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -144,6 +149,7 @@ tf_cc_test(
         "add_default_attributes_test.cc",
         "backports_test.cc",
         "fake_quantize_training_test.cc",
+        "flatten_atrous_test.cc",
         "fold_batch_norms_test.cc",
         "fold_constants_test.cc",
         "fold_old_batch_norms_test.cc",
@@ -155,6 +161,7 @@ tf_cc_test(
         "quantize_weights_test.cc",
         "remove_attribute_test.cc",
         "remove_device_test.cc",
+        "remove_ema_test.cc",
         "remove_nodes_test.cc",
         "rename_attribute_test.cc",
         "rename_op_test.cc",
@@ -170,13 +177,13 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -212,7 +219,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "transform_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -258,7 +265,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "summarize_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -268,7 +275,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "compare_graphs",
     srcs = ["compare_graphs.cc"],
     copts = tf_copts(),

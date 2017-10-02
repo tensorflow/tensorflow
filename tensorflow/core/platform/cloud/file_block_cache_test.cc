@@ -15,31 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include <cstring>
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
-
-// This Env wrapper lets us control the NowSeconds() return value.
-class FakeEnv : public EnvWrapper {
- public:
-  FakeEnv() : EnvWrapper(Env::Default()) {}
-
-  uint64 NowSeconds() override {
-    mutex_lock lock(mu_);
-    return now_;
-  }
-
-  void SetNowSeconds(uint64 now) {
-    mutex_lock lock(mu_);
-    now_ = now;
-  }
-
-  mutex mu_;
-  uint64 now_ = 1;
-};
 
 TEST(FileBlockCacheTest, PassThrough) {
   const string want_filename = "foo/bar";
@@ -267,7 +250,7 @@ TEST(FileBlockCacheTest, MaxStaleness) {
     return Status::OK();
   };
   std::vector<char> out;
-  std::unique_ptr<FakeEnv> env(new FakeEnv);
+  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   // Create a cache with max staleness of 2 seconds, and verify that it works as
   // expected.
   FileBlockCache cache1(8, 16, 2 /* max staleness */, fetcher, env.get());
@@ -370,7 +353,7 @@ TEST(FileBlockCacheTest, Prune) {
   };
   std::vector<char> out;
   // Our fake environment is initialized with the current timestamp.
-  std::unique_ptr<FakeEnv> env(new FakeEnv);
+  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   uint64 now = Env::Default()->NowSeconds();
   env->SetNowSeconds(now);
   FileBlockCache cache(8, 32, 1 /* max staleness */, fetcher, env.get());
@@ -416,6 +399,40 @@ TEST(FileBlockCacheTest, Prune) {
   } while (cache.CacheSize() == 8 && Env::Default()->NowSeconds() - start < 3);
   // The cache should now be empty.
   EXPECT_EQ(cache.CacheSize(), 0);
+}
+
+TEST(FileBlockCacheTest, ParallelReads) {
+  // This fetcher won't respond until either `callers` threads are calling it
+  // concurrently (at which point it will respond with success to all callers),
+  // or 10 seconds have elapsed (at which point it will respond with an error).
+  const int callers = 4;
+  BlockingCounter counter(callers);
+  auto fetcher = [&counter](const string& filename, size_t offset, size_t n,
+                            std::vector<char>* out) {
+    counter.DecrementCount();
+    if (!counter.WaitFor(std::chrono::seconds(10))) {
+      // This avoids having the test time out, which is harder to debug.
+      return errors::FailedPrecondition("desired concurrency not reached");
+    }
+    out->clear();
+    out->resize(n, 'x');
+    return Status::OK();
+  };
+  const int block_size = 8;
+  FileBlockCache cache(block_size, 2 * callers * block_size, 0, fetcher);
+  std::vector<std::unique_ptr<Thread>> threads;
+  for (int i = 0; i < callers; i++) {
+    threads.emplace_back(
+        Env::Default()->StartThread({}, "caller", [&cache, i, block_size]() {
+          std::vector<char> out;
+          TF_EXPECT_OK(cache.Read("a", i * block_size, block_size, &out));
+          std::vector<char> x(block_size, 'x');
+          EXPECT_EQ(out, x);
+        }));
+  }
+  // The `threads` destructor blocks until the threads can be joined, once their
+  // respective reads finish (which happens once they are all concurrently being
+  // executed, or 10 seconds have passed).
 }
 
 }  // namespace

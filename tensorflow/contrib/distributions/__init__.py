@@ -32,9 +32,11 @@ from tensorflow.contrib.distributions.python.ops.distribution_util import matrix
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
 from tensorflow.contrib.distributions.python.ops.estimator import *
 from tensorflow.contrib.distributions.python.ops.geometric import *
+from tensorflow.contrib.distributions.python.ops.independent import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
+from tensorflow.contrib.distributions.python.ops.mixture_same_family import *
 from tensorflow.contrib.distributions.python.ops.moving_stats import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
@@ -49,8 +51,11 @@ from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.test_util import *
+from tensorflow.contrib.distributions.python.ops.vector_diffeomixture import *
 from tensorflow.contrib.distributions.python.ops.vector_exponential_diag import *
 from tensorflow.contrib.distributions.python.ops.vector_laplace_diag import *
+from tensorflow.contrib.distributions.python.ops.vector_sinh_arcsinh_diag import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
 from tensorflow.python.ops.distributions.bernoulli import *
 from tensorflow.python.ops.distributions.beta import *
@@ -109,6 +114,7 @@ _allowed_symbols = [
     'Gamma',
     'GammaWithSoftplusConcentrationRate',
     'Geometric',
+    'Independent',
     'InverseGamma',
     'InverseGammaWithSoftplusConcentrationRate',
     'Laplace',
@@ -132,11 +138,13 @@ _allowed_symbols = [
     'Multinomial',
     'VectorDiffeomixture',
     'VectorLaplaceDiag',
+    'VectorSinhArcsinhDiag',
     'WishartCholesky',
     'WishartFull',
     'TransformedDistribution',
     'QuantizedDistribution',
     'Mixture',
+    'MixtureSameFamily',
     'ExpRelaxedOneHotCategorical',
     'OneHotCategorical',
     'RelaxedBernoulli',
@@ -144,12 +152,15 @@ _allowed_symbols = [
     'kl_divergence',
     'RegisterKL',
     'matrix_diag_transform',
+    'fill_triangular',
     'normal_conjugates_known_scale_posterior',
     'normal_conjugates_known_scale_predictive',
     'softplus_inverse',
     'percentile',
-    'assign_exponential_moving_mean_variance',
-    'exponential_moving_mean_variance',
+    'reduce_weighted_logsumexp',
+    'assign_moving_mean_variance',
+    'assign_log_moving_mean_exp',
+    'moving_mean_variance',
     'estimator_head_distribution_regression',
 ]
 
