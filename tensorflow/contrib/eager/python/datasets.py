@@ -62,7 +62,7 @@ class Iterator(object):
       raise RuntimeError(
           "{} objects only make sense when eager execution is enabled".format(
               type(self)))
-    ds_variant = dataset.make_dataset_resource()
+    ds_variant = dataset._as_variant_tensor()  # pylint: disable=protected-access
     self._output_types = dataset.output_types
     self._flat_output_types = nest.flatten(dataset.output_types)
     self._flat_output_shapes = nest.flatten(dataset.output_shapes)

@@ -185,7 +185,7 @@ bool HloComputation::IsRemovable(const HloInstruction* instruction) {
 }
 
 bool HloComputation::HasSideEffect() const {
-  for (auto& instruction : instructions()) {
+  for (auto* instruction : instructions()) {
     if (instruction->HasSideEffect()) {
       return true;
     }
@@ -198,7 +198,8 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
-  TF_RET_CHECK(IsRemovable(instruction));
+  TF_RET_CHECK(IsRemovable(instruction))
+      << "Cannot remove instruction: " << instruction->ToString();
   std::unordered_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
   worklist.push(instruction);
@@ -242,15 +243,6 @@ Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   (*inst_it)->set_parent(nullptr);
   instruction->DetachFromOperands();
   instructions_.erase(inst_it);
-  return Status::OK();
-}
-
-Status HloComputation::ReplaceUsesOfInstruction(
-    HloInstruction* instruction_to_replace, HloInstruction* instruction) {
-  TF_RETURN_IF_ERROR(instruction_to_replace->ReplaceAllUsesWith(instruction));
-  if (instruction_to_replace == root_instruction()) {
-    set_root_instruction(instruction);
-  }
   return Status::OK();
 }
 
@@ -323,7 +315,7 @@ void ComputeComputationPostOrder(
     return;
   }
 
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     for (HloComputation* called_computation :
          instruction->called_computations()) {
       ComputeComputationPostOrder(called_computation, visited, post_order);
@@ -569,8 +561,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
-  TF_RETURN_IF_ERROR(
-      ReplaceUsesOfInstruction(old_instruction, new_instruction));
+  TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 
@@ -618,11 +609,11 @@ void HloComputation::UpdateReachabilityThroughInstruction(
 
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   std::vector<HloInstruction*> unreachable_roots;
-  for (auto& instruction : instructions()) {
+  for (auto* instruction : instructions()) {
     if (instruction->user_count() == 0 &&
         instruction->control_successors().empty() &&
-        instruction.get() != root_instruction()) {
-      unreachable_roots.push_back(instruction.get());
+        instruction != root_instruction()) {
+      unreachable_roots.push_back(instruction);
     }
   }
   VLOG(3) << "Unreachable roots:"

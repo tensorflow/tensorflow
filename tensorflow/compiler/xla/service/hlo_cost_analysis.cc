@@ -393,7 +393,7 @@ Status HloCostAnalysis::HandleConvolution(HloInstruction* convolution,
                                           const Window& window) {
   const auto& dnums = convolution->convolution_dimension_numbers();
   const int64 output_features =
-      convolution->shape().dimensions(dnums.output_feature_dimension());
+      convolution->shape().dimensions(dnums.feature_dimension());
 
   // For each output element, we do one fma per element in the kernel at some
   // given output feature index.

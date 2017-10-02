@@ -13,7 +13,10 @@ load(
 tf_gen_op_wrapper_py(
     name = "gen_summary_ops",
     out = "gen_summary_ops.py",
-    deps = ["//tensorflow/core:summary_ops_op_lib"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:summary_ops_op_lib",
+    ],
 )
 
 py_test(

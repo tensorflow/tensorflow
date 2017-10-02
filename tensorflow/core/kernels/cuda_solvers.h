@@ -100,48 +100,40 @@ class HostLapackInfo;
 //     ...
 //
 //     // 2. Initialize the solver object.
-//     CudaSolver solver(context);
+//     std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
 //
 //     // 3. Launch the two compute kernels back to back on the stream without
 //     // synchronizing.
 //     std::vector<DeviceLapackInfo> dev_info;
 //     const int batch_size = 1;
-//     dev_info.emplace_back(context, batch_size, "potrf");
+//     dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf");
 //     // Compute the Cholesky decomposition of the input matrix.
 //     OP_REQUIRES_OK_ASYNC(context,
-//                          solver.Potrf(uplo, n, dev_matrix_ptrs, n,
-//                                       dev_info.back().mutable_data()),
+//                          solver->Potrf(uplo, n, dev_matrix_ptrs, n,
+//                                        dev_info.back().mutable_data()),
 //                          done);
-//     dev_info.emplace_back(context, batch_size, "potrs");
+//     dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrs");
 //     // Use the Cholesky decomposition of the input matrix to solve A X = RHS.
 //     OP_REQUIRES_OK_ASYNC(context,
-//                          solver.Potrs(uplo, n, nrhs, dev_matrix_ptrs, n,
-//                                       dev_output_ptrs, ldrhs,
-//                                       dev_info.back().mutable_data()),
+//                          solver->Potrs(uplo, n, nrhs, dev_matrix_ptrs, n,
+//                                        dev_output_ptrs, ldrhs,
+//                                        dev_info.back().mutable_data()),
 //                          done);
 //
 //     // 4. Check the status after the computation finishes and call done.
-//     // Capture dev_info so the underlying buffers don't get deallocated
-//     // before the kernels run.
-//     auto check_status = [context, done, dev_info](const Status& status,
-//       const std::vector<HostLapackInfo>& /* unused */) {
-//           // In this example we don't care about the exact cause of
-//           // death, so just check status.
-//           OP_REQUIRES_OK_ASYNC(context, status, done);
-//           done();
-//     };
-//     OP_REQUIRES_OK_ASYNC(context,
-//                          solver.CopyLapackInfoToHostAsync(
-//                            dev_info, std::move(check_status));
-//                          done);
+//     solver.CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+//                                                std::move(done));
 //   }
 // };
+
+template <typename Scalar>
+class ScratchSpace;
 
 class CudaSolver {
  public:
   // This object stores a pointer to context, which must outlive it.
   explicit CudaSolver(OpKernelContext* context);
-  virtual ~CudaSolver() {}
+  virtual ~CudaSolver();
 
   // Launches a memcpy of solver status data specified by dev_lapack_info from
   // device to the host, and asynchronously invokes the given callback when the
@@ -150,23 +142,59 @@ class CudaSolver {
   // status is given. The second argument contains a host-side copy of the
   // entire set of infos retrieved, and can be used for generating detailed
   // error messages.
-  Status CopyLapackInfoToHostAsync(
+  // `info_checker_callback` must call the DoneCallback of any asynchronous
+  // OpKernel within which `solver` is used.
+  static void CheckLapackInfoAndDeleteSolverAsync(
+      std::unique_ptr<CudaSolver> solver,
       const std::vector<DeviceLapackInfo>& dev_lapack_info,
       std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
-          info_checker_callback) const TF_MUST_USE_RESULT;
+          info_checker_callback);
+
+  // Simpler version to use if no special error checking / messages are needed
+  // apart from checking that the Status of all calls was Status::OK.
+  // `done` may be nullptr.
+  static void CheckLapackInfoAndDeleteSolverAsync(
+      std::unique_ptr<CudaSolver> solver,
+      const std::vector<DeviceLapackInfo>& dev_lapack_info,
+      AsyncOpKernel::DoneCallback done);
+
+  // Returns a ScratchSpace. The CudaSolver object maintains a TensorReference
+  // to the underlying Tensor to prevent it from being deallocated prematurely.
+  template <typename Scalar>
+  ScratchSpace<Scalar> GetScratchSpace(const TensorShape& shape,
+                                       const string& debug_info, bool on_host);
+  template <typename Scalar>
+  ScratchSpace<Scalar> GetScratchSpace(int64 size, const string& debug_info,
+                                       bool on_host);
+  // Returns a DeviceLapackInfo that will live for the duration of the
+  // CudaSolver object.
+  inline DeviceLapackInfo GetDeviceLapackInfo(int64 size,
+                                              const string& debug_info);
+
+  // Allocates a temporary tensor that will live for the duration of the
+  // CudaSolver object.
+  Status allocate_scoped_tensor(DataType type, const TensorShape& shape,
+                                Tensor* scoped_tensor);
+  Status forward_input_or_allocate_scoped_tensor(
+      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      const TensorShape& shape, Tensor* input_alias_or_new_scoped_tensor);
+
+  OpKernelContext* context() { return context_; }
 
   // ====================================================================
   // Wrappers for cuSolverDN and cuBlas solvers start here.
   //
-  // Apart from capitalization of the first letter, the method names below map
-  // to those in cuSolverDN and cuBlas, which follow the naming convention in
-  // LAPACK see, e.g., http://docs.nvidia.com/cuda/cusolver/#naming-convention
+  // Apart from capitalization of the first letter, the method names below
+  // map to those in cuSolverDN and cuBlas, which follow the naming
+  // convention in LAPACK see, e.g.,
+  // http://docs.nvidia.com/cuda/cusolver/#naming-convention
 
   // This function performs the matrix-matrix addition/transposition
   //   C = alpha * op(A) + beta * op(B).
   // Returns Status::OK() if the kernel was launched successfully.  See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-geam
-  // NOTE(ebrevdo): Does not support in-place transpose of non-square matrices.
+  // NOTE(ebrevdo): Does not support in-place transpose of non-square
+  // matrices.
   template <typename Scalar>
   Status Geam(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
               const Scalar* alpha, /* host or device pointer */
@@ -180,14 +208,14 @@ class CudaSolver {
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   template <typename Scalar>
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
-               int* dev_lapack_info) const TF_MUST_USE_RESULT;
+               int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
   template <typename Scalar>
   Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
-               int* dev_lapack_info) const TF_MUST_USE_RESULT;
+               int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // Uses LU factorization to solve A * X = B.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
@@ -202,7 +230,7 @@ class CudaSolver {
   template <typename Scalar>
   Status GetrfBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                       int* dev_pivots, DeviceLapackInfo* dev_lapack_info,
-                      int batch_size) const TF_MUST_USE_RESULT;
+                      int batch_size) TF_MUST_USE_RESULT;
 
   // Batched linear solver using LU factorization from getrfBatched.
   // See:
@@ -212,7 +240,7 @@ class CudaSolver {
                       const Scalar* const dev_Aarray[], int lda,
                       const int* devIpiv, const Scalar* const dev_Barray[],
                       int ldb, DeviceLapackInfo* dev_lapack_info,
-                      int batch_size) const TF_MUST_USE_RESULT;
+                      int batch_size) TF_MUST_USE_RESULT;
 
   // Computes matrix inverses for a batch of small matrices. Uses the outputs
   // from GetrfBatched. Returns Status::OK() if the kernel was launched
@@ -223,7 +251,7 @@ class CudaSolver {
                       const int* dev_pivots,
                       const Scalar* const host_a_inverse_dev_ptrs[], int ldainv,
                       DeviceLapackInfo* dev_lapack_info,
-                      int batch_size) const TF_MUST_USE_RESULT;
+                      int batch_size) TF_MUST_USE_RESULT;
 
   // Computes matrix inverses for a batch of small matrices with size n < 32.
   // Returns Status::OK() if the kernel was launched successfully. See:
@@ -232,7 +260,7 @@ class CudaSolver {
   Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                        const Scalar* const host_a_inverse_dev_ptrs[],
                        int ldainv, DeviceLapackInfo* dev_lapack_info,
-                       int batch_size) const TF_MUST_USE_RESULT;
+                       int batch_size) TF_MUST_USE_RESULT;
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
@@ -240,7 +268,7 @@ class CudaSolver {
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-geqrf
   template <typename Scalar>
   Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau,
-               int* dev_lapack_info) const TF_MUST_USE_RESULT;
+               int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // Overwrite matrix C by product of C and the unitary Householder matrix Q.
   // The Householder matrix Q is represented by the output from Geqrf in dev_a
@@ -253,8 +281,7 @@ class CudaSolver {
   template <typename Scalar>
   Status Unmqr(cublasSideMode_t side, cublasOperation_t trans, int m, int n,
                int k, const Scalar* dev_a, int lda, const Scalar* dev_tau,
-               Scalar* dev_c, int ldc,
-               int* dev_lapack_info) const TF_MUST_USE_RESULT;
+               Scalar* dev_c, int ldc, int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // Overwrites QR factorization produced by Geqrf by the unitary Householder
   // matrix Q. On input, the Householder matrix Q is represented by the output
@@ -264,8 +291,7 @@ class CudaSolver {
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-orgqr
   template <typename Scalar>
   Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
-               const Scalar* dev_tau,
-               int* dev_lapack_info) const TF_MUST_USE_RESULT;
+               const Scalar* dev_tau, int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // Hermitian (Symmetric) Eigen decomposition.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-syevd
@@ -273,7 +299,7 @@ class CudaSolver {
   Status Heevd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n,
                Scalar* dev_A, int lda,
                typename Eigen::NumTraits<Scalar>::Real* dev_W,
-               int* dev_lapack_info) const TF_MUST_USE_RESULT;
+               int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // Singular value decomposition.
   // Returns Status::OK() if the kernel was launched successfully.
@@ -282,27 +308,32 @@ class CudaSolver {
   template <typename Scalar>
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
                int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
-               int ldvt, int* dev_lapack_info) const TF_MUST_USE_RESULT;
+               int ldvt, int* dev_lapack_info) TF_MUST_USE_RESULT;
 
  private:
   OpKernelContext* context_;  // not owned.
   cudaStream_t cuda_stream_;
   cusolverDnHandle_t cusolver_dn_handle_;
   cublasHandle_t cublas_handle_;
+  std::vector<TensorReference> scratch_tensor_refs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CudaSolver);
 };
 
 // Helper class to allocate scratch memory and keep track of debug info.
-// Mostly a thin wrapper around Tensor.
+// Mostly a thin wrapper around Tensor & allocate_temp.
 template <typename Scalar>
 class ScratchSpace {
  public:
-  ScratchSpace(OpKernelContext* context, int size, bool on_host)
-      : ScratchSpace(context, size, "", on_host) {}
+  ScratchSpace(OpKernelContext* context, int64 size, bool on_host)
+      : ScratchSpace(context, TensorShape({size}), "", on_host) {}
 
-  ScratchSpace(OpKernelContext* context, int size, const string& debug_info,
+  ScratchSpace(OpKernelContext* context, int64 size, const string& debug_info,
                bool on_host)
+      : ScratchSpace(context, TensorShape({size}), debug_info, on_host) {}
+
+  ScratchSpace(OpKernelContext* context, const TensorShape& shape,
+               const string& debug_info, bool on_host)
       : context_(context), debug_info_(debug_info), on_host_(on_host) {
     AllocatorAttributes alloc_attr;
     if (on_host) {
@@ -311,9 +342,8 @@ class ScratchSpace {
       alloc_attr.set_on_host(true);
       alloc_attr.set_gpu_compatible(true);
     }
-    TF_CHECK_OK(context->allocate_temp(DataTypeToEnum<Scalar>::value,
-                                       TensorShape({size}), &scratch_tensor_,
-                                       alloc_attr));
+    TF_CHECK_OK(context->allocate_temp(DataTypeToEnum<Scalar>::value, shape,
+                                       &scratch_tensor_, alloc_attr));
   }
 
   virtual ~ScratchSpace() {}
@@ -324,8 +354,11 @@ class ScratchSpace {
   const Scalar* data() const {
     return scratch_tensor_.template flat<Scalar>().data();
   }
-  Scalar operator[](int64 i) const {
-    return scratch_tensor_.template flat<Scalar>().data()[i];
+  Scalar& operator()(int64 i) {
+    return scratch_tensor_.template flat<Scalar>()(i);
+  }
+  const Scalar& operator()(int64 i) const {
+    return scratch_tensor_.template flat<Scalar>()(i);
   }
   int64 bytes() const { return scratch_tensor_.TotalBytes(); }
   int64 size() const { return scratch_tensor_.NumElements(); }
@@ -349,13 +382,14 @@ class ScratchSpace {
 
 class HostLapackInfo : public ScratchSpace<int> {
  public:
-  HostLapackInfo(OpKernelContext* context, int size, const string& debug_info)
+  HostLapackInfo(OpKernelContext* context, int64 size, const string& debug_info)
       : ScratchSpace<int>(context, size, debug_info, /* on_host */ true){};
 };
 
 class DeviceLapackInfo : public ScratchSpace<int> {
  public:
-  DeviceLapackInfo(OpKernelContext* context, int size, const string& debug_info)
+  DeviceLapackInfo(OpKernelContext* context, int64 size,
+                   const string& debug_info)
       : ScratchSpace<int>(context, size, debug_info, /* on_host */ false) {}
 
   // Allocates a new scratch space on the host and launches a copy of the
@@ -404,6 +438,29 @@ struct EyeFunctor {
 };
 
 }  // namespace functor
+
+template <typename Scalar>
+ScratchSpace<Scalar> CudaSolver::GetScratchSpace(const TensorShape& shape,
+                                                 const string& debug_info,
+                                                 bool on_host) {
+  ScratchSpace<Scalar> new_scratch_space(context_, shape, debug_info, on_host);
+  scratch_tensor_refs_.emplace_back(new_scratch_space.tensor());
+  return std::move(new_scratch_space);
+}
+
+template <typename Scalar>
+ScratchSpace<Scalar> CudaSolver::GetScratchSpace(int64 size,
+                                                 const string& debug_info,
+                                                 bool on_host) {
+  return GetScratchSpace<Scalar>(TensorShape({size}), debug_info, on_host);
+}
+
+inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
+    int64 size, const string& debug_info) {
+  DeviceLapackInfo new_dev_info(context_, size, debug_info);
+  scratch_tensor_refs_.emplace_back(new_dev_info.tensor());
+  return std::move(new_dev_info);
+}
 
 }  // namespace tensorflow
 

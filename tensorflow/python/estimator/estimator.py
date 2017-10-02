@@ -48,6 +48,7 @@ from tensorflow.python.training import evaluation
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
+from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_inspect
 
@@ -476,7 +477,8 @@ class Estimator(object):
       # Build the SignatureDefs from receivers and all outputs
       signature_def_map = build_all_signature_defs(
           serving_input_receiver.receiver_tensors,
-          estimator_spec.export_outputs)
+          estimator_spec.export_outputs,
+          serving_input_receiver.receiver_tensors_alternatives)
 
       if not checkpoint_path:
         # Locate the latest checkpoint
@@ -665,8 +667,10 @@ class Estimator(object):
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._get_features_and_labels_from_input_fn(
-          input_fn, model_fn_lib.ModeKeys.TRAIN)
+      global_step_read_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
+      with ops.control_dependencies([global_step_read_tensor]):
+        features, labels = self._get_features_and_labels_from_input_fn(
+            input_fn, model_fn_lib.ModeKeys.TRAIN)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)

@@ -23,13 +23,14 @@ import numpy as np
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -50,7 +51,7 @@ TestTuple = collections.namedtuple("TestTuple", "a b")
 SingletonTestTuple = collections.namedtuple("SingletonTestTuple", "a")
 
 
-class GroupTestCase(TensorFlowTestCase):
+class GroupTestCase(test_util.TensorFlowTestCase):
 
   def _StripNode(self, nd):
     snode = node_def_pb2.NodeDef(name=nd.name, op=nd.op, input=nd.input)
@@ -114,7 +115,7 @@ class GroupTestCase(TensorFlowTestCase):
     """, self._StripGraph(gd))
 
 
-class ShapeTestCase(TensorFlowTestCase):
+class ShapeTestCase(test_util.TensorFlowTestCase):
 
   def testShape(self):
     with ops.Graph().as_default():
@@ -125,7 +126,7 @@ class ShapeTestCase(TensorFlowTestCase):
                             [constant_op.constant(1.0)], tensor).get_shape())
 
 
-class WithDependenciesTestCase(TensorFlowTestCase):
+class WithDependenciesTestCase(test_util.TensorFlowTestCase):
 
   def testTupleDependencies(self):
     with ops.Graph().as_default():
@@ -156,7 +157,7 @@ class WithDependenciesTestCase(TensorFlowTestCase):
         self.assertEquals(1, counter.eval())
 
 
-class SwitchTestCase(TensorFlowTestCase):
+class SwitchTestCase(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesWithDenseShape(self):
     with self.test_session():
@@ -324,84 +325,96 @@ class SwitchTestCase(TensorFlowTestCase):
       self.assertEquals(grad_x_false.eval(), 0.)
 
 
-class CondTest(TensorFlowTestCase):
+@test_util.with_c_api
+class CondTest(test_util.TensorFlowTestCase):
 
   def testCondTrue(self):
-    with self.test_session():
-      x = constant_op.constant(2)
-      y = constant_op.constant(5)
-      z = control_flow_ops.cond(
-          math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
-          lambda: math_ops.add(y, 23))
-      self.assertEquals(z.eval(), 34)
+    # Create new Graph and Session for each test so we pick up _USE_C_API
+    # correctly.
+    with ops.Graph().as_default():
+      with session.Session():
+        x = constant_op.constant(2)
+        y = constant_op.constant(5)
+        z = control_flow_ops.cond(
+            math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
+            lambda: math_ops.add(y, 23))
+        self.assertEquals(z.eval(), 34)
 
   def testCondFalse(self):
-    with self.test_session():
-      x = constant_op.constant(2)
-      y = constant_op.constant(1)
-      z = control_flow_ops.cond(
-          math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
-          lambda: math_ops.add(y, 23))
-      self.assertEquals(z.eval(), 24)
+    with ops.Graph().as_default():
+      with session.Session():
+        x = constant_op.constant(2)
+        y = constant_op.constant(1)
+        z = control_flow_ops.cond(
+            math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
+            lambda: math_ops.add(y, 23))
+        self.assertEquals(z.eval(), 24)
 
   def testCondTrueLegacy(self):
-    with self.test_session():
-      x = constant_op.constant(2)
-      y = constant_op.constant(5)
-      z = control_flow_ops.cond(
-          math_ops.less(x, y), fn1=lambda: math_ops.multiply(x, 17),
-          fn2=lambda: math_ops.add(y, 23))
-      self.assertEquals(z.eval(), 34)
+    with ops.Graph().as_default():
+      with session.Session():
+        x = constant_op.constant(2)
+        y = constant_op.constant(5)
+        z = control_flow_ops.cond(
+            math_ops.less(x, y), fn1=lambda: math_ops.multiply(x, 17),
+            fn2=lambda: math_ops.add(y, 23))
+        self.assertEquals(z.eval(), 34)
 
   def testCondFalseLegacy(self):
-    with self.test_session():
-      x = constant_op.constant(2)
-      y = constant_op.constant(1)
-      z = control_flow_ops.cond(
-          math_ops.less(x, y), fn1=lambda: math_ops.multiply(x, 17),
-          fn2=lambda: math_ops.add(y, 23))
-      self.assertEquals(z.eval(), 24)
+    with ops.Graph().as_default():
+      with session.Session():
+        x = constant_op.constant(2)
+        y = constant_op.constant(1)
+        z = control_flow_ops.cond(
+            math_ops.less(x, y), fn1=lambda: math_ops.multiply(x, 17),
+            fn2=lambda: math_ops.add(y, 23))
+        self.assertEquals(z.eval(), 24)
 
   def testCondModifyBoolPred(self):
     # This test in particular used to fail only when running in GPU, hence
     # use_gpu=True.
-    with self.test_session(use_gpu=True) as sess:
-      bool_var = variable_scope.get_variable("bool_var", dtype=dtypes.bool,
-                                             initializer=True)
-      cond_on_bool_var = control_flow_ops.cond(
-          pred=bool_var,
-          true_fn=lambda: state_ops.assign(bool_var, False),
-          false_fn=lambda: True)
-      sess.run(bool_var.initializer)
-      self.assertEquals(sess.run(cond_on_bool_var), False)
-      self.assertEquals(sess.run(cond_on_bool_var), True)
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        bool_var = variable_scope.get_variable("bool_var", dtype=dtypes.bool,
+                                               initializer=True)
+        cond_on_bool_var = control_flow_ops.cond(
+            pred=bool_var,
+            true_fn=lambda: state_ops.assign(bool_var, False),
+            false_fn=lambda: True)
+        sess.run(bool_var.initializer)
+        self.assertEquals(sess.run(cond_on_bool_var), False)
+        self.assertEquals(sess.run(cond_on_bool_var), True)
 
   def testCondMissingArg1(self):
-    with self.test_session():
-      x = constant_op.constant(1)
-      with self.assertRaises(TypeError):
-        control_flow_ops.cond(True, false_fn=lambda: x)
+    with ops.Graph().as_default():
+      with session.Session():
+        x = constant_op.constant(1)
+        with self.assertRaises(TypeError):
+          control_flow_ops.cond(True, false_fn=lambda: x)
 
   def testCondMissingArg2(self):
-    with self.test_session():
-      x = constant_op.constant(1)
-      with self.assertRaises(TypeError):
-        control_flow_ops.cond(True, lambda: x)
+    with ops.Graph().as_default():
+      with session.Session():
+        x = constant_op.constant(1)
+        with self.assertRaises(TypeError):
+          control_flow_ops.cond(True, lambda: x)
 
   def testCondDuplicateArg1(self):
-    with self.test_session():
-      x = constant_op.constant(1)
-      with self.assertRaises(TypeError):
-        control_flow_ops.cond(True, lambda: x, lambda: x, fn1=lambda: x)
+    with ops.Graph().as_default():
+      with session.Session():
+        x = constant_op.constant(1)
+        with self.assertRaises(TypeError):
+          control_flow_ops.cond(True, lambda: x, lambda: x, fn1=lambda: x)
 
   def testCondDuplicateArg2(self):
-    with self.test_session():
-      x = constant_op.constant(1)
-      with self.assertRaises(TypeError):
-        control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
+    with ops.Graph().as_default():
+      with session.Session():
+        x = constant_op.constant(1)
+        with self.assertRaises(TypeError):
+          control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
 
 
-class ContextTest(TensorFlowTestCase):
+class ContextTest(test_util.TensorFlowTestCase):
 
   def testCondContext(self):
     with self.test_session() as sess:
@@ -486,7 +499,7 @@ def _RawNestedShape(nested_shape):
 
 
 # TODO(yori): Add tests for indexed slices.
-class DataTypesTest(TensorFlowTestCase):
+class DataTypesTest(test_util.TensorFlowTestCase):
 
   def assertAllEqualNested(self, a, b):
     if isinstance(a, (list, tuple)):
@@ -807,7 +820,7 @@ class DataTypesTest(TensorFlowTestCase):
     self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
 
 
-class CaseTest(TensorFlowTestCase):
+class CaseTest(test_util.TensorFlowTestCase):
 
   def testCase_withDefault(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])
