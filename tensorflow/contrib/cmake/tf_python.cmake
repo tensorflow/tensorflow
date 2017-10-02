@@ -370,6 +370,8 @@ add_python_module("tensorflow/contrib/gan/python/eval")
 add_python_module("tensorflow/contrib/gan/python/eval/python")
 add_python_module("tensorflow/contrib/gan/python/features")
 add_python_module("tensorflow/contrib/gan/python/features/python")
+add_python_module("tensorflow/contrib/gan/python/estimator")
+add_python_module("tensorflow/contrib/gan/python/estimator/python")
 add_python_module("tensorflow/contrib/gan/python/losses")
 add_python_module("tensorflow/contrib/gan/python/losses/python")
 add_python_module("tensorflow/contrib/graph_editor")
@@ -636,13 +638,8 @@ add_python_module("tensorflow/contrib/reduce_slice_ops/python/ops")
 
 # Generate the tensorflow.python.platform.build_info module.
 set(BUILD_INFO_PY "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/platform/build_info.py")
-if(tensorflow_ENABLE_GPU)
-  set(BUILD_CONFIG_STRING "cuda")
-else(tensorflow_ENABLE_GPU)
-  set(BUILD_CONFIG_STRING "cpu")
-endif(tensorflow_ENABLE_GPU)
 add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
-  COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/build_info/gen_build_info.py --build_config ${BUILD_CONFIG_STRING} --raw_generate ${BUILD_INFO_PY})
+  COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/build_info/gen_build_info.py --raw_generate ${BUILD_INFO_PY} ${tensorflow_BUILD_INFO_FLAGS})
 
 
 ########################################################
@@ -840,6 +837,7 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.h"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.cc"
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe.h"
+    "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tensor.cc"
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe_src.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"

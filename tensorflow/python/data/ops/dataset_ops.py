@@ -933,6 +933,16 @@ class ZipDataset(Dataset):
   def __init__(self, datasets):
     """See `Dataset.zip()` for details."""
     super(ZipDataset, self).__init__()
+    for ds in nest.flatten(datasets):
+      if not isinstance(ds, Dataset):
+        if isinstance(ds, list):
+          message = ("The argument to `Dataset.zip()` must be a nested "
+                     "structure of `Dataset` objects. Nested structures do not "
+                     "support Python lists; please use a tuple instead.")
+        else:
+          message = ("The argument to `Dataset.zip()` must be a nested "
+                     "structure of `Dataset` objects.")
+        raise TypeError(message)
     self._datasets = datasets
 
   def _as_variant_tensor(self):

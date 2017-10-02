@@ -41,11 +41,22 @@ class ArithmeticOptimizer : public GraphOptimizer {
  private:
   bool CanDedup(const NodeDef& node) const;
   void DedupComputations(GraphDef* optimized_graph) const;
-  void RemoveRedundantTransposes(GraphDef* optimized_graph) const;
-  // If the expression that roots at `node` can be simplified, simplifies it,
-  // redirects the uses of `node` to the simplified expression, updates
-  // `node_map`, and returns true. Otherwise, does nothing and returns false.
-  bool TrySimplifyAndReplaceUses(const NodeDef* node, NodeMap* node_map) const;
+  // Runs peep-hole optimizations on `optimized_graph`, e.g., removing inverse
+  // transposes.
+  void SimplifyArithmeticOps(GraphDef* optimized_graph) const;
+  // Tries to simplify the expression that roots at `node` and replaces the uses
+  // of `node` to the simplified expression. Returns the simplified node or
+  // nullptr if no simplification is performed.
+  //
+  // `node_map` stores the mapping from node names to NodeDef*, and will be
+  // updated according to the rewrite.
+  //
+  // `new_nodes` will be populated with the new nodes this function creates and
+  // updates. The caller can push these nodes into the simplification queue to
+  // optimize them further.
+  const NodeDef* TrySimplifyAndReplaceUses(
+      const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
+      std::vector<const NodeDef*>* new_nodes) const;
 
   std::unordered_set<string> nodes_to_preserve_;
 };

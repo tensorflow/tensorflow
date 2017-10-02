@@ -422,9 +422,8 @@ class Layer(object):
       dtype = self.dtype or dtypes.float32
 
     self._set_scope(None)
-    vs_reuse = ((self.built or self._reuse)
-                if context.in_graph_mode() else vs.AUTO_REUSE)
-    with vs.variable_scope(self._scope, reuse=vs_reuse) as scope:
+    with vs.variable_scope(
+        self._scope, reuse=(self.built or self._reuse)) as scope:
       with ops.name_scope(scope.original_name_scope):
         variable = vs.get_variable(name,
                                    shape=shape,
@@ -508,9 +507,8 @@ class Layer(object):
         # to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
-    vs_reuse = ((self.built or self._reuse)
-                if context.in_graph_mode else vs.AUTO_REUSE)
-    with vs.variable_scope(self._scope, reuse=vs_reuse) as scope:
+    with vs.variable_scope(
+        self._scope, reuse=(self.built or self._reuse)) as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
           if not in_graph_mode:

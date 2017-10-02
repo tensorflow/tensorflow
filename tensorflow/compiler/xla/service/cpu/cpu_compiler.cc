@@ -86,10 +86,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
 
 namespace se = ::perftools::gputools;
 
@@ -367,68 +365,50 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
   }
 }
 
-Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
-  std::unique_ptr<tensorflow::WritableFile> f;
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(ir_module_string));
-  TF_RETURN_IF_ERROR(f->Close());
-  return Status::OK();
-}
-
 Status InitializeModuleHooks(
-    const HloModule& module,
+    const HloModule& hlo_module,
     const LLVMCompiler::ModuleHook& user_pre_optimization_hook,
     const LLVMCompiler::ModuleHook& user_post_optimization_hook,
     LLVMCompiler::ModuleHook* pre_optimization_ir_hook,
     LLVMCompiler::ModuleHook* post_optimization_ir_hook) {
-  const string& dump_ir_to = module.config().debug_options().xla_dump_ir_to();
-  if (dump_ir_to.empty()) {
+  const string& ir_dump_directory =
+      hlo_module.config().debug_options().xla_dump_ir_to();
+  if (ir_dump_directory.empty()) {
     *pre_optimization_ir_hook = user_pre_optimization_hook;
     *post_optimization_ir_hook = user_post_optimization_hook;
     return Status::OK();
   }
 
-  // Initialize the output directory and create the output file names.
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->RecursivelyCreateDir(dump_ir_to));
-  string safe_file_name_base = module.name();
-  std::replace_if(safe_file_name_base.begin(), safe_file_name_base.end(),
-                  [](char c) { return c == '/' || c == '\\'; }, '_');
-
-  string unoptimized_ir_file_name = tensorflow::io::JoinPath(
-      dump_ir_to,
-      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-no-opt.ll"));
-  string optimized_ir_file_name = tensorflow::io::JoinPath(
-      dump_ir_to,
-      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-opt.ll"));
+  const string& hlo_module_name = hlo_module.name();
 
   // Create the IR hooks. If applicable, each IR hook does the following:
-  // * Call the user supplied module hook.
-  // * Write to the output directory. Files will be appended to. We still want
-  //   to append to avoid overwriting possibly important information due to
-  //   operator error.
+  //
+  //  * Calls the user supplied module hook.
+  //  * Writes out the IR to a file in the output directory designated by
+  //    --xla_dump_ir_to
 
   *pre_optimization_ir_hook =
-      [user_pre_optimization_hook,
-       unoptimized_ir_file_name](const llvm::Module& module) {
+      [user_pre_optimization_hook, ir_dump_directory,
+       hlo_module_name](const llvm::Module& llvm_module) {
         if (user_pre_optimization_hook) {
-          TF_RETURN_IF_ERROR(user_pre_optimization_hook(module));
+          TF_RETURN_IF_ERROR(user_pre_optimization_hook(llvm_module));
         }
-        TF_RETURN_IF_ERROR(AppendIRToFile(unoptimized_ir_file_name,
-                                          llvm_ir::DumpModuleToString(module)));
-        return Status::OK();
+        return llvm_ir::DumpIRToDirectory(/*directory_name=*/ir_dump_directory,
+                                          /*hlo_module_name=*/hlo_module_name,
+                                          llvm_module,
+                                          /*optimized=*/false);
       };
 
   *post_optimization_ir_hook =
-      [user_post_optimization_hook,
-       optimized_ir_file_name](const llvm::Module& module) {
+      [user_post_optimization_hook, ir_dump_directory,
+       hlo_module_name](const llvm::Module& llvm_module) {
         if (user_post_optimization_hook) {
-          TF_RETURN_IF_ERROR(user_post_optimization_hook(module));
+          TF_RETURN_IF_ERROR(user_post_optimization_hook(llvm_module));
         }
-        TF_RETURN_IF_ERROR(AppendIRToFile(optimized_ir_file_name,
-                                          llvm_ir::DumpModuleToString(module)));
-        return Status::OK();
+        return llvm_ir::DumpIRToDirectory(/*directory_name=*/ir_dump_directory,
+                                          /*hlo_module_name=*/hlo_module_name,
+                                          llvm_module,
+                                          /*optimized=*/true);
       };
 
   return Status::OK();

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
@@ -138,7 +139,7 @@ class TFETest(test_util.TensorFlowTestCase):
     x = x.as_cpu_tensor()
 
     # Invalid device
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises(RuntimeError):
       x.as_gpu_tensor(context.context().num_gpus() + 1)
 
   def testNumpyForceCPU(self):
@@ -153,7 +154,7 @@ class TFETest(test_util.TensorFlowTestCase):
     ta = constant_op.constant([[1, 2], [3, 4]])
     tb = ta.as_cpu_tensor()
 
-    self.assertNotEqual(ta._handle, tb._handle)
+    self.assertNotEqual(id(ta), id(tb))
     self.assertAllEqual(ta.numpy(), tb.numpy())
 
   def testRegisterExceptionClass(self):
