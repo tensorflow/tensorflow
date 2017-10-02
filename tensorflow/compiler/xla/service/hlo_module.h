@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -96,14 +98,44 @@ class HloModule {
     return entry_computation_handle_;
   }
 
-  const std::vector<std::unique_ptr<HloComputation>>& computations() const {
-    return computations_;
+  // Gets the computations in this module.
+  //
+  // Returns a view of HloComputation*s, so you can iterate over this in the
+  // natural way:
+  //
+  //   for (HloComputation* c : module->computations()) { ... }
+  //
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::const_iterator>>
+  computations() const {
+    return {MakeUnwrappingIterator(computations_.begin()),
+            MakeUnwrappingIterator(computations_.end())};
   }
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::iterator>>
+  computations() {
+    return {MakeUnwrappingIterator(computations_.begin()),
+            MakeUnwrappingIterator(computations_.end())};
+  }
+
+  // Gets the number of computations in this module.
+  int64 computation_count() const { return computations_.size(); }
 
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
   std::list<HloComputation*> MakeComputationPostOrder() const;
+
+  // Gets the computations in this module which aren't for fusion nodes.
+  //
+  // Postcondition: All computations in the returned list have
+  // !IsFusionComputation().
+  //
+  // Note: Callers can and do rely on the return value here being a *snapshot*
+  // of the module's non-fusion computations -- that is, it's OK to add or
+  // remove computations from a module while iterating over
+  // MakeNonfusionComputations().
+  std::vector<HloComputation*> MakeNonfusionComputations() const;
 
   const HloModuleConfig& config() const { return config_; }
 

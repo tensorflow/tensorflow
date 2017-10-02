@@ -232,10 +232,17 @@ string DescribeCycle(const GraphCycles& cycles, const Graph& graph, int src,
     return "";
   }
 
+  auto node_name = [&cycles, &graph](int node_id) {
+    auto* node = graph.FindNodeId(node_id);
+    if (node == nullptr) {
+      return string("(null)");
+    }
+    return node->name();
+  };
+
   string description;
-  strings::StrAppend(&description, "Edge from ", graph.FindNodeId(src)->name(),
-                     " to ", graph.FindNodeId(dst)->name(),
-                     " would create a cycle.\n");
+  strings::StrAppend(&description, "Edge from ", node_name(src), " to ",
+                     node_name(dst), " would create a cycle.\n");
   path.resize(path_size);
   for (int32 node_id : path) {
     string ascii_art;
@@ -246,8 +253,7 @@ string DescribeCycle(const GraphCycles& cycles, const Graph& graph, int src,
     } else {
       ascii_art = "+-- ";
     }
-    strings::StrAppend(&description, ascii_art,
-                       graph.FindNodeId(node_id)->name(), "\n");
+    strings::StrAppend(&description, ascii_art, node_name(node_id), "\n");
   }
   return description;
 }

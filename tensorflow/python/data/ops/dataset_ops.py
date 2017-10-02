@@ -23,6 +23,8 @@ import threading
 
 import numpy as np
 
+from tensorflow.python.data.ops import iterator
+from tensorflow.python.data.ops.iterator import Iterator  # pylint: disable=unused-import
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -38,321 +40,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 
 
-class Iterator(object):
-  """Represents the state of iterating through a `Dataset`."""
-
-  def __init__(self, iterator_resource, initializer, output_types,
-               output_shapes):
-    """Creates a new iterator from the given iterator resource.
-
-    NOTE(mrry): Most users will not call this initializer directly, and will
-    instead use `Iterator.from_dataset()` or `Dataset.make_one_shot_iterator()`.
-
-    Args:
-      iterator_resource: A `tf.resource` scalar `tf.Tensor` representing the
-        iterator.
-      initializer: A `tf.Operation` that should be run to initialize this
-        iterator.
-      output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of an element of this iterator.
-      output_shapes: A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element of this dataset.
-    """
-    self._iterator_resource = iterator_resource
-    self._initializer = initializer
-    self._output_types = output_types
-    self._output_shapes = output_shapes
-
-  @staticmethod
-  def from_dataset(dataset, shared_name=None):
-    """Creates a new, uninitialized `Iterator` from the given `Dataset`.
-
-    To initialize this iterator, you must run its `initializer`:
-
-    ```python
-    dataset = ...
-    iterator = Iterator.from_dataset(dataset)
-    # ...
-    sess.run(iterator.initializer)
-    ```
-
-    Args:
-      dataset: A `Dataset` object.
-      shared_name: (Optional.) If non-empty, this iterator will be shared under
-        the given name across multiple sessions that share the same devices
-        (e.g. when using a remote server).
-
-    Returns:
-      An `Iterator`.
-    """
-    if shared_name is None:
-      shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator(
-        container="",
-        shared_name=shared_name,
-        output_types=nest.flatten(dataset.output_types),
-        output_shapes=nest.flatten(dataset.output_shapes))
-    with ops.colocate_with(iterator_resource):
-      initializer = gen_dataset_ops.make_iterator(
-          dataset.make_dataset_resource(), iterator_resource)
-    return Iterator(iterator_resource, initializer, dataset.output_types,
-                    dataset.output_shapes)
-
-  @staticmethod
-  def from_structure(output_types, output_shapes=None, shared_name=None):
-    """Creates a new, uninitialized `Iterator` with the given structure.
-
-    This iterator-constructing method can be used to create an iterator that
-    is reusable with many different datasets.
-
-    The returned iterator is not bound to a particular dataset, and it has
-    no `initializer`. To initialize the iterator, run the operation returned by
-    `Iterator.make_initializer(dataset)`.
-
-    The following is an example
-
-    ```python
-    iterator = Iterator.from_structure(tf.int64, tf.TensorShape([]))
-
-    dataset_range = Dataset.range(10)
-    range_initializer = iterator.make_initializer(dataset_range)
-
-    dataset_evens = dataset_range.filter(lambda x: x % 2 == 0)
-    evens_initializer = iterator.make_initializer(dataset_evens)
-
-    # Define a model based on the iterator; in this example, the model_fn
-    # is expected to take scalar tf.int64 Tensors as input (see
-    # the definition of 'iterator' above).
-    prediction, loss = model_fn(iterator.get_next())
-
-    # Train for `num_epochs`, where for each epoch, we first iterate over
-    # dataset_range, and then iterate over dataset_evens.
-    for _ in range(num_epochs):
-      # Initialize the iterator to `dataset_range`
-      sess.run(range_initializer)
-      while True:
-        try:
-          pred, loss_val = sess.run([prediction, loss])
-        except tf.errors.OutOfRangeError:
-          break
-
-      # Initialize the iterator to `dataset_evens`
-      sess.run(evens_initializer)
-      while True:
-        try:
-          pred, loss_val = sess.run([prediction, loss])
-        except tf.errors.OutOfRangeError:
-          break
-    ```
-
-    Args:
-      output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of an element of this iterator.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element of this dataset. If
-        omitted, each component will have an unconstrainted shape.
-      shared_name: (Optional.) If non-empty, this iterator will be shared under
-        the given name across multiple sessions that share the same devices
-        (e.g. when using a remote server).
-
-    Returns:
-      An `Iterator`.
-
-    Raises:
-      TypeError: If the structures of `output_shapes` and `output_types` are
-        not the same.
-    """
-    output_types = nest.map_structure(dtypes.as_dtype, output_types)
-    if output_shapes is None:
-      output_shapes = nest.map_structure(
-          lambda _: tensor_shape.TensorShape(None), output_types)
-    else:
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
-    nest.assert_same_structure(output_types, output_shapes)
-    if shared_name is None:
-      shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator(
-        container="",
-        shared_name=shared_name,
-        output_types=nest.flatten(output_types),
-        output_shapes=nest.flatten(output_shapes))
-    return Iterator(iterator_resource, None, output_types, output_shapes)
-
-  @staticmethod
-  def from_string_handle(string_handle, output_types, output_shapes=None):
-    """Creates a new, uninitialized `Iterator` based on the given handle.
-
-    This method allows you to define a "feedable" iterator where you can choose
-    between concrete iterators by feeding a value in a @{tf.Session.run} call.
-    In that case, `string_handle` would a @{tf.placeholder}, and you would feed
-    it with the value of @{tf.contrib.data.Iterator.string_handle} in each step.
-
-    For example, if you had two iterators that marked the current position in
-    a training dataset and a test dataset, you could choose which to use in
-    each step as follows:
-
-    ```python
-    train_iterator = tf.contrib.data.Dataset(...).make_one_shot_iterator()
-    train_iterator_handle = sess.run(train_iterator.string_handle())
-
-    test_iterator = tf.contrib.data.Dataset(...).make_one_shot_iterator()
-    test_iterator_handle = sess.run(test_iterator.string_handle())
-
-    handle = tf.placeholder(tf.string, shape=[])
-    iterator = tf.contrib.data.Iterator.from_string_handle(
-        handle, train_iterator.output_types)
-
-    next_element = iterator.get_next()
-    loss = f(next_element)
-
-    train_loss = sess.run(loss, feed_dict={handle: train_iterator_handle})
-    test_loss = sess.run(loss, feed_dict={handle: test_iterator_handle})
-    ```
-
-    Args:
-      string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates
-        to a handle produced by the `Iterator.string_handle()` method.
-      output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of an element of this iterator.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element of this dataset. If
-        omitted, each component will have an unconstrainted shape.
-
-    Returns:
-      An `Iterator`.
-    """
-    output_types = nest.map_structure(dtypes.as_dtype, output_types)
-    if output_shapes is None:
-      output_shapes = nest.map_structure(
-          lambda _: tensor_shape.TensorShape(None), output_types)
-    else:
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
-    nest.assert_same_structure(output_types, output_shapes)
-    string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
-    iterator_resource = gen_dataset_ops.iterator_from_string_handle(
-        string_handle,
-        output_types=nest.flatten(output_types),
-        output_shapes=nest.flatten(output_shapes))
-    return Iterator(iterator_resource, None, output_types, output_shapes)
-
-  @property
-  def initializer(self):
-    """A `tf.Operation` that should be run to initialize this iterator.
-
-    Returns:
-      A `tf.Operation` that should be run to initialize this iterator
-
-    Raises:
-      ValueError: If this iterator initializes itself automatically.
-    """
-    if self._initializer is not None:
-      return self._initializer
-    else:
-      # TODO(mrry): Consider whether one-shot iterators should have
-      # initializers that simply reset their state to the beginning.
-      raise ValueError("Iterator does not have an initializer.")
-
-  def make_initializer(self, dataset, name=None):
-    """Returns a `tf.Operation` that initializes this iterator on `dataset`.
-
-    Args:
-      dataset: A `Dataset` with compatible structure to this iterator.
-      name: (Optional.) A name for the created operation.
-
-    Returns:
-      A `tf.Operation` that can be run to initialize this iterator on the given
-      `dataset`.
-
-    Raises:
-      TypeError: If `dataset` and this iterator do not have a compatible
-        element structure.
-    """
-    with ops.name_scope(name, "make_initializer") as name:
-      nest.assert_same_structure(self._output_types, dataset.output_types)
-      nest.assert_same_structure(self._output_shapes, dataset.output_shapes)
-      for iterator_dtype, dataset_dtype in zip(
-          nest.flatten(self._output_types), nest.flatten(dataset.output_types)):
-        if iterator_dtype != dataset_dtype:
-          raise TypeError(
-              "Expected output types %r but got dataset with output types %r." %
-              (self._output_types, dataset.output_types))
-      for iterator_shape, dataset_shape in zip(
-          nest.flatten(self._output_shapes),
-          nest.flatten(dataset.output_shapes)):
-        if not iterator_shape.is_compatible_with(dataset_shape):
-          raise TypeError("Expected output shapes compatible with %r but got "
-                          "dataset with output shapes %r." %
-                          (self._output_shapes, dataset.output_shapes))
-    with ops.colocate_with(self._iterator_resource):
-      return gen_dataset_ops.make_iterator(
-          dataset.make_dataset_resource(), self._iterator_resource, name=name)
-
-  def get_next(self, name=None):
-    """Returns a nested structure of `tf.Tensor`s containing the next element.
-
-    Args:
-      name: (Optional.) A name for the created operation.
-
-    Returns:
-      A nested structure of `tf.Tensor` objects.
-    """
-    return nest.pack_sequence_as(
-        self._output_types,
-        gen_dataset_ops.iterator_get_next(
-            self._iterator_resource,
-            output_types=nest.flatten(self._output_types),
-            output_shapes=nest.flatten(self._output_shapes),
-            name=name))
-
-  def dispose_op(self, name=None):
-    """Returns a `tf.Operation` that destroys this iterator.
-
-    The returned operation may be used to release any resources consumed by
-    this iterator without closing the session.
-
-    Args:
-      name: (Optional.) A name for the created operation.
-
-    Returns:
-      A `tf.Operation`.
-    """
-    return gen_dataset_ops.iterator_dispose(self._iterator_resource, name=name)
-
-  def string_handle(self, name=None):
-    """Returns a string-valued `tf.Tensor` that represents this iterator.
-
-    Args:
-      name: (Optional.) A name for the created operation.
-
-    Returns:
-      A scalar `tf.Tensor` of type `tf.string`.
-    """
-    return gen_dataset_ops.iterator_to_string_handle(
-        self._iterator_resource, name=name)
-
-  @property
-  def output_shapes(self):
-    """Returns the shape of each component of an element of this iterator.
-
-    Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
-      component of an element of this iterator.
-    """
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    """Returns the type of each component of an element of this iterator.
-
-    Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
-      of an element of this iterator.
-    """
-    return self._output_types
-
-
 class Dataset(object):
   """Represents a potentially large set of elements.
 
@@ -365,33 +52,49 @@ class Dataset(object):
   def __init__(self):
     pass
 
-  # TODO(mrry): Rename this to `make_dataset_variant()`,
-  # `make_dataset_tensor()`, or something else more accurate.
   @abc.abstractmethod
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     """Creates a scalar `tf.Tensor` of `tf.variant` representing this dataset.
 
     Returns:
       A scalar `tf.Tensor` of `tf.variant` type, which represents this dataset.
     """
-    raise NotImplementedError("Dataset.make_dataset_resource")
+    raise NotImplementedError("Dataset._as_variant_tensor")
 
   def make_initializable_iterator(self, shared_name=None):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
-    **N.B.** The returned iterator will be in an uninitialized state,
-    and you must run the `iterator.initializer` operation before using it.
+    Note: The returned iterator will be in an uninitialized state,
+    and you must run the `iterator.initializer` operation before using it:
+
+    ```python
+    dataset = ...
+    iterator = dataset.make_initializable_iterator()
+    # ...
+    sess.run(iterator.initializer)
+    ```
 
     Args:
-      shared_name: (Optional.) If non-empty, this iterator will be shared under
-        the given name across multiple sessions that share the same devices
-        (e.g. when using a remote server).
-
+      shared_name: (Optional.) If non-empty, the returnediterator will be
+        shared under the given name across multiple sessions that share the
+        same devices (e.g. when using a remote server).
 
     Returns:
       An `Iterator` over the elements of this dataset.
     """
-    return Iterator.from_dataset(self, shared_name)
+    if shared_name is None:
+      shared_name = ""
+    iterator_resource = gen_dataset_ops.iterator(
+        container="",
+        shared_name=shared_name,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+    with ops.colocate_with(iterator_resource):
+      initializer = gen_dataset_ops.make_iterator(
+          self._as_variant_tensor(), iterator_resource)
+    return iterator.Iterator(
+        iterator_resource, initializer, self.output_types,
+        self.output_shapes)
 
   def make_one_shot_iterator(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
@@ -406,11 +109,11 @@ class Dataset(object):
     # a 0-argument function.
     @function.Defun(capture_by_value=True)
     def _make_dataset():
-      return self.make_dataset_resource()
+      return self._as_variant_tensor()  # pylint: disable=protected-access
 
     _make_dataset.add_to_graph(ops.get_default_graph())
 
-    return Iterator(
+    return iterator.Iterator(
         gen_dataset_ops.one_shot_iterator(
             dataset_factory=_make_dataset,
             output_types=nest.flatten(self.output_types),
@@ -814,7 +517,7 @@ class Dataset(object):
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
     return Dataset.zip((Dataset.range(start, max_value), self))
 
-  def shuffle(self, buffer_size, seed=None):
+  def shuffle(self, buffer_size, seed=None, reshuffle_each_iteration=None):
     """Randomly shuffles the elements of this dataset.
 
     Args:
@@ -824,11 +527,14 @@ class Dataset(object):
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         random seed that will be used to create the distribution. See
         @{tf.set_random_seed} for behavior.
+      reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
+        that the dataset should be pseudorandomly reshuffled each time it is
+        iterated over. (Defaults to `True`.)
 
     Returns:
       A `Dataset`.
     """
-    return ShuffleDataset(self, buffer_size, seed)
+    return ShuffleDataset(self, buffer_size, seed, reshuffle_each_iteration)
 
   def cache(self, filename=""):
     """Caches the elements in this dataset.
@@ -986,21 +692,13 @@ class Dataset(object):
     """
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values)
 
-  def map(self,
-          map_func,
-          num_threads=None,
-          output_buffer_size=None,
-          num_parallel_calls=None):
+  def map(self, map_func, num_parallel_calls=None):
     """Maps `map_func` across this datset.
 
     Args:
       map_func: A function mapping a nested structure of tensors (having
         shapes and types defined by `self.output_shapes` and
        `self.output_types`) to another nested structure of tensors.
-      num_threads: (Optional.) Deprecated, use `num_parallel_calls` instead.
-      output_buffer_size: (Optional.) A `tf.int64` scalar `tf.Tensor`,
-        representing the maximum number of processed elements that will be
-        buffered.
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process in parallel. If not
         specified, elements will be processed sequentially.
@@ -1008,16 +706,10 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
-    if num_threads is None and num_parallel_calls is None:
-      ret = MapDataset(self, map_func)
+    if num_parallel_calls is None:
+      return MapDataset(self, map_func)
     else:
-      if num_threads is None:
-        ret = ParallelMapDataset(self, map_func, num_parallel_calls)
-      else:
-        ret = ParallelMapDataset(self, map_func, num_threads)
-    if output_buffer_size is not None:
-      ret = ret.prefetch(output_buffer_size)
-    return ret
+      return ParallelMapDataset(self, map_func, num_parallel_calls)
 
   def flat_map(self, map_func):
     """Maps `map_func` across this dataset and flattens the result.
@@ -1154,7 +846,7 @@ class TensorDataset(Dataset):
           for i, t in enumerate(nest.flatten(tensors))
       ])
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.tensor_dataset(
         nest.flatten(self._tensors),
         output_shapes=nest.flatten(self.output_shapes))
@@ -1187,7 +879,7 @@ class TensorSliceDataset(Dataset):
     for t in flat_tensors[1:]:
       batch_dim.assert_is_compatible_with(t.get_shape()[0])
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.tensor_slice_dataset(
         nest.flatten(self._tensors),
         output_shapes=nest.flatten(self.output_shapes))
@@ -1215,7 +907,7 @@ class SparseTensorSliceDataset(Dataset):
       raise TypeError("`sparse_tensor` must be a `tf.SparseTensor` object.")
     self._sparse_tensor = sparse_tensor
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.sparse_tensor_slice_dataset(
         self._sparse_tensor.indices, self._sparse_tensor.values,
         self._sparse_tensor.dense_shape)
@@ -1243,9 +935,10 @@ class ZipDataset(Dataset):
     super(ZipDataset, self).__init__()
     self._datasets = datasets
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.zip_dataset(
-        [ds.make_dataset_resource() for ds in nest.flatten(self._datasets)],
+        [ds._as_variant_tensor() for ds in nest.flatten(self._datasets)],
         output_shapes=[
             s
             for ds in nest.flatten(self._datasets)
@@ -1256,6 +949,7 @@ class ZipDataset(Dataset):
             for ds in nest.flatten(self._datasets)
             for t in nest.flatten(ds.output_types)
         ])
+    # pylint: enable=protected-access
 
   @property
   def output_shapes(self):
@@ -1288,12 +982,14 @@ class ConcatenateDataset(Dataset):
             "Two datasets to concatenate have different types %s and %s" %
             (input_dataset.output_types, dataset_to_concatenate.output_types))
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
+    # pylint: disable=protected-access
     return gen_dataset_ops.concatenate_dataset(
-        self._input_dataset.make_dataset_resource(),
-        self._dataset_to_concatenate.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),
+        self._dataset_to_concatenate._as_variant_tensor(),
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
+    # pylint: enable=protected-access
 
   @property
   def output_shapes(self):
@@ -1322,9 +1018,9 @@ class RepeatDataset(Dataset):
       self._count = ops.convert_to_tensor(
           count, dtype=dtypes.int64, name="count")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.repeat_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1365,7 +1061,7 @@ class RangeDataset(Dataset):
   def _build_tensor(self, int64_value, name):
     return constant_op.constant(int64_value, dtype=dtypes.int64, name=name)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -1392,9 +1088,9 @@ class CacheDataset(Dataset):
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.cache_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         filename=self._filename,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1411,7 +1107,8 @@ class CacheDataset(Dataset):
 class ShuffleDataset(Dataset):
   """A `Dataset` that randomly shuffles the elements of its input."""
 
-  def __init__(self, input_dataset, buffer_size, seed=None):
+  def __init__(self, input_dataset, buffer_size, seed=None,
+               reshuffle_each_iteration=None):
     """See `Dataset.shuffle()` for details."""
     super(ShuffleDataset, self).__init__()
     self._input_dataset = input_dataset
@@ -1427,13 +1124,18 @@ class ShuffleDataset(Dataset):
     else:
       self._seed2 = ops.convert_to_tensor(
           seed2, dtype=dtypes.int64, name="seed2")
+    if reshuffle_each_iteration is None:
+      self._reshuffle_each_iteration = True
+    else:
+      self._reshuffle_each_iteration = reshuffle_each_iteration
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.shuffle_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
         seed=self._seed,
         seed2=self._seed2,
+        reshuffle_each_iteration=self._reshuffle_each_iteration,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
 
@@ -1455,9 +1157,9 @@ class TakeDataset(Dataset):
     self._input_dataset = input_dataset
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.take_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1480,9 +1182,9 @@ class SkipDataset(Dataset):
     self._input_dataset = input_dataset
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.skip_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1505,9 +1207,9 @@ class BatchDataset(Dataset):
     self._input_dataset = input_dataset
     self._batch_size = batch_size
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.batch_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         batch_size=self._batch_size,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1590,9 +1292,9 @@ class PaddedBatchDataset(Dataset):
 
     return nest.map_structure(make_zero, input_dataset.output_types)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.padded_batch_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         batch_size=self._batch_size,
         padded_shapes=[
             ops.convert_to_tensor(s, dtype=dtypes.int64)
@@ -1670,10 +1372,10 @@ class MapDataset(Dataset):
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
 
-  def make_dataset_resource(self):
-    input_resource = self._input_dataset.make_dataset_resource()
+  def _as_variant_tensor(self):
+    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     return gen_dataset_ops.map_dataset(
-        input_resource,
+        input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
         output_types=nest.flatten(self.output_types),
@@ -1698,11 +1400,11 @@ class ParallelMapDataset(MapDataset):
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
 
-  def make_dataset_resource(self):
-    input_resource = self._input_dataset.make_dataset_resource()
+  def _as_variant_tensor(self):
+    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     # pylint: disable=protected-access
     return gen_dataset_ops.parallel_map_dataset(
-        input_resource,
+        input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
         num_parallel_calls=self._num_parallel_calls,
@@ -1739,14 +1441,14 @@ class FlatMapDataset(Dataset):
       self._output_types = dataset.output_types
       self._output_shapes = dataset.output_shapes
 
-      return dataset.make_dataset_resource()
+      return dataset._as_variant_tensor()  # pylint: disable=protected-access
 
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.flat_map_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._map_func.captured_inputs,
         f=self._map_func,
         output_types=nest.flatten(self.output_types),
@@ -1790,7 +1492,7 @@ class InterleaveDataset(Dataset):
       self._output_types = dataset.output_types
       self._output_shapes = dataset.output_shapes
 
-      return dataset.make_dataset_resource()
+      return dataset._as_variant_tensor()  # pylint: disable=protected-access
 
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
@@ -1798,9 +1500,9 @@ class InterleaveDataset(Dataset):
     self._cycle_length = ops.convert_to_tensor(cycle_length, dtype=dtypes.int64)
     self._block_length = ops.convert_to_tensor(block_length, dtype=dtypes.int64)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.interleave_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._map_func.captured_inputs,
         self._cycle_length,
         self._block_length,
@@ -1849,9 +1551,9 @@ class FilterDataset(Dataset):
     self._predicate = tf_predicate
     self._predicate.add_to_graph(ops.get_default_graph())
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.filter_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         other_arguments=self._predicate.captured_inputs,
         predicate=self._predicate,
         output_types=nest.flatten(self.output_types),
@@ -1875,9 +1577,9 @@ class PrefetchDataset(Dataset):
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(buffer_size, dtype=dtypes.int64)
 
-  def make_dataset_resource(self):
+  def _as_variant_tensor(self):
     return gen_dataset_ops.prefetch_dataset(
-        self._input_dataset.make_dataset_resource(),
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
         output_shapes=nest.flatten(self.output_shapes),
         output_types=nest.flatten(self.output_types))
@@ -1889,146 +1591,3 @@ class PrefetchDataset(Dataset):
   @property
   def output_types(self):
     return self._input_dataset.output_types
-
-
-# TODO(b/64974358): Increase default buffer size to 256 MB.
-_DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
-
-
-def _convert_optional_param_to_tensor(argument_name,
-                                      argument_value,
-                                      argument_default=0,
-                                      argument_dtype=dtypes.int64):
-  if argument_value is not None:
-    return ops.convert_to_tensor(
-        argument_value, dtype=argument_dtype, name=argument_name)
-  else:
-    return constant_op.constant(
-        argument_default, dtype=argument_dtype, name=argument_name)
-
-
-class TextLineDataset(Dataset):
-  """A `Dataset` comprising lines from one or more text files."""
-
-  def __init__(self, filenames, compression_type=None, buffer_size=None):
-    """Creates a `TextLineDataset`.
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
-        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
-      buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
-        to buffer. A value of 0 results in the default buffering values chosen
-        based on the compression type.
-    """
-    super(TextLineDataset, self).__init__()
-    self._filenames = ops.convert_to_tensor(
-        filenames, dtype=dtypes.string, name="filenames")
-    self._compression_type = _convert_optional_param_to_tensor(
-        "compression_type",
-        compression_type,
-        argument_default="",
-        argument_dtype=dtypes.string)
-    self._buffer_size = _convert_optional_param_to_tensor(
-        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
-
-  def make_dataset_resource(self):
-    return gen_dataset_ops.text_line_dataset(
-        self._filenames, self._compression_type, self._buffer_size)
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
-
-
-class TFRecordDataset(Dataset):
-  """A `Dataset` comprising records from one or more TFRecord files."""
-
-  def __init__(self, filenames, compression_type=None, buffer_size=None):
-    """Creates a `TFRecordDataset`.
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
-        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
-      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
-        bytes in the read buffer. 0 means no buffering.
-    """
-    super(TFRecordDataset, self).__init__()
-    # Force the type to string even if filenames is an empty list.
-    self._filenames = ops.convert_to_tensor(
-        filenames, dtypes.string, name="filenames")
-    self._compression_type = _convert_optional_param_to_tensor(
-        "compression_type",
-        compression_type,
-        argument_default="",
-        argument_dtype=dtypes.string)
-    self._buffer_size = _convert_optional_param_to_tensor(
-        "buffer_size",
-        buffer_size,
-        argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
-
-  def make_dataset_resource(self):
-    return gen_dataset_ops.tf_record_dataset(
-        self._filenames, self._compression_type, self._buffer_size)
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.TensorShape([])
-
-  @property
-  def output_types(self):
-    return dtypes.string
-
-
-class FixedLengthRecordDataset(Dataset):
-  """A `Dataset` of fixed-length records from one or more binary files."""
-
-  def __init__(self,
-               filenames,
-               record_bytes,
-               header_bytes=None,
-               footer_bytes=None,
-               buffer_size=None):
-    """Creates a `FixedLengthRecordDataset`.
-
-    Args:
-      filenames: A `tf.string` tensor containing one or more filenames.
-      record_bytes: A `tf.int64` scalar representing the number of bytes in
-        each record.
-      header_bytes: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to skip at the start of a file.
-      footer_bytes: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to ignore at the end of a file.
-      buffer_size: (Optional.) A `tf.int64` scalar representing the number of
-        bytes to buffer when reading.
-    """
-    super(FixedLengthRecordDataset, self).__init__()
-    self._filenames = ops.convert_to_tensor(
-        filenames, dtype=dtypes.string, name="filenames")
-    self._record_bytes = ops.convert_to_tensor(
-        record_bytes, dtype=dtypes.int64, name="record_bytes")
-
-    self._header_bytes = _convert_optional_param_to_tensor(
-        "header_bytes", header_bytes)
-    self._footer_bytes = _convert_optional_param_to_tensor(
-        "footer_bytes", footer_bytes)
-    self._buffer_size = _convert_optional_param_to_tensor(
-        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
-
-  def make_dataset_resource(self):
-    return gen_dataset_ops.fixed_length_record_dataset(
-        self._filenames, self._header_bytes, self._record_bytes,
-        self._footer_bytes, self._buffer_size)
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string

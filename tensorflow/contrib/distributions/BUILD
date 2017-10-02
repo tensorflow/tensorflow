@@ -299,6 +299,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "mixture_same_family_test",
+    size = "small",
+    srcs = ["python/kernel_tests/mixture_same_family_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "negative_binomial_test",
     size = "small",
     srcs = ["python/kernel_tests/negative_binomial_test.py"],
@@ -340,6 +351,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "independent_test",
+    size = "small",
+    srcs = ["python/kernel_tests/independent_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "sample_stats_test",
     size = "medium",
     srcs = ["python/kernel_tests/sample_stats_test.py"],
@@ -355,6 +380,20 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = ["nomsan"],  # disable to avoid false positives from scipy.
+)
+
+cuda_py_test(
+    name = "vector_sinh_arcsinh_diag_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/vector_sinh_arcsinh_diag_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
 )
 
 cuda_py_test(

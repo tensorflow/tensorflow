@@ -329,17 +329,20 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, tensorflow::StringPiece name,
                                    ir_builder)
                 : nullptr;
 
-  // There is no reason this function cannot work without a
-  // terminator, that is just a different case that has not been
-  // implemented yet. It is a different case because splitBasicBlock
-  // requires a terminator.
-  CHECK_NE(nullptr, if_data.if_block->getTerminator());
-  if_data.after_block = if_data.if_block->splitBasicBlock(
-      ir_builder->GetInsertPoint(),
-      AsStringRef(tensorflow::strings::StrCat(name, "-after")));
+  // Add a terminator to the if block, if necessary.
+  if (if_data.if_block->getTerminator() == nullptr) {
+    ir_builder->SetInsertPoint(if_data.if_block);
+    if_data.after_block = CreateBasicBlock(
+        nullptr, tensorflow::strings::StrCat(name, "-after"), ir_builder);
+    ir_builder->CreateBr(if_data.after_block);
+  } else {
+    if_data.after_block = if_data.if_block->splitBasicBlock(
+        ir_builder->GetInsertPoint(),
+        AsStringRef(tensorflow::strings::StrCat(name, "-after")));
+  }
 
-  // splitBasicBlock inserts an unconditional terminator that we have
-  // to remove as we want a conditional branch there.
+  // Our basic block should now end with an unconditional branch.  Remove it;
+  // we're going to replace it with a conditional branch.
   if_data.if_block->getTerminator()->eraseFromParent();
 
   ir_builder->SetInsertPoint(if_data.if_block);
