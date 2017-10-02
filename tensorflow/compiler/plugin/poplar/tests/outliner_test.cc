@@ -40,10 +40,12 @@ static Window GetDefaultWindow() {
 
 static ConvolutionDimensionNumbers GetDefaultDimensions() {
   ConvolutionDimensionNumbers dimension;
-  dimension.set_batch_dimension(0);
+  dimension.set_input_batch_dimension(0);
+  dimension.set_output_batch_dimension(0);
   dimension.add_spatial_dimensions(1);
   dimension.add_spatial_dimensions(2);
-  dimension.set_feature_dimension(3);
+  dimension.set_input_feature_dimension(3);
+  dimension.set_output_feature_dimension(3);
   dimension.set_kernel_output_feature_dimension(0);
   dimension.set_kernel_input_feature_dimension(1);
   dimension.add_kernel_spatial_dimensions(2);
