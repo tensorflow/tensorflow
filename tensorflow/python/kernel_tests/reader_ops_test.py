@@ -1025,8 +1025,8 @@ class LMDBReaderTest(test.TestCase):
 
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
-      for i in range(0, 3):
-        for j in range(0, 10):
+      for i in range(3):
+        for j in range(10):
           k1, v1, k2, v2 = sess.run([key1, value1, key2, value2])
           self.assertAllEqual(compat.as_bytes(k1), compat.as_bytes(k2))
           self.assertAllEqual(compat.as_bytes(v1), compat.as_bytes(v2))
