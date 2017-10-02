@@ -351,6 +351,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "sinh_arcsinh_test",
+    size = "small",
+    srcs = ["python/kernel_tests/sinh_arcsinh_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "independent_test",
     size = "small",
     srcs = ["python/kernel_tests/independent_test.py"],
@@ -858,10 +872,12 @@ cuda_py_test(
     ],
 )
 
+# Tests for SinhArcSinh bijector.  The file name has the extra "_bijector" to
+# avoid BUILD rule name conflicts with the distribution by the same name.
 cuda_py_test(
-    name = "sinh_arcsinh_test",
+    name = "sinh_arcsinh_bijector_test",
     size = "small",
-    srcs = ["python/kernel_tests/bijectors/sinh_arcsinh_test.py"],
+    srcs = ["python/kernel_tests/bijectors/sinh_arcsinh_bijector_test.py"],
     additional_deps = [
         ":bijectors_py",
         ":distributions_py",

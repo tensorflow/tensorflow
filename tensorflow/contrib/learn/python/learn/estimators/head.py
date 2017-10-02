@@ -2029,13 +2029,13 @@ def _streaming_accuracy_at_threshold(predictions, labels, weights, threshold):
 
 def _streaming_precision_at_threshold(predictions, labels, weights, threshold):
   precision_tensor, update_op = metrics_lib.precision_at_thresholds(
-      labels, predictions, (threshold,),_float_weights_or_none(weights))
+      labels, predictions, (threshold,), _float_weights_or_none(weights))
   return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
 
 def _streaming_recall_at_threshold(predictions, labels, weights, threshold):
   precision_tensor, update_op = metrics_lib.recall_at_thresholds(
-      labels, predictions, (threshold,),_float_weights_or_none(weights))
+      labels, predictions, (threshold,), _float_weights_or_none(weights))
   return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
 

@@ -11019,15 +11019,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "IteratorDispose"
-  input_arg {
-    name: "iterator"
-    type: DT_RESOURCE
-  }
-  summary: "Releases any resources used by the given iterator."
-  is_stateful: true
-}
-op {
   name: "IteratorFromStringHandle"
   input_arg {
     name: "string_handle"

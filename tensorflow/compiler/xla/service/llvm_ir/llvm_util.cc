@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 #include <algorithm>
+#include <memory>
 #include <vector>
 
 #include "llvm/IR/MDBuilder.h"
@@ -25,9 +26,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -580,6 +584,24 @@ std::map<int, llvm::MDNode*> MergeMetadata(
     }
   }
   return result;
+}
+
+Status DumpIRToDirectory(const string& directory_name,
+                         const string& hlo_module_name,
+                         const llvm::Module& llvm_module, bool optimized) {
+  string safe_file_name_base = SanitizeFileName(hlo_module_name);
+  string ir_file_name = tensorflow::io::JoinPath(
+      directory_name,
+      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-",
+                                  optimized ? "with" : "no", "-opt.ll"));
+
+  std::unique_ptr<tensorflow::WritableFile> f;
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->NewWritableFile(ir_file_name, &f));
+  TF_RETURN_IF_ERROR(f->Append(DumpModuleToString(llvm_module)));
+  return f->Close();
 }
 
 }  // namespace llvm_ir

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import glob
 import os
 import tempfile
 
@@ -55,6 +56,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
@@ -572,6 +574,22 @@ class EstimatorTrainTest(test.TestCase):
     est.train(dummy_input_fn, steps=5)
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
+
+  def test_loss_summary(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer,
+                              config=run_config.RunConfig(save_summary_steps=1))
+    est.train(dummy_input_fn, steps=1)
+
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
+
+    # Get last Event written.
+    event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
+    last_event = None
+    for last_event in summary_iterator.summary_iterator(event_paths[-1]):
+      pass
+
+    self.assertEqual('loss', last_event.summary.value[0].tag)
 
   def test_latest_checkpoint(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)

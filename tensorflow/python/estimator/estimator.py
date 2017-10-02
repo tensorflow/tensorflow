@@ -43,12 +43,12 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
-from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_inspect
 
@@ -331,7 +331,7 @@ class Estimator(object):
               predict_keys=None,
               hooks=None,
               checkpoint_path=None):
-    """Returns predictions for given features.
+    """Yields predictions for given features.
 
     Args:
       input_fn: Input function returning features which is a dictionary of
@@ -667,12 +667,17 @@ class Estimator(object):
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      global_step_read_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
-      with ops.control_dependencies([global_step_read_tensor]):
-        features, labels = self._get_features_and_labels_from_input_fn(
-            input_fn, model_fn_lib.ModeKeys.TRAIN)
+      features, labels = self._get_features_and_labels_from_input_fn(
+          input_fn, model_fn_lib.ModeKeys.TRAIN)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
+      # Check if the user created a loss summary, and add one if they didn't.
+      # We assume here that the summary is called 'loss'. If it is not, we will
+      # make another one with the name 'loss' to ensure it shows up in the right
+      # graph in TensorBoard.
+      if not any([x.op.name == 'loss'
+                  for x in ops.get_collection(ops.GraphKeys.SUMMARIES)]):
+        summary.scalar('loss', estimator_spec.loss)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
       all_hooks.extend(hooks)
       all_hooks.extend([

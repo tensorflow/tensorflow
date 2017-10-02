@@ -4603,6 +4603,50 @@ func QueueIsClosedV2(scope *Scope, handle tf.Output) (is_closed tf.Output) {
 	return op.Output(0)
 }
 
+// QueueCloseV2Attr is an optional argument to QueueCloseV2.
+type QueueCloseV2Attr func(optionalAttr)
+
+// QueueCloseV2CancelPendingEnqueues sets the optional cancel_pending_enqueues attribute to value.
+//
+// value: If true, all pending enqueue requests that are
+// blocked on the given queue will be canceled.
+// If not specified, defaults to false
+func QueueCloseV2CancelPendingEnqueues(value bool) QueueCloseV2Attr {
+	return func(m optionalAttr) {
+		m["cancel_pending_enqueues"] = value
+	}
+}
+
+// Closes the given queue.
+//
+// This operation signals that no more elements will be enqueued in the
+// given queue. Subsequent Enqueue(Many) operations will fail.
+// Subsequent Dequeue(Many) operations will continue to succeed if
+// sufficient elements remain in the queue. Subsequent Dequeue(Many)
+// operations that would block will fail immediately.
+//
+// Arguments:
+//	handle: The handle to a queue.
+//
+// Returns the created operation.
+func QueueCloseV2(scope *Scope, handle tf.Output, optional ...QueueCloseV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QueueCloseV2",
+		Input: []tf.Input{
+			handle,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // QueueDequeueUpToV2Attr is an optional argument to QueueDequeueUpToV2.
 type QueueDequeueUpToV2Attr func(optionalAttr)
 
@@ -5601,66 +5645,6 @@ func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_han
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// QueueCloseV2Attr is an optional argument to QueueCloseV2.
-type QueueCloseV2Attr func(optionalAttr)
-
-// QueueCloseV2CancelPendingEnqueues sets the optional cancel_pending_enqueues attribute to value.
-//
-// value: If true, all pending enqueue requests that are
-// blocked on the given queue will be canceled.
-// If not specified, defaults to false
-func QueueCloseV2CancelPendingEnqueues(value bool) QueueCloseV2Attr {
-	return func(m optionalAttr) {
-		m["cancel_pending_enqueues"] = value
-	}
-}
-
-// Closes the given queue.
-//
-// This operation signals that no more elements will be enqueued in the
-// given queue. Subsequent Enqueue(Many) operations will fail.
-// Subsequent Dequeue(Many) operations will continue to succeed if
-// sufficient elements remain in the queue. Subsequent Dequeue(Many)
-// operations that would block will fail immediately.
-//
-// Arguments:
-//	handle: The handle to a queue.
-//
-// Returns the created operation.
-func QueueCloseV2(scope *Scope, handle tf.Output, optional ...QueueCloseV2Attr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QueueCloseV2",
-		Input: []tf.Input{
-			handle,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Releases any resources used by the given iterator.
-//
-// Returns the created operation.
-func IteratorDispose(scope *Scope, iterator tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IteratorDispose",
-		Input: []tf.Input{
-			iterator,
-		},
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Gets the next output from the given iterator.

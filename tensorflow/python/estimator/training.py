@@ -336,6 +336,18 @@ class _TrainingExecutor(object):
     # TODO(xiejw): To allow execution framework to add train hooks.
     return self._start_distributed_training()
 
+  def run_master(self):
+    """Runs task master."""
+
+    # TODO(b/66720832): Once listener API is added into Estimator.train, the
+    # eval and export process should be wrapped as a listener and passed to
+    # _start_distributed_training. The expected behavior should be
+    # 1. The export is invoked after each intermediate evaluation.
+    # 2. The evaluation and export should be invoked correctly at the end of
+    # training. This should be fine if the listener works as intended (it will
+    # send the `after_save` signal for the final ckpt saving).
+    return self._start_distributed_training()
+
   def run_evaluator(self):
     """Runs task evaluator."""
     # TODO(xiejw): To allow execution framework to add continuous eval listener.

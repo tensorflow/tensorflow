@@ -133,17 +133,23 @@ num_partitions: The number of partitions to output.
 namespace {
 
 Status DynamicStitchShapeFunction(InferenceContext* c) {
-  int64 num_partitions;
+  int32 num_partitions;
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
+  bool all_indices_constant = true;
+  int32 max_index = 0;
   ShapeHandle extra_shape = c->UnknownShape();
-  for (int64 i = 0; i < num_partitions; ++i) {
+  for (int i = 0; i < num_partitions; ++i) {
+    const Tensor* indices_t = c->input_tensor(i);
+    if (indices_t == nullptr) {
+      all_indices_constant = false;
+    }
+
     ShapeHandle indices_shape = c->input(i);
     ShapeHandle data_shape = c->input(i + num_partitions);
     if (!c->RankKnown(indices_shape)) {
       continue;
     }
-
     const int64 indices_rank = c->Rank(indices_shape);
 
     // Assert that data_shape starts with indices_shape.
@@ -155,9 +161,21 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
     ShapeHandle rest;
     TF_RETURN_IF_ERROR(c->Subshape(data_shape, indices_rank, &rest));
     TF_RETURN_IF_ERROR(c->Merge(extra_shape, rest, &extra_shape));
+
+    if (indices_t != nullptr) {
+      // The length is based on the highest index from flattened indices.
+      const int32* indices = indices_t->flat<int32>().data();
+      int64 count = indices_t->NumElements();
+      for (int64 i = 0; i < count; ++i) {
+        if (indices[i] > max_index) {
+          max_index = indices[i];
+        }
+      }
+    }
   }
 
-  ShapeHandle output_shape = c->Vector(c->UnknownDim());
+  ShapeHandle output_shape = c->Vector(
+      all_indices_constant ? c->MakeDim(max_index + 1) : c->UnknownDim());
   TF_RETURN_IF_ERROR(c->Concatenate(output_shape, extra_shape, &output_shape));
   c->set_output(0, output_shape);
   return Status::OK();

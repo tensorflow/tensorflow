@@ -480,11 +480,18 @@ string GenEagerPythonOp::Code() {
   }
 
   bool eager_allowed = true;
+  string ref_arg;
   for (const auto& arg : op_def_.input_arg()) {
-    if (arg.is_ref()) eager_allowed = false;
+    if (arg.is_ref()) {
+      eager_allowed = false;
+      ref_arg = arg.name();
+    }
   }
   for (const auto& arg : op_def_.output_arg()) {
-    if (arg.is_ref()) eager_allowed = false;
+    if (arg.is_ref()) {
+      eager_allowed = false;
+      ref_arg = arg.name();
+    }
   }
 
   if (eager_allowed) {
@@ -497,7 +504,8 @@ string GenEagerPythonOp::Code() {
     strings::StrAppend(&result_,
                        "    raise RuntimeError(\n"
                        "        \"",
-                       op_name_, " op does not support eager execution.\")\n");
+                       op_name_, " op does not support eager execution. ",
+                       "Arg '", ref_arg, "'' is a ref.\")\n");
   }
 
   if (num_outs_ > 0) {

@@ -304,17 +304,23 @@ Status IrEmitter::HandleCopy(HloInstruction* copy) {
 int IrEmitter::MinimumAlignmentForBufferSize(int64 buffer_size) {
   // GLibc returns a pointer with alignment 8 on 32-bit platforms and 16 on
   // 64-bit platforms.  TCMalloc returns a pointer with alignment 8 for
-  // allocations smaller than 16 bytes and at least alignment 16 for allocations
-  // greater than or equal to 16 bytes.  N.B. We could improve on this lower
-  // bound by explicitly allocating the memory with posix_memalign.  This is
+  // allocations smaller than kMallocAlignmentThreshold bytes and at least
+  // alignment 16 for allocations greater than or equal to
+  // kMallocAlignmentThreshold bytes.  N.B. We could improve on this lower bound
+  // by explicitly allocating the memory with posix_memalign.  This is
   // complicated by our desire to allow parameter buffers created by clients to
   // be consumed directly by the JIT.
   if (buffer_size == 0) {
     // No need to align empty buffers.
     return 1;
   }
+
+  const int64 kMallocAlignmentThreshold = 512;
+
   int pointer_size = module_->getDataLayout().getPointerSize();
-  int buffer_alignment = buffer_size >= 16 ? 2 * pointer_size : 8;
+  int buffer_alignment = buffer_size >= kMallocAlignmentThreshold
+                             ? 2 * pointer_size
+                             : pointer_size;
   DCHECK_GT(buffer_alignment, 0);
 
   return buffer_alignment;

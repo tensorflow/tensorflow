@@ -44,7 +44,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     OptimizerOptions opts;
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts));
+        opts, nullptr /* cluster_flr */));
     rendezvous_ = new IntraProcessRendezvous(device_mgr_.get());
   }
 

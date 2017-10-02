@@ -21,7 +21,6 @@ from __future__ import print_function
 import abc
 import collections
 
-import collections
 import six
 
 from tensorflow.python.estimator import model_fn

@@ -55,7 +55,8 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
-      request->debug_options(), response->mutable_graph_handle());
+      request->debug_options(), session->cluster_flr.get(),
+      response->mutable_graph_handle());
   done(s);
 }
 

@@ -359,7 +359,8 @@ class Flatten(base.Layer):
 
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
-    outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+    if context.in_graph_mode():
+      outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
     return outputs
 
   def _compute_output_shape(self, input_shape):

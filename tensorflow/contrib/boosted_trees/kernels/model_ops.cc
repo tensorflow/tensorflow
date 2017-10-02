@@ -46,9 +46,8 @@ class CreateTreeEnsembleVariableOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("tree_ensemble_config",
                                            &tree_ensemble_config_t));
     auto* result = new boosted_trees::models::DecisionTreeEnsembleResource();
-    result->set_stamp(stamp_token);
-    if (!ParseProtoUnlimited(result->mutable_decision_tree_ensemble(),
-                             tree_ensemble_config_t->scalar<string>()())) {
+    if (!result->InitFromSerialized(tree_ensemble_config_t->scalar<string>()(),
+                                    stamp_token)) {
       result->Unref();
       OP_REQUIRES(context, false, errors::InvalidArgument(
                                       "Unable to parse tree ensemble config."));
@@ -70,17 +69,15 @@ class TreeEnsembleStampTokenOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    boosted_trees::models::DecisionTreeEnsembleResource*
-        decision_tree_ensemble_resource;
+    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_ensemble_resource));
-    tf_shared_lock l(*decision_tree_ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_ensemble_resource);
+                                           &ensemble_resource));
+    tf_shared_lock l(*ensemble_resource->get_mutex());
+    core::ScopedUnref unref_me(ensemble_resource);
     Tensor* output_stamp_token_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape(),
                                                      &output_stamp_token_t));
-    output_stamp_token_t->scalar<int64>()() =
-        decision_tree_ensemble_resource->stamp();
+    output_stamp_token_t->scalar<int64>()() = ensemble_resource->stamp();
   }
 };
 
@@ -91,23 +88,20 @@ class TreeEnsembleSerializeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    boosted_trees::models::DecisionTreeEnsembleResource*
-        decision_tree_ensemble_resource;
+    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_ensemble_resource));
-    tf_shared_lock l(*decision_tree_ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_ensemble_resource);
+                                           &ensemble_resource));
+    tf_shared_lock l(*ensemble_resource->get_mutex());
+    core::ScopedUnref unref_me(ensemble_resource);
     Tensor* output_stamp_token_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape(),
                                                      &output_stamp_token_t));
-    output_stamp_token_t->scalar<int64>()() =
-        decision_tree_ensemble_resource->stamp();
+    output_stamp_token_t->scalar<int64>()() = ensemble_resource->stamp();
     Tensor* output_config_t = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(1, TensorShape(), &output_config_t));
     output_config_t->scalar<string>()() =
-        decision_tree_ensemble_resource->decision_tree_ensemble()
-            .SerializeAsString();
+        ensemble_resource->SerializeAsString();
   }
 };
 
@@ -118,12 +112,11 @@ class TreeEnsembleDeserializeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    boosted_trees::models::DecisionTreeEnsembleResource*
-        decision_tree_ensemble_resource;
+    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_ensemble_resource));
-    mutex_lock l(*decision_tree_ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_ensemble_resource);
+                                           &ensemble_resource));
+    mutex_lock l(*ensemble_resource->get_mutex());
+    core::ScopedUnref unref_me(ensemble_resource);
 
     // Get the stamp token.
     const Tensor* stamp_token_t;
@@ -135,13 +128,11 @@ class TreeEnsembleDeserializeOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("tree_ensemble_config",
                                            &tree_ensemble_config_t));
     // Deallocate all the previous objects on the resource.
-    decision_tree_ensemble_resource->Reset();
-    decision_tree_ensemble_resource->set_stamp(stamp_token);
-    boosted_trees::trees::DecisionTreeEnsembleConfig* config =
-        decision_tree_ensemble_resource->mutable_decision_tree_ensemble();
+    ensemble_resource->Reset();
     OP_REQUIRES(
         context,
-        ParseProtoUnlimited(config, tree_ensemble_config_t->scalar<string>()()),
+        ensemble_resource->InitFromSerialized(
+            tree_ensemble_config_t->scalar<string>()(), stamp_token),
         errors::InvalidArgument("Unable to parse tree ensemble config."));
   }
 };

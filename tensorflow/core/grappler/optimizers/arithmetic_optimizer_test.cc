@@ -132,6 +132,113 @@ TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
   EXPECT_EQ(6, output.node_size());
 }
 
+TEST_F(ArithmeticOptimizerTest, FoldMulToTransposeConv) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 28, 28, 3}));
+  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f, {});
+  Output scaled_inputs =
+      ops::Multiply(s.WithOpName("scaled_inputs"), inputs, scale);
+  Output perm_nhwc_to_nchw =
+      ops::Const(s.WithOpName("perm_nhwc_to_nchw"), {0, 3, 1, 2}, {4});
+  Output inputs_nchw = ops::Transpose(s.WithOpName("inputs_nchw"),
+                                      scaled_inputs, perm_nhwc_to_nchw);
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  Output conv =
+      ops::Conv2D(s.WithOpName("conv"), inputs_nchw, weights, {1, 1, 1, 1},
+                  "VALID", ops::Conv2D::DataFormat("NCHW"));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  // `conv` is now a folded convolution with scaled weights.
+  const NodeDef* folded_conv = node_map.GetNode(conv.node()->name());
+  CHECK_EQ(node_map.GetNode(NodeName(folded_conv->input(1)))->op(), "Mul");
+  // Its input should be a transpose of `inputs`.
+  const NodeDef* transpose = node_map.GetNode(NodeName(folded_conv->input(0)));
+  CHECK_EQ(NodeName(transpose->input(0)), inputs.node()->name());
+}
+
+TEST_F(ArithmeticOptimizerTest, NotFoldMulAcrossPreservedTranspose) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 28, 28, 3}));
+  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f, {});
+  Output scaled_inputs =
+      ops::Multiply(s.WithOpName("scaled_inputs"), inputs, scale);
+  Output perm_nhwc_to_nchw =
+      ops::Const(s.WithOpName("perm_nhwc_to_nchw"), {0, 3, 1, 2}, {4});
+  Output inputs_nchw = ops::Transpose(s.WithOpName("inputs_nchw"),
+                                      scaled_inputs, perm_nhwc_to_nchw);
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  Output conv =
+      ops::Conv2D(s.WithOpName("conv"), inputs_nchw, weights, {1, 1, 1, 1},
+                  "VALID", ops::Conv2D::DataFormat("NCHW"));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
+
+  Tensor inputs_nchw_tensor(DT_FLOAT, {8, 3, 28, 28});
+  memset(const_cast<char*>(inputs_nchw_tensor.tensor_data().data()), 0,
+         inputs_nchw_tensor.tensor_data().size());
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  item.feed = {{"inputs_nchw", inputs_nchw_tensor}};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* inputs_nchw_node_def =
+      node_map.GetNode(inputs_nchw.node()->name());
+  EXPECT_EQ(NodeName(inputs_nchw_node_def->input(0)),
+            scaled_inputs.node()->name());
+}
+
+TEST_F(ArithmeticOptimizerTest, FoldMulToConv) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 28, 28, 28, 3}));
+  Output scale = ops::Const(s.WithOpName("scale"), 1.0f / 255.0f, {});
+  Output scaled_inputs =
+      ops::Multiply(s.WithOpName("scaled_inputs"), inputs, scale);
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 5, 3, 16}));
+  Output conv = ops::Conv3D(s.WithOpName("conv"), scaled_inputs, weights,
+                            {1, 1, 1, 1, 1}, "VALID");
+  Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  // `conv` is now a folded convolution on `inputs` and scaled weights.
+  const NodeDef* folded_conv = node_map.GetNode(conv.node()->name());
+  CHECK_EQ(inputs.node()->name(), NodeName(folded_conv->input(0)));
+  CHECK_EQ(node_map.GetNode(NodeName(folded_conv->input(1)))->op(), "Mul");
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
