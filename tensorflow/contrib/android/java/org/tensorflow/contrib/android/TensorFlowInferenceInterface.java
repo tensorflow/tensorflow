@@ -616,7 +616,7 @@ public class TensorFlowInferenceInterface {
   private List<String> feedNames = new ArrayList<String>();
   private List<Tensor<?>> feedTensors = new ArrayList<Tensor<?>>();
   private List<String> fetchNames = new ArrayList<String>();
-  private List<Tensor<?>> fetchTensors = null;
+  private List<Tensor<?>> fetchTensors = new ArrayList<Tensor<?>>();
 
   // Mutable state.
   private RunStats runStats;
