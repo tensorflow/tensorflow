@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -291,6 +292,12 @@ class OpsTest(test_util.TensorFlowTestCase):
         [['string', 'arg']], ctx, dtypes.int32)
     self.assertEquals(t, dtypes.string)
     self.assertEquals(r[0].dtype, dtypes.string)
+
+  def testFlattenLayer(self):
+    flatten_layer = core.Flatten()
+    x = constant_op.constant([[[-10, -20], [-30, -40]], [[10, 20], [30, 40]]])
+    y = flatten_layer(x)
+    self.assertAllEqual([[-10, -20, -30, -40], [10, 20, 30, 40]], y.numpy())
 
 
 if __name__ == '__main__':
