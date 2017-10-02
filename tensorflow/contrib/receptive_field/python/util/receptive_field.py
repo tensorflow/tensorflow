@@ -35,6 +35,7 @@ import numpy as np
 _UNCHANGED_RF_LAYER_OPS = [
     "Softplus", "Relu", "BiasAdd", "Mul", "Add", "Const", "Identity",
     "VariableV2", "Sub", "Rsqrt", "ConcatV2", "Log", "Pow", "RealDiv",
+    "Floor", "Ceil", "Round",
 ]
 
 # Different ways in which padding modes may be spelled.
@@ -240,7 +241,8 @@ def _get_layer_params(node, name_to_order_node):
     padding_x = 0
     padding_y = 0
   else:
-    raise ValueError("Unknown layer op: %s" % node.op)
+    raise ValueError("Unknown layer for operation '%s': %s" %
+                     (node.name, node.op))
   return kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x, padding_y
 
 
@@ -362,13 +364,16 @@ class ReceptiveField:
     return iter(np.concatenate([self.size, self.stride, self.padding]))
 
 
-def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
+def compute_receptive_field_from_graph_def(graph_def, input_node, output_node,
+                                           stop_propagation=None):
   """Computes receptive field (RF) parameters from a GraphDef object.
 
   Args:
     graph_def: GraphDef object.
     input_node: Name of the input node from graph.
     output_node: Name of the output node from graph.
+    stop_propagation: List of operation  or scope names for which to stop the
+      propagation of the receptive field.
 
   Returns:
     rf_size_x: Receptive field size of network in the horizontal direction, with
@@ -398,6 +403,8 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
     input_node = input_node.op.name
   if isinstance(output_node, framework_ops.Tensor):
     output_node = output_node.op.name
+
+  stop_propagation = stop_propagation or []
 
   # Computes order of computation for a given graph.
   name_to_order_node = graph_compute_order.get_compute_order(
@@ -490,6 +497,10 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
 
       # Loop over this node's inputs and potentially propagate information down.
       for inp_name in node.input:
+        # Stop the propagation of the receptive field
+        if any(inp_name.startswith(stop) for stop in stop_propagation):
+          logging.vlog(3, "Skipping explicitly ignored node %s.", node.name)
+          continue
         logging.vlog(4, "inp_name = %s", inp_name)
         inp_node = name_to_order_node[inp_name].node
         logging.vlog(4, "inp_node = \n%s", inp_node)
