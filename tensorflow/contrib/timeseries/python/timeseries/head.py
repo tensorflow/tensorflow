@@ -19,55 +19,46 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.util import nest
 
 
 def time_series_regression_head(
-        model, state_manager, optimizer, input_statistics_generator=None):
+        model, state_manager, optimizer,
+        input_statistics_generator=None, weight_column=None):
   """Creates a `_Head` for time series regression.
 
   Args:
+    model: The object (inheriting from Model) to create a function for.
+    state_manager: A state manager to wrap the model with (or
+      `PassthroughStateManager` if no state needs to be managed).
+    optimizer: An instance of `tf.train.Optimizer` to use for training.
+    input_statistics_generator: An `InputStatisticsFromMiniBatch` object from
+      math_utils.py, used for collecting statistics about input data during
+      training.
     weight_column: A string or a `_NumericColumn` created by
       `tf.feature_column.numeric_column` defining feature column representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
-    label_dimension: Number of regression labels per example. This is the size
-      of the last dimension of the labels `Tensor` (typically, this has shape
-      `[batch_size, label_dimension]`).
 
   Returns:
     An instance of `_Head` for time series regression.
   """
   return _TimeSeriesRegressionHead(
-    model, state_manager, optimizer, input_statistics_generator)
+    model, state_manager, optimizer, input_statistics_generator, weight_column)
 
 
 class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
   """See `time_series_regression_head`."""
 
   def __init__(self, model, state_manager, optimizer,
-    input_statistics_generator=None, name=None):
+    input_statistics_generator=None, name=None, weight_column=None):
     self.model = model
     self.state_manager = state_manager
     self.optimizer = optimizer
     self.input_statistics_generator = input_statistics_generator
     self._name = name
-
-  def _train_ops(self, features):
-    """Add training ops to the graph."""
-    with variable_scope.variable_scope("model"):
-      model_outputs = self.state_manager.define_loss(self.model, features,
-                                                     estimator_lib.ModeKeys.TRAIN)
-    train_op = optimizers.optimize_loss(
-      model_outputs.loss,
-      global_step=variables.get_global_step(),
-      optimizer=self.optimizer,
-      # Learning rate is set in the Optimizer object
-      learning_rate=None)
-    return estimator_lib.EstimatorSpec(
-      loss=model_outputs.loss,
-      mode=estimator_lib.ModeKeys.TRAIN,
-      train_op=train_op)
+    self._weight_column = weight_column
 
   # TODO: suffix summary and metrics keys by `"/" + name`
   @property
@@ -85,11 +76,34 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   def logits_dimension(self):
     return None
 
+  def get_weighted_loss(self, features, unweighted_loss):
+    weights = head_lib._weights(features, self._weight_column)
+    return losses.compute_weighted_loss(
+      unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
+
+  def _train_ops(self, features):
+    """Add training ops to the graph."""
+    with variable_scope.variable_scope("model"):
+      model_outputs = self.state_manager.define_loss(self.model, features,
+                                                     estimator_lib.ModeKeys.TRAIN)
+      train_loss = self.get_weighted_loss(features, model_outputs.loss)
+    train_op = optimizers.optimize_loss(
+      train_loss,
+      global_step=variables.get_global_step(),
+      optimizer=self.optimizer,
+      # Learning rate is set in the Optimizer object
+      learning_rate=None)
+    return estimator_lib.EstimatorSpec(
+      loss=train_loss,
+      mode=estimator_lib.ModeKeys.TRAIN,
+      train_op=train_op)
+
   def _evaluate_ops(self, features):
     """Add ops for evaluation (aka filtering) to the graph."""
     with variable_scope.variable_scope("model"):
       model_outputs = self.state_manager.define_loss(self.model, features,
                                                      estimator_lib.ModeKeys.EVAL)
+      eval_loss = self.get_weighted_loss(features, model_outputs.loss)
     metrics = {}
     # Just output in-sample predictions for the last chunk seen
     for prediction_key, prediction_value in model_outputs.predictions.items():
@@ -101,7 +115,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
       _identity_metric_nested(feature_keys.FilteringResults.STATE_TUPLE,
                               model_outputs.end_state))
     return estimator_lib.EstimatorSpec(
-      loss=model_outputs.loss,
+      loss=eval_loss,
       mode=estimator_lib.ModeKeys.EVAL,
       eval_metric_ops=metrics,
       predictions={})
