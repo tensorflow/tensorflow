@@ -49,6 +49,12 @@ public:
           const se::DeviceMemoryBase& source,
           const Shape& shape) override;
 
+  Status WriteTuplePointersToDevice(
+          se::StreamExecutor* executor,
+          tensorflow::gtl::ArraySlice<se::DeviceMemoryBase>
+          elements,
+          const Shape& shape, se::DeviceMemoryBase* region) override;
+
   Status TransferLiteralFromDevice(
           se::StreamExecutor* executor,
           const se::DeviceMemoryBase& source,

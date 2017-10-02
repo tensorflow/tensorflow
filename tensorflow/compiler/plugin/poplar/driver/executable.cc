@@ -93,10 +93,9 @@ StatusOr<std::unique_ptr<ShapedBuffer>> PoplarExecutable::ExecuteOnStream(
   TF_ASSIGN_OR_RETURN(result, ExecuteOnStream(run_options, argument_buffers,
                                               hlo_execution_profile));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result_buffer,
-                      ShapedBuffer::MakeShapedBuffer(
-                              result_shape(), stream->parent()->platform(),
-                              stream->parent()->device_ordinal()));
+  auto result_buffer =
+          MakeUnique<ShapedBuffer>(result_shape(), stream->parent()->platform(),
+                                   stream->parent()->device_ordinal());
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.

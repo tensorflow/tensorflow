@@ -118,6 +118,24 @@ PoplarTransferManager::ShallowCopyTupleFromDevice(
   return std::move(destination);
 }
 
+Status PoplarTransferManager::WriteTuplePointersToDevice(
+        se::StreamExecutor* executor,
+        tensorflow::gtl::ArraySlice<se::DeviceMemoryBase>
+        elements,
+        const Shape& shape, se::DeviceMemoryBase* region) {
+  TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
+
+  std::vector<const void*> element_pointers;
+  for (const se::DeviceMemoryBase& element : elements) {
+    element_pointers.push_back(element.opaque());
+  }
+  int64 tuple_size =
+          ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
+
+  return TransferBufferToDevice(executor, tuple_size, element_pointers.data(),
+                                region);
+}
+
 Status PoplarTransferManager::TransferLiteralToDevice(
         se::StreamExecutor* executor, const Literal& literal,
         se::DeviceMemoryBase* destination) {
