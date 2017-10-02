@@ -22,6 +22,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
@@ -35,6 +36,7 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
+
 
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
@@ -1020,8 +1022,8 @@ def conv2d_transpose(value,
     axis = 3 if data_format == "NHWC" else 1
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[3], filter.get_shape(
-                       )[3]))
+                       "{} != {}".format(value.get_shape()[axis],
+                                         filter.get_shape()[3]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
@@ -1359,6 +1361,27 @@ def relu6(features, name=None):
     return gen_nn_ops._relu6(features, name=name)
 
 
+def leaky_relu(features, alpha=0.2, name=None):
+  """Compute the Leaky ReLU activation function.
+
+  "Rectifier Nonlinearities Improve Neural Network Acoustic Models"
+  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013
+  http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
+
+  Args:
+    features: A `Tensor` representing preactivation values.
+    alpha: Slope of the activation function at x < 0.
+    name: A name for the operation (optional).
+
+  Returns:
+    The activation value.
+  """
+  with ops.name_scope(name, "LeakyRelu", [features, alpha]):
+    features = ops.convert_to_tensor(features, name="features")
+    alpha = ops.convert_to_tensor(alpha, name="alpha")
+    return math_ops.maximum(alpha * features, features)
+
+
 def _flatten_outer_dims(logits):
   """Flattens logits' outer dimensions and keep its last dimension."""
   rank = array_ops.rank(logits)
@@ -1367,20 +1390,21 @@ def _flatten_outer_dims(logits):
   output = array_ops.reshape(logits, array_ops.concat([[-1], last_dim_size], 0))
 
   # Set output shape if known.
-  shape = logits.get_shape()
-  if shape is not None and shape.dims is not None:
-    shape = shape.as_list()
-    product = 1
-    product_valid = True
-    for d in shape[:-1]:
-      if d is None:
-        product_valid = False
-        break
-      else:
-        product *= d
-    if product_valid:
-      output_shape = [product, shape[-1]]
-      output.set_shape(output_shape)
+  if context.in_graph_mode():
+    shape = logits.get_shape()
+    if shape is not None and shape.dims is not None:
+      shape = shape.as_list()
+      product = 1
+      product_valid = True
+      for d in shape[:-1]:
+        if d is None:
+          product_valid = False
+          break
+        else:
+          product *= d
+      if product_valid:
+        output_shape = [product, shape[-1]]
+        output.set_shape(output_shape)
 
   return output
 
@@ -1603,7 +1627,7 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.
-  if shape is not None and shape.dims is not None:
+  if context.in_graph_mode() and shape is not None and shape.dims is not None:
     shape = shape.as_list()
     del shape[dim]
     cost.set_shape(shape)
@@ -1748,19 +1772,19 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the max pooling on the input.
 
   Args:
-    value: A 4-D `Tensor` with shape `[batch, height, width, channels]` and
-      type `tf.float32`.
+    value: A 4-D `Tensor` of the format specified by `data_format`.
     ksize: A 1-D int Tensor of 4 elements.  The size of the window for
       each dimension of the input tensor.
     strides: A 1-D int Tensor of 4 elements.  The stride of the sliding
       window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
-    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
 
   Returns:
-    A `Tensor` with type `tf.float32`.  The max pooled output tensor.
+    A `Tensor` of format specified by `data_format`.
+    The max pooled output tensor.
   """
   with ops.name_scope(name, "MaxPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
@@ -1877,7 +1901,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
   kept independently and each row and column will be kept or not kept together.
 
   Args:
-    x: A tensor.
+    x: A floating point tensor.
     keep_prob: A scalar `Tensor` with the same type as x. The probability
       that each element is kept.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
@@ -1891,10 +1915,14 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     A Tensor of the same shape of `x`.
 
   Raises:
-    ValueError: If `keep_prob` is not in `(0, 1]`.
+    ValueError: If `keep_prob` is not in `(0, 1]` or if `x` is not a floating
+      point tensor.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
+    if not x.dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going to"
+                       " be scaled. Got a %s tensor instead." % x.dtype)
     if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
@@ -1916,7 +1944,8 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
     ret = math_ops.div(x, keep_prob) * binary_tensor
-    ret.set_shape(x.get_shape())
+    if context.in_graph_mode():
+      ret.set_shape(x.get_shape())
     return ret
 
 
@@ -2116,5 +2145,4 @@ def in_top_k(predictions, targets, k, name=None):
     A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
   """
   with ops.name_scope(name, 'in_top_k'):
-    # TODO (yongtang): Need to switch to v2 after 3 weeks.
-    return gen_nn_ops._in_top_k(predictions, targets, k, name=name)
+    return gen_nn_ops._in_top_kv2(predictions, targets, k, name=name)

@@ -562,7 +562,7 @@ def assign_from_checkpoint(model_path, var_list, ignore_missing_vars=False):
       grouped_vars[ckpt_name].append(var)
 
   else:
-    for ckpt_name, value in var_list.iteritems():
+    for ckpt_name, value in var_list.items():
       if isinstance(value, (tuple, list)):
         grouped_vars[ckpt_name] = value
       else:

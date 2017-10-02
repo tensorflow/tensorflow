@@ -56,11 +56,14 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
 
+  Status HandleBatchNormInference(HloInstruction* batch_norm) override;
+
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation, bool rewrite_training_op,
-                  bool rewrite_grad_op, bool use_fusion);
+                  bool rewrite_inference_op, bool rewrite_grad_op,
+                  bool use_fusion);
 
   // Returns whether any batch norm ops were rewritten.
   const bool changed() const { return changed_; }
@@ -70,9 +73,11 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
  private:
   explicit BatchNormRewriterVisitor(HloComputation* computation,
                                     bool rewrite_training_op,
+                                    bool rewrite_inference_op,
                                     bool rewrite_grad_op, bool use_fusion)
       : computation_(computation),
         rewrite_training_op_(rewrite_training_op),
+        rewrite_inference_op_(rewrite_inference_op),
         rewrite_grad_op_(rewrite_grad_op),
         use_fusion_(use_fusion) {}
 
@@ -94,6 +99,7 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
   HloComputation* computation_;
 
   bool rewrite_training_op_;
+  bool rewrite_inference_op_;
   bool rewrite_grad_op_;
   bool use_fusion_;
 
@@ -126,11 +132,14 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
 bool BatchNormRewriterVisitor::Run(HloComputation* computation,
                                    bool rewrite_training_op,
+                                   bool rewrite_inference_op,
                                    bool rewrite_grad_op, bool use_fusion) {
-  BatchNormRewriterVisitor visitor(computation,
-                                   /*rewrite_training_op=*/rewrite_training_op,
-                                   /*rewrite_grad_op=*/rewrite_grad_op,
-                                   /*use_fusion=*/use_fusion);
+  BatchNormRewriterVisitor visitor(
+      computation,
+      /*rewrite_training_op=*/rewrite_training_op,
+      /*rewrite_inference_op=*/rewrite_inference_op,
+      /*rewrite_grad_op=*/rewrite_grad_op,
+      /*use_fusion=*/use_fusion);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -268,8 +277,96 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
   return Status::OK();
 }
 
+Status BatchNormRewriterVisitor::HandleBatchNormInference(
+    HloInstruction* batch_norm) {
+  if (!rewrite_inference_op_) {
+    return Status::OK();
+  }
+  // Expand batch norm inference into smaller HLO ops.
+  HloInstruction* operand = batch_norm->mutable_operand(0);
+  const Shape operand_shape = operand->shape();
+  int64 feature_index = batch_norm->feature_index();
+
+  HloInstruction* scale = batch_norm->mutable_operand(1);
+  HloInstruction* offset = batch_norm->mutable_operand(2);
+  HloInstruction* mean = batch_norm->mutable_operand(3);
+  HloInstruction* var = batch_norm->mutable_operand(4);
+  const Shape feature_shape = scale->shape();
+
+  auto epsilon = computation_->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
+
+  std::vector<int64> dimensions_without_feature;
+
+  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+    if (i != feature_index) {
+      dimensions_without_feature.push_back(i);
+    }
+  }
+
+  auto scale_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
+
+  auto offset_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, offset, {feature_index}));
+
+  auto mean_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
+
+  auto var_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
+
+  // Var[X] + epsilon.
+  auto var_add_epsilon =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon));
+
+  auto neg_half = computation_->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
+
+  // 1 / Sqrt[Var[X] + epsilon].
+  auto rsqrt_var_add_epsilon =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          operand_shape, HloOpcode::kPower, var_add_epsilon, neg_half));
+
+  // X - E[X].
+  auto operand_minus_mean =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          operand_shape, HloOpcode::kSubtract, operand, mean_broadcasted));
+
+  // (X - E[X]) / Sqrt[Var[X] + epsilon].
+  auto normalized = computation_->AddInstruction(
+      HloInstruction::CreateBinary(operand_shape, HloOpcode::kMultiply,
+                                   operand_minus_mean, rsqrt_var_add_epsilon));
+
+  // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale.
+  auto scaled_normalized =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          operand_shape, HloOpcode::kMultiply, normalized, scale_broadcasted));
+
+  // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale + offset.
+  auto shifted_normalized = HloInstruction::CreateBinary(
+      operand_shape, HloOpcode::kAdd, scaled_normalized, offset_broadcasted);
+
+  TF_CHECK_OK(
+      ReplaceWithNewInstruction(batch_norm, std::move(shifted_normalized)));
+  return Status::OK();
+}
+
 Status BatchNormRewriterVisitor::HandleBatchNormGrad(
     HloInstruction* batch_norm) {
+  // Use the following formulas to calculate gradients:
+  // scale_grad =
+  //   sum(output_grad * (activation - mean(activation))) * rsqrt(var + epsilon)
+  //
+  // offset_grad =
+  //   sum(output_grad)
+  //
+  // activation_grad =
+  //   1/N * scale * rsqrt(var + epsilon) *
+  //   (N * output_grad - sum(output_grad) - (activation - mean(activation)) *
+  //   sum(output_grad * (activation - mean(activation))) / (variance +
+  //   epsilon))
   if (!rewrite_grad_op_) {
     return Status::OK();
   }
@@ -284,11 +381,17 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
 
   int64 feature_index = batch_norm->feature_index();
 
+  const int64 size_in_elements = ShapeUtil::ElementsIn(activation_shape);
+  const int64 feature_count = activation_shape.dimensions(feature_index);
+  auto elements_per_feature =
+      computation_->AddInstruction(HloInstruction::CreateConstant(
+          Literal::CreateR0<float>(size_in_elements / feature_count)));
+
   auto zero = computation_->AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
 
-  auto half = computation_->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(0.5f)));
+  auto neg_half = computation_->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(-0.5f)));
 
   auto epsilon = computation_->AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
@@ -312,45 +415,40 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
   auto mean_broadcasted = computation_->AddInstruction(
       HloInstruction::CreateBroadcast(activation_shape, mean, {feature_index}));
 
-  // Var[X] + epsilon.
-  auto var_add_epsilon =
+  // rsqrt[Var[X] + epsilon].
+  auto rsqrt_var_add_epsilon_broadcasted =
       computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kAdd, variance_broadcasted, epsilon));
+          activation_shape, HloOpcode::kPower,
+          computation_->AddInstruction(
+              HloInstruction::CreateBinary(activation_shape, HloOpcode::kAdd,
+                                           variance_broadcasted, epsilon)),
+          neg_half));
 
-  // Sqrt[Var[X] + epsilon].
-  auto sqrt_var_add_epsilon =
+  auto rsqrt_var_add_epsilon =
       computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kPower, var_add_epsilon, half));
-
-  // Grad[Y] * Sqrt[Var[X] + epsilon].
-  auto grad_output_times_sqrt_var_add_epsilon = computation_->AddInstruction(
-      HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
-                                   grad_output, sqrt_var_add_epsilon));
-
-  // Grad[X] = Grad[Y] * scale * Sqrt[Var[X] + epsilon].
-  auto grad_activation =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kMultiply, scale_broadcasted,
-          grad_output_times_sqrt_var_add_epsilon));
+          feature_shape, HloOpcode::kPower,
+          computation_->AddInstruction(HloInstruction::CreateBinary(
+              feature_shape, HloOpcode::kAdd, variance, epsilon)),
+          neg_half));
 
   // X - E[X].
   auto activation_minus_mean = computation_->AddInstruction(
       HloInstruction::CreateBinary(activation_shape, HloOpcode::kSubtract,
                                    activation, mean_broadcasted));
 
-  // Grad[Y] * (X - E[X]) * Sqrt[Var[X] + epsilon].
-  auto grad_scale_not_reduced =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          activation_shape, HloOpcode::kMultiply, activation_minus_mean,
-          grad_output_times_sqrt_var_add_epsilon));
+  // Grad[Y] * (X - E[X]).
+  auto grad_output_times_activiation_minus_mean = computation_->AddInstruction(
+      HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
+                                   grad_output, activation_minus_mean));
 
   HloComputation* add_reduce_computation =
       GetScalarBinaryComputation(F32, HloOpcode::kAdd);
 
-  // Grad[scale] = Sum(Grad[Y] * (X - E[X]) * Sqrt[Var[X] + epsilon]).
-  auto grad_scale = computation_->AddInstruction(HloInstruction::CreateReduce(
-      feature_shape, grad_scale_not_reduced, zero, dimensions_without_feature,
-      add_reduce_computation));
+  // sum(Grad[Y] * (X - E[X])).
+  auto sum_grad_output_times_activiation_minus_mean =
+      computation_->AddInstruction(HloInstruction::CreateReduce(
+          feature_shape, grad_output_times_activiation_minus_mean, zero,
+          dimensions_without_feature, add_reduce_computation));
 
   // Grad[beta] = Sum(Grad[Y]).
   auto grad_beta = computation_->AddInstruction(HloInstruction::CreateReduce(
@@ -358,18 +456,70 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
       add_reduce_computation));
 
   if (use_fusion_) {
-    auto tuple = computation_->AddInstruction(
-        HloInstruction::CreateTuple({grad_scale, grad_beta}));
+    auto tuple = computation_->AddInstruction(HloInstruction::CreateTuple(
+        {sum_grad_output_times_activiation_minus_mean, grad_beta}));
 
     auto fused = computation_->CreateFusionInstruction(
-        {tuple, grad_scale, grad_beta}, HloInstruction::FusionKind::kInput);
+        {tuple, sum_grad_output_times_activiation_minus_mean, grad_beta},
+        HloInstruction::FusionKind::kInput);
 
-    grad_scale = computation_->AddInstruction(
+    sum_grad_output_times_activiation_minus_mean = computation_->AddInstruction(
         HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
 
     grad_beta = computation_->AddInstruction(
         HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
   }
+
+  // Grad[scale] = Sum(Grad[Y] * (X - E[X]) * rsqrt[Var[X] + epsilon]).
+  auto grad_scale = computation_->AddInstruction(HloInstruction::CreateBinary(
+      feature_shape, HloOpcode::kMultiply,
+      sum_grad_output_times_activiation_minus_mean, rsqrt_var_add_epsilon));
+
+  // I2 = Sum(Grad[Y])
+  auto I2 = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+      activation_shape, grad_beta, {feature_index}));
+
+  // I3 = Sum(Grad[Y] * (X - E[X]))
+  auto I3 = computation_->AddInstruction(HloInstruction::CreateBroadcast(
+      activation_shape, sum_grad_output_times_activiation_minus_mean,
+      {feature_index}));
+
+  // I4 = (X - E[X]) * I3
+  auto I4 = computation_->AddInstruction(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kMultiply, I3, activation_minus_mean));
+
+  // I5 = I4 / (Var[X] + epsilon)
+  auto I5 = computation_->AddInstruction(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kDivide, I4,
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          activation_shape, HloOpcode::kAdd, variance_broadcasted, epsilon))));
+
+  // scale * rsqrt[Var[X] + epsilon] * 1/N
+  auto scale_times_rsqrt_var_add_epsilon =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          activation_shape, HloOpcode::kMultiply, scale_broadcasted,
+          rsqrt_var_add_epsilon_broadcasted));
+
+  scale_times_rsqrt_var_add_epsilon =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          activation_shape, HloOpcode::kDivide,
+          scale_times_rsqrt_var_add_epsilon, elements_per_feature));
+
+  auto I1 = computation_->AddInstruction(
+      HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
+                                   grad_output, elements_per_feature));
+
+  // I6 = I1 - I2 - I5
+  auto I6 = computation_->AddInstruction(HloInstruction::CreateBinary(
+      activation_shape, HloOpcode::kSubtract,
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          activation_shape, HloOpcode::kSubtract, I1, I2)),
+      I5));
+
+  // Grad[X] = scale * rsqrt[Var[X] + epsilon] * 1/N * I6.
+  auto grad_activation = computation_->AddInstruction(
+      HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
+                                   scale_times_rsqrt_var_add_epsilon, I6));
 
   TF_CHECK_OK(ReplaceWithNewInstruction(
       batch_norm,
@@ -392,7 +542,8 @@ StatusOr<bool> BatchNormRewriter::Run(HloModule* module) {
   }
   for (auto& comp : computations) {
     if (BatchNormRewriterVisitor::Run(comp, rewrite_training_op_,
-                                      rewrite_grad_op_, use_fusion_)) {
+                                      rewrite_inference_op_, rewrite_grad_op_,
+                                      use_fusion_)) {
       changed = true;
     }
   }

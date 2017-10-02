@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
@@ -91,10 +92,12 @@ class JITSymbolTable {
     ADD_JIT_SYMBOL_TO_TABLE(ReleaseInfeedBufferAfterDequeue);
     ADD_JIT_SYMBOL_TO_TABLE(AcquireOutfeedBufferForPopulation);
     ADD_JIT_SYMBOL_TO_TABLE(ReleaseOutfeedBufferAfterPopulation);
-    ADD_JIT_SYMBOL_TO_TABLE(ExpV8F32);
-    ADD_JIT_SYMBOL_TO_TABLE(LogV8F32);
-    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32);
-    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32);
+    ADD_JIT_SYMBOL_TO_TABLE(ExpV8F32AVX);
+    ADD_JIT_SYMBOL_TO_TABLE(LogV8F32AVX);
+    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32SSE);
+    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32SSE);
+    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32NEON);
+    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32NEON);
     ADD_JIT_SYMBOL_TO_TABLE(EigenConvF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF64);
@@ -162,8 +165,9 @@ llvm::StringRef GetHostCpuName() {
 
 CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
   CompilerFunctor::VectorIntrinsics intrinsics;
-  intrinsics.sse_intrinsics = (&__xla_cpu_runtime_ExpV4F32 != nullptr);
-  intrinsics.avx_intrinsics = (&__xla_cpu_runtime_ExpV8F32 != nullptr);
+  intrinsics.sse_intrinsics = (&__xla_cpu_runtime_ExpV4F32SSE != nullptr);
+  intrinsics.avx_intrinsics = (&__xla_cpu_runtime_ExpV8F32AVX != nullptr);
+  intrinsics.neon_intrinsics = (&__xla_cpu_runtime_ExpV4F32NEON != nullptr);
   return intrinsics;
 }
 
@@ -171,9 +175,10 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
-                           bool optimize_for_size,
-                           CompilerFunctor::ModuleHook pre_optimization_hook,
-                           CompilerFunctor::ModuleHook post_optimization_hook)
+                           bool optimize_for_size, bool enable_fast_math,
+                           bool disable_expensive_passes,
+                           LLVMCompiler::ModuleHook pre_optimization_hook,
+                           LLVMCompiler::ModuleHook post_optimization_hook)
     : target_machine_(
           CHECK_NOTNULL(llvm::EngineBuilder()
                             .setTargetOptions(target_options)
@@ -189,7 +194,8 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
       compile_layer_(
           object_layer_,
           CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
-                          optimize_for_size, GetAvailableIntrinsics(),
+                          optimize_for_size, enable_fast_math,
+                          disable_expensive_passes, GetAvailableIntrinsics(),
                           std::move(pre_optimization_hook),
                           std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()

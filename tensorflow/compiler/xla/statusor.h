@@ -102,12 +102,12 @@ class StatusOr : private internal_statusor::StatusOrData<T>,
   // instead of a Status::UNKNOWN status.
   explicit StatusOr();
 
-  // StatusOr<T> will be copy constructuble/assignable if T is copy
+  // StatusOr<T> will be copy constructible/assignable if T is copy
   // constructible.
   StatusOr(const StatusOr&) = default;
   StatusOr& operator=(const StatusOr&) = default;
 
-  // StatusOr<T> will be move constructuble/assignable if T is move
+  // StatusOr<T> will be move constructible/assignable if T is move
   // constructible.
   StatusOr(StatusOr&&) = default;
   StatusOr& operator=(StatusOr&&) = default;

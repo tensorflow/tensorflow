@@ -36,5 +36,19 @@ void GetTensor(const Scope& scope, Output tensor, Tensor* out) {
   *out = outputs[0];
 }
 
+void GetTensors(const Scope& scope, const std::vector<Output>& assign_vars,
+                const OutputList& tensors, std::vector<Tensor>* out) {
+  ClientSession session(scope);
+  TF_CHECK_OK(session.Run(assign_vars, nullptr));
+  TF_CHECK_OK(session.Run(tensors, out));
+}
+
+void GetTensor(const Scope& scope, const std::vector<Output>& assign_vars,
+               Output tensor, Tensor* out) {
+  std::vector<Tensor> outputs;
+  GetTensors(scope, assign_vars, {std::move(tensor)}, &outputs);
+  *out = outputs[0];
+}
+
 }  // end namespace test
 }  // end namespace tensorflow

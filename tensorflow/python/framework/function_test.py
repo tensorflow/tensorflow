@@ -33,6 +33,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -63,11 +64,85 @@ def _OptimizerOptions():
                 do_constant_folding=cfold)))
 
 
+@test_util.with_c_api
 class FunctionTest(test.TestCase):
+  """Test methods for verifying Function support.
+
+  These test methods are used as mix-ins in two test cases: with
+  and without C API support.
+  """
+
+  def testIdentity(self):
+
+    @function.Defun(dtypes.float32, func_name="MyIdentity")
+    def MyIdentityFunc(a):
+      return a
+
+    with ops.Graph().as_default():
+      call = MyIdentityFunc([18.0])
+      self.assertEqual("MyIdentity", call.op.name)
+      with session.Session() as sess:
+        self.assertAllEqual([18.0], sess.run(call))
+
+  def testIdentityOutputName(self):
+
+    @function.Defun(
+        dtypes.float32, func_name="MyIdentity", out_names=["my_result_name"])
+    def MyIdentityFunc(a):
+      return a
+
+    with ops.Graph().as_default():
+      call = MyIdentityFunc([18.0])
+      self.assertEqual("MyIdentity", call.op.name)
+      with session.Session() as sess:
+        self.assertAllEqual([18.0], sess.run(call))
+
+  def testTooManyOutputNames(self):
+
+    @function.Defun(
+        dtypes.float32, func_name="MyIdentity",
+        out_names=["my_result1", "my_result2"])
+    def MyIdentityFunc(a):
+      return a
+
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(
+          ValueError, (r"Length of out_names \(2\) does not match number of "
+                       r"outputs \(1\): my_result1, my_result2")):
+        MyIdentityFunc([18.0])
 
   def testDefineFunction2Args(self):
 
     @function.Defun(dtypes.float32, dtypes.float32, func_name="APlus2B")
+    def APlus2B(a, b):
+      return a + b * 2
+
+    with ops.Graph().as_default():
+      call = APlus2B([1.0], [2.0])
+      self.assertEqual("APlus2B", call.op.name)
+      with session.Session() as sess:
+        self.assertAllEqual([5.0], sess.run(call))
+
+  def testValueErrorOnFunctionWithNoOutput(self):
+    # TODO(iga): Remove this restriction and this test
+
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def APlus2B(a, b):
+      print(a + b * 2)  # Create some ops to have nodes in the body
+      # Using 'print' to make lint happy
+
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError,
+                                   "Function can not return None"):
+        APlus2B([1.0], [2.0])
+
+  def testDefineFunction2ArgsOutputName(self):
+
+    @function.Defun(
+        dtypes.float32,
+        dtypes.float32,
+        func_name="APlus2B",
+        out_names=["my_result_name"])
     def APlus2B(a, b):
       return a + b * 2
 
@@ -312,6 +387,7 @@ class FunctionTest(test.TestCase):
                                    "assertion failed.*-3"):
         self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
 
+  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testAssertWrapper(self):
 
     @function.Defun(dtypes.float32)
@@ -326,6 +402,7 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
+  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testWhileLoopCallsFunc(self):
     with self.test_session(use_gpu=True) as sess:
 
@@ -345,6 +422,7 @@ class FunctionTest(test.TestCase):
       ans = sess.run(loop)
       self.assertAllClose(ans, 131072.)
 
+  @test_util.disable_c_api   # Op._add_control_inputs doesn't work with C API
   def testControlFlowStrictness(self):
     """Inlined functions must not execute in a untaken control flow branch."""
 
@@ -607,87 +685,6 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
-  def testDeclare(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def FooImpl(x):
-      return x * x + 1
-
-    x = array_ops.placeholder(dtypes.float32)
-    y = foo(x)
-
-    g = ops.get_default_graph()
-    FooImpl.add_to_graph(g)
-
-    with self.test_session():
-      rand = np.random.uniform(size=(3, 3))
-      expected = rand * rand + 1.0
-      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
-
-  def testDeclareUsedInDefun(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun()
-    def Bar(x):
-      return foo(x)
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def FooImpl(x):
-      return x * x + 1
-
-    x = array_ops.placeholder(dtypes.float32)
-    y = Bar(x)
-
-    g = ops.get_default_graph()
-    FooImpl.add_to_graph(g)
-
-    with self.test_session():
-      rand = np.random.uniform(size=(3, 3))
-      expected = rand * rand + 1.0
-      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
-
-  def testDeclareTypeMistake(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def Foo(x):
-      return x * x + 1
-
-    g = ops.Graph()
-    with g.as_default():
-      y = foo(2.0)
-      with self.test_session(graph=g):
-        with self.assertRaisesRegexp(errors_impl.NotFoundError,
-                                     "not registered"):
-          _ = y.eval()
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      y = foo(2)
-      with self.test_session(graph=g):
-        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                     "int32.*float"):
-          _ = y.eval()
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      with self.assertRaisesRegexp(
-          ValueError, "Expected number of arguments: 1, received: 2"):
-        _ = foo(2.0, 2.0)
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      y = foo(2.0)
-      with self.test_session(graph=g):
-        self.assertAllEqual(y.eval(), 5.0)
-
   def testCapture(self):
     g = ops.Graph()
     with g.as_default():
@@ -861,6 +858,7 @@ class FunctionTest(test.TestCase):
     self.assertEqual(len(f.signature.input_arg), 3)
 
 
+@test_util.with_c_api
 class FunctionsFromProtos(test.TestCase):
 
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
@@ -1051,6 +1049,7 @@ class FunctionsFromProtos(test.TestCase):
       function._from_library(library)
 
 
+@test_util.with_c_api
 class FunctionOverloadTest(test.TestCase):
 
   def testBasic(self):
@@ -1103,6 +1102,37 @@ class FunctionOverloadTest(test.TestCase):
                      "Successor of x.")
 
 
+@test_util.with_c_api
+class FunctionCaptureByValueTest(test.TestCase):
+
+  def testCaptureByValue(self):
+    g = ops.Graph()
+    with g.as_default():
+      w = constant_op.constant([[1.0]])
+      b = constant_op.constant([2.0])
+
+      # Foo() captures w and b.
+      @function.Defun(dtypes.float32, capture_by_value=True)
+      def Foo(x):
+
+        # Plus() captures b.
+        @function.Defun(dtypes.float32, capture_by_value=True)
+        def Plus(y):
+          return y + b
+
+        self.assertEqual(0, len(Plus.captured_inputs))
+
+        return Plus(math_ops.matmul(w, x))
+
+      y = Foo(constant_op.constant([[10.]]))
+
+    self.assertEqual(0, len(Foo.captured_inputs))
+
+    with self.test_session(graph=g):
+      self.assertAllEqual(y.eval(), [[12.0]])
+
+
+@test_util.with_c_api
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1238,6 +1268,7 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
+@test_util.with_c_api
 class FunctionInlineControlTest(test.TestCase):
 
   def testFoo(self):
@@ -1305,6 +1336,24 @@ def Linear2(w1, b1, w2, b2, x):
   return Linear(w2, b2, Linear(w1, b1, x))
 
 
+# Set C API before defining module level functions
+ops._USE_C_API = True
+
+
+@function.Defun(*[dtypes.float32] * 3)
+def LinearWithCApi(w, b, x):
+  return nn_ops.relu(math_ops.matmul(x, w) + b)
+
+
+@function.Defun(*[dtypes.float32] * 5)
+def Linear2WithCApi(w1, b1, w2, b2, x):
+  return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
+
+
+# Unset C API after defining module level functions
+ops._USE_C_API = False
+
+
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
@@ -1318,7 +1367,20 @@ class ModuleFunctionTest(test.TestCase):
         self.assertAllEqual([[1]], sess.run(y))
         self.assertAllEqual([[5]], sess.run(z))
 
+  @test_util.enable_c_api
+  def testBasicWithCApi(self):
+    with ops.Graph().as_default():
+      a, b, c, d, e = [
+          constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
+      ]
+      y = LinearWithCApi(a, b, c)
+      z = Linear2WithCApi(a, b, c, d, e)
+      with session.Session() as sess:
+        self.assertAllEqual([[1]], sess.run(y))
+        self.assertAllEqual([[5]], sess.run(z))
 
+
+@test_util.with_c_api
 class VariableHoistingTest(test.TestCase):
 
   def _testSimpleModel(self, use_forward_func, use_resource=False):

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -55,10 +56,11 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(const string& name, bool is_fusion_computation = false)
+    explicit Builder(const string& name,
+                     HloInstruction* fusion_instruction = nullptr)
         : name_(name),
           last_added_instruction_(nullptr),
-          is_fusion_computation_(is_fusion_computation) {}
+          fusion_instruction_(fusion_instruction) {}
 
     // Build and return an HloComputation. The parameter root_instruction
     // specifies the already-added instruction to use as the root. If
@@ -77,7 +79,7 @@ class HloComputation {
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
-    bool is_fusion_computation_;
+    HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
   };
 
@@ -112,8 +114,8 @@ class HloComputation {
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
-  // the result of the computation.
-  void set_root_instruction(HloInstruction* instruction);
+  // the result of the computation for non fusion computations.
+  void set_root_instruction(HloInstruction* new_root_instruction);
 
   // Return the root instruction of the computation. The root instruction is the
   // instruction which produces the output of the computation.
@@ -125,7 +127,8 @@ class HloComputation {
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64 param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()));
+    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()))
+        << "Computation " << name() << " has no parameter number " << param_no;
     return param_instructions_[param_no];
   }
 
@@ -199,8 +202,16 @@ class HloComputation {
   // producing the copied result. All instructions performing the copy are added
   // to the computation. For array-shaped values, this method trivially returns
   // a kCopy instruction. For tuple-shaped instructions, the copy is performed
-  // with a series of kGetTupleElement and kTuple instructions.
-  StatusOr<HloInstruction*> DeepCopyInstruction(HloInstruction* instruction);
+  // with a series of kGetTupleElement and kTuple instructions. If
+  // indices_to_copy is non-null then this ShapeTree indicates which elements
+  // (arrays) of the shape to copy. Non-copied elements are passed through
+  // transparently. If copies_added is non-null, then the added kCopy
+  // instructions will be inserted in the respective index in the given
+  // ShapeTree.
+  StatusOr<HloInstruction*> DeepCopyInstruction(
+      HloInstruction* instruction,
+      const ShapeTree<bool>* indices_to_copy = nullptr,
+      ShapeTree<HloInstruction*>* copies_added = nullptr);
 
   // Computes and returns the ProgramShape of this computation (shape of
   // parameters and result without layout).
@@ -264,13 +275,18 @@ class HloComputation {
   bool HasSideEffect() const;
 
   // Returns if this computation is a fusion computation.
-  bool IsFusionComputation() const { return is_fusion_computation_; }
+  bool IsFusionComputation() const { return fusion_instruction_ != nullptr; }
+
+  // Returns the owning fusion instruction, or nullptr if this is not a fusion
+  // computation.
+  HloInstruction* FusionInstruction() const { return fusion_instruction_; }
 
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, bool is_fusion_computation = false);
+      HloInstruction* root_instruction,
+      HloInstruction* fusion_instruction = nullptr);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -287,9 +303,11 @@ class HloComputation {
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
       HloInstruction* fusion_instruction);
 
-  // Internal helper for copying a tuple value. Creates and returns a deep copy
-  // of the given instruction. The given instruction must be tuple-shaped.
-  StatusOr<HloInstruction*> DeepCopyTuple(HloInstruction* instruction);
+  // Internal helper for recursive copying of an instruction. Creates and
+  // returns a deep copy of the given instruction.
+  StatusOr<HloInstruction*> DeepCopyHelper(
+      HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
+      ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index);
 
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
@@ -297,8 +315,9 @@ class HloComputation {
   string name_;
   HloInstruction* root_instruction_;
 
-  // A tag shows if this is a fusion computation.
-  bool is_fusion_computation_;
+  // If this computation is a fusion computation, this field points to the
+  // corresponding fusion instruction.  Otherwise, this is null.
+  HloInstruction* fusion_instruction_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

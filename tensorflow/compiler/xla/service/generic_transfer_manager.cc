@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,21 +35,19 @@ namespace se = ::perftools::gputools;
 
 namespace xla {
 
-GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id)
-    : platform_id_(platform_id) {
-  // We currently only support kHostPlatformId for CPU and kCudaPlatformId for
-  // GPU. Before supporting other platforms, we need to test this transfer
-  // manager on them.
+GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id,
+                                               size_t pointer_size)
+    : platform_id_(platform_id), pointer_size_(pointer_size) {
+  // We currently only support kHostPlatformId for CPU, kCudaPlatformId for
+  // GPU and kInterpreterPlatformId for Interpreter. Before supporting other
+  // platforms, we need to test this transfer manager on them.
   CHECK(platform_id_ == se::host::kHostPlatformId ||
+        platform_id_ == se::interpreter::kInterpreterPlatformId ||
         platform_id_ == se::cuda::kCudaPlatformId);
 }
 
 se::Platform::Id GenericTransferManager::PlatformId() const {
-  if (platform_id_ == se::cuda::kCudaPlatformId ||
-      platform_id_ == se::host::kHostPlatformId) {
-    return platform_id_;
-  }
-  CHECK(false) << "GenericTransferManager::platform_id_ is invalid";
+  return platform_id_;
 }
 
 Status GenericTransferManager::TransferLiteralFromDevice(
@@ -87,7 +86,7 @@ Status GenericTransferManager::TransferLiteralFromDevice(
       executor, source, /*size=*/ShapeUtil::ByteSizeOf(device_shape),
       /*destination=*/literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    literal->Swap(literal->Relayout(literal_shape.layout()).get());
+    *literal = std::move(*literal->Relayout(literal_shape.layout()));
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -127,6 +126,23 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
     destination.emplace_back(element_pointers[i], buffer_size);
   }
   return std::move(destination);
+}
+
+Status GenericTransferManager::WriteTuplePointersToDevice(
+    perftools::gputools::StreamExecutor* executor,
+    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+    const Shape& shape, perftools::gputools::DeviceMemoryBase* region) {
+  TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
+
+  std::vector<const void*> element_pointers;
+  for (const se::DeviceMemoryBase& element : elements) {
+    element_pointers.push_back(element.opaque());
+  }
+  int64 tuple_size =
+      ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
+
+  return TransferBufferToDevice(executor, tuple_size, element_pointers.data(),
+                                region);
 }
 
 Status GenericTransferManager::TransferLiteralToDevice(

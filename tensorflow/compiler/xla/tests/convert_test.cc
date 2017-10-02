@@ -176,7 +176,7 @@ TEST_F(ConvertTest, ConvertMapToS32) {
   auto param = b->Parameter(0, ShapeUtil::MakeShape(F32, {}), "in");
   b->ConvertElementType(param, S32);
   auto a = builder.ConstantR1<float>({42.0f, 64.0f});
-  builder.Map({a}, b->BuildAndNoteError());
+  builder.Map({a}, b->BuildAndNoteError(), {0});
 
   std::vector<int32> expected = {42, 64};
   ComputeAndCompareR1<int32>(&builder, expected, {});
@@ -188,7 +188,7 @@ TEST_F(ConvertTest, ConvertMapToF32) {
   auto param = b->Parameter(0, ShapeUtil::MakeShape(S32, {}), "in");
   b->ConvertElementType(param, F32);
   auto a = builder.ConstantR1<int32>({42, 64});
-  builder.Map({a}, b->BuildAndNoteError());
+  builder.Map({a}, b->BuildAndNoteError(), {0});
 
   std::vector<float> expected = {42.0f, 64.0f};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));

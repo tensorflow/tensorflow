@@ -31,6 +31,7 @@ from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.export import export_output
 from tensorflow.python.estimator.inputs import numpy_io
@@ -124,6 +125,12 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
         return input_fn()
 
       def _create_global_step(self, graph):
+        pass
+
+      def _convert_train_steps_to_hooks(self, steps, max_steps):
+        pass
+
+      def _convert_eval_steps_to_hooks(self, steps):
         pass
 
     _Estimator()
@@ -292,6 +299,26 @@ class EstimatorConstructorTest(test.TestCase):
         _, _, _ = features, labels, mode
 
     ModelFnClass()
+
+  def test_model_fn_property_binds_params(self):
+
+    def model_fn(features, labels, mode, config, params):
+      _, _, _, _, _ = features, labels, mode, config, params
+
+    est = estimator.Estimator(model_fn=model_fn)
+    model_fn_args = util.fn_args(est.model_fn)
+    self.assertEqual(
+        set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
+
+  def test_model_fn_property_returns_fixed_signature(self):
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(model_fn=model_fn)
+    model_fn_args = util.fn_args(est.model_fn)
+    self.assertEqual(
+        set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
 
 
 def dummy_input_fn():
@@ -545,6 +572,13 @@ class EstimatorTrainTest(test.TestCase):
     est.train(dummy_input_fn, steps=5)
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
+
+  def test_latest_checkpoint(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    self.assertIsNone(est.latest_checkpoint())
+    est.train(dummy_input_fn, steps=5)
+    self.assertIsNotNone(est.latest_checkpoint())
+    self.assertTrue(est.latest_checkpoint().startswith(est.model_dir))
 
   def test_steps_and_saves_reloads(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
@@ -943,9 +977,7 @@ class EstimatorEvaluateTest(test.TestCase):
         model_fn=_model_fn_with_eval_metric_ops,
         params=params)
     scores = est2.evaluate(
-        dummy_input_fn,
-        steps=1,
-        checkpoint_path=saver.latest_checkpoint(est1.model_dir))
+        dummy_input_fn, steps=1, checkpoint_path=est1.latest_checkpoint())
     self.assertEqual(5, scores['global_step'])
 
   def test_scaffold_is_used(self):
@@ -1287,12 +1319,11 @@ class EstimatorPredictTest(test.TestCase):
     est1 = estimator.Estimator(model_fn=_model_fn)
     est1.train(dummy_input_fn, steps=1)
     est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
-    self.assertEqual(
-        [32.],
-        next(
-            est2.predict(
-                dummy_input_fn,
-                checkpoint_path=saver.latest_checkpoint(est1.model_dir))))
+    self.assertEqual([32.],
+                     next(
+                         est2.predict(
+                             dummy_input_fn,
+                             checkpoint_path=est2.latest_checkpoint())))
 
   def test_scaffold_is_used(self):
 

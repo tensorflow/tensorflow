@@ -32,7 +32,8 @@ const char* const kTanhV8F32SymbolName = "__xla_cpu_runtime_TanhV8F32";
 namespace {
 llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
                                           llvm::StringRef function_name,
-                                          int vector_width) {
+                                          int vector_width,
+                                          bool enable_fast_math) {
   llvm::Function* vector_tanh_function = module->getFunction(function_name);
   if (vector_tanh_function == nullptr) {
     // If the function declaration is not present in the module, there can't be
@@ -44,11 +45,6 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
   llvm::Type* float_type = llvm::Type::getFloatTy(*context);
   llvm::VectorType* vector_type =
       llvm::VectorType::get(float_type, vector_width);
-
-  llvm::Function* min_intrinsic = llvm::Intrinsic::getDeclaration(
-      module, llvm::Intrinsic::minnum, vector_type);
-  llvm::Function* max_intrinsic = llvm::Intrinsic::getDeclaration(
-      module, llvm::Intrinsic::maxnum, vector_type);
 
   llvm::BasicBlock* vector_tanh_body =
       llvm::BasicBlock::Create(*context, "body", vector_tanh_function);
@@ -63,11 +59,10 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
   CHECK_EQ(input->getType(), vector_type);
 
   // This implements the same rational interpolant as implemented in Eigen3.
-  llvm::Value* input_clamped = ir_builder.CreateCall(
-      min_intrinsic,
-      {ir_builder.CreateCall(max_intrinsic,
-                             {input, llvm::ConstantFP::get(vector_type, -9.0)}),
-       llvm::ConstantFP::get(vector_type, 9.0)});
+  llvm::Value* input_clamped = llvm_ir::EmitFloatMin(
+      llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(vector_type, -9.0),
+                            &ir_builder),
+      llvm::ConstantFP::get(vector_type, 9.0), &ir_builder);
 
   std::array<float, 7> numerator_coeffs(
       {{-2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
@@ -105,11 +100,13 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
 }
 }  // namespace
 
-void RewriteIRRuntimeFunctions(llvm::Module* module) {
-  auto* tanh_v4f32 = EmitVectorF32TanhIfNeeded(module, kTanhV4F32SymbolName,
-                                               /*vector_width=*/4);
-  auto* tanh_v8f32 = EmitVectorF32TanhIfNeeded(module, kTanhV8F32SymbolName,
-                                               /*vector_width=*/8);
+void RewriteIRRuntimeFunctions(llvm::Module* module, bool enable_fast_math) {
+  auto* tanh_v4f32 =
+      EmitVectorF32TanhIfNeeded(module, kTanhV4F32SymbolName,
+                                /*vector_width=*/4, enable_fast_math);
+  auto* tanh_v8f32 =
+      EmitVectorF32TanhIfNeeded(module, kTanhV8F32SymbolName,
+                                /*vector_width=*/8, enable_fast_math);
 
   // Gather all the call sites, force inline them and then delete the vector
   // function bodies.

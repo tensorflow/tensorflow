@@ -54,23 +54,19 @@ namespace xla {
   }
 
   BackendOptions backend_options;
-  backend_options.set_platform(platform)
-      .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads());
+  backend_options.set_platform(platform).set_intra_op_parallelism_threads(
+      options.intra_op_parallelism_threads());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
                       Backend::CreateBackend(backend_options));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
-                      CreateComputeConstantBackend());
-  std::unique_ptr<LocalService> service(new LocalService(
-      options, std::move(backend), std::move(compute_constant_backend)));
+  std::unique_ptr<LocalService> service(
+      new LocalService(options, std::move(backend)));
   return std::move(service);
 }
 
 LocalService::LocalService(const ServiceOptions& options,
-                           std::unique_ptr<Backend> execute_backend,
-                           std::unique_ptr<Backend> compute_constant_backend)
-    : Service(options, std::move(execute_backend),
-              std::move(compute_constant_backend)) {}
+                           std::unique_ptr<Backend> execute_backend)
+    : Service(options, std::move(execute_backend)) {}
 
 namespace {
 // Returns the space required to allocate a shape. If
@@ -91,21 +87,6 @@ int64 RequiredSpace(const Shape& shape, bool allocate_space_for_deep_copy,
   return size;
 }
 }  // namespace
-
-StatusOr<GlobalDataHandle> LocalService::AllocateBufferOnDevice(
-    const Shape& shape, int device_ordinal, bool allocate_space_for_deep_copy) {
-  int64 allocation_size = RequiredSpace(shape, allocate_space_for_deep_copy,
-                                        execute_backend_->transfer_manager());
-
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase allocation,
-                      execute_backend_->memory_allocator()->Allocate(
-                          device_ordinal, allocation_size));
-
-  return allocation_tracker_.Register(
-      execute_backend_.get(), device_ordinal, allocation, shape,
-      tensorflow::strings::StrCat("AllocateBufferOnDevice of size ",
-                                  allocation_size));
-}
 
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const ComputationHandle& computation,
@@ -161,7 +142,6 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   std::vector<perftools::gputools::DeviceMemoryBase> argument_buffers(
       argument_layouts.size());
   return BuildExecutable(versioned_handle, std::move(module_config),
-                         /*executable_for_compute_constant=*/false,
                          argument_buffers, execute_backend_.get(), executor);
 }
 

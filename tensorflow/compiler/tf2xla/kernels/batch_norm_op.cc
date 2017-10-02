@@ -39,28 +39,36 @@ class FusedBatchNormOp : public XlaOpKernel {
           errors::InvalidArgument("Not supported format"));
       feature_index_ = GetTensorFeatureDimIndex(/*num_dims=*/4, tensor_format);
     }
-    // TODO(b/62843645): Implement BatchNormInference.
-    OP_REQUIRES(
-        ctx, is_training_,
-        errors::InvalidArgument("Fused batch normalization for inference is "
-                                "not supported yet on XLA backend."));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationDataHandle output = ctx->builder()->BatchNormTraining(
-        ctx->Input(0), ctx->Input(1), ctx->Input(2), epsilon_, feature_index_);
+    if (is_training_) {
+      xla::ComputationDataHandle output = ctx->builder()->BatchNormTraining(
+          ctx->Input(0), ctx->Input(1), ctx->Input(2), epsilon_,
+          feature_index_);
 
-    // In training mode, outputs the normalized value as well as the calculated
-    // mean and variance.
-    for (int i = 0; i < 3; i++) {
-      ctx->SetOutput(i, ctx->builder()->GetTupleElement(output, i));
+      // In training mode, outputs the normalized value as well as the
+      // calculated mean and variance.
+      for (int i = 0; i < 3; i++) {
+        ctx->SetOutput(i, ctx->builder()->GetTupleElement(output, i));
+      }
+      // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
+      // space 1 & 2". They are used to pass the per-batch mean and
+      // variance to the gradient. Here we maintain the same behavior by setting
+      // them to the mean and variance calculated by BatchNormTraining.
+      ctx->SetOutput(3, ctx->builder()->GetTupleElement(output, 1));
+      ctx->SetOutput(4, ctx->builder()->GetTupleElement(output, 2));
+    } else {
+      xla::ComputationDataHandle output = ctx->builder()->BatchNormInference(
+          ctx->Input(0), ctx->Input(1), ctx->Input(2), ctx->Input(3),
+          ctx->Input(4), epsilon_, feature_index_);
+      ctx->SetOutput(0, output);
+      // Directly send input to output as mean and variance in inference mode.
+      ctx->SetOutput(1, ctx->Input(3));
+      ctx->SetOutput(2, ctx->Input(4));
+      ctx->SetOutput(3, ctx->Input(3));
+      ctx->SetOutput(4, ctx->Input(4));
     }
-    // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
-    // space 1 & 2". They are used to pass the per-batch mean and
-    // variance to the gradient. Here we maintain the same behavior by setting
-    // them to the mean and variance calculated by BatchNormTraining.
-    ctx->SetOutput(3, ctx->builder()->GetTupleElement(output, 1));
-    ctx->SetOutput(4, ctx->builder()->GetTupleElement(output, 2));
   }
 
  private:
@@ -77,6 +85,10 @@ class FusedBatchNormGradOp : public XlaOpKernel {
     string data_format;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    bool is_training;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("is_training", &is_training));
+    CHECK(is_training) << "FusedBatchNormGradOp with is_training=False cannot "
+                          "be used with XLA for now!";
     TensorFormat tensor_format;
     if (ctx->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(ctx, FormatFromString(data_format, &tensor_format),

@@ -63,6 +63,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "local_variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "reuse_variables"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

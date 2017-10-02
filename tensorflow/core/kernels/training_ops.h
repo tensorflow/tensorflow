@@ -35,15 +35,6 @@ struct ApplyGradientDescent {
 };
 
 template <typename Device, typename T>
-struct ApplyDelayCompensatedGradientDescent {
-  void operator()(const Device& d, typename TTypes<T>::Flat var,
-                  typename TTypes<T>::ConstScalar alpha,
-                  typename TTypes<T>::ConstFlat delta,
-                  typename TTypes<T>::ConstScalar lambda,
-                  typename TTypes<T>::Flat shadow);
-};
-
-template <typename Device, typename T>
 struct ApplyAdadelta {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,

@@ -14,7 +14,7 @@ Machines (SVMs). If you are new to kernel methods, refer to either of the
 following sources for an introduction:
 
 * If you have a strong mathematical background:
-[Kernel Methods in Machine Learning](http://www.kernel-machines.org/publications/pdfs/0701907.pdf)
+[Kernel Methods in Machine Learning](https://arxiv.org/pdf/math/0701907.pdf)
 * [Kernel method wikipedia page](https://en.wikipedia.org/wiki/Kernel_method)
 
 Currently, TensorFlow supports explicit kernel mappings for dense features only;

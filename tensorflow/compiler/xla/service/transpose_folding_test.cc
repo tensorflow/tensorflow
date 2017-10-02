@@ -30,12 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
 
-class TransposeFoldingTest : public ::testing::Test {
+class TransposeFoldingTest : public HloTestBase {
  protected:
   void FoldTranspose(HloModule* module) {
     TransposeFolding transpose_folding(
@@ -365,4 +367,5 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
       << "entry_computation should contain exactly 4 instructions.";
 }
 
+}  // namespace
 }  // namespace xla

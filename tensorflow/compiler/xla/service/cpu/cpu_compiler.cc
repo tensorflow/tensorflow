@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -198,8 +200,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
     CollectProfileCandidates profile_candidates_for_computation(
         &hlo_to_profile_idx);
-    TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
-        &profile_candidates_for_computation));
+    TF_RETURN_IF_ERROR(
+        computation->Accept(&profile_candidates_for_computation));
     return hlo_to_profile_idx;
   }
 
@@ -212,6 +214,14 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     hlo_to_profile_idx_->insert({hlo_instruction, hlo_to_profile_idx_->size()});
     return Status::OK();
   }
+
+  Status HandleCall(HloInstruction* call) override {
+    TF_RETURN_IF_ERROR(DefaultAction(call));
+    CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_);
+    TF_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
+    return Status::OK();
+  }
+
   // Skip constants, there is nothing to profile.
   Status HandleConstant(HloInstruction* /*constant*/,
                         const Literal& /*literal*/) override {
@@ -227,12 +237,11 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_condition()->root_instruction()->Accept(
-        &candidates_for_condition));
+    TF_RETURN_IF_ERROR(
+        xla_while->while_condition()->Accept(&candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(xla_while->while_body()->root_instruction()->Accept(
-        &candidates_for_body));
+    TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
 
     return Status::OK();
   }
@@ -244,15 +253,19 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 Status CpuCompiler::RunHloPasses(HloModule* module) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
-  pipeline.AddInvariantChecker<HloVerifier>();
+  pipeline.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
-      HloReducePrecisionOptions::BEFORE_OP_FUSION);
+      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
   // where we will take this pass in future.
   // pipeline.AddPass<Inliner>();
+
+  // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
+  // pass.
+  pipeline.AddPass<CallInliner>();
 
   pipeline.AddPass<ConvCanonicalization>();
   {
@@ -260,12 +273,14 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
     pass.AddPass<BatchNormRewriter>(
         /*rewrite_training_op=*/true,
+        /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true,
         /*use_fusion=*/false);
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_simplification=*/false);
+    pass.AddPass<TupleSimplifier>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
   }
@@ -282,7 +297,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
-      HloReducePrecisionOptions::AFTER_OP_FUSION);
+      ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout());
@@ -355,24 +370,28 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
 Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
   std::unique_ptr<tensorflow::WritableFile> f;
   TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
   TF_RETURN_IF_ERROR(f->Append(ir_module_string));
   TF_RETURN_IF_ERROR(f->Close());
   return Status::OK();
 }
 
-Status InitializeIRDumpHooks(
+Status InitializeModuleHooks(
     const HloModule& module,
-    CompilerFunctor::ModuleHook* pre_optimization_ir_dump_hook,
-    CompilerFunctor::ModuleHook* post_optimization_ir_dump_hook) {
+    const LLVMCompiler::ModuleHook& user_pre_optimization_hook,
+    const LLVMCompiler::ModuleHook& user_post_optimization_hook,
+    LLVMCompiler::ModuleHook* pre_optimization_ir_hook,
+    LLVMCompiler::ModuleHook* post_optimization_ir_hook) {
   const string& dump_ir_to = module.config().debug_options().xla_dump_ir_to();
   if (dump_ir_to.empty()) {
+    *pre_optimization_ir_hook = user_pre_optimization_hook;
+    *post_optimization_ir_hook = user_post_optimization_hook;
     return Status::OK();
   }
 
+  // Initialize the output directory and create the output file names.
   TF_RETURN_IF_ERROR(
       tensorflow::Env::Default()->RecursivelyCreateDir(dump_ir_to));
-
   string safe_file_name_base = module.name();
   std::replace_if(safe_file_name_base.begin(), safe_file_name_base.end(),
                   [](char c) { return c == '/' || c == '\\'; }, '_');
@@ -384,19 +403,32 @@ Status InitializeIRDumpHooks(
       dump_ir_to,
       tensorflow::strings::StrCat("ir-", safe_file_name_base, "-opt.ll"));
 
-  // We still want to append to avoid overwriting possibly important information
-  // due to operator error.
+  // Create the IR hooks. If applicable, each IR hook does the following:
+  // * Call the user supplied module hook.
+  // * Write to the output directory. Files will be appended to. We still want
+  //   to append to avoid overwriting possibly important information due to
+  //   operator error.
 
-  *pre_optimization_ir_dump_hook =
-      [unoptimized_ir_file_name](const llvm::Module& module) {
-        return AppendIRToFile(unoptimized_ir_file_name,
-                              llvm_ir::DumpModuleToString(module));
+  *pre_optimization_ir_hook =
+      [user_pre_optimization_hook,
+       unoptimized_ir_file_name](const llvm::Module& module) {
+        if (user_pre_optimization_hook) {
+          TF_RETURN_IF_ERROR(user_pre_optimization_hook(module));
+        }
+        TF_RETURN_IF_ERROR(AppendIRToFile(unoptimized_ir_file_name,
+                                          llvm_ir::DumpModuleToString(module)));
+        return Status::OK();
       };
 
-  *post_optimization_ir_dump_hook =
-      [optimized_ir_file_name](const llvm::Module& module) {
-        return AppendIRToFile(optimized_ir_file_name,
-                              llvm_ir::DumpModuleToString(module));
+  *post_optimization_ir_hook =
+      [user_post_optimization_hook,
+       optimized_ir_file_name](const llvm::Module& module) {
+        if (user_post_optimization_hook) {
+          TF_RETURN_IF_ERROR(user_post_optimization_hook(module));
+        }
+        TF_RETURN_IF_ERROR(AppendIRToFile(optimized_ir_file_name,
+                                          llvm_ir::DumpModuleToString(module)));
+        return Status::OK();
       };
 
   return Status::OK();
@@ -406,26 +438,33 @@ Status InitializeIRDumpHooks(
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  const string timer_message =
+      "Compiling [" + module->name() + "] for CPU using JIT";
+  ScopedLoggingTimer compiling_timer(timer_message, 1);
+
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
                  &InitializeLLVMCommandLineOptions, module->config());
 
-  CompilerFunctor::ModuleHook pre_optimization_ir_dump_hook;
-  CompilerFunctor::ModuleHook post_optimization_ir_dump_hook;
-  TF_RETURN_IF_ERROR(InitializeIRDumpHooks(*module,
-                                           &pre_optimization_ir_dump_hook,
-                                           &post_optimization_ir_dump_hook));
+  ModuleHook pre_optimization_ir_hook;
+  ModuleHook post_optimization_ir_hook;
+  TF_RETURN_IF_ERROR(InitializeModuleHooks(
+      *module, user_pre_optimization_hook_, user_post_optimization_hook_,
+      &pre_optimization_ir_hook, &post_optimization_ir_hook));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
+
   auto jit = MakeUnique<SimpleOrcJIT>(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
-      pre_optimization_ir_dump_hook, post_optimization_ir_dump_hook);
+      module->config().debug_options().xla_enable_fast_math(),
+      module->config().debug_options().xla_llvm_disable_expensive_passes(),
+      pre_optimization_ir_hook, post_optimization_ir_hook);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
@@ -462,6 +501,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         BufferAssigner::Run(module.get(),
                             MakeUnique<DependencyHloOrdering>(module.get()),
                             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
@@ -565,6 +607,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
             module.get(),
             MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
@@ -733,6 +778,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         BufferAssigner::Run(
             module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), memory_alignment));
+    // BufferAssignment::ToString() includes a header, so no need for us to
+    // print one ourselves.
+    XLA_VLOG_LINES(2, assignment->ToString());
 
     const string dump_debug_json_to =
         module->config().debug_options().xla_dump_debug_json_to();
@@ -765,18 +813,20 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                    /*is_entry_computation=*/true,
                                    &module_sequence.at(computation)));
 
-    entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
+    CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 
-    CompilerFunctor::ModuleHook pre_optimization_ir_dump_hook;
-    CompilerFunctor::ModuleHook post_optimization_ir_dump_hook;
-    TF_RETURN_IF_ERROR(InitializeIRDumpHooks(*module,
-                                             &pre_optimization_ir_dump_hook,
-                                             &post_optimization_ir_dump_hook));
+    ModuleHook pre_optimization_ir_dump_hook;
+    ModuleHook post_optimization_ir_dump_hook;
+    TF_RETURN_IF_ERROR(InitializeModuleHooks(
+        *module, user_pre_optimization_hook_, user_post_optimization_hook_,
+        &pre_optimization_ir_dump_hook, &post_optimization_ir_dump_hook));
 
     Disassembler disassembler(*target_machine);
     CompilerFunctor compiler_functor(
         target_machine.get(), &disassembler, opt_level,
         options::OptimizeForSizeRequested(module->config()),
+        module->config().debug_options().xla_enable_fast_math(),
+        module->config().debug_options().xla_llvm_disable_expensive_passes(),
         CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
         post_optimization_ir_dump_hook);
     llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =

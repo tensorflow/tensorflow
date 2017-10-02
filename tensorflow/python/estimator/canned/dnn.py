@@ -43,6 +43,92 @@ def _add_hidden_layer_summary(value, tag):
   summary.histogram('%s/activation' % tag, value)
 
 
+def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
+                          dropout, input_layer_partitioner):
+  """Function builder for a dnn logit_fn.
+
+  Args:
+    units: An int indicating the dimension of the logit layer, or a list of ints
+      to build multiple logits in the MultiHead case.
+    hidden_units: Iterable of integer number of hidden units per layer.
+    feature_columns: Iterable of `feature_column._FeatureColumn` model inputs.
+    activation_fn: Activation function applied to each layer.
+    dropout: When not `None`, the probability we will drop out a given
+      coordinate.
+    input_layer_partitioner: Partitioner for input layer.
+
+  Returns:
+    A logit_fn (see below).
+
+  Raises:
+    ValueError: If units is not an int or a list.
+  """
+  if not (isinstance(units, int) or isinstance(units, list)):
+    raise ValueError('units must be an int or list.  Given type: {}'.format(
+        type(units)))
+
+  def dnn_logit_fn(features, mode):
+    """Deep Neural Network logit_fn.
+
+    Args:
+      features: This is the first item returned from the `input_fn`
+                passed to `train`, `evaluate`, and `predict`. This should be a
+                single `Tensor` or `dict` of same.
+      mode: Optional. Specifies if this training, evaluation or prediction. See
+            `ModeKeys`.
+
+    Returns:
+      A `Tensor` representing the logits, or a list of `Tensor`'s representing
+      multiple logits in the MultiHead case.
+    """
+    with variable_scope.variable_scope(
+        'input_from_feature_columns',
+        values=tuple(six.itervalues(features)),
+        partitioner=input_layer_partitioner):
+      net = feature_column_lib.input_layer(
+          features=features, feature_columns=feature_columns)
+
+    for layer_id, num_hidden_units in enumerate(hidden_units):
+      with variable_scope.variable_scope(
+          'hiddenlayer_%d' % layer_id, values=(net,)) as hidden_layer_scope:
+        net = core_layers.dense(
+            net,
+            units=num_hidden_units,
+            activation=activation_fn,
+            kernel_initializer=init_ops.glorot_uniform_initializer(),
+            name=hidden_layer_scope)
+        if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
+          net = core_layers.dropout(net, rate=dropout, training=True)
+      _add_hidden_layer_summary(net, hidden_layer_scope.name)
+
+    if isinstance(units, int):
+      with variable_scope.variable_scope(
+          'logits', values=(net,)) as logits_scope:
+        logits = core_layers.dense(
+            net,
+            units=units,
+            activation=None,
+            kernel_initializer=init_ops.glorot_uniform_initializer(),
+            name=logits_scope)
+      _add_hidden_layer_summary(logits, logits_scope.name)
+    else:
+      logits = []
+      for head_index, logits_dimension in enumerate(units):
+        with variable_scope.variable_scope(
+            'logits_head_{}'.format(head_index), values=(net,)) as logits_scope:
+          these_logits = core_layers.dense(
+              net,
+              units=logits_dimension,
+              activation=None,
+              kernel_initializer=init_ops.glorot_uniform_initializer(),
+              name=logits_scope)
+        _add_hidden_layer_summary(these_logits, logits_scope.name)
+        logits.append(these_logits)
+    return logits
+
+  return dnn_logit_fn
+
+
 def _dnn_model_fn(
     features, labels, mode, head, hidden_units, feature_columns,
     optimizer='Adagrad', activation_fn=nn.relu, dropout=None,
@@ -93,38 +179,15 @@ def _dnn_model_fn(
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas,
             min_slice_size=64 << 20))
-    with variable_scope.variable_scope(
-        'input_from_feature_columns',
-        values=tuple(six.itervalues(features)),
-        partitioner=input_layer_partitioner):
-      net = feature_column_lib.input_layer(
-          features=features,
-          feature_columns=feature_columns)
 
-    for layer_id, num_hidden_units in enumerate(hidden_units):
-      with variable_scope.variable_scope(
-          'hiddenlayer_%d' % layer_id,
-          values=(net,)) as hidden_layer_scope:
-        net = core_layers.dense(
-            net,
-            units=num_hidden_units,
-            activation=activation_fn,
-            kernel_initializer=init_ops.glorot_uniform_initializer(),
-            name=hidden_layer_scope)
-        if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-          net = core_layers.dropout(net, rate=dropout, training=True)
-      _add_hidden_layer_summary(net, hidden_layer_scope.name)
-
-    with variable_scope.variable_scope(
-        'logits',
-        values=(net,)) as logits_scope:
-      logits = core_layers.dense(
-          net,
-          units=head.logits_dimension,
-          activation=None,
-          kernel_initializer=init_ops.glorot_uniform_initializer(),
-          name=logits_scope)
-    _add_hidden_layer_summary(logits, logits_scope.name)
+    logit_fn = _dnn_logit_fn_builder(
+        units=head.logits_dimension,
+        hidden_units=hidden_units,
+        feature_columns=feature_columns,
+        activation_fn=activation_fn,
+        dropout=dropout,
+        input_layer_partitioner=input_layer_partitioner)
+    logits = logit_fn(features=features, mode=mode)
 
     def _train_op_fn(loss):
       """Returns the op to optimize the loss."""

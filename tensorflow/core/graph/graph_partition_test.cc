@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -141,9 +142,17 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
   }
 }
 
-REGISTER_OP("FloatInput").Output("o: float");
-REGISTER_OP("BoolInput").Output("o: bool");
-REGISTER_OP("Combine").Input("a: float").Input("b: float").Output("o: float");
+REGISTER_OP("FloatInput")
+    .Output("o: float")
+    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("BoolInput")
+    .Output("o: bool")
+    .SetShapeFn(shape_inference::UnknownShape);
+REGISTER_OP("Combine")
+    .Input("a: float")
+    .Input("b: float")
+    .Output("o: float")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 Output ConstructOp(const Scope& scope, const string& op_type,
                    const gtl::ArraySlice<Input>& inputs) {
@@ -157,6 +166,8 @@ Output ConstructOp(const Scope& scope, const string& op_type,
   scope.UpdateBuilder(&builder);
   Node* ret;
   scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  if (!scope.ok()) return Output();
+  scope.UpdateStatus(scope.DoShapeInference(ret));
   if (!scope.ok()) return Output();
   return Output(ret);
 }

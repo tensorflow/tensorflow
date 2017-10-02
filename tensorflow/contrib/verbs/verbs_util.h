@@ -18,30 +18,12 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 
-class TensorProto;
-
 class VerbsUtil {
  public:
-  // synchronous wrapper of CopyGPUTensorToCPU
-  static Status CopyGPUTensorToCPUSync(Device* gpu_device,
-                                       const DeviceContext* device_context,
-                                       const Tensor* gpu_tensor,
-                                       Tensor* cpu_tensor);
-  // synchronous wrapper of CopyCPUTensorToGPU
-  static Status CopyCPUTensorToGPUSync(const Tensor* cpu_tensor,
-                                       const DeviceContext* device_context,
-                                       Device* gpu_device,
-                                       Tensor* gpu_tensor);
-  // synchronous wrapper of SetProtoFromGPU
-  static Status SetProtoFromGPUSync(const Tensor& tensor, Device* dev,
-                                    const DeviceContext* device_context,
-                                    TensorProto* proto, bool is_dead);
   static string AppendStepidToKey(const string& key, int64 step_id);
   static void GetKeyAndStepId(const string& key_with_step_id, string& key,
                               int64& step_id);

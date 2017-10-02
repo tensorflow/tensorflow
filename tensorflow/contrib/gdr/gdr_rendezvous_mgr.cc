@@ -1,5 +1,21 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 #include "tensorflow/contrib/gdr/gdr_rendezvous_mgr.h"
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -45,16 +61,20 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
         const bool on_host =
             (dst_device_->tensorflow_gpu_device_info() == nullptr) ||
             recv_args_.alloc_attrs.on_host();
-        Status s = remote_memory_manager_->TensorFromTransportOptions(
+        remote_memory_manager_->TensorFromTransportOptions(
             const_cast<Tensor*>(&tensor()), transport_options, dst_device_,
-            recv_args_.device_context, on_host);
-        if (!s.ok()) {
-          mutex_lock l(mu_);
-          status_.Update(s);
-          LOG(ERROR)
-              << "Cannot find pinned memory region from allocator "
-              << dst_device_->GetAllocator(recv_args_.alloc_attrs)->Name();
-        }
+            recv_args_.device_context, on_host,
+            [this, recv_done](const Status& s) {
+              if (!s.ok()) {
+                mutex_lock l(mu_);
+                status_.Update(s);
+                LOG(ERROR) << "Cannot find pinned memory region from allocator "
+                           << dst_device_->GetAllocator(recv_args_.alloc_attrs)
+                                  ->Name();
+              }
+              recv_done();
+            });
+        return;
       }
       if (!s.ok()) {
         mutex_lock l(mu_);

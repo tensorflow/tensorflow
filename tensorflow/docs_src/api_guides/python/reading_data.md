@@ -57,7 +57,7 @@ A typical pipeline for reading records from files has the following stages:
 7.  *Optional* preprocessing
 8.  Example queue
 
-Note: This section discusses implementing input pipelines useing the
+Note: This section discusses implementing input pipelines using the
 queue-based APIs which can be cleanly replaced by the ${$datasets$Dataset API}.
 
 ### Filenames, shuffling, and epoch limits
@@ -496,6 +496,6 @@ that allow the user to change the input pipeline without rebuilding the graph or
 session.
 
 Note: Regardless of the implementation, many
-operations (like ${tf.layers.batch_normalization}, and @{tf.layers.dropout})
+operations (like @{tf.layers.batch_normalization}, and @{tf.layers.dropout})
 need to know if they are in training or evaluation mode, and you must be
-careful to set this apropriately if you change the data source.
+careful to set this appropriately if you change the data source.

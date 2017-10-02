@@ -24,11 +24,13 @@ tf_kernel_library(
         "conv_ops.cc",
         "cross_op.cc",
         "cwise_ops.cc",
+        "depthtospace_op.cc",
         "diag_op.cc",
         "dynamic_stitch_op.cc",
         "elu_op.cc",
         "fill_op.cc",
         "function_ops.cc",
+        "gather_op.cc",
         "identity_op.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
@@ -39,6 +41,7 @@ tf_kernel_library(
         "pack_op.cc",
         "pad_op.cc",
         "pooling_ops.cc",
+        "quantize_and_dequantize_op.cc",
         "random_ops.cc",
         "reduction_ops.cc",
         "reduction_ops_common.cc",
@@ -54,6 +57,7 @@ tf_kernel_library(
         "slice_op.cc",
         "softmax_op.cc",
         "spacetobatch_op.cc",
+        "spacetodepth_op.cc",
         "split_op.cc",
         "stack_ops.cc",
         "strided_slice_op.cc",
@@ -67,6 +71,8 @@ tf_kernel_library(
     ],
     hdrs = [
         "cwise_ops.h",
+        "gather_op.h",
+        "gather_op_helpers.h",
         "reduction_ops.h",
     ],
     deps = [
@@ -80,10 +86,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:concat_lib",
         "//tensorflow/core/kernels:conv_ops",
@@ -109,7 +115,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
     ],
 )
 
@@ -121,7 +126,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "xla_cpu_only_ops",
     srcs = [
-        "gather_op.cc",
         "index_ops.cc",
     ],
     deps = [
@@ -135,63 +139,61 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:bounds_check",
     ],
 )
 
-tf_kernel_library(
+cc_library(
     name = "gather_op_kernel_float_int32",
     srcs = ["gather_op_kernel_float_int32.cc"],
-    # Makes the custom-call function visible to LLVM during JIT.
-    linkopts = export_dynamic_linkopts,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:gather_functor",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:gather_functor_hdr",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "gather_op_kernel_float_int64",
     srcs = ["gather_op_kernel_float_int64.cc"],
-    # Makes the custom-call function visible to LLVM during JIT.
-    linkopts = export_dynamic_linkopts,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:gather_functor",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:gather_functor_hdr",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
-    # Makes the custom-call function visible to LLVM during JIT.
-    linkopts = export_dynamic_linkopts,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "index_ops_kernel_argmax_float_2d",
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
-    # Makes the custom-call function visible to LLVM during JIT.
-    linkopts = export_dynamic_linkopts,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------

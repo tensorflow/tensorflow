@@ -31,7 +31,7 @@ struct Pad {
   // See pad_op.cc for details.
   void operator()(const Device& d, typename TTypes<T, Dims>::Tensor output,
                   typename TTypes<T, Dims>::ConstTensor input,
-                  Eigen::array<std::pair<int32, int32>, Dims> paddings,
+                  Eigen::array<Eigen::IndexPair<int32>, Dims> paddings,
                   T pad_value) {
     if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value &&
         (output.size() <= std::numeric_limits<int32>::max())) {
@@ -47,7 +47,7 @@ struct Pad<Device, T, 0> {
   // In the scalar case we simply copy the input.
   void operator()(const Device& d, typename TTypes<T, 0>::Tensor output,
                   typename TTypes<T, 0>::ConstTensor input,
-                  Eigen::array<std::pair<int32, int32>, 0>, T) {
+                  Eigen::array<Eigen::IndexPair<int32>, 0>, T) {
     output.device(d) = input;
   }
 };

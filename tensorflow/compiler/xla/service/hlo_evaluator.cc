@@ -167,7 +167,15 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleAbs(HloInstruction* abs, HloInstruction* operand) override {
     return HandleAbs<ReturnT>(abs, operand);
-  };
+  }
+
+  Status HandleRound(HloInstruction* round) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[round],
+                        ElementWiseUnaryOp(round, [](ReturnT elem_operand) {
+                          return std::round(elem_operand);
+                        }));
+    return Status::OK();
+  }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
     parent_->evaluated_[broadcast] =
@@ -177,16 +185,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
     std::vector<int64> broadcast_indices(
         ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
-
-    // Special case for broadcasting scalars: ignore broadcast dimension and
-    // broadcast to whatever the output dimension is.
-    // TODO(b/64533549): Remove the need of this once this bug is resolved.
-    if (ShapeUtil::IsScalar(operand_to_broadcast.shape())) {
-      return output->Populate<ReturnT>(
-          [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-            return operand_to_broadcast.Get<ReturnT>({});
-          });
-    }
 
     TF_RET_CHECK(broadcast->dimensions().size() ==
                  ShapeUtil::Rank(operand_to_broadcast.shape()))
@@ -483,14 +481,17 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
-    // Dimension number applicable for both input (lhs), and output.
-    const int64 batch_dim = dnums.batch_dimension();
-    const int64 z_dim = dnums.feature_dimension();
+    // Dimension number applicable for input (lhs).
+    const int64 input_batch_dim = dnums.input_batch_dimension();
+    const int64 input_z_dim = dnums.input_feature_dimension();
     // Dimension number applicable for kernel (rhs).
     const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
     const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+    // Dimension number applicable for output.
+    const int64 output_batch_dim = dnums.output_batch_dimension();
+    const int64 output_z_dim = dnums.output_feature_dimension();
 
-    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, z_dim);
+    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, input_z_dim);
 
     std::vector<int64> window_dimension_sizes;
     for (auto i : dnums.kernel_spatial_dimensions()) {
@@ -511,13 +512,13 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       std::fill(rhs_index.begin(), rhs_index.end(), 0);
       std::fill(rhs_spatial_index.begin(), rhs_spatial_index.end(), 0);
 
-      lhs_index[batch_dim] = out_index[batch_dim];
-      rhs_index[kernel_output_z_dim] = out_index[z_dim];
+      lhs_index[input_batch_dim] = out_index[output_batch_dim];
+      rhs_index[kernel_output_z_dim] = out_index[output_z_dim];
 
       // Convolve input feature with kernel.
       do {
         for (int64 iz = 0; iz < z_size; ++iz) {
-          lhs_index[z_dim] = iz;
+          lhs_index[input_z_dim] = iz;
           rhs_index[kernel_input_z_dim] = iz;
 
           // Find corresponding spatial dimension index for input (lhs).
@@ -900,6 +901,93 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
+  Status HandleReduceWindow(HloInstruction* reduce_window,
+                            HloInstruction* operand, const Window& window,
+                            HloComputation* function) override {
+    TF_ASSIGN_OR_RETURN(
+        auto inferred_return_shape,
+        ShapeInference::InferReduceWindowShape(
+            /*operand_shape=*/reduce_window->operand(0)->shape(),
+            /*init_value=*/reduce_window->operand(1)->shape(), window,
+            /*to_apply_shape=*/function->ComputeProgramShape()));
+    TF_RET_CHECK(
+        ShapeUtil::Compatible(reduce_window->shape(), inferred_return_shape))
+        << "return shape is set to: "
+        << ShapeUtil::HumanStringWithLayout(reduce_window->shape())
+        << "but is inferred to be: "
+        << ShapeUtil::HumanStringWithLayout(inferred_return_shape);
+
+    const Literal& operand_literal =
+        parent_->GetEvaluatedLiteralFor(reduce_window->operand(0));
+    VLOG(3) << "HandleReduceWindow arg_literal: " << operand_literal.ToString();
+    const Literal& init_literal =
+        parent_->GetEvaluatedLiteralFor(reduce_window->operand(1));
+    VLOG(3) << "HandleReduceWindow init_literal: " << init_literal.ToString();
+    TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
+    auto init_scalar = init_literal.Get<ReturnT>({});
+
+    auto result = Literal::CreateFromShape(reduce_window->shape());
+
+    // Creates a Shape object from window, for iteration below.
+    std::vector<int64> window_dimension_sizes;
+    for (const auto& window_dimension : window.dimensions()) {
+      window_dimension_sizes.push_back(window_dimension.size());
+    }
+    const Shape window_shape = ShapeUtil::MakeShape(
+        operand->shape().element_type(), window_dimension_sizes);
+
+    DimensionVector window_index(window.dimensions_size());
+    DimensionVector operand_index(ShapeUtil::Rank(operand_literal.shape()));
+
+    // For each resulting dimension, calculate and assign computed value.
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> output_index) {
+          ReturnT result_val = init_scalar;
+
+          std::fill(window_index.begin(), window_index.end(), 0);
+          std::fill(operand_index.begin(), operand_index.end(), 0);
+
+          do {
+            // Set curr_val to 0 if out of bound (padded).
+            ReturnT curr_val = static_cast<ReturnT>(0);
+            bool out_of_bound = false;
+            for (int i = 0; i < operand_index.size(); ++i) {
+              operand_index[i] =
+                  output_index[i] * window.dimensions(i).stride() +
+                  window_index[i] - window.dimensions(i).padding_low();
+              if (operand_index[i] < 0 ||
+                  operand_index[i] >= operand_literal.shape().dimensions(i)) {
+                out_of_bound = true;
+                break;
+              }
+            }
+            if (!out_of_bound) {
+              curr_val = operand_literal.Get<ReturnT>(operand_index);
+            }
+            // Evaluate computation with specified literal operands.
+            const auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
+            const auto result_val_literal =
+                Literal::CreateR0<ReturnT>(result_val);
+            const std::vector<const Literal*> args = {curr_val_literal.get(),
+                                                      result_val_literal.get()};
+            // We need a new visitor for each evaluation, so that the same
+            // computation can be visited more than once (with different
+            // inputs).
+            HloEvaluator embedded_evaluator;
+            std::unique_ptr<Literal> computed_result =
+                embedded_evaluator.Evaluate(*function, args)
+                    .ConsumeValueOrDie();
+
+            result_val = computed_result->Get<ReturnT>({});
+          } while (IndexUtil::BumpIndices(window_shape, &window_index));
+
+          return result_val;
+        }));
+
+    parent_->evaluated_[reduce_window] = std::move(result);
+    return Status::OK();
+  };
+
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override {
     const Shape& shape = slice->shape();
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
@@ -1070,7 +1158,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   HloEvaluator* parent_;
-};
+};  // namespace xla
 
 HloEvaluator::HloEvaluator() {
   typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);

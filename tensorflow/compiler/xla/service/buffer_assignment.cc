@@ -448,22 +448,22 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   for (LogicalBuffer::Id id = 0; id < points_to_analysis.num_logical_buffers();
        id++) {
     auto& buffer = points_to_analysis.logical_buffer(id);
-    if (HasAllocation(*buffer)) {
-      LogicalBufferProto proto_buffer = buffer->ToProto(buffer_size_);
+    if (HasAllocation(buffer)) {
+      LogicalBufferProto proto_buffer = buffer.ToProto(buffer_size_);
       proto.add_logical_buffers()->Swap(&proto_buffer);
 
       // Fill buffer aliases.
       for (const BufferAlias& alias :
-           points_to_analysis.GetBufferAliases(*buffer)) {
-        if (alias.instruction() == buffer->instruction() &&
-            alias.index() == buffer->index()) {
+           points_to_analysis.GetBufferAliases(buffer)) {
+        if (alias.instruction() == buffer.instruction() &&
+            alias.index() == buffer.index()) {
           continue;  // skip self-aliases
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
             proto.add_buffer_aliases();
         LogicalBufferProto::Location proto_alias_location =
             LogicalBuffer::ToLocationProto(*alias.instruction(), alias.index());
-        proto_alias->set_source_buffer_id(buffer->id());
+        proto_alias->set_source_buffer_id(buffer.id());
         proto_alias->mutable_location()->Swap(&proto_alias_location);
       }
     }
@@ -1121,6 +1121,7 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
   // Scan 'colocated_buffer_sets' in reverse order for locality; colocated sets
   // are added in postorder over computations and instructions.
   const int64 init_buffer_size = buffer_size(*while_init_buffer);
+  const bool is_live_out = buffer_liveness.MaybeLiveOut(*while_result_buffer);
   for (int i = colocated_buffer_sets->size() - 1; i >= 0; --i) {
     const ColocatedBufferSet& predecessor_set = (*colocated_buffer_sets)[i];
 
@@ -1141,6 +1142,20 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
       continue;
     }
 
+    // Skip predecessor sets with entry parameter if the while result is live
+    // out.
+    if (is_live_out &&
+        std::any_of(predecessor_set.begin(), predecessor_set.end(),
+                    [](const LogicalBuffer* buffer) {
+                      auto* instruction = buffer->instruction();
+                      auto* computation = instruction->parent();
+                      auto* module = computation->parent();
+                      return instruction->opcode() == HloOpcode::kParameter &&
+                             computation == module->entry_computation();
+                    })) {
+      continue;
+    }
+
     // Build vector of predecessor while result and init buffers, which are
     // checked for liveness interference below. We must check both the result
     // and init buffers because they're aliased together, but
@@ -1156,8 +1171,7 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
         // predecessor set, and must be unambiguous.
         const PointsToSet& init_points_to =
             points_to_analysis.GetPointsToSet(instruction->operand(0));
-        const std::vector<const LogicalBuffer*>& init_buffers =
-            init_points_to.element(buffer->index());
+        const auto& init_buffers = init_points_to.element(buffer->index());
         CHECK_EQ(init_buffers.size(), 1);
         CHECK_GT(predecessor_set.count(init_buffers[0]), 0);
         predecessor_while_buffers.push_back(init_buffers[0]);
@@ -1220,8 +1234,8 @@ const LogicalBuffer* AddBufferToColocatedSet(
     std::vector<const LogicalBuffer*>* colocated_set) {
   // CopyInsertion ensures root points-to set is unambiguous and distinct.
   const auto& points_to = points_to_analysis.GetPointsToSet(instruction);
-  CHECK(!points_to.IsAmbiguous());
-  CHECK(points_to.IsDistinct());
+  DCHECK(!points_to.IsAmbiguous());
+  DCHECK(points_to.IsDistinct());
   colocated_set->push_back(points_to.element(index)[0]);
   return colocated_set->back();
 }

@@ -23,6 +23,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
@@ -234,7 +235,8 @@ def _FilterTuple(v):
 def _FilterInt(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterInt(x) for x in v])
-  return None if isinstance(v, compat.integral_types) else _NotNone(v)
+  return None if isinstance(v, (compat.integral_types,
+                                tensor_shape.Dimension)) else _NotNone(v)
 
 
 def _FilterFloat(v):
@@ -312,10 +314,13 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     verify_shape:   Boolean that enables verification of a shape of values.
 
   Returns:
-    A TensorProto. Depending on the type, it may contain data in the
+    A `TensorProto`. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with tensor_util.MakeNdarray(proto).
+    with `tensor_util.MakeNdarray(proto)`.
+
+    If `values` is a `TensorProto`, it is immediately returned; `dtype` and
+    `shape` are ignored.
 
   Raises:
     TypeError:  if unsupported types are provided.
@@ -343,6 +348,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   can not have more elements than what "shape" specifies.
 
   """
+  if isinstance(values, tensor_pb2.TensorProto):
+    return values
+
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 
@@ -407,7 +415,8 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
 
   if dtype is not None and (not hasattr(dtype, "base_dtype") or
                             dtype.base_dtype != numpy_dtype.base_dtype):
-    raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
+    raise TypeError("Incompatible types: %s vs. %s. Value is %s"
+                    % (dtype, nparray.dtype, values))
 
   # If shape is not given, get the shape from the numpy array.
   if shape is None:
@@ -617,7 +626,7 @@ def _ConstantValue(tensor, partial):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims]),
+      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims], dtype=np.int32),
                         dtype=np.int32)
     else:
       return None
@@ -667,6 +676,9 @@ def _ConstantValue(tensor, partial):
     # and return None.
     if not tensor.op.inputs:
       return None
+    # We can't handle axis != 0 Packs at the moment.
+    if tensor.op.get_attr("axis") != 0:
+      return None
     for x in tensor.op.inputs:
       value = constant_value(x, partial)
       if value is None and not partial:
@@ -680,6 +692,22 @@ def _ConstantValue(tensor, partial):
       return np.full(fill_shape.as_list(), fill_value, dtype=fill_value.dtype)
     else:
       return None
+  elif tensor.op.type == "Equal":
+    value1 = constant_value(tensor.op.inputs[0])
+    if value1 is None:
+      return None
+    value2 = constant_value(tensor.op.inputs[1])
+    if value2 is None:
+      return None
+    return np.equal(value1, value2)
+  elif tensor.op.type == "NotEqual":
+    value1 = constant_value(tensor.op.inputs[0])
+    if value1 is None:
+      return None
+    value2 = constant_value(tensor.op.inputs[1])
+    if value2 is None:
+      return None
+    return np.not_equal(value1, value2)
   else:
     return None
 
@@ -711,6 +739,8 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
+  if isinstance(tensor, ops.EagerTensor):
+    return tensor.numpy()
   ret = _ConstantValue(tensor, partial)
   if ret is not None:
     # The caller may now depend on the constant value of `tensor`, so we
@@ -742,6 +772,9 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
     ret = tensor_shape.scalar()  # Empty list.
+    # Since we expect rank 1 inputs, Pack's axis must be zero, otherwise it
+    # would not be rank 1.
+    assert tensor.op.get_attr("axis") == 0
     for pack_input in tensor.op.inputs:
       # `pack_input` must be a scalar. Attempt to evaluate it, and append it
       # to `ret`.

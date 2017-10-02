@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -128,7 +129,7 @@ def piecewise_constant(x, boundaries, values, name=None):
     and values[-1] when `x > boundaries[-1]`.
 
   Raises:
-    ValueError: if types of `x` and `buondaries` do not match, or types of all
+    ValueError: if types of `x` and `boundaries` do not match, or types of all
         `values` do not match.
   """
   with ops.name_scope(name, "PiecewiseConstant",
@@ -137,11 +138,19 @@ def piecewise_constant(x, boundaries, values, name=None):
     # Avoid explicit conversion to x's dtype. This could result in faulty
     # comparisons, for example if floats are converted to integers.
     boundaries = ops.convert_n_to_tensor(boundaries)
-    for b in boundaries:
+    for i, b in enumerate(boundaries):
       if b.dtype.base_dtype != x.dtype.base_dtype:
-        raise ValueError(
-            "Boundaries (%s) must have the same dtype as x (%s)." % (
-                b.dtype.base_dtype, x.dtype.base_dtype))
+        # We can promote int32 boundaries to int64 without loss of precision.
+        # This covers the most common case where the user passes in boundaries
+        # as an array of Python integers.
+        if (b.dtype.base_dtype == dtypes.int32 and
+            x.dtype.base_dtype == dtypes.int64):
+          b = math_ops.cast(b, x.dtype.base_dtype)
+          boundaries[i] = b
+        else:
+          raise ValueError(
+              "Boundaries (%s) must have the same dtype as x (%s)." % (
+                  b.dtype.base_dtype, x.dtype.base_dtype))
     # TODO(rdipietro): Ensure that boundaries' elements are strictly increasing.
     values = ops.convert_n_to_tensor(values)
     for v in values[1:]:
@@ -251,8 +260,12 @@ def polynomial_decay(learning_rate, global_step, decay_steps,
     power = math_ops.cast(power, dtype)
     if cycle:
       # Find the first multiple of decay_steps that is bigger than global_step.
-      decay_steps = math_ops.multiply(decay_steps,
-                                      math_ops.ceil(global_step / decay_steps))
+      # If global_step is zero set the multiplier to 1
+      multiplier = control_flow_ops.cond(math_ops.equal(global_step, 0),
+                                         lambda: 1.0,
+                                         lambda: math_ops.ceil(
+                                             global_step / decay_steps))
+      decay_steps = math_ops.multiply(decay_steps, multiplier)
     else:
       # Make sure that the global_step used is not bigger than decay_steps.
       global_step = math_ops.minimum(global_step, decay_steps)

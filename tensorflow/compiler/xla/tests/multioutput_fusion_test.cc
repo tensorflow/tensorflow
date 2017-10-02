@@ -42,17 +42,15 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
-using tensorflow::gtl::ArraySlice;
-
 namespace xla {
 namespace {
 
-class MultiOutputFusionTest : public HloTestBase {
- public:
-  ErrorSpec error_spec_{0.0001, 1e-2};
+using ::tensorflow::gtl::ArraySlice;
 
+class MultiOutputFusionTest : public HloTestBase {
  protected:
-  MultiOutputFusionTest() {}
+  MultiOutputFusionTest() { error_spec_ = ErrorSpec{0.0001, 1e-2}; }
+
   void RunTest2D(bool manual_fusion, int64 size) {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewModule();
@@ -69,7 +67,7 @@ class MultiOutputFusionTest : public HloTestBase {
         elem_shape0, HloOpcode::kAdd, param0, const0));
 
     HloInstruction* broadcast = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(elem_shape2, add1, {0, 1}));
+        HloInstruction::CreateBroadcast(elem_shape2, add1, {}));
 
     auto param1 = builder.AddInstruction(
         HloInstruction::CreateParameter(1, elem_shape2, "1"));
@@ -136,7 +134,7 @@ class MultiOutputFusionTest : public HloTestBase {
         builder.AddInstruction(HloInstruction::CreateReshape(
             ShapeUtil::MakeShape(F32, {size, 1}), add));
     HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(F32, {}), HloOpcode::kDot, sub, reshape));
+        ShapeUtil::MakeShape(F32, {1}), HloOpcode::kDot, sub, reshape));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
@@ -162,7 +160,7 @@ class MultiOutputFusionTest : public HloTestBase {
     auto p0 = TransferToDevice(input0);
     auto p1 = TransferToDevice(input1);
 
-    Literal expect = *Literal::CreateR0<float>(size * 1.5f * 3.5f);
+    Literal expect = *Literal::CreateR1<float>({size * 1.5f * 3.5f});
     auto actual = ExecuteAndTransfer(std::move(hlo_module), {p0, p1});
     LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
   }

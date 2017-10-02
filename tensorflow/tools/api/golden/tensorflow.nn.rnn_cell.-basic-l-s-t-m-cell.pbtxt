@@ -5,6 +5,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "graph"
     mtype: "<type \'property\'>"
   }
@@ -82,7 +86,7 @@ tf_class {
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -95,6 +99,10 @@ tf_class {
   member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\', \'state\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "count_params"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_input_at"

@@ -32,6 +32,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -81,8 +82,11 @@ def MatrixInverseCompositeGrad(l, grad):
 def TriAngInvCompositeGrad(l, grad):
   num_rows = array_ops.shape(l)[-1]
   batch_shape = array_ops.shape(l)[:-2]
-  l_inverse = linalg_ops.matrix_triangular_solve(
-      l, linalg_ops.eye(num_rows, batch_shape=batch_shape, dtype=l.dtype))
+  l_inverse = linalg_ops.matrix_triangular_solve(l,
+                                                 linalg_ops.eye(
+                                                     num_rows,
+                                                     batch_shape=batch_shape,
+                                                     dtype=l.dtype))
   return _GradWithInverseL(l, l_inverse, grad)
 
 
@@ -281,75 +285,94 @@ class CholeskyGradTest(test.TestCase):
 
 class CholeskyBenchmark(test.Benchmark):
 
-  sizes = [
-      (4, 4), (16, 16), (256, 256), (1024, 1024), (2048, 2048),
-      (513, 2, 2), (513, 8, 8), (4, 513, 2, 2)
+  shapes = [
+      (4, 4),
+      (10, 10),
+      (16, 16),
+      (101, 101),
+      (256, 256),
+      (1000, 1000),
+      (1024, 1024),
+      (2048, 2048),
+      (513, 2, 2),
+      (513, 8, 8),
+      (513, 256, 256),
+      (4, 513, 2, 2),
   ]
 
-  def _GenerateData(self, size):
-    batch_shape = size[:-2]
-    size = size[-2:]
-    assert size[0] == size[1]
-    n = size[0]
-    data = np.ones(size).astype(np.float32) / (2.0 * n) + np.diag(
-        np.ones(n).astype(np.float32))
-    return np.tile(data, batch_shape + (1, 1))
+  def _GenerateMatrix(self, shape):
+    batch_shape = shape[:-2]
+    shape = shape[-2:]
+    assert shape[0] == shape[1]
+    n = shape[0]
+    matrix = np.ones(shape).astype(np.float32) / (
+        2.0 * n) + np.diag(np.ones(n).astype(np.float32))
+    return np.tile(matrix, batch_shape + (1, 1))
 
   def benchmarkCholeskyOp(self):
-    for size in self.sizes:
-      data = self._GenerateData(size)
-
+    for shape in self.shapes:
       with ops.Graph().as_default(), \
           session.Session() as sess, \
           ops.device("/cpu:0"):
-        l = linalg_ops.cholesky(data)
+        matrix = variables.Variable(self._GenerateMatrix(shape))
+        l = linalg_ops.cholesky(matrix)
+        variables.global_variables_initializer().run()
         self.run_op_benchmark(
-            sess, control_flow_ops.group(l,),
+            sess,
+            control_flow_ops.group(
+                l,),
             min_iters=25,
-            name="cholesky_cpu_{size}".format(size=size))
+            name="cholesky_cpu_{shape}".format(shape=shape))
 
       if test.is_gpu_available(True):
         with ops.Graph().as_default(), \
             session.Session() as sess, \
             ops.device("/device:GPU:0"):
-          l = linalg_ops.cholesky(data)
+          matrix = variables.Variable(self._GenerateMatrix(shape))
+          l = linalg_ops.cholesky(matrix)
+          variables.global_variables_initializer().run()
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(
                   l,),
               min_iters=25,
-              name="cholesky_gpu_{size}".format(size=size))
+              name="cholesky_gpu_{shape}".format(shape=shape))
 
   def benchmarkGradVariants(self):
+
     def _BenchmarkGrad(grad_fn, name, device):
-      for size in self.sizes:
-        data = self._GenerateData(size)
-        l = np.linalg.cholesky(data)
-        grad_data = np.random.randn(*data.shape).astype(np.float32)
+      for shape in self.shapes:
+        matrix = self._GenerateMatrix(shape)
         with ops.Graph().as_default(), \
             session.Session() as sess, \
             ops.device(device):
-          grad = grad_fn(l, grad_data)
+          l = variables.Variable(np.linalg.cholesky(matrix))
+          grad_matrix = variables.Variable(
+              np.random.randn(*matrix.shape).astype(np.float32))
+          grad = grad_fn(l, grad_matrix)
+          variables.global_variables_initializer().run()
           self.run_op_benchmark(
-              sess, control_flow_ops.group(grad,),
+              sess,
+              control_flow_ops.group(
+                  grad,),
               min_iters=25,
-              name="{name}_{dev}_{size}".format(
-                  name=name, dev=grad.device, size=size))
+              name="{name}_{dev}_{shape}".format(
+                  name=name, dev=grad.device, shape=shape))
 
     if test.is_gpu_available(True):
-      _BenchmarkGrad(
-          MatrixInverseCompositeGrad, "composite_matrix_inverse", "/device:GPU:0")
-      _BenchmarkGrad(
-          TriAngInvCompositeGrad, "composite_tri_ang_inverse", "/device:GPU:0")
-      _BenchmarkGrad(
-          TriAngSolveCompositeGrad, "composite_triangular_solve", "/device:GPU:0")
+      _BenchmarkGrad(MatrixInverseCompositeGrad, "composite_matrix_inverse",
+                     "/device:GPU:0")
+      _BenchmarkGrad(TriAngInvCompositeGrad, "composite_tri_ang_inverse",
+                     "/device:GPU:0")
+      _BenchmarkGrad(TriAngSolveCompositeGrad, "composite_triangular_solve",
+                     "/device:GPU:0")
 
-    _BenchmarkGrad(
-        MatrixInverseCompositeGrad, "composite_matrix_inverse", "/cpu:0")
-    _BenchmarkGrad(
-        TriAngInvCompositeGrad, "composite_tri_ang_inverse", "/cpu:0")
-    _BenchmarkGrad(
-        TriAngSolveCompositeGrad, "composite_triangular_solve", "/cpu:0")
+    _BenchmarkGrad(MatrixInverseCompositeGrad, "composite_matrix_inverse",
+                   "/cpu:0")
+    _BenchmarkGrad(TriAngInvCompositeGrad, "composite_tri_ang_inverse",
+                   "/cpu:0")
+    _BenchmarkGrad(TriAngSolveCompositeGrad, "composite_triangular_solve",
+                   "/cpu:0")
     _BenchmarkGrad(SpecializedGrad, "specialized", "/cpu:0")
 
 

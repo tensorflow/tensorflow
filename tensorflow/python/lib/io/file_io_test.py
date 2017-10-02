@@ -35,6 +35,11 @@ class FileIoTest(test.TestCase):
   def tearDown(self):
     file_io.delete_recursively(self._base_dir)
 
+  def testEmptyFilename(self):
+    f = file_io.FileIO("", mode="r")
+    with self.assertRaises(errors.NotFoundError):
+      _ = f.read()
+
   def testFileDoesntExist(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     self.assertFalse(file_io.file_exists(file_path))
@@ -54,6 +59,18 @@ class FileIoTest(test.TestCase):
     self.assertTrue(file_io.file_exists(file_path))
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual("testing", file_contents)
+
+  def testAtomicWriteStringToFileOverwriteFalse(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    file_io.atomic_write_string_to_file(file_path, "old", overwrite=False)
+    with self.assertRaises(errors.AlreadyExistsError):
+      file_io.atomic_write_string_to_file(file_path, "new", overwrite=False)
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("old", file_contents)
+    file_io.delete_file(file_path)
+    file_io.atomic_write_string_to_file(file_path, "new", overwrite=False)
+    file_contents = file_io.read_file_to_string(file_path)
+    self.assertEqual("new", file_contents)
 
   def testReadBinaryMode(self):
     file_path = os.path.join(self._base_dir, "temp_file")

@@ -95,7 +95,7 @@ limitations under the License.
 #define TF_CALL_resource(m)
 #define TF_CALL_complex64(m)
 #define TF_CALL_int64(m) m(::tensorflow::int64)
-#define TF_CALL_bool(m)
+#define TF_CALL_bool(m) m(bool)
 
 #define TF_CALL_qint8(m) m(::tensorflow::qint8)
 #define TF_CALL_quint8(m) m(::tensorflow::quint8)
@@ -122,7 +122,7 @@ limitations under the License.
 #define TF_CALL_resource(m)
 #define TF_CALL_complex64(m)
 #define TF_CALL_int64(m)
-#define TF_CALL_bool(m)
+#define TF_CALL_bool(m) m(bool)
 
 #define TF_CALL_qint8(m)
 #define TF_CALL_quint8(m)

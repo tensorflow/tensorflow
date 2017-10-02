@@ -754,6 +754,17 @@ class BNTest(test.TestCase):
     _ = bn.apply(inputs, training=training)
     self.assertEqual(len(bn.losses), 1)
 
+  def testConstraints(self):
+    g_constraint = lambda x: x / math_ops.reduce_sum(x)
+    b_constraint = lambda x: x / math_ops.reduce_max(x)
+    bn = normalization_layers.BatchNormalization(axis=1,
+                                                 gamma_constraint=g_constraint,
+                                                 beta_constraint=b_constraint)
+    inputs = random_ops.random_uniform((5, 4, 3), seed=1)
+    bn(inputs)
+    self.assertEqual(bn.gamma_constraint, g_constraint)
+    self.assertEqual(bn.beta_constraint, b_constraint)
+
   def testRenorm(self):
     shape = (4, 3)
     xt = array_ops.placeholder(dtypes.float32, shape)

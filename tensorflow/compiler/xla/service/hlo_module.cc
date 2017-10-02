@@ -41,6 +41,8 @@ HloModule::HloModule(const string& name,
       entry_computation_handle_(entry_computation_handle) {}
 
 HloModule::HloModule(const string& name) : name_(name) {}
+HloModule::HloModule(const string& name, const HloModuleConfig& config)
+    : name_(name), config_(config) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
@@ -66,6 +68,17 @@ HloComputation* HloModule::AddEntryComputation(
         entry_computation_->ComputeProgramShape());
   }
   return AddComputationInternal(std::move(computation));
+}
+
+Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
+  auto it =
+      std::find_if(computations_.begin(), computations_.end(),
+                   [&to_remove](const std::unique_ptr<HloComputation>& comp) {
+                     return comp.get() == to_remove;
+                   });
+  TF_RET_CHECK(it->get() == to_remove);
+  computations_.erase(it);
+  return Status::OK();
 }
 
 HloComputation* HloModule::AddEmbeddedComputation(
@@ -300,7 +313,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) {
+std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = MakeUnique<HloModule>(name_ + "-" + suffix);
   module->config_ = config_;

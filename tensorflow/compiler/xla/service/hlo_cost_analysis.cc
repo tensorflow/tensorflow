@@ -118,13 +118,11 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
   }
 }
 
-Status HloCostAnalysis::HandleElementwiseUnary(HloInstruction* hlo,
-                                               HloOpcode opcode) {
+Status HloCostAnalysis::HandleElementwiseUnary(HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleElementwiseBinary(HloInstruction* hlo,
-                                                HloOpcode opcode) {
+Status HloCostAnalysis::HandleElementwiseBinary(HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
@@ -369,12 +367,18 @@ Status HloCostAnalysis::HandleReshape(HloInstruction* reshape) {
 }
 
 Status HloCostAnalysis::HandleBatchNormTraining(
-    HloInstruction* batchNormTraining) {
+    HloInstruction* batch_norm_training) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction* batchNormGrad) {
+Status HloCostAnalysis::HandleBatchNormInference(
+    HloInstruction* batch_norm_inference) {
+  // TODO(b/62294698): Implement cost analysis for batch-norm-inference.
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction* batch_norm_grad) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-grad.
   return Status::OK();
 }
@@ -389,7 +393,7 @@ Status HloCostAnalysis::HandleConvolution(HloInstruction* convolution,
                                           const Window& window) {
   const auto& dnums = convolution->convolution_dimension_numbers();
   const int64 output_features =
-      convolution->shape().dimensions(dnums.feature_dimension());
+      convolution->shape().dimensions(dnums.output_feature_dimension());
 
   // For each output element, we do one fma per element in the kernel at some
   // given output feature index.

@@ -62,9 +62,11 @@ tf_cuda_library(
     }),
     deps = [
         ":gdr_proto_cc",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -85,6 +87,9 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_session",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_call",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_tensor_coding",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
     ],
 )
@@ -114,8 +119,7 @@ cc_library(
         ":gdr_memory_manager",
         ":gdr_rendezvous_mgr",
         ":gdr_worker",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
     alwayslink = 1,

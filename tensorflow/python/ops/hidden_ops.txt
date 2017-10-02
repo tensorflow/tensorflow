@@ -38,6 +38,10 @@ LogUniformCandidateSampler
 ThreadUnsafeUnigramCandidateSampler
 UniformCandidateSampler
 
+# checkpoint_ops
+GenerateVocabRemapping
+LoadAndRemapMatrix
+
 # control_flow_ops
 Switch
 Merge
@@ -163,6 +167,7 @@ NonMaxSuppression
 NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
+ResizeBicubicGrad
 ResizeNearestNeighborGrad
 SampleDistortedBoundingBox
 SampleDistortedBoundingBoxV2
@@ -202,6 +207,7 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -302,6 +308,7 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
+MaxPoolV2
 Softmax
 LogSoftmax
 FractionalAvgPoolGrad

@@ -34,111 +34,39 @@ limitations under the License.
 namespace xla {
 
 using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
-
-void HloBuffer::AddValue(const HloValue& value) {
-  // If the value is already contained in this buffer, just return.
-  if (!values_.AddValue(&value)) {
-    return;
-  }
-
-  // Add all of the positions of the HloValue to this buffer.
-  for (const HloPosition& position : value.positions()) {
-    if (std::find(positions_.begin(), positions_.end(), position) ==
-        positions_.end()) {
-      positions_.push_back(position);
-    }
-  }
-}
 
 bool HloBuffer::operator==(const HloBuffer& other) const {
   bool equal = id() == other.id();
   if (equal) {
     // DCHECK because these comparisons are expensive (linear time).
     DCHECK(values_ == other.values_);
-    DCHECK(positions() == other.positions());
   }
   return equal;
 }
 
+std::vector<HloPosition> HloBuffer::ComputePositions() const {
+  std::vector<HloPosition> positions;
+  for (const HloValue* value : values_) {
+    positions.insert(positions.end(), value->positions().begin(),
+                     value->positions().end());
+  }
+  // Remove duplicates and sort positions.
+  std::sort(positions.begin(), positions.end());
+  positions.erase(std::unique(positions.begin(), positions.end()),
+                  positions.end());
+  return positions;
+}
+
 string HloBuffer::ToString() const {
-  return StrCat("HloBuffer ", id_, ", values: ", values_.ToString());
+  return StrCat("HloBuffer ", id_, ", values: ",
+                Join(values_, ", ", [](string* result, const HloValue* value) {
+                  result->append(value->ToShortString());
+                }));
 }
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer) {
   out << buffer.ToString();
-  return out;
-}
-
-void HloBufferSet::AddBuffer(const HloBuffer* buffer) {
-  auto it = std::lower_bound(buffers_.begin(), buffers_.end(), buffer,
-                             HloBuffer::IdLessThan);
-  if (it == buffers_.end() || (*it)->id() != buffer->id()) {
-    buffers_.insert(it, buffer);
-  }
-}
-
-void HloBufferSet::RemoveBufferOrDie(HloBuffer::Id buffer_id) {
-  auto it = std::lower_bound(buffers_.begin(), buffers_.end(), buffer_id,
-                             [](const HloBuffer* buffer, HloBuffer::Id id) {
-                               return buffer->id() < id;
-                             });
-  CHECK(it != buffers_.end() && (*it)->id() == buffer_id)
-      << "HloBuffer " << buffer_id << " doesn't exist in set: " << ToString();
-  buffers_.erase(it);
-}
-
-string HloBufferSet::ToString() const {
-  return StrCat(
-      "HloBufferSet, buffers: ",
-      Join(buffers_, ", ", [](string* result, const HloBuffer* buffer) {
-        result->append(buffer->ToString());
-      }));
-}
-
-std::ostream& operator<<(std::ostream& out, const HloBufferSet& buffer_set) {
-  out << buffer_set.ToString();
-  return out;
-}
-
-bool InstructionBufferSet::IsAmbiguous() const {
-  bool is_ambiguous = false;
-  ForEachElement(
-      [&is_ambiguous](const ShapeIndex& index, const HloBufferSet& buffer_set) {
-        is_ambiguous |= buffer_set.buffers().size() > 1;
-      });
-  return is_ambiguous;
-}
-
-bool InstructionBufferSet::IsDistinct() const {
-  bool is_distinct = true;
-  tensorflow::gtl::FlatSet<HloBuffer::Id> seen_ids;
-  ForEachElement([&is_distinct, &seen_ids](const ShapeIndex& /*index*/,
-                                           const HloBufferSet& buffer_set) {
-    for (const HloBuffer* buffer : buffer_set.buffers()) {
-      auto pair = seen_ids.insert(buffer->id());
-      if (!pair.second) {
-        is_distinct = false;
-      }
-    }
-  });
-  return is_distinct;
-}
-
-string InstructionBufferSet::ToString() const {
-  string out =
-      StrCat("InstructionBufferSet(", ShapeUtil::HumanString(shape()), ")\n");
-  ForEachElement([this, &out](const ShapeIndex& index,
-                              const HloBufferSet& value_set) {
-    StrAppend(&out, "  ", index.ToString(), " : ", value_set.ToString(), "\n");
-  });
-  return out;
-}
-
-std::ostream& operator<<(std::ostream& out,
-                         const InstructionBufferSet& buffer_set) {
-  out << buffer_set.ToString();
   return out;
 }
 

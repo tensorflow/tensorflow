@@ -635,15 +635,7 @@ REGISTER_OP("ImmutableConst")
     .Attr("shape: shape")
     .Attr("memory_region_name: string")
     .Output("tensor: dtype")
-    .SetShapeFn([](InferenceContext* c) {
-      TensorShape shape_from_attr;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_from_attr));
-      ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromPartialTensorShape(shape_from_attr, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Returns immutable tensor from memory region.
 
@@ -1006,7 +998,8 @@ REGISTER_OP("Reverse")
     .Input("dims: bool")
     .Output("output: T")
     .Attr(
-        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
+        "double, complex64, "
         "complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -1083,7 +1076,8 @@ REGISTER_OP("ReverseV2")
     .Output("output: T")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr(
-        "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
+        "T: {uint8, int8, uint16, int16, int32, int64, bool, half, float, "
+        "double, complex64, "
         "complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
@@ -1305,15 +1299,7 @@ REGISTER_OP("_ParallelConcatStart")
     .Attr("shape: shape")
     .Attr("dtype: type")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(
-          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
-      c->set_output(0, output_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
 Creates an empty Tensor with shape `shape` and type `dtype`.
 
@@ -1518,8 +1504,8 @@ REGISTER_OP("GatherNd")
       if (c->Value(r_dim) > c->Rank(params)) {
         return errors::InvalidArgument(
             "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices),
-            " and params shape: ", c->DebugString(params));
+            c->DebugString(indices), " and params shape: ",
+            c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
@@ -2146,12 +2132,12 @@ REGISTER_OP("ReverseSequence")
       // Validate batch_dim and seq_dim against input.
       const int32 input_rank = c->Rank(input);
       if (batch_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("batch_dim must be < input rank: ",
+                                       batch_dim, " vs. ", input_rank);
       }
       if (seq_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("seq_dim must be < input rank: ",
+                                       seq_dim, " vs. ", input_rank);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -3081,14 +3067,7 @@ REGISTER_OP("PlaceholderV2")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("shape: shape")
-    .SetShapeFn([](InferenceContext* c) {
-      PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
-      c->set_output(0, output);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::ExplicitShape)
     .Deprecated(23, "Placeholder now behaves the same as PlaceholderV2.")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
@@ -4271,10 +4250,10 @@ x =  [[[[1, 2, 3, 4],
 the operator will return the following tensor of shape `[1 4 4 1]`:
 
 ```
-x = [[ [1],   [2],  [5],  [6]],
-     [ [3],   [4],  [7],  [8]],
-     [ [9],  [10], [13],  [14]],
-     [ [11], [12], [15],  [16]]]
+x = [[[ [1],   [2],  [5],  [6]],
+      [ [3],   [4],  [7],  [8]],
+      [ [9],  [10], [13],  [14]],
+      [ [11], [12], [15],  [16]]]]
 
 ```
 
@@ -4738,7 +4717,7 @@ REGISTER_OP("QuantizeV2")
     .Output("output_min: float")
     .Output("output_max: float")
     .Attr("T: quantizedtype")
-    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle unused;
@@ -4792,6 +4771,47 @@ is rounded first, before it's subtracted from the rounded value. With
 MIN_COMBINED, a small bias is introduced where repeated iterations of quantizing
 and dequantizing will introduce a larger and larger error.
 
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, we do not use the full range of the output type,
+choosing to elide the lowest possible value for symmetry (e.g., output range is
+-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+0.
+
+We first find the range of values in our tensor. The
+range we use is always centered on 0, so we find m such that
+```c++
+  m = max(abs(input_min), abs(input_max))
+```
+
+Our input tensor range is then `[-m, m]`.
+
+Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+If T is signed, this is
+```
+  num_bits = sizeof(T) * 8
+  [min_fixed, max_fixed] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+```
+
+Otherwise, if T is unsigned, the fixed-point range is
+```
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+```
+
+From this we compute our scaling factor, s:
+```c++
+  s = (max_fixed - min_fixed) / (2 * m)
+```
+
+Now we can quantize the elements of our tensor:
+```c++
+result = (input * s).round_to_nearest()
+```
+
 One thing to watch out for is that the operator may choose to adjust the
 requested minimum and maximum values slightly during the quantization process,
 so you should always use the output ports as the range for further calculations.
@@ -4815,7 +4835,7 @@ REGISTER_OP("Dequantize")
     .Input("max_range: float")
     .Output("output: float")
     .Attr("T: quantizedtype")
-    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST'} = 'MIN_COMBINED'")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
       ShapeHandle unused;
@@ -4857,6 +4877,47 @@ range = (range_max - range_min) * range_adjust
 range_scale = range / number_of_steps
 const double offset_input = static_cast<double>(input) - lowest_quantized;
 result = range_min + ((input - numeric_limits<T>::min()) * range_scale)
+```
+
+*SCALED mode Example*
+
+`SCALED` mode matches the quantization approach used in
+`QuantizeAndDequantize{V2|V3}`.
+
+If the mode is `SCALED`, we do not use the full range of the output type,
+choosing to elide the lowest possible value for symmetry (e.g., output range is
+-127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
+0.
+
+We first find the range of values in our tensor. The
+range we use is always centered on 0, so we find m such that
+```c++
+  m = max(abs(input_min), abs(input_max))
+```
+
+Our input tensor range is then `[-m, m]`.
+
+Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
+If T is signed, this is
+```
+  num_bits = sizeof(T) * 8
+  [min_fixed, max_fixed] =
+      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
+```
+
+Otherwise, if T is unsigned, the fixed-point range is
+```
+  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
+```
+
+From this we compute our scaling factor, s:
+```c++
+  s = (2 * m) / (max_fixed - min_fixed)
+```
+
+Now we can dequantize the elements of our tensor:
+```c++
+result = input * s
 ```
 
 min_range: The minimum scalar value possibly produced for the input.
@@ -5012,9 +5073,8 @@ Status ScatterNdShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", outer_dims,
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ", outer_dims,
             " dimensions of updates.shape=", c->DebugString(updates_shape),
             ": ", s.error_message());
       }
@@ -5405,24 +5465,28 @@ REGISTER_OP("BatchMatrixDiag")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixDiag");
+    .Deprecated(14, "Use MatrixDiag")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixSetDiag")
     .Input("input: T")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixSetDiag");
+    .Deprecated(14, "Use MatrixSetDiag")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixDiagPart")
     .Input("input: T")
     .Output("diagonal: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixDiagPart");
+    .Deprecated(14, "Use MatrixDiagPart")
+    .SetShapeFn(shape_inference::UnknownShape);
 REGISTER_OP("BatchMatrixBandPart")
     .Input("input: T")
     .Input("num_lower: int64")
     .Input("num_upper: int64")
     .Output("band: T")
     .Attr("T: type")
-    .Deprecated(14, "Use MatrixBandPart");
+    .Deprecated(14, "Use MatrixBandPart")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 }  // namespace tensorflow
