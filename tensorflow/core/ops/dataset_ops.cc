@@ -637,13 +637,6 @@ REGISTER_OP("IteratorGetNext")
 Gets the next output from the given iterator.
 )doc");
 
-REGISTER_OP("IteratorDispose")
-    .Input("iterator: resource")
-    .SetShapeFn(shape_inference::NoOutputs)
-    .Doc(R"doc(
-Releases any resources used by the given iterator.
-)doc");
-
 REGISTER_OP("IteratorToStringHandle")
     .Input("resource_handle: resource")
     .Output("string_handle: string")
