@@ -766,7 +766,7 @@ void GraphTransferer::RegisterPadNode(
     node_input.set_node_id(id);
     node_input.set_output_port(0);
   } else {
-    CHECK(false);
+    LOG(FATAL);
   }
 
   AppendNodeParamsWithIoParams(
@@ -982,7 +982,7 @@ GraphTransferer::BuildShapeArray(
            context->Value(context->Dim(shape_handle, 3))}};
     default:
       // TODO(satok): Support more ranks?
-      CHECK(false);
+      LOG(FATAL);
       return std::array<int64, SHAPE_ARRAY_SIZE>();
   }
 }
@@ -1006,7 +1006,7 @@ GraphTransferer::ToTensorShapeArray(const TensorShape& shape) {
            shape.dim_size(3)}};
     default:
       // TODO(satok): Support more ranks?
-      CHECK(false);
+      LOG(FATAL);
       return std::array<int64, SHAPE_ARRAY_SIZE>();
   }
 }
@@ -1020,7 +1020,7 @@ GraphTransferer::ToTensorShapeArray(const TensorShape& shape) {
     case Padding::SAME:
       return "NN_PAD_SAME";
     default:
-      CHECK(false);
+      LOG(FATAL);
       return "";
   }
 }
