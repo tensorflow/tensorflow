@@ -85,7 +85,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> PoplarExecutable::ExecuteOnStream(
 
   std::vector<se::DeviceMemoryBase> argument_buffers;
   for (int i = 0; i < arguments.size(); ++i) {
-    TF_RET_CHECK(!ShapeUtil::IsTuple(arguments[i]->shape()));
     argument_buffers.push_back(arguments[i]->buffer(/*index=*/{}));
   }
 
