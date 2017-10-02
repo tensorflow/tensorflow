@@ -50,7 +50,7 @@ def dense_to_sparse_batch(batch_size, row_shape):
       ([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]],  # indices
        ['a', 'b', 'c', 'a', 'b'],                 # values
        [2, 6]),                                   # dense_shape
-      ([[2, 0], [2, 1], [2, 2], [2, 3]],
+      ([[0, 0], [0, 1], [0, 2], [0, 3]],
        ['a', 'b', 'c', 'd'],
        [1, 6])
   }

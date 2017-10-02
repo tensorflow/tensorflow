@@ -67,7 +67,7 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
     Thus it can be said that the weights in the tails of `Y` and `L(Z)` beyond
     `loc + 2 * scale` are the same.
 
-  This distribution is different than `loc + diag(scale) @ Z` due to the
+  This distribution is different than `loc + scale @ Z` due to the
   reshaping done by `F`:
 
   * Positive (negative) `skewness` leads to positive (negative) skew.
@@ -173,7 +173,7 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
       tailweight = 1. if tailweight is None else tailweight
       skewness = 0. if skewness is None else skewness
 
-      # Recall, with Z ~ Normal(0, 1),
+      # Recall, with Z a random variable,
       #   Y := loc + C * F(Z),
       #   F(Z) := Sinh( (Arcsinh(Z) + skewness) * tailweight )
       #   C := 2 * scale / F(2)

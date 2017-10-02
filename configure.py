@@ -30,7 +30,8 @@ try:
 except ImportError:
   from distutils.spawn import find_executable as which
 
-_TF_BAZELRC = '.tf_configure.bazelrc'
+_TF_BAZELRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           '.tf_configure.bazelrc')
 _DEFAULT_CUDA_VERSION = '8.0'
 _DEFAULT_CUDNN_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'

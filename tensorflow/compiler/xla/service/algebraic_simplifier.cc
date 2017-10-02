@@ -1805,6 +1805,11 @@ static optional<int64> GetLoopTripCount(const HloInstruction* while_op) {
   HloEvaluator evaluator;
   auto* while_init = while_op->operand(0);
   auto* indvar_init = while_init->operand(*indvar_tuple_idx);
+  // TODO(b/67157142): This should not be redundant, remove this when the
+  // underlying issue has been addressed.
+  if (!hlo_query::AllOperandsAreConstants(*indvar_init)) {
+    return nullopt;
+  }
   StatusOr<std::unique_ptr<Literal>> indvar_init_result =
       evaluator.Evaluate(indvar_init->Clone().get());
   if (!indvar_init_result.ok()) {

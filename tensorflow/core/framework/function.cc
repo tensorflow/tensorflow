@@ -34,8 +34,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-
 // Extracts the actual type from "attr_values" based on its definition
 // "arg_def".
 //
@@ -90,6 +88,8 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   dtypes->resize(num, dtype);
   return Status::OK();
 }
+
+namespace {
 
 template <typename T>
 void AddAttr(const string& name, const T& val, NodeDef* ndef) {

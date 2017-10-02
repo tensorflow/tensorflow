@@ -107,7 +107,7 @@ ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
   } else if (ready_node_manager == "FirstReady") {
     return new FirstReadyManager(GetNodeStates());
   }
-  CHECK(false) << "Not a valid ready node manager: " << ready_node_manager;
+  LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
 }
 
 Status VirtualScheduler::Init() {

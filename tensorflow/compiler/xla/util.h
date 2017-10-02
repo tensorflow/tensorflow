@@ -361,6 +361,9 @@ int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
 std::vector<std::pair<int64, int64>> CommonFactors(
     tensorflow::gtl::ArraySlice<int64> a, tensorflow::gtl::ArraySlice<int64> b);
 
+// Removes illegal characters from filenames.
+string SanitizeFileName(string file_name);
+
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \
