@@ -521,19 +521,6 @@ class IteratorGetNextOp : public AsyncOpKernel {
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };
 
-class IteratorDisposeOp : public OpKernel {
- public:
-  explicit IteratorDisposeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    IteratorResource* iterator;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
-    core::ScopedUnref unref_iterator(iterator);
-    OP_REQUIRES_OK(ctx, iterator->set_iterator(nullptr));
-  }
-};
-
 class IteratorToStringHandleOp : public OpKernel {
  public:
   explicit IteratorToStringHandleOp(OpKernelConstruction* ctx)
@@ -630,8 +617,6 @@ REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
                         IteratorGetNextOp);
-REGISTER_KERNEL_BUILDER(Name("IteratorDispose").Device(DEVICE_CPU),
-                        IteratorDisposeOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
                         IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),

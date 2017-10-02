@@ -270,41 +270,126 @@ static bool Int32ValuesFromNode(const NodeDef& node,
   return false;
 }
 
-bool ArithmeticOptimizer::TrySimplifyAndReplaceUses(const NodeDef* node,
-                                                    NodeMap* node_map) const {
-  bool changed = false;
+static bool SimplyReordersData(const NodeDef& node) {
+  return node.op() == "Transpose";
+}
+
+const NodeDef* ArithmeticOptimizer::TrySimplifyAndReplaceUses(
+    const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
+    std::vector<const NodeDef*>* new_nodes) const {
+  // Remove inverse transposes.
   if (node->op() == "Transpose") {
-    const NodeDef* input = node_map->GetNode(node->input()[0]);
+    const NodeDef* input = node_map->GetNode(node->input(0));
     if (input->op() == "Transpose") {
-      const NodeDef* node_perm = node_map->GetNode(node->input()[1]);
-      const NodeDef* input_perm = node_map->GetNode(input->input()[1]);
+      const NodeDef* node_perm = node_map->GetNode(node->input(1));
+      const NodeDef* input_perm = node_map->GetNode(input->input(1));
       std::vector<int> node_perm_values;
       std::vector<int> input_perm_values;
       if (Int32ValuesFromNode(*node_perm, &node_perm_values) &&
           Int32ValuesFromNode(*input_perm, &input_perm_values) &&
           AreInversePermutations(node_perm_values, input_perm_values)) {
-        // Copy the result of GetOutputs to consumers so avoid modifying NodeMap
-        // while iterating it.
-        std::set<NodeDef*> consumers = node_map->GetOutputs(node->name());
-        for (NodeDef* consumer : consumers) {
-          // Update `consumer`'s use of `node` to `input`'s operand.
-          protobuf::RepeatedPtrField<string>* inputs_of_consumer =
-              consumer->mutable_input();
-          for (int i = 0; i < consumer->input_size(); ++i) {
-            if (NodeName(inputs_of_consumer->Get(i)) == node->name()) {
-              *inputs_of_consumer->Mutable(i) = input->input()[0];
-            }
+        return node_map->GetNode(input->input(0));
+      }
+    }
+  }
+
+  // Fold a multiply of a scalar into the following convolution. This folding
+  // can jump across nodes that merely reorders data (such as reshape and
+  // transpose). For example, we can optimize
+  //
+  //
+  //         Conv2D
+  //        /      \
+  //    Transpose  weights
+  //       |
+  //      Mul
+  //     /   \
+  //   inputs 255.0
+  //
+  // to
+  //
+  //         Conv2D
+  //        /      \
+  //    Transpose   Mul
+  //       |       /   \
+  //       |   weights  255.0
+  //       |
+  //     inputs
+  //
+  // when `weights` are constant. `Mul` in the optimized graph can be
+  // constant-folded.
+  //
+  // TODO(jingyue): Fold scalar multiplies to Conv?DBackpropFilter and
+  // Conv?DBackpropInput.
+  if (node->op() == "Conv2D" || node->op() == "Conv3D") {
+    NodeDef* conv = const_cast<NodeDef*>(node);
+    const NodeDef* weights = node_map->GetNode(NodeName(conv->input(1)));
+    // Fold the multiply to conv only when the weights are constant, so the
+    // multiply can be constant-folded. TODO(jingyue): When the weights aren't
+    // constant, this should also help performance a bit and memory usage a lot,
+    // since the weights tend to be smaller than the activations.
+    if (weights->op() == "Const") {
+      const NodeDef* source = node_map->GetNode(node->input(0));
+      while (SimplyReordersData(*source) &&
+             node_map->GetOutputs(source->name()).size() == 1 &&
+             // Do not skip over preserved nodes, because folding will change
+             // the results of these skipped data-reordering nodes.
+             // TODO(jingyue): A more elegant way is to copy this chain of
+             // data-reordering nodes and modify only the copy.
+             !nodes_to_preserve_.count(source->name())) {
+        source = node_map->GetNode(source->input(0));
+      }
+      if (source->op() == "Mul" &&
+          node_map->GetOutputs(source->name()).size() == 1) {
+        const NodeDef* mul = source;
+        // `scale` is the scalar multiplier, and `other` is the other operand.
+        // TODO(jingyue): handle the case where `scale` is 0-th operand.
+        const NodeDef* scale = node_map->GetNode(mul->input(1));
+        const NodeDef* other = node_map->GetNode(mul->input(0));
+        if (scale->op() == "Const" && scale->attr().at("dtype").type() ==
+                                          weights->attr().at("dtype").type()) {
+          const TensorProto& scale_tensor = scale->attr().at("value").tensor();
+          // Test whether `scale` is a scalar.
+          if (scale_tensor.has_tensor_shape() &&
+              scale_tensor.tensor_shape().dim_size() == 0) {
+            // Create new node `scaled_weights`.
+            NodeDef* scaled_weights = graph_def->add_node();
+            scaled_weights->set_name(weights->name() + "_scaled");
+            scaled_weights->set_op("Mul");
+            scaled_weights->set_device(weights->device());
+            (*scaled_weights->mutable_attr())["dtype"] =
+                weights->attr().at("dtype");
+            node_map->AddNode(scaled_weights->name(), scaled_weights);
+            new_nodes->push_back(scaled_weights);
+
+            // Link in its inputs.
+            scaled_weights->add_input(conv->input(1));
+            node_map->AddOutput(weights->name(), scaled_weights->name());
+            scaled_weights->add_input(mul->input(1));
+            node_map->AddOutput(scale->name(), scaled_weights->name());
+
+            // Update `conv`'s weights to `scaled_weights`.
+            conv->set_input(1, scaled_weights->name());
+            node_map->UpdateInput(conv->name(), weights->name(),
+                                  scaled_weights->name());
+            new_nodes->push_back(conv);
+
+            // Update `mul`'s consumer to bypass `mul` because it's folded to
+            // the weights.
+            CHECK_EQ(node_map->GetOutputs(mul->name()).size(), 1);
+            NodeDef* consumer_of_mul =
+                *node_map->GetOutputs(mul->name()).begin();
+            consumer_of_mul->set_input(0, mul->input(0));
+            node_map->UpdateInput(consumer_of_mul->name(), mul->name(),
+                                  other->name());
+            return conv;
           }
-          node_map->UpdateInput(consumer->name(), node->name(),
-                                input->input()[0]);
-          VLOG(2) << "Update input " << node->name() << " of "
-                  << consumer->name() << " to " << input->input()[0];
-          changed = true;
         }
       }
     }
   }
-  return changed;
+
+  return nullptr;
 }
 
 namespace {
@@ -337,7 +422,7 @@ class SetVector {
 };
 }  // namespace
 
-void ArithmeticOptimizer::RemoveRedundantTransposes(
+void ArithmeticOptimizer::SimplifyArithmeticOps(
     GraphDef* optimized_graph) const {
   NodeMap node_map(optimized_graph);
   SetVector<const NodeDef*> nodes_to_simplify;
@@ -346,14 +431,37 @@ void ArithmeticOptimizer::RemoveRedundantTransposes(
   }
   while (!nodes_to_simplify.Empty()) {
     const NodeDef* node = nodes_to_simplify.PopBack();
-    if (TrySimplifyAndReplaceUses(node, &node_map)) {
-      // The consumers of `node` are modified when TrySimplifyAndReplaceUses
-      // returns true. Re-push them into `nodes_to_simplify` for further
-      // optimizations.
-      for (NodeDef* consumer : node_map.GetOutputs(node->name())) {
+    std::vector<const NodeDef*> new_nodes;
+    const NodeDef* simplified_node =
+        TrySimplifyAndReplaceUses(node, optimized_graph, &node_map, &new_nodes);
+    if (!simplified_node) {
+      continue;
+    }
+
+    if (simplified_node->name() != node->name()) {
+      // When `node` is simplifed to another node rather than in-place, the
+      // consumers of `node` are redirected to `simplified_node`. Re-push the
+      // consumers into `nodes_to_simplify` for further optimizations.
+      std::set<NodeDef*> consumers = node_map.GetOutputs(node->name());
+      for (NodeDef* consumer : consumers) {
+        // Update `consumer`'s use of `node` to `input`'s operand.
+        for (int i = 0; i < consumer->input_size(); ++i) {
+          if (NodeName(consumer->input(i)) == node->name()) {
+            *consumer->mutable_input(i) = simplified_node->name();
+          }
+        }
+        VLOG(2) << "Update input " << node->name() << " of " << consumer->name()
+                << " to " << simplified_node->name();
+        node_map.UpdateInput(consumer->name(), node->name(),
+                             simplified_node->name());
         if (!nodes_to_simplify.Exists(consumer)) {
           nodes_to_simplify.PushBack(consumer);
         }
+      }
+    }
+    for (const NodeDef* new_node : new_nodes) {
+      if (!nodes_to_simplify.Exists(new_node)) {
+        nodes_to_simplify.PushBack(new_node);
       }
     }
   }
@@ -366,7 +474,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   nodes_to_preserve_ = item.NodesToPreserve();
 
   DedupComputations(optimized_graph);
-  RemoveRedundantTransposes(optimized_graph);
+  SimplifyArithmeticOps(optimized_graph);
 
   return Status::OK();
 }

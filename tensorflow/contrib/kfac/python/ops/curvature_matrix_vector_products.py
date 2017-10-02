@@ -46,7 +46,7 @@ class CurvatureMatrixVectorProductComputer(object):
   corresponding XXX_inner_shapes property.
 
   Note that matrix-vector products are not normalized by the batch size, nor
-  are any damping terms added to the results.  These things can easily be
+  are any damping terms added to the results.  These things can be easily
   applied externally, if desired.
 
   See for example: www.cs.utoronto.ca/~jmartens/docs/HF_book_chapter.pdf

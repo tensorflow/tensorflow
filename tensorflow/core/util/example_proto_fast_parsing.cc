@@ -371,7 +371,7 @@ bool TestFastParse(const string& serialized, Example* example) {
         break;
       }
       default:
-        CHECK(false) << "Should not happen.";
+        LOG(FATAL) << "Should not happen.";
     }
   }
   return true;
@@ -572,7 +572,7 @@ Status FastParseSerializedExample(
             break;
           }
           default:
-            CHECK(false) << "Should not happen.";
+            LOG(FATAL) << "Should not happen.";
         }
       } else {  // if variable length
         SparseBuffer& out = (*output_varlen_dense)[d];
@@ -632,7 +632,7 @@ Status FastParseSerializedExample(
             break;
           }
           default:
-            CHECK(false) << "Should not happen.";
+            LOG(FATAL) << "Should not happen.";
         }
       }
     } else {
@@ -690,7 +690,7 @@ Status FastParseSerializedExample(
           break;
         }
         default:
-          CHECK(false) << "Should not happen.";
+          LOG(FATAL) << "Should not happen.";
       }
     }
   }
@@ -727,7 +727,7 @@ Status FastParseSerializedExample(
         break;
       }
       default:
-        CHECK(false) << "Should not happen.";
+        LOG(FATAL) << "Should not happen.";
     }
   }
 
@@ -1024,7 +1024,7 @@ Status FastParseExample(const Config& config,
           break;
         }
         default:
-          CHECK(false) << "Should not happen.";
+          LOG(FATAL) << "Should not happen.";
       }
 
       offset += delta;
@@ -1084,7 +1084,7 @@ Status FastParseExample(const Config& config,
         break;
       }
       default:
-        CHECK(false) << "Should not happen.";
+        LOG(FATAL) << "Should not happen.";
     }
   };
 
