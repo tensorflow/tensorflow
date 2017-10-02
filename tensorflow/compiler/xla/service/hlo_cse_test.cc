@@ -67,7 +67,7 @@ TEST_F(HloCseTest, CombineTwoConstants) {
   EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(2, computation->instruction_count());
-  HloInstruction* constant = computation->instructions().begin()->get();
+  HloInstruction* constant = *computation->instructions().begin();
   EXPECT_EQ(42.0f, constant->literal().Get<float>({}));
 
   auto result = ExecuteAndTransfer(std::move(module), {});

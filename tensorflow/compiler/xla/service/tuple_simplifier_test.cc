@@ -186,5 +186,30 @@ TEST_F(TupleSimplifierTest, TupleOfGteInstructions) {
   EXPECT_THAT(computation->root_instruction(), tuple_param);
 }
 
+TEST_F(TupleSimplifierTest, IncompatibleTuples) {
+  // Verify that a tuple->GTE->tuple construct is not simplified if the input
+  // and output tuple are not compatible shapes.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* tuple_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape_, "param"));
+  HloInstruction* gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple_param, 0));
+  HloInstruction* gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, tuple_param, 1));
+  // Output tuple has only two elements. Parameter tuple has three elements so
+  // simplification is not possible.
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), tuple);
+
+  Run(module.get(), /*change_expected=*/false);
+
+  EXPECT_THAT(computation->root_instruction(), tuple);
+}
+
 }  // namespace
 }  // namespace xla

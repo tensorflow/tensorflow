@@ -18,7 +18,6 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 To use, at program startup, call `tfe.enable_eager_execution()`.
 
-@@device
 @@list_devices
 @@num_gpus
 
@@ -45,6 +44,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 
 @@Iterator
 @@Saver
+@@SummaryWriter
 @@Variable
 """
 
@@ -57,11 +57,11 @@ from __future__ import print_function
 #
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.saver import Saver
+from tensorflow.contrib.eager.python.summary_writer import SummaryWriter
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager.custom_gradient import custom_gradient
 from tensorflow.python.eager import function
-from tensorflow.python.eager.context import device
 from tensorflow.python.eager.context import enable_eager_execution
 from tensorflow.python.eager.context import list_devices
 from tensorflow.python.eager.context import num_gpus

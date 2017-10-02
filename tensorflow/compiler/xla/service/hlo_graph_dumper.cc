@@ -537,11 +537,9 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
   }
 
   // Show the subcomputation if we're showing any of its members.
-  return std::any_of(computation_->instructions().begin(),
-                     computation_->instructions().end(),
-                     [&](const std::unique_ptr<HloInstruction>& instr) {
-                       return filter_.Show(instr.get());
-                     });
+  return std::any_of(
+      computation_->instructions().begin(), computation_->instructions().end(),
+      [&](const HloInstruction* instr) { return filter_.Show(instr); });
 }
 
 string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
@@ -612,19 +610,19 @@ tooltip = " ";
 
 string HloDotDumper::DumpComputation(const HloComputation* comp) {
   string g;
-  for (const auto& instr : comp->instructions()) {
-    if (!filter_.Show(instr.get())) {
+  for (const auto* instr : comp->instructions()) {
+    if (!filter_.Show(instr)) {
       continue;
     }
 
     // Dump subcomputations within instr.
     for (const HloComputation* subcomp : instr->called_computations()) {
       if (ShouldShowSubcomputation(subcomp)) {
-        StrAppend(&g, DumpSubcomputation(subcomp, instr.get()));
+        StrAppend(&g, DumpSubcomputation(subcomp, instr));
       }
     }
 
-    StrAppend(&g, DumpInstruction(instr.get()));
+    StrAppend(&g, DumpInstruction(instr));
   }
   return g;
 }

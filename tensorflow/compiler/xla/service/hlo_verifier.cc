@@ -415,8 +415,8 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
       fusion->fused_parameters();
   const HloInstruction* fused_root = fusion->fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters.size(), false);
-  for (auto& instruction : fused_computation->instructions()) {
-    if (fused_root == instruction.get()) {
+  for (auto* instruction : fused_computation->instructions()) {
+    if (fused_root == instruction) {
       if (root_owned) {
         return FailedPrecondition("Root appears more than once in %s.",
                                   fusion->ToString().c_str());
@@ -424,7 +424,7 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
       root_owned = true;
     }
     for (int i = 0; i < fused_parameters.size(); ++i) {
-      if (fused_parameters[i] == instruction.get()) {
+      if (fused_parameters[i] == instruction) {
         if (parameter_owned[i]) {
           return FailedPrecondition("Parameter appears more than once in %s.",
                                     fusion->ToString().c_str());
@@ -453,9 +453,9 @@ Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
 
   // All uses of fused instructions must be in the fusion computation, and every
   // non-root instruction must have at least one use.
-  for (auto& instruction :
+  for (auto* instruction :
        fusion->fused_instructions_computation()->instructions()) {
-    if (instruction.get() != fused_root) {
+    if (instruction != fused_root) {
       if (instruction->user_count() == 0) {
         return FailedPrecondition(
             "Non-root instruction %s in %s must have users.",
@@ -519,11 +519,11 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
   ShapeVerifier shape_verifier(shape_size_fn_);
 
-  for (auto& computation : module->computations()) {
+  for (auto* computation : module->computations()) {
     for (const auto& instruction : computation->instructions()) {
-      TF_RET_CHECK(instruction->parent() == computation.get());
+      TF_RET_CHECK(instruction->parent() == computation);
       if (instruction->opcode() == HloOpcode::kFusion) {
-        TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction.get()));
+        TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
         TF_RET_CHECK(
             ContainersEqual(instruction->called_computations(),
                             {instruction->fused_instructions_computation()}))
@@ -540,48 +540,9 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
                        instruction->fused_instructions_computation())
               << "Fused HLO was missing a parent: " << fused->ToString()
               << " parent: " << fused->parent()
-              << " computation: " << computation.get();
+              << " computation: " << computation;
         }
-      } else if (instruction->opcode() == HloOpcode::kConvolution) {
-        const auto& dnums = instruction->convolution_dimension_numbers();
-        const int64 rank = ShapeUtil::Rank(instruction->shape());
-        TF_RET_CHECK(rank == dnums.spatial_dimensions_size() + 2)
-            << "Convolution rank and spatial dimensions don't agree: "
-            << instruction->ToString() << " rank: " << rank
-            << " spatial_dimensions_size: " << dnums.spatial_dimensions_size();
-        TF_RET_CHECK(rank == dnums.kernel_spatial_dimensions_size() + 2)
-            << "Convolution rank and kernel spatial dimensions don't agree: "
-            << instruction->ToString() << " rank: " << rank
-            << " kernel_spatial_dimensions_size: "
-            << dnums.kernel_spatial_dimensions_size();
-        std::unordered_set<int64> kernel_dnums{
-            dnums.kernel_spatial_dimensions().begin(),
-            dnums.kernel_spatial_dimensions().end()};
-        kernel_dnums.insert(dnums.kernel_input_feature_dimension());
-        kernel_dnums.insert(dnums.kernel_output_feature_dimension());
-        TF_RET_CHECK(kernel_dnums.size() == rank)
-            << "Convolution kernel dimension numbers are not unique: "
-            << instruction->ToString() << " dnums: " << dnums.DebugString();
-
-        std::unordered_set<int64> input_dnums{
-            dnums.spatial_dimensions().begin(),
-            dnums.spatial_dimensions().end()};
-        input_dnums.insert(dnums.input_batch_dimension());
-        input_dnums.insert(dnums.input_feature_dimension());
-        TF_RET_CHECK(input_dnums.size() == rank)
-            << "Convolution input dimension numbers are not unique: "
-            << instruction->ToString() << " dnums: " << dnums.DebugString();
-
-        std::unordered_set<int64> output_dnums{
-            dnums.spatial_dimensions().begin(),
-            dnums.spatial_dimensions().end()};
-        output_dnums.insert(dnums.output_batch_dimension());
-        output_dnums.insert(dnums.output_feature_dimension());
-        TF_RET_CHECK(output_dnums.size() == rank)
-            << "Convolution output dimension numbers are not unique: "
-            << instruction->ToString() << " dnums: " << dnums.DebugString();
-      }
-      if (instruction->opcode() == HloOpcode::kBroadcast) {
+      } else if (instruction->opcode() == HloOpcode::kBroadcast) {
         // If you see this failure then someone has confused the difference
         // between the HLO broadcast op, and the UserComputation broadcast
         // op.  See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
@@ -589,6 +550,40 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
         TF_RET_CHECK(instruction->dimensions().size() ==
                      ShapeUtil::Rank(instruction->operand(0)->shape()))
                 << "Broadcast HLO has invalid number of dimensions.";
+      } else if (instruction->opcode() == HloOpcode::kWhile) {
+        auto* while_cond = instruction->while_condition();
+        auto* while_body = instruction->while_body();
+        TF_RET_CHECK(while_cond->num_parameters() == 1)
+            << "While condition must have exactly 1 parameter; had "
+            << while_cond->num_parameters() << ": " << while_cond->ToString();
+        TF_RET_CHECK(while_body->num_parameters() == 1)
+            << "While body must have exactly 1 parameter; had "
+            << while_body->num_parameters() << ": " << while_body->ToString();
+        TF_RET_CHECK(instruction->operand_count() == 1)
+            << "While loop must have exactly one operand; had "
+            << instruction->operand_count() << ": " << instruction->ToString();
+
+        auto* init = instruction->operand(0);
+        auto* cond_param = while_cond->parameter_instruction(0);
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), cond_param->shape()))
+            << "While condition's parameter must have the same shape as the "
+               "loop's 'init'. init: "
+            << init->ToString() << ", param: " << cond_param->ToString();
+        auto* cond_root = while_cond->root_instruction();
+        TF_RET_CHECK(ShapeUtil::Compatible(cond_root->shape(),
+                                           ShapeUtil::MakeShape(PRED, {})))
+            << "While condition should have shape PRED: "
+            << cond_root->ToString();
+
+        auto* body_param = while_body->parameter_instruction(0);
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_param->shape()))
+            << "While body's parameter must have the same shape as the loop's "
+               "'init'. init: "
+            << init->ToString() << ", param: " << body_param->ToString();
+        auto* body_root = while_body->root_instruction();
+        TF_RET_CHECK(ShapeUtil::Compatible(init->shape(), body_root->shape()))
+            << "While body should have same shape as the loop's 'init'. init: "
+            << init->ToString() << ", body: " << body_root->ToString();
       }
 
       auto previous = instructions.find(instruction->name());
@@ -599,7 +594,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
           << "\nPrevious HLO with same name:\n"
           << previous->second->ToString()
           << " in computation: " << previous->second->parent()->name();
-      instructions[instruction->name()] = instruction.get();
+      instructions[instruction->name()] = instruction;
     }
 
     TF_RETURN_IF_ERROR(computation->Accept(&shape_verifier));

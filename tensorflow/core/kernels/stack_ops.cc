@@ -150,7 +150,11 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
   if (rm == nullptr) {
     return errors::Internal("No resource manager.");
   }
-  TF_RETURN_IF_ERROR(rm->Lookup(ctx->step_container()->name(), key, stack));
+  auto* step_container = ctx->step_container();
+  if (step_container == nullptr) {
+    return errors::Internal("No step container.");
+  }
+  TF_RETURN_IF_ERROR(rm->Lookup(step_container->name(), key, stack));
   return Status::OK();
 }
 
@@ -191,7 +195,10 @@ class StackOp : public OpKernel {
     OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
     string key = strings::StrCat(kContainer, stack_name);
     Stack* stack = new Stack(elem_type_, stack_name, size);
-    OP_REQUIRES_OK(ctx, rm->Create(ctx->step_container()->name(), key, stack));
+    auto* step_container = ctx->step_container();
+    OP_REQUIRES(ctx, step_container != nullptr,
+                errors::Internal("No step container."));
+    OP_REQUIRES_OK(ctx, rm->Create(step_container->name(), key, stack));
     if (IsRefType(ctx->expected_output_dtype(0))) {
       // Create the stack handle.
       AllocatorAttributes alloc_attr;

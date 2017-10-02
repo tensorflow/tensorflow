@@ -130,7 +130,39 @@ def _check_maybe(t):
 
 
 class BeamSearchDecoder(decoder.Decoder):
-  """BeamSearch sampling decoder."""
+  """BeamSearch sampling decoder.
+
+    **NOTE** If you are using the `BeamSearchDecoder` with a cell wrapped in
+    `AttentionWrapper`, then you must ensure that:
+
+    - The encoder output has been tiled to `beam_width` via
+      @{tf.contrib.seq2seq.tile_batch} (NOT `tf.tile`).
+    - The `batch_size` argument passed to the `zero_state` method of this
+      wrapper is equal to `true_batch_size * beam_width`.
+    - The initial state created with `zero_state` above contains a
+      `cell_state` value containing properly tiled final state from the
+      encoder.
+
+    An example:
+
+    ```
+    tiled_encoder_outputs = tf.contrib.seq2seq.tile_batch(
+        encoder_outputs, multiplier=beam_width)
+    tiled_encoder_final_state = tf.conrib.seq2seq.tile_batch(
+        encoder_final_state, multiplier=beam_width)
+    tiled_sequence_length = tf.contrib.seq2seq.tile_batch(
+        sequence_length, multiplier=beam_width)
+    attention_mechanism = MyFavoriteAttentionMechanism(
+        num_units=attention_depth,
+        memory=tiled_inputs,
+        memory_sequence_length=tiled_sequence_length)
+    attention_cell = AttentionWrapper(cell, attention_mechanism, ...)
+    decoder_initial_state = attention_cell.zero_state(
+        dtype, batch_size=true_batch_size * beam_width)
+    decoder_initial_state = decoder_initial_state.clone(
+        cell_state=tiled_encoder_final_state)
+    ```
+  """
 
   def __init__(self,
                cell,
@@ -141,7 +173,7 @@ class BeamSearchDecoder(decoder.Decoder):
                beam_width,
                output_layer=None,
                length_penalty_weight=0.0):
-    """Initialize BeamSearchDecoder.
+    """Initialize the BeamSearchDecoder.
 
     Args:
       cell: An `RNNCell` instance.
@@ -522,6 +554,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       ops.convert_to_tensor(beam_width, dtype=dtypes.int32, name="beam_width"),
       num_available_beam)
   next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=next_beam_size)
+
   next_beam_scores.set_shape([static_batch_size, beam_width])
   word_indices.set_shape([static_batch_size, beam_width])
 
@@ -531,9 +564,18 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       gather_from=total_probs,
       batch_size=batch_size,
       range_size=beam_width * vocab_size,
-      gather_shape=[-1])
-  next_word_ids = math_ops.to_int32(word_indices % vocab_size)
-  next_beam_ids = math_ops.to_int32(word_indices / vocab_size)
+      gather_shape=[-1],
+      name="next_beam_probs")
+  # Note: just doing the following
+  #   math_ops.to_int32(word_indices % vocab_size,
+  #       name="next_beam_word_ids")
+  # would be a lot cleaner but for reasons unclear, that hides the results of
+  # the op which prevents capturing it with tfdbg debug ops.
+  raw_next_word_ids = math_ops.mod(word_indices, vocab_size,
+                                   name="next_beam_word_ids")
+  next_word_ids = math_ops.to_int32(raw_next_word_ids)
+  next_beam_ids = math_ops.to_int32(word_indices / vocab_size,
+                                    name="next_beam_parent_ids")
 
   # Append new ids to current predictions
   previously_finished = _tensor_gather_helper(
@@ -543,7 +585,8 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       range_size=beam_width,
       gather_shape=[-1])
   next_finished = math_ops.logical_or(previously_finished,
-                                      math_ops.equal(next_word_ids, end_token))
+                                      math_ops.equal(next_word_ids, end_token),
+                                      name="next_beam_finished")
 
   # Calculate the length of the next predictions.
   # 1. Finished beams remain unchanged
@@ -699,7 +742,7 @@ def _maybe_tensor_gather_helper(gather_indices, gather_from, batch_size,
 
 
 def _tensor_gather_helper(gather_indices, gather_from, batch_size,
-                          range_size, gather_shape):
+                          range_size, gather_shape, name=None):
   """Helper for gathering the right indices from the tensor.
 
   This works by reshaping gather_from to gather_shape (e.g. [-1]) and then
@@ -717,19 +760,22 @@ def _tensor_gather_helper(gather_indices, gather_from, batch_size,
       There, we want to preserve the attention_size elements, so gather_shape is
       [batch_size * beam_width, -1]. Then, upon reshape, we still have the
       attention_size as desired.
+    name: The tensor name for set of operations. By default this is
+      'tensor_gather_helper'. The final output is named 'output'.
 
   Returns:
     output: Gathered tensor of shape tf.shape(gather_from)[:1+len(gather_shape)]
   """
-  range_ = array_ops.expand_dims(math_ops.range(batch_size) * range_size, 1)
-  gather_indices = array_ops.reshape(gather_indices + range_, [-1])
-  output = array_ops.gather(
-      array_ops.reshape(gather_from, gather_shape), gather_indices)
-  final_shape = array_ops.shape(gather_from)[:1 + len(gather_shape)]
-  static_batch_size = tensor_util.constant_value(batch_size)
-  final_static_shape = (tensor_shape.TensorShape([static_batch_size])
-                        .concatenate(
-                            gather_from.shape[1:1 + len(gather_shape)]))
-  output = array_ops.reshape(output, final_shape)
-  output.set_shape(final_static_shape)
-  return output
+  with ops.name_scope(name, "tensor_gather_helper"):
+    range_ = array_ops.expand_dims(math_ops.range(batch_size) * range_size, 1)
+    gather_indices = array_ops.reshape(gather_indices + range_, [-1])
+    output = array_ops.gather(
+        array_ops.reshape(gather_from, gather_shape), gather_indices)
+    final_shape = array_ops.shape(gather_from)[:1 + len(gather_shape)]
+    static_batch_size = tensor_util.constant_value(batch_size)
+    final_static_shape = (tensor_shape.TensorShape([static_batch_size])
+                          .concatenate(
+                              gather_from.shape[1:1 + len(gather_shape)]))
+    output = array_ops.reshape(output, final_shape, name="output")
+    output.set_shape(final_static_shape)
+    return output

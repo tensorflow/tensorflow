@@ -878,7 +878,7 @@ tf_module {
   }
   member_method {
     name: "depth_to_space"
-    argspec: "args=[\'input\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
   }
   member_method {
     name: "dequantize"
@@ -1742,7 +1742,7 @@ tf_module {
   }
   member_method {
     name: "space_to_depth"
-    argspec: "args=[\'input\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
   }
   member_method {
     name: "sparse_add"
