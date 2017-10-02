@@ -1121,6 +1121,7 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
   // Scan 'colocated_buffer_sets' in reverse order for locality; colocated sets
   // are added in postorder over computations and instructions.
   const int64 init_buffer_size = buffer_size(*while_init_buffer);
+  const bool is_live_out = buffer_liveness.MaybeLiveOut(*while_result_buffer);
   for (int i = colocated_buffer_sets->size() - 1; i >= 0; --i) {
     const ColocatedBufferSet& predecessor_set = (*colocated_buffer_sets)[i];
 
@@ -1137,6 +1138,20 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
     if (std::any_of(predecessor_set.begin(), predecessor_set.end(),
                     [&while_hlo](const LogicalBuffer* buffer) {
                       return buffer->instruction() == while_hlo;
+                    })) {
+      continue;
+    }
+
+    // Skip predecessor sets with entry parameter if the while result is live
+    // out.
+    if (is_live_out &&
+        std::any_of(predecessor_set.begin(), predecessor_set.end(),
+                    [](const LogicalBuffer* buffer) {
+                      auto* instruction = buffer->instruction();
+                      auto* computation = instruction->parent();
+                      auto* module = computation->parent();
+                      return instruction->opcode() == HloOpcode::kParameter &&
+                             computation == module->entry_computation();
                     })) {
       continue;
     }

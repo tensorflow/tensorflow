@@ -337,6 +337,7 @@ class KMeans(object):
         assigned cluster instead.
       cluster_centers_initialized: scalar indicating whether clusters have been
         initialized.
+      cluster_centers_var: a Variable holding the cluster centers.
       init_op: an op to initialize the clusters.
       training_op: an op that runs an iteration of training.
     """
@@ -380,7 +381,7 @@ class KMeans(object):
           inputs, num_clusters, cluster_idx, cluster_centers_var)
 
     return (all_scores, cluster_idx, scores, cluster_centers_initialized,
-            init_op, training_op)
+            cluster_centers_var, init_op, training_op)
 
   def _mini_batch_sync_updates_op(self, update_in_steps, cluster_centers_var,
                                   cluster_centers_updated, total_counts):

@@ -344,7 +344,8 @@ class ComputationBuilder {
   // Creates a ConvolutionDimensionNumbers with the given arguments. Returns an
   // error if either the input or the weight dimension numbers have conflicts.
   static StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
-      int64 batch, int64 feature, int64 first_spatial, int64 second_spatial,
+      int64 input_batch, int64 input_feature, int64 output_batch,
+      int64 output_feature, int64 first_spatial, int64 second_spatial,
       int64 kernel_output_feature, int64 kernel_input_feature,
       int64 kernel_first_spatial, int64 kernel_second_spatial);
 
@@ -604,6 +605,7 @@ class ComputationBuilder {
   ComputationDataHandle Map(
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       const Computation& computation,
+      tensorflow::gtl::ArraySlice<int64> dimensions,
       tensorflow::gtl::ArraySlice<ComputationDataHandle> static_operands = {});
 
   // Enqueues a N(mu, sigma) random number generation instruction onto the

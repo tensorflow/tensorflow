@@ -18,11 +18,40 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bfloat16.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+// Common base class of Cast kernels
+class CastOpBase : public OpKernel {
+ public:
+  explicit CastOpBase(OpKernelConstruction* ctx);
+
+  void Compute(OpKernelContext* ctx) override;
+
+ protected:
+  DataType src_dtype_;
+  DataType dst_dtype_;
+  std::function<void(OpKernelContext*, const Tensor&, Tensor*)> work_ = nullptr;
+
+  Status Unimplemented();
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CastOpBase);
+};
+
+// CPU implementation of Cast
+class CpuCastOp : public CastOpBase {
+ public:
+  explicit CpuCastOp(OpKernelConstruction* ctx);
+
+ private:
+  Status Prepare();
+};
+
 namespace functor {
 
 template <typename Device, typename Tout, typename Tin>

@@ -92,7 +92,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	raw := tensorData(t.c)
 	buf := bytes.NewBuffer(raw[:0:len(raw)])
 	if dataType != String {
-		if err := encodeTensor(buf, val); err != nil {
+		if err := encodeTensor(buf, val, shape); err != nil {
 			return nil, err
 		}
 		if uintptr(buf.Len()) != nbytes {
@@ -100,7 +100,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		}
 	} else {
 		e := stringEncoder{offsets: buf, data: raw[nflattened*8 : len(raw)], status: newStatus()}
-		if err := e.encode(reflect.ValueOf(value)); err != nil {
+		if err := e.encode(reflect.ValueOf(value), shape); err != nil {
 			return nil, err
 		}
 		if int64(buf.Len()) != nflattened*8 {
@@ -236,17 +236,11 @@ func shapeAndDataTypeOf(val reflect.Value) (shape []int64, dt DataType, err erro
 	typ := val.Type()
 	for typ.Kind() == reflect.Array || typ.Kind() == reflect.Slice {
 		shape = append(shape, int64(val.Len()))
-		// If slice elements are slices, verify that all of them have the same size.
-		// Go's type system makes that guarantee for arrays.
 		if val.Len() > 0 {
-			if val.Type().Elem().Kind() == reflect.Slice {
-				expected := val.Index(0).Len()
-				for i := 1; i < val.Len(); i++ {
-					if val.Index(i).Len() != expected {
-						return shape, dt, fmt.Errorf("mismatched slice lengths: %d and %d", val.Index(i).Len(), expected)
-					}
-				}
-			}
+			// In order to check tensor structure properly in general case we need to iterate over all slices of the tensor to check sizes match
+			// Since we already going to iterate over all elements in encodeTensor() let's
+			// 1) do the actual check in encodeTensor() to save some cpu cycles here
+			// 2) assume the shape is represented by lengths of elements with zero index in each dimension
 			val = val.Index(0)
 		}
 		typ = typ.Elem()
@@ -302,7 +296,7 @@ func byteSizeOfEncodedStrings(val interface{}) uintptr {
 
 // encodeTensor writes v to the specified buffer using the format specified in
 // c_api.h. Use stringEncoder for String tensors.
-func encodeTensor(w *bytes.Buffer, v reflect.Value) error {
+func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
 	switch v.Kind() {
 	case reflect.Bool:
 		b := byte(0)
@@ -318,19 +312,18 @@ func encodeTensor(w *bytes.Buffer, v reflect.Value) error {
 		}
 
 	case reflect.Array, reflect.Slice:
-		// If slice elements are slices, verify that all of them have the same size.
+		// If current dimension is a slice, verify that it has the expected size
 		// Go's type system makes that guarantee for arrays.
-		if v.Len() > 0 && v.Type().Elem().Kind() == reflect.Slice {
-			expected := v.Index(0).Len()
-			for i := 1; i < v.Len(); i++ {
-				if v.Index(i).Len() != expected {
-					return fmt.Errorf("mismatched slice lengths: %d and %d", v.Index(i).Len(), expected)
-				}
+		if v.Kind() == reflect.Slice {
+			expected := int(shape[0])
+			if v.Len() != expected {
+				return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
 			}
 		}
 
+		subShape := shape[1:]
 		for i := 0; i < v.Len(); i++ {
-			err := encodeTensor(w, v.Index(i))
+			err := encodeTensor(w, v.Index(i), subShape)
 			if err != nil {
 				return err
 			}
@@ -379,7 +372,7 @@ type stringEncoder struct {
 	status  *status
 }
 
-func (e *stringEncoder) encode(v reflect.Value) error {
+func (e *stringEncoder) encode(v reflect.Value, shape []int64) error {
 	if v.Kind() == reflect.String {
 		if err := binary.Write(e.offsets, nativeEndian, e.offset); err != nil {
 			return err
@@ -395,8 +388,17 @@ func (e *stringEncoder) encode(v reflect.Value) error {
 		C.free(unsafe.Pointer(src))
 		return e.status.Err()
 	}
+
+	if v.Kind() == reflect.Slice {
+		expected := int(shape[0])
+		if v.Len() != expected {
+			return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
+		}
+	}
+
+	subShape := shape[1:]
 	for i := 0; i < v.Len(); i++ {
-		if err := e.encode(v.Index(i)); err != nil {
+		if err := e.encode(v.Index(i), subShape); err != nil {
 			return err
 		}
 	}
