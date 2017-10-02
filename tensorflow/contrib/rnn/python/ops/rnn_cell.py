@@ -2058,7 +2058,7 @@ def _conv(args,
     if len(shape) not in [3,4,5]:
       raise ValueError("Conv Linear expects 3D, 4D or 5D arguments: %s" % str(shapes))
     if len(shape) != len(shapes[0]):
-      raise ValueError("Conv Linear expects all args to be of same Dimensiton: %s" % str(shapes))
+      raise ValueError("Conv Linear expects all args to be of same Dimension: %s" % str(shapes))
     else:
       total_arg_size_depth += shape[-1]
   dtype = [a.dtype for a in args][0]
