@@ -307,6 +307,7 @@ class Layer(object):
     if inputs_hash not in self._per_input_losses:
       self._per_input_losses[inputs_hash] = []
     self._per_input_losses[inputs_hash] += losses
+    _add_elements_to_collection(losses, ops.GraphKeys.REGULARIZATION_LOSSES)
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -443,16 +444,12 @@ class Layer(object):
                   regularization = regularizer(v)
               if regularization is not None:
                 self.add_loss(regularization)
-                _add_elements_to_collection(
-                    regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
           else:
             with ops.colocate_with(variable.op):
               with ops.name_scope(name + '/Regularizer'):
                 regularization = regularizer(variable)
             if regularization is not None:
               self.add_loss(regularization)
-              _add_elements_to_collection(
-                  regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
     if trainable:
       self._trainable_weights.append(variable)
     else:
@@ -561,8 +558,6 @@ class Layer(object):
               with ops.name_scope('ActivityRegularizer'):
                 activity_regularization = self.activity_regularizer(output)
               self.add_loss(activity_regularization)
-              _add_elements_to_collection(activity_regularization,
-                                          ops.GraphKeys.REGULARIZATION_LOSSES)
 
         # Handle mask computation and propagation to the next layer.
         if hasattr(self, 'compute_mask'):
