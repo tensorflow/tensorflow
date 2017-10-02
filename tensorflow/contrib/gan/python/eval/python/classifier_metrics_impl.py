@@ -59,7 +59,7 @@ __all__ = [
 
 INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v3_2017_09_13.tar.gz'
 INCEPTION_FROZEN_GRAPH = 'frozen_inception_v3.pb'
-INCEPTION_V3_INPUT = 'inputs'
+INCEPTION_V3_INPUT = 'input'
 INCEPTION_V3_OUTPUT = 'InceptionV3/Logits/SpatialSqueeze:0'
 INCEPTION_V3_FINAL_POOL = 'InceptionV3/Logits/AvgPool_1a_8x8/AvgPool:0'
 _INCEPTION_V3_NUM_CLASSES = 1001
