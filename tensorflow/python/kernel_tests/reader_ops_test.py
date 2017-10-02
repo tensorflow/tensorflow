@@ -1042,9 +1042,9 @@ class LMDBReaderTest(test.TestCase):
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
       # Iterate over the lmdb 3 times.
-      for i in range(0, 3):
+      for i in range(3):
         # Go over all 10 records each time.
-        for j in range(0, 10):
+        for j in range(10):
           k, v = sess.run([key, value])
           self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(j)))
           self.assertAllEqual(
