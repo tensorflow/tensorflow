@@ -306,8 +306,9 @@ class Dataset(object):
         # their values.
         # pylint: disable=protected-access
         ret_arrays = [
-            script_ops.FuncRegistry._convert(ret)
-            for ret in nest.flatten_up_to(output_types, values)
+            script_ops.FuncRegistry._convert(ret, dtype=dtype.as_numpy_dtype)
+            for ret, dtype in zip(nest.flatten_up_to(output_types, values),
+                                  flattened_types)
         ]
         # pylint: enable=protected-access
 
