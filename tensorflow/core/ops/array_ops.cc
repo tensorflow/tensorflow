@@ -2715,15 +2715,14 @@ each repeated tile of `input` into `output`.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Where")
-    .Input("input: T")
-    .Attr("T: {numbertype, bool} = DT_BOOL")
+    .Input("input: bool")
     .Output("index: int64")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Matrix(c->UnknownDim(), c->Rank(c->input(0))));
       return Status::OK();
     })
     .Doc(R"doc(
-Returns locations of nonzero / true values in a tensor.
+Returns locations of true values in a boolean tensor.
 
 This operation returns the coordinates of true elements in `input`. The
 coordinates are returned in a 2-D tensor where the first dimension (rows)
@@ -2749,34 +2748,6 @@ where(input) ==> [[0, 0],
 #                    [[False, False]
 #                     [False, True]]]
 # 'input' has 5 true values, so output has 5 coordinates.
-# 'input' has rank of 3, so coordinates have three indices.
-where(input) ==> [[0, 0, 0],
-                  [0, 1, 0],
-                  [1, 0, 1],
-                  [1, 1, 1],
-                  [2, 1, 1]]
-
-# `input` tensor is [[[1.5,  0.0]
-#                     [-0.5, 0.0]]
-#                    [[0.0,  0.25]
-#                     [0.0,  0.75]]
-#                    [[0.0,  0.0]
-#                     [0.0,  0.01]]]
-# 'input' has 5 nonzero values, so output has 5 coordinates.
-# 'input' has rank of 3, so coordinates have three indices.
-where(input) ==> [[0, 0, 0],
-                  [0, 1, 0],
-                  [1, 0, 1],
-                  [1, 1, 1],
-                  [2, 1, 1]]
-
-# `input` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]
-#                     [0.0 + 0.5j, 0.0  + 0.0j]]
-#                    [[0.0 + 0.0j, 0.25 + 1.5j]
-#                     [0.0 + 0.0j, 0.75 + 0.0j]]
-#                    [[0.0 + 0.0j, 0.0  + 0.0j]
-#                     [0.0 + 0.0j, 0.01 + 0.0j]]]
-# 'input' has 5 nonzero magnitude values, so output has 5 coordinates.
 # 'input' has rank of 3, so coordinates have three indices.
 where(input) ==> [[0, 0, 0],
                   [0, 1, 0],

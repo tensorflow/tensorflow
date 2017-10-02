@@ -837,17 +837,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "where_op",
-    srcs = ["where_op.cc"],
-    hdrs = ["where_op.h"],
-    gpu_srcs = [
-        "where_op.h",
-        "where_op_gpu.cu.h",
-        "where_op_gpu_impl_1.cu.cc",
-        "where_op_gpu_impl_2.cu.cc",
-        "where_op_gpu_impl_3.cu.cc",
-        "where_op_gpu_impl_4.cu.cc",
-        "where_op_gpu_impl_5.cu.cc",
-    ],
+    prefix = "where_op",
     deps = if_cuda([
         ":cuda_solvers",
         "@cub_archive//:cub",
