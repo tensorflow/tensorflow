@@ -67,8 +67,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
       return y, grad_fn
 
-    # TODO(ashankar): This [0] should ideally not be needed.
-    grad = tfe.gradients_function(f, [0])
+    grad = tfe.gradients_function(f)
     self.assertEquals([12], [x.numpy() for x in grad(3)])
 
   def testGPU(self):
