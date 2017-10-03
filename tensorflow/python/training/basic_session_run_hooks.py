@@ -166,7 +166,7 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
 
   The tensors will be printed to the log, with `INFO` severity. If you are not
   seeing the logs, you might want to add the following line after your imports:
-  
+
   ```python
     tf.logging.set_verbosity(tf.logging.INFO)
   ```

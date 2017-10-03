@@ -37,6 +37,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
+from tensorflow.python.util import compat
 
 
 class BackpropTest(test.TestCase):
@@ -396,6 +397,47 @@ class BackpropTest(test.TestCase):
     v = resource_variable_ops.ResourceVariable(
         initial_value=1., name='testSameObjectForMultipleArguments.Variable')
     self.assertAllEqual([1., 1.], np_g(v, v))
+
+  def testEarlyGradAggregation(self):
+    # Needs to be a list so mutations by the callback affect this function.
+    add_n = []
+    def callback(op_type, unused_1, unused_2, unused_3, unused_4):
+      if compat.as_bytes(op_type) == compat.as_bytes('AddN'):
+        add_n.append(1)
+    context.context().add_post_execution_callback(callback)
+
+    v = resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
+    def fn():
+      outputs = []
+      for _ in range(20):
+        outputs.append(v * constant_op.constant(2.0))
+      return math_ops.add_n(outputs)
+
+    # By default the aggregation count is 2.
+    _ = backprop.implicit_grad(fn)()[0][1]
+    self.assertEqual(len(add_n), 2)
+    del add_n[:]
+
+    # Reduce the aggregation limit, cause the backprop to do some
+    # early aggregation.
+    # pylint: disable=protected-access
+    old_cnt = backprop._MIN_AGGREGATE_COUNT
+    old_bytes = backprop._MIN_AGGREGATE_BYTES
+    backprop._MIN_AGGREGATE_COUNT = 10
+    backprop._MIN_AGGREGATE_BYTES = 1
+    _ = backprop.implicit_grad(fn)()
+    self.assertEqual(len(add_n), 6)
+    del add_n[:]
+
+    # Aggregation is also limited by the memory.
+    backprop._MIN_AGGREGATE_BYTES = 10000
+    _ = backprop.implicit_grad(fn)()
+    self.assertEqual(len(add_n), 2)
+
+    backprop._MIN_AGGREGATE_COUNT = old_cnt
+    backprop._MIN_AGGREGATE_BYTES = old_bytes
+    # pylint: enable=protected-access
+    context.context().clear_post_execution_callbacks()
 
 
 if __name__ == '__main__':

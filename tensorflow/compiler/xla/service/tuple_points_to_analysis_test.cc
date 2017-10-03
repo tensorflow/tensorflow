@@ -661,13 +661,12 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
                                                HloInstruction* operand) {
     auto it = std::find_if(
         fusion->fused_instructions().begin(),
-        fusion->fused_instructions().end(),
-        [=](const std::unique_ptr<HloInstruction>& fused) {
+        fusion->fused_instructions().end(), [=](const HloInstruction* fused) {
           return fused->opcode() == HloOpcode::kParameter &&
                  fusion->operand(fused->parameter_number()) == operand;
         });
     CHECK(it != fusion->fused_instructions().end());
-    return (*it).get();
+    return *it;
   }
 
   // Returns all users of 'fusion_paran' at 'tuple_index'.

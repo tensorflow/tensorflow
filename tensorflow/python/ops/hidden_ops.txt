@@ -207,6 +207,7 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -285,6 +286,7 @@ AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
+FusedBatchNormV2
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad

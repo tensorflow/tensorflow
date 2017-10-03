@@ -81,8 +81,8 @@ public final class Graph implements AutoCloseable {
   /**
    * Iterator over all the {@link Operation}s in the graph.
    *
-   * The order of iteration is unspecified. Consumers of the iterator will received no notification
-   * should the underlying graph change during iteration.
+   * <p>The order of iteration is unspecified. Consumers of the iterator will receive no
+   * notification should the underlying graph change during iteration.
    */
   public Iterator<Operation> operations() {
     return new OperationIterator(this);
@@ -245,7 +245,8 @@ public final class Graph implements AutoCloseable {
 
   private static native long operation(long handle, String name);
 
-  // This method returns the Operation native handle at index 0 and the new value for pos at index 1 (see TF_GraphNextOperation)
+  // This method returns the Operation native handle at index 0 and the new value for pos at index 1
+  // (see TF_GraphNextOperation)
   private static native long[] nextOperation(long handle, int position);
 
   private static native void importGraphDef(long handle, byte[] graphDef, String prefix)

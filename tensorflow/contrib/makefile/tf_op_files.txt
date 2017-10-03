@@ -1,4 +1,3 @@
-tensorflow/contrib/boosted_trees/ops/ensemble_optimizer_ops.cc
 tensorflow/contrib/boosted_trees/ops/model_ops.cc
 tensorflow/contrib/boosted_trees/ops/prediction_ops.cc
 tensorflow/contrib/boosted_trees/ops/quantile_ops.cc

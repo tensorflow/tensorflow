@@ -445,6 +445,7 @@ tf_cuda_library(
         "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
+        "util/reffed_status_callback.h",
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
@@ -1276,6 +1277,13 @@ tf_pyclif_proto_library(
     name = "framework/types_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/types.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "protobuf/meta_graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/meta_graph.proto",
     visibility = ["//visibility:public"],
 )
 
@@ -2576,6 +2584,7 @@ tf_cc_tests(
         "util/example_proto_helper_test.cc",
         "util/memmapped_file_system_test.cc",
         "util/presized_cuckoo_map_test.cc",
+        "util/reffed_status_callback_test.cc",
         "util/reporter_test.cc",
         "util/saved_tensor_slice_util_test.cc",
         "util/semver_test.cc",
@@ -2612,6 +2621,7 @@ tf_cc_tests(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/cc:while_loop",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
@@ -2860,9 +2870,11 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:resource_variable_ops",
         "//third_party/eigen3",
     ],
 )

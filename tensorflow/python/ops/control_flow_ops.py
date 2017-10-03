@@ -791,6 +791,8 @@ class GradLoopState(object):
         self._grad_sync = control_trigger(name="b_sync")
       self._grad_sync._set_control_flow_context(self._grad_context)
       self._grad_index.op._add_control_input(self._grad_sync)
+      if self._grad_context.outer_context:
+        self._grad_context.outer_context.AddInnerOp(self._grad_sync)
     return self._grad_sync
 
   @property
@@ -1496,7 +1498,8 @@ class ControlFlowContext(object):
 
   def AddInnerOp(self, op):
     """Notifies a scope about an operator added to an inner scope."""
-    pass
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
 
   def GetControlPivot(self):
     """Returns the pivot node for this context, or None."""

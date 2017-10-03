@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
+#include <deque>
 #include <numeric>
 
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
@@ -188,16 +189,18 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // The Executor requires us to use ScopedStepContainer. We wrap it in a
   // unique_ptr so we can capture the cleanup status in the end.
   xla_context->Ref();
-  Status cleanup_status;
+  Status status;
   auto step_container = xla::MakeUnique<ScopedStepContainer>(
-      step_id, [&cleanup_status, device](const string& name) {
-        cleanup_status = device->resource_manager()->Cleanup(name);
+      step_id, [&status, device](const string& name) {
+        status = device->resource_manager()->Cleanup(name);
       });
   TF_RETURN_IF_ERROR(device->resource_manager()->Create(
       step_container->name(), XlaContext::kXlaContextResourceName,
       xla_context));
 
   // Create a LocalExecutor that will own and run the graph.
+  // TODO(b/66947550): migrate away from using an Executor in order to guarantee
+  // determinism and thread-safety.
   LocalExecutorParams exec_params;
   exec_params.device = device;
   exec_params.function_library = flib;
@@ -214,15 +217,36 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   Executor::Args exec_args;
   exec_args.step_id = step_id;
   exec_args.step_container = step_container.get();
-  // Run all compilation kernels on the main thread.
-  exec_args.runner = [](Executor::Args::Closure c) { c(); };
+
+  // Pushes closures to run onto `worklist`. We don't run the closures directly
+  // from 'runner' since that might lead to a stack overflow for large graphs.
+  std::deque<Executor::Args::Closure> worklist;
+  exec_args.runner = [&](Executor::Args::Closure c) {
+    worklist.push_back(std::move(c));
+  };
+
+  // The following code assumes there is only one thread involved and no
+  // concurrency, because we did not provide Executor a threaded runner. Async
+  // ops on the XlaCompilation device must not use threads or concurrency
+  // internally.
+  bool done = false;
+  exec->RunAsync(exec_args, [&](const Status& s) {
+    status = s;
+    done = true;
+  });
+  // Repeatedly run closures from the worklist until `done` is signalled.
+  while (!done) {
+    TF_RET_CHECK(!worklist.empty());
+    Executor::Args::Closure& c = worklist.front();
+    c();
+    worklist.pop_front();
+  }
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      exec->Run(exec_args),
-      "Conversion from TensorFlow graph to XLA computation failed.");
+      status, "Conversion from TensorFlow graph to XLA computation failed.");
 
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
-  return cleanup_status;
+  return status;
 }
 
 // Builds XLA computations for each of the arguments to the computation.
