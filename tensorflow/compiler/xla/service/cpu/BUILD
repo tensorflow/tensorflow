@@ -134,7 +134,6 @@ cc_library(
         ":runtime_matmul",
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_matmul",
-        "//tensorflow/compiler/xla:custom_call_target_registry",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
