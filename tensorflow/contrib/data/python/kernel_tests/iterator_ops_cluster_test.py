@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
@@ -44,7 +45,7 @@ class IteratorClusterTest(test.TestCase):
       iterator_3_handle = iterator_3.string_handle()
 
     with ops.device("/job:worker/replica:0/task:0/cpu:0"):
-      remote_it = dataset_ops.Iterator.from_string_handle(
+      remote_it = iterator_ops.Iterator.from_string_handle(
           iterator_3_handle, dataset_3.output_types, dataset_3.output_shapes)
       get_next_op = remote_it.get_next()
 
@@ -60,7 +61,7 @@ class IteratorClusterTest(test.TestCase):
 
     @function.Defun(dtypes.string)
     def _remote_fn(h):
-      remote_iterator = dataset_ops.Iterator.from_string_handle(
+      remote_iterator = iterator_ops.Iterator.from_string_handle(
           h, dataset_3.output_types, dataset_3.output_shapes)
       return remote_iterator.get_next()
 

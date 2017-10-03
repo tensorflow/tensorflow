@@ -250,6 +250,7 @@ class BasicRNNCell(RNNCell):
     super(BasicRNNCell, self).__init__(_reuse=reuse)
     self._num_units = num_units
     self._activation = activation or math_ops.tanh
+    self._linear = None
 
   @property
   def state_size(self):
@@ -261,7 +262,10 @@ class BasicRNNCell(RNNCell):
 
   def call(self, inputs, state):
     """Most basic RNN: output = new_state = act(W * input + U * state + B)."""
-    output = self._activation(_linear([inputs, state], self._num_units, True))
+    if self._linear is None:
+      self._linear = _Linear([inputs, state], self._num_units, True)
+
+    output = self._activation(self._linear([inputs, state]))
     return output, output
 
 
@@ -290,6 +294,8 @@ class GRUCell(RNNCell):
     self._activation = activation or math_ops.tanh
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
+    self._gate_linear = None
+    self._candidate_linear = None
 
   @property
   def state_size(self):
@@ -301,20 +307,31 @@ class GRUCell(RNNCell):
 
   def call(self, inputs, state):
     """Gated recurrent unit (GRU) with nunits cells."""
-    with vs.variable_scope("gates"):  # Reset gate and update gate.
-      # We start with bias of 1.0 to not reset and not update.
+    if self._gate_linear is None:
       bias_ones = self._bias_initializer
       if self._bias_initializer is None:
-        dtype = [a.dtype for a in [inputs, state]][0]
-        bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
-      value = math_ops.sigmoid(
-          _linear([inputs, state], 2 * self._num_units, True, bias_ones,
-                  self._kernel_initializer))
-      r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
-    with vs.variable_scope("candidate"):
-      c = self._activation(
-          _linear([inputs, r * state], self._num_units, True,
-                  self._bias_initializer, self._kernel_initializer))
+        bias_ones = init_ops.constant_initializer(1.0, dtype=inputs.dtype)
+      with vs.variable_scope("gates"):  # Reset gate and update gate.
+        self._gate_linear = _Linear(
+            [inputs, state],
+            2 * self._num_units,
+            True,
+            bias_initializer=bias_ones,
+            kernel_initializer=self._kernel_initializer)
+
+    value = math_ops.sigmoid(self._gate_linear([inputs, state]))
+    r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
+
+    r_state = r * state
+    if self._candidate_linear is None:
+      with vs.variable_scope("candidate"):
+        self._candidate_linear = _Linear(
+            [inputs, r_state],
+            self._num_units,
+            True,
+            bias_initializer=self._bias_initializer,
+            kernel_initializer=self._kernel_initializer)
+    c = self._activation(self._candidate_linear([inputs, r_state]))
     new_h = u * state + (1 - u) * c
     return new_h, new_h
 
@@ -384,6 +401,7 @@ class BasicLSTMCell(RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation or math_ops.tanh
+    self._linear = None
 
   @property
   def state_size(self):
@@ -416,10 +434,11 @@ class BasicLSTMCell(RNNCell):
     else:
       c, h = array_ops.split(value=state, num_or_size_splits=2, axis=1)
 
-    concat = _linear([inputs, h], 4 * self._num_units, True)
-
+    if self._linear is None:
+      self._linear = _Linear([inputs, h], 4 * self._num_units, True)
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-    i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
+    i, j, f, o = array_ops.split(
+        value=self._linear([inputs, h]), num_or_size_splits=4, axis=1)
 
     new_c = (
         c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
@@ -525,6 +544,12 @@ class LSTMCell(RNNCell):
           LSTMStateTuple(num_units, num_units)
           if state_is_tuple else 2 * num_units)
       self._output_size = num_units
+    self._linear1 = None
+    self._linear2 = None
+    if self._use_peepholes:
+      self._w_f_diag = None
+      self._w_i_diag = None
+      self._w_o_diag = None
 
   @property
   def state_size(self):
@@ -572,56 +597,65 @@ class LSTMCell(RNNCell):
     input_size = inputs.get_shape().with_rank(2)[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
-    scope = vs.get_variable_scope()
-    with vs.variable_scope(scope, initializer=self._initializer) as unit_scope:
-      if self._num_unit_shards is not None:
-        unit_scope.set_partitioner(
-            partitioned_variables.fixed_size_partitioner(
-                self._num_unit_shards))
-      # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      lstm_matrix = _linear([inputs, m_prev], 4 * self._num_units, bias=True)
-      i, j, f, o = array_ops.split(
-          value=lstm_matrix, num_or_size_splits=4, axis=1)
-      # Diagonal connections
-      if self._use_peepholes:
-        with vs.variable_scope(unit_scope) as projection_scope:
-          if self._num_unit_shards is not None:
-            projection_scope.set_partitioner(None)
-          w_f_diag = vs.get_variable(
+    if self._linear1 is None:
+      scope = vs.get_variable_scope()
+      with vs.variable_scope(
+          scope, initializer=self._initializer) as unit_scope:
+        if self._num_unit_shards is not None:
+          unit_scope.set_partitioner(
+              partitioned_variables.fixed_size_partitioner(
+                  self._num_unit_shards))
+        self._linear1 = _Linear([inputs, m_prev], 4 * self._num_units, True)
+
+    # i = input_gate, j = new_input, f = forget_gate, o = output_gate
+    lstm_matrix = self._linear1([inputs, m_prev])
+    i, j, f, o = array_ops.split(
+        value=lstm_matrix, num_or_size_splits=4, axis=1)
+    # Diagonal connections
+    if self._use_peepholes and not self._w_f_diag:
+      scope = vs.get_variable_scope()
+      with vs.variable_scope(
+          scope, initializer=self._initializer) as unit_scope:
+        with vs.variable_scope(unit_scope):
+          self._w_f_diag = vs.get_variable(
               "w_f_diag", shape=[self._num_units], dtype=dtype)
-          w_i_diag = vs.get_variable(
+          self._w_i_diag = vs.get_variable(
               "w_i_diag", shape=[self._num_units], dtype=dtype)
-          w_o_diag = vs.get_variable(
+          self._w_o_diag = vs.get_variable(
               "w_o_diag", shape=[self._num_units], dtype=dtype)
 
-      if self._use_peepholes:
-        c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
-             sigmoid(i + w_i_diag * c_prev) * self._activation(j))
-      else:
-        c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) *
-             self._activation(j))
+    if self._use_peepholes:
+      c = (sigmoid(f + self._forget_bias + self._w_f_diag * c_prev) * c_prev +
+           sigmoid(i + self._w_i_diag * c_prev) * self._activation(j))
+    else:
+      c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) *
+           self._activation(j))
 
-      if self._cell_clip is not None:
+    if self._cell_clip is not None:
+      # pylint: disable=invalid-unary-operand-type
+      c = clip_ops.clip_by_value(c, -self._cell_clip, self._cell_clip)
+      # pylint: enable=invalid-unary-operand-type
+    if self._use_peepholes:
+      m = sigmoid(o + self._w_o_diag * c) * self._activation(c)
+    else:
+      m = sigmoid(o) * self._activation(c)
+
+    if self._num_proj is not None:
+      if self._linear2 is None:
+        scope = vs.get_variable_scope()
+        with vs.variable_scope(scope, initializer=self._initializer):
+          with vs.variable_scope("projection") as proj_scope:
+            if self._num_proj_shards is not None:
+              proj_scope.set_partitioner(
+                  partitioned_variables.fixed_size_partitioner(
+                      self._num_proj_shards))
+            self._linear2 = _Linear(m, self._num_proj, False)
+      m = self._linear2(m)
+
+      if self._proj_clip is not None:
         # pylint: disable=invalid-unary-operand-type
-        c = clip_ops.clip_by_value(c, -self._cell_clip, self._cell_clip)
+        m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
         # pylint: enable=invalid-unary-operand-type
-      if self._use_peepholes:
-        m = sigmoid(o + w_o_diag * c) * self._activation(c)
-      else:
-        m = sigmoid(o) * self._activation(c)
-
-      if self._num_proj is not None:
-        with vs.variable_scope("projection") as proj_scope:
-          if self._num_proj_shards is not None:
-            proj_scope.set_partitioner(
-                partitioned_variables.fixed_size_partitioner(
-                    self._num_proj_shards))
-          m = _linear(m, self._num_proj, bias=False)
-
-        if self._proj_clip is not None:
-          # pylint: disable=invalid-unary-operand-type
-          m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
-          # pylint: enable=invalid-unary-operand-type
 
     new_state = (LSTMStateTuple(c, m) if self._state_is_tuple else
                  array_ops.concat([c, m], 1))
@@ -1083,6 +1117,82 @@ class _SlimRNNCell(RNNCell):
     return output, state
 
 
+class _Linear(object):
+  """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
+
+  Args:
+    args: a 2D Tensor or a list of 2D, batch x n, Tensors.
+    output_size: int, second dimension of weight variable.
+    dtype: data type for variables.
+    build_bias: boolean, whether to build a bias variable.
+    bias_initializer: starting value to initialize the bias
+      (default is all zeros).
+    kernel_initializer: starting value to initialize the weight.
+
+  Raises:
+    ValueError: if inputs_shape is wrong.
+  """
+
+  def __init__(self,
+               args,
+               output_size,
+               build_bias,
+               bias_initializer=None,
+               kernel_initializer=None):
+    self._build_bias = build_bias
+
+    if args is None or (nest.is_sequence(args) and not args):
+      raise ValueError("`args` must be specified")
+    if not nest.is_sequence(args):
+      args = [args]
+      self._is_sequence = False
+    else:
+      self._is_sequence = True
+
+    # Calculate the total size of arguments on dimension 1.
+    total_arg_size = 0
+    shapes = [a.get_shape() for a in args]
+    for shape in shapes:
+      if shape.ndims != 2:
+        raise ValueError("linear is expecting 2D arguments: %s" % shapes)
+      if shape[1].value is None:
+        raise ValueError("linear expects shape[1] to be provided for shape %s, "
+                         "but saw %s" % (shape, shape[1]))
+      else:
+        total_arg_size += shape[1].value
+
+    dtype = [a.dtype for a in args][0]
+
+    scope = vs.get_variable_scope()
+    with vs.variable_scope(scope) as outer_scope:
+      self._weights = vs.get_variable(
+          _WEIGHTS_VARIABLE_NAME, [total_arg_size, output_size],
+          dtype=dtype,
+          initializer=kernel_initializer)
+      if build_bias:
+        with vs.variable_scope(outer_scope) as inner_scope:
+          inner_scope.set_partitioner(None)
+          if bias_initializer is None:
+            bias_initializer = init_ops.constant_initializer(0.0, dtype=dtype)
+          self._biases = vs.get_variable(
+              _BIAS_VARIABLE_NAME, [output_size],
+              dtype=dtype,
+              initializer=bias_initializer)
+
+  def __call__(self, args):
+    if not self._is_sequence:
+      args = [args]
+
+    if len(args) == 1:
+      res = math_ops.matmul(args[0], self._weights)
+    else:
+      res = math_ops.matmul(array_ops.concat(args, 1), self._weights)
+    if self._build_bias:
+      res = nn_ops.bias_add(res, self._biases)
+    return res
+
+
+# TODO(xpan): Remove this function in a follow up.
 def _linear(args,
             output_size,
             bias,

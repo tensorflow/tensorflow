@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -87,7 +88,7 @@ string ProcessFunctionLibraryRuntime::ObtainFunctionTarget(
   if (!attrs.Find("_target", &value).ok()) {
     return "";
   }
-  return value->s();
+  return DeviceNameUtils::CanonicalizeDeviceName(value->s());
 }
 
 /* static */
@@ -160,11 +161,17 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 
 FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
     const string& device_name) {
-  if (flr_map_.find(device_name) == flr_map_.end()) {
+  string clean_device_name;
+  if (device_name != kDefaultFLRDevice) {
+    clean_device_name = DeviceNameUtils::CanonicalizeDeviceName(device_name);
+  } else {
+    clean_device_name = device_name;
+  }
+  if (flr_map_.find(clean_device_name) == flr_map_.end()) {
     LOG(ERROR) << "Could not find device: " << device_name;
     return nullptr;
   }
-  return flr_map_[device_name].get();
+  return flr_map_[clean_device_name].get();
 }
 
 FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandle(
@@ -218,7 +225,6 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
     FunctionLibraryRuntime::Handle* handle) {
   *handle = kInvalidHandle;
   string target = ObtainFunctionTarget(attrs);
-
   FunctionLibraryRuntime* flr = GetFLR(target);
   if (flr != nullptr) {
     return flr->Instantiate(function_name, attrs, handle);

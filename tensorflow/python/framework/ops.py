@@ -4876,10 +4876,10 @@ def name_scope(name, default_name=None, values=None):
   ctx = context.context()
   if ctx.in_eager_mode():
     old_name = ctx.scope_name
-    if name is None:
-      scope_name = ""
-    else:
+    if name:
       scope_name = "%s%s/" % (old_name, name) if old_name else "%s/" % name
+    else:
+      scope_name = ""
     ctx.scope_name = scope_name
     try:
       yield scope_name

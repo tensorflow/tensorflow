@@ -13,7 +13,7 @@ py_library(
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 

@@ -2653,7 +2653,8 @@ TEST_F(OpTest, Split) {
     std::vector<int64> dims = RandomDims(1);
     std::uniform_int_distribution<int> ud;
     int32 dim = std::uniform_int_distribution<int32>(
-        0, static_cast<int32>(dims.size()) - 1)(generator());
+        -static_cast<int32>(dims.size()),
+        static_cast<int32>(dims.size()) - 1)(generator());
     int n = std::uniform_int_distribution<int>(1, 5)(generator());
     // Ensure 'dim' is evenly divisible by 'n'.
     dims[dim] /= n;
