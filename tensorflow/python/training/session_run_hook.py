@@ -28,7 +28,7 @@ ops-or-tensor/feeds to the run call, and when the run call finishes with success
 gets the outputs it requested. Hooks are allowed to add ops to the graph in
 `hook.begin()`. The graph is finalized after the `begin()` method is called.
 
-There are a few pre-defined monitors:
+There are a few pre-defined hooks:
  - StopAtStepHook: Request stop based on global_step
  - CheckpointSaverHook: saves checkpoint
  - LoggingTensorHook: outputs one or more tensor values to log

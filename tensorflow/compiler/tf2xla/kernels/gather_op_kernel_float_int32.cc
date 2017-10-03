@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/tf2xla/xla_local_runtime_context.h"
+#include "tensorflow/compiler/xla/custom_call_target_registry.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -70,3 +71,5 @@ EIGEN_STRONG_INLINE void gather_float_int32_xla_impl(float* out, void** data) {
 extern "C" void TF_EXPORT gather_float_int32_xla_impl(float* out, void** data) {
   tensorflow::gather_float_int32_xla_impl(out, data);
 }
+
+REGISTER_CUSTOM_CALL_TARGET(gather_float_int32_xla_impl);

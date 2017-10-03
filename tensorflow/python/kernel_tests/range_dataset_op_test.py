@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -255,8 +256,8 @@ class RangeDatasetTest(test.TestCase):
       # Create an empty IteratorResource and restore the Iterator into it.
       output_types = dtypes.int64
       output_shapes = tensor_shape.scalar()
-      iterator = dataset_ops.Iterator.from_structure(output_types,
-                                                     output_shapes)
+      iterator = iterator_ops.Iterator.from_structure(output_types,
+                                                      output_shapes)
       restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
                                                     path)
       get_next = iterator.get_next()

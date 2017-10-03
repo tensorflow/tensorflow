@@ -62,6 +62,11 @@ _INVALID_TASK_TYPE = '`estimator.config` must have task_type set.'
 # partially and return successuful.
 _INVALID_TASK_TO_RUN = (
     'Task type .* is not supported. Supported task types are ((?!local).)*$')
+_INVALID_EMPTY_EVAL_RESULT_ERR = (
+    'Internal error: `Estimator.evaluate` should never return empty result')
+_INVALID_EVAL_RESULT_TYPE_ERR = '`Estimator.evaluate` should return dict.'
+_MISSING_GLOBAL_STEP_IN_EVAL_RESULT_ERR = (
+    'Internal error: `Estimator.evaluate` result should have `global_step`')
 
 _TF_CONFIG_FOR_CHIEF = {
     'cluster': {
@@ -809,6 +814,40 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     # Verify that export_fn was called on the right estimator.
     self.assertTrue(mock_est.export_fn_was_called)
 
+  def test_errors_out_if_evaluate_returns_empty_dict(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=(lambda: 1),
+                                  delay_secs=0, throttle_secs=0)
+    mock_est.evaluate.return_value = {}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(RuntimeError, _INVALID_EMPTY_EVAL_RESULT_ERR):
+      executor.run_evaluator()
+
+  def test_errors_out_if_evaluate_returns_non_dict(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=(lambda: 1),
+                                  delay_secs=0, throttle_secs=0)
+    mock_est.evaluate.return_value = 123
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(TypeError, _INVALID_EVAL_RESULT_TYPE_ERR):
+      executor.run_evaluator()
+
+  def test_errors_out_if_evaluate_returns_dict_without_global_step(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=(lambda: 1),
+                                  delay_secs=0, throttle_secs=0)
+    mock_est.evaluate.return_value = {'loss': 123}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _MISSING_GLOBAL_STEP_IN_EVAL_RESULT_ERR):
+      executor.run_evaluator()
+
 
 class TrainingExecutorRunPsTest(test.TestCase):
   """Tests run_ps of _TrainingExecutor."""
@@ -1047,6 +1086,37 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     executor.run_local()
 
     self.assertTrue(mock_est.export_fn_was_called)
+
+  def test_errors_out_if_evaluate_returns_empty_dict(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=(lambda: 1), throttle_secs=123)
+    mock_est.evaluate.return_value = {}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(RuntimeError, _INVALID_EMPTY_EVAL_RESULT_ERR):
+      executor.run_local()
+
+  def test_errors_out_if_evaluate_returns_non_dict(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=(lambda: 1), throttle_secs=123)
+    mock_est.evaluate.return_value = 123
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(TypeError, _INVALID_EVAL_RESULT_TYPE_ERR):
+      executor.run_local()
+
+  def test_errors_out_if_evaluate_returns_dict_without_global_step(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    train_spec = training.TrainSpec(input_fn=lambda: 1)
+    eval_spec = training.EvalSpec(input_fn=(lambda: 1), throttle_secs=123)
+    mock_est.evaluate.return_value = {'loss': 123}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _MISSING_GLOBAL_STEP_IN_EVAL_RESULT_ERR):
+      executor.run_local()
 
 
 if __name__ == '__main__':

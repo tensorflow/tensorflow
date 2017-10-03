@@ -574,7 +574,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       gpu_name = test_util.gpu_device_name()
       cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
     cls._curr_file_path = os.path.abspath(
         tf_inspect.getfile(tf_inspect.currentframe()))
@@ -1595,7 +1595,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
       gpu_name = test_util.gpu_device_name()
       cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
     with session.Session(config=no_rewrite_session_config()) as sess:
       x_init_val = np.array([5.0, 3.0])

@@ -106,7 +106,8 @@ def summary_writer_function(name, tensor, function, family=None):
       function(tag, scope)
       return True
 
-  return control_flow_ops.cond(should_record_summaries(), record, _nothing)
+  return control_flow_ops.cond(
+      should_record_summaries(), record, _nothing, name="")
 
 
 def generic(name, tensor, metadata, family=None):
