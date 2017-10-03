@@ -485,6 +485,10 @@ class _TrainingExecutor(object):
       Returns:
         Evaluation results. Returns `None` if current round of evaluation is
         skipped.
+
+      Raises:
+        RuntimeError: for any unexpected internal error.
+        TypeError: if evaluation result has wrong type.
       """
       latest_ckpt_path = self._estimator.latest_checkpoint()
       if not latest_ckpt_path:
@@ -506,8 +510,17 @@ class _TrainingExecutor(object):
           hooks=self._eval_spec.hooks)
 
       if not eval_result:
-        self._log_err_msg('Estimator evaluate returns empty result.')
-        return None
+        raise RuntimeError(
+            'Internal error: `Estimator.evaluate` should never return empty '
+            'result.')
+      if not isinstance(eval_result, dict):
+        raise TypeError(
+            '`Estimator.evaluate` should return dict. Given {}.'.format(
+                type(eval_result)))
+      if ops.GraphKeys.GLOBAL_STEP not in eval_result:
+        raise RuntimeError(
+            'Internal error: `Estimator.evaluate` result should have '
+            '`global_step` in result. Given {}'.format(eval_result))
 
       self._export_eval_result(eval_result, latest_ckpt_path)
 

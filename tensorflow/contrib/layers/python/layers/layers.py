@@ -1732,13 +1732,14 @@ class GDN(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(GDN, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(GDN, self).__init__(trainable=trainable, name=name,
+                              activity_regularizer=activity_regularizer,
+                              **kwargs)
     self.inverse = inverse
     self._beta_min = beta_min
     self._gamma_init = gamma_init
     self._reparam_offset = reparam_offset
     self.data_format = data_format
-    self.activity_regularizer = activity_regularizer
     self._channel_axis()  # trigger ValueError early
     self.input_spec = base.InputSpec(min_ndim=3, max_ndim=5)
 

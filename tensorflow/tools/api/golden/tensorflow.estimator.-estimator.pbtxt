@@ -40,6 +40,6 @@ tf_class {
   }
   member_method {
     name: "train"
-    argspec: "args=[\'self\', \'input_fn\', \'hooks\', \'steps\', \'max_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'input_fn\', \'hooks\', \'steps\', \'max_steps\', \'saving_listeners\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
 }

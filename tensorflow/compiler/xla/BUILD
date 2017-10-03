@@ -63,6 +63,17 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_call_target_registry",
+    srcs = [
+        "custom_call_target_registry.cc",
+    ],
+    hdrs = [
+        "custom_call_target_registry.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "test",
     testonly = 1,
     hdrs = ["test.h"],

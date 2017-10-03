@@ -212,7 +212,12 @@ class Estimator(object):
     """
     return saver.latest_checkpoint(self.model_dir)
 
-  def train(self, input_fn, hooks=None, steps=None, max_steps=None):
+  def train(self,
+            input_fn,
+            hooks=None,
+            steps=None,
+            max_steps=None,
+            saving_listeners=None):
     """Trains a model given training data input_fn.
 
     Args:
@@ -233,11 +238,12 @@ class Estimator(object):
         or `StopIteration` exception. If set, `steps` must be `None`. If
         `OutOfRange` or `StopIteration` occurs in the middle, training stops
         before `max_steps` steps.
-
         Two calls to `train(steps=100)` means 200 training
         iterations. On the other hand, two calls to `train(max_steps=100)` means
         that the second call will not do any iteration since first call did
         all 100 steps.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used for
+        callbacks that run immediately before or after checkpoint savings.
 
     Returns:
       `self`, for chaining.
@@ -263,7 +269,8 @@ class Estimator(object):
     hooks = _check_hooks_type(hooks)
     hooks.extend(self._convert_train_steps_to_hooks(steps, max_steps))
 
-    loss = self._train_model(input_fn=input_fn, hooks=hooks)
+    saving_listeners = _check_listeners_type(saving_listeners)
+    loss = self._train_model(input_fn, hooks, saving_listeners)
     logging.info('Loss for final step: %s.', loss)
     return self
 
@@ -662,8 +669,8 @@ class Estimator(object):
 
     return model_fn_results
 
-  def _train_model(self, input_fn, hooks):
-    all_hooks = []
+  def _train_model(self, input_fn, hooks, saving_listeners):
+    worker_hooks = []
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
@@ -679,8 +686,8 @@ class Estimator(object):
                   for x in ops.get_collection(ops.GraphKeys.SUMMARIES)]):
         summary.scalar('loss', estimator_spec.loss)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
-      all_hooks.extend(hooks)
-      all_hooks.extend([
+      worker_hooks.extend(hooks)
+      worker_hooks.extend([
           training.NanTensorHook(estimator_spec.loss),
           training.LoggingTensorHook(
               {
@@ -689,7 +696,7 @@ class Estimator(object):
               },
               every_n_iter=100)
       ])
-      all_hooks.extend(estimator_spec.training_hooks)
+      worker_hooks.extend(estimator_spec.training_hooks)
 
       if not (estimator_spec.scaffold.saver or
               ops.get_collection(ops.GraphKeys.SAVERS)):
@@ -704,14 +711,12 @@ class Estimator(object):
                 save_relative_paths=True))
 
       chief_hooks = []
+      all_hooks = worker_hooks + list(estimator_spec.training_chief_hooks)
+      saver_hooks = [
+          h for h in all_hooks if isinstance(h, training.CheckpointSaverHook)]
       if (self._config.save_checkpoints_secs or
           self._config.save_checkpoints_steps):
-        saver_hook_exists = any([
-            isinstance(h, training.CheckpointSaverHook)
-            for h in (all_hooks + chief_hooks +
-                      list(estimator_spec.training_chief_hooks))
-        ])
-        if not saver_hook_exists:
+        if not saver_hooks:
           chief_hooks = [
               training.CheckpointSaverHook(
                   self._model_dir,
@@ -719,12 +724,21 @@ class Estimator(object):
                   save_steps=self._config.save_checkpoints_steps,
                   scaffold=estimator_spec.scaffold)
           ]
+          saver_hooks = [chief_hooks[0]]
+      if saving_listeners:
+        if not saver_hooks:
+          raise ValueError(
+              'There should be a CheckpointSaverHook to use saving_listeners. '
+              'Please set one of the RunConfig.save_checkpoints_steps or '
+              'RunConfig.save_checkpoints_secs.')
+        else:
+          saver_hooks[0]._listeners.extend(saving_listeners)  # pylint: disable=protected-access
       with training.MonitoredTrainingSession(
           master=self._config.master,
           is_chief=self._config.is_chief,
           checkpoint_dir=self._model_dir,
           scaffold=estimator_spec.scaffold,
-          hooks=all_hooks,
+          hooks=worker_hooks,
           chief_only_hooks=(
               tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
           save_checkpoint_secs=0,  # Saving is handled by a hook.
@@ -806,6 +820,17 @@ def _check_hooks_type(hooks):
     if not isinstance(h, training.SessionRunHook):
       raise TypeError('Hooks must be a SessionRunHook, given: {}'.format(h))
   return hooks
+
+
+def _check_listeners_type(saving_listeners):
+  """Check listeners type."""
+  listeners = list(saving_listeners or [])
+  for l in listeners:
+    if not isinstance(l, training.CheckpointSaverListener):
+      raise TypeError(
+          'saving_listeners must be a list of CheckpointSaverListener, '
+          'given: {}'.format(l))
+  return listeners
 
 
 def _get_replica_device_setter(config):
