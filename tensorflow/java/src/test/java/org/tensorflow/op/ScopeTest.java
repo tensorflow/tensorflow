@@ -28,6 +28,7 @@ import org.tensorflow.Graph;
 import org.tensorflow.Output;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
+import org.tensorflow.Tensors;
 import org.tensorflow.types.UInt8;
 
 /** Unit tests for {@link org.tensorflow.Scope}. */
@@ -186,11 +187,11 @@ public class ScopeTest {
     private final Output<T> output;
 
     static Const<Integer> create(Scope s, int v) {
-      return create(s, Tensor.create(v, Integer.class));
+      return create(s, Tensors.create(v));
     }
 
     static Const<Integer> create(Scope s, int[] v) {
-      return create(s, Tensor.create(v, Integer.class));
+      return create(s, Tensors.create(v));
     }
 
     static <T> Const<T> create(Scope s, Tensor<T> value) {
