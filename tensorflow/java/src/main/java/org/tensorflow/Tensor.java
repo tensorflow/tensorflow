@@ -633,11 +633,7 @@ public final class Tensor<T> implements AutoCloseable {
     classDataTypes.put(Boolean.class, DataType.BOOL);
   }
 
-  /**
-   * The default TensorFlow data type to which Java object o corresponds. Some Java objects
-   * represent more than one TensorFlow data type; for example, 'byte' can represent both {@code
-   * uint8} and {@code string}, with the latter being the default interpretation.
-   */
+  /** The class for the data type to which Java object o corresponds. */
   private static Class<?> baseObjType(Object o) {
     Class<?> c = o.getClass();
     while (c.isArray()) {
@@ -721,7 +717,8 @@ public final class Tensor<T> implements AutoCloseable {
     DataType dto = dataTypeFromClass(c);
     int nd = numDimensions(obj, dto);
     if (!c.isPrimitive() && c != String.class && nd != 0) {
-        throw new IllegalArgumentException("cannot create non-scalar Tensors from arrays of boxed values");
+      throw new IllegalArgumentException(
+          "cannot create non-scalar Tensors from arrays of boxed values");
     }
     if (dto.equals(dtype)) {
       return true;

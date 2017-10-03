@@ -17,8 +17,5 @@ package org.tensorflow.types;
 
 /** Represents an 8-bit unsigned integer. */
 public class UInt8 {
-  private byte value;
-  private UInt8(byte v) {
-    value = v;
-  }
+  private UInt8() {}
 }

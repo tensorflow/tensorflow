@@ -133,9 +133,7 @@ for (my $i = 1; $i <= $#info; $i++) {
         print CLASSFILE  "package org.tensorflow.types;\n\n";
         print CLASSFILE  "/** Represents $fulldesc. */\n"
                         ."public class $tfname {\n"
-                        ."  private $jtype value;\n"
-                        ."  private $tfname($jtype v) {\n"
-                        ,"    value = v;\n"
+                        ."  private $tfname() {\n"
                         ."  }\n"
                         ."}\n";
         close(CLASSFILE);
@@ -160,8 +158,8 @@ for (my $i = 1; $i <= $#info; $i++) {
 
     
             my $intro = ($trank > 0)
-                ?  "Creates a rank-$trank tensor of $tfname elements."
-                :  "Creates a scalar tensor containing a single $tfname element.";
+                ?  "Creates a rank-$trank tensor of {\@code $jtype} elements."
+                :  "Creates a scalar tensor containing a single {\@code $jtype} element.";
             $typeinfo .=
              "  /**\n"
             ."   * $intro\n"

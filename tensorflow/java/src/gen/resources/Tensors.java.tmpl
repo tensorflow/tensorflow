@@ -5,13 +5,14 @@ import org.tensorflow.Tensor;
 @IMPORTS@
 
 /**
- * Utility class offering convenience methods for creating Tensors
- * in a type-safe way.
+ * Type-safe factory methods for creating {@link Tensor} objects.
  */
-public class Tensors {
+public final class Tensors {
   private Tensors() {}
 
   /** Creates a scalar String tensor using the default, UTF-8 encoding.
+   * 
+   *  @param data  The string to put into the new scalar tensor.
    */
   public static Tensor<String> create(String data) {
     return Tensor.create(data.getBytes(UTF_8), String.class);
@@ -20,6 +21,7 @@ public class Tensors {
   /** Creates a scalar String tensor using a specified encoding.
    * 
    *  @param charset The encoding from String to bytes.
+   *  @param data    The string to put into the new scalar tensor.
    */
   public static Tensor<String> create(String data, java.nio.charset.Charset charset) {
     return Tensor.create(data.getBytes(charset), String.class);

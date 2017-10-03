@@ -2,11 +2,15 @@ package org.tensorflow;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-/** Utility class offering convenience methods for creating Tensors in a type-safe way. */
-public class Tensors {
+/** Type-safe factory methods for creating {@link org.tensorflow.Tensor} objects. */
+public final class Tensors {
   private Tensors() {}
 
-  /** Creates a scalar String tensor using the default, UTF-8 encoding. */
+  /**
+   * Creates a scalar String tensor using the default, UTF-8 encoding.
+   *
+   * @param data The string to put into the new scalar tensor.
+   */
   public static Tensor<String> create(String data) {
     return Tensor.create(data.getBytes(UTF_8), String.class);
   }
@@ -15,13 +19,14 @@ public class Tensors {
    * Creates a scalar String tensor using a specified encoding.
    *
    * @param charset The encoding from String to bytes.
+   * @param data The string to put into the new scalar tensor.
    */
   public static Tensor<String> create(String data, java.nio.charset.Charset charset) {
     return Tensor.create(data.getBytes(charset), String.class);
   }
 
   /**
-   * Creates a scalar tensor containing a single Float element.
+   * Creates a scalar tensor containing a single {@code float} element.
    *
    * @param data The value to put into the new scalar tensor.
    */
@@ -30,7 +35,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-1 tensor of Float elements.
+   * Creates a rank-1 tensor of {@code float} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -40,7 +45,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-2 tensor of Float elements.
+   * Creates a rank-2 tensor of {@code float} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -50,7 +55,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-3 tensor of Float elements.
+   * Creates a rank-3 tensor of {@code float} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -60,7 +65,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-4 tensor of Float elements.
+   * Creates a rank-4 tensor of {@code float} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -70,7 +75,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-5 tensor of Float elements.
+   * Creates a rank-5 tensor of {@code float} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -80,7 +85,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-6 tensor of Float elements.
+   * Creates a rank-6 tensor of {@code float} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -90,7 +95,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a scalar tensor containing a single Double element.
+   * Creates a scalar tensor containing a single {@code double} element.
    *
    * @param data The value to put into the new scalar tensor.
    */
@@ -99,7 +104,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-1 tensor of Double elements.
+   * Creates a rank-1 tensor of {@code double} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -109,7 +114,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-2 tensor of Double elements.
+   * Creates a rank-2 tensor of {@code double} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -119,7 +124,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-3 tensor of Double elements.
+   * Creates a rank-3 tensor of {@code double} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -129,7 +134,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-4 tensor of Double elements.
+   * Creates a rank-4 tensor of {@code double} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -139,7 +144,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-5 tensor of Double elements.
+   * Creates a rank-5 tensor of {@code double} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -149,7 +154,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-6 tensor of Double elements.
+   * Creates a rank-6 tensor of {@code double} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -159,7 +164,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a scalar tensor containing a single Integer element.
+   * Creates a scalar tensor containing a single {@code int} element.
    *
    * @param data The value to put into the new scalar tensor.
    */
@@ -168,7 +173,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-1 tensor of Integer elements.
+   * Creates a rank-1 tensor of {@code int} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -178,7 +183,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-2 tensor of Integer elements.
+   * Creates a rank-2 tensor of {@code int} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -188,7 +193,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-3 tensor of Integer elements.
+   * Creates a rank-3 tensor of {@code int} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -198,7 +203,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-4 tensor of Integer elements.
+   * Creates a rank-4 tensor of {@code int} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -208,7 +213,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-5 tensor of Integer elements.
+   * Creates a rank-5 tensor of {@code int} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -218,7 +223,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-6 tensor of Integer elements.
+   * Creates a rank-6 tensor of {@code int} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -228,7 +233,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a scalar tensor containing a single String element.
+   * Creates a scalar tensor containing a single {@code byte} element.
    *
    * @param data An array containing the data to put into the new tensor. String elements are
    *     sequences of bytes from the last array dimension.
@@ -238,7 +243,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-1 tensor of String elements.
+   * Creates a rank-1 tensor of {@code byte} elements.
    *
    * @param data An array containing the data to put into the new tensor. String elements are
    *     sequences of bytes from the last array dimension.
@@ -248,7 +253,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-2 tensor of String elements.
+   * Creates a rank-2 tensor of {@code byte} elements.
    *
    * @param data An array containing the data to put into the new tensor. String elements are
    *     sequences of bytes from the last array dimension.
@@ -258,7 +263,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-3 tensor of String elements.
+   * Creates a rank-3 tensor of {@code byte} elements.
    *
    * @param data An array containing the data to put into the new tensor. String elements are
    *     sequences of bytes from the last array dimension.
@@ -268,7 +273,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-4 tensor of String elements.
+   * Creates a rank-4 tensor of {@code byte} elements.
    *
    * @param data An array containing the data to put into the new tensor. String elements are
    *     sequences of bytes from the last array dimension.
@@ -278,7 +283,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-5 tensor of String elements.
+   * Creates a rank-5 tensor of {@code byte} elements.
    *
    * @param data An array containing the data to put into the new tensor. String elements are
    *     sequences of bytes from the last array dimension.
@@ -288,7 +293,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a scalar tensor containing a single Long element.
+   * Creates a scalar tensor containing a single {@code long} element.
    *
    * @param data The value to put into the new scalar tensor.
    */
@@ -297,7 +302,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-1 tensor of Long elements.
+   * Creates a rank-1 tensor of {@code long} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -307,7 +312,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-2 tensor of Long elements.
+   * Creates a rank-2 tensor of {@code long} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -317,7 +322,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-3 tensor of Long elements.
+   * Creates a rank-3 tensor of {@code long} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -327,7 +332,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-4 tensor of Long elements.
+   * Creates a rank-4 tensor of {@code long} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -337,7 +342,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-5 tensor of Long elements.
+   * Creates a rank-5 tensor of {@code long} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -347,7 +352,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-6 tensor of Long elements.
+   * Creates a rank-6 tensor of {@code long} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -357,7 +362,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a scalar tensor containing a single Boolean element.
+   * Creates a scalar tensor containing a single {@code boolean} element.
    *
    * @param data The value to put into the new scalar tensor.
    */
@@ -366,7 +371,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-1 tensor of Boolean elements.
+   * Creates a rank-1 tensor of {@code boolean} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -376,7 +381,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-2 tensor of Boolean elements.
+   * Creates a rank-2 tensor of {@code boolean} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -386,7 +391,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-3 tensor of Boolean elements.
+   * Creates a rank-3 tensor of {@code boolean} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -396,7 +401,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-4 tensor of Boolean elements.
+   * Creates a rank-4 tensor of {@code boolean} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -406,7 +411,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-5 tensor of Boolean elements.
+   * Creates a rank-5 tensor of {@code boolean} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
@@ -416,7 +421,7 @@ public class Tensors {
   }
 
   /**
-   * Creates a rank-6 tensor of Boolean elements.
+   * Creates a rank-6 tensor of {@code boolean} elements.
    *
    * @param data An array containing the values to put into the new tensor. The dimensions of the
    *     new tensor will match those of the array.
