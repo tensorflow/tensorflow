@@ -256,9 +256,9 @@ tensorflow::Status ConvolutionThunk::Convolve(
       algorithm_config.algorithm_no_scratch().algo_id());
 }
 
-std::vector<AlgorithmDesc::Index> ConvolutionThunk::GetAlgorithms(
+std::vector<AlgorithmDesc> ConvolutionThunk::GetAlgorithms(
     se::StreamExecutor* stream_exec) const {
-  std::vector<AlgorithmDesc::Index> algorithms;
+  std::vector<AlgorithmDesc> algorithms;
   // TODO(yangzihao): Currently disable the use of winograd nonfused in XLA
   // by default. Should send in conv parameters and enable it when
   // ShouldIncludeWinogradNonfusedAlgo() returns true.
@@ -297,32 +297,27 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
 
     se::dnn::ProfileResult best_result;
     se::dnn::ProfileResult best_result_without_scratch;
-    std::vector<AlgorithmDesc::Index> algorithms =
-        GetAlgorithms(stream->parent());
-    for (bool use_tensor_ops : {false, true}) {
-      for (auto algo_index : algorithms) {
-        AlgorithmDesc algorithm(algo_index, use_tensor_ops);
-        ConvolveScratchAllocator scratch_allocator(
-            buffer_allocations.device_ordinal(),
-            buffer_allocations.memory_allocator());
-        se::dnn::ProfileResult profile_result;
-        bool launch_ok =
-            Convolve(input_descriptor, input_data, filter_descriptor,
-                     filter_data, output_descriptor, output_data,
-                     convolution_descriptor,
-                     se::dnn::AlgorithmConfig(algorithm, algorithm), stream,
-                     &scratch_allocator, &profile_result)
-                .ok();
-        if (launch_ok && profile_result.is_valid()) {
-          if (profile_result.elapsed_time_in_ms() <
-              best_result.elapsed_time_in_ms()) {
-            best_result = profile_result;
-          }
-          if (scratch_allocator.TotalAllocatedBytes() == 0 &&
-              profile_result.elapsed_time_in_ms() <
-                  best_result_without_scratch.elapsed_time_in_ms()) {
-            best_result_without_scratch = profile_result;
-          }
+    std::vector<AlgorithmDesc> algorithms = GetAlgorithms(stream->parent());
+    for (auto algorithm : algorithms) {
+      ConvolveScratchAllocator scratch_allocator(
+          buffer_allocations.device_ordinal(),
+          buffer_allocations.memory_allocator());
+      se::dnn::ProfileResult profile_result;
+      bool launch_ok =
+          Convolve(input_descriptor, input_data, filter_descriptor, filter_data,
+                   output_descriptor, output_data, convolution_descriptor,
+                   se::dnn::AlgorithmConfig(algorithm, algorithm), stream,
+                   &scratch_allocator, &profile_result)
+              .ok();
+      if (launch_ok && profile_result.is_valid()) {
+        if (profile_result.elapsed_time_in_ms() <
+            best_result.elapsed_time_in_ms()) {
+          best_result = profile_result;
+        }
+        if (scratch_allocator.TotalAllocatedBytes() == 0 &&
+            profile_result.elapsed_time_in_ms() <
+                best_result_without_scratch.elapsed_time_in_ms()) {
+          best_result_without_scratch = profile_result;
         }
       }
     }
