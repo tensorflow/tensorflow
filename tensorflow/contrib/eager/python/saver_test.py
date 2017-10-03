@@ -60,7 +60,7 @@ class SaverTest(test.TestCase):
 
       with ops.Graph().as_default():
         saver = _saver.Saver([v1])
-        with saver.maybe_restore_on_create(ckpt_prefix):
+        with _saver.restore_variables_on_create(ckpt_prefix):
           # Value is from checkpoint, but not from argument.
           ret, _ = model(2.0)
           self.assertEqual(ret.numpy(), 1.0)
@@ -81,7 +81,7 @@ class SaverTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors.NotFoundError,
                                    'v2 not found in checkpoint'):
-        with saver.maybe_restore_on_create(ckpt_prefix):
+        with _saver.restore_variables_on_create(ckpt_prefix):
           _ = model(resource_variable_ops.ResourceVariable(1.0, name='v2'))
 
 
