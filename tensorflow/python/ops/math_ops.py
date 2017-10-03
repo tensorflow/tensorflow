@@ -235,7 +235,7 @@ def abs(x, name=None):
   absolute value is computed as \\( \sqrt{a^2 + b^2}\\).  For example:
   ```
   # tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
-  tf.complex_abs(x) ==> [5.25594902, 6.60492229]
+  tf.abs(x) ==> [5.25594902, 6.60492229]
   ```
 
   Args:
