@@ -135,9 +135,9 @@ class Tape(object):
             # adding an explicit stack if this ever gets out of hand
             self._delete_tensor_id(tensor_id)
 
-  def delete_trace(self, tensor):
+  def delete_trace(self, tensor_id):
     """Deletes any trace we have for this tensor."""
-    self._delete_tensor_id(tid(tensor))
+    self._delete_tensor_id(tensor_id)
 
   def export(self):
     """Exports the internal state of this tape.
@@ -237,10 +237,10 @@ def record_operation(op_type, output_tensors, input_tensors, side_outputs,
                        backward_function)
 
 
-def delete_trace(tensor):
+def delete_trace(tensor_id):
   """Deletes traces for this Tensor from all tapes in the stack."""
   for t in _tape_stack.stack:
-    t.delete_trace(tensor)
+    t.delete_trace(tensor_id)
 
 
 def top_tape_watched_tensors():

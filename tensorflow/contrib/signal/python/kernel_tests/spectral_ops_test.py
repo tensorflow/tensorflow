@@ -59,7 +59,11 @@ class SpectralOpsTest(test.TestCase):
 
   @staticmethod
   def _np_inverse_stft(stft, fft_length, hop_length, window_length):
-    frames = np.fft.irfft(stft, fft_length)[..., :window_length]
+    frames = np.fft.irfft(stft, fft_length)
+    # Pad or truncate frames's inner dimension to window_length.
+    frames = frames[..., :window_length]
+    frames = np.pad(frames, [[0, 0]] * (frames.ndim - 1) +
+                    [[0, max(0, window_length - frames.shape[-1])]], "constant")
     window = SpectralOpsTest._np_hann_periodic_window(window_length)
     return SpectralOpsTest._np_overlap_add(frames * window, hop_length)
 
@@ -79,12 +83,27 @@ class SpectralOpsTest(test.TestCase):
         self.test_session(use_gpu=True)) as sess:
       actual_stft = spectral_ops.stft(
           signal, frame_length, frame_step, fft_length, pad_end=False)
+      signal_ph = array_ops.placeholder(dtype=dtypes.as_dtype(signal.dtype))
+      actual_stft_from_ph = spectral_ops.stft(
+          signal_ph, frame_length, frame_step, fft_length, pad_end=False)
 
       actual_inverse_stft = spectral_ops.inverse_stft(
           actual_stft, frame_length, frame_step, fft_length)
 
-      actual_stft, actual_inverse_stft = sess.run(
-          [actual_stft, actual_inverse_stft])
+      actual_stft, actual_stft_from_ph, actual_inverse_stft = sess.run(
+          [actual_stft, actual_stft_from_ph, actual_inverse_stft],
+          feed_dict={signal_ph: signal})
+
+      actual_stft_ph = array_ops.placeholder(dtype=actual_stft.dtype)
+      actual_inverse_stft_from_ph = sess.run(
+          spectral_ops.inverse_stft(
+              actual_stft_ph, frame_length, frame_step, fft_length),
+          feed_dict={actual_stft_ph: actual_stft})
+
+      # Confirm that there is no difference in output when shape/rank is fully
+      # unknown or known.
+      self.assertAllClose(actual_stft, actual_stft_from_ph)
+      self.assertAllClose(actual_inverse_stft, actual_inverse_stft_from_ph)
 
       expected_stft = SpectralOpsTest._np_stft(
           signal, fft_length, frame_step, frame_length)
@@ -142,6 +161,11 @@ class SpectralOpsTest(test.TestCase):
       self.assertAllEqual([64, 9], stft.shape.as_list())
       self.assertAllEqual([64, 9], stft.eval().shape)
 
+      stft = spectral_ops.stft(signal, frame_length=16, frame_step=8,
+                               fft_length=8, pad_end=True)
+      self.assertAllEqual([64, 5], stft.shape.as_list())
+      self.assertAllEqual([64, 5], stft.eval().shape)
+
       stft = np.zeros((32, 9)).astype(np.complex64)
 
       inverse_stft = spectral_ops.inverse_stft(stft, frame_length=8,
@@ -156,6 +180,7 @@ class SpectralOpsTest(test.TestCase):
     test_configs = [
         (512, 64, 32, 64),
         (512, 64, 64, 64),
+        (512, 72, 64, 64),
         (512, 64, 25, 64),
         (512, 25, 15, 36),
         (123, 23, 5, 42),

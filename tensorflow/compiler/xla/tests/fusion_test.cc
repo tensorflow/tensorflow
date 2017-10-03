@@ -655,10 +655,10 @@ XLA_TEST_F(FusionTest, SharedConstant) {
   HloComputation* entry_comp = hlo_module->entry_computation();
 
   // entry computation contains the constant(0) and the fusion
-  EXPECT_EQ(entry_comp->instructions().size(), 2);
+  EXPECT_EQ(entry_comp->instruction_count(), 2);
 
   // fused instruction contains the constant(2), the parameter, and 4 adds
-  EXPECT_EQ(entry_comp->root_instruction()->fused_instructions().size(), 6);
+  EXPECT_EQ(entry_comp->root_instruction()->fused_instruction_count(), 6);
 
   LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({8}),
           *ExecuteAndTransfer(std::move(hlo_module), {}));

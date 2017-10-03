@@ -2,7 +2,8 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "py_test", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "tfe",
@@ -11,6 +12,7 @@ py_library(
     deps = [
         ":datasets",
         ":saver",
+        ":summary_writer",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
@@ -81,6 +83,35 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "summary_writer",
+    srcs = ["summary_writer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/summary:gen_summary_ops",
+        "//tensorflow/contrib/summary:summary_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary_op_util",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "summary_writer_test",
+    srcs = ["summary_writer_test.py"],
+    additional_deps = [
+        ":summary_writer",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
     ],
 )
 

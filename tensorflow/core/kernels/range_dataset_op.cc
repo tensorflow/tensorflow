@@ -40,14 +40,14 @@ class RangeDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, step != 0,
                 errors::InvalidArgument("step must be a non-zero integer."));
 
-    *output = new Dataset(start, stop, step);
+    *output = new Dataset(ctx, start, stop, step);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 start, int64 stop, int64 step)
-        : start_(start), stop_(stop), step_(step) {}
+    Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step)
+        : GraphDatasetBase(ctx), start_(start), stop_(stop), step_(step) {}
 
     std::unique_ptr<IteratorBase> MakeIterator(
         const string& prefix) const override {
@@ -69,6 +69,19 @@ class RangeDatasetOp : public DatasetOpKernel {
     string DebugString() override {
       return strings::StrCat("RangeDatasetOp(", start_, ", ", stop_, ", ",
                              step_, ")::Dataset");
+    }
+
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* start = nullptr;
+      Node* stop = nullptr;
+      Node* step = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(start_, &start));
+      TF_RETURN_IF_ERROR(b->AddScalar(stop_, &stop));
+      TF_RETURN_IF_ERROR(b->AddScalar(step_, &step));
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {start, stop, step}, output));
+      return Status::OK();
     }
 
    private:
@@ -99,19 +112,19 @@ class RangeDatasetOp : public DatasetOpKernel {
       }
 
      protected:
-      Status SaveStateInternal(OpKernelContext* ctx,
-                               IteratorBundleWriter* writer) override {
+      Status SaveInternal(OpKernelContext* ctx,
+                          IteratorBundleWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar<int64>(next_, full_name("next")));
+            writer->WriteScalar<int64>(full_name("next"), next_));
         return Status::OK();
       }
 
-      Status RestoreStateInternal(OpKernelContext* ctx,
-                                  IteratorBundleReader* reader) override {
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorBundleReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar<int64>(&next_, full_name("next")));
+            reader->ReadScalar<int64>(full_name("next"), &next_));
         return Status::OK();
       }
 

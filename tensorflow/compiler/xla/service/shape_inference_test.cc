@@ -352,10 +352,8 @@ TEST_F(ShapeInferenceTest, Convolve) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 3, 4});
-  dnums.set_input_batch_dimension(0);
-  dnums.set_output_batch_dimension(0);
-  dnums.set_input_feature_dimension(1);
-  dnums.set_output_feature_dimension(1);
+  dnums.set_batch_dimension(0);
+  dnums.set_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -394,10 +392,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 103, 4});
-  dnums.set_input_batch_dimension(0);
-  dnums.set_output_batch_dimension(0);
-  dnums.set_input_feature_dimension(1);
-  dnums.set_output_feature_dimension(1);
+  dnums.set_batch_dimension(0);
+  dnums.set_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -437,10 +433,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 3, 4});
-  dnums.set_input_batch_dimension(0);
-  dnums.set_output_batch_dimension(0);
-  dnums.set_input_feature_dimension(1);
-  dnums.set_output_feature_dimension(1);
+  dnums.set_batch_dimension(0);
+  dnums.set_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -481,10 +475,8 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {12, 11, 3, 2});
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_input_batch_dimension(3);
-  dnums.set_output_batch_dimension(3);
-  dnums.set_input_feature_dimension(2);
-  dnums.set_output_feature_dimension(2);
+  dnums.set_batch_dimension(3);
+  dnums.set_feature_dimension(2);
   dnums.add_spatial_dimensions(0);
   dnums.add_spatial_dimensions(1);
   dnums.set_kernel_input_feature_dimension(0);  // duplicated with kernel_x0

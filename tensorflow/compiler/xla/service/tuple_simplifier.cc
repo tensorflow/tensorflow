@@ -33,11 +33,11 @@ namespace xla {
 StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
   // Initially add all GTE and Tuple instructions to the worklist.
   std::queue<HloInstruction*> worklist;
-  for (auto& computation : module->computations()) {
-    for (auto& instruction : computation->instructions()) {
+  for (auto* computation : module->computations()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kTuple ||
           instruction->opcode() == HloOpcode::kGetTupleElement) {
-        worklist.push(instruction.get());
+        worklist.push(instruction);
       }
     }
   }
@@ -81,6 +81,11 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
 
         if (top_tuple == nullptr) {
           top_tuple = operand->mutable_operand(0);
+          if (!ShapeUtil::Compatible(top_tuple->shape(),
+                                     instruction->shape())) {
+            can_simplify = false;
+            break;
+          }
         } else if (top_tuple != operand->operand(0)) {
           can_simplify = false;
           break;
@@ -88,8 +93,7 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
       }
       if (can_simplify && top_tuple != nullptr) {
         changed = true;
-        TF_RETURN_IF_ERROR(instruction->parent()->ReplaceUsesOfInstruction(
-            instruction, top_tuple));
+        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(top_tuple));
         // No need to add anything to the worklist.
       }
     } else {
@@ -108,8 +112,7 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
         HloInstruction* element_source =
             instruction->mutable_operand(0)->mutable_operand(
                 instruction->tuple_index());
-        TF_RETURN_IF_ERROR(instruction->parent()->ReplaceUsesOfInstruction(
-            instruction, element_source));
+        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(element_source));
         for (HloInstruction* user : element_source->users()) {
           if (user->opcode() == HloOpcode::kTuple ||
               user->opcode() == HloOpcode::kGetTupleElement) {

@@ -28,6 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import textwrap
 
 
 def build_md_page(page_info):
@@ -300,7 +301,7 @@ def _build_function_details(function_details):
   for detail in function_details:
     sub = []
     sub.append('#### ' + detail.keyword + ':\n\n')
-    sub.append(detail.header)
+    sub.append(textwrap.dedent(detail.header))
     for key, value in detail.items:
       sub.append('* <b>`%s`</b>: %s' % (key, value))
     parts.append(''.join(sub))

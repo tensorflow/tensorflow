@@ -53,32 +53,27 @@ def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   Raises:
     An exception on error.
   """
-  # TODO(apassos) move this to convert_to_tensor
-  # pylint: disable=protected-access
-  input_handles = [c._handle for c in inputs]
   device_name = ctx.device_name
+  # pylint: disable=protected-access
   try:
-    outh = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
-                                            op_name, input_handles, attrs,
-                                            num_outputs)
+    tensors = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
+                                               op_name, inputs, attrs,
+                                               num_outputs)
   except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
     else:
       message = e.message
     six.raise_from(core._status_to_exception(e.code, message), None)
-  # pylint: enable=protected-access
 
-  tensors = [ops._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
   # TODO(alive, cais): Use the execution callback mechanism.
   if core.active_trace() is not None:
     for t in tensors:
-      # pylint: disable=protected-access
       core.active_trace().record_tensor(op_name,
                                         ops.tensor_id(t),
                                         t.device,
                                         t.shape.num_elements())
-      # pylint: enable=protected-access
+  # pylint: enable=protected-access
 
   # TODO(cais): Optimize this, perhaps by replacing this execute function with
   # a different one when there are execution callback(s).

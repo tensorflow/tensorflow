@@ -51,8 +51,9 @@ namespace cpu {
 
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
-    std::unique_ptr<BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<const HloModule> hlo_module,
+    const string& entry_function_name,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx)
     : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),

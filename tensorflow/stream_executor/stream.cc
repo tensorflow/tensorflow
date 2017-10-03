@@ -361,6 +361,57 @@ Stream &Stream::ThenBatchNormalizationBackward(
   return *this;
 }
 
+Stream &Stream::ThenBatchNormalizationForward(
+    const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
+    const DeviceMemory<float> &offset,
+    const DeviceMemory<float> &estimated_mean,
+    const DeviceMemory<float> &estimated_variance,
+    const dnn::BatchDescriptor &x_desc,
+    const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    DeviceMemory<Eigen::half> *y, DeviceMemory<float> *batch_mean,
+    DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
+    DeviceMemory<float> *saved_inv_var, bool is_training,
+    std::function<const DeviceMemory<float> &()> var_to_inv_var,
+    std::function<void()> inv_var_to_var) {
+  VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
+            PARAM(scale_offset_desc), PARAM(epsilon), PARAM(y));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoBatchNormalizationForward(
+          this, x, scale, offset, estimated_mean, estimated_variance, x_desc,
+          scale_offset_desc, epsilon, y, batch_mean, batch_var, saved_mean,
+          saved_inv_var, is_training, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenBatchNormalizationBackward(
+    const DeviceMemory<Eigen::half> &y_backprop,
+    const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
+    const DeviceMemory<float> &mean, const DeviceMemory<float> &variance,
+    const dnn::BatchDescriptor &x_desc,
+    const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    DeviceMemory<Eigen::half> *x_backprop, DeviceMemory<float> *scale_backprop,
+    DeviceMemory<float> *offset_backprop) {
+  VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
+            PARAM(scale_offset_desc), PARAM(epsilon), PARAM(x_backprop),
+            PARAM(scale_backprop), PARAM(offset_backprop));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoBatchNormalizationBackward(
+          this, y_backprop, x, scale, mean, variance, x_desc, scale_offset_desc,
+          epsilon, x_backprop, scale_backprop, offset_backprop));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenFusedConvolveWithScratch(
     const dnn::BatchDescriptor &conv_input_descriptor,
     const DeviceMemory<int8> &conv_input_data, float conv_input_scale,

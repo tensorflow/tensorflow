@@ -857,7 +857,7 @@ bool HloInstruction::HasSideEffect() const {
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) {
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
@@ -1026,7 +1026,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 
 HloInstruction::~HloInstruction() {}
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
+std::unique_ptr<HloInstruction> HloInstruction::Clone(
+    const string& suffix) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
   if (suffix.empty()) {
@@ -1062,13 +1063,14 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
       }
     }
   }
-  clone->set_parent(parent());
+  clone->set_parent(parent_);
   clone->set_metadata(metadata_);
   return clone;
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(parent() != nullptr);
 
@@ -1106,7 +1108,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
         old_fused_instruction->CloneWithNewOperands(
             old_fused_instruction->shape(), new_operands));
     HloInstruction* new_fused_instruction = new_fused_instructions.back().get();
-    new_fused_instruction->set_parent(parent());
+    new_fused_instruction->set_parent(parent_);
     InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
   }
   new_instruction->fusion_kind_ = fusion_kind_;
@@ -1125,7 +1127,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
       CHECK_NOTNULL(GetModule())
           ->AddEmbeddedComputation(
               computation_builder.Build(FindOrDie(old_to_new, fused_root_))));
-  new_instruction->set_parent(parent());
+  new_instruction->set_parent(parent_);
   return new_instruction;
 }
 
@@ -1460,6 +1462,9 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
   user_set_.clear();
   if (new_producer_is_user) {
     AddUser(new_producer);
+  }
+  if (parent_ && parent_->root_instruction() == this) {
+    parent_->set_root_instruction(new_producer);
   }
 
   return Status::OK();
@@ -1884,10 +1889,23 @@ const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
   return fused_instructions_computation()->parameter_instructions();
 }
 
-const std::list<std::unique_ptr<HloInstruction>>&
+const tensorflow::gtl::iterator_range<UnwrappingIterator<
+    std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloInstruction::fused_instructions() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
+  const HloComputation* subcomp = fused_instructions_computation();
+  return subcomp->instructions();
+}
+
+const tensorflow::gtl::iterator_range<
+    UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+HloInstruction::fused_instructions() {
+  CHECK_EQ(opcode_, HloOpcode::kFusion);
   return fused_instructions_computation()->instructions();
+}
+
+int64 HloInstruction::fused_instruction_count() const {
+  return fused_instructions_computation()->instruction_count();
 }
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
@@ -2364,7 +2382,7 @@ bool HloInstruction::IsElementwise() const {
       if (fusion_kind() != FusionKind::kLoop) {
         return false;
       }
-      for (auto& fused : fused_instructions()) {
+      for (auto* fused : fused_instructions()) {
         if (fused->opcode() != HloOpcode::kParameter &&
             !fused->IsElementwise()) {
           return false;
@@ -2375,6 +2393,11 @@ bool HloInstruction::IsElementwise() const {
     default:
       return false;
   }
+}
+
+bool HloInstruction::ImplicitlyBroadcastsOperand(int64 operand_idx) const {
+  CHECK(IsElementwise());
+  return !ShapeUtil::Equal(shape(), operand(operand_idx)->shape());
 }
 
 namespace {
@@ -2527,7 +2550,9 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       }
       return UseKind::kReuse;
     default:
-      return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
+      return IsElementwise() && !ImplicitlyBroadcastsOperand(i)
+                 ? UseKind::kUse
+                 : UseKind::kReuse;
   }
 }
 
@@ -2586,8 +2611,8 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
   // lhs_dims[i] is the symbol of the logical dimension i for the lhs
   // operand. E.g. if batch has dimension number 2, then lhs_dims[2] == "b".
   std::vector<string> lhs_dims(2 + dnums.spatial_dimensions().size());
-  lhs_dims[dnums.input_batch_dimension()] = 'b';
-  lhs_dims[dnums.input_feature_dimension()] = 'f';
+  lhs_dims[dnums.batch_dimension()] = 'b';
+  lhs_dims[dnums.feature_dimension()] = 'f';
   for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
     lhs_dims[dnums.spatial_dimensions(i)] = StrCat(i);
   }
@@ -2599,19 +2624,12 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
     rhs_dims[dnums.kernel_spatial_dimensions(i)] = StrCat(i);
   }
 
-  std::vector<string> output_dims(2 + dnums.spatial_dimensions().size());
-  output_dims[dnums.output_batch_dimension()] = 'b';
-  output_dims[dnums.output_feature_dimension()] = 'f';
-  for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
-    output_dims[dnums.spatial_dimensions(i)] = StrCat(i);
-  }
-
   result += "dim_labels=";
   append_dims(lhs_dims, operand(0)->shape());
   result += "_";
   append_dims(rhs_dims, operand(1)->shape());
   result += "->";
-  append_dims(output_dims, shape());
+  append_dims(lhs_dims, shape());
   return result;
 }
 
