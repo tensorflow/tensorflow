@@ -23,7 +23,6 @@ filegroup(
     ]),
 )
 
-load("//tensorflow/compiler/xla:xla.bzl", "export_dynamic_linkopts")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites")
@@ -981,8 +980,8 @@ xla_test(
 xla_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
-    linkopts = export_dynamic_linkopts,
     deps = [
+        "//tensorflow/compiler/xla:custom_call_target_registry",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
