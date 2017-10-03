@@ -23,8 +23,7 @@ import threading
 
 import numpy as np
 
-from tensorflow.python.data.ops import iterator
-from tensorflow.python.data.ops.iterator import Iterator  # pylint: disable=unused-import
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -92,9 +91,8 @@ class Dataset(object):
     with ops.colocate_with(iterator_resource):
       initializer = gen_dataset_ops.make_iterator(
           self._as_variant_tensor(), iterator_resource)
-    return iterator.Iterator(
-        iterator_resource, initializer, self.output_types,
-        self.output_shapes)
+    return iterator_ops.Iterator(iterator_resource, initializer,
+                                 self.output_types, self.output_shapes)
 
   def make_one_shot_iterator(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
@@ -113,7 +111,7 @@ class Dataset(object):
 
     _make_dataset.add_to_graph(ops.get_default_graph())
 
-    return iterator.Iterator(
+    return iterator_ops.Iterator(
         gen_dataset_ops.one_shot_iterator(
             dataset_factory=_make_dataset,
             output_types=nest.flatten(self.output_types),

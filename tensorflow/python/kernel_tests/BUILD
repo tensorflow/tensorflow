@@ -2960,6 +2960,7 @@ tf_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -2978,7 +2979,7 @@ tf_py_test(
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
     ],
 )
@@ -3009,6 +3010,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -3036,6 +3038,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -3076,6 +3079,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -3111,6 +3115,7 @@ tf_py_test(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:session",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
     tags = ["no_windows"],
 )
