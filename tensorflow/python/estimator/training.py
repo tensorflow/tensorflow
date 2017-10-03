@@ -392,6 +392,10 @@ class _TrainingExecutor(object):
 
       metrics = evaluator.evaluate_and_export()
 
+      if not metrics:
+        #  This is unexpected. Training should always end with a new checkpoint.
+        raise RuntimeError('There was no new checkpoint after the training.')
+
       if _should_stop_local_train(metrics[ops.GraphKeys.GLOBAL_STEP]):
         break
 
