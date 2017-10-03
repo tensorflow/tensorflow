@@ -582,7 +582,9 @@ class _EagerTensorBase(Tensor):
 
   @property
   def dtype(self):
-    return dtypes.as_dtype(self._datatype_enum())
+    # Note: using the intern table directly here as this is
+    # performance-sensitive in some models.
+    return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def _numpy_text(self, is_repr=False):
     if self.dtype.is_numpy_compatible:
