@@ -219,6 +219,7 @@ BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
+LogMatrixDeterminant
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
