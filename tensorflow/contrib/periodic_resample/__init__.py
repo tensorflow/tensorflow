@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.periodic_resample.python import _periodic_resample_op
+from tensorflow.contrib.periodic_resample.python.ops.periodic_resample_op import _periodic_resample_op
 from tensorflow.python.util.all_util import remove_undocumented
 
 periodic_resample =\
