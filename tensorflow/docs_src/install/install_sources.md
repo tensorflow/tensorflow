@@ -434,14 +434,14 @@ Stack Overflow and specify the `tensorflow` tag.
 **Linux**
 <table>
 <tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Bazel/Cmake:</th><th>cuDNN:</th><th>CUDA:</th></tr>
-<tr><td>tensorflow-1.3.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>4.8</td><td>0.4.5</td><td>N/A</td><td>N/A</td></tr>
-<tr><td>tensorflow_gpu-1.3.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>4.8</td><td>0.4.5</td><td>6</td><td>8</td></tr>
-<tr><td>tensorflow-1.2.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>4.8</td><td>0.4.5</td><td>N/A</td><td>N/A</td></tr>
-<tr><td>tensorflow_gpu-1.2.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>4.8</td><td>0.4.5</td><td>5.1</td><td>8</td></tr>
-<tr><td>tensorflow-1.1.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>4.8</td><td>0.4.2</td><td>N/A</td><td>N/A</td></tr>
-<tr><td>tensorflow_gpu-1.1.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>4.8</td><td>0.4.2</td><td>5.1</td><td>8</td></tr>
-<tr><td>tensorflow-1.0.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>4.8</td><td>0.4.2</td><td>N/A</td><td>N/A</td></tr>
-<tr><td>tensorflow_gpu-1.0.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>4.8</td><td>0.4.2</td><td>5.1</td><td>8</td></tr>
+<tr><td>tensorflow-1.3.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>0.4.5</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.3.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>0.4.5</td><td>6</td><td>8</td></tr>
+<tr><td>tensorflow-1.2.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>0.4.5</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.2.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>0.4.5</td><td>5.1</td><td>8</td></tr>
+<tr><td>tensorflow-1.1.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>0.4.2</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.1.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>0.4.2</td><td>5.1</td><td>8</td></tr>
+<tr><td>tensorflow-1.0.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>0.4.2</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.0.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>0.4.2</td><td>5.1</td><td>8</td></tr>
 </table>
 
 **Mac**
