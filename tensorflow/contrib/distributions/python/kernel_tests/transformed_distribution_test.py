@@ -172,6 +172,19 @@ class TransformedDistributionTest(test.TestCase):
       self.assertAllClose(actual_mvn_entropy,
                           fake_mvn.entropy().eval())
 
+  def testScalarBatchScalarEventIdentityScale(self):
+    with self.test_session() as sess:
+      exp2 = self._cls()(
+          ds.Exponential(rate=0.25),
+          bijector=ds.bijectors.Affine(
+              scale_identity_multiplier=2.,
+              event_ndims=0))
+      log_prob = exp2.log_prob(1.)
+      log_prob_ = sess.run(log_prob)
+      base_log_prob = -0.5 * 0.25 + np.log(0.25)
+      ildj = np.log(2.)
+      self.assertAllClose(base_log_prob - ildj, log_prob_, rtol=1e-6, atol=0.)
+
 
 class ScalarToMultiTest(test.TestCase):
 
