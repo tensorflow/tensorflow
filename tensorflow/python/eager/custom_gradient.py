@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops as tf_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
 
 
@@ -41,6 +43,30 @@ def custom_gradient(f):
 
   def decorated(*args, **kwargs):
     """Decorated function with custom gradient."""
+    if context.in_graph_mode():
+      if kwargs:
+        raise ValueError(
+            "custom_gradient in graph mode doesn't support keyword arguments.")
+      name = "CustomGradient-%s" % tf_ops.uid()
+      args = [tf_ops.convert_to_tensor(x) for x in args]
+      result, grad_fn = f(*args)
+      flat_result = nest.flatten(result)
+      all_tensors = flat_result + args
+
+      @tf_ops.RegisterGradient(name)
+      def internal_grad_fn(unused_op, *result_grads):  # pylint: disable=unused-variable
+        gradients = nest.flatten(grad_fn(*result_grads[:len(flat_result)]))
+        # Need to return one value per input to the IdentityN, so pad the
+        # gradients of the inputs of the custom_gradient function with the
+        # gradients of the outputs as well.
+        return ([None] * len(flat_result)) + gradients
+
+      with tf_ops.get_default_graph().gradient_override_map(
+          {"IdentityN": name}):
+        all_tensors = array_ops.identity_n(all_tensors)
+      return nest.pack_sequence_as(
+          structure=result, flat_sequence=all_tensors[:len(flat_result)])
+
     input_tensors = [x for x in args
                      if isinstance(x, tf_ops.Tensor)]
 

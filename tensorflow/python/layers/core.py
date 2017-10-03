@@ -107,7 +107,9 @@ class Dense(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(Dense, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(Dense, self).__init__(trainable=trainable, name=name,
+                                activity_regularizer=activity_regularizer,
+                                **kwargs)
     self.units = units
     self.activation = activation
     self.use_bias = use_bias
@@ -115,7 +117,6 @@ class Dense(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.activity_regularizer = activity_regularizer
     self.kernel_constraint = kernel_constraint
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(min_ndim=2)

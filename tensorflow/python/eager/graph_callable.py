@@ -36,6 +36,37 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
+def _default_initializer(name, shape, dtype):
+  """The default initializer for variables."""
+  # pylint: disable=protected-access
+  store = variable_scope._get_default_variable_store()
+  initializer = store._get_default_initializer(name, shape=shape, dtype=dtype)
+  # pylint: enable=protected-access
+  return initializer[0]
+
+
+class _VariableFromResource(resource_variable_ops.ResourceVariable):
+  """Variable object from a preexisting resource.
+
+  Required because the ResourceVariable constructor creates the resource handle,
+  and here we want to use a preexisting one.
+  """
+
+  def __init__(self, resource, dtype, name, shape):
+    self._handle = resource
+    self._graph_shape = shape
+    self._handle_device = resource.device
+    self._handle_name = name
+    self._cached_value = None
+    self._initializer_op = None
+    self._caching_device = None
+    self._dtype = dtype
+    self._constraint = None
+    self._in_graph_mode = context.in_graph_mode()
+    if self._in_graph_mode:
+      self._graph_element = self.read_value()
+
+
 class _CapturedVariable(object):
   """Variable captured by graph_callable.
 
@@ -46,6 +77,8 @@ class _CapturedVariable(object):
 
   def __init__(self, name, initializer, shape, dtype, trainable):
     self.name = name
+    if initializer is None:
+      initializer = _default_initializer(name, shape, dtype)
     initial_value = lambda: initializer(shape, dtype=dtype)
 
     with context.eager_mode():
@@ -93,6 +126,9 @@ class _VariableCapturingScope(object):
     """Context manager to capture variable creations.
 
     Replaces variable accesses with placeholders.
+
+    Yields:
+      nothing
     """
     # TODO(apassos) ignoring the regularizer and partitioner here; figure out
     # how to deal with these.
@@ -102,15 +138,16 @@ class _VariableCapturingScope(object):
                        partitioner=None, validate_shape=True,
                        use_resource=None):
       del getter, regularizer, partitioner, validate_shape, use_resource
-      del collections, initializer, trainable, reuse
+      del collections, initializer, trainable, reuse, caching_device
       assert name in self.variables
       v = self.variables[name]
-      if caching_device is not None:
-        with tf_ops.device(caching_device):
-          v.placeholder = array_ops.placeholder(dtype=dtype, shape=shape)
-      else:
-        v.placeholder = array_ops.placeholder(dtype=dtype, shape=shape)
-      return v.placeholder
+      v.placeholder = array_ops.placeholder(dtype=dtypes.resource, shape=shape)
+      # TODO(apassos) remove the need for this by correctly dealing with shape
+      # inference.
+      v.placeholder._handle_data = v.variable.handle._handle_data  # pylint: disable=protected-access
+      return _VariableFromResource(
+          v.placeholder, dtype=dtypes.as_dtype(dtype), name=name,
+          shape=v.shape)
 
     scope = variable_scope.get_variable_scope()
     with variable_scope.variable_scope(scope, custom_getter=_custom_getter):
@@ -121,6 +158,9 @@ class _VariableCapturingScope(object):
     """Context manager to capture variable creations.
 
     Forcibly initializes all created variables.
+
+    Yields:
+      nothing
     """
     # TODO(apassos) ignoring the regularizer and partitioner here; figure out
     # how to deal with these.
@@ -143,11 +183,13 @@ class _VariableCapturingScope(object):
 
       graph_mode_resource = resource_variable_ops.var_handle_op(
           shared_name=name, shape=shape, dtype=dtype)
+      if initializer is None:
+        initializer = _default_initializer(name, shape, dtype)
       with tf_ops.control_dependencies(
           [resource_variable_ops.assign_variable_op(
               graph_mode_resource, initializer(shape, dtype))]):
-        return resource_variable_ops.read_variable_op(graph_mode_resource,
-                                                      dtype=dtype)
+        handle = array_ops.identity(v.variable.handle)
+      return _VariableFromResource(handle, dtype, name, shape=v.shape)
 
     scope = variable_scope.get_variable_scope()
     with variable_scope.variable_scope(scope, custom_getter=_custom_getter):
@@ -180,10 +222,10 @@ class _FunctionObject(function._GraphModeFunction):  # pylint: disable=protected
     return [x.variable for x in self._variables]
 
   def __call__(self, *args, **kwds):
-    want_gradients = kwds.pop("want_gradients", False)
+    kwds.pop("want_gradients", False)
     if kwds:
       raise ValueError("graph_callable functions do not take keyword args")
-    values = [x.read(want_gradients=want_gradients) for x in self._variables]
+    values = [x.variable.handle for x in self._variables]
     return super(_FunctionObject, self).__call__(*(values + list(args)))
 
 

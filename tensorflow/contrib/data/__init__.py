@@ -54,7 +54,7 @@ from tensorflow.contrib.data.python.ops.readers import TextLineDataset
 from tensorflow.contrib.data.python.ops.readers import TFRecordDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.sloppy_ops import sloppy_interleave
-from tensorflow.python.data.ops.dataset_ops import Iterator
+from tensorflow.python.data.ops.iterator_ops import Iterator
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

@@ -28,11 +28,13 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.util import deprecation
 
 
 class TextLineDataset(contrib_dataset_ops.Dataset):
   """A `Dataset` comprising lines from one or more text files."""
 
+  @deprecation.deprecated(None, "Use `tf.data.TextLineDataset`.")
   def __init__(self, filenames, compression_type=None, buffer_size=None):
     """Creates a `TextLineDataset`.
 
@@ -52,6 +54,7 @@ class TextLineDataset(contrib_dataset_ops.Dataset):
 class TFRecordDataset(contrib_dataset_ops.Dataset):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
+  @deprecation.deprecated(None, "Use `tf.data.TFRecordDataset`.")
   def __init__(self, filenames, compression_type=None, buffer_size=None):
     """Creates a `TFRecordDataset`.
 
@@ -70,6 +73,7 @@ class TFRecordDataset(contrib_dataset_ops.Dataset):
 class FixedLengthRecordDataset(contrib_dataset_ops.Dataset):
   """A `Dataset` of fixed-length records from one or more binary files."""
 
+  @deprecation.deprecated(None, "Use `tf.data.FixedLengthRecordDataset`.")
   def __init__(self,
                filenames,
                record_bytes,

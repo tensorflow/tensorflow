@@ -21,10 +21,10 @@ import gzip
 import os
 import zlib
 
-from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -87,7 +87,7 @@ class TextLineDatasetTest(test.TestCase):
         filenames, compression_type=compression_type).repeat(num_epochs)
     batch_dataset = repeat_dataset.batch(batch_size)
 
-    iterator = dataset_ops.Iterator.from_structure(batch_dataset.output_types)
+    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
     init_op = iterator.make_initializer(repeat_dataset)
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
@@ -199,7 +199,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
                       .repeat(num_epochs))
     batch_dataset = repeat_dataset.batch(batch_size)
 
-    iterator = dataset_ops.Iterator.from_structure(batch_dataset.output_types)
+    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
     init_op = iterator.make_initializer(repeat_dataset)
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
@@ -293,7 +293,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
   def _restore_iterator(self):
     output_types = dtypes.string
     output_shapes = tensor_shape.scalar()
-    iterator = dataset_ops.Iterator.from_structure(output_types, output_shapes)
+    iterator = iterator_ops.Iterator.from_structure(output_types, output_shapes)
     get_next = iterator.get_next()
     restore_op = gen_dataset_ops.restore_iterator(
         iterator._iterator_resource, self._iterator_checkpoint_path())
@@ -575,7 +575,7 @@ class TFRecordDatasetTest(test.TestCase):
                                                  self.num_epochs)
     batch_dataset = repeat_dataset.batch(self.batch_size)
 
-    iterator = dataset_ops.Iterator.from_structure(batch_dataset.output_types)
+    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
     self.init_op = iterator.make_initializer(repeat_dataset)
     self.init_batch_op = iterator.make_initializer(batch_dataset)
     self.get_next = iterator.get_next()

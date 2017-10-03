@@ -724,6 +724,31 @@ class EstimatorTrainTest(test.TestCase):
     self.assertTrue(chief_hook.begin.called)
     self.assertTrue(hook.begin.called)
 
+  def test_saving_listeners_are_used(self):
+    listener = test.mock.Mock(spec=training.CheckpointSaverListener)
+    est = estimator.Estimator(
+        model_fn=model_fn_global_step_incrementer,
+        config=run_config.RunConfig(save_checkpoints_steps=10))
+    est.train(dummy_input_fn, steps=26, saving_listeners=[listener])
+    self.assertEqual(4, listener.before_save.call_count)
+    self.assertEqual(4, listener.after_save.call_count)
+
+  def test_saver_hook_should_exist_to_use_saving_listeners(self):
+    listener = test.mock.Mock(spec=training.CheckpointSaverListener)
+    est = estimator.Estimator(
+        model_fn=model_fn_global_step_incrementer,
+        config=run_config.RunConfig(save_checkpoints_steps=None,
+                                    save_checkpoints_secs=None))
+    with self.assertRaisesRegexp(
+        ValueError, 'CheckpointSaverHook to use saving_listeners'):
+      est.train(dummy_input_fn, steps=1, saving_listeners=[listener])
+
+  def test_listeners_should_be_listeners(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    with self.assertRaisesRegexp(
+        TypeError, 'must be a list of CheckpointSaverListener'):
+      est.train(dummy_input_fn, steps=1, saving_listeners=['not-a-listener'])
+
   def test_chief_only_hook_should_not_be_called_on_non_chief(self):
     chief_hook = test.mock.MagicMock(
         wraps=training.SessionRunHook(), spec=training.SessionRunHook)
