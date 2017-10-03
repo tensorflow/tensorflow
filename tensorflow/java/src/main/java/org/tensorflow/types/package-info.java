@@ -21,7 +21,8 @@ limitations under the License.
  * support compile-time checking of tensor element types and the latter is used for
  * run-time checking of element types. Classes appearing in this package, such as
  * UInt8, represent TensorFlow data types for which there is no existing Java equivalent.
- * TensorFlow element types are also separately represented by the {@link DataType} enum, with
+ *
+ * <p>TensorFlow element types are also separately represented by the {@link DataType} enum, with
  * one enum value per element type. The enum representation is not usually needed, but
  * can be obtained using {@link DataType.fromClass}.
  */
