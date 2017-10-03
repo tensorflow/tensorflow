@@ -20,6 +20,7 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as _saver
@@ -113,8 +114,9 @@ class Saver(object):
     Returns:
       See save method in tf.train.Saver.
     """
-    return self._saver.save(None, save_path, write_meta_graph=False,
-                            global_step=global_step)
+    with ops.device("/device:CPU:0"):
+      return self._saver.save(None, save_path, write_meta_graph=False,
+                              global_step=global_step)
 
   def restore(self, save_path):
     """Restores previously saved variables.
@@ -122,4 +124,6 @@ class Saver(object):
     Args:
       save_path: See restore method in tf.train.Saver.
     """
-    self._saver.restore(None, save_path)
+    with ops.device("/device:CPU:0"):
+      self._saver.restore(None, save_path)
+
