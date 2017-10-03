@@ -5,6 +5,8 @@ package(
 )
 
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_saved_model_library")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
@@ -116,9 +118,29 @@ cc_library(
     ],
 )
 
+# config_from_savedmodel
+
+tf_proto_library_py(
+    name="tfcompile",
+    srcs=["tfcompile.proto"],
+    protodeps=["//tensorflow/core:protos_all"]
+)
+
+py_binary(
+    name="config_from_savedmodel",
+    srcs=["config_from_savedmodel.py"],
+    deps=[
+        ":tfcompile_py",
+        "//tensorflow:tensorflow_py",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+
 # NOTE: Most end-to-end tests are in the "tests" subdirectory, to ensure that
 # tfcompile.bzl correctly handles usage from outside of the package that it is
 # defined in.
+
 
 # A simple test of tf_library from a text protobuf, mostly to enable the
 # benchmark_test.

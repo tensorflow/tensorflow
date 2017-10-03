@@ -5,6 +5,7 @@ package(
 )
 
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_saved_model_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 test_suite(
@@ -20,7 +21,39 @@ test_suite(
         ":test_graph_tfmatmulandadd_test",
         ":test_graph_tfsplits_test",
         ":tfcompile_test",
+        ":test_saved_model",
     ],
+)
+
+py_binary(
+    name = "make_test_saved_model",
+    testonly = 1,
+    srcs = ["make_test_saved_model.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+genrule(
+    name = "gen_test_saved_model",
+    testonly = 1,
+    outs = [
+        "saved_model_binaries/saved_model.pb",
+        "saved_model_binaries/variables/variables.data-00000-of-00001",
+        "saved_model_binaries/variables/variables.index"
+    ],
+    cmd = "$(location :make_test_saved_model) --out_dir saved_model_binaries",
+    tags = ["manual"],
+    tools = [":make_test_saved_model"]
+)
+
+tf_saved_model_library(
+    name = "test_saved_model_tfadd",
+    testonly = 1,
+    saved_model_dir = "saved_model_binaries",
+    cpp_class = "Add",
+    tags = ["manual"]
 )
 
 py_binary(
