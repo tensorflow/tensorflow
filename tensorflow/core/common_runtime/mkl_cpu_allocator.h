@@ -21,9 +21,13 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
+#include <stdlib.h>
+#include <unistd.h>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
 
 #include "i_malloc.h"
@@ -48,8 +52,26 @@ class MklCPUAllocator : public Allocator {
 
   MklCPUAllocator() {
     VLOG(2) << "MklCPUAllocator: In MklCPUAllocator";
-    allocator_ =
-        new BFCAllocator(new MklSubAllocator, kMaxMemSize, kAllowGrowth, kName);
+
+    // Set upper bound on memory allocation to physical RAM available on the
+    // CPU unless explicitly specified by user
+    uint64 max_mem_bytes =
+        (uint64)sysconf(_SC_PHYS_PAGES) * (uint64)sysconf(_SC_PAGESIZE);
+    char* user_mem_bytes = getenv(kMaxAllocSize);
+
+    if (user_mem_bytes != NULL) {
+      if (!strings::safe_strtou64(user_mem_bytes, &max_mem_bytes)) {
+        string err_msg = "Invalid memory limit (" + string(user_mem_bytes) +
+                         ") specified for MKL allocator through " +
+                         string(kMaxAllocSize);
+        Status s = Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
+        TF_CHECK_OK(s);
+      }
+    }
+
+    VLOG(1) << "MklCPUAllocator: Setting max_mem_bytes: " << max_mem_bytes;
+    allocator_ = new BFCAllocator(new MklSubAllocator, max_mem_bytes,
+                                  kAllowGrowth, kName);
 
     // For redirecting all allocations from MKL to this allocator
     // From: http://software.intel.com/en-us/node/528565
@@ -96,16 +118,14 @@ class MklCPUAllocator : public Allocator {
     TF_CHECK_OK(s);  // way to assert with an error message
   }
 
-  // TODO(jbobba): We should ideally move this into CPUOptions in config.proto.
-  /// Memory limit - 64GB
-  static const size_t kMaxMemSize =
-      static_cast<size_t>(64) * 1024 * 1024 * 1024;
-
   /// Do we allow growth in BFC Allocator
   static const bool kAllowGrowth = true;
 
   /// Name
   static constexpr const char* kName = "mklcpu";
+
+  /// Environment variable that user can set to upper bound on memory allocation
+  static constexpr const char* kMaxAllocSize = "TF_MKLALLOC_MAX_BYTES";
 
   /// The alignment that we need for the allocations
   static const size_t kAlignment = 64;
