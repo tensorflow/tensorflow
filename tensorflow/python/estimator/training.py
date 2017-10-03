@@ -28,7 +28,7 @@ import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import estimator as estimator_lib
-from tensorflow.python.estimator import export_strategy as export_strategy_lib
+from tensorflow.python.estimator import exporter as exporter_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -62,39 +62,43 @@ def _validate_hooks(hooks):
   return hooks
 
 
-def _validate_export_strategies(export_strategies):
-  """Validates `export_strategies` and returns them as a tuple."""
-  if not export_strategies:
+def _validate_exporters(exporters):
+  """Validates `exporters` and returns them as a tuple."""
+  if not exporters:
     return ()
 
-  if isinstance(export_strategies, export_strategy_lib.ExportStrategy):
-    return (export_strategies,)
+  if isinstance(exporters, exporter_lib.Exporter):
+    exporters = [exporters]
 
-  unique_names = []  # ExportStrategies should have unique names.
-
+  unique_names = []  # `Exporter`s should have unique names.
   try:
-    for export_strategy in export_strategies:
-      if not isinstance(export_strategy,
-                        export_strategy_lib.ExportStrategy):
+    for exporter in exporters:
+      if not isinstance(exporter, exporter_lib.Exporter):
         raise TypeError
 
-      if export_strategy.name in unique_names:
-        raise ValueError('`export_strategies` must have unique names.'
-                         ' Attempting to use an ExportStrategy "%s" together'
-                         ' others with names %s' % (export_strategy.name,
-                                                    unique_names))
-      unique_names.append(export_strategy.name)
+      if not exporter.name:
+        full_list_of_names = [e.name for e in exporters]
+        raise ValueError('An Exporter cannot have a name that is `None` or'
+                         ' empty. All exporter names:'
+                         ' {}'.format(full_list_of_names))
+
+      if exporter.name in unique_names:
+        full_list_of_names = [e.name for e in exporters]
+        raise ValueError(
+            '`exporters` must have unique names. Such a name cannot be `None`.'
+            ' All exporter names: {}'.format(full_list_of_names))
+      unique_names.append(exporter.name)
   except TypeError:
     # Two possibilities:
-    # - `export_strategies` is neither ExportStrategy nor iterable.  Python has
-    #   raised a TypeError when iterating over 'export_strategies'.
-    # - a single `export_strategy` wasn't of type `ExportStrategy`, so we raised
-    #   TypeError.
-    raise TypeError('`export_strategies` must be an ExportStrategy,'
-                    ' an iterable of ExportStrategy, or `None`,'
-                    ' found %s.' % export_strategies)
+    # - `exporters` is neither `Exporter` nor iterable.  Python has
+    #   raised a `TypeError` when iterating over `exporters`.
+    # - an `exporter` was None or not of type `Exporter`, so we raised a
+    #   `TypeError`.
+    raise TypeError('`exporters` must be an Exporter,'
+                    ' an iterable of Exporter, or `None`,'
+                    ' found %s.' % exporters)
 
-  return tuple(export_strategies)
+  return tuple(exporters)
 
 
 def _is_google_env():
@@ -155,7 +159,7 @@ class TrainSpec(
 
 class EvalSpec(
     collections.namedtuple('EvalSpec', [
-        'input_fn', 'steps', 'name', 'hooks', 'export_strategies',
+        'input_fn', 'steps', 'name', 'hooks', 'exporters',
         'delay_secs', 'throttle_secs'
     ])):
   """Objects passed to `train_and_evaluate`.
@@ -169,7 +173,7 @@ class EvalSpec(
               steps=100,
               name=None,
               hooks=None,
-              export_strategies=None,
+              exporters=None,
               delay_secs=120,
               throttle_secs=600):
     """Creates a validated `EvalSpec` instance.
@@ -186,8 +190,8 @@ class EvalSpec(
         are saved in separate folders, and appear separately in tensorboard.
       hooks: Iterable of `tf.train.SessionRunHook` objects to run
         on all workers (including chief) during training.
-      export_strategies: Iterable of `ExportStrategy`s, or a single one, or
-        `None`. `export_strategies` will be invoked after each evaluation.
+      exporters: Iterable of `Exporter`s, or a single one, or `None`.
+        `exporters` will be invoked after each evaluation.
       delay_secs: Int. Start evaluating after waiting for this many seconds.
       throttle_secs: Int. Do not re-evaluate unless the last evaluation was
         started at least this many seconds ago. Of course, evaluation does not
@@ -214,8 +218,8 @@ class EvalSpec(
     # Validate hooks.
     hooks = _validate_hooks(hooks)
 
-    # Validate export_strategies.
-    export_strategies = _validate_export_strategies(export_strategies)
+    # Validate exporters.
+    exporters = _validate_exporters(exporters)
 
     # Validate delay_secs.
     if delay_secs < 0:
@@ -233,7 +237,7 @@ class EvalSpec(
         steps=steps,
         name=name,
         hooks=hooks,
-        export_strategies=export_strategies,
+        exporters=exporters,
         delay_secs=delay_secs,
         throttle_secs=throttle_secs)
 
@@ -540,16 +544,16 @@ class _TrainingExecutor(object):
         self._last_warning_time = current_time
 
     def _export_eval_result(self, eval_result, checkpoint_path):
-      """Export `eval_result` according to strategies in `EvalSpec`."""
+      """Export `eval_result` according to exporters in `EvalSpec`."""
       export_dir_base = os.path.join(
           compat.as_str_any(self._estimator.model_dir),
           compat.as_str_any('export'))
 
-      for strategy in self._eval_spec.export_strategies:
-        strategy.export(
+      for exporter in self._eval_spec.exporters:
+        exporter.export(
             self._estimator,
             os.path.join(
                 compat.as_str_any(export_dir_base),
-                compat.as_str_any(strategy.name)),
+                compat.as_str_any(exporter.name)),
             checkpoint_path=checkpoint_path,
             eval_result=eval_result)
