@@ -74,7 +74,7 @@ class Dataset(object):
     ```
 
     Args:
-      shared_name: (Optional.) If non-empty, the returnediterator will be
+      shared_name: (Optional.) If non-empty, the returned iterator will be
         shared under the given name across multiple sessions that share the
         same devices (e.g. when using a remote server).
 
