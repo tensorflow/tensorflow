@@ -55,7 +55,7 @@ class Exporter(object):
     pass
 
 
-class SavedModelExporter(Exporter):
+class LatestExporter(Exporter):
   """This class exports the serving graph and checkpoints.
 
   In addition, the class also garbage collects stale exports.
