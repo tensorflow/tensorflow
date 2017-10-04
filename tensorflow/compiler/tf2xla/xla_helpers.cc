@@ -54,6 +54,19 @@ xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
   return b->ConstantLiteral(xla::Literal::One(type));
 }
 
+xla::ComputationDataHandle XlaHelpers::Epsilon(xla::ComputationBuilder* b,
+                                               DataType data_type) {
+  switch (data_type) {
+    case DT_FLOAT:
+      return b->ConstantR0<float>(std::numeric_limits<float>::epsilon());
+    case DT_DOUBLE:
+      return b->ConstantR0<double>(std::numeric_limits<double>::epsilon());
+    default:
+      LOG(FATAL) << "Unsupported type in XlaHelpers::Epsilon: "
+                 << DataTypeString(data_type);
+  }
+}
+
 xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     xla::ComputationBuilder* b, DataType data_type, int64 value) {
   xla::Literal literal;
