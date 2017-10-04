@@ -168,31 +168,27 @@ def make_tensor(v, arg_name):
 
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
-  EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
-  if all(isinstance(x, EagerTensor) for x in l):
-    return l[0].dtype, l
   # TODO(josh11b): Could we do a better job if we also passed in the
   # allowed dtypes when that was known?
 
   # Is some input already a Tensor with a dtype?
   dtype = None
   for t in l:
-    if isinstance(t, EagerTensor):
+    if isinstance(t, ops.EagerTensor):
       dtype = t.dtype
       break
 
-  internal_convert_to_tensor = ops.internal_convert_to_tensor
   if dtype is None:
     # Infer a dtype based on the first value, and use that dtype for the
     # remaining values.
     ret = []
     for t in l:
-      ret.append(internal_convert_to_tensor(
+      ret.append(ops.internal_convert_to_tensor(
           t, dtype, preferred_dtype=default_dtype, ctx=ctx))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
-    ret = [internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
+    ret = [ops.internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
   return dtype, ret
 

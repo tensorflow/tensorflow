@@ -112,10 +112,8 @@ class Layer(object):
     self._per_input_losses = {}
     self._per_input_updates = {}
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
-    call_fn_args = estimator_util.fn_args(self.call)
-    self._compute_previous_mask = ('mask' in call_fn_args or
-                                   hasattr(self, 'compute_mask'))
-    self._call_has_scope_arg = 'scope' in call_fn_args
+    self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
+                                   or hasattr(self, 'compute_mask'))
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -557,15 +555,7 @@ class Layer(object):
             self.build(input_shapes[0])
           else:
             self.build(input_shapes)
-        try:
-          # Note: not all sub-classes of Layer call Layer.__init__ (especially
-          # the ones under tensorflow/python/keras). Hence we recompute this
-          # attribute here if it is not set.
-          # TODO(agarwal): Fix the sub-classes and avoid this complexity.
-          call_has_scope_arg = self._call_has_scope_arg
-        except AttributeError:
-          call_has_scope_arg = 'scope' in estimator_util.fn_args(self.call)
-        if call_has_scope_arg:
+        if 'scope' in estimator_util.fn_args(self.call):
           kwargs['scope'] = scope
         # Check input assumptions set after layer building, e.g. input shape.
         if in_graph_mode:
@@ -1443,10 +1433,8 @@ class Network(Layer):
     self._activity_regularizer = None
     self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
     self._base_name = base_name
-    call_fn_args = estimator_util.fn_args(self.call)
-    self._compute_previous_mask = ('mask' in call_fn_args or
-                                   hasattr(self, 'compute_mask'))
-    self._call_has_scope_arg = 'scope' in call_fn_args
+    self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
+                                   or hasattr(self, 'compute_mask'))
 
     # This acts just like the `trainable` attribute of any layer instance.
     # It does not affect users of the underlying layers, only users of the

@@ -330,7 +330,7 @@ class BatchNormalization(base.Layer):
                                       lambda: self._one_minus_decay,
                                       lambda: 0.)
     else:
-      one_minus_decay = ops.convert_to_tensor(self._one_minus_decay)
+      one_minus_decay = self._one_minus_decay
     if training_value or training_value is None:
       mean_update = self._assign_moving_average(self.moving_mean, mean,
                                                 one_minus_decay)
