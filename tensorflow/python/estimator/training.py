@@ -438,13 +438,17 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
         '`estimator.config` must have task_type set. This usually means '
         'TF_CONFIG environment is not set correctly.')
 
-  # TODO(xiejw): error out if evaluator index is more than 0.
-
   if config.task_type == 'local':
     raise ValueError(
         '`task.type` in TF_CONFIG cannot be `local`. Leaving `cluster` and '
         '`task` properties in TF_CONFIG absent triggers train and evaluate '
         '`Estimator` locally (non-distributed).')
+
+  if (config.task_type == run_config_lib.TaskType.EVALUATOR and
+      config.task_id > 0):
+    raise ValueError(
+        'For distributed training, there can only be one `evaluator` task '
+        '(with task id 0).  Given task id {}'.format(config.task_id))
 
   # For task type foo, call executor.run_foo.
   available_tasks = [x for x in dir(executor) if x.startswith('run_')

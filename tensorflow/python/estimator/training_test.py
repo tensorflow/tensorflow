@@ -71,6 +71,8 @@ _INVALID_EMPTY_EVAL_RESULT_ERR = (
 _INVALID_EVAL_RESULT_TYPE_ERR = '`Estimator.evaluate` should return dict.'
 _MISSING_GLOBAL_STEP_IN_EVAL_RESULT_ERR = (
     'Internal error: `Estimator.evaluate` result should have `global_step`')
+_INVALID_EVAL_TASK_ID_ERR = (
+    'there can only be one `evaluator` task .*with task id 0')
 
 _TF_CONFIG_FOR_CHIEF = {
     'cluster': {
@@ -128,7 +130,7 @@ _TF_CONFIG_FOR_EVALUATOR = {
     },
     'task': {
         'type': run_config_lib.TaskType.EVALUATOR,
-        'index': 1
+        'index': 0
     }
 }
 
@@ -350,6 +352,20 @@ class TrainAndEvaluteTest(test.TestCase):
         run_config=_create_run_config_with_cluster_spec(
             _TF_CONFIG_FOR_EVALUATOR))
     self.assertEqual(1, mock_executor.call_task['evaluator'])
+
+  def test_error_out_if_evaluator_task_id_is_non_zero(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host0:0'],
+        },
+        'task': {
+            'type': run_config_lib.TaskType.EVALUATOR,
+            'index': 1
+        }
+    }
+    with self.assertRaisesRegexp(ValueError, _INVALID_EVAL_TASK_ID_ERR):
+      self._test_run_task_in_distributed_training(
+          run_config=_create_run_config_with_cluster_spec(tf_config))
 
   def test_run_local(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
