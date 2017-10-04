@@ -108,6 +108,30 @@ class ConstantFoldingTest : public ::testing::Test {
                         {"Add"}, {"output_expect_remains"});
   }
 
+  void TestShapePropagation() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    Output placeholder =
+        Placeholder(root.WithOpName("placeholder_expect_remains"), DT_FLOAT);
+    Output a_const =
+        Const(root.WithOpName("a_expect_removed"),
+              Input::Initializer({1, 1, 1}, TensorShape({1, 1, 3})));
+    Output shape = Shape(root.WithOpName("shape_expect_removed"), a_const);
+    Output cast = Cast(root.WithOpName("cast_expect_removed"), shape, DT_FLOAT);
+    Output mul =
+        Mul(root.WithOpName("output_expect_remains"), cast, placeholder);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    Tensor placeholder_tensor(DT_FLOAT, TensorShape({3}));
+    test::FillIota<float>(&placeholder_tensor, 1.0);
+    TestConstantFolding(graph_def,
+                        {{"placeholder_expect_remains", placeholder_tensor}},
+                        {}, {"output_expect_remains"});
+  }
+
   void TestConstantFolding(const GraphDef& graph_def,
                            std::vector<std::pair<string, Tensor> > inputs,
                            std::vector<string> excluded_ops,
@@ -242,6 +266,8 @@ class ConstantFoldingTest : public ::testing::Test {
 TEST_F(ConstantFoldingTest, TestSimpleAdd) { TestSimpleAdd(); }
 
 TEST_F(ConstantFoldingTest, TestOpExclusionAdd) { TestOpExclusionAdd(); }
+
+TEST_F(ConstantFoldingTest, TestShapePropagation) { TestShapePropagation(); }
 
 TEST_F(ConstantFoldingTest, TestReplaceSendRecvs) { TestReplaceSendRecvs(); }
 

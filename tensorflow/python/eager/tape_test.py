@@ -185,6 +185,21 @@ class TapeTest(test.TestCase):
                                            # the tape
     self.assertEqual(len(op_tape), 0)  # No operations should remain on the tape
 
+  def testCustomGradientGraphMode(self):
+    with context.graph_mode(), self.test_session():
+
+      @custom_gradient.custom_gradient
+      def f(x):
+
+        def grad(dresult):
+          return dresult * 10.0
+
+        return x, grad
+
+      inp = constant_op.constant(1.0)
+      grad = gradients_impl.gradients(f(inp), inp)
+      self.assertAllEqual(grad[0].eval(), 10.0)
+
 
 if __name__ == '__main__':
   test.main()

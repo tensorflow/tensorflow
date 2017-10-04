@@ -45,6 +45,22 @@ class GraphCallableTest(test.TestCase):
     self.assertEqual(
         3, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
 
+  def testVariableAPI(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      return v.read_value() + x
+
+    self.assertEqual(
+        2, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
+
+    my_function.variables[0].assign(1.)
+    self.assertEqual(
+        3, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
+
   def testTensorShape(self):
 
     @graph_callable.graph_callable(
@@ -53,7 +69,21 @@ class GraphCallableTest(test.TestCase):
       _ = x.get_shape()
       v = variable_scope.get_variable(
           "v", initializer=init_ops.zeros_initializer(), shape=[x.shape[0]])
+      self.assertEqual(v.shape[0], x.shape[0])
       return v + x
+
+    self.assertEqual([2.],
+                     my_function(
+                         constant_op.constant([2.],
+                                              dtype=dtypes.float32)).numpy())
+
+  def testEmptyInitializer(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(1), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable("v", shape=[1])
+      return x + 0 * v
 
     self.assertEqual([2.],
                      my_function(

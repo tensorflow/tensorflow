@@ -38,6 +38,64 @@ limitations under the License.
 
 namespace tensorflow {
 
+// A helper function to compute the sign and absolute value of the
+// log of the determinant of inputs via a partially pivoted LU
+// factorization.
+//
+// Returns the sign in 'sign' and the log determinant in 'logdet'
+template <class Scalar>
+static void SLogDet(
+    const Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>& inputs,
+    Scalar* sign, Scalar* log_abs_det) {
+  *log_abs_det = 0;
+  *sign = 1;
+  // An empty matrix' determinant is defined to be 1.
+  // (https://en.wikipedia.org/wiki/Determinant)
+  if (inputs.size() > 0) {
+    // Compute the log determinant through a Partially Pivoted LU decomposition
+    using Eigen::Dynamic;
+    Eigen::PartialPivLU<Eigen::Matrix<Scalar, Dynamic, Dynamic>> lu(inputs);
+    Eigen::Matrix<Scalar, Dynamic, Dynamic> LU = lu.matrixLU();
+    *sign = lu.permutationP().determinant();
+    auto diag = LU.diagonal().array().eval();
+    auto abs_diag = diag.cwiseAbs().template cast<Scalar>().eval();
+    *log_abs_det += abs_diag.log().sum();
+    *sign *= (diag / abs_diag).prod();
+  }
+  if (!Eigen::numext::isfinite(*log_abs_det)) {
+    *sign = 0;
+    *log_abs_det = std::log(0.0);
+  }
+}
+
+template <class Scalar>
+class LogDeterminantOp : public LinearAlgebraOp<Scalar> {
+ public:
+  typedef LinearAlgebraOp<Scalar> Base;
+
+  explicit LogDeterminantOp(OpKernelConstruction* context) : Base(context) {}
+
+  using TensorShapes = typename Base::TensorShapes;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
+    return TensorShapes({TensorShape({}), TensorShape({})});
+  }
+
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    Scalar sign;
+    Scalar log_abs_det;
+    SLogDet(Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>(inputs[0]),
+            &sign, &log_abs_det);
+
+    outputs->at(0)(0, 0) = sign;
+    outputs->at(1)(0, 0) = log_abs_det;
+  }
+};
+
 template <class Scalar>
 class DeterminantOp : public LinearAlgebraOp<Scalar> {
  public:
@@ -56,13 +114,11 @@ class DeterminantOp : public LinearAlgebraOp<Scalar> {
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
-    Scalar determinant;
-    if (inputs[0].rows() == 0) {
-      // An empty matrix' determinant is defined to be 1.  See wikipedia.
-      determinant = 1;
-    } else {
-      determinant = inputs[0].determinant();
-    }
+    Scalar sign;
+    Scalar log_abs_det;
+    SLogDet(Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>(inputs[0]),
+            &sign, &log_abs_det);
+    Scalar determinant = sign * std::exp(log_abs_det);
     // TODO(rmlarsen): Don't fail on infinite determinants, since that could
     // be a valid result and the user should check for it instead.
     OP_REQUIRES(context, Eigen::numext::isfinite(determinant),
@@ -240,4 +296,10 @@ REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<complex64>),
 REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<complex128>),
                    complex128);
 
+REGISTER_LINALG_OP("LogMatrixDeterminant", (LogDeterminantOp<float>), float);
+REGISTER_LINALG_OP("LogMatrixDeterminant", (LogDeterminantOp<double>), double);
+REGISTER_LINALG_OP("LogMatrixDeterminant", (LogDeterminantOp<complex64>),
+                   complex64);
+REGISTER_LINALG_OP("LogMatrixDeterminant", (LogDeterminantOp<complex128>),
+                   complex128);
 }  // namespace tensorflow

@@ -142,6 +142,7 @@ tensorflow/core/kernels/cwise_op_sqrt.cc
 tensorflow/core/kernels/cwise_op_sigmoid.cc
 tensorflow/core/kernels/cwise_op_sign.cc
 tensorflow/core/kernels/cwise_op_select.cc
+tensorflow/core/kernels/cwise_op_round.cc
 tensorflow/core/kernels/cwise_op_rsqrt.cc
 tensorflow/core/kernels/cwise_op_reciprocal.cc
 tensorflow/core/kernels/cwise_op_neg.cc
@@ -160,6 +161,7 @@ tensorflow/core/kernels/cwise_op_invert.cc
 tensorflow/core/kernels/cwise_op_greater_equal.cc
 tensorflow/core/kernels/cwise_op_greater.cc
 tensorflow/core/kernels/cwise_op_floor_div.cc
+tensorflow/core/kernels/cwise_op_floor_mod.cc
 tensorflow/core/kernels/cwise_op_floor.cc
 tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc

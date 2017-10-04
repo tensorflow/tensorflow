@@ -45,6 +45,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@Iterator
 @@Saver
 @@SummaryWriter
+@@restore_variables_on_create
 @@Variable
 """
 
@@ -57,6 +58,7 @@ from __future__ import print_function
 #
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.saver import Saver
+from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.summary_writer import SummaryWriter
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.eager import backprop
