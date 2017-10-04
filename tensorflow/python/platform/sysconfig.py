@@ -17,6 +17,8 @@
 
 @@get_include
 @@get_lib
+@@get_include_flags
+@@get_link_flags
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -50,6 +52,31 @@ def get_lib():
   """
   import tensorflow as tf
   return _os_path.join(_os_path.dirname(tf.__file__))
+
+
+def get_include_flags():
+  """Get the compilation flags for custom operators.
+
+  Returns:
+    The compilation flags.
+  """
+  import tensorflow as tf
+  flags = '-I%s' % get_include()
+  flags += ' -I%s/external/nsync/public' % get_include()
+  if tf.__cxx11_abi__ != -1:
+    flags += ' -D_GLIBCXX_USE_CXX11_ABI=%d' % tf.__cxx11_abi__
+  return flags
+
+
+def get_link_flags():
+  """Get the link flags for custom operators.
+
+  Returns:
+    The link flags.
+  """
+  flags = '-L%s' % get_lib()
+  flags += ' -ltensorflow_framework'
+  return flags
 
 _allowed_symbols = []
 remove_undocumented(__name__, _allowed_symbols)

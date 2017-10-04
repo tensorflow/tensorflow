@@ -24,10 +24,12 @@ from tensorflow.python import pywrap_tensorflow
 __version__ = pywrap_tensorflow.__version__
 __git_version__ = pywrap_tensorflow.__git_version__
 __compiler_version__ = pywrap_tensorflow.__compiler_version__
+__cxx11_abi__ = pywrap_tensorflow.__cxx11_abi__
 
 VERSION = __version__
 GIT_VERSION = __git_version__
 COMPILER_VERSION = __compiler_version__
+CXX11_ABI = __cxx11_abi__
 
 GRAPH_DEF_VERSION = pywrap_tensorflow.GRAPH_DEF_VERSION
 GRAPH_DEF_VERSION_MIN_CONSUMER = (
@@ -39,7 +41,9 @@ __all__ = [
     "__version__",
     "__git_version__",
     "__compiler_version__",
+    "__cxx11_abi__",
     "COMPILER_VERSION",
+    "CXX11_ABI",
     "GIT_VERSION",
     "GRAPH_DEF_VERSION",
     "GRAPH_DEF_VERSION_MIN_CONSUMER",
