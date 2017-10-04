@@ -498,7 +498,8 @@ class SimpleRNN(Recurrent):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
-    super(SimpleRNN, self).__init__(**kwargs)
+    super(SimpleRNN, self).__init__(
+        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
     self.units = units
     self.activation = activations.get(activation)
     self.use_bias = use_bias
@@ -510,7 +511,6 @@ class SimpleRNN(Recurrent):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.recurrent_regularizer = regularizers.get(recurrent_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
 
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.recurrent_constraint = constraints.get(recurrent_constraint)
@@ -716,7 +716,8 @@ class GRU(Recurrent):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
-    super(GRU, self).__init__(**kwargs)
+    super(GRU, self).__init__(
+        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
     self.units = units
     self.activation = activations.get(activation)
     self.recurrent_activation = activations.get(recurrent_activation)
@@ -729,7 +730,6 @@ class GRU(Recurrent):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.recurrent_regularizer = regularizers.get(recurrent_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
 
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.recurrent_constraint = constraints.get(recurrent_constraint)
@@ -1016,7 +1016,8 @@ class LSTM(Recurrent):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
-    super(LSTM, self).__init__(**kwargs)
+    super(LSTM, self).__init__(
+        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
     self.units = units
     self.activation = activations.get(activation)
     self.recurrent_activation = activations.get(recurrent_activation)
@@ -1030,7 +1031,6 @@ class LSTM(Recurrent):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.recurrent_regularizer = regularizers.get(recurrent_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
 
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.recurrent_constraint = constraints.get(recurrent_constraint)

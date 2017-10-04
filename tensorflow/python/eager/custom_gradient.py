@@ -23,6 +23,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 
 
 def custom_gradient(f):
@@ -89,4 +90,4 @@ def custom_gradient(f):
     flat_result = list(flat_result)
     return result
 
-  return decorated
+  return tf_decorator.make_decorator(f, decorated)
