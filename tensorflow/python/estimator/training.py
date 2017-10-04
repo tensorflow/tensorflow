@@ -479,10 +479,6 @@ class _StopAtSecsHook(session_run_hook.SessionRunHook):
       run_context.request_stop()
 
 
-class UnimplementedError(Exception):
-  pass
-
-
 class _TrainingExecutor(object):
   """The executor to run `Estimator` training and evaluation.
 
