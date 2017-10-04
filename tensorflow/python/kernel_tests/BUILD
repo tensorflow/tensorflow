@@ -2300,6 +2300,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "dct_ops_test",
+    srcs = ["dct_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:spectral_ops",
+        "//tensorflow/python:spectral_ops_test_util",
+    ],
+)
+
+cuda_py_test(
     name = "fft_ops_test",
     size = "large",
     srcs = ["fft_ops_test.py"],
@@ -2960,6 +2972,7 @@ tf_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -2978,7 +2991,7 @@ tf_py_test(
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
     ],
 )
@@ -3009,6 +3022,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -3036,6 +3050,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -3076,6 +3091,7 @@ tf_py_test(
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -3111,6 +3127,7 @@ tf_py_test(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:session",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
     tags = ["no_windows"],
 )
