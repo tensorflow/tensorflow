@@ -48,6 +48,11 @@ class XlaHelpers {
   static xla::ComputationDataHandle One(xla::ComputationBuilder* b,
                                         DataType data_type);
 
+  // Returns the machine epsilon for floating-point type `data_type`, i.e.,
+  // the difference between 1.0 and the next representable value.
+  static xla::ComputationDataHandle Epsilon(xla::ComputationBuilder* b,
+                                            DataType data_type);
+
   // Returns a handle representing the given value of an integer scalar
   // element of data_type.
   // Note that unlike One and Zero, does not work on boolean types.

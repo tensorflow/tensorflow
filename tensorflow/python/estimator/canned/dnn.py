@@ -209,22 +209,22 @@ class DNNClassifier(estimator.Estimator):
   Example:
 
   ```python
-  sparse_feature_a = sparse_column_with_hash_bucket(...)
-  sparse_feature_b = sparse_column_with_hash_bucket(...)
+  categorical_feature_a = categorical_column_with_hash_bucket(...)
+  categorical_feature_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_column=categorical_feature_b, ...)
 
   estimator = DNNClassifier(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256])
 
   # Or estimator using the ProximalAdagradOptimizer optimizer with
   # regularization.
   estimator = DNNClassifier(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256],
       optimizer=tf.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
@@ -342,22 +342,22 @@ class DNNRegressor(estimator.Estimator):
   Example:
 
   ```python
-  sparse_feature_a = sparse_column_with_hash_bucket(...)
-  sparse_feature_b = sparse_column_with_hash_bucket(...)
+  categorical_feature_a = categorical_column_with_hash_bucket(...)
+  categorical_feature_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_column=categorical_feature_b, ...)
 
   estimator = DNNRegressor(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256])
 
   # Or estimator using the ProximalAdagradOptimizer optimizer with
   # regularization.
   estimator = DNNRegressor(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256],
       optimizer=tf.train.ProximalAdagradOptimizer(
         learning_rate=0.1,

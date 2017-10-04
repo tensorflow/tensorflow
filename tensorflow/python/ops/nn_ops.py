@@ -1646,9 +1646,9 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 def softmax(logits, dim=-1, name=None):
   """Computes softmax activations.
 
-  For each batch `i` and class `j` we have
+  This function performs the equivalent of
 
-      softmax = exp(logits) / reduce_sum(exp(logits), dim)
+      softmax = tf.exp(logits) / tf.reduce_sum(tf.exp(logits), dim)
 
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
@@ -1658,7 +1658,8 @@ def softmax(logits, dim=-1, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+    A `Tensor`. Has the same type and shape as `logits`.
+
   Raises:
     InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
       dimension of `logits`.
