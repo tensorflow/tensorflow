@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -109,10 +110,11 @@ StatusOr<bool> ParallelizationPreparation::RunParallelTaskAssignment(
     HloModule* module) {
   VLOG(1) << "RunParallelTaskAssignment max_parallelism_: " << max_parallelism_;
   bool changed = false;
-  // Run cost analysis on entry computation.
-  HloCostAnalysis cost_analysis(shape_size_);
+  // Initialize ParallelTaskAssignment.
+  ParallelTaskAssignment parallel_task_assignment(max_parallelism_, shape_size_,
+                                                  module);
+  // Assign parallel tasks to HLOs in entry computation.
   HloComputation* computation = module->entry_computation();
-  Status cost_status = computation->root_instruction()->Accept(&cost_analysis);
   for (auto* instruction : computation->instructions()) {
     // Currently, we do not assign parallel tasks to instructions with at least
     // one of the following properties:
@@ -135,8 +137,8 @@ StatusOr<bool> ParallelizationPreparation::RunParallelTaskAssignment(
     }
 
     // Calculate target parallel task count in [1, max_parallelism_].
-    const int64 target_parallel_task_count = GetTargetParallelTaskCount(
-        cost_status.ok() ? &cost_analysis : nullptr, instruction);
+    const int64 target_parallel_task_count =
+        parallel_task_assignment.GetTargetParallelTaskCount(instruction);
     if (target_parallel_task_count == 1) {
       continue;
     }
@@ -157,30 +159,6 @@ StatusOr<bool> ParallelizationPreparation::RunParallelTaskAssignment(
   }
 
   return changed;
-}
-
-int64 ParallelizationPreparation::GetTargetParallelTaskCount(
-    const HloCostAnalysis* cost_analysis, HloInstruction* instruction) {
-  // Default to a simple cost model based on hlo size and typical L2 cache size.
-  // Note that 'cost_analysis' can be 'nullptr' if HloCostAnalysis returns an
-  // error status (likely because HLOs like CustomCall are not yet implemented
-  // in the HloCostAnalysis).
-  int64 instruction_cost = shape_size_(instruction->shape());
-  int64 min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
-  if (cost_analysis != nullptr) {
-    // Calculate the instruction cost in cycles.
-    // TODO(29630486) Improve on this linear cost model.
-    // Consider making 'min_cost_per_thread' be a function of the target
-    // bandwidth limit for instructions with low arithmetic complexity.
-    instruction_cost = 1 * cost_analysis->flop_count(*instruction) +
-                       2 * cost_analysis->transcendental_count(*instruction) +
-                       10 * cost_analysis->bytes_accessed(*instruction);
-    // Minimum per-thread cost is 100us of work on a 2GHz core.
-    min_cost_per_thread = 100000;
-  }
-  // Return target parallel task count in [1, max_parallelism_].
-  return std::min(max_parallelism_,
-                  std::max(1LL, instruction_cost / min_cost_per_thread));
 }
 
 bool ParallelizationPreparation::OutlineParallelizableInstruction(
