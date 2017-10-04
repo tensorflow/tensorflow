@@ -540,16 +540,8 @@ class ResourceVariable(variables.Variable):
      the read operation.
     """
     with ops.name_scope("Read"):
-      # In graph mode, ensure we read the variable in the same device as the
-      # handle. In eager mode, however, this sometimes tries to read a GPU
-      # variable in the CPU because the handle is host memory. For now, then, we
-      # need to skip the device block in eager. TODO(apassos): eager should have
-      # separate notions of device and memory, so handle.device can be GPU while
-      # handle.memory_space is always CPU.
-      if context.in_graph_mode():
-        with ops.device(self._handle_device):
-          value = self._read_variable_op()
-      else:
+      # Ensure we read the variable in the same device as the handle.
+      with ops.device(self._handle_device):
         value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
