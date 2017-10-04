@@ -152,10 +152,10 @@ def create_test_network_5():
 
 
 def create_test_network_6():
-  """Aligned network for test.
+  """Aligned network with dropout for test.
 
-  The graph corresponds to the example from the second figure in
-  go/cnn-rf-computation#arbitrary-computation-graphs
+  The graph is similar to create_test_network_1(), except that the right branch
+  has dropout normalization.
 
   Returns:
     g: Tensorflow graph object (Graph proto).
@@ -273,7 +273,7 @@ class RfUtilsTest(test.TestCase):
 
     x = np.random.randint(0, 100, (50, 2))
     y = rf.compute_feature_coordinates(x)
-    x2 = rf.compute_input_coordinates(y)
+    x2 = rf.compute_input_center_coordinates(y)
 
     self.assertAllEqual(x, x2)
 

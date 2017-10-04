@@ -33,10 +33,9 @@ import numpy as np
 # White-listed layer operations, which do not affect the receptive field
 # computation.
 _UNCHANGED_RF_LAYER_OPS = [
-    "Softplus", "Relu", "BiasAdd", "Mul", "Add", "Const", "Identity",
-    "VariableV2", "Sub", "Rsqrt", "ConcatV2", "Log", "Pow", "RealDiv",
-    "Floor", "Ceil", "Round",
-]
+  'Add', 'BiasAdd', 'Ceil', 'ConcatV2', 'Const', 'Floor', 'Identity', 'Log',
+  'Mul', 'Pow', 'RealDiv', 'Relu', 'Round', 'Rsqrt', 'Softplus', 'Sub',
+  'VariableV2']
 
 # Different ways in which padding modes may be spelled.
 _VALID_PADDING = ["VALID", b"VALID"]
@@ -310,7 +309,7 @@ def _get_effective_padding_node_input(stride, padding,
 
 class ReceptiveField:
   """
-  Receptive field of a convolutioanl neural network.
+  Receptive field of a convolutional neural network.
 
   Args:
     size: Receptive field size.
@@ -322,22 +321,34 @@ class ReceptiveField:
     self.stride = np.asarray(stride)
     self.padding = np.asarray(padding)
 
-  def compute_input_coordinates(self, x, axis=None):
+  def compute_input_center_coordinates(self, x, axis=None):
     """
     Computes the center of the receptive field that generated a feature.
 
     Args:
-      x: Coordinate of the feature.
-      axis: The dimensions for which to compute the input coordinates.
+      x: An array of feature coordinates with shape `(..., d)`, where `d` is the
+        number of dimensions of the coordinates.
+      axis: The dimensions for which to compute the input center coordinates.
+        If `None` (the default), compute the input center coordinates for all
+        dimensions.
 
     Returns:
-      y: Center of the receptive field that generated the feature.
+      y: Center of the receptive field that generated the features.
+
+    Raises:
+      ValueError: If the number of dimensions of the feature coordinates does
+        not match the number of elements in `axis`.
     """
     # Use all dimensions
     if axis is None:
       axis = range(self.size.size)
     # Ensure axis is a list because tuples have different indexing behavior
     axis = list(axis)
+    x = np.asarray(x)
+    if x.shape[-1] != len(axis):
+      raise ValueError("Dimensionality of the feature coordinates `x` (%d) "
+                       "does not match dimensionality of `axis` (%d)" %
+                       (x.shape[-1], len(axis)))
     return - self.padding[axis] + x * self.stride[axis] + \
       (self.size[axis] - 1) / 2
 
@@ -346,17 +357,29 @@ class ReceptiveField:
     Computes the position of a feature given the center of a receptive field.
 
     Args:
-      y: Center of the receptive field.
+      y: An array of input center coordinates with shape `(..., d)`, where `d`
+        is the number of dimensions of the coordinates.
       axis: The dimensions for which to compute the feature coordinates.
+        If `None` (the default), compute the feature coordinates for all
+        dimensions.
 
     Returns:
-      x: Coordinate of the feature.
+      x: Coordinates of the features.
+
+    Raises:
+      ValueError: If the number of dimensions of the input center coordinates
+        does not match the number of elements in `axis`.
     """
     # Use all dimensions
     if axis is None:
       axis = range(self.size.size)
     # Ensure axis is a list because tuples have different indexing behavior
     axis = list(axis)
+    y = np.asarray(y)
+    if y.shape[-1] != len(axis):
+      raise ValueError("Dimensionality of the input center coordinates `y` "
+                       "(%d) does not match dimensionality of `axis` (%d)" %
+                       (y.shape[-1], len(axis)))
     return (y + self.padding[axis] + (1 - self.size[axis]) / 2) / \
       self.stride[axis]
 
@@ -366,13 +389,19 @@ class ReceptiveField:
 
 def compute_receptive_field_from_graph_def(graph_def, input_node, output_node,
                                            stop_propagation=None):
-  """Computes receptive field (RF) parameters from a GraphDef object.
+  """Computes receptive field (RF) parameters from a Graph or GraphDef object.
+
+  The algorithm stops the calculation of the receptive field whenever it
+  encounters an operation in the list `stop_propagation`. Stopping the
+  calculation early can be useful to calculate the receptive field of a
+  subgraph such as a single branch of the
+  [inception network](https://arxiv.org/abs/1512.00567).
 
   Args:
-    graph_def: GraphDef object.
-    input_node: Name of the input node from graph.
-    output_node: Name of the output node from graph.
-    stop_propagation: List of operation  or scope names for which to stop the
+    graph_def: Graph or GraphDef object.
+    input_node: Name of the input node or Tensor object from graph.
+    output_node: Name of the output node or Tensor object from graph.
+    stop_propagation: List of operation or scope names for which to stop the
       propagation of the receptive field.
 
   Returns:
