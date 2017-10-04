@@ -524,7 +524,7 @@ _grad_fn_accepts_none_for_indices = {
 }
 
 
-def _record_gradient(op_name, inputs, attrs, results, ctx, name):
+def _record_gradient(op_name, inputs, attrs, results, name):
   """Records gradients for a TensorFlow operation.
 
   Args:
@@ -534,7 +534,6 @@ def _record_gradient(op_name, inputs, attrs, results, ctx, name):
     attrs: A tuple with alternating string attr names and attr values for this
       operation.
     results: The results of the operation (as a flat list).
-    ctx: The value of context.context().
     name: Customized name for the operation.
 
   Returns:
@@ -572,7 +571,6 @@ def _record_gradient(op_name, inputs, attrs, results, ctx, name):
             "output_grads", orig_outputs, "gradients", result)
     return result
 
-  inputs = [ops.internal_convert_to_tensor(x, ctx=ctx) for x in inputs]
   tape.record_operation(op_name, results, inputs, [], grad_fn)
   if _tracing:
     print("Computed op", (name if name else op_name), "inputs", inputs,
