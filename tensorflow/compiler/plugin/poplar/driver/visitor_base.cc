@@ -408,7 +408,7 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
     else {
       return port::Status(port::error::FAILED_PRECONDITION,
                           port::StrCat("Unrecognized special call op ",
-                                       inst->name()));
+                                       inst->name(), ": ", name));
     }
   } else {
     poplar::program::Program prog;
