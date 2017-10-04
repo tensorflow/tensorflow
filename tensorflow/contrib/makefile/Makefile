@@ -76,6 +76,7 @@ HOST_INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -86,6 +87,7 @@ HOST_INCLUDES += -I/usr/local/include
 
 HOST_LIBS := \
 $(HOST_NSYNC_LIB) \
+$(HOST_DOUBLE_CONVERSION_LIB) \
 -lstdc++ \
 -lprotobuf \
 -lpthread \
@@ -158,6 +160,7 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -169,6 +172,7 @@ INCLUDES += -I/usr/local/include
 
 LIBS := \
 $(TARGET_NSYNC_LIB) \
+$(HOST_DOUBLE_CONVERSION_LIB) \
 -lstdc++ \
 -lprotobuf \
 -lz \
@@ -258,12 +262,14 @@ ifeq ($(TARGET),ANDROID)
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
 -I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 
 	LIBS := \
 $(TARGET_NSYNC_LIB) \
+$(HOST_DOUBLE_CONVERSION_LIB) \
 -lgnustl_static \
 -lprotobuf \
 -llog \
