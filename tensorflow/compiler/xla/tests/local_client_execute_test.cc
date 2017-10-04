@@ -814,7 +814,7 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
   test_to_device_and_back(*Literal::CreateR0<bool>(true));
   test_to_device_and_back(*Literal::CreateR1<float>({1.0, 42.0, 744.4}));
   test_to_device_and_back(
-      *Literal::CreateR2<float>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
+      *Literal::CreateR2<double>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
   test_to_device_and_back(*Literal::CreateR2<int32>({{2, 1}, {4444, 56}}));
 
   // Null shape (empty tuple).
@@ -833,30 +833,6 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
                            Literal::CreateR0<float>(123456.0).get()})
            .get(),
        Literal::CreateR0<bool>(false).get()}));
-}
-
-XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
-  // Test copying Literals to the device as ShapedBuffers, then copying them
-  // back again to Literals for 64-bit values.
-  auto test_to_device_and_back = [this](const Literal& literal) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto shaped_buffer,
-        local_client_->LiteralToShapedBuffer(
-            literal, local_client_->default_device_ordinal(), allocator_));
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto transferred_literal,
-        local_client_->ShapedBufferToLiteral(*shaped_buffer));
-    EXPECT_EQ(literal, *transferred_literal);
-  };
-
-  test_to_device_and_back(
-      *Literal::CreateR2<double>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
-  test_to_device_and_back(*Literal::CreateR2<int64>({{2, 1}, {4444, 56}}));
-  test_to_device_and_back(
-      *Literal::CreateR2<uint64>({{20000000000ULL, 1}, {4444, 56}}));
-  test_to_device_and_back(
-      *Literal::MakeTuple({Literal::CreateR1<double>({1.0, -42.0}).get(),
-                           Literal::CreateR0<int64>(123456789000LL).get()}));
 }
 
 // Benchmark that measures the overhead of the LocalClient API when running a
