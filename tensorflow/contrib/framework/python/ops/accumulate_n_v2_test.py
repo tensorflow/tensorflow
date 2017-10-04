@@ -22,12 +22,14 @@ import numpy as np
 
 from tensorflow.contrib.framework.python.ops import accumulate_n_v2 as av2
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+
 
 
 class AccumulateNV2Test(test_util.TensorFlowTestCase):
@@ -116,7 +118,6 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
         a = variables.Variable(0.2, dtype=np.float32)
         tf_val = av2.accumulate_n_v2([a], tensor_dtype=np.int32) 
 
-        
 
 if __name__ == "__main__":
   googletest.main()

@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.ops import gen_accumulate_n_v2_ops
-from tensorflow.contrib.util import loader
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
+
 
 
 def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
@@ -66,14 +66,8 @@ def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
     ValueError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
-  loader.load_op_library(
-      resource_loader.get_path_to_datafile("_accumulate_n_v2_op.so"))
   _INPUTS_ERR_MSG = ValueError("inputs must be a list of at least one Tensor"
                                "with the same dtype and shape")
-  if context.in_eager_mode():
-    # TODO(apassos) remove this once the lifetime of eager variables gets
-    # addressed.
-    raise ValueError("accumulate_n not supported in eager mode")
   if not inputs or not isinstance(inputs, (list, tuple)):
     raise _INPUTS_ERR_MSG
   inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
@@ -98,10 +92,14 @@ def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
     return inputs[0]
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
+  elif context.in_eager_mode():
+    # TemporaryVariable not currently supported in eager mode; fall back 
+    # onto AddN for now.
+    # TODO(frreiss) remove this once the lifetime of eager variables gets
+    # addressed
+    return math_ops.add_n(inputs, name=name)
   else:
-    return gen_accumulate_n_v2_ops.accumulate_nv2(inputs, 
-                                                    name=name, 
-                                                    shape=shape)
+    return gen_math_ops._accumulate_nv2(inputs, name=name, shape=shape)
 
 # The following code should eventually be merged into 
 # tensorflow/python/ops/math_grad.py

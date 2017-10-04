@@ -37,16 +37,13 @@ tf_custom_op_py_library(
     ],
     dso = [
         ":python/ops/_variable_ops.so",
-        ":python/ops/_accumulate_n_v2_op.so",
     ],
     kernels = [
-        ":accumulate_n_v2_op_lib",
         ":variable_kernels",
         ":variable_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":gen_accumulate_n_v2_ops",
         ":gen_variable_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
@@ -102,27 +99,17 @@ tf_custom_op_library(
     ],
 )
 
-# No kernels to build for the "AccumulateNV2" op; a rewrite in
-# tensorflow/core/common_runtime/accumulate_n_optimizer.cc converts instances
-# of the op into a graph of lower-level ops.
-tf_custom_op_library(
-    name = "python/ops/_accumulate_n_v2_op.so",
-    srcs = [
-        "ops/accumulate_n_v2_op.cc",
-    ],
-)
+
 
 tf_gen_op_libs(
     op_lib_names = [
         "variable_ops",
-        "accumulate_n_v2_op",
     ],
 )
 
 cc_library(
     name = "all_ops",
     deps = [
-        ":accumulate_n_v2_op_op_lib",
         ":variable_ops_op_lib",
     ],
 )
@@ -135,13 +122,6 @@ tf_gen_op_wrapper_py(
     ],
 )
 
-tf_gen_op_wrapper_py(
-    name = "gen_accumulate_n_v2_ops",
-    out = "python/ops/gen_accumulate_n_v2_ops.py",
-    deps = [
-        ":accumulate_n_v2_op_op_lib",
-    ],
-)
 
 py_test(
     name = "arg_scope_test",
@@ -185,6 +165,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "accumulate_n_v2_eager_test",
+    size = "small",
+    srcs = ["python/ops/accumulate_n_v2_eager_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/eager:backprop",
+    ],
+)
 py_test(
     name = "ops_test",
     size = "small",
