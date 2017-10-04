@@ -292,12 +292,14 @@ class EvalSpecTest(test.TestCase):
 class TrainAndEvaluteTest(test.TestCase):
 
   def _mock_executor_instance(self):
+    mock_instance = test.mock.Mock()
+    mock_instance.call_task = {}
+
     def task_fn(name):
       def _fn():
-        return name
+        mock_instance.call_task[name] = 1
       return _fn
 
-    mock_instance = test.mock.Mock()
     mock_instance.run_chief = task_fn('chief')
     mock_instance.run_master = task_fn('master')
     mock_instance.run_ps = task_fn('ps')
@@ -314,31 +316,34 @@ class TrainAndEvaluteTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
-      mock_executor.return_value = self._mock_executor_instance()
-      return_value = training.train_and_evaluate(
-          mock_est, mock_train_spec, mock_eval_spec)
-
-      self.assertEqual(mock_est.config.task_type, return_value)
+      mock_executor_instance = self._mock_executor_instance()
+      mock_executor.return_value = mock_executor_instance
+      training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
       mock_executor.assert_called_with(estimator=mock_est,
                                        train_spec=mock_train_spec,
                                        eval_spec=mock_eval_spec)
+      return mock_executor_instance
 
   def test_run_chief(self):
-    self._test_run_task_in_distributed_training(
+    mock_executor = self._test_run_task_in_distributed_training(
         run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_CHIEF))
+    self.assertEqual(1, mock_executor.call_task['chief'])
 
   def test_run_worker(self):
-    self._test_run_task_in_distributed_training(
+    mock_executor = self._test_run_task_in_distributed_training(
         run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_WORKER))
+    self.assertEqual(1, mock_executor.call_task['worker'])
 
   def test_run_ps(self):
-    self._test_run_task_in_distributed_training(
+    mock_executor = self._test_run_task_in_distributed_training(
         run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_PS))
+    self.assertEqual(1, mock_executor.call_task['ps'])
 
   def test_run_evaluator(self):
-    self._test_run_task_in_distributed_training(
+    mock_executor = self._test_run_task_in_distributed_training(
         run_config=_create_run_config_with_cluster_spec(
             _TF_CONFIG_FOR_EVALUATOR))
+    self.assertEqual(1, mock_executor.call_task['evaluator'])
 
   def test_run_local(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
@@ -347,11 +352,11 @@ class TrainAndEvaluteTest(test.TestCase):
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
 
     with test.mock.patch.object(training, '_TrainingExecutor') as mock_executor:
-      mock_executor.return_value = self._mock_executor_instance()
-      return_value = training.train_and_evaluate(
-          mock_est, mock_train_spec, mock_eval_spec)
+      mock_executor_instance = self._mock_executor_instance()
+      mock_executor.return_value = mock_executor_instance
+      training.train_and_evaluate(mock_est, mock_train_spec, mock_eval_spec)
+      self.assertEqual(1, mock_executor_instance.call_task['local'])
 
-      self.assertEqual('local', return_value)
       mock_executor.assert_called_with(estimator=mock_est,
                                        train_spec=mock_train_spec,
                                        eval_spec=mock_eval_spec)
