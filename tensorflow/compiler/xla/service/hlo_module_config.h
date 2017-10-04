@@ -67,11 +67,6 @@ class HloModuleConfig {
   bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
   void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
 
-  bool has_hybrid_result() const { return has_hybrid_result_; }
-  void set_has_hybrid_result(bool has_hybrid_result) {
-    has_hybrid_result_ = has_hybrid_result;
-  }
-
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
   uint64 seed() const { return seed_; }

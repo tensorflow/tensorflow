@@ -68,17 +68,17 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_EQ(original_graph_description, GraphDebugString());
   }
 
-  void ExpectError(
-      const string& gdef_ascii, const ImportGraphDefOptions& opts,
-      const std::vector<string>& expected_error_strs,
-      ShapeRefiner* refiner = nullptr,
-      std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
+  void ExpectError(const string& gdef_ascii, const ImportGraphDefOptions& opts,
+                   const std::vector<string>& expected_error_strs,
+                   ShapeRefiner* refiner = nullptr,
+                   std::vector<std::pair<Node*, int>>* return_tensors = nullptr,
+                   std::vector<TensorId>* unused_input_map_keys = nullptr) {
     // Used to verify that errors don't change graph
     const string original_graph_description = GraphDebugString();
 
     Convert(gdef_ascii);
-    Status status =
-        ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
+    Status status = ImportGraphDef(opts, gdef_, &graph_, refiner,
+                                   return_tensors, unused_input_map_keys);
     EXPECT_FALSE(status.ok());
 
     for (const string& error : expected_error_strs) {
@@ -97,9 +97,11 @@ class GraphConstructorTest : public ::testing::Test {
 
   void ExpectOK(const string& gdef_ascii, const ImportGraphDefOptions& opts,
                 ShapeRefiner* refiner = nullptr,
-                std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
+                std::vector<std::pair<Node*, int>>* return_tensors = nullptr,
+                std::vector<TensorId>* unused_input_map_keys = nullptr) {
     Convert(gdef_ascii);
-    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
+    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors,
+                              unused_input_map_keys);
     EXPECT_EQ(Status::OK(), s) << s;
   }
 
@@ -1279,8 +1281,9 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
 
   // Create input_map containing control edges and use it to import more nodes
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("W1", -1);
-  opts.input_map[TensorId("W3", -1)] = TensorId("W1", -1);
+  const int kControlSlot = Graph::kControlSlot;
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("W3", kControlSlot)] = TensorId("W1", kControlSlot);
   ExpectOK(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1316,7 +1319,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
   // node
   opts.prefix = "import";
   opts.input_map.clear();
-  opts.input_map[TensorId("W1", -1)] = TensorId("W1", -1);
+  opts.input_map[TensorId("W1", kControlSlot)] = TensorId("W1", kControlSlot);
   ExpectOK(
       R"EOF(
       node { name: 'W1' op: 'TestParams' }
@@ -1343,7 +1346,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
 
   // Create input_map with bad control edge mapping
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("W1", 0);
+  opts.input_map[TensorId("W2", Graph::kControlSlot)] = TensorId("W1", 0);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1355,7 +1358,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
 
   opts.input_map.clear();
   // "W2:0" isn't used in the imported graph but still causes an error
-  opts.input_map[TensorId("W2", 0)] = TensorId("W1", -1);
+  opts.input_map[TensorId("W2", 0)] = TensorId("W1", Graph::kControlSlot);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1396,7 +1399,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithMissingEntries) {
 
   // Create input_map referencing node that doesn't exist in graph
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("DNE", -1);
+  const int kControlSlot = Graph::kControlSlot;
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("DNE", kControlSlot);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1431,6 +1435,49 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
       opts,
       {"cannot resolve input_map because multiple nodes exist with name 'dup'"},
       &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapUnusedKeys) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  std::vector<TensorId> unused_input_map_keys;
+
+  // No input map
+  ImportGraphDefOptions opts;
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'input' op: 'TestInput' }",
+      opts, &refiner, nullptr, &unused_input_map_keys);
+  EXPECT_TRUE(unused_input_map_keys.empty());
+
+  // Non-empty unused_input_map_keys
+  unused_input_map_keys.push_back(TensorId());
+  ExpectError("node { name: 'W2' op: 'TestParams' }", opts,
+              {"If non-null, unused_input_map_keys argument to ImportGraphDef()"
+               " should be empty (has size 1)"},
+              &refiner, nullptr, &unused_input_map_keys);
+
+  // Input map with some used, some unused keys
+  const int kControlSlot = Graph::kControlSlot;
+  unused_input_map_keys.clear();
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+  opts.input_map[TensorId("new_input", kControlSlot)] =
+      TensorId("input", kControlSlot);
+  opts.input_map[TensorId("t1", 1)] = TensorId("input", 0);
+  ExpectOK(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'new_input' op: 'TestInput' input: [ '^W2' ] }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner, nullptr, &unused_input_map_keys);
+
+  std::vector<TensorId> expected_unused_keys = {
+      TensorId("new_input", kControlSlot), TensorId("t1", 1)};
+  EXPECT_EQ(unused_input_map_keys, expected_unused_keys);
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_SkipMappedNodes_FullyMapped) {
@@ -1586,13 +1633,13 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
   // Null return_tensors with non-empty opts.return_tensors
   opts.return_tensors.push_back({"new_input", 0});
   ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
-              {"return_tensors argument to ImportNodeDef() must be non-null "
+              {"return_tensors argument to ImportGraphDef() must be non-null "
                "if opts.return_tensors is non-empty"});
 
   // Non-empty return_tensors
   return_tensors.push_back({nullptr, 0});
   ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
-              {"return_tensors argument to ImportNodeDef() should be empty "
+              {"return_tensors argument to ImportGraphDef() should be empty "
                "(has size 1)"},
               nullptr, &return_tensors);
 

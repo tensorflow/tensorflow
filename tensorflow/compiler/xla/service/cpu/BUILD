@@ -543,6 +543,7 @@ cc_library(
     ],
     deps = [
         ":ir_emission_utils",
+        ":parallel_task_assignment",
         ":shape_partition",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -649,6 +650,18 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "parallel_task_assignment",
+    srcs = ["parallel_task_assignment.cc"],
+    hdrs = ["parallel_task_assignment.h"],
+    deps = [
+        ":ir_emission_utils",
+        ":shape_partition",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
     ],
 )
 

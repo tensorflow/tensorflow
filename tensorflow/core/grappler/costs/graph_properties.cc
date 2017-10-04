@@ -455,6 +455,20 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return InferFromCostGraph(metadata.cost_graph());
 }
 
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) {
+  *output_graph_def = item_.graph;
+  for (int i = 0; i < output_graph_def->node_size(); i++) {
+    auto node = output_graph_def->mutable_node(i);
+    AttrValue attr_output_shape;
+    auto tensor_properties = GetOutputProperties(node->name());
+    for (const auto& tensor_property : tensor_properties) {
+      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+    }
+    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
+  }
+  return Status::OK();
+}
+
 Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
   std::unordered_map<string, const CostGraphDef::Node*> name_to_cost;
   std::unordered_map<string, const NodeDef*> name_to_node;  // Empty

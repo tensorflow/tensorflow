@@ -32,6 +32,15 @@ from tensorflow.python.util import compat
 
 class SavedModelExporterTest(test.TestCase):
 
+  def test_error_out_if_exports_to_keep_is_zero(self):
+    def _serving_input_fn():
+      pass
+    with self.assertRaisesRegexp(ValueError, "positive number"):
+      exporter_lib.SavedModelExporter(
+          name="saved_model_exporter",
+          serving_input_fn=_serving_input_fn,
+          exports_to_keep=0)
+
   def test_saved_model_exporter(self):
 
     def _serving_input_fn():

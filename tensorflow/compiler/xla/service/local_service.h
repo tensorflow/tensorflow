@@ -45,7 +45,7 @@ class LocalService : public Service {
   StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       const ComputationHandle& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const Shape* result_layout, int device_ordinal, bool has_hybrid_result);
+      const Shape* result_layout, int device_ordinal);
 
  private:
   explicit LocalService(const ServiceOptions& options,
