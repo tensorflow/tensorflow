@@ -324,13 +324,19 @@ def imperative_grad(
     result.append(_aggregate_grads(g))
   return result
 
+_op_attr_type_cache = {}
+
 
 def op_attr_type(op_type, attr_name):
-  with errors.raise_exception_on_not_ok_status() as status:
-    h = context.context()._handle  # pylint: disable=protected-access
-    op = pywrap_tensorflow.TFE_NewOp(h, op_type, status)
-    attr_type = pywrap_tensorflow.TFE_OpGetAttrType(op, attr_name, status)
-  return attr_type
+  try:
+    return _op_attr_type_cache[(op_type, attr_name)]
+  except KeyError:
+    with errors.raise_exception_on_not_ok_status() as status:
+      h = context.context()._handle  # pylint: disable=protected-access
+      op = pywrap_tensorflow.TFE_NewOp(h, op_type, status)
+      attr_type = pywrap_tensorflow.TFE_OpGetAttrType(op, attr_name, status)
+    _op_attr_type_cache[(op_type, attr_name)] = attr_type
+    return attr_type
 
 
 def make_attr(attr_type, value):
@@ -518,7 +524,7 @@ _grad_fn_accepts_none_for_indices = {
 }
 
 
-def _record_gradient(op_name, inputs, attrs, results, ctx, name):
+def _record_gradient(op_name, inputs, attrs, results, name):
   """Records gradients for a TensorFlow operation.
 
   Args:
@@ -528,7 +534,6 @@ def _record_gradient(op_name, inputs, attrs, results, ctx, name):
     attrs: A tuple with alternating string attr names and attr values for this
       operation.
     results: The results of the operation (as a flat list).
-    ctx: The value of context.context().
     name: Customized name for the operation.
 
   Returns:
@@ -566,7 +571,6 @@ def _record_gradient(op_name, inputs, attrs, results, ctx, name):
             "output_grads", orig_outputs, "gradients", result)
     return result
 
-  inputs = [ops.internal_convert_to_tensor(x, ctx=ctx) for x in inputs]
   tape.record_operation(op_name, results, inputs, [], grad_fn)
   if _tracing:
     print("Computed op", (name if name else op_name), "inputs", inputs,

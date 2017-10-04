@@ -1826,12 +1826,12 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   if not callable(false_fn):
     raise TypeError("false_fn must be callable.")
 
-  if context.in_eager_mode():
-    if pred:
-      return true_fn()
-    return false_fn()
-
   with ops.name_scope(name, "cond", [pred]):
+    if context.in_eager_mode():
+      if pred:
+        return true_fn()
+      return false_fn()
+
     # Add the Switch to the graph.
     if isinstance(pred, bool):
       raise TypeError("pred must not be a Python bool")

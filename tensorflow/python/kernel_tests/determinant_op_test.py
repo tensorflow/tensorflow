@@ -24,6 +24,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -42,10 +43,29 @@ class DeterminantOpTest(test.TestCase):
     self.assertShapeEqual(np_ans, tf_ans)
     self.assertAllClose(np_ans, out, atol=5e-5)
 
+  def _compareLogDeterminantBase(self, matrix_x, tf_ans):
+    sign_tf, abs_log_det_tf = tf_ans
+    shape = matrix_x.shape
+    if shape[-1] == 0 or shape[-2] == 0:
+      np_sign, np_ans = (1.0, np.zeros(shape[:-2]).astype(matrix_x.dtype))
+    else:
+      np_sign, np_ans = np.linalg.slogdet(matrix_x)
+      np_ans = np_ans.astype(matrix_x.dtype)
+
+    self.assertShapeEqual(np_ans, abs_log_det_tf)
+    sign_tf_val = sign_tf.eval()
+    abs_log_det_tf_val = abs_log_det_tf.eval()
+    self.assertAllClose(
+        sign_tf_val * np.exp(abs_log_det_tf_val),
+        np_sign * np.exp(np_ans),
+        atol=5e-5)
+
   def _compareDeterminant(self, matrix_x):
     with self.test_session(use_gpu=True):
       self._compareDeterminantBase(matrix_x,
                                    linalg_ops.matrix_determinant(matrix_x))
+      self._compareLogDeterminantBase(
+          matrix_x, gen_linalg_ops._log_matrix_determinant(matrix_x))
 
   def testBasic(self):
     # 2x2 matrices

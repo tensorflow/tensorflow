@@ -1,6 +1,9 @@
 # Release 1.4.0
 
 ## Major Features And Improvements
+* Java:
+  * Generics (e.g., `Tensor<Integer>`) for improved type-safety (courtesy @andrewcmyers).
+  * Support for multi-dimensional string tensors.
 
 ## Bug Fixes and Other Changes
 * `tf.nn.rnn_cell.DropoutWrapper` is now more careful about dropping out LSTM

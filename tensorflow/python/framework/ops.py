@@ -582,7 +582,9 @@ class _EagerTensorBase(Tensor):
 
   @property
   def dtype(self):
-    return dtypes.as_dtype(self._datatype_enum())
+    # Note: using the intern table directly here as this is
+    # performance-sensitive in some models.
+    return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def _numpy_text(self, is_repr=False):
     if self.dtype.is_numpy_compatible:
@@ -4876,10 +4878,10 @@ def name_scope(name, default_name=None, values=None):
   ctx = context.context()
   if ctx.in_eager_mode():
     old_name = ctx.scope_name
-    if name is None:
-      scope_name = ""
-    else:
+    if name:
       scope_name = "%s%s/" % (old_name, name) if old_name else "%s/" % name
+    else:
+      scope_name = ""
     ctx.scope_name = scope_name
     try:
       yield scope_name

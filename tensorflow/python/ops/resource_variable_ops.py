@@ -192,6 +192,10 @@ class ResourceVariable(variables.Variable):
           dtype=dtype,
           constraint=constraint)
 
+  # LINT.IfChange
+  # _VariableFromResource inherits from ResourceVariable but
+  # doesn't call the constructor, so changes here might need to be reflected
+  # there.
   # pylint: disable=unused-argument
   def _init_from_args(self,
                       initial_value=None,
@@ -290,6 +294,7 @@ class ResourceVariable(variables.Variable):
               self._handle_device = (
                   self._handle.device if self._in_graph_mode else
                   context.get_default_context().device_name)
+              self._graph_shape = initial_value.get_shape()
           else:
             initial_value = initial_value()
             with ops.name_scope("Initializer"):
@@ -305,6 +310,7 @@ class ResourceVariable(variables.Variable):
             self._handle_device = (
                 self._handle.device if self._in_graph_mode else
                 context.get_default_context().device_name)
+            self._graph_shape = initial_value.get_shape()
         # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
@@ -330,6 +336,7 @@ class ResourceVariable(variables.Variable):
               container="")
           self._handle_device = (self._handle.device if self._in_graph_mode else
                                  context.get_default_context().device_name)
+          self._graph_shape = initial_value.get_shape()
 
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
@@ -396,6 +403,8 @@ class ResourceVariable(variables.Variable):
     self._handle = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.variable_name, import_scope=import_scope))
+    self._graph_shape = tensor_shape.TensorShape(
+        self._handle.op.get_attr("shape"))
     self._handle_device = self._handle.device
     self._handle_name = self._handle.name
     self._initializer_op = g.as_graph_element(
@@ -416,6 +425,7 @@ class ResourceVariable(variables.Variable):
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._graph_element = self.value()
     self._constraint = None
+  # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
   @property
   def dtype(self):
@@ -441,7 +451,7 @@ class ResourceVariable(variables.Variable):
   def shape(self):
     """The shape of this variable."""
     if self._in_graph_mode:
-      return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
+      return self._graph_shape
     return tensor_shape.TensorShape(
         tensor_util.constant_value(
             gen_resource_variable_ops.variable_shape(self._handle)))

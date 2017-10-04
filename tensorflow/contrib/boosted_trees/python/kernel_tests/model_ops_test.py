@@ -114,7 +114,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
           name="create_tree")
       resources.initialize_resources(resources.shared_resources()).run()
 
-      result, _, _ = prediction_ops.gradient_trees_prediction(
+      result, _ = prediction_ops.gradient_trees_prediction(
           tree_ensemble_handle,
           self._seed, [self._dense_float_tensor], [
               self._sparse_float_indices1, self._sparse_float_indices2
@@ -175,7 +175,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         learner_config = learner_pb2.LearnerConfig()
         learner_config.num_classes = 3
 
-        result, _, _ = prediction_ops.gradient_trees_prediction(
+        result, _ = prediction_ops.gradient_trees_prediction(
             tree_ensemble_handle2,
             self._seed, [self._dense_float_tensor], [
                 self._sparse_float_indices1, self._sparse_float_indices2
@@ -241,7 +241,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
                 stamp_token=3,
                 tree_ensemble_config=tree_ensemble_config.SerializeToString())
         ]):
-          result, _, _ = prediction_ops.gradient_trees_prediction(
+          result, _ = prediction_ops.gradient_trees_prediction(
               tree_ensemble_handle,
               self._seed, [self._dense_float_tensor], [
                   self._sparse_float_indices1, self._sparse_float_indices2
@@ -270,7 +270,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
                 stamp_token=3,
                 tree_ensemble_config=tree_ensemble_config.SerializeToString())
         ]):
-          result, _, _ = prediction_ops.gradient_trees_prediction(
+          result, _ = prediction_ops.gradient_trees_prediction(
               tree_ensemble_handle,
               self._seed, [self._dense_float_tensor], [
                   self._sparse_float_indices1, self._sparse_float_indices2
@@ -293,7 +293,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
             stamp_token=0, tree_ensemble_config="", name="restore_tree")
         my_saver = saver.Saver()
         my_saver.restore(sess, save_path)
-        result, _, _ = prediction_ops.gradient_trees_prediction(
+        result, _ = prediction_ops.gradient_trees_prediction(
             tree_ensemble_handle,
             self._seed, [self._dense_float_tensor], [
                 self._sparse_float_indices1, self._sparse_float_indices2

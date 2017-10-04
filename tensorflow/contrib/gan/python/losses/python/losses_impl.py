@@ -331,10 +331,12 @@ def wasserstein_gradient_penalty(
   Raises:
     ValueError: If the rank of data Tensors is unknown.
   """
-  if generated_data.shape.ndims is None:
-    raise ValueError('`generated_data` can\'t have unknown rank.')
+  real_data = ops.convert_to_tensor(real_data)
+  generated_data = ops.convert_to_tensor(generated_data)
   if real_data.shape.ndims is None:
     raise ValueError('`real_data` can\'t have unknown rank.')
+  if generated_data.shape.ndims is None:
+    raise ValueError('`generated_data` can\'t have unknown rank.')
 
   differences = generated_data - real_data
   batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
