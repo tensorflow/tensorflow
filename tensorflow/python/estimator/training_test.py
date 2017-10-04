@@ -802,6 +802,46 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     self.assertEqual(2, mock_est.evaluate.call_count)
     self.assertEqual(2, exporter.export.call_count)
 
+  def test_final_export_is_true_in_the_end(self):
+    training_max_step = 200
+
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.model_dir = compat.as_bytes(test.get_temp_dir())
+    mock_est.evaluate.side_effect = [
+        {_GLOBAL_STEP_KEY: training_max_step // 2},
+        {_GLOBAL_STEP_KEY: training_max_step}
+    ]
+    mock_est.latest_checkpoint.side_effect = ['path_1', 'path_2']
+
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_train_spec.max_steps = training_max_step
+
+    mock_est.times_export_fn_was_called = 0
+    mock_est.times_the_final_export_was_true = 0
+    def export(estimator, export_path, checkpoint_path, eval_result,
+               is_the_final_export):
+      del export_path, checkpoint_path, eval_result
+      estimator.times_export_fn_was_called += 1
+      if is_the_final_export:
+        estimator.times_the_final_export_was_true += 1
+
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_how_many_times_export_is_called'
+    exporter.export = export
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1,
+        start_delay_secs=0,
+        throttle_secs=0,
+        exporters=exporter)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    executor.run_evaluator()
+
+    self.assertEqual(2, mock_est.evaluate.call_count)
+    self.assertEqual(2, mock_est.times_export_fn_was_called)
+    self.assertEqual(1, mock_est.times_the_final_export_was_true)
+
   def test_skip_evaluation_due_to_ckpt(self):
     training_max_step = 200
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
@@ -1133,6 +1173,47 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     with self.assertRaisesRegexp(RuntimeError, _STALE_CHECKPOINT_MSG):
       executor.run_local()
+
+  def test_final_export_is_true_in_the_end(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+    mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
+
+    mock_est.times_export_fn_was_called = 0
+    mock_est.times_the_final_export_was_true = 0
+    def export(estimator, export_path, checkpoint_path, eval_result,
+               is_the_final_export):
+      del export_path, checkpoint_path, eval_result
+      estimator.times_export_fn_was_called += 1
+      if is_the_final_export:
+        estimator.times_the_final_export_was_true += 1
+
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_how_many_times_export_is_called'
+    exporter.export = export
+
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1,
+        hooks=[_FakeHook()],
+        throttle_secs=100,
+        exporters=exporter)
+    # should be called 3 times.
+    mock_est.evaluate.side_effect = [{
+        _GLOBAL_STEP_KEY: train_spec.max_steps - 100
+    }, {
+        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
+    }, {
+        _GLOBAL_STEP_KEY: train_spec.max_steps
+    }]
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_local()
+
+    self.assertEqual(3, mock_est.train.call_count)
+    self.assertEqual(3, mock_est.evaluate.call_count)
+    self.assertEqual(3, mock_est.times_export_fn_was_called)
+    self.assertEqual(1, mock_est.times_the_final_export_was_true)
 
   def test_train_and_evaluate_args(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
