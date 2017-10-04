@@ -324,7 +324,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
-                               module->config().has_hybrid_result(),
                                &ir_emitter_context);
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));

@@ -37,7 +37,7 @@ class IdentityOp : public XlaOpKernel {
 // dummy operator using CompilationOnly().
 REGISTER_XLA_OP(Name("Identity").CompilationOnly(), IdentityOp);
 
-REGISTER_XLA_OP(Name("IdentityN"), IdentityOp);
+REGISTER_XLA_OP(Name("IdentityN").CompilationOnly(), IdentityOp);
 REGISTER_XLA_OP(Name("PreventGradient"), IdentityOp);
 REGISTER_XLA_OP(Name("StopGradient"), IdentityOp);
 

@@ -755,8 +755,8 @@ def sparse_softmax_cross_entropy(
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
       `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
-    weights: Coefficients for the loss. This must be scalar or of same rank as
-      `labels`
+    weights: Coefficients for the loss. This must be scalar or broadcastable to
+      `labels` (i.e. same rank and each dimension is either 1 or the same).
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
     reduction: Type of reduction to apply to loss.
