@@ -1024,7 +1024,6 @@ class MonitoredSessionTest(test.TestCase):
       do_step = state_ops.assign_add(gstep, 1)
       # Run till step 3 and save.
       hooks = [basic_session_run_hooks.StopAtStepHook(last_step=3)]
-      scaffold = monitored_session.Scaffold().finalize()
       with monitored_session.MonitoredSession(hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertFalse(session.should_stop())
@@ -1034,8 +1033,9 @@ class MonitoredSessionTest(test.TestCase):
         self.assertFalse(session.should_stop())
         self.assertEqual(3, session.run(do_step))
         self.assertTrue(session.should_stop())
-        save_path = scaffold.saver.save(session._coordinated_creator.tf_sess,
-                                        os.path.join(logdir, 'step-3'))
+        save_path = saver_lib._get_saver_or_default().save(
+            session._coordinated_creator.tf_sess,
+            os.path.join(logdir, 'step-3'))
       # Run till step 5 and save.
       def load_ckpt(scaffold, sess):
         scaffold.saver.restore(sess, save_path)
@@ -1059,7 +1059,6 @@ class MonitoredSessionTest(test.TestCase):
       do_step = state_ops.assign_add(gstep, 1)
       # Do 3 steps and save.
       hooks = [basic_session_run_hooks.StopAtStepHook(num_steps=3)]
-      scaffold = monitored_session.Scaffold().finalize()
       with monitored_session.MonitoredSession(hooks=hooks) as session:
         session.run(do_step)
         self.assertFalse(session.should_stop())
@@ -1067,8 +1066,9 @@ class MonitoredSessionTest(test.TestCase):
         self.assertFalse(session.should_stop())
         session.run(do_step)
         self.assertTrue(session.should_stop())
-        save_path = scaffold.saver.save(session._coordinated_creator.tf_sess,
-                                        os.path.join(logdir, 'step-3'))
+        save_path = saver_lib._get_saver_or_default().save(
+            session._coordinated_creator.tf_sess,
+            os.path.join(logdir, 'step-3'))
       # Restore and do 4 steps.
       def load_ckpt(scaffold, sess):
         scaffold.saver.restore(sess, save_path)
