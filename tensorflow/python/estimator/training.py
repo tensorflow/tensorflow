@@ -32,6 +32,7 @@ from tensorflow.python.estimator import exporter as exporter_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
@@ -343,14 +344,21 @@ class _TrainingExecutor(object):
   def run_master(self):
     """Runs task master."""
 
-    # TODO(b/66720832): Once listener API is added into Estimator.train, the
-    # eval and export process should be wrapped as a listener and passed to
-    # _start_distributed_training. The expected behavior should be
-    # 1. The export is invoked after each intermediate evaluation.
-    # 2. The evaluation and export should be invoked correctly at the end of
-    # training. This should be fine if the listener works as intended (it will
-    # send the `after_save` signal for the final ckpt saving).
-    return self._start_distributed_training()
+    class NewCheckpointListener(
+        basic_session_run_hooks.CheckpointSaverListener):
+
+      def __init__(self, estimator, eval_spec):
+        self._evaluator = _TrainingExecutor._Evaluator(estimator, eval_spec)  # pylint: disable=protected-access
+
+      def after_save(self, session, global_step_value):
+        del session, global_step_value
+        self._evaluator.evaluate_and_export()
+
+    # When the underlying `Estimator` object saves a new checkpoint, we would
+    # like this callback to be called so that evaluation and export can trigger.
+    saving_listeners = [NewCheckpointListener(self._estimator, self._eval_spec)]
+
+    return self._start_distributed_training(saving_listeners=saving_listeners)
 
   def run_evaluator(self):
     """Runs task evaluator."""
@@ -419,7 +427,7 @@ class _TrainingExecutor(object):
     server.start()
     return server
 
-  def _start_distributed_training(self):
+  def _start_distributed_training(self, saving_listeners=None):
     """Calls `Estimator` train in a distributed setting."""
     config = self._estimator.config
 
@@ -444,7 +452,8 @@ class _TrainingExecutor(object):
 
     self._estimator.train(input_fn=self._train_spec.input_fn,
                           max_steps=self._train_spec.max_steps,
-                          hooks=self._train_spec.hooks)
+                          hooks=self._train_spec.hooks,
+                          saving_listeners=saving_listeners)
 
   def _start_continuous_evaluation(self):
     """Repeatedly calls `Estimator` evaluate and export until training ends."""

@@ -515,7 +515,8 @@ class _TrainingExecutorTrainingTest(object):
 
     mock_est.train.assert_called_with(input_fn=train_spec.input_fn,
                                       max_steps=train_spec.max_steps,
-                                      hooks=train_spec.hooks)
+                                      hooks=train_spec.hooks,
+                                      saving_listeners=test.mock.ANY)
     mock_est.evaluate.assert_not_called()
     mock_est.export_savedmodel.assert_not_called()
 
@@ -675,6 +676,45 @@ class TrainingExecutorRunMasterTest(_TrainingExecutorTrainingTest,
       self._run_task(executor)
       mock_sleep.assert_not_called()
 
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_run_master_triggers_evaluate(self, _):
+
+    def estimator_train(saving_listeners, *args, **kwargs):
+      #  There shalt be a saving_listener.  Estimator is going to call
+      # `after_save`.
+      del args, kwargs
+      saving_listeners[0].after_save(session=None, global_step_value=None)
+
+    mock_est = test.mock.Mock(
+        spec=estimator_lib.Estimator, model_dir='path/', train=estimator_train)
+    mock_est.latest_checkpoint.return_value = 'checkpoint_path/'
+    mock_est.config = self._run_config
+
+    def export(estimator, *args, **kwargs):
+      del args, kwargs
+      estimator.export_was_called = True
+
+    exporter = test.mock.Mock(
+        spec=exporter_lib.Exporter,
+        name='see_whether_export_is_called',
+        export=export)
+
+    train_spec = training.TrainSpec(input_fn=lambda: 1, max_steps=300)
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, steps=2, exporters=exporter)
+    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_master()
+
+    mock_est.evaluate.assert_called_with(
+        name=eval_spec.name,
+        input_fn=eval_spec.input_fn,
+        steps=eval_spec.steps,
+        checkpoint_path='checkpoint_path/',
+        hooks=eval_spec.hooks)
+    self.assertTrue(mock_est.export_was_called)
+
 
 class TrainingExecutorRunEvaluatorTest(test.TestCase):
   """Tests run_evaluator of _TrainingExecutor."""
@@ -811,7 +851,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_sleep.assert_called_with(throttle_secs - operation_secs)
     self.assertTrue(mock_est.evaluate.called)
 
-  def test_that_export_fn_is_called(self):
+  def test_that_export_is_called(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
@@ -835,7 +875,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     executor.run_evaluator()
 
-    # Verify that export_fn was called on the right estimator.
+    # Verify that export was called on the right estimator.
     self.assertTrue(mock_est.export_was_called)
 
   def test_errors_out_if_evaluate_returns_empty_dict(self):
@@ -1017,10 +1057,10 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
     mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
 
-    mock_est.times_export_fn_was_called = 0
+    mock_est.times_export_was_called = 0
     def export(estimator, *args, **kwargs):
       del args, kwargs
-      estimator.times_export_fn_was_called += 1
+      estimator.times_export_was_called += 1
 
     exporter = test.mock.Mock(
         spec=exporter_lib.Exporter,
@@ -1048,7 +1088,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
 
     self.assertEqual(3, mock_est.train.call_count)
     self.assertEqual(3, mock_est.evaluate.call_count)
-    self.assertEqual(3, mock_est.times_export_fn_was_called)
+    self.assertEqual(3, mock_est.times_export_was_called)
 
   def test_handles_no_new_checkpoint_found(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
@@ -1104,7 +1144,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'throttle_secs'):
       executor.run_local()
 
-  def test_that_export_fn_is_called_with_run_local(self):
+  def test_that_export_is_called_with_run_local(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     mock_train_spec.max_steps = 200
@@ -1117,11 +1157,11 @@ class TrainingExecutorRunLocalTest(test.TestCase):
 
     def export(estimator, *args, **kwargs):
       del args, kwargs
-      estimator.export_fn_was_called = True
+      estimator.export_was_called = True
 
     exporter = test.mock.Mock(
         spec=exporter_lib.Exporter,
-        name='see_whether_export_fn_is_called',
+        name='see_whether_export_is_called',
         export=export)
 
     eval_spec = training.EvalSpec(
@@ -1134,7 +1174,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     executor.run_local()
 
-    self.assertTrue(mock_est.export_fn_was_called)
+    self.assertTrue(mock_est.export_was_called)
 
   def test_errors_out_if_evaluate_returns_empty_dict(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
