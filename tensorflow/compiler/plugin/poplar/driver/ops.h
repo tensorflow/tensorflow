@@ -312,6 +312,13 @@ CreateReluOp(poplar::Graph &graph,
              TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
+CreateReluGradOp(poplar::Graph &graph,
+                 CompilerResources& res,
+                 const HloInstruction *inst,
+                 const xla::Shape& output_shape,
+                 TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
 CreateSigmoidOp(poplar::Graph &graph,
                 CompilerResources& res,
                 const HloInstruction *inst,

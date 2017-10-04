@@ -33,6 +33,10 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
                               HloMatcherMatched& match) {
   match.instructions[0] = root;
 
+  for (unsigned int node_num = 1; node_num < pattern.size(); node_num++) {
+    match.instructions[node_num] = nullptr;
+  }
+
   for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
     HloInstruction* inst = match.instructions[node_num];
     if (inst == nullptr) {
@@ -58,6 +62,11 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       int n = node.operands[i];
       if (n == -1) continue;
       if (n <= node_num) return false;
+
+      if (match.instructions[n] != nullptr &&
+          match.instructions[n] != inst->mutable_operand(i)) {
+        return false;
+      }
 
       match.instructions[n] = inst->mutable_operand(i);
     }

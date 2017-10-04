@@ -299,6 +299,17 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     }
+    else if (name == "relugrad") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateReluGradOp(*graph_,
+                                           resources_,
+                                           inst,
+                                           GetOutputShape(inst),
+                                           tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
     else if (name == "sigmoid") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
