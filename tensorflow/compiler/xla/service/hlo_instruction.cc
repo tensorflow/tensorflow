@@ -1702,6 +1702,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
                        })));
   }
 
+  if (opcode() == HloOpcode::kSend || opcode() == HloOpcode::kRecv) {
+    extra.push_back(StrCat("channel_id=", channel_id_));
+  }
+
   if (opcode() == HloOpcode::kGetTupleElement) {
     extra.push_back(StrCat("index=", tuple_index()));
   }
