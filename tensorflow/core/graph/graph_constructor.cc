@@ -108,14 +108,15 @@ class GraphConstructor {
                           const VersionDef* versions,
                           const FunctionDefLibrary* library, Graph* g,
                           ShapeRefiner* refiner,
-                          std::vector<std::pair<Node*, int>>* return_tensors) {
+                          std::vector<std::pair<Node*, int>>* return_tensors,
+                          std::vector<TensorId>* unused_input_map_keys) {
     if (versions) {
       TF_RETURN_IF_ERROR(CheckVersions(*versions, TF_GRAPH_DEF_VERSION,
                                        TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
                                        "GraphDef", "graph"));
     }
     GraphConstructor c(opts, node_defs, versions, library, g, refiner,
-                       return_tensors);
+                       return_tensors, unused_input_map_keys);
     const Status s = c.TryImport();
     if (!s.ok()) c.Undo();
     return s;
@@ -126,7 +127,8 @@ class GraphConstructor {
                    const VersionDef* versions,
                    const FunctionDefLibrary* library, Graph* g,
                    ShapeRefiner* refiner,
-                   std::vector<std::pair<Node*, int>>* return_tensors)
+                   std::vector<std::pair<Node*, int>>* return_tensors,
+                   std::vector<TensorId>* unused_input_map_keys)
       : opts_(opts),
         node_defs_(node_defs),
         versions_(versions),
@@ -134,7 +136,8 @@ class GraphConstructor {
         g_(g),
         original_versions_(g->versions()),
         refiner_(refiner),
-        return_tensors_(return_tensors) {}
+        return_tensors_(return_tensors),
+        unused_input_map_keys_(unused_input_map_keys) {}
 
   Status TryImport() {
     TF_RETURN_IF_ERROR(EnsureNoNameCollisions());
@@ -193,7 +196,13 @@ class GraphConstructor {
   // May be null. Not owned.
   std::vector<std::pair<Node*, int>>* return_tensors_;
 
-  // Mapping from node name to the index within node_defs_
+  // May be null. Not owned.
+  std::vector<TensorId>* unused_input_map_keys_;
+
+  // Intermediate datastructure used to populate `unused_input_map_keys_`.
+  std::set<TensorId> used_input_map_keys_;
+
+  // Mapping from node name to the index within node_defs_.
   struct NodeInfo {
     explicit NodeInfo(int i) : gdef_index(i), node(nullptr) {}
     // std::unordered_map<> requires that we have a default constructor.
@@ -583,6 +592,7 @@ void GraphConstructor::RemapNodeDefInputs(
   for (int i = 0; i < node_def->input_size(); ++i) {
     auto iter = opts_.input_map.find(ParseTensorName(node_def->input(i)));
     if (iter == opts_.input_map.end()) continue;
+    used_input_map_keys_.insert(iter->first);
 
     TensorId new_input = iter->second;
     if (new_input.second == Graph::kControlSlot) {
@@ -840,6 +850,16 @@ Status GraphConstructor::Convert() {
     return errors::InvalidArgument(node_defs_.size() - processed,
                                    " nodes in a cycle");
   }
+
+  // Update unused_input_map_keys_
+  if (unused_input_map_keys_ != nullptr) {
+    for (const auto& pair : opts_.input_map) {
+      if (used_input_map_keys_.find(pair.first) == used_input_map_keys_.end()) {
+        unused_input_map_keys_->push_back(pair.first);
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -943,8 +963,9 @@ Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
 Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                               const GraphDef& gdef, Graph* g) {
   ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
-  return GraphConstructor::Construct(opts, gdef.node(), &gdef.versions(),
-                                     &gdef.library(), g, &refiner, nullptr);
+  return GraphConstructor::Construct(
+      opts, gdef.node(), &gdef.versions(), &gdef.library(), g, &refiner,
+      /*return_tensors=*/nullptr, /*unused_input_map_keys=*/nullptr);
 }
 
 Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
@@ -956,24 +977,32 @@ Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
     node_defs.push_back(&n);
   }
   return GraphConstructor::Construct(opts, node_defs, nullptr, nullptr, g,
-                                     &refiner, nullptr);
+                                     &refiner, /*return_tensors=*/nullptr,
+                                     /*unused_input_map_keys=*/nullptr);
 }
 
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
                       Graph* g, ShapeRefiner* refiner,
-                      std::vector<std::pair<Node*, int>>* return_tensors) {
+                      std::vector<std::pair<Node*, int>>* return_tensors,
+                      std::vector<TensorId>* unused_input_map_keys) {
   if (!opts.return_tensors.empty()) {
     if (return_tensors == nullptr) {
       return errors::InvalidArgument(
-          "return_tensors argument to ImportNodeDef() must be non-null if "
+          "return_tensors argument to ImportGraphDef() must be non-null if "
           "opts.return_tensors is non-empty");
     }
     if (!return_tensors->empty()) {
       return errors::InvalidArgument(
-          "return_tensors argument to ImportNodeDef() should be empty (has "
+          "return_tensors argument to ImportGraphDef() should be empty (has "
           "size ",
           return_tensors->size(), ")");
     }
+  }
+  if (unused_input_map_keys != nullptr && !unused_input_map_keys->empty()) {
+    return errors::InvalidArgument(
+        "If non-null, unused_input_map_keys argument to ImportGraphDef() should"
+        " be empty (has size ",
+        unused_input_map_keys->size(), ")");
   }
 
   ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
@@ -1007,7 +1036,7 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
 
   return GraphConstructor::Construct(opts, gdef.node(), &gdef.versions(),
                                      &gdef.library(), g, refiner,
-                                     return_tensors);
+                                     return_tensors, unused_input_map_keys);
 }
 
 void CopyGraph(const Graph& src, Graph* dest) {

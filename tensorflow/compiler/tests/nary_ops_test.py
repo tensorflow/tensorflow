@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import unittest
+
 import numpy as np
 
 from tensorflow.compiler.tests.xla_test import XLATestCase
@@ -66,6 +68,7 @@ class NAryOpsTest(XLATestCase):
                     np.array([42], dtype=np.float32)],
                    expected=np.array([48], dtype=np.float32))
 
+  @unittest.skip("IdentityN is temporarily CompilationOnly as workaround")
   def testIdentityN(self):
     self._testNAryLists(array_ops.identity_n,
                         [np.array([[1, 2, 3]], dtype=np.float32)],

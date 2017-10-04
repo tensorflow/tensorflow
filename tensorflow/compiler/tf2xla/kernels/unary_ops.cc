@@ -129,8 +129,28 @@ XLAJIT_MAKE_UNARY(Sign, b->Sign(x));
 XLAJIT_MAKE_UNARY(Sinh,
                   b->Mul(b->Sub(b->Exp(x), b->Exp(b->Neg(x))),
                          XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
-XLAJIT_MAKE_UNARY(Softplus,
-                  b->Log(b->Add(b->Exp(x), XlaHelpers::One(b, input_type(0)))));
+
+static xla::ComputationDataHandle Softplus(
+    xla::ComputationBuilder* b, DataType dtype,
+    const xla::ComputationDataHandle& features) {
+  xla::ComputationDataHandle threshold =
+      b->Add(b->Log(XlaHelpers::Epsilon(b, dtype)),
+             XlaHelpers::FloatLiteral(b, dtype, 2.0));
+  // Value above which exp(x) may overflow, but softplus(x) == x
+  // is within machine epsilon.
+  xla::ComputationDataHandle too_large = b->Gt(features, b->Neg(threshold));
+  // Value below which exp(x) may underflow, but softplus(x) == exp(x)
+  // is within machine epsilon.
+  xla::ComputationDataHandle too_small = b->Lt(features, threshold);
+  xla::ComputationDataHandle features_exp = b->Exp(features);
+  xla::ComputationDataHandle output = b->Select(
+      too_large, features,
+      b->Select(too_small, features_exp,
+                b->Log(b->Add(features_exp, XlaHelpers::One(b, dtype)))));
+  return output;
+}
+XLAJIT_MAKE_UNARY(Softplus, Softplus(b, input_type(0), x));
+
 // softsign(x) = x / (abs(x) + 1)
 XLAJIT_MAKE_UNARY(Softsign,
                   b->Div(x,

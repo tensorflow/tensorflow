@@ -587,9 +587,11 @@ class EstimatorTrainTest(test.TestCase):
     event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
     last_event = None
     for last_event in summary_iterator.summary_iterator(event_paths[-1]):
-      pass
-
-    self.assertEqual('loss', last_event.summary.value[0].tag)
+      if last_event.summary is not None:
+        if last_event.summary.value:
+          if 'loss' == last_event.summary.value[0].tag:
+            return
+    self.fail('loss should be part of reported summaries.')
 
   def test_latest_checkpoint(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
