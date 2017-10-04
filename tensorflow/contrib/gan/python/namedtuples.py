@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Named tuples for TFGAN."""
+"""Named tuples for TFGAN.
+
+TFGAN training occurs in four steps, and each step communicates with the next
+step via one of these named tuples. At each step, you can either use a TFGAN
+helper function in `train.py`, or you can manually construct a tuple.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
