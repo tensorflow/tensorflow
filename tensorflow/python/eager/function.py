@@ -35,6 +35,7 @@ from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 
 # Thread-local storage for tfe Tensors which are referenced while evaluating a
 # graph-mode function.
@@ -507,4 +508,4 @@ def defun(func):
      or more Tensor objects).
   """
   # TODO(apassos): deal with captured global state. Deal with control flow.
-  return named_defun(func, func.__name__)
+  return tf_decorator.make_decorator(func, named_defun(func, func.__name__))

@@ -293,6 +293,33 @@ const NodeDef* ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     }
   }
 
+  if (node->op() == "Reshape") {
+    //   Reshape
+    //      ^
+    //      |
+    //   Reshape
+    //      ^
+    //      |
+    //    input
+    //
+    // becomes
+    //
+    //   Reshape <-+
+    //             |
+    //   Reshape   |
+    //      ^      |
+    //      |      |
+    //    input ---+
+    NodeDef* reshape = node_map->GetNode(node->name());
+    const NodeDef* input = node_map->GetNode(node->input(0));
+    if (input->op() == "Reshape") {
+      reshape->set_input(0, input->input(0));
+      node_map->UpdateInput(reshape->name(), input->name(), input->input(0));
+      new_nodes->push_back(reshape);
+      return reshape;
+    }
+  }
+
   // Fold a multiply of a scalar into the following convolution. This folding
   // can jump across nodes that merely reorders data (such as reshape and
   // transpose). For example, we can optimize

@@ -65,7 +65,7 @@ class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
 
   def __init__(self, num_units, reuse=None):
     super(CudnnCompatibleLSTMCell, self).__init__(
-        num_units, forget_bias=0, clip_cell=False, use_peephole=False,
+        num_units, forget_bias=0, cell_clip=None, use_peephole=False,
         reuse=reuse)
     self._names.update({"scope": "cudnn_compatible_lstm_cell"})
 
