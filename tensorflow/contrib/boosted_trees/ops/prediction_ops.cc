@@ -36,10 +36,7 @@ static Status ApplyGradientTreesPredictionShapeFn(InferenceContext* c) {
   c->set_output(0, {c->Matrix(InferenceContext::kUnknownDim,
                               reduce_dim ? learner_config.num_classes() - 1
                                          : learner_config.num_classes())});
-  c->set_output(1, {c->Matrix(InferenceContext::kUnknownDim,
-                              reduce_dim ? learner_config.num_classes() - 1
-                                         : learner_config.num_classes())});
-  c->set_output(2, {c->Vector(InferenceContext::kUnknownDim)});
+  c->set_output(1, {c->Vector(InferenceContext::kUnknownDim)});
   return Status::OK();
 }
 
@@ -63,7 +60,6 @@ REGISTER_OP("GradientTreesPrediction")
     .Input("sparse_int_feature_values: num_sparse_int_features * int64")
     .Input("sparse_int_feature_shapes: num_sparse_int_features * int64")
     .Output("predictions: float")
-    .Output("no_dropout_predictions: float")
     .Output("drop_out_tree_indices_weights: float")
     .SetShapeFn(ApplyGradientTreesPredictionShapeFn)
     .Doc(R"doc(
@@ -90,8 +86,6 @@ sparse_int_feature_indices: Rank 2 Tensors containing sparse int indices.
 sparse_int_feature_values: Rank 1 Tensors containing sparse int values.
 sparse_int_feature_shapes: Rank 1 Tensors containing sparse int shapes.
 predictions: Rank 2 Tensor containing predictions per example per class.
-no_dropout_predictions: The same as predictions, but using all trees (even
-those that were dropped due to dropout).
 drop_out_tree_indices_weights: Tensor of Rank 2 containing dropped trees indices
 and original weights of those trees during prediction.
 )doc");

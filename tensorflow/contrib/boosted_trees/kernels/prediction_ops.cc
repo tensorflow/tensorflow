@@ -59,8 +59,27 @@ const char* kApplyDropoutAttributeName = "apply_dropout";
 const char* kApplyAveragingAttributeName = "apply_averaging";
 const char* kDropoutInfoOutputTensorName = "drop_out_tree_indices_weights";
 const char* kPredictionsTensorName = "predictions";
-const char* kNoDropoutPredictionsTensorName = "no_dropout_predictions";
+
+void CalculateTreesToInclude(
+    const boosted_trees::trees::DecisionTreeEnsembleConfig& config,
+    const std::vector<int32>& trees_to_drop, const int32 num_trees,
+    const bool only_finalized, std::vector<int32>* trees_to_include) {
+  trees_to_include->reserve(num_trees - trees_to_drop.size());
+
+  int32 index = 0;
+  // This assumes that trees_to_drop is a sorted list of tree ids.
+  for (int32 tree = 0; tree < num_trees; ++tree) {
+    if ((!trees_to_drop.empty() && index < trees_to_drop.size() &&
+         trees_to_drop[index] == tree) ||
+        (only_finalized && config.tree_metadata_size() > 0 &&
+         !config.tree_metadata(tree).is_finalized())) {
+      ++index;
+      continue;
+    }
+    trees_to_include->push_back(tree);
+  }
 }
+}  // namespace
 
 class GradientTreesPredictionOp : public OpKernel {
  public:
@@ -226,6 +245,13 @@ class GradientTreesPredictionOp : public OpKernel {
                                   weights, &dropped_trees, &original_weights));
     }
 
+    // Prepare the list of trees to include in the prediction.
+    std::vector<int32> trees_to_include;
+    CalculateTreesToInclude(
+        ensemble_resource->decision_tree_ensemble(), dropped_trees,
+        ensemble_resource->decision_tree_ensemble().trees_size(),
+        only_finalized_trees_, &trees_to_include);
+
     // Allocate output predictions matrix.
     Tensor* output_predictions_t = nullptr;
     OP_REQUIRES_OK(
@@ -234,14 +260,6 @@ class GradientTreesPredictionOp : public OpKernel {
                                           &output_predictions_t));
     auto output_predictions = output_predictions_t->matrix<float>();
 
-    Tensor* output_no_dropout_predictions_t = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(kNoDropoutPredictionsTensorName,
-                                          {batch_size, prediction_vector_size_},
-                                          &output_no_dropout_predictions_t));
-    auto output_no_dropout_predictions =
-        output_no_dropout_predictions_t->matrix<float>();
-
     // Run predictor.
     thread::ThreadPool* const worker_threads =
         context->device()->tensorflow_cpu_worker_threads()->workers;
@@ -249,7 +267,6 @@ class GradientTreesPredictionOp : public OpKernel {
     if (apply_averaging_) {
       DecisionTreeEnsembleConfig adjusted =
           ensemble_resource->decision_tree_ensemble();
-
       const int start_averaging = std::max(
           0.0,
           averaging_config_.config_case() ==
@@ -257,21 +274,18 @@ class GradientTreesPredictionOp : public OpKernel {
               ? adjusted.trees_size() - averaging_config_.average_last_n_trees()
               : adjusted.trees_size() *
                     (1.0 - averaging_config_.average_last_percent_trees()));
-
       const int num_ensembles = adjusted.trees_size() - start_averaging;
       for (int i = start_averaging; i < adjusted.trees_size(); ++i) {
         float weight = adjusted.tree_weights(i);
         adjusted.mutable_tree_weights()->Set(
             i, weight * (num_ensembles - i + start_averaging) / num_ensembles);
       }
-      MultipleAdditiveTrees::Predict(
-          adjusted, only_finalized_trees_, dropped_trees, batch_features,
-          worker_threads, output_predictions, output_no_dropout_predictions);
+      MultipleAdditiveTrees::Predict(adjusted, trees_to_include, batch_features,
+                                     worker_threads, output_predictions);
     } else {
       MultipleAdditiveTrees::Predict(
-          ensemble_resource->decision_tree_ensemble(), only_finalized_trees_,
-          dropped_trees, batch_features, worker_threads, output_predictions,
-          output_no_dropout_predictions);
+          ensemble_resource->decision_tree_ensemble(), trees_to_include,
+          batch_features, worker_threads, output_predictions);
     }
 
     // Output dropped trees and original weights.
