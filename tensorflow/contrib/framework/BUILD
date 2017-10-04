@@ -11,7 +11,6 @@ package(default_visibility = [
 ])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -99,8 +98,6 @@ tf_custom_op_library(
     ],
 )
 
-
-
 tf_gen_op_libs(
     op_lib_names = [
         "variable_ops",
@@ -121,7 +118,6 @@ tf_gen_op_wrapper_py(
         ":variable_ops_op_lib",
     ],
 )
-
 
 py_test(
     name = "arg_scope_test",
@@ -177,6 +173,7 @@ py_test(
         "//tensorflow/python/eager:backprop",
     ],
 )
+
 py_test(
     name = "ops_test",
     size = "small",
