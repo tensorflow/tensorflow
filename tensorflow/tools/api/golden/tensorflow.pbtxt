@@ -293,6 +293,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
   }
   member {
+    name: "data"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "distributions"
     mtype: "<type \'module\'>"
   }
