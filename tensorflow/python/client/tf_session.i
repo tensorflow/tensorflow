@@ -45,12 +45,8 @@ tensorflow::ImportNumpy();
 // Compiler
 %constant const char* __compiler_version__ = tf_compiler_version();
 
-// CXX11 ABI flag value
-%#ifdef _GLIBCXX_USE_CXX11_ABI
-%constant const int __cxx11_abi__ = _GLIBCXX_USE_CXX11_ABI;
-%#else
-%constant const int __cxx11_abi__ = -1;
-%#endif
+// _GLIBCXX_USE_CXX11_ABI flag value
+%constant const int __cxx11_abi__ = tf_cxx11_abi();
 
 // Release the Python GIL for the duration of most methods.
 %exception {

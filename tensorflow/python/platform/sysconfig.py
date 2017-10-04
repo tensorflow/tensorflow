@@ -17,7 +17,7 @@
 
 @@get_include
 @@get_lib
-@@get_include_flags
+@@get_compile_flags
 @@get_link_flags
 """
 from __future__ import absolute_import
@@ -54,7 +54,7 @@ def get_lib():
   return _os_path.join(_os_path.dirname(tf.__file__))
 
 
-def get_include_flags():
+def get_compile_flags():
   """Get the compilation flags for custom operators.
 
   Returns:
