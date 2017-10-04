@@ -136,7 +136,8 @@ class Layer(object):
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
-      self._scope = next(vs.variable_scope(scope).gen)
+      with vs.variable_scope(scope) as captured_scope:
+        self._scope = captured_scope
     else:
       self._scope = None
 
@@ -402,11 +403,13 @@ class Layer(object):
     if self._scope is None:
       # If constructed with _scope=None, lazy setting of scope.
       if self._reuse:
-        self._scope = next(vs.variable_scope(
-            scope if scope is not None else self._base_name).gen)
+        with vs.variable_scope(
+            scope if scope is not None else self._base_name) as captured_scope:
+          self._scope = captured_scope
       else:
-        self._scope = next(vs.variable_scope(
-            scope, default_name=self._base_name).gen)
+        with vs.variable_scope(
+            scope, default_name=self._base_name) as captured_scope:
+          self._scope = captured_scope
 
   def add_variable(self, name, shape, dtype=None,
                    initializer=None, regularizer=None,
@@ -1440,7 +1443,8 @@ class Network(Layer):
       base_name = _to_snake_case(self.__class__.__name__)
       self._name = _unique_layer_name(base_name)
     self._activity_regularizer = None
-    self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
+    with vs.variable_scope(None, default_name=base_name) as captured_scope:
+      self._scope = captured_scope
     self._base_name = base_name
     call_fn_args = estimator_util.fn_args(self.call)
     self._compute_previous_mask = ('mask' in call_fn_args or
