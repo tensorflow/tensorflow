@@ -18,42 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops
-
-
-# TODO(rjryan): Remove once tf.spectral.dct exists.
-def _dct2_1d(signals, name=None):
-  """Computes the type II 1D Discrete Cosine Transform (DCT) of `signals`.
-
-  Args:
-    signals: A `[..., samples]` `float32` `Tensor` containing the signals to
-      take the DCT of.
-    name: An optional name for the operation.
-
-  Returns:
-    A `[..., samples]` `float32` `Tensor` containing the DCT of `signals`.
-
-  """
-  with ops.name_scope(name, 'dct', [signals]):
-    # We use the FFT to compute the DCT and TensorFlow only supports float32 for
-    # FFTs at the moment.
-    signals = ops.convert_to_tensor(signals, dtype=dtypes.float32)
-
-    axis_dim = signals.shape[-1].value or array_ops.shape(signals)[-1]
-    axis_dim_float = math_ops.to_float(axis_dim)
-    scale = 2.0 * math_ops.exp(math_ops.complex(
-        0.0, -math.pi * math_ops.range(axis_dim_float) /
-        (2.0 * axis_dim_float)))
-
-    rfft = spectral_ops.rfft(signals, fft_length=[2 * axis_dim])[..., :axis_dim]
-    dct2 = math_ops.real(rfft * scale)
-    return dct2
 
 
 def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
@@ -134,4 +103,6 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
                          log_mel_spectrograms)
     else:
       num_mel_bins = array_ops.shape(log_mel_spectrograms)[-1]
-    return _dct2_1d(log_mel_spectrograms) * math_ops.rsqrt(num_mel_bins * 2.0)
+
+    dct2 = spectral_ops.dct(log_mel_spectrograms)
+    return dct2 * math_ops.rsqrt(num_mel_bins * 2.0)

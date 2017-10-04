@@ -76,6 +76,39 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ("c1", new_add.input(1));
 }
 
+TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
+  // Converts an NCHW_VECT_C tensor to NHWC and then flattens it to 2D. The two
+  // reshapes should be combined.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output nchw_vect_c =
+      ops::Placeholder(s.WithOpName("nchw_vect_c"), DT_INT8,
+                       ops::Placeholder::Shape({8, 3, 28, 28, 4}));
+  Output transpose =
+      ops::Transpose(s.WithOpName("transpose"), nchw_vect_c,
+                     ops::Const(s.WithOpName("perm"), {0, 2, 3, 1, 4}, {5}));
+  Output nhwc = ops::Reshape(
+      s.WithOpName("nhwc"), transpose,
+      ops::Const(s.WithOpName("nhwc_shape"), {8, 28, 28, 12}, {4}));
+  Output flatten = ops::Reshape(
+      s.WithOpName("flatten"), nhwc,
+      ops::Const(s.WithOpName("flatten_shape"), {8, 28 * 28 * 12}, {2}));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), flatten);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(1, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+}
+
 TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =

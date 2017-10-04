@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
@@ -444,6 +445,8 @@ def graph_callable(shape_and_dtypes):
   assert context.in_eager_mode(), (
       "graph_callable can only be used when Eager execution is enabled.")
   def decorator(func):
-    return _graph_callable_internal(func, shape_and_dtypes)
+    return tf_decorator.make_decorator(func,
+                                       _graph_callable_internal(
+                                           func, shape_and_dtypes))
 
   return decorator

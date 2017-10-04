@@ -84,7 +84,7 @@ def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
 
 
 def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
-                    unused_ctx, unused_name):
+                    unused_name):
   """Import backprop if you want gradients recorded."""
   pass
 

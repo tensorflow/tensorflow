@@ -106,6 +106,17 @@ class ConditionalTransformedDistribution(
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
     ildj = self.bijector.inverse_log_det_jacobian(y, **bijector_kwargs)
+    if self.bijector._is_injective:  # pylint: disable=protected-access
+      return self._finish_log_prob_for_one_fiber(y, x, ildj,
+                                                 distribution_kwargs)
+
+    lp_on_fibers = [
+        self._finish_log_prob_for_one_fiber(y, x_i, ildj_i, distribution_kwargs)
+        for x_i, ildj_i in zip(x, ildj)]
+    return math_ops.reduce_logsumexp(array_ops.stack(lp_on_fibers), axis=0)
+
+  def _finish_log_prob_for_one_fiber(self, y, x, ildj, distribution_kwargs):
+    """Finish computation of log_prob on one element of the inverse image."""
     x = self._maybe_rotate_dims(x, rotate_right=True)
     log_prob = self.distribution.log_prob(x, **distribution_kwargs)
     if self._is_maybe_event_override:
@@ -118,6 +129,16 @@ class ConditionalTransformedDistribution(
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
     ildj = self.bijector.inverse_log_det_jacobian(y, **bijector_kwargs)
+    if self.bijector._is_injective:  # pylint: disable=protected-access
+      return self._finish_prob_for_one_fiber(y, x, ildj, distribution_kwargs)
+
+    prob_on_fibers = [
+        self._finish_prob_for_one_fiber(y, x_i, ildj_i, distribution_kwargs)
+        for x_i, ildj_i in zip(x, ildj)]
+    return sum(prob_on_fibers)
+
+  def _finish_prob_for_one_fiber(self, y, x, ildj, distribution_kwargs):
+    """Finish computation of prob on one element of the inverse image."""
     x = self._maybe_rotate_dims(x, rotate_right=True)
     prob = self.distribution.prob(x, **distribution_kwargs)
     if self._is_maybe_event_override:
@@ -129,6 +150,9 @@ class ConditionalTransformedDistribution(
     if self._is_maybe_event_override:
       raise NotImplementedError("log_cdf is not implemented when overriding "
                                 "event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("log_cdf is not implemented when "
+                                "bijector is not injective.")
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
@@ -139,6 +163,9 @@ class ConditionalTransformedDistribution(
     if self._is_maybe_event_override:
       raise NotImplementedError("cdf is not implemented when overriding "
                                 "event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("cdf is not implemented when "
+                                "bijector is not injective.")
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
@@ -150,6 +177,9 @@ class ConditionalTransformedDistribution(
     if self._is_maybe_event_override:
       raise NotImplementedError("log_survival_function is not implemented when "
                                 "overriding event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("log_survival_function is not implemented when "
+                                "bijector is not injective.")
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)
@@ -161,6 +191,9 @@ class ConditionalTransformedDistribution(
     if self._is_maybe_event_override:
       raise NotImplementedError("survival_function is not implemented when "
                                 "overriding event_shape")
+    if not self.bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError("survival_function is not implemented when "
+                                "bijector is not injective.")
     bijector_kwargs = bijector_kwargs or {}
     distribution_kwargs = distribution_kwargs or {}
     x = self.bijector.inverse(y, **bijector_kwargs)

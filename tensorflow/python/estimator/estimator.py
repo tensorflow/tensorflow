@@ -732,6 +732,8 @@ class Estimator(object):
               'Please set one of the RunConfig.save_checkpoints_steps or '
               'RunConfig.save_checkpoints_secs.')
         else:
+          # It is expected to have one CheckpointSaverHook. If multiple, we pick
+          # up the first one to add listener.
           saver_hooks[0]._listeners.extend(saving_listeners)  # pylint: disable=protected-access
       with training.MonitoredTrainingSession(
           master=self._config.master,

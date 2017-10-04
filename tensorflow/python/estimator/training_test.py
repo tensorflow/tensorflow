@@ -25,7 +25,7 @@ import random
 import time
 
 from tensorflow.python.estimator import estimator as estimator_lib
-from tensorflow.python.estimator import export_strategy as export_strategy_lib
+from tensorflow.python.estimator import exporter as exporter_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator import training
 from tensorflow.python.framework import ops
@@ -50,8 +50,11 @@ _INVALID_NAME_MSG = '`name` must be string'
 _INVALID_EVAL_DELAY_SECS_MSG = 'Must specify delay_secs >= 0'
 _INVALID_EVAL_THROTTLE_SECS_MSG = 'Must specify throttle_secs >= 0'
 _INVALID_ESTIMATOR_MSG = '`estimator` must have type `tf.estimator.Estimator`'
-_INVALID_EXPORT_STRATEGY_MSG = '`export_strategies` must be an ExportStrategy'
-_DUPLICATE_STRATEGY_NAMES_MSG = '`export_strategies` must have unique names.'
+_STALE_CHECKPOINT_MSG = 'There was no new checkpoint after the training.'
+_INVALID_EXPORTER_MSG = '`exporters` must be an Exporter'
+_DUPLICATE_EXPORTER_NAMES_MSG = '`exporters` must have unique names.'
+_NONE_EXPORTER_NAME_MSG = (
+    'An Exporter cannot have a name that is `None` or empty.')
 _INVALID_TRAIN_SPEC_MSG = '`train_spec` must have type `tf.estimator.TrainSpec`'
 _INVALID_EVAL_SPEC_MSG = '`eval_spec` must have type `tf.estimator.EvalSpec`'
 _INVALID_CONFIG_FOR_STD_SERVER_MSG = 'Could not start server; .*TF_CONFIG'
@@ -139,11 +142,20 @@ class _InvalidHook(object):
   """Invalid hook (not a subclass of `SessionRunHook`)."""
 
 
-def _create_fake_export_strategy(name):
-  def export_fn(estimator, export_path):
-    del estimator, export_path
+def _create_exporter(name):
+  class FakeExporter(exporter_lib.Exporter):
 
-  return export_strategy_lib.ExportStrategy(name=name, export_fn=export_fn)
+    def __init__(self, name):
+      self._name = name
+
+    @property
+    def name(self):
+      return self._name
+
+    def export(self, *args, **kwargs):
+      del args, kwargs
+
+  return FakeExporter(name=name)
 
 
 def _create_run_config_with_cluster_spec(tf_config):
@@ -192,35 +204,38 @@ class EvalSpecTest(test.TestCase):
     self.assertEqual(_DEFAULT_EVAL_STEPS, spec.steps)
     self.assertIsNone(spec.name)
     self.assertEqual(0, len(spec.hooks))
-    self.assertEqual(0, len(spec.export_strategies))
+    self.assertEqual(0, len(spec.exporters))
     self.assertEqual(_DEFAULT_EVAL_DELAY_SECS, spec.delay_secs)
     self.assertEqual(_DEFAULT_EVAL_THROTTLE_SECS, spec.throttle_secs)
 
   def testAllArgumentsSet(self):
     """Tests that no errors are raised when all arguments are set."""
     hooks = [_FakeHook()]
-    export_strategy = _create_fake_export_strategy('a')
+    exporter = _create_exporter('a')
 
-    spec = training.EvalSpec(input_fn=lambda: 1, steps=2, name='name',
-                             hooks=hooks, export_strategies=export_strategy,
-                             delay_secs=3, throttle_secs=4)
+    spec = training.EvalSpec(
+        input_fn=lambda: 1,
+        steps=2,
+        name='name',
+        hooks=hooks,
+        exporters=exporter,
+        delay_secs=3,
+        throttle_secs=4)
     self.assertEqual(1, spec.input_fn())
     self.assertEqual(2, spec.steps)
     self.assertEqual('name', spec.name)
     self.assertEqual(tuple(hooks), spec.hooks)
-    self.assertEqual((export_strategy,), spec.export_strategies)
+    self.assertEqual((exporter,), spec.exporters)
     self.assertEqual(3, spec.delay_secs)
     self.assertEqual(4, spec.throttle_secs)
 
-  def testListOfExportStrategies(self):
-    """Tests that no errors are raised with multiple export strategies."""
-    export_strategies = [_create_fake_export_strategy('a'),
-                         _create_fake_export_strategy('b')]
+  def testListOfExporters(self):
+    """Tests that no errors are raised with multiple exporters."""
+    exporters = [_create_exporter('a'), _create_exporter('b')]
 
-    spec = training.EvalSpec(input_fn=lambda: 1,
-                             export_strategies=export_strategies)
+    spec = training.EvalSpec(input_fn=lambda: 1, exporters=exporters)
     self.assertEqual(1, spec.input_fn())
-    self.assertEqual(tuple(export_strategies), spec.export_strategies)
+    self.assertEqual(tuple(exporters), spec.exporters)
 
   def testInvalidInputFn(self):
     with self.assertRaisesRegexp(TypeError, _INVALID_INPUT_FN_MSG):
@@ -246,21 +261,32 @@ class EvalSpecTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, _INVALID_EVAL_THROTTLE_SECS_MSG):
       training.EvalSpec(input_fn=lambda: 1, throttle_secs=-1)
 
-  def testInvalidTypeOfListOfExportStrategies(self):
-    with self.assertRaisesRegexp(TypeError, _INVALID_EXPORT_STRATEGY_MSG):
-      training.EvalSpec(input_fn=lambda: 1,
-                        export_strategies=[_create_fake_export_strategy('a'),
-                                           _FakeHook()])
+  def testInvalidTypeOfListOfExporters(self):
+    with self.assertRaisesRegexp(TypeError, _INVALID_EXPORTER_MSG):
+      training.EvalSpec(
+          input_fn=lambda: 1, exporters=[_create_exporter('a'),
+                                         _FakeHook()])
 
-  def testInvalidTypeOfIndividualExportStrategy(self):
-    with self.assertRaisesRegexp(TypeError, _INVALID_EXPORT_STRATEGY_MSG):
-      training.EvalSpec(input_fn=lambda: 1, export_strategies=_FakeHook())
+  def testInvalidTypeOfIndividualExporter(self):
+    with self.assertRaisesRegexp(TypeError, _INVALID_EXPORTER_MSG):
+      training.EvalSpec(input_fn=lambda: 1, exporters=_FakeHook())
 
-  def testMultipleExportStrategiesWithTheSameName(self):
-    with self.assertRaisesRegexp(ValueError, _DUPLICATE_STRATEGY_NAMES_MSG):
-      training.EvalSpec(input_fn=lambda: 1,
-                        export_strategies=[_create_fake_export_strategy('a'),
-                                           _create_fake_export_strategy('a')])
+  def testMultipleExportersWithTheSameName(self):
+    with self.assertRaisesRegexp(ValueError, _DUPLICATE_EXPORTER_NAMES_MSG):
+      training.EvalSpec(
+          input_fn=lambda: 1,
+          exporters=[_create_exporter('a'), _create_exporter('a')])
+
+  def testMultipleExportersAndOneWithoutAName(self):
+    with self.assertRaisesRegexp(ValueError, _NONE_EXPORTER_NAME_MSG):
+      training.EvalSpec(
+          input_fn=lambda: 1,
+          exporters=[_create_exporter('a'),
+                     _create_exporter(None)])
+
+  def testSingleExporterWithoutAName(self):
+    with self.assertRaisesRegexp(ValueError, _NONE_EXPORTER_NAME_MSG):
+      training.EvalSpec(input_fn=lambda: 1, exporters=_create_exporter(None))
 
 
 class TrainAndEvaluteTest(test.TestCase):
@@ -489,7 +515,8 @@ class _TrainingExecutorTrainingTest(object):
 
     mock_est.train.assert_called_with(input_fn=train_spec.input_fn,
                                       max_steps=train_spec.max_steps,
-                                      hooks=train_spec.hooks)
+                                      hooks=train_spec.hooks,
+                                      saving_listeners=test.mock.ANY)
     mock_est.evaluate.assert_not_called()
     mock_est.export_savedmodel.assert_not_called()
 
@@ -649,6 +676,45 @@ class TrainingExecutorRunMasterTest(_TrainingExecutorTrainingTest,
       self._run_task(executor)
       mock_sleep.assert_not_called()
 
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_run_master_triggers_evaluate(self, _):
+
+    def estimator_train(saving_listeners, *args, **kwargs):
+      #  There shalt be a saving_listener.  Estimator is going to call
+      # `after_save`.
+      del args, kwargs
+      saving_listeners[0].after_save(session=None, global_step_value=None)
+
+    mock_est = test.mock.Mock(
+        spec=estimator_lib.Estimator, model_dir='path/', train=estimator_train)
+    mock_est.latest_checkpoint.return_value = 'checkpoint_path/'
+    mock_est.config = self._run_config
+
+    def export(estimator, *args, **kwargs):
+      del args, kwargs
+      estimator.export_was_called = True
+
+    exporter = test.mock.Mock(
+        spec=exporter_lib.Exporter,
+        name='see_whether_export_is_called',
+        export=export)
+
+    train_spec = training.TrainSpec(input_fn=lambda: 1, max_steps=300)
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, steps=2, exporters=exporter)
+    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_master()
+
+    mock_est.evaluate.assert_called_with(
+        name=eval_spec.name,
+        input_fn=eval_spec.input_fn,
+        steps=eval_spec.steps,
+        checkpoint_path='checkpoint_path/',
+        hooks=eval_spec.hooks)
+    self.assertTrue(mock_est.export_was_called)
+
 
 class TrainingExecutorRunEvaluatorTest(test.TestCase):
   """Tests run_evaluator of _TrainingExecutor."""
@@ -695,25 +761,21 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     mock_train_spec.max_steps = training_max_step
 
-    mock_est.times_export_fn_was_called = 0
-    def export_fn(estimator, *args, **kwargs):
-      del args, kwargs
-      estimator.times_export_fn_was_called += 1
-
-    export_strategy = export_strategy_lib.ExportStrategy(
-        name='see_whether_export_fn_is_called', export_fn=export_fn)
+    exporter = test.mock.Mock(
+        spec=exporter_lib.Exporter,
+        name='see_how_many_times_export_is_called')
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1,
         delay_secs=0,
         throttle_secs=0,
-        export_strategies=export_strategy)
+        exporters=exporter)
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     executor.run_evaluator()
 
     self.assertEqual(2, mock_est.evaluate.call_count)
-    self.assertEqual(2, mock_est.times_export_fn_was_called)
+    self.assertEqual(2, exporter.export.call_count)
 
   def test_skip_evaluation_due_to_ckpt(self):
     training_max_step = 200
@@ -789,30 +851,32 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_sleep.assert_called_with(throttle_secs - operation_secs)
     self.assertTrue(mock_est.evaluate.called)
 
-  def test_that_export_fn_is_called(self):
+  def test_that_export_is_called(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
 
-    def export_fn(estimator, *args, **kwargs):
+    def export(estimator, *args, **kwargs):
       del args, kwargs
-      estimator.export_fn_was_called = True
+      estimator.export_was_called = True
 
-    export_strategy = export_strategy_lib.ExportStrategy(
-        name='see_whether_export_fn_is_called', export_fn=export_fn)
+    exporter = test.mock.Mock(
+        spec=exporter_lib.Exporter,
+        name='see_whether_export_is_called',
+        export=export)
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1,
         steps=2,
         delay_secs=0,
         throttle_secs=0,
-        export_strategies=export_strategy)
+        exporters=exporter)
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     executor.run_evaluator()
 
-    # Verify that export_fn was called on the right estimator.
-    self.assertTrue(mock_est.export_fn_was_called)
+    # Verify that export was called on the right estimator.
+    self.assertTrue(mock_est.export_was_called)
 
   def test_errors_out_if_evaluate_returns_empty_dict(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
@@ -993,13 +1057,15 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
     mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
 
-    mock_est.times_export_fn_was_called = 0
-    def export_fn(estimator, *args, **kwargs):
+    mock_est.times_export_was_called = 0
+    def export(estimator, *args, **kwargs):
       del args, kwargs
-      estimator.times_export_fn_was_called += 1
+      estimator.times_export_was_called += 1
 
-    export_strategy = export_strategy_lib.ExportStrategy(
-        name='see_whether_export_fn_is_called', export_fn=export_fn)
+    exporter = test.mock.Mock(
+        spec=exporter_lib.Exporter,
+        name='see_how_many_times_export_is_called',
+        export=export)
 
     train_spec = training.TrainSpec(
         input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
@@ -1007,7 +1073,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
         input_fn=lambda: 1,
         hooks=[_FakeHook()],
         throttle_secs=100,
-        export_strategies=export_strategy)
+        exporters=exporter)
     # should be called 3 times.
     mock_est.evaluate.side_effect = [{
         _GLOBAL_STEP_KEY: train_spec.max_steps - 100
@@ -1022,7 +1088,28 @@ class TrainingExecutorRunLocalTest(test.TestCase):
 
     self.assertEqual(3, mock_est.train.call_count)
     self.assertEqual(3, mock_est.evaluate.call_count)
-    self.assertEqual(3, mock_est.times_export_fn_was_called)
+    self.assertEqual(3, mock_est.times_export_was_called)
+
+  def test_handles_no_new_checkpoint_found(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+    mock_est.latest_checkpoint.return_value = (
+        'no_new_checkpoints_after_the_first_train_step')
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, hooks=[_FakeHook()], throttle_secs=100)
+    # It was going to be called 3 times.
+    mock_est.evaluate.side_effect = [{
+        _GLOBAL_STEP_KEY: train_spec.max_steps - 100
+    }, {
+        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
+    }, {
+        _GLOBAL_STEP_KEY: train_spec.max_steps
+    }]
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    with self.assertRaisesRegexp(RuntimeError, _STALE_CHECKPOINT_MSG):
+      executor.run_local()
 
   def test_train_and_evaluate_args(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
@@ -1057,7 +1144,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'throttle_secs'):
       executor.run_local()
 
-  def test_that_export_fn_is_called_with_run_local(self):
+  def test_that_export_is_called_with_run_local(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     mock_train_spec.max_steps = 200
@@ -1068,24 +1155,26 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     # None were passed.
     mock_train_spec.hooks = []
 
-    def export_fn(estimator, *args, **kwargs):
+    def export(estimator, *args, **kwargs):
       del args, kwargs
-      estimator.export_fn_was_called = True
+      estimator.export_was_called = True
 
-    export_strategy = export_strategy_lib.ExportStrategy(
-        name='see_whether_export_fn_is_called', export_fn=export_fn)
+    exporter = test.mock.Mock(
+        spec=exporter_lib.Exporter,
+        name='see_whether_export_is_called',
+        export=export)
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1,
         steps=2,
         delay_secs=0,
         throttle_secs=213,
-        export_strategies=export_strategy)
+        exporters=exporter)
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     executor.run_local()
 
-    self.assertTrue(mock_est.export_fn_was_called)
+    self.assertTrue(mock_est.export_was_called)
 
   def test_errors_out_if_evaluate_returns_empty_dict(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
