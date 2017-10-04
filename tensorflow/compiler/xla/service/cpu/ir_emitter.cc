@@ -2833,6 +2833,15 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
 }
 
 Status IrEmitter::Postprocess(HloInstruction* hlo) {
+  // Set the name of the emitted llvm::Value to IrName(hlo).  Outfeed and send
+  // the only ops that don't emit a value.
+  if (hlo->opcode() != HloOpcode::kOutfeed &&
+      hlo->opcode() != HloOpcode::kSend) {
+    auto it = emitted_value_.find(hlo);
+    CHECK(it != emitted_value_.end());
+    it->second->setName(AsStringRef(IrName(hlo)));
+  }
+
   if (auto* prof_counter = GetProfileCounterFor(hlo)) {
     profiling_state_.RecordCycleDelta(&ir_builder_, hlo, prof_counter);
   }
