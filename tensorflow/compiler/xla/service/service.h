@@ -277,8 +277,7 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
-      const ExecutionOptions* execution_options,
-      bool has_hybrid_result = false);
+      const ExecutionOptions* execution_options);
 
   // Builds an Executable for the given parameters.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(

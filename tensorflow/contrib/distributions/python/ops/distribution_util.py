@@ -378,6 +378,30 @@ def prefer_static_broadcast_shape(
     return array_ops.broadcast_dynamic_shape(shape1_, shape2_)
 
 
+def get_broadcast_shape(*tensors):
+  """Get broadcast shape as a Python list of integers (preferred) or `Tensor`.
+
+  Args:
+    *tensors:  One or more `Tensor` objects (already converted!).
+
+  Returns:
+    broadcast shape:  Python list (if shapes determined statically), otherwise
+      an `int32` `Tensor`.
+  """
+  # Try static.
+  s_shape = tensors[0].shape
+  for t in tensors[1:]:
+    s_shape = array_ops.broadcast_static_shape(s_shape, t.shape)
+  if s_shape.is_fully_defined():
+    return s_shape.as_list()
+
+  # Fallback on dynamic.
+  d_shape = array_ops.shape(tensors[0])
+  for t in tensors[1:]:
+    d_shape = array_ops.broadcast_dynamic_shape(d_shape, array_ops.shape(t))
+  return d_shape
+
+
 def is_diagonal_scale(scale):
   """Returns `True` if `scale` is a `LinearOperator` that is known to be diag.
 

@@ -440,22 +440,23 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     return SessionRunArgs(self._global_step_tensor)
 
   def after_run(self, run_context, run_values):
-    global_step = run_values.results + 1
-    if self._timer.should_trigger_for_step(global_step):
-      self._timer.update_last_triggered_step(global_step)
-      self._save(run_context.session)
+    stale_global_step = run_values.results
+    if self._timer.should_trigger_for_step(stale_global_step+1):
+      # get the real value after train op.
+      global_step = run_context.session.run(self._global_step_tensor)
+      if self._timer.should_trigger_for_step(global_step):
+        self._timer.update_last_triggered_step(global_step)
+        self._save(run_context.session, global_step)
 
   def end(self, session):
     last_step = session.run(self._global_step_tensor)
     if last_step != self._timer.last_triggered_step():
-      self._save(session)
+      self._save(session, last_step)
     for l in self._listeners:
       l.end(session, last_step)
 
-  def _save(self, session):
+  def _save(self, session, step):
     """Saves the latest checkpoint."""
-    # get latest global_step
-    step = session.run(self._global_step_tensor)
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
 
     for l in self._listeners:
@@ -526,17 +527,20 @@ class StepCounterHook(session_run_hook.SessionRunHook):
   def after_run(self, run_context, run_values):
     _ = run_context
 
-    global_step = run_values.results + 1
-    if self._timer.should_trigger_for_step(global_step):
-      elapsed_time, elapsed_steps = self._timer.update_last_triggered_step(
-          global_step)
-      if elapsed_time is not None:
-        steps_per_sec = elapsed_steps / elapsed_time
-        if self._summary_writer is not None:
-          summary = Summary(value=[Summary.Value(
-              tag=self._summary_tag, simple_value=steps_per_sec)])
-          self._summary_writer.add_summary(summary, global_step)
-        logging.info("%s: %g", self._summary_tag, steps_per_sec)
+    stale_global_step = run_values.results
+    if self._timer.should_trigger_for_step(stale_global_step+1):
+      # get the real value after train op.
+      global_step = run_context.session.run(self._global_step_tensor)
+      if self._timer.should_trigger_for_step(global_step):
+        elapsed_time, elapsed_steps = self._timer.update_last_triggered_step(
+            global_step)
+        if elapsed_time is not None:
+          steps_per_sec = elapsed_steps / elapsed_time
+          if self._summary_writer is not None:
+            summary = Summary(value=[Summary.Value(
+                tag=self._summary_tag, simple_value=steps_per_sec)])
+            self._summary_writer.add_summary(summary, global_step)
+          logging.info("%s: %g", self._summary_tag, steps_per_sec)
 
 
 class NanLossDuringTrainingError(RuntimeError):
@@ -643,7 +647,10 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     if not self._summary_writer:
       return
 
-    global_step = run_values.results["global_step"] + 1
+    stale_global_step = run_values.results["global_step"]
+    global_step = stale_global_step + 1
+    if self._next_step is None or self._request_summary:
+      global_step = run_context.session.run(self._global_step_tensor)
 
     if self._next_step is None:
       self._summary_writer.add_session_log(

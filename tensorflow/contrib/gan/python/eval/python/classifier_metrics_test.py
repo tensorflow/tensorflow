@@ -68,7 +68,7 @@ def _expected_trace_sqrt_product(sigma, sigma_v):
 # A dummy GraphDef string with the minimum number of Ops.
 graphdef_string = """
 node {
-  name: "inputs"
+  name: "input"
   op: "Placeholder"
   attr {
     key: "dtype"

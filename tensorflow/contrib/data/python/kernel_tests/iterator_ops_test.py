@@ -24,6 +24,7 @@ from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -239,7 +240,7 @@ class IteratorTest(test.TestCase):
       # functions in this graph, to ensure that we are not
       # accidentally redefining functions with the same names in the
       # new graph.
-      iterator = dataset_ops.Iterator.from_structure(
+      iterator = iterator_ops.Iterator.from_structure(
           shared_name="shared_iterator",
           output_types=(dtypes.int64, dtypes.int64, dtypes.float64),
           output_shapes=([], [3], []))
@@ -269,8 +270,8 @@ class IteratorTest(test.TestCase):
         constant_op.constant([1, 2, 3]))
     dataset_4 = dataset_ops.Dataset.from_tensors(
         constant_op.constant([4, 5, 6, 7]))
-    iterator = dataset_ops.Iterator.from_structure(dataset_3.output_types,
-                                                   [None])
+    iterator = iterator_ops.Iterator.from_structure(dataset_3.output_types,
+                                                    [None])
 
     dataset_3_init_op = iterator.make_initializer(dataset_3)
     dataset_4_init_op = iterator.make_initializer(dataset_4)
@@ -306,12 +307,12 @@ class IteratorTest(test.TestCase):
   def testReinitializableIteratorStaticErrors(self):
     # Non-matching structure for types and shapes.
     with self.assertRaises(TypeError):
-      iterator = dataset_ops.Iterator.from_structure((dtypes.int64,
-                                                      dtypes.float64), [None])
+      iterator = iterator_ops.Iterator.from_structure((dtypes.int64,
+                                                       dtypes.float64), [None])
 
     # Test validation of dataset argument.
-    iterator = dataset_ops.Iterator.from_structure((dtypes.int64,
-                                                    dtypes.float64))
+    iterator = iterator_ops.Iterator.from_structure((dtypes.int64,
+                                                     dtypes.float64))
 
     # Incompatible structure.
     with self.assertRaises(ValueError):
@@ -328,7 +329,7 @@ class IteratorTest(test.TestCase):
                   [4., 5., 6., 7.], dtype=dtypes.float32))))
 
     # Incompatible shapes.
-    iterator = dataset_ops.Iterator.from_structure(
+    iterator = iterator_ops.Iterator.from_structure(
         (dtypes.int64, dtypes.float64), ([None], []))
     with self.assertRaises(TypeError):
       iterator.make_initializer(
@@ -344,7 +345,7 @@ class IteratorTest(test.TestCase):
     iterator_4 = dataset_4.make_one_shot_iterator()
 
     handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
-    feedable_iterator = dataset_ops.Iterator.from_string_handle(
+    feedable_iterator = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
     next_element = feedable_iterator.get_next()
 
@@ -391,11 +392,11 @@ class IteratorTest(test.TestCase):
 
     handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
 
-    feedable_int_scalar = dataset_ops.Iterator.from_string_handle(
+    feedable_int_scalar = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dtypes.int32, [])
-    feedable_int_vector = dataset_ops.Iterator.from_string_handle(
+    feedable_int_vector = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dtypes.int32, [None])
-    feedable_int_any = dataset_ops.Iterator.from_string_handle(
+    feedable_int_any = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dtypes.int32)
 
     with self.test_session() as sess:
@@ -435,7 +436,7 @@ class IteratorTest(test.TestCase):
 
     @function.Defun(dtypes.string)
     def _remote_fn(h):
-      remote_iterator = dataset_ops.Iterator.from_string_handle(
+      remote_iterator = iterator_ops.Iterator.from_string_handle(
           h, dataset_3.output_types, dataset_3.output_shapes)
       return remote_iterator.get_next()
 
@@ -495,7 +496,7 @@ class IteratorTest(test.TestCase):
     @function.Defun(dtypes.uint8)
     def _remote_fn(h):
       handle = script_ops.py_func(_encode_raw, [h], dtypes.string)
-      remote_iterator = dataset_ops.Iterator.from_string_handle(
+      remote_iterator = iterator_ops.Iterator.from_string_handle(
           handle, dataset_3.output_types, dataset_3.output_shapes)
       return remote_iterator.get_next()
 

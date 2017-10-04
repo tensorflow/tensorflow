@@ -460,16 +460,25 @@ def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
 
 @ops.RegisterGradient("Conv2D")
 def _Conv2DGrad(op, grad):
-  return [nn_ops.conv2d_backprop_input(
-      array_ops.shape(op.inputs[0]), op.inputs[1], grad, op.get_attr("strides"),
-      op.get_attr("padding"), op.get_attr("use_cudnn_on_gpu"),
-      op.get_attr("data_format")),
+  strides = op.get_attr("strides")
+  padding = op.get_attr("padding")
+  use_cudnn_on_gpu = op.get_attr("use_cudnn_on_gpu")
+  data_format = op.get_attr("data_format")
+  shape_0, shape_1 = array_ops.shape_n([op.inputs[0], op.inputs[1]])
+  return [nn_ops.conv2d_backprop_input(shape_0,
+                                       op.inputs[1],
+                                       grad,
+                                       strides,
+                                       padding,
+                                       use_cudnn_on_gpu,
+                                       data_format),
           nn_ops.conv2d_backprop_filter(op.inputs[0],
-                                        array_ops.shape(op.inputs[1]), grad,
-                                        op.get_attr("strides"),
-                                        op.get_attr("padding"),
-                                        op.get_attr("use_cudnn_on_gpu"),
-                                        op.get_attr("data_format"))]
+                                        shape_1,
+                                        grad,
+                                        strides,
+                                        padding,
+                                        use_cudnn_on_gpu,
+                                        data_format)]
 
 
 @ops.RegisterGradient("DepthwiseConv2dNative")

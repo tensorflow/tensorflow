@@ -69,15 +69,6 @@ Status Executable::DumpSessionModule() {
                                      *session_module_);
 }
 
-// Removes illegal characters from filenames.
-static void SanitizeFilename(string* name) {
-  for (char& c : *name) {
-    if (c == '/' || c == '\\' || c == '[' || c == ']') {
-      c = '_';
-    }
-  }
-}
-
 /* static */ Status Executable::DumpToDirectory(
     const string& directory_path, string filename,
     const SessionModule& session_module) {
@@ -89,7 +80,7 @@ static void SanitizeFilename(string* name) {
     // "directory already exists" error.
     TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
   }
-  SanitizeFilename(&filename);
+  filename = SanitizeFileName(std::move(filename));
   string file_path = tensorflow::io::JoinPath(directory_path, filename);
   return tensorflow::WriteBinaryProto(env, file_path, session_module);
 }

@@ -16,7 +16,6 @@ py_library(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator",
         "//tensorflow/python/data/util:nest",
     ],
 )

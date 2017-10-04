@@ -1772,6 +1772,7 @@ tf_cuda_library(
     ) + if_mkl(
         [
             "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn//:mkl_dnn",
         ],
     ),
     alwayslink = 1,
@@ -1932,7 +1933,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/visitable_allocator.h",
     "graph/gradients.h",
     "graph/quantize_training.h",
-]
+] + if_mkl(["graph/mkl_graph_util.h"])
 
 tf_cuda_library(
     name = "core_cpu_impl",
@@ -2033,7 +2034,10 @@ tf_cuda_library(
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
     ] + if_mkl(
-        ["//third_party/mkl:intel_binary_blob"],
+        [
+            "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn//:mkl_dnn",
+        ],
     ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
     alwayslink = 1,
 )
@@ -2669,7 +2673,7 @@ tf_cc_test_mkl(
         "graph/mkl_layout_pass_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    linkstatic = 1,
     deps = [
         ":core",
         ":core_cpu",
@@ -2687,18 +2691,6 @@ tf_cc_test_mkl(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core/kernels:mkl_aggregate_ops",
-        "//tensorflow/core/kernels:mkl_concat_op",
-        "//tensorflow/core/kernels:mkl_conv_op",
-        "//tensorflow/core/kernels:mkl_cwise_ops_common",
-        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels:mkl_identity_op",
-        "//tensorflow/core/kernels:mkl_input_conversion_op",
-        "//tensorflow/core/kernels:mkl_lrn_op",
-        "//tensorflow/core/kernels:mkl_pooling_ops",
-        "//tensorflow/core/kernels:mkl_relu_op",
-        "//tensorflow/core/kernels:mkl_reshape_op",
-        "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],

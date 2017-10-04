@@ -57,7 +57,7 @@ class FuncRegistry(object):
     self._funcs.pop(token, None)
 
   @staticmethod
-  def _convert(value):
+  def _convert(value, dtype=None):
     """Converts an arg to numpy, avoiding dangerous string and unicode dtypes.
 
     Numpy pads with zeros when using string and unicode dtypes if different
@@ -69,11 +69,12 @@ class FuncRegistry(object):
 
     Args:
       value: Value to convert to a numpy array.
+      dtype: (Optional.) Desired NumPy type for the returned value.
 
     Returns:
       A numpy array.
     """
-    result = np.asarray(value, order="C")
+    result = np.asarray(value, dtype=dtype, order="C")
     if result.dtype.char == "S" and result is not value:
       return np.asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U" and result is not value:

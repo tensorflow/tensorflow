@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python wrappers for Datasets and Iterators."""
+"""Python wrappers for Iterators."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -257,20 +257,6 @@ class Iterator(object):
             output_types=nest.flatten(self._output_types),
             output_shapes=nest.flatten(self._output_shapes),
             name=name))
-
-  def dispose_op(self, name=None):
-    """Returns a `tf.Operation` that destroys this iterator.
-
-    The returned operation may be used to release any resources consumed by
-    this iterator without closing the session.
-
-    Args:
-      name: (Optional.) A name for the created operation.
-
-    Returns:
-      A `tf.Operation`.
-    """
-    return gen_dataset_ops.iterator_dispose(self._iterator_resource, name=name)
 
   def string_handle(self, name=None):
     """Returns a string-valued `tf.Tensor` that represents this iterator.

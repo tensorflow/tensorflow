@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import glob
 import os
 import tempfile
 
@@ -55,6 +56,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
@@ -573,6 +575,24 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
+  def test_loss_summary(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer,
+                              config=run_config.RunConfig(save_summary_steps=1))
+    est.train(dummy_input_fn, steps=1)
+
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
+
+    # Get last Event written.
+    event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
+    last_event = None
+    for last_event in summary_iterator.summary_iterator(event_paths[-1]):
+      if last_event.summary is not None:
+        if last_event.summary.value:
+          if 'loss' == last_event.summary.value[0].tag:
+            return
+    self.fail('loss should be part of reported summaries.')
+
   def test_latest_checkpoint(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
     self.assertIsNone(est.latest_checkpoint())
@@ -705,6 +725,31 @@ class EstimatorTrainTest(test.TestCase):
     est.train(dummy_input_fn, steps=1)
     self.assertTrue(chief_hook.begin.called)
     self.assertTrue(hook.begin.called)
+
+  def test_saving_listeners_are_used(self):
+    listener = test.mock.Mock(spec=training.CheckpointSaverListener)
+    est = estimator.Estimator(
+        model_fn=model_fn_global_step_incrementer,
+        config=run_config.RunConfig(save_checkpoints_steps=10))
+    est.train(dummy_input_fn, steps=26, saving_listeners=[listener])
+    self.assertEqual(4, listener.before_save.call_count)
+    self.assertEqual(4, listener.after_save.call_count)
+
+  def test_saver_hook_should_exist_to_use_saving_listeners(self):
+    listener = test.mock.Mock(spec=training.CheckpointSaverListener)
+    est = estimator.Estimator(
+        model_fn=model_fn_global_step_incrementer,
+        config=run_config.RunConfig(save_checkpoints_steps=None,
+                                    save_checkpoints_secs=None))
+    with self.assertRaisesRegexp(
+        ValueError, 'CheckpointSaverHook to use saving_listeners'):
+      est.train(dummy_input_fn, steps=1, saving_listeners=[listener])
+
+  def test_listeners_should_be_listeners(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    with self.assertRaisesRegexp(
+        TypeError, 'must be a list of CheckpointSaverListener'):
+      est.train(dummy_input_fn, steps=1, saving_listeners=['not-a-listener'])
 
   def test_chief_only_hook_should_not_be_called_on_non_chief(self):
     chief_hook = test.mock.MagicMock(

@@ -52,17 +52,7 @@ extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
                                      gtl::ArraySlice<NodeDef> nodes, Graph* g);
 
-// Add the graph in GraphDef gdef into an existing Graph *g.
-//
-// On error, returns non-OK and leaves *g unmodified.
-//
-// "shape_refiner" can be null. It should be non-null if the caller
-// intends to add additional nodes to the graph after the import. This
-// allows the caller to validate shapes of those nodes (since
-// ShapeRefiner::AddNode must be called in topological order).
-//
-// TODO(ashankar): Push this mechanism and get rid of Session::Extend()
-// as a means of enhancing an existing Graph.
+// Options for calling ImportGraphDef().
 struct ImportGraphDefOptions {
   ImportGraphDefOptions() : skip_mapped_nodes(false) {}
 
@@ -116,13 +106,30 @@ struct ImportGraphDefOptions {
   // python API.
 };
 
+// Adds the graph in GraphDef `gdef` into an existing Graph `*g`.
+//
+// On error, returns non-OK and leaves `*g` unmodified.
+//
+// `refiner` can be null. It should be non-null if the caller
+// intends to add additional nodes to the graph after the import. This
+// allows the caller to validate shapes of those nodes (since
+// ShapeRefiner::AddNode must be called in topological order).
+//
 // Each `return_tensors` entry is the requested node and output index. The index
 // is included in case the returned tensor has been remapped according to
 // `input_map`.
+//
+// If `unused_input_map_keys` is non-null, it should be empty and will be
+// populated with any keys in `opts.input_map` that aren't used as an input to
+// any node in `gdef`.
+//
+// TODO(ashankar): Push this mechanism and get rid of Session::Extend()
+// as a means of enhancing an existing Graph.
 extern Status ImportGraphDef(
     const ImportGraphDefOptions& opts, const GraphDef& gdef, Graph* g,
     ShapeRefiner* refiner,
-    std::vector<std::pair<Node*, int>>* return_tensors = nullptr);
+    std::vector<std::pair<Node*, int>>* return_tensors = nullptr,
+    std::vector<TensorId>* unused_input_map_keys = nullptr);
 
 // Make a copy of "src" into "*dest".
 //

@@ -148,7 +148,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_.reset(new DeviceMgr(devices_));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts));
+        opts, nullptr /* cluster_flr */));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -499,7 +499,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
         s.WithOpName("x4/x2/scale/_12__cf__2")
-            .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
     auto x4_y_y = ops::Mul(s.WithOpName("x4/y/y"), x4_x2_y, x4_x2_scale);
@@ -693,16 +693,16 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
-    auto scale =
-        ops::Const(s.WithOpName("scale/_5__cf__6")
-                       .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
-                   2.0f);
+    auto scale = ops::Const(
+        s.WithOpName("scale/_5__cf__6")
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
+        2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
-    auto const0 =
-        ops::Const(s.WithOpName("Func/_1/sy/_6__cf__7")
-                       .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
-                   0, {0});
+    auto const0 = ops::Const(
+        s.WithOpName("Func/_1/sy/_6__cf__7")
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
+        0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(
         s.WithOpName("Func/_1/rx"), func1_sx, const0);
     auto func1_sum_gx =
@@ -950,14 +950,16 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
   TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:localhost/replica:0/task:0/cpu:1"},
-                                TensorShape({})));
+      y,
+      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                             TensorShape({})));
   opts.remote_execution = true;
   opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
   TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:localhost/replica:0/task:0/cpu:1"},
-                                TensorShape({})));
+      y,
+      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                             TensorShape({})));
   opts.rendezvous->Unref();
 }
 

@@ -200,14 +200,14 @@ class TopologyConstructionTest(test.TestCase):
     with self.assertRaises(ValueError):
       _ = keras.layers.Input(shape=(32,), batch_shape=(10, 32))
     with self.assertRaises(ValueError):
-      _ = keras.layers.Input(shape=(32,), unknwon_kwarg=None)
+      _ = keras.layers.Input(shape=(32,), unknown_kwarg=None)
 
     self.assertListEqual(a.get_shape().as_list(), [None, 32])
     a_layer, a_node_index, a_tensor_index = a._keras_history
     b_layer, _, _ = b._keras_history
-    self.assertEqual(len(a_layer.inbound_nodes), 1)
+    self.assertEqual(len(a_layer._inbound_nodes), 1)
     self.assertEqual(a_tensor_index, 0)
-    node = a_layer.inbound_nodes[a_node_index]
+    node = a_layer._inbound_nodes[a_node_index]
     self.assertEqual(node.outbound_layer, a_layer)
 
     self.assertListEqual(node.inbound_layers, [])
@@ -220,14 +220,14 @@ class TopologyConstructionTest(test.TestCase):
     a_2 = dense(a)
     b_2 = dense(b)
 
-    self.assertEqual(len(dense.inbound_nodes), 2)
-    self.assertEqual(len(dense.outbound_nodes), 0)
-    self.assertListEqual(dense.inbound_nodes[0].inbound_layers, [a_layer])
-    self.assertEqual(dense.inbound_nodes[0].outbound_layer, dense)
-    self.assertListEqual(dense.inbound_nodes[1].inbound_layers, [b_layer])
-    self.assertEqual(dense.inbound_nodes[1].outbound_layer, dense)
-    self.assertListEqual(dense.inbound_nodes[0].input_tensors, [a])
-    self.assertListEqual(dense.inbound_nodes[1].input_tensors, [b])
+    self.assertEqual(len(dense._inbound_nodes), 2)
+    self.assertEqual(len(dense._outbound_nodes), 0)
+    self.assertListEqual(dense._inbound_nodes[0].inbound_layers, [a_layer])
+    self.assertEqual(dense._inbound_nodes[0].outbound_layer, dense)
+    self.assertListEqual(dense._inbound_nodes[1].inbound_layers, [b_layer])
+    self.assertEqual(dense._inbound_nodes[1].outbound_layer, dense)
+    self.assertListEqual(dense._inbound_nodes[0].input_tensors, [a])
+    self.assertListEqual(dense._inbound_nodes[1].input_tensors, [b])
 
     # test layer properties
     test_layer = keras.layers.Dense(16, name='test_layer')
@@ -268,11 +268,11 @@ class TopologyConstructionTest(test.TestCase):
       self.assertEqual(merge_node_index, 0)
       self.assertEqual(merge_tensor_index, 0)
 
-      self.assertEqual(len(merge_layer.inbound_nodes), 1)
-      self.assertEqual(len(merge_layer.outbound_nodes), 0)
+      self.assertEqual(len(merge_layer._inbound_nodes), 1)
+      self.assertEqual(len(merge_layer._outbound_nodes), 0)
 
-      self.assertEqual(len(merge_layer.inbound_nodes[0].input_tensors), 2)
-      self.assertEqual(len(merge_layer.inbound_nodes[0].inbound_layers), 2)
+      self.assertEqual(len(merge_layer._inbound_nodes[0].input_tensors), 2)
+      self.assertEqual(len(merge_layer._inbound_nodes[0].inbound_layers), 2)
 
       c = keras.layers.Dense(64, name='dense_2')(merged)
       d = keras.layers.Dense(5, name='dense_3')(c)

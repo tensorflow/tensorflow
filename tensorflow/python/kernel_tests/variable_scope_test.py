@@ -128,7 +128,7 @@ class VariableScopeTest(test.TestCase):
       with self.assertRaises(TypeError):
         variable_scope.get_variable("x4", initializer={})
     else:
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaises(ValueError):
         variable_scope.get_variable("x4", initializer={})
 
   @test_util.run_in_graph_and_eager_modes()

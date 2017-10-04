@@ -215,7 +215,9 @@ def _get_or_create_global_step_read(graph=None):
     # using initialized_value to ensure that global_step is initialized before
     # this run. This is needed for example Estimator makes all model_fn build
     # under global_step_read_tensor dependency.
-    global_step_read_tensor = global_step_tensor.initialized_value() + 0
+    global_step_value = global_step_tensor.initialized_value() if isinstance(
+        global_step_tensor, variables.Variable) else global_step_tensor
+    global_step_read_tensor = global_step_value + 0
     ops.add_to_collection(GLOBAL_STEP_READ_KEY, global_step_read_tensor)
   return _get_global_step_read(graph)
 

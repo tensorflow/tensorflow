@@ -121,16 +121,6 @@ class Context(object):
     else:
       return devices
 
-  def __del__(self):
-    try:
-      if self._context_handle is not None:
-        with errors.raise_exception_on_not_ok_status() as status:
-          pywrap_tensorflow.TFE_DeleteContext(self._context_handle, status)
-    except (AttributeError, TypeError):
-      # Sometimes deletion during program shutdown throws exception as other
-      # modules are no longer available.
-      pass
-
   def __str__(self):
     if self._context_handle is None:
       return "Eager TensorFlow Context. Devices currently uninitialized."

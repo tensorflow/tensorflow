@@ -21,7 +21,6 @@ from __future__ import print_function
 import abc
 import collections
 
-import collections
 import six
 
 from tensorflow.python.estimator import model_fn
@@ -152,7 +151,7 @@ class _Head(object):
       features: Input `dict` of `Tensor` objects.
       mode: Estimator's `ModeKeys`.
       logits: logits `Tensor` to be used for loss construction.
-      labels: Labels `Tensor`.
+      labels: Labels `Tensor`, or `dict` of same.
 
     Returns:
       A LossAndLabels that contains the `Tensor` representing the loss and
