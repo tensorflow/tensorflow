@@ -182,7 +182,8 @@ class VARMA(state_space_model.StateSpaceModel):
     # modeled as transition noise in VARMA, we set its initial value based on a
     # slight over-estimate empirical observation noise.
     if self._input_statistics is not None:
-      feature_variance = self._input_statistics.series_start_moments.variance
+      feature_variance = self._scale_variance(
+          self._input_statistics.series_start_moments.variance)
       initial_transition_noise_scale = math_ops.log(
           math_ops.maximum(
               math_ops.reduce_mean(feature_variance), minimum_initial_variance))

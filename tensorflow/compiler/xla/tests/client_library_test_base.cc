@@ -40,7 +40,7 @@ namespace {
 Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
   StatusOr<Client*> result =
       ClientLibrary::GetOrCreateLocalClient(client_options);
-  TF_CHECK_OK(result.status()) << "could not create local client for testing";
+  TF_CHECK_OK(result.status()) << " could not create local client for testing";
   return result.ValueOrDie();
 }
 }  // namespace
