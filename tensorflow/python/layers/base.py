@@ -225,18 +225,17 @@ class Layer(object):
     The `get_updates_for` method allows to retrieve the updates relevant to a
     specific set of inputs.
 
+    This call is ignored in Eager mode.
+
     Arguments:
       updates: Update op, or list/tuple of update ops.
       inputs: Optional input tensor(s) that the update(s) depend on. Must
         match the `inputs` argument passed to the `__call__` method at the time
         the updates are created. If `None` is passed, the updates are assumed
         to be unconditional, and will apply across all dataflows of the layer.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
     if context.in_eager_mode():
-      raise RuntimeError('Layer.add_update not supported in Eager mode.')
+      return  # Updates already applied when in eager mode.
     updates = _to_list(updates)
     if not updates:
       return
