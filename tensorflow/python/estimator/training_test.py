@@ -47,11 +47,12 @@ _INVALID_HOOK_MSG = 'All hooks must be `SessionRunHook` instances'
 _INVALID_MAX_STEPS_MSG = 'Must specify max_steps > 0'
 _INVALID_STEPS_MSG = 'Must specify steps > 0'
 _INVALID_NAME_MSG = '`name` must be string'
-_INVALID_EVAL_DELAY_SECS_MSG = 'Must specify delay_secs >= 0'
+_INVALID_EVAL_DELAY_SECS_MSG = 'Must specify start_delay_secs >= 0'
 _INVALID_EVAL_THROTTLE_SECS_MSG = 'Must specify throttle_secs >= 0'
 _INVALID_ESTIMATOR_MSG = '`estimator` must have type `tf.estimator.Estimator`'
 _STALE_CHECKPOINT_MSG = 'There was no new checkpoint after the training.'
 _INVALID_EXPORTER_MSG = '`exporters` must be an Exporter'
+_INVALID_EXPORTER_NAME_TYPE_MSG = 'An Exporter must have a string name'
 _DUPLICATE_EXPORTER_NAMES_MSG = '`exporters` must have unique names.'
 _NONE_EXPORTER_NAME_MSG = (
     'An Exporter cannot have a name that is `None` or empty.')
@@ -205,7 +206,7 @@ class EvalSpecTest(test.TestCase):
     self.assertIsNone(spec.name)
     self.assertEqual(0, len(spec.hooks))
     self.assertEqual(0, len(spec.exporters))
-    self.assertEqual(_DEFAULT_EVAL_DELAY_SECS, spec.delay_secs)
+    self.assertEqual(_DEFAULT_EVAL_DELAY_SECS, spec.start_delay_secs)
     self.assertEqual(_DEFAULT_EVAL_THROTTLE_SECS, spec.throttle_secs)
 
   def testAllArgumentsSet(self):
@@ -219,14 +220,14 @@ class EvalSpecTest(test.TestCase):
         name='name',
         hooks=hooks,
         exporters=exporter,
-        delay_secs=3,
+        start_delay_secs=3,
         throttle_secs=4)
     self.assertEqual(1, spec.input_fn())
     self.assertEqual(2, spec.steps)
     self.assertEqual('name', spec.name)
     self.assertEqual(tuple(hooks), spec.hooks)
     self.assertEqual((exporter,), spec.exporters)
-    self.assertEqual(3, spec.delay_secs)
+    self.assertEqual(3, spec.start_delay_secs)
     self.assertEqual(4, spec.throttle_secs)
 
   def testListOfExporters(self):
@@ -255,7 +256,7 @@ class EvalSpecTest(test.TestCase):
 
   def testInvalidDelaySecs(self):
     with self.assertRaisesRegexp(ValueError, _INVALID_EVAL_DELAY_SECS_MSG):
-      training.EvalSpec(input_fn=lambda: 1, delay_secs=-1)
+      training.EvalSpec(input_fn=lambda: 1, start_delay_secs=-1)
 
   def testInvalidThrottleSecs(self):
     with self.assertRaisesRegexp(ValueError, _INVALID_EVAL_THROTTLE_SECS_MSG):
@@ -270,6 +271,11 @@ class EvalSpecTest(test.TestCase):
   def testInvalidTypeOfIndividualExporter(self):
     with self.assertRaisesRegexp(TypeError, _INVALID_EXPORTER_MSG):
       training.EvalSpec(input_fn=lambda: 1, exporters=_FakeHook())
+
+  def testInvalidTypeOfExporterName(self):
+    with self.assertRaisesRegexp(ValueError, _INVALID_EXPORTER_NAME_TYPE_MSG):
+      training.EvalSpec(input_fn=lambda: 1,
+                        exporters=_create_exporter(name=123))
 
   def testMultipleExportersWithTheSameName(self):
     with self.assertRaisesRegexp(ValueError, _DUPLICATE_EXPORTER_NAMES_MSG):
@@ -699,10 +705,9 @@ class TrainingExecutorRunMasterTest(_TrainingExecutorTrainingTest,
       del args, kwargs
       estimator.export_was_called = True
 
-    exporter = test.mock.Mock(
-        spec=exporter_lib.Exporter,
-        name='see_whether_export_is_called',
-        export=export)
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_whether_export_is_called'
+    exporter.export = export
 
     train_spec = training.TrainSpec(input_fn=lambda: 1, max_steps=300)
     eval_spec = training.EvalSpec(
@@ -739,7 +744,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1, steps=2, hooks=[_FakeHook()], name='cont_eval',
-        delay_secs=0, throttle_secs=0)
+        start_delay_secs=0, throttle_secs=0)
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     executor.run_evaluator()
@@ -766,13 +771,12 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
     mock_train_spec.max_steps = training_max_step
 
-    exporter = test.mock.Mock(
-        spec=exporter_lib.Exporter,
-        name='see_how_many_times_export_is_called')
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_how_many_times_export_is_called'
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1,
-        delay_secs=0,
+        start_delay_secs=0,
         throttle_secs=0,
         exporters=exporter)
 
@@ -800,7 +804,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     ]
 
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1, delay_secs=0, throttle_secs=0)
+        input_fn=lambda: 1, start_delay_secs=0, throttle_secs=0)
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     with test.mock.patch.object(logging, 'warning') as mock_log:
@@ -814,9 +818,9 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     # successuful evaluation)
     self.assertEqual(2, mock_log.call_count)
 
-  def test_sleep_delay_secs(self):
+  def test_sleep_start_delay_secs(self):
     training_max_step = 200
-    delay_secs = 123
+    start_delay_secs = 123
 
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: training_max_step}
@@ -826,12 +830,12 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1, steps=2, hooks=[_FakeHook()], name='cont_eval',
-        delay_secs=delay_secs, throttle_secs=0)
+        start_delay_secs=start_delay_secs, throttle_secs=0)
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
     with test.mock.patch.object(time, 'sleep') as mock_sleep:
       executor.run_evaluator()
-      mock_sleep.assert_called_with(delay_secs)
+      mock_sleep.assert_called_with(start_delay_secs)
       self.assertTrue(mock_est.evaluate.called)
 
   @test.mock.patch.object(time, 'time')
@@ -845,7 +849,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     self._set_up_mock_est_to_train_and_evaluate_once(mock_est, mock_train_spec)
 
     eval_spec = training.EvalSpec(
-        input_fn=lambda: 1, delay_secs=0, throttle_secs=throttle_secs)
+        input_fn=lambda: 1, start_delay_secs=0, throttle_secs=throttle_secs)
 
     mock_time.side_effect = [921, 921 + operation_secs]
 
@@ -865,15 +869,14 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
       del args, kwargs
       estimator.export_was_called = True
 
-    exporter = test.mock.Mock(
-        spec=exporter_lib.Exporter,
-        name='see_whether_export_is_called',
-        export=export)
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_whether_export_is_called'
+    exporter.export = export
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1,
         steps=2,
-        delay_secs=0,
+        start_delay_secs=0,
         throttle_secs=0,
         exporters=exporter)
 
@@ -887,7 +890,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     train_spec = training.TrainSpec(input_fn=lambda: 1)
     eval_spec = training.EvalSpec(input_fn=(lambda: 1),
-                                  delay_secs=0, throttle_secs=0)
+                                  start_delay_secs=0, throttle_secs=0)
     mock_est.evaluate.return_value = {}
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
@@ -898,7 +901,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     train_spec = training.TrainSpec(input_fn=lambda: 1)
     eval_spec = training.EvalSpec(input_fn=(lambda: 1),
-                                  delay_secs=0, throttle_secs=0)
+                                  start_delay_secs=0, throttle_secs=0)
     mock_est.evaluate.return_value = 123
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
@@ -909,7 +912,7 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     train_spec = training.TrainSpec(input_fn=lambda: 1)
     eval_spec = training.EvalSpec(input_fn=(lambda: 1),
-                                  delay_secs=0, throttle_secs=0)
+                                  start_delay_secs=0, throttle_secs=0)
     mock_est.evaluate.return_value = {'loss': 123}
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
@@ -1067,10 +1070,9 @@ class TrainingExecutorRunLocalTest(test.TestCase):
       del args, kwargs
       estimator.times_export_was_called += 1
 
-    exporter = test.mock.Mock(
-        spec=exporter_lib.Exporter,
-        name='see_how_many_times_export_is_called',
-        export=export)
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_how_many_times_export_is_called'
+    exporter.export = export
 
     train_spec = training.TrainSpec(
         input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
@@ -1164,15 +1166,14 @@ class TrainingExecutorRunLocalTest(test.TestCase):
       del args, kwargs
       estimator.export_was_called = True
 
-    exporter = test.mock.Mock(
-        spec=exporter_lib.Exporter,
-        name='see_whether_export_is_called',
-        export=export)
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_whether_export_is_called'
+    exporter.export = export
 
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1,
         steps=2,
-        delay_secs=0,
+        start_delay_secs=0,
         throttle_secs=213,
         exporters=exporter)
 
