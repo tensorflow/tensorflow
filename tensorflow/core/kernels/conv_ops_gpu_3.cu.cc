@@ -458,11 +458,11 @@ struct GreaterThan {
 //   each legal long side len.
 // - non long side frontier: the frontier set minus the long side frontier.
 //
-// The following function TileSizePossibilityFrontierCheck will define the
-// frontier using only the long side frontier tile size combinations (since
-// one can easily extrapolate the entire frontier from this subset). It
-// serves as a utility function to help us determine where a tile size
-// combination of interest lies with resepect to the frontier.
+// TileSizePossibilityFrontierCheck defines the frontier using only the long
+// side frontier tile size combinations (since one can easily extrapolate
+// the entire frontier from this subset). It serves as a utility function
+// to help us determine where a tile size combination of interest lies with
+// resepect to the frontier.
 template <typename Op>
 constexpr bool TileSizePossibilityFrontierCheck(int TileLongSide,
                                                 int TileShortSide,
