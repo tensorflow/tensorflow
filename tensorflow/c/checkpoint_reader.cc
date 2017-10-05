@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
-
 namespace checkpoint {
 
 class TensorSliceReader;
@@ -37,28 +36,22 @@ CheckpointReader::CheckpointReader(const string& filename,
   std::vector<string> v2_path;
   if (Env::Default()->GetMatchingPaths(MetaFilename(filename), &v2_path).ok() &&
       !v2_path.empty()) {
-    v2_reader_ =
-        new BundleReader(Env::Default(), filename /* prefix to a V2 ckpt */);
+    v2_reader_.reset(
+        new BundleReader(Env::Default(), filename /* prefix to a V2 ckpt */));
     if (!v2_reader_->status().ok()) {
       Set_TF_Status_from_Status(out_status, v2_reader_->status());
       return;
     }
     var_to_shape_map_ptr_ = BuildV2VarToShapeMap();
   } else {
-    reader_ = new TensorSliceReader(filename);
+    reader_.reset(new TensorSliceReader(filename));
     if (!reader_->status().ok()) {
       Set_TF_Status_from_Status(out_status, reader_->status());
       return;
     }
-    var_to_shape_map_ptr_ =
-        new TensorSliceReader::VarToShapeMap(reader_->GetVariableToShapeMap());
+    var_to_shape_map_ptr_.reset(
+        new TensorSliceReader::VarToShapeMap(reader_->GetVariableToShapeMap()));
   }
-}
-
-CheckpointReader::~CheckpointReader() {
-  delete var_to_shape_map_ptr_;
-  delete reader_;
-  delete v2_reader_;
 }
 
 bool CheckpointReader::HasTensor(const string& name) const {
@@ -100,7 +93,8 @@ void CheckpointReader::GetTensor(
   }
 }
 
-TensorSliceReader::VarToShapeMap* CheckpointReader::BuildV2VarToShapeMap() {
+std::unique_ptr<TensorSliceReader::VarToShapeMap>
+CheckpointReader::BuildV2VarToShapeMap() {
   CHECK(v2_reader_ != nullptr);
   CHECK(v2_reader_->status().ok());
 
@@ -123,8 +117,8 @@ TensorSliceReader::VarToShapeMap* CheckpointReader::BuildV2VarToShapeMap() {
   }
 
   // Second pass: adds the entries, ignoring the filtered keys.
-  TensorSliceReader::VarToShapeMap* var_to_shape_map =
-      new TensorSliceReader::VarToShapeMap;
+  std::unique_ptr<TensorSliceReader::VarToShapeMap> var_to_shape_map(
+      new TensorSliceReader::VarToShapeMap);
   v2_reader_->Seek(kHeaderEntryKey);
   for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {
     if (filtered_keys.count(v2_reader_->key().ToString()) > 0) continue;
@@ -134,7 +128,7 @@ TensorSliceReader::VarToShapeMap* CheckpointReader::BuildV2VarToShapeMap() {
     (*var_to_shape_map)[v2_reader_->key().ToString()] =
         TensorShape(entry.shape());
   }
-  return var_to_shape_map;  // Owned by caller.
+  return var_to_shape_map;
 }
 
 }  // namespace checkpoint

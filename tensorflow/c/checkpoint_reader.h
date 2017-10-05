@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_C_CHECKPOINT_READER_H
 #define TENSORFLOW_C_CHECKPOINT_READER_H
 
+#include <memory>
+#include <string>
+
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -24,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {
-
 namespace checkpoint {
 
 class TensorSliceReader;
@@ -38,7 +40,6 @@ class TensorSliceReader;
 class CheckpointReader {
  public:
   CheckpointReader(const string& filepattern, TF_Status* out_status);
-  ~CheckpointReader();
 
   bool HasTensor(const string& name) const;
   const string DebugString() const;
@@ -56,12 +57,12 @@ class CheckpointReader {
  private:
   // Uses "v2_reader_" to build a "var name -> shape" map; owned by caller.
   // REQUIRES: "v2_reader_ != nullptr && v2_reader_.status().ok()".
-  TensorSliceReader::VarToShapeMap* BuildV2VarToShapeMap();
+  std::unique_ptr<TensorSliceReader::VarToShapeMap> BuildV2VarToShapeMap();
 
-  // Invariant: exactly one of "reader_" and "v2_reader_" is non-nullptr.
-  TensorSliceReader* reader_;                               // Owned.
-  BundleReader* v2_reader_;                                 // Owned.
-  TensorSliceReader::VarToShapeMap* var_to_shape_map_ptr_;  // Owned.
+  // Invariant: exactly one of "reader_" and "v2_reader_" is non-null.
+  std::unique_ptr<TensorSliceReader> reader_;
+  std::unique_ptr<BundleReader> v2_reader_;
+  std::unique_ptr<TensorSliceReader::VarToShapeMap> var_to_shape_map_ptr_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CheckpointReader);
 };
