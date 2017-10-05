@@ -50,6 +50,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.training import saver
 
 from tensorflow.python.util import compat
 
@@ -616,7 +617,13 @@ def make_best_model_export_strategy(serving_input_fn,
     Returns:
       The string path to the exported directory.
     """
-
+    if not checkpoint_path:
+      # TODO(b/67425018): switch to
+      #    checkpoint_path = estimator.latest_checkpoint()
+      #  as soon as contrib is cleaned up and we can thus be sure that
+      #  estimator is a tf.estimator.Estimator and not a
+      #  tf.contrib.learn.Estimator
+      checkpoint_path = saver.latest_checkpoint(estimator.model_dir)
     export_checkpoint_path, export_eval_result = best_model_selector.update(
         checkpoint_path, eval_result)
 

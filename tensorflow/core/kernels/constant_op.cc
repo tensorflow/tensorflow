@@ -247,6 +247,7 @@ REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, bool);
 // Currently we do not support filling strings and complex64 on GPU
 
 // A special GPU kernel for int32.

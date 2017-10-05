@@ -8,6 +8,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -23,6 +24,7 @@ tf_custom_op_py_library(
         "python/ops/factorization_ops.py",
         "python/ops/gmm.py",
         "python/ops/gmm_ops.py",
+        "python/ops/kmeans.py",
         "python/ops/wals.py",
     ],
     dso = [
@@ -199,6 +201,28 @@ tf_py_test(
 )
 
 # Estimators tests
+py_test(
+    name = "kmeans_test",
+    size = "medium",
+    srcs = ["python/ops/kmeans_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":factorization_py",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_benchmark",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
 tf_py_test(
     name = "wals_test",
     size = "large",

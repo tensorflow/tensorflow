@@ -487,7 +487,7 @@ Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
   auto grad = grad_inputs[0];
   auto zeros = ZerosLike(scope, grad);
   auto gx_1 = Where3(scope, comparator, grad, zeros);
-  auto gx_2 = Where3(scope, LogicalNot(scope, comparator), grad, zeros);
+  auto gx_2 = Where3(scope, comparator, zeros, grad);
   return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
 }
 

@@ -324,7 +324,9 @@ def _graph_callable_internal(func, shape_and_dtypes):
           captures):
         func_outputs = func(*func_inputs)
       outputs_list = nest.flatten(func_outputs)
-      output_shapes = [x.shape for x in outputs_list if x is not None]
+      if len(outputs_list) == 1 and outputs_list[0] is None:
+        outputs_list = []
+      output_shapes = [x.shape for x in outputs_list]
       if not all(isinstance(x, tf_ops.Tensor) for x in outputs_list):
         raise ValueError("Found non-tensor output in %s" % str(outputs_list))
       initializing_operations = tmp_graph.get_operations()
@@ -419,6 +421,9 @@ def graph_callable(shape_and_dtypes):
 
   Note that the wrapped function is not allowed to change the values of the
   variables, just use them.
+
+  The return value of the wrapped function must be one of the following:
+  (1) None,  (2) a Tensor, or (3) a possibly nested sequence of Tensors.
 
   Example:
 

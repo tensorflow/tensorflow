@@ -88,7 +88,7 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
   else:
     captured_value = captured_value[1]
   tape.record_operation("captured_value", [captured_value], [value], [],
-                        lambda x: x)
+                        lambda x: [x])
   return captured_value
 
 

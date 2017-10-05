@@ -305,6 +305,8 @@ cuda_py_test(
     additional_deps = [
         ":distributions_py",
         "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:client_testlib",
     ],
 )

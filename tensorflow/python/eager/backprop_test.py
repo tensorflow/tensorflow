@@ -255,6 +255,16 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(dx.numpy(), y.numpy())
     self.assertAllEqual(dy.numpy(), x.numpy())
 
+  def testUnconnectedNone(self):
+    v = resource_variable_ops.ResourceVariable(
+        1.0, name='testUnconnectedNone')
+
+    def f():
+      v.read_value()
+      return constant_op.constant(1.0)
+
+    self.assertEqual(backprop.implicit_grad(f)()[0][0], None)
+
   def testEmptyParamsForValueAndGradFunction(self):
     def fn(a, b):
       return a * b
