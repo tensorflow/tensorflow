@@ -129,7 +129,6 @@ cc_library(
         ":cpu_runtime_avx",
         ":cpu_runtime_neon",
         ":cpu_runtime_sse4_1",
-        ":custom_call_target_registry",
         ":disassembler",
         ":runtime_conv2d",
         ":runtime_matmul",
@@ -673,17 +672,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/service:hlo_module_config",
     ],
-)
-
-cc_library(
-    name = "custom_call_target_registry",
-    srcs = [
-        "custom_call_target_registry.cc",
-    ],
-    hdrs = [
-        "custom_call_target_registry.h",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 # -----------------------------------------------------------------------------
