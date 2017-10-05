@@ -99,7 +99,7 @@ def _prepare_backprop(target, tensor_to_op, op_to_entry, id_sources):
   o_to_e = {}  # Copy of just the bits we need from op_to_entry
   while tensor_stack:
     t = tensor_stack.pop()
-    op = tensor_to_op[t]
+    op = tensor_to_op.get(t, None)
     # op is None if the tensor is a source (i.e. was watched directly)
     if op is None or op in o_to_e:
       continue
@@ -313,15 +313,9 @@ def imperative_grad(
   for i, s in enumerate(sources):
     g = gradients.get(ops.tensor_id(s), None)
     if g is None:
-      # TODO(apassos): figure out a way to summarize why sources and targets are
-      # not connected.
-      raise ValueError("There is no sequence of operations connecting source "
-                       "tensor %s (%s) to any of the target Tensors. This is "
-                       "commonly caused by the tape not recording all "
-                       "operations in the forward pass or if by mistake a "
-                       "source was only used in non-differentiable operations."
-                       % (i, s))
-    result.append(_aggregate_grads(g))
+      result.append(None)
+    else:
+      result.append(_aggregate_grads(g))
   return result
 
 _op_attr_type_cache = {}
