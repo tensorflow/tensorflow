@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <utility>
 
 #include "cuda/include/cuda.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -176,7 +177,6 @@ __global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
     output[output_index] = ldg(input + input_index);
   }
 }
-
 
 // Use shared memory tiles to swap dimension-1 and dimension-2 of a 3D tensor,
 // where dimensions are zero-based: output[i][j][k] = input[i][k][j].
@@ -439,17 +439,22 @@ struct GreaterThan {
   constexpr bool operator()(int a, int b) const { return a > b; }
 };
 
-// Tile size posibility frontier denotes the tile size combinations that consume
-// the most computational resources constrained by
+// The performant subspace refers to a subspace of the tile size space consists
+// of all tile sizes satisfying the constraint of
 // - number of threads per SM limit,
 // - shared memory limit and
 // - some experimentally determined, type-specific constraint on the product of
 // two side lengths to increase grid-level parallelism.
+// Tile size combinations lying outside this subspace are either not possible,
+// or are slower than the alternatives
 //
-// Tile size combinations lying on this frontier would achieve the maximum
-// utilization of available resources, and combinations lying outside this
-// frontier are either not possible, or are slower than the alternatives.
-
+// Tile size posibility frontier denotes the tile size combinations in that
+// consume the most computational resources given a particular long side len.
+//
+// It is worth noting that due to the discrete nature of tile size space, the
+// frontier does not constitute the boundary of the performant subspace. For
+// this reason, there are tile size combinations that lie on the boundary of
+// this performant subspace, but not on the frontier.
 template <typename Op>
 constexpr bool TileSizePossibilityFrontierCheck(int TileLongSide,
                                                 int TileShortSide,
@@ -490,14 +495,63 @@ constexpr bool TileSizeOnFrontier(int TileLongSide, int TileShortSide,
   return TileSizePossibilityFrontierCheck(TileLongSide, TileShortSide,
                                           size_of_t, EqualTo());
 }
-constexpr bool TileSizePastFrontier(int TileLongSide, int TileShortSide,
-                                    int size_of_t) {
+constexpr bool TileSizeOutsideBoundary(int TileLongSide, int TileShortSide,
+                                       int size_of_t) {
   return TileSizePossibilityFrontierCheck(TileLongSide, TileShortSide,
                                           size_of_t, GreaterThan());
 }
+constexpr bool TileSizeOnBoundaryNotFrontier(int TileLongSide,
+                                             int TileShortSide, int size_of_t) {
+  // For a tile size combination (longside, shortside), lying the boundary
+  // implies that (longside, shortside) is on or within the frontier but
+  // (longside*2, shortside) or (longside, shortside+1) is not. With the above
+  // critereon, we simply need to use !TileSizeOnFrontier to ensure that it is
+  // not on the frontier.
+  return !TileSizeOutsideBoundary(TileLongSide, TileShortSide, size_of_t) &&
+         (TileSizeOutsideBoundary(TileLongSide * 2, TileShortSide, size_of_t) ||
+          TileSizeOutsideBoundary(TileLongSide, TileShortSide + 1,
+                                  size_of_t)) &&
+         !TileSizeOnFrontier(TileLongSide, TileShortSide, size_of_t);
+}
 
-// Recursive template function to search for the minimum tile size configuration
-// satisfying the requested tile side lengths.
+// Helper function to launch a batch narrow matirx transpose kernel.
+template <typename T, int TileLongSide, int TileShortSide>
+void LaunchBatchNarrowMatrixTransposeKernel(
+    const GPUDevice& d, int tile_size_i, int tile_size_j, int total_tiles_count,
+    const T* input, const Dimension<3>& input_dims, T* output) {
+  constexpr int NumThreads = TileLongSide;
+  if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
+    SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
+                                          TileShortSide>
+        <<<total_tiles_count, NumThreads, 0, d.stream()>>>(input, input_dims,
+                                                           output);
+  } else {
+    SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
+                                          TileLongSide>
+        <<<total_tiles_count, NumThreads, 0, d.stream()>>>(input, input_dims,
+                                                           output);
+  }
+}
+
+// Recursive template function to search, in a trial-and-error manner, for the
+// minimum tile size configuration satisfying the requested tile side lengths.
+// An important invariant of this search procedure is that for an unsatisfied
+// request, we always try doubling the long side len first, and only after
+// the request is satisfied for the long side len do we begin incrementing
+// the short side len.
+//
+// We have four specializations of this search function depending on where the
+// current tile size combination lies with respect to the frontier and boundary
+// of the performant subspace.
+// - It lies in the interior of the performant subspace. If request is not
+//   satisfied, for the next tile size combination, we can either double the
+//   long side len or increment the short side len.
+// - It lies on the boundary but not the frontier of the performant subspace.
+//   If the request is not satisfied, we can only increment the short side len.
+// - It lies on the frontier of the performant subspace. We launch the kernel
+//   without checking if the request is satisfied or not.
+// - It lies outside the performant subspace. Any invocation to this
+//   specialization will cause compile-time error.
 template <typename T, int TileLongSide, int TileShortSide,
           typename dummy = void>
 struct BatchNarrowMatrixTransposeDispatcher {
@@ -511,18 +565,9 @@ struct BatchNarrowMatrixTransposeDispatcher {
                              min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
-      constexpr int NumThreads = TileLongSide;
-      if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
-        SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
-                                              TileShortSide>
-            <<<total_tiles_count, NumThreads, 0, d.stream()>>>(
-                input, input_dims, output);
-      } else {
-        SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
-                                              TileLongSide>
-            <<<total_tiles_count, NumThreads, 0, d.stream()>>>(
-                input, input_dims, output);
-      }
+      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+          d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
+          output);
     }
 
     // If the execution reaches here, then the kernel was not launched; we then
@@ -548,6 +593,37 @@ struct BatchNarrowMatrixTransposeDispatcher {
 template <typename T, int TileLongSide, int TileShortSide>
 struct BatchNarrowMatrixTransposeDispatcher<
     T, TileLongSide, TileShortSide,
+    typename std::enable_if<TileSizeOnBoundaryNotFrontier(
+                                TileLongSide, TileShortSide, sizeof(T)),
+                            void>::type> {
+  static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
+                   int total_tiles_count, const T* input,
+                   const Dimension<3>& input_dims, T* output) {
+    static_assert(
+        (TileLongSide & (TileLongSide - 1)) == 0,
+        "The length of the longer side of the tile is always a power of 2.");
+    bool request_satisfied = max(tile_size_i, tile_size_j) <= TileLongSide &&
+                             min(tile_size_i, tile_size_j) <= TileShortSide;
+
+    if (request_satisfied) {
+      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+          d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
+          output);
+    }
+
+    // If the execution reaches here, then the kernel was not launched; since
+    // we are on the boundary of the performant subspace but not on the
+    // frontier, we increment the short dimension and try again.
+    BatchNarrowMatrixTransposeDispatcher<
+        T, TileLongSide, TileShortSide + 1>::DoIt(d, tile_size_i, tile_size_j,
+                                                  total_tiles_count, input,
+                                                  input_dims, output);
+  }
+};
+
+template <typename T, int TileLongSide, int TileShortSide>
+struct BatchNarrowMatrixTransposeDispatcher<
+    T, TileLongSide, TileShortSide,
     typename std::enable_if<TileSizeOnFrontier(TileLongSide, TileShortSide,
                                                sizeof(T)),
                             void>::type> {
@@ -558,35 +634,18 @@ struct BatchNarrowMatrixTransposeDispatcher<
         (TileLongSide & (TileLongSide - 1)) == 0,
         "The length of the longer side of the tile is always a power of 2.");
 
-    constexpr int NumThreads = TileLongSide;
-    if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
-      SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
-                                            TileShortSide>
-          <<<total_tiles_count, NumThreads, 0, d.stream()>>>(input, input_dims,
-                                                             output);
-    } else {
-      SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
-                                            TileLongSide>
-          <<<total_tiles_count, NumThreads, 0, d.stream()>>>(input, input_dims,
-                                                             output);
-    }
+    LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+        d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
+        output);
   }
 };
 
 template <typename T, int TileLongSide, int TileShortSide>
 struct BatchNarrowMatrixTransposeDispatcher<
     T, TileLongSide, TileShortSide,
-    typename std::enable_if<TileSizePastFrontier(TileLongSide, TileShortSide,
-                                                 sizeof(T)),
-                            void>::type> {
-  static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
-                   int total_tiles_count, const T* input,
-                   const Dimension<3>& input_dims, T* output) {
-    assert(false &&
-           "BatchNarrowMatrixTransposeDispatcher has requested an unexpected "
-           "launch configuration. ");
-  }
-};
+    typename std::enable_if<TileSizeOutsideBoundary(TileLongSide, TileShortSide,
+                                                    sizeof(T)),
+                            void>::type> {};
 
 // This function tries to recover, in a brute force way, the frontier defined in
 // TileSizePossibilityFrontierCheck as a vector of tile size combinations.
@@ -631,6 +690,10 @@ const std::vector<std::pair<int, int>>& GetTileSizesFrontier() {
   return *frontier;
 }
 
+// Helper structs to help determine which data types to use given the size of
+// the matrix data type. For each size of the data type, we only compile one
+// kernel of that size and every data type sharing the same size will also share
+// the same kernel (unless data alignment issues forbids so).
 template <int ElemBytes>
 struct TransposeElemType;
 template <>
@@ -661,8 +724,8 @@ template <typename T>
 void SwapDimension1And2InTensor3WithNarrowMatrices(
     const GPUDevice& d, const T* input, const Dimension<3>& input_dims,
     T* output, const int kMinDimensionToUseTiles) {
-  // Define available tile sizes here for each size of data type supported:
-  auto tile_spec = GetTileSizesFrontier<sizeof(T)>();
+  // Get available tile sizes here for the data type requested:
+  const auto& tile_spec = GetTileSizesFrontier<sizeof(T)>();
 
   int tile_long_side_len = 0;
   int tile_short_side_len = 0;
