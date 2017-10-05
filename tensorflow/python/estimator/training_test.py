@@ -705,7 +705,7 @@ class TrainingExecutorRunMasterTest(test.TestCase):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_est.evaluate = lambda *args, **kw: {ops.GraphKeys.GLOBAL_STEP: 123}
     mock_est.config = self._run_config
-    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec, max_steps=123)
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec, exporters=[])
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec,
@@ -750,7 +750,7 @@ class TrainingExecutorRunMasterTest(test.TestCase):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
     mock_est.evaluate = lambda *args, **kw: {ops.GraphKeys.GLOBAL_STEP: 123}
     mock_est.config = self._run_config
-    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec, max_steps=123)
     mock_eval_spec = test.mock.Mock(spec=training.EvalSpec, exporters=[])
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec,
