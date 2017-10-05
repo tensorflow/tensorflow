@@ -18,10 +18,14 @@ limitations under the License.
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#if !defined(__APPLE__)
 #include <sys/sendfile.h>
+#endif
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -283,7 +287,7 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
   if (stat(translated_src.c_str(), &sbuf) != 0) {
     return IOError(src, errno);
   }
-  int src_fd = open64(translated_src.c_str(), O_RDONLY);
+  int src_fd = open(translated_src.c_str(), O_RDONLY);
   if (src_fd < 0) {
     return IOError(src, errno);
   }
@@ -293,18 +297,24 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
   // S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH:
   //   Create the file with permission of 0666
   int target_fd =
-      open64(translated_target.c_str(), O_WRONLY | O_CREAT,
-             S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+      open(translated_target.c_str(), O_WRONLY | O_CREAT,
+           S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
   if (target_fd < 0) {
     close(src_fd);
     return IOError(target, errno);
   }
-  ssize_t rc = 0;
+  int rc = 0;
   off_t offset = 0;
   while (offset < sbuf.st_size) {
     size_t chunk = (sbuf.st_size - offset) < SSIZE_MAX ? (sbuf.st_size - offset)
                                                        : SSIZE_MAX;
+#if !defined(__APPLE__)
     rc = sendfile(target_fd, src_fd, &offset, chunk);
+#else
+    off_t len = chunk;
+    rc = sendfile(src_fd, target_fd, offset, &len, NULL, 0);
+    offset += len;
+#endif
     if (rc <= 0) {
       break;
     }

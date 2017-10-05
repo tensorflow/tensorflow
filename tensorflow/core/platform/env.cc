@@ -374,6 +374,32 @@ Status WriteStringToFile(Env* env, const string& fname,
   return s;
 }
 
+Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
+                const string& target) {
+  uint64 size;
+  TF_RETURN_IF_ERROR(src_fs->GetFileSize(src, &size));
+
+  std::unique_ptr<RandomAccessFile> src_file;
+  TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
+
+  std::unique_ptr<WritableFile> target_file;
+  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
+
+  uint64 offset = 0;
+  while (offset < size) {
+    char scratch[kCopyFileBufferSize];
+    StringPiece result;
+    size_t bytes_to_read =
+        offset + sizeof(scratch) < size ? sizeof(scratch) : size - offset;
+    TF_RETURN_IF_ERROR(src_file->Read(offset, bytes_to_read, &result, scratch));
+
+    TF_RETURN_IF_ERROR(target_file->Append(result));
+
+    offset += bytes_to_read;
+  }
+  return target_file->Close();
+}
+
 // A ZeroCopyInputStream on a RandomAccessFile.
 namespace {
 class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
@@ -411,32 +437,6 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 };
 
 }  // namespace
-
-Status CopyFile(FileSystem* src_fs, const string& src, FileSystem* target_fs,
-                const string& target) {
-  uint64 size;
-  TF_RETURN_IF_ERROR(src_fs->GetFileSize(src, &size));
-
-  std::unique_ptr<RandomAccessFile> src_file;
-  TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
-
-  std::unique_ptr<WritableFile> target_file;
-  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
-
-  uint64 offset = 0;
-  while (offset < size) {
-    char scratch[kCopyFileBufferSize];
-    StringPiece result;
-    size_t bytes_to_read =
-        offset + sizeof(scratch) < size ? sizeof(scratch) : size - offset;
-    TF_RETURN_IF_ERROR(src_file->Read(offset, bytes_to_read, &result, scratch));
-
-    TF_RETURN_IF_ERROR(target_file->Append(result));
-
-    offset += bytes_to_read;
-  }
-  return target_file->Close();
-}
 
 Status WriteBinaryProto(Env* env, const string& fname,
                         const ::tensorflow::protobuf::MessageLite& proto) {
