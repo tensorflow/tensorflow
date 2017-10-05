@@ -40,7 +40,8 @@ class Exporter(object):
     pass
 
   @abc.abstractmethod
-  def export(self, estimator, export_path, checkpoint_path, eval_result):
+  def export(self, estimator, export_path, checkpoint_path, eval_result,
+             is_the_final_export):
     """Exports the given `Estimator` to a specific format.
 
     Args:
@@ -48,6 +49,12 @@ class Exporter(object):
       export_path: A string containing a directory where to write the export.
       checkpoint_path: The checkpoint path to export.
       eval_result: The output of `Estimator.evaluate` on this checkpoint.
+      is_the_final_export: This boolean is True when this is an export in the
+        end of training.  It is False for the intermediate exports during
+        the training.
+        When passing `Exporter` to `tf.estimator.train_and_evaluate`
+        `is_the_final_export` is always False if `TrainSpec.max_steps` is
+        `None`.
 
     Returns:
       The string path to the exported directory or `None` if export is skipped.
@@ -55,10 +62,115 @@ class Exporter(object):
     pass
 
 
-class LatestExporter(Exporter):
+class _SavedModelExporter(Exporter):
   """This class exports the serving graph and checkpoints.
 
-  In addition, the class also garbage collects stale exports.
+     This class provides a basic exporting functionality and serves as a
+     foundation for specialized `Exporter`s.
+  """
+
+  def __init__(self,
+               name,
+               serving_input_fn,
+               assets_extra=None,
+               as_text=False):
+    """Create an `Exporter` to use with `tf.estimator.EvalSpec`.
+
+    Args:
+      name: unique name of this `Exporter` that is going to be used in the
+        export path.
+      serving_input_fn: a function that takes no arguments and returns an
+        `ServingInputReceiver`.
+      assets_extra: An optional dict specifying how to populate the assets.extra
+        directory within the exported SavedModel.  Each key should give the
+        destination path (including the filename) relative to the assets.extra
+        directory.  The corresponding value gives the full path of the source
+        file to be copied.  For example, the simple case of copying a single
+        file without renaming it is specified as
+        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+      as_text: whether to write the SavedModel proto in text format. Defaults to
+        `False`.
+
+    Raises:
+      ValueError: if any arguments is invalid.
+    """
+    self._name = name
+    self._serving_input_fn = serving_input_fn
+    self._assets_extra = assets_extra
+    self._as_text = as_text
+
+  @property
+  def name(self):
+    return self._name
+
+  def export(self, estimator, export_path, checkpoint_path, eval_result,
+             is_the_final_export):
+    del is_the_final_export
+
+    export_result = estimator.export_savedmodel(
+        export_path,
+        self._serving_input_fn,
+        assets_extra=self._assets_extra,
+        as_text=self._as_text,
+        checkpoint_path=checkpoint_path)
+
+    return export_result
+
+
+class FinalExporter(Exporter):
+  """This class exports the serving graph and checkpoints in the end.
+
+  This class performs a single export in the end of training.
+  """
+
+  def __init__(self,
+               name,
+               serving_input_fn,
+               assets_extra=None,
+               as_text=False):
+    """Create an `Exporter` to use with `tf.estimator.EvalSpec`.
+
+    Args:
+      name: unique name of this `Exporter` that is going to be used in the
+        export path.
+      serving_input_fn: a function that takes no arguments and returns an
+        `ServingInputReceiver`.
+      assets_extra: An optional dict specifying how to populate the assets.extra
+        directory within the exported SavedModel.  Each key should give the
+        destination path (including the filename) relative to the assets.extra
+        directory.  The corresponding value gives the full path of the source
+        file to be copied.  For example, the simple case of copying a single
+        file without renaming it is specified as
+        `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+      as_text: whether to write the SavedModel proto in text format. Defaults to
+        `False`.
+
+    Raises:
+      ValueError: if any arguments is invalid.
+    """
+    self._saved_model_exporter = _SavedModelExporter(name, serving_input_fn,
+                                                     assets_extra, as_text)
+
+  @property
+  def name(self):
+    return self._saved_model_exporter.name
+
+  def export(self, estimator, export_path, checkpoint_path, eval_result,
+             is_the_final_export):
+    if not is_the_final_export:
+      return None
+
+    tf_logging.info('Performing the final export in the end of training.')
+
+    return self._saved_model_exporter.export(estimator, export_path,
+                                             checkpoint_path, eval_result,
+                                             is_the_final_export)
+
+
+class LatestExporter(Exporter):
+  """This class regularly exports the serving graph and checkpoints.
+
+  In addition to exporting, this class also garbage collects stale exports.
   """
 
   def __init__(self,
@@ -90,10 +202,8 @@ class LatestExporter(Exporter):
     Raises:
       ValueError: if any arguments is invalid.
     """
-    self._name = name
-    self._serving_input_fn = serving_input_fn
-    self._assets_extra = assets_extra
-    self._as_text = as_text
+    self._saved_model_exporter = _SavedModelExporter(name, serving_input_fn,
+                                                     assets_extra, as_text)
     self._exports_to_keep = exports_to_keep
     if exports_to_keep is not None and exports_to_keep <= 0:
       raise ValueError(
@@ -101,15 +211,13 @@ class LatestExporter(Exporter):
 
   @property
   def name(self):
-    return self._name
+    return self._saved_model_exporter.name
 
-  def export(self, estimator, export_path, checkpoint_path, eval_result):
-    export_result = estimator.export_savedmodel(
-        export_path,
-        self._serving_input_fn,
-        assets_extra=self._assets_extra,
-        as_text=self._as_text,
-        checkpoint_path=checkpoint_path)
+  def export(self, estimator, export_path, checkpoint_path, eval_result,
+             is_the_final_export):
+    export_result = self._saved_model_exporter.export(
+        estimator, export_path, checkpoint_path, eval_result,
+        is_the_final_export)
 
     self._garbage_collect_exports(export_path)
     return export_result

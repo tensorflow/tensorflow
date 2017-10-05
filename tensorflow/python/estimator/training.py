@@ -519,8 +519,11 @@ class _TrainingExecutor(object):
     class NewCheckpointListener(
         basic_session_run_hooks.CheckpointSaverListener):
 
-      def __init__(self, estimator, eval_spec):
-        self._evaluator = _TrainingExecutor._Evaluator(estimator, eval_spec)  # pylint: disable=protected-access
+      def __init__(self, estimator, eval_spec, max_training_steps):
+        # pylint: disable=protected-access
+        self._evaluator = _TrainingExecutor._Evaluator(estimator, eval_spec,
+                                                       max_training_steps)
+        # pylint: enable=protected-access
 
       def after_save(self, session, global_step_value):
         del session, global_step_value
@@ -528,8 +531,10 @@ class _TrainingExecutor(object):
 
     # When the underlying `Estimator` object saves a new checkpoint, we would
     # like this callback to be called so that evaluation and export can trigger.
-    saving_listeners = [NewCheckpointListener(self._estimator, self._eval_spec)]
-
+    saving_listeners = [
+        NewCheckpointListener(self._estimator, self._eval_spec,
+                              self._train_spec.max_steps)
+    ]
     return self._start_distributed_training(saving_listeners=saving_listeners)
 
   def run_evaluator(self):
@@ -566,7 +571,8 @@ class _TrainingExecutor(object):
                  'after {} secs (eval_spec.throttle_secs) or training is '
                  'finished.'.format(self._eval_spec.throttle_secs))
 
-    evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec)
+    evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec,
+                                             self._train_spec.max_steps)
 
     while True:
       self._estimator.train(
@@ -636,7 +642,8 @@ class _TrainingExecutor(object):
       time.sleep(start_delay_secs)
 
     latest_eval_result = None
-    evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec)
+    evaluator = _TrainingExecutor._Evaluator(self._estimator, self._eval_spec,
+                                             self._train_spec.max_steps)
 
     while True:
       if latest_eval_result:
@@ -663,11 +670,12 @@ class _TrainingExecutor(object):
   class _Evaluator(object):
     """A helper class to call `Estimator.evaluate` and export model."""
 
-    def __init__(self, estimator, eval_spec):
+    def __init__(self, estimator, eval_spec, max_training_steps):
       self._estimator = estimator
       self._eval_spec = eval_spec
       self._previous_ckpt_path = None
       self._last_warning_time = 0
+      self._max_training_steps = max_training_steps
 
     def evaluate_and_export(self):
       """Evaluate and (maybe) export the current model.
@@ -712,7 +720,14 @@ class _TrainingExecutor(object):
             'Internal error: `Estimator.evaluate` result should have '
             '`global_step` in result. Given {}'.format(eval_result))
 
-      self._export_eval_result(eval_result, latest_ckpt_path)
+      # TODO(isaprykin):  There is a potential race condition here in the
+      #  distributed setting.  The worker job that performs training
+      #  might stop at a later global step value than the evalutor job.
+      is_the_final_export = (eval_result[ops.GraphKeys.GLOBAL_STEP] >=
+                             self._max_training_steps
+                             if self._max_training_steps else False)
+      self._export_eval_result(eval_result, latest_ckpt_path,
+                               is_the_final_export)
 
       self._last_warning_time = 0
       self._previous_ckpt_path = latest_ckpt_path
@@ -725,7 +740,8 @@ class _TrainingExecutor(object):
         logging.warning(message)
         self._last_warning_time = current_time
 
-    def _export_eval_result(self, eval_result, checkpoint_path):
+    def _export_eval_result(self, eval_result, checkpoint_path,
+                            is_the_final_export):
       """Export `eval_result` according to exporters in `EvalSpec`."""
       export_dir_base = os.path.join(
           compat.as_str_any(self._estimator.model_dir),
@@ -738,4 +754,5 @@ class _TrainingExecutor(object):
                 compat.as_str_any(export_dir_base),
                 compat.as_str_any(exporter.name)),
             checkpoint_path=checkpoint_path,
-            eval_result=eval_result)
+            eval_result=eval_result,
+            is_the_final_export=is_the_final_export)

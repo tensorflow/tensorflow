@@ -13,6 +13,6 @@ tf_class {
   }
   member_method {
     name: "export"
-    argspec: "args=[\'self\', \'estimator\', \'export_path\', \'checkpoint_path\', \'eval_result\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'estimator\', \'export_path\', \'checkpoint_path\', \'eval_result\', \'is_the_final_export\'], varargs=None, keywords=None, defaults=None"
   }
 }

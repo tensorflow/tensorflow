@@ -33,6 +33,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FinalExporter"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LatestExporter"
     mtype: "<type \'type\'>"
   }

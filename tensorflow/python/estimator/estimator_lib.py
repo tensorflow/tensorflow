@@ -30,6 +30,7 @@ from tensorflow.python.estimator.canned.parsing_utils import regressor_parse_exa
 from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.export import export_lib as export
 from tensorflow.python.estimator.exporter import Exporter
+from tensorflow.python.estimator.exporter import FinalExporter
 from tensorflow.python.estimator.exporter import LatestExporter
 from tensorflow.python.estimator.inputs import inputs
 from tensorflow.python.estimator.model_fn import EstimatorSpec
@@ -70,6 +71,7 @@ _allowed_symbols = [
     'TrainSpec',
     'Exporter',
     'LatestExporter',
+    'FinalExporter',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
