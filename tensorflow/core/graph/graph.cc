@@ -399,24 +399,13 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   return e;
 }
 
-void Graph::RemoveEdge(const Edge* e, bool update_node_def) {
+void Graph::RemoveEdge(const Edge* e) {
   TF_DCHECK_OK(IsValidNode(e->src_)) << e->src_->DebugString();
   TF_DCHECK_OK(IsValidNode(e->dst_)) << e->dst_->DebugString();
   CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
   CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
   CHECK_GT(num_edges_, 0);
-
-  if (update_node_def && !e->src_->IsSource() && !e->dst_->IsSink()) {
-    e->dst_->MaybeCopyOnWrite();
-    auto* inputs = e->dst_->props_->node_def.mutable_input();
-    for (auto it = inputs->begin(); it != inputs->end(); ++it) {
-      if (*it == e->src_->name()) {
-        inputs->erase(it);
-        break;
-      }
-    }
-  }
 
   edges_[e->id_] = nullptr;
 
@@ -437,6 +426,20 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
     dest->props_->node_def.add_input(strings::StrCat("^", source->name()));
   }
   return AddEdge(source, kControlSlot, dest, kControlSlot);
+}
+
+void Graph::RemoveControlEdge(const Edge* e, bool update_node_def) {
+  if (update_node_def && !e->src_->IsSource() && !e->dst_->IsSink()) {
+    e->dst_->MaybeCopyOnWrite();
+    auto* inputs = e->dst_->props_->node_def.mutable_input();
+    for (auto it = inputs->begin(); it != inputs->end(); ++it) {
+      if (*it == strings::StrCat("^", e->src_->name())) {
+        inputs->erase(it);
+        break;
+      }
+    }
+  }
+  RemoveEdge(e);
 }
 
 Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
