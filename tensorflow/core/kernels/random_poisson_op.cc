@@ -58,25 +58,8 @@ static constexpr int kReservedSamplesPerOutput = 256;
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// We will compute half-precision Poisson samples with float precision
-// intermediate calculations.
 template <typename T>
 struct PoissonComputeType {
-  typedef T ComputeType;
-};
-
-template <>
-struct PoissonComputeType<Eigen::half> {
-  typedef float ComputeType;
-};
-
-template <>
-struct PoissonComputeType<int32> {
-  typedef double ComputeType;
-};
-
-template <>
-struct PoissonComputeType<int64> {
   typedef double ComputeType;
 };
 
