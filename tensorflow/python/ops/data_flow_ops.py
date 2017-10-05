@@ -1685,9 +1685,10 @@ class StagingArea(BaseStagingArea):
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
 
+      if not isinstance(values, (list, tuple)):
+          values = [values]
       # Hard-code indices for this staging area
-      indices = (list(six.moves.range(len(values)))
-                  if isinstance(values, (list, tuple)) else None)
+      indices = list(six.moves.range(len(values)))
       vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):
