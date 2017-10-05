@@ -583,6 +583,7 @@ class ScopedConvolutionDescriptor {
     }
     const auto& strides64 = convolution_descriptor.strides();
     const auto& padding64 = convolution_descriptor.padding();
+    const auto& dilations64 = convolution_descriptor.dilations();
     if (convolution_descriptor.pad_alignment() ==
         dnn::PadAlignment::kTensorFlowPadding) {
       LOG(ERROR) << "TensorFlow padding alignment is not supported.";
@@ -591,15 +592,19 @@ class ScopedConvolutionDescriptor {
     // cuDNN requires arrays of ints.
     std::vector<int> strides(convolution_descriptor.ndims());
     std::vector<int> padding(convolution_descriptor.ndims());
+    std::vector<int> dilations(convolution_descriptor.ndims());
     std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
                    &CheckedNarrowing<int64, int>);
     std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
                    &CheckedNarrowing<int64, int>);
-    std::vector<int> upscale(convolution_descriptor.ndims(), 1);
+    // TODO(yangzihao): Test with negative dilation to make sure that cudnn
+    // doesn't crash.
+    std::transform(dilations64.cbegin(), dilations64.cend(), dilations.begin(),
+                   &CheckedNarrowing<int64, int>);
 
     status = wrap::cudnnSetConvolutionNdDescriptor(
         parent_, handle_, convolution_descriptor.ndims(), padding.data(),
-        strides.data(), upscale.data(),
+        strides.data(), dilations.data(),
         // NOTE(keveman): cuDNN supports convolution and cross correlation.
         // However, almost all the use cases do cross correlation, so just
         // hard coding it here.
@@ -2982,7 +2987,6 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
       if (memory_limit_bytes < 0) {
         memory_limit_bytes = 0;
       }
-
       cudnnConvolutionBwdDataAlgo_t algo_to_use;
       cudnnStatus_t status = wrap::cudnnGetConvolutionBackwardDataAlgorithm(
           parent_, ToHandle(dnn_handle_),
@@ -2995,7 +2999,7 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
           /*algo=*/&algo_to_use);
       CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Unable to find a suitable "
                                                 "algorithm for doing backward "
-                                                "filter convolution";
+                                                "data convolution";
       return algo_to_use;
     };
 
