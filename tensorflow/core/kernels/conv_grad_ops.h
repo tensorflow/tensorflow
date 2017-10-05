@@ -248,7 +248,7 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
 Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const std::vector<int32>& dilations, const std::vector<int32>& strides,
+    const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
     Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);
 }  // namespace tensorflow
 
