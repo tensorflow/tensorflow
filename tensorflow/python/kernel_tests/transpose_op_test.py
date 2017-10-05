@@ -229,6 +229,28 @@ class TransposeTest(test.TestCase):
         self.assertAllEqual(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, y)
 
+  def test3D021GPU(self):
+    # If no GPU available, skip the test
+    if not test.is_gpu_available(cuda_only=True):
+      return
+
+    datatypes = [np.int8, np.float16, np.float32, np.float64, np.complex128]
+    normal_tiled_shapes = [[4, 120, 120], [4, 130, 150], [4, 180, 250]]
+    narrow_tiled_shapes = [[4, 120, 5], [4, 130, 5], [4, 5, 160]]
+    simple_shapes = [[4, 80, 5], [4, 70, 5], [4, 5, 90]]
+    shapes = normal_tiled_shapes + narrow_tiled_shapes + simple_shapes
+    for datatype in datatypes:
+      for input_shape in shapes:
+        total_size = np.prod(input_shape)
+        inp = np.arange(1, total_size + 1, dtype=datatype).reshape(input_shape)
+        np_ans = self._np_transpose(inp, [0, 2, 1])
+        with self.test_session(use_gpu=True):
+          inx = ops.convert_to_tensor(inp)
+          y = array_ops.transpose(inx, [0, 2, 1])
+          tf_ans = y.eval()
+        self.assertAllEqual(np_ans, tf_ans)
+        self.assertShapeEqual(np_ans, y)
+
   def testNop(self):
     self._compareCpu(np.arange(0, 6).reshape([3, 2]).astype(np.float32), [0, 1])
 
