@@ -297,6 +297,108 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
   }
 }
 
+// Tests functionalizing OneLoopVar where the loop value is not used post the
+// loop.
+// Graph:
+// x = array_ops.placeholder(dtypes.int32)
+// control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [x])
+TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
+  Graph graph(OpRegistry::Global());
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+
+    auto dummy = ops::Placeholder(scope.WithOpName("Dummy"), DT_INT32);
+
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+    auto enter =
+        ops::internal::Enter(scope.WithOpName("while/Enter"), source, "aloop");
+    auto merge = ops::Merge(scope.WithOpName("while/Merge"),
+                            std::initializer_list<Input>{enter, dummy});
+    auto ten = ops::Const<int32>(
+        scope.WithOpName("while/Less/y").WithControlDependencies(merge.output),
+        10);
+    auto less = ops::Less(scope.WithOpName("while/Less"), merge.output, ten);
+    auto loop_cond = ops::LoopCond(scope.WithOpName("while/LoopCond"), less);
+    auto switch_ =
+        ops::Switch(scope.WithOpName("while/Switch"), merge.output, loop_cond);
+    auto identity =
+        ops::Identity(scope.WithOpName("while/Identity"), switch_.output_true);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
+    auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
+    auto next_iteration =
+        ops::NextIteration(scope.WithOpName("while/NextIteration"), add);
+
+    // Remove the dummy node and add the loop backedge.
+    scope.graph()->RemoveNode(dummy.node());
+    scope.graph()->AddEdge(next_iteration.node(), 0, merge.output.node(), 1);
+
+    TF_EXPECT_OK(scope.ToGraph(&graph));
+  }
+
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  TF_ASSERT_OK(FunctionalizeControlFlow(&graph, &library));
+
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+
+  NameAttrList cond_fn, body_fn;
+  TF_EXPECT_OK(FindWhileCondAndBody(graph_def, &cond_fn, &body_fn));
+
+  // Outer graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+    auto while_op =
+        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
+                      std::initializer_list<Input>{source}, cond_fn, body_fn);
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+    TF_EXPECT_GRAPH_EQ(expected, graph_def);
+  }
+
+  // Condition graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    auto ten = ops::Const<int32>(
+        scope.WithOpName("while/Less/y").WithControlDependencies(arg), 10);
+    auto less = ops::Less(scope.WithOpName("while/Less"), arg, ten);
+    auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), less, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(cond_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.arg_types);
+    EXPECT_EQ(DataTypeVector{DT_BOOL}, result.ret_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+
+  // Body graph.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
+    auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
+    auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(body_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.arg_types);
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+}
+
 // Graph:
 // x = array_ops.placeholder(dtypes.int32)
 // y = array_ops.placeholder(dtypes.int32)

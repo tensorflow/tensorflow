@@ -402,10 +402,6 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
           arg.exit = edge->dst();
         }
       }
-      if (arg.exit == nullptr) {
-        return errors::InvalidArgument("Missing Exit successor to ",
-                                       arg.switch_node->name());
-      }
     }
   }
 
@@ -470,16 +466,19 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
     }
 
     if (!arg.is_loop_invariant) {
-      std::vector<const Edge*> edges(arg.exit->out_edges().begin(),
-                                     arg.exit->out_edges().end());
-      for (const Edge* edge : edges) {
-        Node* dst = edge->dst();
-        int dst_input = edge->dst_input();
-        graph->RemoveEdge(edge);
+      // Add output edges if the output of the loop is consumed.
+      if (arg.exit != nullptr) {
+        std::vector<const Edge*> edges(arg.exit->out_edges().begin(),
+                                       arg.exit->out_edges().end());
+        for (const Edge* edge : edges) {
+          Node* dst = edge->dst();
+          int dst_input = edge->dst_input();
+          graph->RemoveEdge(edge);
 
-        int src_output =
-            dst_input == Graph::kControlSlot ? Graph::kControlSlot : i;
-        graph->AddEdge(while_node, src_output, dst, dst_input);
+          int src_output =
+              dst_input == Graph::kControlSlot ? Graph::kControlSlot : i;
+          graph->AddEdge(while_node, src_output, dst, dst_input);
+        }
       }
     }
   }
