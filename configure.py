@@ -988,9 +988,9 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
   set_build_var(environ_cp, 'TF_NEED_GCP', 'Google Cloud Platform',
-                'with_gcp_support', False, 'gcp')
+                'with_gcp_support', True, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
-                'with_hdfs_support', False, 'hdfs')
+                'with_hdfs_support', True, 'hdfs')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
