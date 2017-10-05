@@ -24,6 +24,7 @@ load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
@@ -503,6 +504,7 @@ py_library(
         ":common_shapes",
         ":cpp_shape_inference_proto_py",
         ":errors",
+        ":framework_fast_tensor_util",
         ":framework_for_generated_wrappers",
         ":function",
         ":graph_util",
@@ -732,8 +734,6 @@ py_library(
         ":pywrap_tensorflow",
     ],
 )
-
-# load("//third_party/py/cython:build_defs.bzl", "pyx_library")
 
 py_library(
     name = "extra_py_tests_deps",
@@ -4357,4 +4357,11 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
     ],
+)
+
+pyx_library(
+    name = "framework_fast_tensor_util",
+    srcs = ["framework/fast_tensor_util.pyx"],
+    py_deps = ["//tensorflow/python:util"],
+    deps = ["//third_party/py/numpy:headers"],
 )
