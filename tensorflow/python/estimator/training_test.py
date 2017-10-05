@@ -19,19 +19,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
+import glob
 import json
+import os
 import random
+import shutil
+import tempfile
 import time
+
+import numpy as np
 
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import exporter as exporter_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator import training
+from tensorflow.python.estimator.canned import dnn
+from tensorflow.python.estimator.canned import prediction_keys
+from tensorflow.python.estimator.export import export as export_lib
+from tensorflow.python.estimator.inputs import numpy_io
+from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary_iterator
+from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
@@ -1228,6 +1241,136 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     with self.assertRaisesRegexp(RuntimeError,
                                  _MISSING_GLOBAL_STEP_IN_EVAL_RESULT_ERR):
       executor.run_local()
+
+
+class TrainAndEvaluateIntegrationTest(test.TestCase):
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def _as_label(self, data_in_float):
+    return np.rint(data_in_float).astype(np.int64)
+
+  def _get_exporter(self, name, fc):
+    feature_spec = feature_column.make_parse_example_spec(fc)
+    serving_input_receiver_fn = (
+        export_lib.build_parsing_serving_input_receiver_fn(feature_spec))
+    return exporter_lib.LatestExporter(
+        name, serving_input_fn=serving_input_receiver_fn)
+
+  def _extract_loss_and_global_step(self, event_folder):
+    """Returns the loss and global step in last event."""
+    event_paths = glob.glob(os.path.join(event_folder, 'events*'))
+
+    loss = None
+    global_step_count = None
+
+    for e in summary_iterator.summary_iterator(event_paths[-1]):
+      current_loss = None
+      for v in e.summary.value:
+        if v.tag == 'loss':
+          current_loss = v.simple_value
+
+      # If loss is not found, global step is meaningless.
+      if current_loss is None:
+        continue
+
+      current_global_step = e.step
+      if global_step_count is None or current_global_step > global_step_count:
+        global_step_count = current_global_step
+        loss = current_loss
+
+    return (loss, global_step_count)
+
+  def test_complete_flow_with_non_distributed_configuration(self):
+    n_classes = 3
+    input_dimension = 2
+    batch_size = 10
+
+    eval_name = 'foo'
+    exporter_name = 'saved_model_exporter'
+
+    # max_steps should be larger than save_summary_steps
+    max_steps = 10
+    save_summary_steps = 2
+
+    data = np.linspace(
+        0., n_classes - 1., batch_size * input_dimension, dtype=np.float32)
+    x_data = data.reshape(batch_size, input_dimension)
+    y_data = np.reshape(self._as_label(data[:batch_size]), (batch_size, 1))
+
+    # learn y = x
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'x': x_data},
+        y=y_data,
+        batch_size=batch_size,
+        num_epochs=None,
+        shuffle=True)
+
+    eval_input_fn = numpy_io.numpy_input_fn(
+        x={'x': x_data},
+        y=y_data,
+        batch_size=batch_size,
+        num_epochs=1,
+        shuffle=False)
+
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x={'x': x_data},
+        batch_size=batch_size,
+        shuffle=False)
+
+    feature_columns = [
+        feature_column.numeric_column('x', shape=(input_dimension,))]
+
+    est = dnn.DNNClassifier(
+        hidden_units=(2, 2),
+        feature_columns=feature_columns,
+        n_classes=n_classes,
+        config=run_config_lib.RunConfig(save_summary_steps=save_summary_steps),
+        model_dir=self._model_dir)
+
+    train_spec = training.TrainSpec(input_fn=train_input_fn,
+                                    max_steps=max_steps)
+
+    eval_spec = training.EvalSpec(
+        name=eval_name, input_fn=eval_input_fn, steps=None,
+        exporters=self._get_exporter(exporter_name, feature_columns),
+        throttle_secs=2)
+
+    training.train_and_evaluate(est, train_spec, eval_spec)
+
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
+
+    # Examine the training events. Use a range to check global step to avoid
+    # flakyness due to global step race condition.
+    training_loss, training_global_step = self._extract_loss_and_global_step(
+        est.model_dir)
+    self.assertIsNotNone(training_loss)
+    self.assertTrue(
+        max_steps - save_summary_steps < training_global_step <= max_steps)
+
+    # Examine the eval events. The global step should be accurate.
+    eval_loss, eval_global_step = self._extract_loss_and_global_step(
+        event_folder=os.path.join(est.model_dir, 'eval_' + eval_name))
+    self.assertIsNotNone(eval_loss)
+    self.assertEqual(max_steps, eval_global_step)
+
+    # Examine the export folder.
+    export_dir = os.path.join(os.path.join(est.model_dir, 'export'),
+                              exporter_name)
+    self.assertTrue(gfile.Exists(export_dir))
+
+    # Examine the ckpt for predict.
+    predicted_proba = np.array([
+        x[prediction_keys.PredictionKeys.PROBABILITIES]
+        for x in est.predict(predict_input_fn)
+    ])
+    self.assertAllEqual((batch_size, n_classes), predicted_proba.shape)
 
 
 if __name__ == '__main__':
