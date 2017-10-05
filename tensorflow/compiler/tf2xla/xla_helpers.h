@@ -48,6 +48,11 @@ class XlaHelpers {
   static xla::ComputationDataHandle One(xla::ComputationBuilder* b,
                                         DataType data_type);
 
+  // Returns the machine epsilon for floating-point type `data_type`, i.e.,
+  // the difference between 1.0 and the next representable value.
+  static xla::ComputationDataHandle Epsilon(xla::ComputationBuilder* b,
+                                            DataType data_type);
+
   // Returns a handle representing the given value of an integer scalar
   // element of data_type.
   // Note that unlike One and Zero, does not work on boolean types.
@@ -67,6 +72,10 @@ class XlaHelpers {
                                gtl::ArraySlice<int64> shape,
                                xla::Literal* output);
 
+  // Sets *iota to a rank 1 tensor with values [0, 1, 2, ...] of `dtype`.
+  static Status Iota(xla::ComputationBuilder* builder, DataType dtype,
+                     int64 size, xla::ComputationDataHandle* iota);
+
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
   // axis. `indices_shape` is the shape of `indices`. `on_value` and `off_value`
@@ -77,11 +86,6 @@ class XlaHelpers {
                        const xla::ComputationDataHandle& on_value,
                        const xla::ComputationDataHandle& off_value,
                        xla::ComputationDataHandle* one_hot);
-
-  // Pads 'x' with 'count' zeros. 'x' must have 1 element.
-  static xla::ComputationDataHandle PadWithZeros(
-      xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
-      int count);
 };
 
 }  // end namespace tensorflow

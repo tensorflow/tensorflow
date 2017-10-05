@@ -39,7 +39,6 @@ class TPUClusterResolver(ClusterResolver):
   """
 
   def __init__(self,
-               api_definition,
                project,
                zone,
                tpu_names,
@@ -52,8 +51,6 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      api_definition: (Alpha only) A copy of the JSON API definitions for
-        Cloud TPUs. This will be removed once Cloud TPU enters beta.
       project: Name of the GCP project containing Cloud TPUs
       zone: Zone where the TPUs are located
       tpu_names: A list of names of the target Cloud TPUs.
@@ -83,11 +80,13 @@ class TPUClusterResolver(ClusterResolver):
         raise ImportError('googleapiclient must be installed before using the '
                           'TPU cluster resolver')
 
-      # TODO(frankchn): Remove once Cloud TPU API Definitions are public and
-      # replace with discovery.build('tpu', 'v1')
-      self._service = discovery.build_from_document(
-          api_definition,
-          credentials=self._credentials)
+      # TODO(b/67375680): Remove custom URL once TPU APIs are finalized
+      self._service = discovery.build(
+          'tpu',
+          'v1',
+          credentials=self._credentials,
+          discoveryServiceUrl='https://storage.googleapis.com'
+                              '/tpu-api-definition/v1alpha1.json')
     else:
       self._service = service
 

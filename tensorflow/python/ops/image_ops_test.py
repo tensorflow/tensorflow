@@ -386,11 +386,11 @@ class AdjustHueBenchmark(test.Benchmark):
           sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
-    tag = "%s" % (cpu_count) if cpu_count is not None else "_all"
-    print("benchmarkAdjustHue_299_299_3_cpu%s step_time: %.2f us" %
+    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
+    print("benchmarkAdjustHue_299_299_3_%s step_time: %.2f us" %
           (tag, step_time * 1e6))
     self.report_benchmark(
-        name="benchmarkAdjustHue_299_299_3_cpu%s" % (tag),
+        name="benchmarkAdjustHue_299_299_3_%s" % (tag),
         iters=benchmark_rounds,
         wall_time=step_time)
 
@@ -432,11 +432,11 @@ class AdjustSaturationBenchmark(test.Benchmark):
           sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
-    tag = "%s" % (cpu_count) if cpu_count is not None else "_all"
-    print("benchmarkAdjustSaturation_599_599_3_cpu%s step_time: %.2f us" %
+    tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
+    print("benchmarkAdjustSaturation_299_299_3_%s step_time: %.2f us" %
           (tag, step_time * 1e6))
     self.report_benchmark(
-        name="benchmarkAdjustSaturation_599_599_3_cpu%s" % (tag),
+        name="benchmarkAdjustSaturation_299_299_3_%s" % (tag),
         iters=benchmark_rounds,
         wall_time=step_time)
 
@@ -704,7 +704,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
         "gb_same",
         "rgb_same",
     ]
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for x_shape in x_shapes:
         for test_style in test_styles:
           x_np = np.random.rand(*x_shape) * 255.
@@ -1260,6 +1260,19 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       y = image_ops.central_crop(x, 0.5)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+      self.assertAllEqual(y_tf.shape, y_np.shape)
+
+  def testCropping2(self):
+    # Test case for 10315
+    x_shape = [240, 320, 3]
+    x_np = np.zeros(x_shape, dtype=np.int32)
+    y_np = np.zeros([80, 106, 3], dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      x = array_ops.placeholder(shape=x_shape, dtype=dtypes.int32)
+      y = image_ops.central_crop(x, 0.33)
+      y_tf = y.eval(feed_dict={x:x_np})
+      self.assertAllEqual(y_tf, y_np)
+      self.assertAllEqual(y_tf.shape, y_np.shape)
 
   def testShapeInference(self):
     # Test no-op fraction=1.0
@@ -1781,6 +1794,21 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       _ = image_ops.resize_images(image, [6, None],
                                   image_ops.ResizeMethod.BILINEAR)
+
+  def testReturnDtype(self):
+    target_shapes = [[6, 4], [3, 2], [array_ops.placeholder(dtypes.int32),
+                                      array_ops.placeholder(dtypes.int32)]]
+    for nptype in self.TYPES:
+      image = array_ops.placeholder(nptype, shape=[1, 6, 4, 1])
+      for opt in self.OPTIONS:
+        for target_shape in target_shapes:
+          y = image_ops.resize_images(image, target_shape, opt)
+          if (opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR or
+              target_shape == image.shape[1:3]):
+            expected_dtype = image.dtype
+          else:
+            expected_dtype = dtypes.float32
+          self.assertEqual(y.dtype, expected_dtype)
 
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]
@@ -2391,6 +2419,46 @@ class JpegTest(test_util.TensorFlowTestCase):
         error = self.averageError(rgb, cmyk)
         self.assertLess(error, 4)
 
+  def testCropAndDecodeJpeg(self):
+    with self.test_session() as sess:
+      # Encode it, then decode it, then encode it
+      base = "tensorflow/core/lib/jpeg/testdata"
+      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+
+      h, w, _ = 256, 128, 3
+      crop_windows = [[0, 0, 5, 5], [0, 0, 5, w], [0, 0, h, 5],
+                      [h - 6, w - 5, 6, 5], [6, 5, 15, 10], [0, 0, h, w]]
+      for crop_window in crop_windows:
+        # Explicit two stages: decode + crop.
+        image1 = image_ops.decode_jpeg(jpeg0)
+        y, x, h, w = crop_window
+        image1_crop = image_ops.crop_to_bounding_box(image1, y, x, h, w)
+
+        # Combined crop+decode.
+        image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+
+        # CropAndDecode should be equal to DecodeJpeg+Crop.
+        image1_crop, image2 = sess.run([image1_crop, image2])
+        self.assertAllEqual(image1_crop, image2)
+
+  def testCropAndDecodeJpegWithInvalidCropWindow(self):
+    with self.test_session() as sess:
+      # Encode it, then decode it, then encode it
+      base = "tensorflow/core/lib/jpeg/testdata"
+      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+
+      h, w, _ = 256, 128, 3
+      # Invalid crop windows.
+      crop_windows = [[-1, 11, 11, 11], [11, -1, 11, 11], [11, 11, -1, 11],
+                      [11, 11, 11, -1], [11, 11, 0, 11], [11, 11, 11, 0],
+                      [0, 0, h + 1, w], [0, 0, h, w + 1]]
+      for crop_window in crop_windows:
+        result = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+        with self.assertRaisesWithPredicateMatch(
+            errors.InvalidArgumentError,
+            lambda e: "Invalid JPEG data or crop window" in str(e)):
+          sess.run(result)
+
   def testSynthetic(self):
     with self.test_session(use_gpu=True) as sess:
       # Encode it, then decode it, then encode it
@@ -2454,6 +2522,26 @@ class JpegTest(test_util.TensorFlowTestCase):
         image = image_ops.decode_jpeg(jpeg, channels=channels)
         self.assertEqual(image.get_shape().as_list(),
                          [None, None, channels or None])
+
+  def testExtractJpegShape(self):
+    # Read a real jpeg and verify shape.
+    path = ("tensorflow/core/lib/jpeg/testdata/"
+            "jpeg_merge_test1.jpg")
+    with self.test_session(use_gpu=True) as sess:
+      jpeg = io_ops.read_file(path)
+      # Extract shape without decoding.
+      [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
+      self.assertEqual(image_shape.tolist(), [256, 128, 3])
+
+  def testExtractJpegShapeforCmyk(self):
+    # Read a cmyk jpeg image, and verify its shape.
+    path = ("tensorflow/core/lib/jpeg/testdata/"
+            "jpeg_merge_test1_cmyk.jpg")
+    with self.test_session(use_gpu=True) as sess:
+      jpeg = io_ops.read_file(path)
+      [image_shape] = sess.run([image_ops.extract_jpeg_shape(jpeg)])
+      # Cmyk jpeg image has 4 channels.
+      self.assertEqual(image_shape.tolist(), [256, 128, 4])
 
 
 class PngTest(test_util.TensorFlowTestCase):
@@ -2595,6 +2683,12 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       y = image_ops.convert_image_dtype(image, output_dtype)
       self.assertTrue(y.dtype == output_dtype)
       self.assertAllClose(y.eval(), y_np, atol=1e-5)
+      if output_dtype in [dtypes.float32, dtypes.float64,
+                          dtypes.int32, dtypes.int64]:
+        y_saturate = image_ops.convert_image_dtype(
+            image, output_dtype, saturate=True)
+        self.assertTrue(y_saturate.dtype == output_dtype)
+        self.assertAllClose(y_saturate.eval(), y_np, atol=1e-5)
 
   def testNoConvert(self):
     # Make sure converting to the same data type creates only an identity op
@@ -2610,6 +2704,8 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       self._convert([0, 255], dtypes.uint8, dtypes.int16, [0, 255 * 128])
       self._convert([0, 32767], dtypes.int16, dtypes.uint8, [0, 255])
+      self._convert([0, 2 ** 32], dtypes.int64, dtypes.int32, [0, 1])
+      self._convert([0, 1], dtypes.int32, dtypes.int64, [0, 2 ** 32])
 
   def testConvertBetweenFloat(self):
     # Make sure converting to between float types does nothing interesting

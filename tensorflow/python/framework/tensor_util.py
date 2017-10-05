@@ -235,7 +235,8 @@ def _FilterTuple(v):
 def _FilterInt(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterInt(x) for x in v])
-  return None if isinstance(v, compat.integral_types) else _NotNone(v)
+  return None if isinstance(v, (compat.integral_types,
+                                tensor_shape.Dimension)) else _NotNone(v)
 
 
 def _FilterFloat(v):
@@ -625,7 +626,7 @@ def _ConstantValue(tensor, partial):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims]),
+      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims], dtype=np.int32),
                         dtype=np.int32)
     else:
       return None
@@ -675,6 +676,9 @@ def _ConstantValue(tensor, partial):
     # and return None.
     if not tensor.op.inputs:
       return None
+    # We can't handle axis != 0 Packs at the moment.
+    if tensor.op.get_attr("axis") != 0:
+      return None
     for x in tensor.op.inputs:
       value = constant_value(x, partial)
       if value is None and not partial:
@@ -688,6 +692,22 @@ def _ConstantValue(tensor, partial):
       return np.full(fill_shape.as_list(), fill_value, dtype=fill_value.dtype)
     else:
       return None
+  elif tensor.op.type == "Equal":
+    value1 = constant_value(tensor.op.inputs[0])
+    if value1 is None:
+      return None
+    value2 = constant_value(tensor.op.inputs[1])
+    if value2 is None:
+      return None
+    return np.equal(value1, value2)
+  elif tensor.op.type == "NotEqual":
+    value1 = constant_value(tensor.op.inputs[0])
+    if value1 is None:
+      return None
+    value2 = constant_value(tensor.op.inputs[1])
+    if value2 is None:
+      return None
+    return np.not_equal(value1, value2)
   else:
     return None
 
@@ -752,6 +772,9 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
     ret = tensor_shape.scalar()  # Empty list.
+    # Since we expect rank 1 inputs, Pack's axis must be zero, otherwise it
+    # would not be rank 1.
+    assert tensor.op.get_attr("axis") == 0
     for pack_input in tensor.op.inputs:
       # `pack_input` must be a scalar. Attempt to evaluate it, and append it
       # to `ret`.

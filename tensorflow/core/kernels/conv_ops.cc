@@ -58,10 +58,10 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 template <typename Device, typename T>
 struct LaunchGeneric {
-  static void launch(OpKernelContext* ctx, const Tensor& input,
-                     const Tensor& filter, int row_stride, int col_stride,
-                     const Eigen::PaddingType& padding, Tensor* output,
-                     TensorFormat data_format) {
+  void operator()(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int row_stride, int col_stride,
+                  const Padding& padding, Tensor* output,
+                  TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
     if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
@@ -86,8 +86,7 @@ struct LaunchGeneric {
           filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)}),
           dim_pair);
     } else if (filter.dim_size(0) == input.dim_size(1) &&
-               filter.dim_size(1) == input.dim_size(2) &&
-               padding == Eigen::PADDING_VALID) {
+               filter.dim_size(1) == input.dim_size(2) && padding == VALID) {
       // If the input data and filter have the same height/width,
       // the 2D convolution is reduced to matrix multiplication.
       const int k =  // Length of reduction dimension.
@@ -104,28 +103,26 @@ struct LaunchGeneric {
       functor::SpatialConvolution<Device, T>()(
           ctx->eigen_device<Device>(), output->tensor<T, 4>(),
           input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
-          padding);
+          BrainPadding2EigenPadding(padding));
     }
   }
 };
 }  // namespace
 
 template <typename T>
-class LaunchConv2DOp<CPUDevice, T> {
- public:
-  void launch(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-              const Tensor& input, const Tensor& filter, int row_stride,
-              int col_stride, const Eigen::PaddingType& padding, Tensor* output,
-              TensorFormat data_format) {
+struct LaunchConv2DOp<CPUDevice, T> {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter, int row_stride,
+                  int col_stride, const Padding& padding, Tensor* output,
+                  TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
       ctx->SetStatus(
           errors::Unimplemented("Generic conv implementation only supports "
                                 "NHWC tensor format for now."));
       return;
     }
-    LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
-                                        col_stride, padding, output,
-                                        data_format);
+    LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
+                                  padding, output, data_format);
   }
 };
 
@@ -387,9 +384,8 @@ class Conv2DOp : public BinaryOp<T> {
       return;
     }
 
-    launcher_.launch(context, use_cudnn_, cudnn_use_autotune_, input, filter,
-                     stride_rows, stride_cols,
-                     BrainPadding2EigenPadding(padding_), output, data_format_);
+    launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
+              stride_rows, stride_cols, padding_, output, data_format_);
   }
 
  private:
@@ -445,15 +441,14 @@ typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
     AutoTuneConv;
 
 template <typename T>
-void LaunchConv2DOp<GPUDevice, T>::launch(
+void LaunchConv2DOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
     const Tensor& input_param, const Tensor& filter, int row_stride,
-    int col_stride, const Eigen::PaddingType& padding, Tensor* output,
+    int col_stride, const Padding& padding, Tensor* output,
     TensorFormat data_format) {
   using perftools::gputools::dnn::AlgorithmConfig;
-  using perftools::gputools::dnn::AlgorithmType;
+  using perftools::gputools::dnn::AlgorithmDesc;
   using perftools::gputools::dnn::ProfileResult;
-  using perftools::gputools::dnn::kDefaultAlgorithm;
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -492,8 +487,8 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
     }
     return;
   } else if (filter.dim_size(0) == input.dim_size(1) &&
-             filter.dim_size(1) == input.dim_size(2) &&
-             padding == Eigen::PADDING_VALID && data_format == FORMAT_NHWC) {
+             filter.dim_size(1) == input.dim_size(2) && padding == VALID &&
+             data_format == FORMAT_NHWC) {
     // The input data and filter have the same height/width, so call cublas
     // directly.
     const uint64 m = input.dim_size(0);
@@ -533,7 +528,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
   const int64 out_depths = GetTensorDim(*output, data_format, 'C');
   const int64 patch_rows = filter.dim_size(0);
   const int64 patch_cols = filter.dim_size(1);
-  if (padding == Eigen::PADDING_SAME) {
+  if (padding == SAME) {
     // Total padding on rows and cols is
     // Pr = (R' - 1) * S + Kr - R
     // Pc = (C' - 1) * S + Kc - C
@@ -667,7 +662,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
-    std::vector<AlgorithmType> algorithms;
+    std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;

@@ -20,7 +20,6 @@ limitations under the License.
 namespace tensorflow {
 
 void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
-  // TODO(skyewm): make sure cycles are prevented
   mutex_lock l(graph->mu);
   graph->graph.AddControlEdge(&input->node, &op->node);
 }
@@ -28,6 +27,13 @@ void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
   mutex_lock l(graph->mu);
   op->node.set_requested_device(device);
+}
+
+void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
+                TF_Status* status) {
+  mutex_lock l(graph->mu);
+  status->status = graph->graph.UpdateEdge(&new_src.oper->node, new_src.index,
+                                           &dst.oper->node, dst.index);
 }
 
 }  // namespace tensorflow

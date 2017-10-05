@@ -939,6 +939,11 @@ class _OneHotColumn(
       weighted_column = sparse_ops.sparse_merge(sp_ids=sparse_id_column,
                                                 sp_values=weight_tensor,
                                                 vocab_size=self.length)
+      # Remove (?, -1) index
+      weighted_column = sparse_ops.sparse_slice(
+          weighted_column,
+          [0, 0],
+          weighted_column.dense_shape)
       return sparse_ops.sparse_tensor_to_dense(weighted_column)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
@@ -2559,10 +2564,10 @@ def _create_sequence_feature_spec_for_parsing(sequence_feature_columns,
   feature_spec = create_feature_spec_for_parsing(sequence_feature_columns)
   sequence_feature_spec = {}
   for key, feature in feature_spec.items():
-    if (isinstance(feature, parsing_ops.VarLenFeature) or
-        isinstance(feature, parsing_ops.FixedLenSequenceFeature)):
+    if isinstance(feature, parsing_ops.VarLenFeature):
       sequence_feature = feature
-    elif isinstance(feature, parsing_ops.FixedLenFeature):
+    elif (isinstance(feature, parsing_ops.FixedLenFeature) or
+          isinstance(feature, parsing_ops.FixedLenSequenceFeature)):
       default_is_set = feature.default_value is not None
       if default_is_set:
         logging.warning(

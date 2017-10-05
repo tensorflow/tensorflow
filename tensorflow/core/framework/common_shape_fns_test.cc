@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 
+#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -411,34 +412,35 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
 TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   ShapeInferenceTestOp op("Conv2D");
   auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
-                      const string& data_format) {
+                      const string& data_format, const string& filter_format) {
     TF_CHECK_OK(NodeDefBuilder("test", "Conv2D")
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
                     .Attr("strides", strides)
                     .Attr("padding", padding)
                     .Attr("data_format", data_format)
+                    .Attr("filter_format", filter_format)
                     .Finalize(&op.node_def));
   };
 
   // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NHWC");
+  set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO");
   INFER_OK(op, "[1,2,2,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
 
   // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NHWC");
+  set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO");
   INFER_OK(op, "[1,2,2,1];[2,2,1,1]", "[d0_0,1,1,d1_3]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 2, 2, 1}}, "VALID", "NHWC");
+  set_op({{1, 2, 2, 1}}, "VALID", "NHWC", "HWIO");
   INFER_OK(op, "[1,3,3,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 2, 1, 1}}, "VALID", "NHWC");
+  set_op({{1, 2, 1, 1}}, "VALID", "NHWC", "HWIO");
   INFER_OK(op, "[1,3,3,1];[1,1,1,1]", "[d0_0,2,3,d1_3]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NHWC");
+  set_op({{1, 1, 2, 1}}, "VALID", "NHWC", "HWIO");
   INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
 
   // Invalid rank for input
@@ -460,77 +462,76 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // Tests for NCHW
   // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW");
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW", "HWIO");
   INFER_OK(op, "[1,1,2,2];[1,1,1,1]", "[d0_0,d1_3,2,2]");
 
   // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW");
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW", "HWIO");
   INFER_OK(op, "[1,1,2,2];[2,2,1,1]", "[d0_0,d1_3,1,1]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 1, 2, 2}}, "VALID", "NCHW");
+  set_op({{1, 1, 2, 2}}, "VALID", "NCHW", "HWIO");
   INFER_OK(op, "[1,1,3,3];[1,1,1,1]", "[d0_0,d1_3,2,2]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NCHW");
+  set_op({{1, 1, 2, 1}}, "VALID", "NCHW", "HWIO");
   INFER_OK(op, "[1,1,3,3];[1,1,1,1]", "[d0_0,d1_3,2,3]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 1, 2}}, "VALID", "NCHW");
+  set_op({{1, 1, 1, 2}}, "VALID", "NCHW", "HWIO");
   INFER_OK(op, "[1,1,4,4];[2,1,1,1]", "[d0_0,d1_3,3,2]");
 
   // Tests for NCHW_VECT_C
   // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C");
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
   INFER_OK(op, "[1,1,2,2,4];[4,1,1,1,4]", "[d0_0,1,2,2,4]");
 
   // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C");
+  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
   INFER_OK(op, "[1,1,2,2,4];[4,1,2,2,4]", "[d0_0,1,1,1,4]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 1, 2, 2}}, "VALID", "NCHW_VECT_C");
+  set_op({{1, 1, 2, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
   INFER_OK(op, "[1,1,3,3,4];[8,1,1,1,4]", "[d0_0,2,2,2,4]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NCHW_VECT_C");
+  set_op({{1, 1, 2, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
   INFER_OK(op, "[1,1,3,3,4];[4,1,1,1,4]", "[d0_0,1,2,3,4]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C");
+  set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
   INFER_OK(op, "[1,1,4,4,4];[4,1,2,1,4]", "[d0_0,1,3,2,4]");
 
   // Some tests for "SAME" padding
 
   // 4x4 input, 1x1 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
   INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 3x3 input, 2x2 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
   INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 stride
-  set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
+  set_op({{1, 2, 2, 1}}, "SAME", "NHWC", "HWIO");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,2,2,d1_3]");
 
   // 4x4 input, 2x2 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // With stride 1x1 and SAME, unknown dims don't matter - filter dims except
   // for output channels are ignored for output, so all inputs are carried
   // through to output.
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
   INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
   INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
   INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
   INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
-  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
-  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // With stride != 1, the input HW dims are divided to produce output dims.
-  set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
+  set_op({{1, 2, 2, 1}}, "SAME", "NHWC", "HWIO");
   INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,2,2,d1_3]");
   INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,?,2,d1_3]");
   INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,2,?,d1_3]");
@@ -696,8 +697,15 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   set_op({{1, 1, 1, 2}}, {1, 1, 2, 1}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,4,4]", "[d0_0,d0_1,3,2]");
 
+  // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C test
+  set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[2,3,5,7,4]", "[d0_0,d0_1,4,6,4]");
+  INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,?,?,4]");
+  INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,?,?,4]");
+  INFER_ERROR("Dimension must be 4 but is 3", op, "[2,5,7,11,3]");
+
   // Invalid rank for input
-  INFER_ERROR("must be rank 4", op, "[4,4]");
+  INFER_ERROR("Shape must be rank", op, "[4,4]");
 }
 
 TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
@@ -725,6 +733,55 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   // depth 3 stride, 1x1x1 filter, NCHW
   set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
   INFER_OK(op, "[1,7,5,5]", "[d0_0,3,5,5]");
+
+  // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C tests
+  set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "SAME", "NCHW_VECT_C");
+  INFER_OK(op, "[2,3,5,7,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[5,7,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[?,?,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_ERROR("Dimension must be 4 but is 8", op, "[2,3,5,7,8]");
+}
+
+TEST(CommonShapeFnsTest, MaxPoolV22DShapeTest) {
+  ShapeInferenceTestOp op("MaxPoolV2");
+  Tensor ksizes_tensor, strides_tensor;
+  auto set_op = [&op, &ksizes_tensor, &strides_tensor](
+                    const std::vector<int32>& strides,
+                    const std::vector<int32>& ksizes, const string& padding,
+                    const string& data_format) {
+    TF_CHECK_OK(NodeDefBuilder("test", "MaxPoolV2")
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("ksize", 1, DT_INT32)
+                    .Input("strides", 2, DT_INT32)
+                    .Attr("padding", padding)
+                    .Attr("data_format", data_format)
+                    .Finalize(&op.node_def));
+    ksizes_tensor = test::AsTensor<int32>(ksizes);
+    op.input_tensors.resize(3);
+    op.input_tensors[0] = nullptr;
+    op.input_tensors[1] = &ksizes_tensor;
+    strides_tensor = test::AsTensor<int32>(strides);
+    op.input_tensors[2] = &strides_tensor;
+  };
+
+  // Most of the functionality is tested by conv-like shapes,
+  // so we check the very-specific maxpooling features here,
+  // namely depthwise kernel and striding.
+
+  // all 1 strides, depth 2 filter
+  set_op({1, 1, 1, 1}, {1, 1, 1, 2}, "VALID", "NHWC");
+  INFER_OK(op, "[1,2,2,2];[4];[4]", "[d0_0,2,2,1]");
+
+  // depth 3 stride, 1x1x1 filter, NCHW
+  set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
+  INFER_OK(op, "[1,7,5,5];[4];[4]", "[d0_0,3,5,5]");
+
+  // 5x7 input, 2x2 ksize, 1x1 stride, NCHW_VECT_C tests
+  set_op({{1, 1, 1, 1}}, {1, 1, 2, 2}, "SAME", "NCHW_VECT_C");
+  INFER_OK(op, "[2,3,5,7,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[5,7,?,?,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_OK(op, "[?,?,?,?,4];[4];[4]", "[d0_0,d0_1,d0_2,d0_3,4]");
+  INFER_ERROR("Dimension must be 4 but is 8", op, "[2,3,5,7,8];[4];[4]");
 }
 
 TEST(CommonShapeFnsTest, Pool3DShapeTest) {

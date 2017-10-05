@@ -34,6 +34,7 @@ from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util.deprecation import deprecated
 
 
@@ -652,7 +653,7 @@ def _streaming_confusion_matrix_at_thresholds(
     label_is_neg = math_ops.logical_not(label_is_pos)
 
   if weights is not None:
-    broadcast_weights = _broadcast_weights(
+    broadcast_weights = weights_broadcast_ops.broadcast_weights(
         math_ops.to_float(weights), predictions)
     weights_tiled = array_ops.tile(array_ops.reshape(
         broadcast_weights, [1, -1]), [num_thresholds, 1])
@@ -957,7 +958,7 @@ def streaming_specificity_at_sensitivity(
 def streaming_sensitivity_at_specificity(
     predictions, labels, specificity, weights=None, num_thresholds=200,
     metrics_collections=None, updates_collections=None, name=None):
-  """Computes the specificity at a given sensitivity.
+  """Computes the sensitivity at a given specificity.
 
   The `streaming_sensitivity_at_specificity` function creates four local
   variables, `true_positives`, `true_negatives`, `false_positives` and
@@ -1930,7 +1931,7 @@ def streaming_covariance(predictions,
       weighted_predictions = predictions
       weighted_labels = labels
     else:
-      weights = _broadcast_weights(weights, labels)
+      weights = weights_broadcast_ops.broadcast_weights(weights, labels)
       batch_count = math_ops.reduce_sum(weights)  # n_B in eqn
       weighted_predictions = math_ops.multiply(predictions, weights)
       weighted_labels = math_ops.multiply(labels, weights)
@@ -2057,7 +2058,7 @@ def streaming_pearson_correlation(predictions,
     # Broadcast weights here to avoid duplicate broadcasting in each call to
     # `streaming_covariance`.
     if weights is not None:
-      weights = _broadcast_weights(weights, labels)
+      weights = weights_broadcast_ops.broadcast_weights(weights, labels)
     cov, update_cov = streaming_covariance(
         predictions, labels, weights=weights, name='covariance')
     var_predictions, update_var_predictions = streaming_covariance(

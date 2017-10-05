@@ -291,10 +291,11 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
                           sparse_tensor.SparseTensorValue)):
       return gen_math_ops.cast(input.dense_shape, out_type)
     else:
-      input_tensor = ops.convert_to_tensor(input)
-      input_shape = input_tensor.get_shape()
-      if optimize and input_shape.is_fully_defined():
-        return constant(input_shape.as_list(), out_type, name=name)
+      if context.in_graph_mode():
+        input_tensor = ops.convert_to_tensor(input)
+        input_shape = input_tensor.get_shape()
+        if optimize and input_shape.is_fully_defined():
+          return constant(input_shape.as_list(), out_type, name=name)
       return gen_array_ops.shape(input, name=name, out_type=out_type)
 
 
@@ -407,13 +408,6 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
-def _one_like_dtype(other):
-  if isinstance(other, ops.Tensor):
-    return constant(1, other.dtype)
-  else:
-    return np.ones_like(other).dtype.type(1)
-
-
 def _SliceHelper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -494,8 +488,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
       if s.step is not None:
         strides.append(s.step)
       else:
-        # Use a 1 of the same dtype as begin.
-        strides.append(_one_like_dtype(begin[-1]))
+        strides.append(1)
     elif s is Ellipsis:
       begin.append(0)
       end.append(0)
@@ -509,7 +502,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
     else:
       begin.append(s)
       end.append(s + 1)
-      strides.append(_one_like_dtype(s))
+      strides.append(1)
       shrink_axis_mask |= (1 << index)
     index += 1
 
@@ -519,6 +512,15 @@ def _SliceHelper(tensor, slice_spec, var=None):
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
+      if (packed_begin.dtype == dtypes.int64 or
+          packed_end.dtype == dtypes.int64 or
+          packed_strides.dtype == dtypes.int64):
+        if packed_begin.dtype != dtypes.int64:
+          packed_begin = gen_math_ops.cast(packed_begin, dtypes.int64)
+        if packed_end.dtype != dtypes.int64:
+          packed_end = gen_math_ops.cast(packed_end, dtypes.int64)
+        if packed_strides.dtype != dtypes.int64:
+          packed_strides = gen_math_ops.cast(packed_strides, dtypes.int64)
     else:
       var_empty = constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
@@ -855,7 +857,7 @@ def stack(values, axis=0, name="stack"):
   This is the opposite of unstack.  The numpy equivalent is
 
   ```python
-  tf.stack([x, y, z]) = np.asarray([x, y, z])
+  tf.stack([x, y, z]) = np.stack([x, y, z])
   ```
 
   Args:
@@ -995,7 +997,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
 
   This is the opposite of stack.  The numpy equivalent is
 
-      tf.unstack(x, n) = list(x)
+      tf.unstack(x, n) = np.unstack(x)
 
   Args:
     value: A rank `R > 0` `Tensor` to be unstacked.
@@ -1428,6 +1430,10 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = ""
     else:
       zero = 0
+    # Checking for boolean dtype to prevent attempting to run fill on the GPU
+    # which does not have a boolean kernel registered.
+    if context.in_eager_mode() and dtype != dtypes.bool:
+      return fill(shape, constant(zero, dtype=dtype), name=name)
     try:
       shape = tensor_shape.as_shape(shape)
       output = constant(zero, shape=shape, dtype=dtype, name=name)
@@ -1466,12 +1472,23 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
 
-    if tensor.shape.is_fully_defined():
+    if context.in_eager_mode():
+      if dtype is not None and dtype != tensor.dtype:
+        return zeros(
+            shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
+      with ops.device(tensor.device):
+        return gen_array_ops._zeros_like(tensor, name=name)
+
+    # For now, variant types must be created via zeros_like; as we need to
+    # pass the input variant object to the proper zeros callback.
+
+    if optimize and tensor.shape.is_fully_defined() and \
+        tensor.dtype != dtypes.variant:
       # We can produce a zeros tensor independent of the value of 'tensor',
       # since the shape is known statically.
       return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
 
-    if dtype is not None and dtype != tensor.dtype:
+    if dtype is not None and dtype != tensor.dtype and dtype != dtypes.variant:
       return zeros(
           shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
     else:
@@ -1726,18 +1743,19 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     raise ValueError("Unknown padding mode: %s" % mode)
 
   # Restore shape information where possible.
-  paddings_constant = tensor_util.constant_value(
-      result.op.inputs[1], partial=True)
-  input_shape = result.op.inputs[0].shape
-  if (input_shape.ndims is not None and not result.shape.is_fully_defined() and
-      paddings_constant is not None):
-    new_shape = []
-    for padding, dim in zip(paddings_constant, input_shape.as_list()):
-      if padding is None or dim is None or not all(padding):
-        new_shape.append(None)
-      else:
-        new_shape.append(sum(padding) + dim)
-    result.set_shape(new_shape)
+  if context.in_graph_mode():
+    paddings_constant = tensor_util.constant_value(
+        result.op.inputs[1], partial=True)
+    input_shape = result.op.inputs[0].shape
+    if (input_shape.ndims is not None and not result.shape.is_fully_defined()
+        and paddings_constant is not None):
+      new_shape = []
+      for padding, dim in zip(paddings_constant, input_shape.as_list()):
+        if padding is None or dim is None or not all(padding):
+          new_shape.append(None)
+        else:
+          new_shape.append(sum(padding) + dim)
+      result.set_shape(new_shape)
 
   return result
 
@@ -2080,6 +2098,20 @@ def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=r
 space_to_batch.__doc__ = gen_array_ops._space_to_batch.__doc__
 
 
+def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
+  return gen_array_ops.space_to_depth(input, block_size, data_format, name=name)
+
+
+space_to_depth.__doc__ = gen_array_ops.space_to_depth.__doc__
+
+
+def depth_to_space(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
+  return gen_array_ops.depth_to_space(input, block_size, data_format, name=name)
+
+
+depth_to_space.__doc__ = gen_array_ops.depth_to_space.__doc__
+
+
 def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=redefined-builtin
   result = batch_to_space_nd(
       input,
@@ -2236,37 +2268,60 @@ def one_hot(indices,
                                   name)
 
 
-def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
-  """Return a mask tensor representing the first N positions of each row.
+def _all_dimensions(x):
+  """Returns a 1D-tensor listing all dimensions in x."""
+  # Fast path: avoid creating Rank and Range ops if ndims is known.
+  if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+    return constant_op.constant(
+        np.arange(x.get_shape().ndims), dtype=dtypes.int32)
+  if (isinstance(x, sparse_tensor.SparseTensor) and
+      x.dense_shape.get_shape().is_fully_defined()):
+    r = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
+    return constant_op.constant(np.arange(r), dtype=dtypes.int32)
 
-  Example:
+  # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+  return range(0, rank(x))
+
+
+def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
+  """Returns a mask tensor representing the first N positions of each cell.
+
+  If `lengths` has shape `[d_1, d_2, ..., d_n]` the resulting tensor `mask` has
+  dtype `dtype` and shape `[d_1, d_2, ..., d_n, maxlen]`, with
+
+  ```
+  mask[i_1, i_2, ..., i_n, j] = (j < lengths[i_1, i_2, ..., i_n])
+  ```
+
+  Examples:
 
   ```python
   tf.sequence_mask([1, 3, 2], 5)  # [[True, False, False, False, False],
                                   #  [True, True, True, False, False],
                                   #  [True, True, False, False, False]]
+
+  tf.sequence_mask([[1, 3],[2,0]])  # [[[True, False, False],
+                                    #   [True, True, True]],
+                                    #  [[True, True, False],
+                                    #   [False, False, False]]]
   ```
 
   Args:
-    lengths: 1D integer tensor, all its values < maxlen.
-    maxlen: scalar integer tensor, maximum length of each row. Default: use
-            maximum over lengths.
+    lengths: integer tensor, all its values <= maxlen.
+    maxlen: scalar integer tensor, size of last dimension of returned tensor.
+      Default is the maximum value in `lengths`.
     dtype: output type of the resulting tensor.
     name: name of the op.
   Returns:
-    A 2D mask tensor, as shown in the example above, cast to specified dtype.
-
+    A mask tensor of shape `lengths.shape + (maxlen,)`, cast to specified dtype.
   Raises:
-    ValueError: if the arguments have invalid rank.
+    ValueError: if `maxlen` is not a scalar.
   """
   with ops.name_scope(name, "SequenceMask", [lengths, maxlen]):
     lengths = ops.convert_to_tensor(lengths)
-    if lengths.get_shape().ndims != 1:
-      raise ValueError("lengths must be 1D for sequence_mask. Got shape %s" %
-                       lengths.get_shape())
 
     if maxlen is None:
-      maxlen = gen_math_ops._max(lengths, [0])
+      maxlen = gen_math_ops._max(lengths, _all_dimensions(lengths))
     else:
       maxlen = ops.convert_to_tensor(maxlen)
     if maxlen.get_shape().ndims != 0:
@@ -2281,7 +2336,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
         constant(0, maxlen.dtype), maxlen, constant(1, maxlen.dtype))
     # Since maxlen >= max(lengths), it is safe to use maxlen as a cast
     # authoritative type. Whenever maxlen fits into tf.int32, so do the lengths.
-    matrix = gen_math_ops.cast(expand_dims(lengths, 1), maxlen.dtype)
+    matrix = gen_math_ops.cast(expand_dims(lengths, -1), maxlen.dtype)
     result = row_vector < matrix
 
     if dtype is None or result.dtype.base_dtype == dtype.base_dtype:

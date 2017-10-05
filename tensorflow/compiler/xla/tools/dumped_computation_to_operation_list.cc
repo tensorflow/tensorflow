@@ -93,8 +93,8 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
     const HloModule& module = executable.ValueOrDie()->module();
 
     OperationDumper dumper(arg);
-    for (auto& computation : module.computations()) {
-      TF_CHECK_OK(computation->root_instruction()->Accept(&dumper));
+    for (auto* computation : module.computations()) {
+      TF_CHECK_OK(computation->Accept(&dumper));
     }
   }
 }

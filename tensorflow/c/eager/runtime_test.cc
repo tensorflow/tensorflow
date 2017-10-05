@@ -23,15 +23,36 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
 
-Device* CPUDevice() {
-  return DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
-}
+class TestEnv {
+ public:
+  TestEnv() : flib_def_(OpRegistry::Global(), {}) {
+    Device* device =
+        DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
+    device_mgr_.reset(new DeviceMgr({device}));
+    flib_runtime_ = NewFunctionLibraryRuntime(device_mgr_.get(), Env::Default(),
+                                              device, TF_GRAPH_DEF_VERSION,
+                                              &flib_def_, {}, nullptr);
+  }
+
+  FunctionLibraryRuntime* function_library_runtime() const {
+    return flib_runtime_.get();
+  }
+
+ private:
+  FunctionLibraryDefinition flib_def_;
+  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
+};
 
 TEST(AttrTypeMap, Lookup) {
   const AttrTypeMap* m = nullptr;
@@ -69,9 +90,10 @@ TEST(KernelAndDevice, Run) {
                    .Set("transpose_b", false)
                    .NumInputs(inputs.size())
                    .BuildNodeDef());
-  std::unique_ptr<Device> device(CPUDevice());
+  TestEnv env;
   KernelAndDevice kernel(nullptr);
-  Status s = KernelAndDevice::InitOp(device.get(), ndef, &kernel);
+  Status s =
+      KernelAndDevice::Init(ndef, env.function_library_runtime(), &kernel);
   ASSERT_TRUE(s.ok()) << s;
   std::vector<Tensor> outputs;
   s = kernel.Run(&inputs, &outputs);
@@ -132,11 +154,12 @@ void BM_KernelAndDeviceInit(int iters) {
                    .Set("transpose_b", false)
                    .NumInputs(2)
                    .BuildNodeDef());
-  std::unique_ptr<Device> device(CPUDevice());
+  TestEnv env;
   KernelAndDevice k(nullptr);
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(KernelAndDevice::InitOp(device.get(), ndef, &k));
+    TF_CHECK_OK(
+        KernelAndDevice::Init(ndef, env.function_library_runtime(), &k));
   }
 }
 BENCHMARK(BM_KernelAndDeviceInit);
@@ -154,9 +177,10 @@ void BM_KernelAndDeviceRun(int iters) {
                    .Set("transpose_b", false)
                    .NumInputs(inputs.size())
                    .BuildNodeDef());
-  std::unique_ptr<Device> device(CPUDevice());
+  TestEnv env;
   KernelAndDevice kernel(nullptr);
-  TF_CHECK_OK(KernelAndDevice::InitOp(device.get(), ndef, &kernel));
+  TF_CHECK_OK(
+      KernelAndDevice::Init(ndef, env.function_library_runtime(), &kernel));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
     TF_CHECK_OK(kernel.Run(&inputs, &outputs));

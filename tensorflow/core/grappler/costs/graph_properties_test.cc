@@ -345,6 +345,15 @@ TEST_F(GraphPropertiesTest, MergeWithoutLoops) {
     EXPECT_EQ(DT_FLOAT, prop.dtype());
     EXPECT_EQ(expected_outputs[i], PropToString(prop));
   }
+
+  // The "Less" node should be fed by 2 int32 scalar constant values.
+  const auto props = properties.GetInputProperties("Less");
+  EXPECT_EQ(2, props.size());
+  for (int i = 0; i < props.size(); ++i) {
+    EXPECT_EQ(DT_INT32, props[i].dtype());
+    EXPECT_TRUE(props[i].has_value());
+    EXPECT_EQ("int32: []", PropToString(props[i]));
+  }
 }
 
 TEST_F(GraphPropertiesTest, WhileLoop) {
@@ -498,6 +507,64 @@ TEST_F(GraphPropertiesTest, LoopsAndQueues) {
     const OpInfo::TensorProperties& prop = props[0];
     EXPECT_EQ(DT_FLOAT, prop.dtype());
     EXPECT_EQ("float: [-1,1,-1]", PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, LoopsAndResourceVars) {
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i0 = tf.constant(0)
+      with tf.variable_scope(VariableScope(reuse=None, use_resource=True)):
+        v = tf.get_variable(initializer=i0, name='loop_var')
+
+      def inner(j, y):
+        def inner_cond(j, y):
+          return j < 3
+
+        def inner_body(j, y):
+          return j + 1, y + y
+
+        return tf.while_loop(inner_cond, inner_body, loop_vars=[j, y])
+
+      def outer_cond(i, x):
+        return i < 3
+
+      def outer_body(i, x):
+        y = x + x
+        inner(0, v)
+        return i + 1, y
+
+      v, z = tf.while_loop(outer_cond, outer_body,
+                           loop_vars=[v, tf.constant(1)])
+
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+  */
+
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "loops_and_resource_vars.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
+                                  "while/Exit_1"};
+  std::vector<string> inner_nodes{"while/while/Merge_1",
+                                  "while/while/NextIteration_1",
+                                  "while/while/Exit_1"};
+  for (const string& node : outer_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_INT32, prop.dtype());
+    EXPECT_EQ("int32: []", PropToString(prop));
+  }
+  for (const string& node : inner_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_INT32, prop.dtype());
+    EXPECT_EQ("int32: []", PropToString(prop));
   }
 }
 

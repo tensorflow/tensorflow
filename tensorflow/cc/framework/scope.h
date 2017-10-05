@@ -107,13 +107,13 @@ class Scope {
   static Scope NewRootScope();
 
   /// Return a new scope. Ops created with this scope will have
-  /// <name>/<child_scope_name> as the prefix. The actual name will be unique
+  /// `name/child_scope_name` as the prefix. The actual name will be unique
   /// in the current scope. All other properties are inherited from the current
-  /// scope. If child_scope_name is empty, the '/' is elided.
+  /// scope. If `child_scope_name` is empty, the `/` is elided.
   Scope NewSubScope(const string& child_scope_name) const;
 
   /// Return a new scope. All ops created within the returned scope will have
-  /// names of the form <name>/<op_name>[_<suffix].
+  /// names of the form `name/op_name[_suffix]`.
   Scope WithOpName(const string& op_name) const;
 
   /// Return a new scope. All ops created within the returned scope will have as
@@ -167,7 +167,8 @@ class Scope {
 
   // START_SKIP_DOXYGEN
 
-  /// Update the builder with properties accumulated in this scope.
+  /// Update the builder with properties accumulated in this scope. Does not set
+  /// status().
   // TODO(skyewm): NodeBuilder is not part of public API
   void UpdateBuilder(NodeBuilder* builder) const;
   // END_SKIP_DOXYGEN
@@ -215,12 +216,15 @@ class Scope {
 
   const std::vector<Operation>& control_deps() const;
 
- private:
-  friend class InternalScope;
+  // START_SKIP_DOXYGEN
   class Impl;
-  std::unique_ptr<Impl> impl_;
   Impl* impl() { return impl_.get(); }
   const Impl* impl() const { return impl_.get(); }
+  // END_SKIP_DOXYGEN
+
+ private:
+  friend class InternalScope;
+  std::unique_ptr<Impl> impl_;
   explicit Scope(Impl*);
 };
 

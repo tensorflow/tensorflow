@@ -418,6 +418,7 @@ class BaseEstimator(
             "model_dir are set both in constructor and RunConfig, but with "
             "different values. In constructor: '{}', in RunConfig: "
             "'{}' ".format(model_dir, self._config.model_dir))
+        # pylint: enable=g-doc-exception
 
     self._model_dir = model_dir or self._config.model_dir
     if self._model_dir is None:
@@ -980,7 +981,9 @@ class BaseEstimator(
       global_step = training_util.create_global_step(g)
       features, labels = input_fn()
       self._check_inputs(features, labels)
-      model_fn_ops = self._get_train_ops(features, labels)
+      global_step_read_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
+      with ops.control_dependencies([global_step_read_tensor]):
+        model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
       all_hooks.extend(hooks)
       all_hooks.extend([
@@ -1000,6 +1003,8 @@ class BaseEstimator(
             saver.Saver(
                 sharded=True,
                 max_to_keep=self._config.keep_checkpoint_max,
+                keep_checkpoint_every_n_hours=(
+                    self._config.keep_checkpoint_every_n_hours),
                 defer_build=True,
                 save_relative_paths=True))
 
@@ -1033,7 +1038,6 @@ class BaseEstimator(
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
-      core_summary.FileWriterCache.clear()
       return loss
 
 

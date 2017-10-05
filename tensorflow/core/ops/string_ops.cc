@@ -381,7 +381,7 @@ input = b'thirteen'
 position = [1, 5, 7]
 length =   [3, 2, 1]
 
-output = [b'hir', b'ee', b'n"]
+output = [b'hir', b'ee', b'n']
 ```
 
 input: Tensor of strings

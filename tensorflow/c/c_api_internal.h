@@ -130,6 +130,10 @@ struct TF_DeviceList {
   std::vector<tensorflow::DeviceAttributes> response;
 };
 
+struct TF_Function {
+  tensorflow::FunctionDef fdef;
+};
+
 namespace tensorflow {
 
 class TensorCApi {
@@ -141,7 +145,12 @@ class TensorCApi {
   }
 };
 
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
+
+Status MessageToBuffer(const tensorflow::protobuf::Message& in, TF_Buffer* out);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_C_C_API_INTERNAL_H_

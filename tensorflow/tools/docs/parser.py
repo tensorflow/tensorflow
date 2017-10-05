@@ -33,7 +33,7 @@ from google.protobuf.message import Message as ProtoMessage
 from tensorflow.python.util import tf_inspect
 
 
-# A regular expression capturing a python indentifier.
+# A regular expression capturing a python identifier.
 IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
 
 
@@ -446,7 +446,7 @@ class _FunctionDetail(
     parts = [self.keyword + ':\n']
     parts.append(self.header)
     for key, value in self.items:
-      parts.append('  ' + key + ':')
+      parts.append('  ' + key + ': ')
       parts.append(value)
 
     return ''.join(parts)
@@ -507,7 +507,7 @@ def _parse_function_details(docstring):
   pairs = list(_gen_pairs(parts[1:]))
 
   function_details = []
-  item_re = re.compile(r'^  (\*?\*?\w+):', re.MULTILINE)
+  item_re = re.compile(r'^   ? ?(\*?\*?\w[\w.]*?\s*):\s', re.MULTILINE)
 
   for keyword, content in pairs:
     content = item_re.split(content)
@@ -754,8 +754,9 @@ class _OtherMemberInfo(
 _PropertyInfo = collections.namedtuple(
     '_PropertyInfo', ['short_name', 'full_name', 'obj', 'doc'])
 
-_MethodInfo = collections.namedtuple(
-    '_MethodInfo', ['short_name', 'full_name', 'obj', 'doc', 'signature'])
+_MethodInfo = collections.namedtuple('_MethodInfo', [
+    'short_name', 'full_name', 'obj', 'doc', 'signature', 'decorators'
+])
 
 
 class _FunctionPageInfo(object):
@@ -769,6 +770,7 @@ class _FunctionPageInfo(object):
     self._guides = None
 
     self._signature = None
+    self._decorators = []
 
   def for_function(self):
     return True
@@ -833,6 +835,13 @@ class _FunctionPageInfo(object):
 
     assert self.signature is None
     self._signature = _generate_signature(function, reverse_index)
+
+  @property
+  def decorators(self):
+    return list(self._decorators)
+
+  def add_decorator(self, dec):
+    self._decorators.append(dec)
 
 
 class _ClassPageInfo(object):
@@ -914,7 +923,7 @@ class _ClassPageInfo(object):
     """Sets the `aliases` list.
 
     Args:
-      aliases: A list of strings. Containing all the obejct's full names.
+      aliases: A list of strings. Containing all the object's full names.
     """
     assert self.aliases is None
     self._aliases = aliases
@@ -1004,7 +1013,7 @@ class _ClassPageInfo(object):
     """Returns a list of `_MethodInfo` describing the class' methods."""
     return self._methods
 
-  def _add_method(self, short_name, full_name, obj, doc, signature):
+  def _add_method(self, short_name, full_name, obj, doc, signature, decorators):
     """Adds a `_MethodInfo` entry to the `methods` list.
 
     Args:
@@ -1013,8 +1022,13 @@ class _ClassPageInfo(object):
       obj: The method object itself
       doc: The method's parsed docstring, a `_DocstringInfo`
       signature: The method's parsed signature (see: `_generate_signature`)
+      decorators: A list of strings describing the decorators that should be
+        mentioned on the object's docs page.
     """
-    method_info = _MethodInfo(short_name, full_name, obj, doc, signature)
+
+    method_info = _MethodInfo(short_name, full_name, obj, doc, signature,
+                              decorators)
+
     self._methods.append(method_info)
 
   @property
@@ -1131,8 +1145,21 @@ class _ClassPageInfo(object):
           # functions.
           continue
 
+        child_decorators = []
+        try:
+          if isinstance(py_class.__dict__[short_name], classmethod):
+            child_decorators.append('classmethod')
+        except KeyError:
+          pass
+
+        try:
+          if isinstance(py_class.__dict__[short_name], staticmethod):
+            child_decorators.append('staticmethod')
+        except KeyError:
+          pass
+
         self._add_method(short_name, child_name, child, child_doc,
-                         child_signature)
+                         child_signature, child_decorators)
       else:
         # Exclude members defined by protobuf that are useless
         if issubclass(py_class, ProtoMessage):
@@ -1411,7 +1438,7 @@ class _PythonBuiltin(object):
 class _PythonFile(object):
   """This class indicates that the object is defined in a regular python file.
 
-  This can be used for the `defined_in` slot of the `PageInfo` obejcts.
+  This can be used for the `defined_in` slot of the `PageInfo` objects.
   """
 
   def __init__(self, path, parser_config):

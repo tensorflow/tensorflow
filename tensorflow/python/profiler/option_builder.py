@@ -177,7 +177,7 @@ class ProfileOptionBuilder(object):
             'min_params': 0,
             'min_float_ops': 0,
             'min_occurrence': 0,
-            'order_by': 'name',
+            'order_by': 'micros',
             'account_type_regexes': ['.*'],
             'start_name_regexes': ['.*'],
             'trim_name_regexes': [],

@@ -90,9 +90,6 @@ py_test(
     size = "small",
     srcs = ["custom_export_strategy_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":custom_export_strategy",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_py",

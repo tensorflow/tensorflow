@@ -477,6 +477,17 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker2[...]
         _ = checker2[tuple()]
 
+  def testInt64GPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+    with self.test_session(use_gpu=True, force_gpu=True):
+      x = constant_op.constant([1., 2., 3.])
+      begin = constant_op.constant([2], dtype=dtypes.int64)
+      end = constant_op.constant([3], dtype=dtypes.int64)
+      strides = constant_op.constant([1], dtype=dtypes.int64)
+      s = array_ops.strided_slice(x, begin, end, strides)
+      self.assertAllEqual([3.], self.evaluate(s))
+
   def testDegenerateSlices(self):
     with self.test_session(use_gpu=True):
       checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
@@ -929,12 +940,10 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
   def testExceptions(self):
     with self.test_session():
-      with self.assertRaisesRegexp(ValueError, "lengths must be 1D"):
-        array_ops.sequence_mask([[10, 20]], [10, 20])
       with self.assertRaisesRegexp(ValueError, "maxlen must be scalar"):
         array_ops.sequence_mask([10, 20], [10, 20])
 
-  def testNormal(self):
+  def testOneDimensional(self):
     with self.test_session():
       res = array_ops.sequence_mask(constant_op.constant([1, 3, 2]), 5)
       self.assertAllEqual(res.get_shape(), [3, 5])
@@ -949,6 +958,25 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(res.eval(), [[0.0, 0.0, 0.0,
                                         0.0], [1.0, 0.0, 0.0, 0.0],
                                        [1.0, 1.0, 1.0, 1.0]])
+
+  def testTwoDimensional(self):
+    with self.test_session():
+      res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)
+      self.assertAllEqual(res.get_shape(), [1, 3, 5])
+      self.assertAllEqual(res.eval(), [[[True, False, False, False, False],
+                                        [True, True, True, False, False],
+                                        [True, True, False, False, False]]])
+
+      # test dtype and default maxlen:
+      res = array_ops.sequence_mask(
+          constant_op.constant([[0, 1, 4], [1, 2, 3]]), dtype=dtypes.float32)
+      self.assertAllEqual(res.get_shape().as_list(), [2, 3, None])
+      self.assertAllEqual(res.eval(), [[[0.0, 0.0, 0.0, 0.0],
+                                        [1.0, 0.0, 0.0, 0.0],
+                                        [1.0, 1.0, 1.0, 1.0]],
+                                       [[1.0, 0.0, 0.0, 0.0],
+                                        [1.0, 1.0, 0.0, 0.0],
+                                        [1.0, 1.0, 1.0, 0.0]]])
 
   def testDtypes(self):
 
@@ -970,15 +998,15 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
 class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConcatSlice(self):
-    with self.test_session():
-      r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
-      r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
-      c = array_ops.stack([r1, r2])
-      s = array_ops.strided_slice(c, [1], [2])
-      test_ops.resource_create_op(s).run()
-      with self.assertRaises(errors.AlreadyExistsError):
-        test_ops.resource_create_op(r2).run()
+    r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
+    r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
+    c = array_ops.stack([r1, r2])
+    s = array_ops.strided_slice(c, [1], [2])
+    self.evaluate(test_ops.resource_create_op(s))
+    with self.assertRaises(errors.AlreadyExistsError):
+      self.evaluate(test_ops.resource_create_op(r2))
 
 
 class IdentityTest(test_util.TensorFlowTestCase):
@@ -1007,6 +1035,20 @@ class IdentityTest(test_util.TensorFlowTestCase):
       with ops.device("gpu:0"):
         e = array_ops.identity(d)
         _test(d, e, "gpu")
+
+
+class PadTest(test_util.TensorFlowTestCase):
+
+  def testEager(self):
+    with context.eager_mode():
+      t = constant_op.constant([[1, 2, 3], [4, 5, 6]])
+      paddings = constant_op.constant([[1, 1,], [2, 2]])
+      padded = array_ops.pad(t, paddings, "CONSTANT")
+      self.assertAllEqual(padded.numpy(),
+                          [[0, 0, 0, 0, 0, 0, 0],
+                           [0, 0, 1, 2, 3, 0, 0],
+                           [0, 0, 4, 5, 6, 0, 0],
+                           [0, 0, 0, 0, 0, 0, 0]])
 
 
 if __name__ == "__main__":

@@ -86,7 +86,7 @@ class BufferAssignmentTest : public HloTestBase {
                                                         int64 alignment = 1) {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
-               backend_->compiler()->BufferSizeBytesFunction(),
+               backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; })
         .ConsumeValueOrDie();
   }
@@ -95,7 +95,7 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
-               backend_->compiler()->BufferSizeBytesFunction(),
+               backend().compiler()->BufferSizeBytesFunction(),
                [alignment](LogicalBuffer::Color) { return alignment; }, false,
                std::move(colorer))
         .ConsumeValueOrDie();
@@ -1764,9 +1764,62 @@ TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }
 
+TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
+  auto module = MakeUnique<HloModule>(TestName());
+  auto builder = HloComputation::Builder("entry");
+
+  auto input0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape_, "input0"));
+  auto weights0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "weights0"));
+
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0)));
+  auto output0 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+  auto output1 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+
+  auto cond0 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body0 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple0 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input0, weights0, output0}));
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond0, body0, tuple0));
+
+  // Get output of 'while0' and feed as input to 'while1'.
+  auto while0_out = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while0, 2));
+
+  auto cond1 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body1 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple1 = builder.AddInstruction(
+      HloInstruction::CreateTuple({while0_out, weights0, output1}));
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond1, body1, tuple1));
+
+  // Get output of 'while1' so that it is live out of computation.
+  auto while1_out = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while1, 2));
+
+  module->AddEntryComputation(builder.Build());
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
+  // Get BufferAllocation for root instruction.
+  auto* root_alloc = assignment->GetUniqueTopLevelSlice(while1_out)
+                         .ConsumeValueOrDie()
+                         .allocation();
+  // Test that root instruction allocation is live out.
+  EXPECT_TRUE(root_alloc->maybe_live_out());
+  // Test that root instruction allocation is not an entry parameter.
+  EXPECT_FALSE(root_alloc->is_entry_computation_parameter());
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

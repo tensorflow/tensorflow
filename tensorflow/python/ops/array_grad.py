@@ -79,15 +79,16 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   def _ExtractInputShapes(inputs):
     """Extract the shapes of a set of input tensors."""
+    if not context.in_graph_mode():
+      return array_ops.shape_n(inputs)
     sizes = []
     fully_known = True
     for x in inputs:
       input_shape = array_ops.shape(x)
-      if context.in_graph_mode():
-        if not isinstance(input_shape,
-                          ops.Tensor) or input_shape.op.type != "Const":
-          fully_known = False
-          break
+      if not isinstance(input_shape,
+                        ops.Tensor) or input_shape.op.type != "Const":
+        fully_known = False
+        break
       sizes.append(input_shape)
 
     if fully_known:
@@ -534,7 +535,8 @@ def _TileGrad(op, grad):
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
   input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
   # Fix shape inference
-  input_grad.set_shape(op.inputs[0].get_shape())
+  if context.in_graph_mode():
+    input_grad.set_shape(op.inputs[0].get_shape())
   return [input_grad, None]
 
 

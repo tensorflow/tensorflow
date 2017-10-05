@@ -761,9 +761,9 @@ bool MemoryUsageTracker::Check() const {
   };
 
   // Verify buffers_defined per instruction.
-  for (auto& instruction : computation_->instructions()) {
+  for (auto* instruction : computation_->instructions()) {
     const BufferIdList& defined_buffers =
-        instruction_list_.GetItem(instruction.get())->buffers_defined;
+        instruction_list_.GetItem(instruction)->buffers_defined;
     CHECK(elements_are_unique(defined_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique defined buffers: "
@@ -774,7 +774,7 @@ bool MemoryUsageTracker::Check() const {
                });
 
     for (const Buffer& buffer : buffers_) {
-      if (buffer.defining_instruction->instruction == instruction.get()) {
+      if (buffer.defining_instruction->instruction == instruction) {
         CHECK(std::find(defined_buffers.begin(), defined_buffers.end(),
                         buffer.id) != defined_buffers.end())
             << "Instruction " << instruction->name()
@@ -784,9 +784,9 @@ bool MemoryUsageTracker::Check() const {
   }
 
   // Verify buffers_used per instruction.
-  for (auto& instruction : computation_->instructions()) {
+  for (auto* instruction : computation_->instructions()) {
     const BufferIdList& used_buffers =
-        instruction_list_.GetItem(instruction.get())->buffers_used;
+        instruction_list_.GetItem(instruction)->buffers_used;
     CHECK(elements_are_unique(used_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique used buffers: "
@@ -811,24 +811,6 @@ bool MemoryUsageTracker::Check() const {
     CHECK_EQ(buffer.unfinished_user_count, unfinished_uses)
         << "Incorrect unplaced use count for " << buffer.ToString();
   }
-
-  // Verify live set size against memory_usage_.
-  int64 live_size = 0;
-  for (const Buffer& buffer : buffers_) {
-    // The while instruction reuses its input buffers as output buffers so
-    // don't double count its buffers if it is currently executing.
-    if (IsCurrentlyLive(buffer.id) &&
-        !(buffer.defining_instruction == in_progress_item_ &&
-          in_progress_item_->instruction->opcode() == HloOpcode::kWhile)) {
-      live_size += AllocatedSize(buffer.id);
-    }
-  }
-  CHECK(live_size == memory_usage_)
-      << "Live set size " << live_size << " is not same as memory usage "
-      << memory_usage_
-      << ". This could happen if some nodes defined in the "
-         "computation are not being used/executed.";
-
   return true;
 }
 
@@ -1169,8 +1151,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
   // Verify some invariants on the memory tracker.
   CHECK_EQ(memory_tracker.memory_usage(), 0);
-  for (auto& instruction : computation->instructions()) {
-    CHECK(memory_tracker.IsPlaced(instruction.get()));
+  for (auto* instruction : computation->instructions()) {
+    CHECK(memory_tracker.IsPlaced(instruction));
   }
 
   VLOG(1) << "In computation " << computation->name() << " rematerialized "
@@ -1202,7 +1184,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
 StatusOr<bool> HloRematerialization::Run(
     HloModule* module, SequentialHloOrdering::HloModuleSequence* sequence,
-    int64 memory_limit_bytes) {
+    int64 memory_limit_bytes, RematerializationSizes* sizes) {
   // The sequence is constructed entirely by this method.
   TF_RET_CHECK(sequence->empty());
 
@@ -1248,7 +1230,8 @@ StatusOr<bool> HloRematerialization::Run(
                                 sequence->at(node.computation())));
         }
         return Status::OK();
-      }));
+      },
+      /*visit_unreachable_nodes=*/false));
 
   // The peak memory usage of the module equals the peak memory use of the entry
   // computation plus the output size of the computation. This is because the
@@ -1273,23 +1256,18 @@ StatusOr<bool> HloRematerialization::Run(
 
   // After DCE, the module sequence may include instructions which no longer
   // exist.
-  for (const auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    if (sequence->at(computation.get()).size() !=
-        computation->instruction_count()) {
+  for (const auto* computation : module->MakeNonfusionComputations()) {
+    if (sequence->at(computation).size() != computation->instruction_count()) {
       // A size mismatch between the computation instruction count and the size
       // of the ordering of instructions can only be caused by DCE. Rebuild the
       // order by removing the deleted instructions from the order.
       tensorflow::gtl::FlatSet<const HloInstruction*> instruction_set;
       for (const auto& instruction : computation->instructions()) {
-        instruction_set.insert(instruction.get());
+        instruction_set.insert(instruction);
       }
       // Move the old order into a temporary vector, then build new order
       // inplace.
-      std::vector<const HloInstruction*>& order =
-          sequence->at(computation.get());
+      std::vector<const HloInstruction*>& order = sequence->at(computation);
       std::vector<const HloInstruction*> old_order;
       using std::swap;
       swap(order, old_order);
@@ -1298,7 +1276,7 @@ StatusOr<bool> HloRematerialization::Run(
                    [&instruction_set](const HloInstruction* instruction) {
                      return ContainsKey(instruction_set, instruction);
                    });
-      TF_RET_CHECK(sequence->at(computation.get()).size() ==
+      TF_RET_CHECK(sequence->at(computation).size() ==
                    computation->instruction_count());
     }
   }
@@ -1318,13 +1296,20 @@ StatusOr<bool> HloRematerialization::Run(
           << HumanReadableNumBytes(reduced_peak_memory) << " ("
           << reduced_peak_memory << " bytes)";
 
+  if (sizes != nullptr) {
+    sizes->before_bytes = before_peak_memory;
+    sizes->after_bytes = current_peak_memory;
+  }
+
   XLA_VLOG_LINES(3, "After HloRematerialization:\n" + module->ToString());
 
   if (current_peak_memory > memory_limit_bytes) {
-    LOG(WARNING) << "Can't reduce memory use below "
-                 << HumanReadableNumBytes(memory_limit_bytes)
-                 << " by rematerialization (only reduced to "
-                 << HumanReadableNumBytes(current_peak_memory) << ")";
+    LOG(WARNING) << tensorflow::strings::Printf(
+        "Can't reduce memory use below %s (%lld bytes) by rematerialization; "
+        "only reduced to %s (%lld bytes)",
+        HumanReadableNumBytes(memory_limit_bytes).c_str(), memory_limit_bytes,
+        HumanReadableNumBytes(current_peak_memory).c_str(),
+        current_peak_memory);
   }
 
   return changed;
@@ -1333,9 +1318,10 @@ StatusOr<bool> HloRematerialization::Run(
 /* static */ StatusOr<bool> HloRematerialization::RematerializeAndSchedule(
     const HloRematerialization::ShapeSizeFunction& size_function,
     int64 memory_limit_bytes, HloModule* hlo_module,
-    SequentialHloOrdering::HloModuleSequence* sequence) {
+    SequentialHloOrdering::HloModuleSequence* sequence,
+    RematerializationSizes* sizes) {
   HloRematerialization remat(size_function);
-  return remat.Run(hlo_module, sequence, memory_limit_bytes);
+  return remat.Run(hlo_module, sequence, memory_limit_bytes, sizes);
 }
 
 }  // namespace xla

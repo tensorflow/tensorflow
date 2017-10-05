@@ -72,6 +72,13 @@ class ListScheduler {
     return scheduler.CreateSchedule();
   }
 
+  // Returns whether the memory used by the given HLO should be ignored by the
+  // scheduling heuristic.
+  static bool IgnoreInstruction(const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kParameter ||
+           instruction.opcode() == HloOpcode::kConstant;
+  }
+
  private:
   // The scheduling priority of an instruction is first the number of bytes
   // freed by scheduling the instruction, and second (tie-breaker) by the number
@@ -90,7 +97,7 @@ class ListScheduler {
     // instruction. An HLO instruction "uses" a LogicalBuffer if the
     // LogicalBuffer is in an operand of the instruction as indicated by
     // points-to analysis.
-    for (auto& instruction : computation.instructions()) {
+    for (auto* instruction : computation.instructions()) {
       std::unordered_set<const LogicalBuffer*> instr_uses;
       for (auto* operand : instruction->operands()) {
         for (const LogicalBuffer* buffer :
@@ -98,20 +105,20 @@ class ListScheduler {
           instr_uses.insert(buffer);
         }
       }
-      buffer_uses_[instruction.get()] = std::vector<const LogicalBuffer*>(
+      buffer_uses_[instruction] = std::vector<const LogicalBuffer*>(
           instr_uses.begin(), instr_uses.end());
     }
 
     // Create map containing the number of unscheduled uses (hlo instructions)
     // of each logical buffer.
-    for (auto& instruction : computation.instructions()) {
-      for (auto* buffer : points_to_analysis.GetBuffersDefinedByInstruction(
-               instruction.get())) {
+    for (auto* instruction : computation.instructions()) {
+      for (auto* buffer :
+           points_to_analysis.GetBuffersDefinedByInstruction(instruction)) {
         unscheduled_use_count_[buffer] = 0;
       }
     }
-    for (auto& instruction : computation.instructions()) {
-      for (const LogicalBuffer* buffer : buffer_uses_.at(instruction.get())) {
+    for (auto* instruction : computation.instructions()) {
+      for (const LogicalBuffer* buffer : buffer_uses_.at(instruction)) {
         ++unscheduled_use_count_[buffer];
       }
     }
@@ -127,9 +134,8 @@ class ListScheduler {
 
   // Returns whether the memory used by the given buffer should be ignored by
   // the scheduling heuristic.
-  bool IgnoreBuffer(const LogicalBuffer& buffer) {
-    return buffer.instruction()->opcode() == HloOpcode::kParameter ||
-           buffer.instruction()->opcode() == HloOpcode::kConstant;
+  static bool IgnoreBuffer(const LogicalBuffer& buffer) {
+    return IgnoreInstruction(*buffer.instruction());
   }
 
   // An entry in the worklist used by CreateSchedule.  Corresponds to one
@@ -198,7 +204,7 @@ class ListScheduler {
     // Populate the ready list with instructions which have no operands or
     // control predecessors.
     std::unordered_map<const HloInstruction*, int64> unscheduled_pred_count;
-    for (auto& instruction : computation_.instructions()) {
+    for (auto* instruction : computation_.instructions()) {
       // TODO(b/34466113): Replace this and above with successors() or
       // predecessors() when these methods are added to HloInstruction.
       for (const HloInstruction* user : instruction->users()) {
@@ -210,11 +216,11 @@ class ListScheduler {
     }
 
     std::list<ReadyListEntry> ready_list;
-    for (auto& instruction : computation_.instructions()) {
+    for (auto* instruction : computation_.instructions()) {
       // Instruction with no operands or control predecessors will
       // not be in the map.
-      if (unscheduled_pred_count.count(instruction.get()) == 0) {
-        ready_list.push_back(MakeReadyListEntry(instruction.get()));
+      if (unscheduled_pred_count.count(instruction) == 0) {
+        ready_list.push_back(MakeReadyListEntry(instruction));
       }
     }
 
@@ -261,9 +267,8 @@ class ListScheduler {
         update_pred_count(succ);
       }
     }
-    CHECK_EQ(schedule.size(), computation_.instructions().size());
-    CHECK_EQ(scheduled_instructions_.size(),
-             computation_.instructions().size());
+    CHECK_EQ(schedule.size(), computation_.instruction_count());
+    CHECK_EQ(scheduled_instructions_.size(), computation_.instruction_count());
 
     return schedule;
   }
@@ -306,6 +311,11 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
+    if (ListScheduler::IgnoreInstruction(*hlo)) {
+      extra_users[hlo] = 0;
+      total_sizes[hlo] = 0;
+      continue;
+    }
     extra_users[hlo] = hlo->users().empty() ? 0 : hlo->users().size() - 1;
     total_sizes[hlo] = SumLogicalBufferSizes(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
@@ -316,8 +326,8 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
       total_sizes[hlo] += total_sizes[operand];
     }
   }
-  CHECK_EQ(extra_users.size(), computation.instructions().size());
-  CHECK_EQ(total_sizes.size(), computation.instructions().size());
+  CHECK_EQ(extra_users.size(), computation.instruction_count());
+  CHECK_EQ(total_sizes.size(), computation.instruction_count());
 
   // Construct a total order based on DFS post-order, visiting operands in
   // decreasing cumulative extra user order, and next by cumulative size, with a
@@ -338,7 +348,7 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
         }
         return a->name() < b->name();
       }));
-  CHECK_EQ(sequence.size(), computation.instructions().size());
+  CHECK_EQ(sequence.size(), computation.instruction_count());
   return sequence;
 }
 
@@ -400,11 +410,8 @@ CreateMemoryMinimizingSequence(
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
-  for (const auto& computation : module.computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    TF_ASSIGN_OR_RETURN(sequence[computation.get()],
+  for (const auto* computation : module.MakeNonfusionComputations()) {
+    TF_ASSIGN_OR_RETURN(sequence[computation],
                         CreateMemoryMinimizingSequence(
                             *computation, *points_to_analysis, size_function));
   }

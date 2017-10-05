@@ -214,7 +214,7 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
-  EXPECT_EQ(7, module->computations().size());
+  EXPECT_EQ(7, module->computation_count());
 
   const CallGraphNode& c_node = call_graph->GetNode(c_computation);
   EXPECT_EQ(1, c_node.caller_callsites().size());
@@ -225,7 +225,3 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

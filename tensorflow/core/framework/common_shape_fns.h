@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -152,6 +153,14 @@ inline Status MergeBothInputsShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// Returns a new shape with the specified dims arranged in the specified
+// format. The returned value is owned by this context.
+// Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.
+Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
+                           const std::vector<DimensionOrConstant>& spatial,
+                           DimensionOrConstant C, ShapeHandle* out,
+                           shape_inference::InferenceContext* context);
+
 // Shape function for MatMul-like operations.
 Status MatMulShape(shape_inference::InferenceContext* c);
 
@@ -167,14 +176,17 @@ Status Conv2DShape(shape_inference::InferenceContext* c);
 // Shape function for Conv3D-like operations.
 Status Conv3DShape(shape_inference::InferenceContext* c);
 
-// Shape function for FusedConvBiasActivation operation.
-Status FusedConvBiasActivationShape(shape_inference::InferenceContext* c);
-
 // Shape function for DepthwiseConv2D-like operations.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 
 // Shape function for AvgPool-like operations.
 Status AvgPoolShape(shape_inference::InferenceContext* c);
+
+// Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
+Status FusedBatchNormShape(shape_inference::InferenceContext* c);
+
+// Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
+Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPool-like operations.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
@@ -215,6 +227,9 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 
 // Shape function for ScatterNd update/add/sub/... operations.
 Status ScatterNdUpdateShape(InferenceContext* c);
+
+// Shape function for ops with an explicit "shape" attribute.
+Status ExplicitShape(InferenceContext* c);
 
 }  // namespace shape_inference
 
