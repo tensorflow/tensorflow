@@ -1457,6 +1457,14 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
       llvm_ir::EmitBufferIndexingGEP(params, param_number, &ir_builder_);
   llvm::LoadInst* param_address_untyped =
       ir_builder_.CreateLoad(param_address_offset);
+  if (hlo_module_config_.debug_options()
+          .xla_llvm_enable_invariant_load_metadata()) {
+    // We never reassign parameters, so this load is invariant.
+    param_address_untyped->setMetadata(
+        llvm::LLVMContext::MD_invariant_load,
+        llvm::MDNode::get(param_address_untyped->getContext(), /*MDs=*/{}));
+  }
+
   llvm::Value* param_address_typed = ir_builder_.CreateBitCast(
       param_address_untyped, IrShapeType(param_shape)->getPointerTo());
   emitted_value_[parameter] = param_address_typed;
@@ -2924,8 +2932,8 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
       ir_builder_.CreateLoad(tempbuf_address_ptr);
   if (hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
-    //  Loading the address of a buffer is invariant of the point at which the
-    //  load is executed in the program because we never reassign buffers.
+    // Loading the address of a buffer is invariant of the point at which the
+    // load is executed in the program because we never reassign buffers.
     tempbuf_address_base->setMetadata(
         llvm::LLVMContext::MD_invariant_load,
         llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
