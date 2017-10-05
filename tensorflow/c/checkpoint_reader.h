@@ -44,9 +44,13 @@ class CheckpointReader {
   bool HasTensor(const string& name) const;
   const string DebugString() const;
 
-  // Returns a map from variable names to its shape.  Slices of a partitioned
+  // Returns a map from variable names to their shapes.  Slices of a partitioned
   // tensor are combined into a single entry.
   const TensorSliceReader::VarToShapeMap& GetVariableToShapeMap() const;
+
+  // Returns a map from variable names to their data types.  Slices of a
+  // partitioned tensor are combined into a single entry.
+  const TensorSliceReader::VarToDataTypeMap& GetVariableToDataTypeMap() const;
 
   // Attempts to look up the tensor named "name" and stores the found result in
   // "out_tensor".
@@ -55,14 +59,19 @@ class CheckpointReader {
                  TF_Status* out_status) const;
 
  private:
-  // Uses "v2_reader_" to build a "var name -> shape" map; owned by caller.
+  // Uses "v2_reader_" to build "var name -> shape" and "var name -> data type"
+  // maps; both owned by caller.
   // REQUIRES: "v2_reader_ != nullptr && v2_reader_.status().ok()".
-  std::unique_ptr<TensorSliceReader::VarToShapeMap> BuildV2VarToShapeMap();
+  std::pair<std::unique_ptr<TensorSliceReader::VarToShapeMap>,
+            std::unique_ptr<TensorSliceReader::VarToDataTypeMap> >
+  BuildV2VarMaps();
 
   // Invariant: exactly one of "reader_" and "v2_reader_" is non-null.
   std::unique_ptr<TensorSliceReader> reader_;
   std::unique_ptr<BundleReader> v2_reader_;
-  std::unique_ptr<TensorSliceReader::VarToShapeMap> var_to_shape_map_ptr_;
+
+  std::unique_ptr<TensorSliceReader::VarToShapeMap> var_to_shape_map_;
+  std::unique_ptr<TensorSliceReader::VarToDataTypeMap> var_to_data_type_map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CheckpointReader);
 };
