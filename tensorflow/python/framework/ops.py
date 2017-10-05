@@ -2808,19 +2808,14 @@ class Graph(object):
       ValueError: if another function is defined with the same name.
     """
     name = function.name
-    previous = self._functions.get(name, None)
-    if previous:
-      raise ValueError("Another function is already defined with that name")
     # Sanity checks on gradient definition.
     if (function.grad_func_name is not None) and (function.python_grad_func is
                                                   not None):
       raise ValueError("Gradient defined twice for function %s" % name)
-    # Need a new-enough consumer to support the functions we add to the graph.
-    if self._graph_def_versions.min_consumer < 12:
-      self._graph_def_versions.min_consumer = 12
-    self._functions[name] = function
+
+    # Add function to graph
+    # pylint: disable=protected-access
     if self._c_graph:
-      # pylint: disable=protected-access
       assert function._c_func, (
           "Cannot add function created without C API support to graph "
           "created with C API support")
@@ -2828,7 +2823,26 @@ class Graph(object):
         gradient = function._grad_func._c_func if function._grad_func else None
         c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient,
                                    status)
-      # pylint: enable=protected-access
+    else:
+      # If there is already a function with the same name, raise an error
+      # if bodies are different. Else, do nothing. The C API version above
+      # has the same behavior.
+      previous = self._functions.get(name, None)
+      if previous:
+        # This check is not ideal as we can have a hash collision with only
+        # 32 bits in the hash, but the non C API mode is being deprecated.
+        # Don't bother changing it now.
+        if previous._hash_str == function._hash_str:
+          return
+        else:
+          raise ValueError("Another function is already defined with that name")
+    # pylint: enable=protected-access
+
+    self._functions[name] = function
+
+    # Need a new-enough consumer to support the functions we add to the graph.
+    if self._graph_def_versions.min_consumer < 12:
+      self._graph_def_versions.min_consumer = 12
 
   @property
   def building_function(self):
