@@ -30,7 +30,7 @@ def ignore_errors():
   example:
 
   ```python
-  dataset = tf.contrib.data.Dataset.from_tensor_slices([1., 2., 0., 4.])
+  dataset = tf.data.Dataset.from_tensor_slices([1., 2., 0., 4.])
 
   # Computing `tf.check_numerics(1. / 0.)` will raise an InvalidArgumentError.
   dataset = dataset.map(lambda x: tf.check_numerics(1. / x, "error"))
@@ -42,7 +42,7 @@ def ignore_errors():
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/cc/ops/functional_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -34,6 +35,134 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+// Returns the names of the "then" and "else" functions for the XlaIf node in a
+// graph.
+Status FindIfThenAndElse(const GraphDef& graph, NameAttrList* then_fn,
+                         NameAttrList* else_fn) {
+  for (const NodeDef& node : graph.node()) {
+    if (node.op() == "XlaIf") {
+      const NameAttrList* result;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node, "then_branch", &result));
+      *then_fn = *result;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node, "else_branch", &result));
+      *else_fn = *result;
+      return Status::OK();
+    }
+  }
+  return errors::NotFound("No XlaIf node found in graph");
+}
+
+// Graph:
+// x = array_ops.placeholder(dtypes.int32)
+// y = array_ops.placeholder(dtypes.int32)
+// z = control_flow_ops.cond(
+//     math_ops.less(y, x), lambda: math_ops.multiply(y, 17),
+//     lambda: math_ops.add(x, 23))
+TEST(FunctionalizeControlFlow, Conditional) {
+  Graph graph(OpRegistry::Global());
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+
+    auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
+    auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
+    auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
+    auto switch_1 = ops::Switch(scope.WithOpName("cond/Switch"), less, less);
+
+    auto identity_t =
+        ops::Identity(scope.WithOpName("cond/Identity"), switch_1.output_true);
+    auto seventeen = ops::Const<int32>(
+        scope.WithOpName("cond").WithControlDependencies(identity_t), 17);
+    auto switch_2 = ops::Switch(scope.WithOpName("cond/Switch"), y, less);
+    auto mul = ops::Multiply(scope.WithOpName("cond/Mul"), switch_2.output_true,
+                             seventeen);
+
+    auto identity_f =
+        ops::Identity(scope.WithOpName("cond/Identity"), switch_1.output_false);
+    auto twenty_three = ops::Const<int32>(
+        scope.WithOpName("cond").WithControlDependencies(identity_f), 23);
+    auto switch_3 = ops::Switch(scope.WithOpName("cond/Switch"), x, less);
+    auto add = ops::Add(scope.WithOpName("cond/false/add"),
+                        switch_3.output_false, twenty_three);
+
+    auto merge = ops::Merge(scope.WithOpName("cond/Merge"),
+                            std::initializer_list<Input>{add, mul});
+
+    TF_EXPECT_OK(scope.ToGraph(&graph));
+  }
+
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  TF_ASSERT_OK(FunctionalizeControlFlow(&graph, &library));
+
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  NameAttrList then_fn;
+  NameAttrList else_fn;
+  TF_EXPECT_OK(FindIfThenAndElse(graph_def, &then_fn, &else_fn));
+  InstantiationResultForTest else_result;
+  TF_EXPECT_OK(
+      InstantiateFunctionForTest(else_fn.name(), library, &else_result));
+
+  // Outer graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
+    auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
+    auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
+    auto if_op = ops::XlaIf(scope.WithOpName("cond/Merge_If"), less,
+                            std::initializer_list<Input>{x, y, less}, then_fn,
+                            else_fn, {DT_INT32});
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+    TF_EXPECT_GRAPH_EQ(expected, graph_def);
+  }
+
+  // then body.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    auto arg_1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
+    auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_BOOL, 2);
+    auto identity = ops::Identity(scope.WithOpName("cond/Identity"), arg_2);
+    auto cond = ops::Const(
+        scope.WithOpName("cond").WithControlDependencies(identity), 17);
+    auto mul = ops::Mul(scope.WithOpName("cond/Mul"), arg_1, cond);
+    auto retval0 = ops::_Retval(scope.WithOpName("_retval0_RetVal"), mul, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(then_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_BOOL}), result.arg_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+
+  // else body.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    auto arg_1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
+    auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_BOOL, 2);
+    auto identity = ops::Identity(scope.WithOpName("cond/Identity_1"), arg_2);
+    auto cond_1 = ops::Const(
+        scope.WithOpName("cond_1").WithControlDependencies(identity), 23);
+    auto add = ops::Add(scope.WithOpName("cond/false/add"), arg_0, cond_1);
+    auto retval0 = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(else_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_BOOL}), result.arg_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+}
 
 // Returns the names of the "cond" and "body" functions for the While node
 // in a graph.

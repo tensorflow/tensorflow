@@ -862,6 +862,43 @@ class _StepCounterHook(session_run_hook.SessionRunHook):
     return self._steps
 
 
+class EstimatorGetVariablesTest(test.TestCase):
+
+  def test_model_should_be_trained(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='one')
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    with self.assertRaisesRegexp(ValueError, 'not find trained model'):
+      est.get_variable_names()
+    with self.assertRaisesRegexp(ValueError, 'not find trained model'):
+      est.get_variable_value('one')
+
+  def test_get_variable_utils(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='one')
+      variables.Variable(3., name='three')
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    self.assertEqual(
+        set(['one', 'three', 'global_step']), set(est.get_variable_names()))
+    self.assertEqual(1., est.get_variable_value('one'))
+    self.assertEqual(3., est.get_variable_value('three'))
+
+
 class EstimatorEvaluateTest(test.TestCase):
 
   def test_input_fn_args(self):

@@ -11633,6 +11633,38 @@ op {
   description: "I.e., \\\\(y = \\log_e (1 + x)\\\\)."
 }
 op {
+  name: "LogMatrixDeterminant"
+  input_arg {
+    name: "input"
+    description: "Shape is `[N, M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sign"
+    description: "The signs of the log determinants of the inputs. Shape is `[N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "log_abs_determinant"
+    description: "The logs of the absolute values of the determinants\nof the N input matrices.  Shape is `[N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the sign and the log of the absolute value of the determinant of"
+  description: "one or more square matrices.\n\nThe input is a tensor of shape `[N, M, M]` whose inner-most 2 dimensions\nform square matrices. The outputs are two tensors containing the signs and\nabsolute values of the log determinants for all N input submatrices\n`[..., :, :]` such that the determinant = sign*exp(log_abs_determinant).\nThe log_abs_determinant is computed as det(P)*sum(log(diag(LU))) where LU\nis the LU decomposition of the input and P is the corresponding\npermutation matrix."
+}
+op {
   name: "LogSoftmax"
   input_arg {
     name: "logits"
@@ -18771,6 +18803,85 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Outputs random values from the Poisson distribution(s) described by rate."
+  description: "This op uses two algorithms, depending on rate. If rate >= 10, then\nthe algorithm by Hormann is used to acquire samples via\ntransformation-rejection.\nSee http://www.sciencedirect.com/science/article/pii/0167668793909974.\n\nOtherwise, Knuth\'s algorithm is used to acquire samples via multiplying uniform\nrandom variables.\nSee Donald E. Knuth (1969). Seminumerical Algorithms. The Art of Computer\nProgramming, Volume 2. Addison Wesley"
+  is_stateful: true
+}
+op {
+  name: "RandomPoissonV2"
+  input_arg {
+    name: "shape"
+    description: "1-D integer tensor. Shape of independent samples to draw from each\ndistribution described by the shape parameters given in rate."
+    type_attr: "S"
+  }
+  input_arg {
+    name: "rate"
+    description: "A tensor in which each scalar is a \"rate\" parameter describing the\nassociated poisson distribution."
+    type_attr: "R"
+  }
+  output_arg {
+    name: "output"
+    description: "A tensor with shape `shape + shape(rate)`. Each slice\n`[:, ..., :, i0, i1, ...iN]` contains the samples drawn for\n`rate[i0, i1, ...iN]`."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "S"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "R"
+    type: "type"
+    default_value {
+      type: DT_DOUBLE
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -31758,40 +31869,14 @@ op {
   name: "Where"
   input_arg {
     name: "input"
-    type_attr: "T"
+    type: DT_BOOL
   }
   output_arg {
     name: "index"
     type: DT_INT64
   }
-  attr {
-    name: "T"
-    type: "type"
-    default_value {
-      type: DT_BOOL
-    }
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT64
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_UINT16
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
-        type: DT_HALF
-        type: DT_BOOL
-      }
-    }
-  }
-  summary: "Returns locations of nonzero / true values in a tensor."
-  description: "This operation returns the coordinates of true elements in `input`. The\ncoordinates are returned in a 2-D tensor where the first dimension (rows)\nrepresents the number of true elements, and the second dimension (columns)\nrepresents the coordinates of the true elements. Keep in mind, the shape of\nthe output tensor can vary depending on how many true values there are in\n`input`. Indices are output in row-major order.\n\nFor example:\n\n```\n# \'input\' tensor is [[True, False]\n#                    [True, False]]\n# \'input\' has two true values, so output has two coordinates.\n# \'input\' has rank of 2, so coordinates have two indices.\nwhere(input) ==> [[0, 0],\n                  [1, 0]]\n\n# `input` tensor is [[[True, False]\n#                     [True, False]]\n#                    [[False, True]\n#                     [False, True]]\n#                    [[False, False]\n#                     [False, True]]]\n# \'input\' has 5 true values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n\n# `input` tensor is [[[1.5,  0.0]\n#                     [-0.5, 0.0]]\n#                    [[0.0,  0.25]\n#                     [0.0,  0.75]]\n#                    [[0.0,  0.0]\n#                     [0.0,  0.01]]]\n# \'input\' has 5 nonzero values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n\n# `input` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]\n#                     [0.0 + 0.5j, 0.0  + 0.0j]]\n#                    [[0.0 + 0.0j, 0.25 + 1.5j]\n#                     [0.0 + 0.0j, 0.75 + 0.0j]]\n#                    [[0.0 + 0.0j, 0.0  + 0.0j]\n#                     [0.0 + 0.0j, 0.01 + 0.0j]]]\n# \'input\' has 5 nonzero magnitude values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n```"
+  summary: "Returns locations of true values in a boolean tensor."
+  description: "This operation returns the coordinates of true elements in `input`. The\ncoordinates are returned in a 2-D tensor where the first dimension (rows)\nrepresents the number of true elements, and the second dimension (columns)\nrepresents the coordinates of the true elements. Keep in mind, the shape of\nthe output tensor can vary depending on how many true values there are in\n`input`. Indices are output in row-major order.\n\nFor example:\n\n```\n# \'input\' tensor is [[True, False]\n#                    [True, False]]\n# \'input\' has two true values, so output has two coordinates.\n# \'input\' has rank of 2, so coordinates have two indices.\nwhere(input) ==> [[0, 0],\n                  [1, 0]]\n\n# `input` tensor is [[[True, False]\n#                     [True, False]]\n#                    [[False, True]\n#                     [False, True]]\n#                    [[False, False]\n#                     [False, True]]]\n# \'input\' has 5 true values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n```"
 }
 op {
   name: "WholeFileReader"
