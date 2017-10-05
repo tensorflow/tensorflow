@@ -429,19 +429,20 @@ class Graph {
   // REQUIRES: node->IsOp()
   void RemoveNode(Node* node);
 
-  // Add an edge that connects the xth output of "source" to the yth input
-  // of "dest".
+  // Add an edge that connects the xth output of `source` to the yth input of
+  // `dest` and returns it. Does not update dest's NodeDef.
   const Edge* AddEdge(Node* source, int x, Node* dest, int y);
 
-  // Add a control-edge (no data flows along this edge) that
-  // connects "source" to "dest".
-  const Edge* AddControlEdge(Node* source, Node* dest) {
-    return AddEdge(source, kControlSlot, dest, kControlSlot);
-  }
+  // Add a control edge (no data flows along this edge) that connects `source`
+  // to `dest`. If `update_node_def` is true, updates dest's NodeDef. This will
+  // add a new edge even if an identical edge already exists.
+  const Edge* AddControlEdge(Node* source, Node* dest,
+                             bool update_node_def = true);
 
-  // Removes edge from the graph.
+  // Removes edge from the graph. If `update_node_def` is true, updates
+  // dest's NodeDef.
   // REQUIRES: The edge must exist.
-  void RemoveEdge(const Edge* edge);
+  void RemoveEdge(const Edge* edge, bool update_node_def = true);
 
   // Updates the input to a node.  The existing edge to `dst` is removed
   // and an edge from `new_src` to `dst` is created. The NodeDef associated with

@@ -104,6 +104,20 @@ class GraphTest : public ::testing::Test {
     return node;
   }
 
+  void FromGraphDef(const string& gdef_ascii) {
+    GraphDef gdef;
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+    GraphConstructorOptions opts;
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef, &graph_));
+  }
+
+  Node* FindNode(const string& name) {
+    for (Node* node : graph_.nodes()) {
+      if (node->name() == name) return node;
+    }
+    CHECK(false) << name;
+  }
+
   Graph graph_;
 
  private:
@@ -409,6 +423,58 @@ TEST_F(GraphTest, IsValidNode) {
   EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
                    "Does it belong to a different graph?"),
             s.error_message());
+}
+
+TEST_F(GraphTest, AddControlEdge) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } "
+      "node { name: 'D' op: 'NoOp' } ");
+  Node* a = FindNode("A");
+  Node* b = FindNode("B");
+  Node* c = FindNode("C");
+  Node* d = FindNode("D");
+
+  // Add a control edge.
+  const Edge* edge = graph_.AddControlEdge(c, a);
+  ASSERT_TRUE(edge != nullptr);
+  // Check newly-created edge.
+  EXPECT_EQ(edge->src(), c);
+  EXPECT_EQ(edge->src_output(), Graph::kControlSlot);
+  EXPECT_EQ(edge->dst(), a);
+  EXPECT_EQ(edge->dst_input(), Graph::kControlSlot);
+  // Check A's node def.
+  ASSERT_EQ(a->def().input_size(), 1);
+  EXPECT_EQ(a->def().input(0), "^C");
+
+  // Add some redundant control edges.
+  edge = graph_.AddControlEdge(a, b);
+  ASSERT_TRUE(edge != nullptr);
+  ASSERT_EQ(b->def().input_size(), 2);
+  EXPECT_EQ(b->def().input(0), "A:0");
+  EXPECT_EQ(b->def().input(1), "^A");
+  edge = graph_.AddControlEdge(a, b);
+  ASSERT_TRUE(edge != nullptr);
+  ASSERT_EQ(b->def().input_size(), 3);
+  EXPECT_EQ(b->def().input(2), "^A");
+
+  // Test update_node_def = false.
+  edge = graph_.AddControlEdge(c, d, /* update_node_def */ false);
+  ASSERT_TRUE(edge != nullptr);
+  // Check newly-created edge
+  EXPECT_EQ(edge->src(), c);
+  EXPECT_EQ(edge->src_output(), Graph::kControlSlot);
+  EXPECT_EQ(edge->dst(), d);
+  EXPECT_EQ(edge->dst_input(), Graph::kControlSlot);
+  // Doesn't update B's node def
+  ASSERT_EQ(d->def().input_size(), 0);
+
+  // Add control edge from source
+  edge = graph_.AddControlEdge(graph_.source_node(), d);
+  ASSERT_TRUE(edge != nullptr);
+  // Check that we don't include source input in node def
+  ASSERT_EQ(d->def().input_size(), 0);
 }
 
 TEST_F(GraphTest, UpdateEdge) {

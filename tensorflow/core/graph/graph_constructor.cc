@@ -830,7 +830,7 @@ Status GraphConstructor::Convert() {
         back_edges_.push_back(
             EdgeInfo(inputs[i].name, inputs[i].index, node, i));
       } else if (inputs[i].index == Graph::kControlSlot) {
-        g_->AddControlEdge(inputs[i].node, node);
+        g_->AddControlEdge(inputs[i].node, node, /*update_node_def=*/false);
       } else {
         TF_RETURN_IF_ERROR(MakeEdge(inputs[i].node, inputs[i].index, node, i));
       }
@@ -868,7 +868,7 @@ Status GraphConstructor::AddBackEdges() {
   for (auto e : back_edges_) {
     Node* src_node = gdef_nodes_[e.src_name].node;
     if (e.src_index == Graph::kControlSlot) {
-      g_->AddControlEdge(src_node, e.dst_node);
+      g_->AddControlEdge(src_node, e.dst_node, /*update_node_def=*/false);
     } else {
       TF_RETURN_IF_ERROR(
           MakeEdge(src_node, e.src_index, e.dst_node, e.dst_index));

@@ -408,8 +408,13 @@ class OperationTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(1).op
       y = constant_op.constant(2).op
-    y._add_control_input(x)  # pylint: disable=protected-access
-    self.assertEqual(y.control_inputs, [x])
+      z = constant_op.constant(3).op
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x])
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x, x])
+    z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x, x, x, y, y])
 
   @test_util.enable_c_api
   def testControlInputCycle(self):
