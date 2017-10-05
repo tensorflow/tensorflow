@@ -37,10 +37,7 @@ namespace xla {
 StatusOr<bool> HloDCE::Run(HloModule* module) {
   bool changed = false;
 
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (auto* computation : module->MakeNonfusionComputations()) {
     std::unordered_set<HloInstruction*> live_instructions;
     TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
         [&live_instructions](HloInstruction* instruction) {
@@ -52,11 +49,11 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     // into a separate list first to avoid problems with iterating through the
     // computation's instruction while simultaneously removing instructions.
     std::vector<HloInstruction*> dead_roots;
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->user_count() == 0 &&
-          live_instructions.count(instruction.get()) == 0 &&
-          computation->IsRemovable(instruction.get())) {
-        dead_roots.push_back(instruction.get());
+          live_instructions.count(instruction) == 0 &&
+          computation->IsRemovable(instruction)) {
+        dead_roots.push_back(instruction);
       }
     }
 

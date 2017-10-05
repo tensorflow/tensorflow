@@ -29,6 +29,8 @@ using tensorflow::tensorforest::TestableInputTarget;
 using tensorflow::tensorforest::FertileSlot;
 using tensorflow::tensorforest::DenseClassificationGrowStats;
 using tensorflow::tensorforest::SparseClassificationGrowStats;
+using tensorflow::tensorforest::FixedSizeClassStats;
+using tensorflow::tensorforest::FixedSizeSparseClassificationGrowStats;
 using tensorflow::tensorforest::LeastSquaresRegressionGrowStats;
 using tensorflow::tensorforest::TensorForestParams;
 using tensorflow::tensorforest::SPLIT_FINISH_BASIC;
@@ -327,7 +329,6 @@ TEST(GrowStatsLeastSquaresRegressionTest, Basic) {
   ASSERT_EQ(serialized_again, serialized);
 }
 
-
 TEST(GrowStatsSparseClassificationTest, Basic) {
   TensorForestParams params;
   params.set_num_outputs(2);
@@ -353,6 +354,75 @@ TEST(GrowStatsSparseClassificationTest, Basic) {
 
   std::unique_ptr<SparseClassificationGrowStats> new_stat(
       new SparseClassificationGrowStats(params, 1));
+  new_stat->ExtractFromProto(slot);
+  FertileSlot second_one;
+  new_stat->PackToProto(&second_one);
+  string serialized_again = second_one.DebugString();
+  ASSERT_EQ(serialized_again, serialized);
+}
+
+TEST(FixedSizeClassStats, Exact) {
+  FixedSizeClassStats stats(10, 100);
+
+  stats.accumulate(1, 1.0);
+  stats.accumulate(2, 2.0);
+  stats.accumulate(3, 3.0);
+
+  EXPECT_EQ(stats.get_weight(1), 1.0);
+  EXPECT_EQ(stats.get_weight(2), 2.0);
+  EXPECT_EQ(stats.get_weight(3), 3.0);
+
+  float sum;
+  float square;
+  stats.set_sum_and_square(&sum, &square);
+
+  EXPECT_EQ(sum, 6.0);
+  EXPECT_EQ(square, 14.0);
+}
+
+TEST(FixedSizeClassStats, Approximate) {
+  FixedSizeClassStats stats(5, 10);
+
+  for (int i = 1; i <= 10; i++) {
+    stats.accumulate(i, i * 1.0);
+  }
+
+  // We should be off by no more than *half* of the least weight
+  // in the class_weights_, which is 7.
+  float tolerance = 3.5;
+  for (int i = 1; i <= 10; i++) {
+    float diff = stats.get_weight(i) - i * 1.0;
+    EXPECT_LE(diff, tolerance);
+    EXPECT_GE(diff, -tolerance);
+  }
+}
+
+TEST(GrowStatsFixedSizeSparseClassificationTest, Basic) {
+  TensorForestParams params;
+  params.set_num_outputs(2);
+  params.set_num_classes_to_track(5);
+  params.mutable_split_after_samples()->set_constant_value(2);
+  params.mutable_num_splits_to_consider()->set_constant_value(2);
+  std::unique_ptr<FixedSizeSparseClassificationGrowStats> stat(
+      new FixedSizeSparseClassificationGrowStats(params, 1));
+  stat->Initialize();
+
+  std::vector<float> labels = {100, 1000, 1};
+  std::vector<float> weights = {2.3, 20.3, 1.1};
+  std::unique_ptr<TestableInputTarget> target(
+      new TestableInputTarget(labels, weights, 1));
+  std::vector<int> branches = {1, 0, 1, 1, 0, 0};
+
+  RunBatch(stat.get(), target.get());
+  CHECK(stat->IsFinished());
+
+  FertileSlot slot;
+  stat->PackToProto(&slot);
+
+  string serialized = slot.DebugString();
+
+  std::unique_ptr<FixedSizeSparseClassificationGrowStats> new_stat(
+      new FixedSizeSparseClassificationGrowStats(params, 1));
   new_stat->ExtractFromProto(slot);
   FertileSlot second_one;
   new_stat->PackToProto(&second_one);

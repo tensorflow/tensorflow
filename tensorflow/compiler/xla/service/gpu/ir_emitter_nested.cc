@@ -76,7 +76,7 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
       llvm_ir::AsStringRef(ir_emitter_context_->name_uniquer()->GetUniqueName(
-          llvm_ir::SanitizeIrName(
+          llvm_ir::SanitizeFunctionName(
               nested_computation.name()))),  // The name of the function.
       ir_emitter_context_->llvm_module());   // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
@@ -98,10 +98,10 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
       llvm::ReturnInst::Create(function->getContext(), entry_bb));
 
   std::vector<const HloInstruction*> non_io_hlos;
-  for (const auto& hlo : nested_computation.instructions()) {
+  for (const auto* hlo : nested_computation.instructions()) {
     if (hlo->opcode() != HloOpcode::kParameter &&
-        hlo.get() != nested_computation.root_instruction()) {
-      non_io_hlos.push_back(hlo.get());
+        hlo != nested_computation.root_instruction()) {
+      non_io_hlos.push_back(hlo);
     }
   }
   bindings_.EmitBasePointersForHlos(*io_hlos, non_io_hlos);

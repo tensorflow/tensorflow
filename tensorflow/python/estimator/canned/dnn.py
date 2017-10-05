@@ -48,7 +48,8 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
   """Function builder for a dnn logit_fn.
 
   Args:
-    units: An int indicating the dimension of the logit layer.
+    units: An int indicating the dimension of the logit layer, or a list of ints
+      to build multiple logits in the MultiHead case.
     hidden_units: Iterable of integer number of hidden units per layer.
     feature_columns: Iterable of `feature_column._FeatureColumn` model inputs.
     activation_fn: Activation function applied to each layer.
@@ -59,7 +60,12 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
   Returns:
     A logit_fn (see below).
 
+  Raises:
+    ValueError: If units is not an int or a list.
   """
+  if not (isinstance(units, int) or isinstance(units, list)):
+    raise ValueError('units must be an int or list.  Given type: {}'.format(
+        type(units)))
 
   def dnn_logit_fn(features, mode):
     """Deep Neural Network logit_fn.
@@ -72,7 +78,8 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
             `ModeKeys`.
 
     Returns:
-      A `Tensor` representing the logits.
+      A `Tensor` representing the logits, or a list of `Tensor`'s representing
+      multiple logits in the MultiHead case.
     """
     with variable_scope.variable_scope(
         'input_from_feature_columns',
@@ -94,15 +101,29 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
           net = core_layers.dropout(net, rate=dropout, training=True)
       _add_hidden_layer_summary(net, hidden_layer_scope.name)
 
-    with variable_scope.variable_scope('logits', values=(net,)) as logits_scope:
-      logits = core_layers.dense(
-          net,
-          units=units,
-          activation=None,
-          kernel_initializer=init_ops.glorot_uniform_initializer(),
-          name=logits_scope)
-    _add_hidden_layer_summary(logits, logits_scope.name)
-
+    if isinstance(units, int):
+      with variable_scope.variable_scope(
+          'logits', values=(net,)) as logits_scope:
+        logits = core_layers.dense(
+            net,
+            units=units,
+            activation=None,
+            kernel_initializer=init_ops.glorot_uniform_initializer(),
+            name=logits_scope)
+      _add_hidden_layer_summary(logits, logits_scope.name)
+    else:
+      logits = []
+      for head_index, logits_dimension in enumerate(units):
+        with variable_scope.variable_scope(
+            'logits_head_{}'.format(head_index), values=(net,)) as logits_scope:
+          these_logits = core_layers.dense(
+              net,
+              units=logits_dimension,
+              activation=None,
+              kernel_initializer=init_ops.glorot_uniform_initializer(),
+              name=logits_scope)
+        _add_hidden_layer_summary(these_logits, logits_scope.name)
+        logits.append(these_logits)
     return logits
 
   return dnn_logit_fn
@@ -188,22 +209,22 @@ class DNNClassifier(estimator.Estimator):
   Example:
 
   ```python
-  sparse_feature_a = sparse_column_with_hash_bucket(...)
-  sparse_feature_b = sparse_column_with_hash_bucket(...)
+  categorical_feature_a = categorical_column_with_hash_bucket(...)
+  categorical_feature_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_column=categorical_feature_b, ...)
 
   estimator = DNNClassifier(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256])
 
   # Or estimator using the ProximalAdagradOptimizer optimizer with
   # regularization.
   estimator = DNNClassifier(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256],
       optimizer=tf.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
@@ -321,22 +342,22 @@ class DNNRegressor(estimator.Estimator):
   Example:
 
   ```python
-  sparse_feature_a = sparse_column_with_hash_bucket(...)
-  sparse_feature_b = sparse_column_with_hash_bucket(...)
+  categorical_feature_a = categorical_column_with_hash_bucket(...)
+  categorical_feature_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_emb = embedding_column(sparse_id_column=sparse_feature_a,
-                                          ...)
-  sparse_feature_b_emb = embedding_column(sparse_id_column=sparse_feature_b,
-                                          ...)
+  categorical_feature_a_emb = embedding_column(
+      categorical_column=categorical_feature_a, ...)
+  categorical_feature_b_emb = embedding_column(
+      categorical_column=categorical_feature_b, ...)
 
   estimator = DNNRegressor(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256])
 
   # Or estimator using the ProximalAdagradOptimizer optimizer with
   # regularization.
   estimator = DNNRegressor(
-      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
       hidden_units=[1024, 512, 256],
       optimizer=tf.train.ProximalAdagradOptimizer(
         learning_rate=0.1,

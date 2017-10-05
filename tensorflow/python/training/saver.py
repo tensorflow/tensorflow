@@ -163,12 +163,22 @@ class BaseSaverBuilder(object):
     """SaveableObject implementation that handles ResourceVariables."""
 
     def __init__(self, var, slice_spec, name):
+      self._var_device = var.device
       if isinstance(var, ops.Tensor):
         self.handle_op = var.op.inputs[0]
         tensor = var
       elif isinstance(var, resource_variable_ops.ResourceVariable):
+
+        def _read_variable_closure(v):
+          def f():
+            with ops.device(v.device):
+              x = v.read_value()
+            with ops.device("/device:CPU:0"):
+              return array_ops.identity(x)
+          return f
+
         self.handle_op = var.handle
-        tensor = var.read_value
+        tensor = _read_variable_closure(var)
       else:
         raise ValueError(
             "Saveable is neither a resource variable nor a read operation."
@@ -181,6 +191,9 @@ class BaseSaverBuilder(object):
       restored_tensor = restored_tensors[0]
       if restored_shapes is not None:
         restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
+      # Copy the restored tensor to the variable's device.
+      with ops.device(self._var_device):
+        restored_tensor = array_ops.identity(restored_tensor)
       return resource_variable_ops.assign_variable_op(
           self.handle_op, restored_tensor)
 
@@ -1182,6 +1195,10 @@ class Saver(object):
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
           "Either set defer_build=False or var_list=None.")
+    if context.in_eager_mode() and var_list is None:
+      raise ValueError(
+          "When eager execution is enabled, `var_list` must specify a list of "
+          "variables to save")
     self._var_list = var_list
     self._reshape = reshape
     self._sharded = sharded
@@ -1260,6 +1277,7 @@ class Saver(object):
     self._next_checkpoint_time = (
         time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
     self._last_checkpoints = []
+    self._checkpoints_to_be_deleted = []
 
   def _check_saver_def(self):
     if not isinstance(self.saver_def, saver_pb2.SaverDef):
@@ -1302,21 +1320,8 @@ class Saver(object):
     meta_graph_filename = ".".join([basename, meta_graph_suffix])
     return meta_graph_filename
 
-  def _MaybeDeleteOldCheckpoints(self,
-                                 latest_save_path,
-                                 meta_graph_suffix="meta"):
-    """Deletes old checkpoints if necessary.
-
-    Always keep the last `max_to_keep` checkpoints.  If
-    `keep_checkpoint_every_n_hours` was specified, keep an additional checkpoint
-    every `N` hours. For example, if `N` is 0.5, an additional checkpoint is
-    kept for every 0.5 hours of training; if `N` is 10, an additional
-    checkpoint is kept for every 10 hours of training.
-
-    Args:
-      latest_save_path: Name including path of checkpoint file to save.
-      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
-    """
+  def _RecordLastCheckpoint(self, latest_save_path):
+    """Manages the list of the latest checkpoints."""
     if not self.saver_def.max_to_keep:
       return
     # Remove first from list if the same name was used before.
@@ -1325,9 +1330,26 @@ class Saver(object):
         self._last_checkpoints.remove(p)
     # Append new path to list
     self._last_checkpoints.append((latest_save_path, time.time()))
+
     # If more than max_to_keep, remove oldest.
     if len(self._last_checkpoints) > self.saver_def.max_to_keep:
-      p = self._last_checkpoints.pop(0)
+      self._checkpoints_to_be_deleted.append(self._last_checkpoints.pop(0))
+
+  def _MaybeDeleteOldCheckpoints(self, meta_graph_suffix="meta"):
+    """Deletes old checkpoints if necessary.
+
+    `self._checkpoints_to_be_deleted` is going to contain checkpoints that are
+    over `max_to_keep`.  They are going to be deleted.  If
+    `keep_checkpoint_every_n_hours` was specified, keep an additional checkpoint
+    every `N` hours. For example, if `N` is 0.5, an additional checkpoint is
+    kept for every 0.5 hours of training; if `N` is 10, an additional
+    checkpoint is kept for every 10 hours of training.
+
+    Args:
+      meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
+    """
+    if self._checkpoints_to_be_deleted:
+      p = self._checkpoints_to_be_deleted.pop(0)
       # Do not delete the file if we keep_checkpoint_every_n_hours is set and we
       # have reached N hours of training.
       should_keep = p[1] > self._next_checkpoint_time
@@ -1556,14 +1578,14 @@ class Saver(object):
 
         model_checkpoint_path = compat.as_str(model_checkpoint_path)
         if write_state:
-          self._MaybeDeleteOldCheckpoints(
-              model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
+          self._RecordLastCheckpoint(model_checkpoint_path)
           _update_checkpoint_state(
               save_dir=save_path_parent,
               model_checkpoint_path=model_checkpoint_path,
               all_model_checkpoint_paths=self.last_checkpoints,
               latest_filename=latest_filename,
               save_relative_paths=self._save_relative_paths)
+          self._MaybeDeleteOldCheckpoints(meta_graph_suffix=meta_graph_suffix)
       except (errors.FailedPreconditionError, errors.NotFoundError) as exc:
         if not gfile.IsDirectory(save_path_parent):
           exc = ValueError(
@@ -1574,9 +1596,7 @@ class Saver(object):
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
-      if context.in_eager_mode():
-        self.export_meta_graph(meta_graph_filename)
-      else:
+      if context.in_graph_mode():
         with sess.graph.as_default():
           self.export_meta_graph(meta_graph_filename)
 
@@ -1774,7 +1794,11 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
 
     A None value is returned if no variables exist in the `MetaGraphDef`
     (i.e., there are no variables to restore).
-  """
+  """  # pylint: disable=g-doc-exception
+  if context.in_eager_mode():
+    raise ValueError("Exporting/importing meta graphs is not supported when "
+                     "eager execution is enabled. No graph exists when eager "
+                     "execution is enabled.")
   if not isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
     meta_graph_def = meta_graph.read_meta_graph_file(meta_graph_or_file)
   else:
@@ -1841,6 +1865,10 @@ def export_meta_graph(filename=None,
   Raises:
     ValueError: When the `GraphDef` is larger than 2GB.
   """
+  if context.in_eager_mode():
+    raise ValueError("Exporting/importing meta graphs is not supported when "
+                     "eager execution is enabled. No graph exists when eager "
+                     "execution is enabled.")
   meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
       filename=filename,
       meta_info_def=meta_info_def,

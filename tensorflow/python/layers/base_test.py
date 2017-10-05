@@ -63,8 +63,10 @@ class BaseLayerTest(test.TestCase):
     self.assertListEqual(layer.variables, [variable])
     self.assertListEqual(layer.trainable_variables, [variable])
     self.assertListEqual(layer.non_trainable_variables, [])
-    self.assertListEqual(layer.variables,
-                         ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
+    if context.in_graph_mode():
+      self.assertListEqual(
+          layer.variables,
+          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
     # Test non-trainable variable creation.
     # layer.add_variable should work even outside `build` and `call`.
@@ -75,10 +77,10 @@ class BaseLayerTest(test.TestCase):
     self.assertListEqual(layer.variables, [variable, variable_2])
     self.assertListEqual(layer.trainable_variables, [variable])
     self.assertListEqual(layer.non_trainable_variables, [variable_2])
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
-
     if context.in_graph_mode():
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
+
       # regularizers only supported in GRAPH mode.
       regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
       variable = layer.add_variable(
@@ -87,56 +89,55 @@ class BaseLayerTest(test.TestCase):
           regularizer=regularizer)
       self.assertEqual(len(layer.losses), 1)
 
-  @test_util.run_in_graph_and_eager_modes()
   def testGetVariable(self):
+    with self.test_session():
 
-    class MyLayer(base_layers.Layer):
+      class MyLayer(base_layers.Layer):
 
-      def build(self, input_shape):
-        self.my_var = self.add_variable(
-            'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+        def build(self, input_shape):
+          self.my_var = self.add_variable(
+              'my_var', [2, 2], initializer=init_ops.zeros_initializer())
 
-      def call(self, inputs):
-        return inputs * 2
+        def call(self, inputs):
+          return inputs * 2
 
-    layer = MyLayer(name='my_layer')
-    inputs = random_ops.random_uniform((5,), seed=1)
-    layer.apply(inputs)
-    layer.apply(inputs)
-    self.assertListEqual([v.name for v in layer.variables],
-                         ['my_layer/my_var:0'])
+      layer = MyLayer(name='my_layer')
+      inputs = random_ops.random_uniform((5,), seed=1)
+      layer.apply(inputs)
+      layer.apply(inputs)
+      self.assertListEqual([v.name for v in layer.variables],
+                           ['my_layer/my_var:0'])
 
-    # Creating a layer with no scope leads to lazy construction of
-    # the scope at apply() time.  It uses scope "<current scope>/base_name"
-    lazy_layer = MyLayer(_reuse=True)
-    with variable_scope.variable_scope('new_scope'):
-      with variable_scope.variable_scope('my_layer'):
+      # Creating a layer with no scope leads to lazy construction of
+      # the scope at apply() time.  It uses scope "<current scope>/base_name"
+      lazy_layer = MyLayer(_reuse=True)
+      with variable_scope.variable_scope('new_scope'):
+        with variable_scope.variable_scope('my_layer'):
+          variable_scope.get_variable('my_var', [2, 2])
+
+        # Smoke test: it runs.
+        lazy_layer.apply(inputs)
+        # The variables were created outside of the Layer, and
+        # reuse=True, so the Layer does not own them and they are not
+        # stored in its collection.
+        self.assertListEqual(lazy_layer.variables, [])
+        self.assertEqual(lazy_layer._scope.name, 'new_scope/my_layer')
+
+      # Creating a layer with no scope leads to lazy construction of
+      # the scope at apply() time. If 'scope' argument is passed to
+      # apply(), it uses that scope when accessing variables.
+      lazy_layer = MyLayer(_reuse=True)
+      with variable_scope.variable_scope('new_scope') as new_scope:
         variable_scope.get_variable('my_var', [2, 2])
 
-      # Smoke test: it runs.
-      lazy_layer.apply(inputs)
-      # The variables were created outside of the Layer, and
-      # reuse=True, so the Layer does not own them and they are not
-      # stored in its collection.
-      self.assertListEqual(lazy_layer.variables, [])
-      self.assertEqual(lazy_layer._scope.name, 'new_scope/my_layer')
+        # Smoke test: it runs.
+        lazy_layer.apply(inputs, scope=new_scope)
+        # The variables were created outside of the Layer, and
+        # reuse=True, so the Layer does not own them and they are not
+        # stored in its collection.
+        self.assertListEqual(lazy_layer.variables, [])
+        self.assertEqual(lazy_layer._scope.name, 'new_scope')
 
-    # Creating a layer with no scope leads to lazy construction of
-    # the scope at apply() time. If 'scope' argument is passed to
-    # apply(), it uses that scope when accessing variables.
-    lazy_layer = MyLayer(_reuse=True)
-    with variable_scope.variable_scope('new_scope') as new_scope:
-      variable_scope.get_variable('my_var', [2, 2])
-
-      # Smoke test: it runs.
-      lazy_layer.apply(inputs, scope=new_scope)
-      # The variables were created outside of the Layer, and
-      # reuse=True, so the Layer does not own them and they are not
-      # stored in its collection.
-      self.assertListEqual(lazy_layer.variables, [])
-      self.assertEqual(lazy_layer._scope.name, 'new_scope')
-
-    if context.in_graph_mode():
       # Checking for graph equality is only done in GRAPH mode.
       with ops.Graph().as_default():
         inputs_ng = random_ops.random_uniform((5,), seed=1)
@@ -590,9 +591,9 @@ class NetworkTest(test.TestCase):
     self.assertListEqual(a.get_shape().as_list(), [None, 32])
     a_layer, a_node_index, a_tensor_index = a._keras_history
     b_layer, _, _ = b._keras_history
-    self.assertEqual(len(a_layer.inbound_nodes), 1)
+    self.assertEqual(len(a_layer._inbound_nodes), 1)
     self.assertEqual(a_tensor_index, 0)
-    node = a_layer.inbound_nodes[a_node_index]
+    node = a_layer._inbound_nodes[a_node_index]
     self.assertEqual(node.outbound_layer, a_layer)
 
     self.assertListEqual(node.inbound_layers, [])
@@ -605,17 +606,17 @@ class NetworkTest(test.TestCase):
     dense(a)
     dense(b)
 
-    self.assertEqual(len(dense.inbound_nodes), 2)
-    self.assertEqual(len(dense.outbound_nodes), 0)
-    self.assertListEqual(dense.inbound_nodes[0].inbound_layers, [a_layer])
-    self.assertEqual(dense.inbound_nodes[0].outbound_layer, dense)
-    self.assertListEqual(dense.inbound_nodes[1].inbound_layers, [b_layer])
-    self.assertEqual(dense.inbound_nodes[1].outbound_layer, dense)
-    self.assertListEqual(dense.inbound_nodes[0].input_tensors, [a])
-    self.assertListEqual(dense.inbound_nodes[1].input_tensors, [b])
+    self.assertEqual(len(dense._inbound_nodes), 2)
+    self.assertEqual(len(dense._outbound_nodes), 0)
+    self.assertListEqual(dense._inbound_nodes[0].inbound_layers, [a_layer])
+    self.assertEqual(dense._inbound_nodes[0].outbound_layer, dense)
+    self.assertListEqual(dense._inbound_nodes[1].inbound_layers, [b_layer])
+    self.assertEqual(dense._inbound_nodes[1].outbound_layer, dense)
+    self.assertListEqual(dense._inbound_nodes[0].input_tensors, [a])
+    self.assertListEqual(dense._inbound_nodes[1].input_tensors, [b])
 
     # Test config
-    config_0 = dense.inbound_nodes[0].get_config()
+    config_0 = dense._inbound_nodes[0].get_config()
     self.assertEqual(config_0['outbound_layer'], dense.name)
 
   def testMultiInputNetwork(self):

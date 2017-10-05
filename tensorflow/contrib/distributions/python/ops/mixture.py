@@ -291,9 +291,6 @@ class Mixture(distribution.Distribution):
       mixture_log_cdf = math_ops.reduce_logsumexp(concatted_log_cdfs, [0])
       return mixture_log_cdf
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
   def _sample_n(self, n, seed=None):
     with ops.control_dependencies(self._assertions):
       n = ops.convert_to_tensor(n, name="n")

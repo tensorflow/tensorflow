@@ -293,6 +293,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
   }
   member {
+    name: "data"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "distributions"
     mtype: "<type \'module\'>"
   }
@@ -862,7 +866,7 @@ tf_module {
   }
   member_method {
     name: "decode_csv"
-    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\'], varargs=None, keywords=None, defaults=[\',\', \'True\', \'None\'], "
+    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\', \'na_value\'], varargs=None, keywords=None, defaults=[\',\', \'True\', \'None\', \'\'], "
   }
   member_method {
     name: "decode_json_example"
@@ -878,7 +882,7 @@ tf_module {
   }
   member_method {
     name: "depth_to_space"
-    argspec: "args=[\'input\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
   }
   member_method {
     name: "dequantize"
@@ -1742,7 +1746,7 @@ tf_module {
   }
   member_method {
     name: "space_to_depth"
-    argspec: "args=[\'input\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
   }
   member_method {
     name: "sparse_add"

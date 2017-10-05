@@ -30,8 +30,11 @@ from tensorflow.python.platform import test
 
 class SaverTest(test.TestCase):
 
+  def _dev(self):
+    return '/device:GPU:0' if context.num_gpus() else '/device:CPU:0'
+
   def testBasics(self):
-    with context.eager_mode():
+    with context.eager_mode(), ops.device(self._dev()):
       v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
       def model():
         return array_ops.constant(2.0) * v1
@@ -39,7 +42,7 @@ class SaverTest(test.TestCase):
       ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
 
       _ = model()
-      saver = _saver.Saver()
+      saver = _saver.Saver([v1])
       saver.save(ckpt_prefix)
       v1.assign(2.0)
       self.assertEqual(v1.read_value().numpy(), 2.0)
@@ -48,39 +51,40 @@ class SaverTest(test.TestCase):
       self.assertEqual(v1.read_value().numpy(), 1.0)
 
   def testRestoreOnCreate(self):
-    with context.eager_mode():
+    with context.eager_mode(), ops.device(self._dev()):
       def model(init_val):
         v1 = resource_variable_ops.ResourceVariable(init_val, name='v1')
-        return array_ops.constant(1.0) * v1
+        return array_ops.constant(1.0) * v1, v1
 
       ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
-      _ = model(1.0)
-      saver = _saver.Saver()
+      _, v1 = model(1.0)
+      saver = _saver.Saver([v1])
       saver.save(ckpt_prefix)
 
       with ops.Graph().as_default():
-        saver = _saver.Saver()
-        with saver.maybe_restore_on_create(ckpt_prefix):
+        saver = _saver.Saver([v1])
+        with _saver.restore_variables_on_create(ckpt_prefix):
           # Value is from checkpoint, but not from argument.
-          ret = model(2.0)
+          ret, _ = model(2.0)
           self.assertEqual(ret.numpy(), 1.0)
           # Create it a second time won't re-assign the checkpoint value.
           v1_2 = resource_variable_ops.ResourceVariable(3.0, name='v1')
           self.assertEqual(v1_2.read_value().numpy(), 3.0)
 
   def testRestoreNotFound(self):
-    with context.eager_mode():
+    with context.eager_mode(), ops.device(self._dev()):
       def model(v):
         return array_ops.constant(1.0) * v
 
       ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
-      _ = model(resource_variable_ops.ResourceVariable(1.0, name='v1'))
-      saver = _saver.Saver()
+      v = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      _ = model(v)
+      saver = _saver.Saver([v])
       saver.save(ckpt_prefix)
 
       with self.assertRaisesRegexp(errors.NotFoundError,
                                    'v2 not found in checkpoint'):
-        with saver.maybe_restore_on_create(ckpt_prefix):
+        with _saver.restore_variables_on_create(ckpt_prefix):
           _ = model(resource_variable_ops.ResourceVariable(1.0, name='v2'))
 
 

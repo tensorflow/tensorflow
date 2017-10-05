@@ -52,6 +52,7 @@ else()
       CONFIGURE_COMMAND
           ${farmhash_BUILD}/configure
           --prefix=${farmhash_INSTALL}
+          --libdir=${farmhash_INSTALL}/lib
           --enable-shared=yes
           CXXFLAGS=-fPIC)
 

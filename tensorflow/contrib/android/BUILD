@@ -11,7 +11,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
     "if_android",
-    "if_android_mips",
 )
 
 exports_files([
@@ -79,6 +78,7 @@ cc_binary(
     ],
     linkopts = if_android([
         "-landroid",
+        "-latomic",
         "-ldl",
         "-llog",
         "-lm",
@@ -87,7 +87,7 @@ cc_binary(
         "-Wl,--gc-sections",
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
         LINKER_SCRIPT,
-    ]) + if_android_mips(["-latomic"]),
+    ]),
     linkshared = 1,
     linkstatic = 1,
     tags = [

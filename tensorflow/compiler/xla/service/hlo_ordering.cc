@@ -123,8 +123,9 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
 }
 
 /* static */
-bool HloOrdering::UseIsBeforeValueDefinition(const HloUse& use,
-                                             const HloValue& value) const {
+bool HloOrdering::UseIsBeforeValueDefinition(
+    const HloUse& use, const HloValue& value,
+    const HloDataflowAnalysis& dataflow) const {
   VLOG(4) << "UseIsBeforeValueDefinition(use=" << use
           << ", value=" << value.ToShortString() << ")";
   if (ExecutesBefore(use.instruction, value.defining_instruction())) {
@@ -139,7 +140,7 @@ bool HloOrdering::UseIsBeforeValueDefinition(const HloUse& use,
       CanShareOperandBufferWithUser(
           use.instruction->mutable_operand(use.operand_number),
           use.operand_index, value.defining_instruction(),
-          value.defining_index())) {
+          value.defining_index(), dataflow)) {
     VLOG(4) << "  use is value def, and instruction can share use buffer";
     return true;
   }
@@ -172,12 +173,13 @@ bool HloOrdering::UseIsBeforeValueDefinition(const HloUse& use,
       return true;
     }
   }
-  VLOG(4) << "  use is not before while";
+  VLOG(4) << "  use is not before value";
   return false;
 }
 
-bool HloOrdering::LiveRangeStrictlyBefore(const HloValue& a,
-                                          const HloValue& b) const {
+bool HloOrdering::LiveRangeStrictlyBefore(
+    const HloValue& a, const HloValue& b,
+    const HloDataflowAnalysis& dataflow) const {
   VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
           << ", b = " << b.ToShortString() << ")";
   if (!IsDefinedBefore(a, b)) {
@@ -204,7 +206,7 @@ bool HloOrdering::LiveRangeStrictlyBefore(const HloValue& a,
 
   // All uses of 'a' must be before 'b' is defined.
   for (const HloUse& use : a.uses()) {
-    if (!UseIsBeforeValueDefinition(use, b)) {
+    if (!UseIsBeforeValueDefinition(use, b, dataflow)) {
       VLOG(4) << "use of a (" << use << ") not before b is defined";
       return false;
     }
@@ -213,9 +215,11 @@ bool HloOrdering::LiveRangeStrictlyBefore(const HloValue& a,
   return true;
 }
 
-bool HloOrdering::MayInterfere(const HloValue& a, const HloValue& b) const {
+bool HloOrdering::MayInterfere(const HloValue& a, const HloValue& b,
+                               const HloDataflowAnalysis& dataflow) const {
   // Buffers without disjoint liveness may interfere.
-  return !LiveRangeStrictlyBefore(a, b) && !LiveRangeStrictlyBefore(b, a);
+  return !LiveRangeStrictlyBefore(a, b, dataflow) &&
+         !LiveRangeStrictlyBefore(b, a, dataflow);
 }
 
 HloOrderingProto HloOrdering::ToProto() const {
@@ -249,7 +253,7 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
 string PredecessorHloOrdering::ToStringHelper(const string& name) const {
   std::vector<string> pieces;
   pieces.push_back(name);
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s:",
                                                  computation->name().c_str()));
     const auto all = computation->MakeInstructionPostOrder();
@@ -257,7 +261,7 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
       pieces.push_back(tensorflow::strings::Printf(
           "  %s predecessors:", instruction->name().c_str()));
       for (auto predecessor : all) {
-        if (predecessors_.at(computation.get())
+        if (predecessors_.at(computation)
                 ->IsReachable(predecessor, instruction)) {
           pieces.push_back(
               tensorflow::strings::Printf("  %s", predecessor->name().c_str()));
@@ -273,12 +277,8 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // Compute predecessor relationships between all instructions to determine
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    predecessors_.emplace(computation.get(),
-                          computation->ComputeReachability());
+  for (auto* computation : module->MakeNonfusionComputations()) {
+    predecessors_.emplace(computation, computation->ComputeReachability());
   }
 }
 
@@ -319,7 +319,7 @@ SequentialHloOrdering::SequentialOrder(
 string SequentialHloOrdering::ToString() const {
   std::vector<string> pieces;
   pieces.push_back("SequentialHloOrdering");
-  for (auto& computation : module_->computations()) {
+  for (auto* computation : module_->computations()) {
     pieces.push_back(tensorflow::strings::Printf("computation %s order:",
                                                  computation->name().c_str()));
     // Gather all instructions in the module sequence for this computation and
@@ -327,7 +327,7 @@ string SequentialHloOrdering::ToString() const {
     std::vector<const HloInstruction*> instructions;
     for (auto& instruction_position : order_position_) {
       const HloInstruction* instruction = instruction_position.first;
-      if (instruction->parent() == computation.get()) {
+      if (instruction->parent() == computation) {
         instructions.push_back(instruction);
       }
     }

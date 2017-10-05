@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
@@ -147,7 +148,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_.reset(new DeviceMgr(devices_));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts));
+        opts, nullptr /* cluster_flr */));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -155,6 +156,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
+             FunctionLibraryRuntime::Options opts,
              const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     std::atomic<int32> call_count(0);
     std::function<void(std::function<void()>)> runner =
@@ -164,7 +166,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         };
 
     Notification done;
-    FunctionLibraryRuntime::Options opts;
     opts.runner = &runner;
     std::vector<Tensor> out;
     Status status;
@@ -205,7 +206,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) {
       return status;
     }
-    return Run(flr, handle, args, std::move(rets));
+    FunctionLibraryRuntime::Options opts;
+    return Run(flr, handle, opts, args, std::move(rets));
   }
 
   std::unique_ptr<Graph> GetFuncBody(FunctionLibraryRuntime* flr,
@@ -284,27 +286,6 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
 }
 
-// Adds a function call to 'scope.
-// TODO(phawkins): replace with C++ API for calling functions, when that exists.
-Output Call(Scope* scope, const string& op_name, const string& fn_name,
-            gtl::ArraySlice<Input> inputs) {
-  NodeDef def;
-  NodeDefBuilder builder(op_name, fn_name, scope->graph()->op_registry());
-  for (const Input& input : inputs) {
-    builder.Input(input.node()->name(), input.index(),
-                  input.node()->output_type(input.index()));
-  }
-  TF_CHECK_OK(builder.Finalize(&def));
-  Status status;
-  Node* n = scope->graph()->AddNode(def, &status);
-  TF_CHECK_OK(status);
-  TF_CHECK_OK(scope->DoShapeInference(n));
-  for (int i = 0; i < inputs.size(); ++i) {
-    scope->graph()->AddEdge(inputs[i].node(), inputs[i].index(), n, i);
-  }
-  return Output(n);
-}
-
 TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
@@ -315,8 +296,8 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
     Scope s = Scope::NewRootScope();
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto arg = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto a = Call(&s, "x4", "XTimesFour", {arg});
-    auto b = Call(&s, "y", "XTimesFour", {a});
+    auto a = test::function::Call(&s, "x4", "XTimesFour", {arg});
+    auto b = test::function::Call(&s, "y", "XTimesFour", {a});
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), b, 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
@@ -332,12 +313,12 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::Identity(s.WithOpName("Func/_0"), x);
-    auto x4_x2 = Call(&s, "x4/x2", "XTimesTwo", {func0});
-    auto x4_y = Call(&s, "x4/y", "XTimesTwo", {x4_x2});
+    auto x4_x2 = test::function::Call(&s, "x4/x2", "XTimesTwo", {func0});
+    auto x4_y = test::function::Call(&s, "x4/y", "XTimesTwo", {x4_x2});
     auto func1 = ops::Identity(s.WithOpName("Func/_1"), x4_y);
     auto func2 = ops::Identity(s.WithOpName("Func/_2"), func1);
-    auto y_x2 = Call(&s, "y/x2", "XTimesTwo", {func2});
-    auto y_y = Call(&s, "y/y", "XTimesTwo", {y_x2});
+    auto y_x2 = test::function::Call(&s, "y/x2", "XTimesTwo", {func2});
+    auto y_y = test::function::Call(&s, "y/y", "XTimesTwo", {y_x2});
     auto func3 = ops::Identity(s.WithOpName("Func/_3"), y_y);
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), func3, 0);
     GraphDef expected;
@@ -433,7 +414,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
     auto c = ops::NoOp(s.WithOpName("c"));
-    auto b = Call(&s, "b", "XTimesFour", {a});
+    auto b = test::function::Call(&s, "b", "XTimesFour", {a});
     s.graph()->AddControlEdge(c.operation.node(), b.node());
     auto ret = ops::_Retval(s.WithOpName("b_RetVal"), b, 0);
     TF_ASSERT_OK(s.ToGraph(g.get()));
@@ -449,9 +430,9 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
         ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
     auto func1 = ops::Identity(
         s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
-    auto b_x2 = Call(&s, "b/x2", "XTimesTwo", {func1});
+    auto b_x2 = test::function::Call(&s, "b/x2", "XTimesTwo", {func1});
     s.graph()->AddControlEdge(func0.operation.node(), b_x2.node());
-    auto b_y = Call(&s, "b/y", "XTimesTwo", {b_x2});
+    auto b_y = test::function::Call(&s, "b/y", "XTimesTwo", {b_x2});
     s.graph()->AddControlEdge(func0.operation.node(), b_y.node());
     auto func2 = ops::Identity(s.WithOpName("Func/_2"), b_y);
     auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);
@@ -518,7 +499,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
         s.WithOpName("x4/x2/scale/_12__cf__2")
-            .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
     auto x4_y_y = ops::Mul(s.WithOpName("x4/y/y"), x4_x2_y, x4_x2_scale);
@@ -712,16 +693,16 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
-    auto scale =
-        ops::Const(s.WithOpName("scale/_5__cf__6")
-                       .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
-                   2.0f);
+    auto scale = ops::Const(
+        s.WithOpName("scale/_5__cf__6")
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
+        2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
-    auto const0 =
-        ops::Const(s.WithOpName("Func/_1/sy/_6__cf__7")
-                       .WithDevice("/job:localhost/replica:0/task:0/cpu:0"),
-                   0, {0});
+    auto const0 = ops::Const(
+        s.WithOpName("Func/_1/sy/_6__cf__7")
+            .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
+        0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(
         s.WithOpName("Func/_1/rx"), func1_sx, const0);
     auto func1_sum_gx =
@@ -963,15 +944,23 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
       {{"_target", "/job:localhost/replica:0/task:0/cpu:1"}}, &handle));
 
   Tensor y;
+  FunctionLibraryRuntime::Options opts;
+  opts.rendezvous = new IntraProcessRendezvous(device_mgr_.get());
+  opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
-  TF_CHECK_OK(Run(flr1_, handle, {}, {&y}));
+  TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:localhost/replica:0/task:0/cpu:1"},
-                                TensorShape({})));
-  TF_CHECK_OK(Run(flr2_, handle, {}, {&y}));
+      y,
+      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                             TensorShape({})));
+  opts.remote_execution = true;
+  opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
+  TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}));
   test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:localhost/replica:0/task:0/cpu:1"},
-                                TensorShape({})));
+      y,
+      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                             TensorShape({})));
+  opts.rendezvous->Unref();
 }
 
 namespace {

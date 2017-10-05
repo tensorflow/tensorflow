@@ -456,7 +456,7 @@ class Permute(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class Flatten(Layer):
+class Flatten(tf_core_layers.Flatten, Layer):
   """Flattens the input. Does not affect the batch size.
 
   Example:
@@ -472,26 +472,7 @@ class Flatten(Layer):
       # now: model.output_shape == (None, 65536)
   ```
   """
-
-  def __init__(self, **kwargs):
-    super(Flatten, self).__init__(**kwargs)
-    self.input_spec = InputSpec(min_ndim=3)
-
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    if not all(input_shape[1:]):
-      raise ValueError('The shape of the input to "Flatten" '
-                       'is not fully defined '
-                       '(got ' + str(input_shape[1:]) + '. '
-                       'Make sure to pass a complete "input_shape" '
-                       'or "batch_input_shape" argument to the first '
-                       'layer in your model.')
-    return tensor_shape.TensorShape([input_shape[0], np.prod(input_shape[1:])])
-
-  def call(self, inputs):
-    outputs = K.batch_flatten(inputs)
-    outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
-    return outputs
+  pass
 
 
 class RepeatVector(Layer):
@@ -765,11 +746,11 @@ class ActivityRegularization(Layer):
   """
 
   def __init__(self, l1=0., l2=0., **kwargs):
-    super(ActivityRegularization, self).__init__(**kwargs)
+    super(ActivityRegularization, self).__init__(
+        activity_regularizer=regularizers.L1L2(l1=l1, l2=l2), **kwargs)
     self.supports_masking = True
     self.l1 = l1
     self.l2 = l2
-    self.activity_regularizer = regularizers.L1L2(l1=l1, l2=l2)
 
   def get_config(self):
     config = {'l1': self.l1, 'l2': self.l2}

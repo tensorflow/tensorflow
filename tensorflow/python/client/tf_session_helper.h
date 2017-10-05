@@ -143,21 +143,21 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
                             TF_Status* out_status,
                             std::vector<PyObject*>* py_outputs);
 
-// Retrieves control inputs of this operation.
-// control_inputs should be empty.
+// Retrieves the inputs of this operation.
+std::vector<TF_Output> GetOperationInputs(TF_Operation* oper);
+
+// Retrieves the control inputs of this operation.
 std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
     TF_Operation* oper);
 
 // `opers` equaling NULL are converted to `nopers = -1`.
 // `output_names` must be empty or have the same length as `outputs`.
-TF_Function* TF_GraphToFunction_wrapper(const TF_Graph* fn_body,
-                                        const char* fn_name,
-                                        const std::vector<TF_Operation*>* opers,
-                                        const std::vector<TF_Output>& inputs,
-                                        const std::vector<TF_Output>& outputs,
-                                        const NameVector& output_names,
-                                        const TF_FunctionOptions* opts,
-                                        TF_Status* out_status);
+TF_Function* TF_GraphToFunction_wrapper(
+    const TF_Graph* fn_body, const char* fn_name, bool append_hash_to_fn_name,
+    const std::vector<TF_Operation*>* opers,
+    const std::vector<TF_Output>& inputs, const std::vector<TF_Output>& outputs,
+    const NameVector& output_names, const TF_FunctionOptions* opts,
+    const char* description, TF_Status* out_status);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_

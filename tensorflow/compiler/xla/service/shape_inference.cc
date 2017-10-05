@@ -61,6 +61,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_LOGICAL_NOT;
     case HloOpcode::kNegate:
       return UNOP_NEGATE;
+    case HloOpcode::kRoundNearestAfz:
+      return UNOP_ROUND_NEAREST_AFZ;
     case HloOpcode::kSign:
       return UNOP_SIGN;
     case HloOpcode::kSin:
@@ -70,7 +72,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
     case HloOpcode::kTanh:
       return UNOP_TANH;
     default:
-      LOG(FATAL) << "unhandled opcode " << opcode;
+      LOG(FATAL) << "Unhandled opcode for conversion to unary operation: "
+                 << opcode;
   }
 }
 
@@ -313,8 +316,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       }
       return arg;
     case UNOP_ABS:
-    case UNOP_SIGN:
     case UNOP_NEGATE:
+    case UNOP_ROUND_NEAREST_AFZ:
+    case UNOP_SIGN:
     case UNOP_SORT:
       return arg;
 
@@ -337,8 +341,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       return ShapeUtil::ChangeElementType(arg, PRED);
 
     default:
-      return InvalidArgument("unknown operation %s",
-                             UnaryOperation_Name(operation).c_str());
+      return InvalidArgument(
+          "Unknown operation for unary shape inference: \"%s\".",
+          UnaryOperation_Name(operation).c_str());
   }
 }
 
@@ -674,11 +679,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         ShapeUtil::HumanString(rhs).c_str());
   }
 
-  if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
-      !broadcast_dimensions.empty()) {
-    return InvalidArgument(
-        "broadcast dimensions field should not be set on binary "
-        "operations with operands of the same rank");
+  if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs)) {
+    std::vector<int64> identity_dims(ShapeUtil::Rank(lhs));
+    std::iota(identity_dims.begin(), identity_dims.end(), 0);
+    if (!broadcast_dimensions.empty() &&
+        broadcast_dimensions != identity_dims) {
+      return InvalidArgument(
+          "broadcast dimensions field must either be not set or be the "
+          "identity on binary operations with operands of the same rank");
+    }
   }
 
   if (ShapeUtil::Compatible(lhs, rhs)) {
@@ -847,7 +856,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
 /* static */ StatusOr<Shape> ShapeInference::InferMapShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
-    const ProgramShape& to_apply) {
+    const ProgramShape& to_apply,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
   if (arg_shapes.empty()) {
     return InvalidArgument("Map expects at least one argument");
   }
@@ -881,6 +891,24 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Map operation requires all operands to have the same shape; got: "
         "%s",
         tensorflow::str_util::Join(pieces, ", ").c_str());
+  }
+
+  // Check that dimensions.size == arg_shape.dimensions_size() (we currently
+  // only support mapping across all dimensions: i.e. scalar map functions).
+  if (dimensions.size() != arg_shape->dimensions_size()) {
+    return InvalidArgument(
+        "Map applied to a subset of dimensions currently not supported: "
+        "arg_dimension_size: %d, requested_map_dimensions_size: %zu",
+        arg_shape->dimensions_size(), dimensions.size());
+  }
+
+  // Check that requested map dimensions numbers are monotonically increasing.
+  for (int i = 0; i < dimensions.size(); ++i) {
+    if (dimensions[i] != i) {
+      return InvalidArgument(
+          "Map requires monotonically increasing dimension numbers, found: %s ",
+          tensorflow::str_util::Join(dimensions, ", ").c_str());
+    }
   }
 
   // The applied function's arity equals the number of arguments.
@@ -924,8 +952,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormTrainingShape(
-    const Shape& operand_shape, const Shape& offset_shape,
-    const Shape& scale_shape, int64 feature_index) {
+    const Shape& operand_shape, const Shape& scale_shape,
+    const Shape& offset_shape, int64 feature_index) {
   TF_RETURN_IF_ERROR(
       ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm training"));
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
@@ -1027,8 +1055,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBatchNormInferenceShape(
-    const Shape& operand_shape, const Shape& offset_shape,
-    const Shape& scale_shape, const Shape& mean_shape,
+    const Shape& operand_shape, const Shape& scale_shape,
+    const Shape& offset_shape, const Shape& mean_shape,
     const Shape& variance_shape, int64 feature_index) {
   TF_RETURN_IF_ERROR(
       ExpectNotTupleOrOpaque(operand_shape, "operand of batch norm inference"));
@@ -1816,14 +1844,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                            body.parameters_size());
   }
 
-  string shape_string = tensorflow::strings::Printf(
-      "condition: %s; body: %s; init: %s", condition.ShortDebugString().c_str(),
-      body.ShortDebugString().c_str(), init.ShortDebugString().c_str());
+  auto shape_string = [&]() {
+    return tensorflow::strings::Printf(
+        "condition: %s; body: %s; init: %s",
+        ShapeUtil::HumanString(condition).c_str(),
+        ShapeUtil::HumanString(body).c_str(),
+        ShapeUtil::HumanString(init).c_str());
+  };
 
   // Check the shapes of computation parameters and return types.
   if (!ShapeUtil::ShapeIs(condition.result(), PRED, {})) {
     return InvalidArgument("condition must return a boolean; got %s",
-                           shape_string.c_str());
+                           shape_string().c_str());
   }
   if (!ShapeUtil::Compatible(body.result(), condition.parameters(0)) ||
       !ShapeUtil::Compatible(body.result(), body.parameters(0)) ||
@@ -1831,7 +1863,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "the parameter of condition and body, the result of the body, and init "
         "must all have the same shape; got %s",
-        shape_string.c_str());
+        shape_string().c_str());
   }
 
   return init;

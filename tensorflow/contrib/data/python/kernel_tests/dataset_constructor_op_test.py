@@ -21,14 +21,19 @@ import threading
 
 import numpy as np
 
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
+from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.util import nest
 
 
 class DatasetConstructorTest(test.TestCase):
@@ -429,6 +434,30 @@ class DatasetConstructorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testFromGeneratorImplicitConversion(self):
+    def generator():
+      yield [1]
+      yield [2]
+      yield [3]
+
+    for dtype in [dtypes.int8, dtypes.int32, dtypes.int64]:
+      iterator = (dataset_ops.Dataset.from_generator(
+          generator, output_types=dtype, output_shapes=[1])
+                  .make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+
+      self.assertEqual(dtype, get_next.dtype)
+
+      with self.test_session() as sess:
+        sess.run(init_op)
+        for expected in [[1], [2], [3]]:
+          next_val = sess.run(get_next)
+          self.assertEqual(dtype.as_numpy_dtype, next_val.dtype)
+          self.assertAllEqual(expected, next_val)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
   def testFromGeneratorTypeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)
@@ -446,7 +475,7 @@ class DatasetConstructorTest(test.TestCase):
       sess.run(init_op)
       self.assertAllEqual([1, 2, 3], sess.run(get_next))
       self.assertAllEqual([4, 5, 6], sess.run(get_next))
-      with self.assertRaisesOpError(r"element of type .*int64.* was expected"):
+      with self.assertRaisesOpError(r"invalid literal for long\(\)"):
         sess.run(get_next)
       self.assertAllEqual([7, 8, 9], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
@@ -474,6 +503,73 @@ class DatasetConstructorTest(test.TestCase):
       self.assertAllEqual([11, 12, 13], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testSplitPipelineFailsWithPlacementError(self):
+    with session.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+
+      dataset = dataset_ops.Dataset.from_tensors(0)
+
+      # Define a pipeline that attempts to use variables on two
+      # different devices.
+      #
+      # Initialize the variables before creating to iterator, to avoid the
+      # placement algorithm overriding the DT_RESOURCE colocation constraints.
+      with ops.device("/cpu:0"):
+        var_0 = resource_variable_ops.ResourceVariable(initial_value=0)
+        dataset = dataset.map(lambda x: x + var_0.read_value())
+      sess.run(var_0.initializer)
+
+      with ops.device("/cpu:1"):
+        var_1 = resource_variable_ops.ResourceVariable(initial_value=0)
+        dataset = dataset.map(lambda x: x + var_1.read_value())
+      sess.run(var_1.initializer)
+
+      iterator = dataset.make_initializable_iterator()
+
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Trying to access resource located in device"):
+        sess.run(iterator.initializer)
+
+  def testRestructureDataset(self):
+    components = (array_ops.placeholder(dtypes.int32),
+                  (array_ops.placeholder(dtypes.int32, shape=[None]),
+                   array_ops.placeholder(dtypes.int32, shape=[20, 30])))
+    dataset = dataset_ops.Dataset.from_tensors(components)
+
+    i32 = dtypes.int32
+
+    test_cases = [((i32, i32, i32), None),
+                  (((i32, i32), i32), None),
+                  ((i32, i32, i32), (None, None, None)),
+                  ((i32, i32, i32), ([17], [17], [20, 30]))]
+
+    for new_types, new_shape_lists in test_cases:
+      # pylint: disable=protected-access
+      new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
+      # pylint: enable=protected-access
+      self.assertEqual(new_types, new.output_types)
+      if new_shape_lists is not None:
+        for expected_shape_list, shape in zip(
+            nest.flatten(new_shape_lists), nest.flatten(new.output_shapes)):
+          if expected_shape_list is None:
+            self.assertIs(None, shape.ndims)
+          else:
+            self.assertEqual(expected_shape_list, shape.as_list())
+
+    fail_cases = [((i32, dtypes.int64, i32), None),
+                  ((i32, i32, i32, i32), None),
+                  ((i32, i32, i32), ((None, None), None)),
+                  ((i32, i32, i32), (None, None, None, None)),
+                  ((i32, i32, i32), (None, [None], [21, 30]))]
+
+    for new_types, new_shape_lists in fail_cases:
+      with self.assertRaises(ValueError):
+        # pylint: disable=protected-access
+        new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
+        # pylint: enable=protected-access
 
 
 if __name__ == "__main__":

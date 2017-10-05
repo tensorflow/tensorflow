@@ -88,10 +88,7 @@ struct RecvNodeDescriptorEqual {
 VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
                                    const bool use_static_shapes,
                                    Cluster* cluster)
-    :  // Allow LIFO as well as FIFO. LIFO allows an output node of an node to
-       // follow it in execution, saving addition memory time from having to
-       // write and read. For default cases, use FIFO for performance.
-      ready_nodes_(new FIFOManager()),
+    : ready_nodes_(ReadyNodeManagerFactory("FirstReady")),
       graph_costs_(Costs::ZeroCosts()),
       graph_properties_(*grappler_item),
       cluster_(cluster),
@@ -99,6 +96,18 @@ VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
       use_static_shapes_(use_static_shapes),
       placer_(cluster) {
   initialized_ = false;
+}
+
+ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
+    const string& ready_node_manager) {
+  if (ready_node_manager == "FIFO") {
+    return new FIFOManager();
+  } else if (ready_node_manager == "LIFO") {
+    return new LIFOManager();
+  } else if (ready_node_manager == "FirstReady") {
+    return new FirstReadyManager(GetNodeStates());
+  }
+  LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
 }
 
 Status VirtualScheduler::Init() {
@@ -210,7 +219,7 @@ Status VirtualScheduler::Init() {
     if (given_as_feed || has_no_inputs) {
       curr_node_state.time_ready = Costs::Duration();
       ready_nodes_->AddNode(curr_node);
-      VLOG(1) << "Added ready node: " << curr_node->name();
+      VLOG(3) << "Added ready node: " << curr_node->name();
     }
 
     feed_nodes.erase(curr_node->name());
@@ -229,8 +238,9 @@ Status VirtualScheduler::Init() {
     return Status(error::UNAVAILABLE, "No ready nodes in the graph.");
   }
 
-  CHECK(feed_nodes.empty()) << "Some feed nodes were not found in the graph: "
-                            << str_util::Join(feed_nodes, ",");
+  if (!feed_nodes.empty())
+    LOG(ERROR) << "Some feed nodes were not found in the graph: "
+               << str_util::Join(feed_nodes, ",");
 
   initialized_ = true;
   return Status::OK();
@@ -367,7 +377,7 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   return std::make_pair(send, recv);
 }
 
-NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
+OpContext VirtualScheduler::GetCurrNode() const {
   const NodeDef* node = ready_nodes_->GetCurrNode();
 
   // Get the device from the placer.
@@ -379,12 +389,12 @@ NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
     device.set_type(kChannelDevice);
   }
 
-  // Construct NodeInfo.
-  NodeInfo node_info;
+  // Construct OpContext.
+  OpContext op_context;
   const auto& node_state = node_map_.at(node);
-  node_info.name = node->name();
-  node_info.device_name = node_state.device_name;
-  auto& op_info = node_info.op_info;
+  op_context.name = node->name();
+  op_context.device_name = node_state.device_name;
+  auto& op_info = op_context.op_info;
   op_info.set_op(node->op());
   *op_info.mutable_attr() = node->attr();
   for (auto& input : node_state.input_properties) {
@@ -394,7 +404,11 @@ NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
     *op_info.add_outputs() = output;
   }
   op_info.mutable_device()->Swap(&device);
-  return node_info;
+
+  if (grappler_item_->graph.has_library()) {
+    op_context.function_library = &grappler_item_->graph.library();
+  }
+  return op_context;
 }
 
 NodeState& VirtualScheduler::GetNodeStateOrCreateIt(const NodeDef* node) {
@@ -487,8 +501,8 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   const auto& op_name = node->op();
 
   // Also keep track of op counts and times per op (with their shapes).
-  NodeInfo node_info = GetCurrNodeInfo();
-  string node_description = GetOpDescription(node_info.op_info);
+  OpContext op_context = GetCurrNode();
+  string node_description = GetOpDescription(op_context.op_info);
   op_counts_[node_description] += 1;
   op_costs_[node_description] =
       node_costs.execution_time.asMicroSeconds().count();

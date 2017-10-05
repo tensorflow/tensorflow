@@ -130,7 +130,7 @@ def bottleneck(inputs,
 def resnet_v2(inputs,
               blocks,
               num_classes=None,
-              is_training=None,
+              is_training=True,
               global_pool=True,
               output_stride=None,
               include_root_block=True,
@@ -165,8 +165,7 @@ def resnet_v2(inputs,
       is a resnet_utils.Block object describing the units in the block.
     num_classes: Number of predicted classes for classification tasks. If None
       we return the features before the logit layer.
-    is_training: whether is training or not. If None, the value inherited from
-      the resnet_arg_scope is used. Specifying value None is deprecated.
+    is_training: whether batch_norm layers are in training mode.
     global_pool: If True, we perform global average pooling before computing the
       logits. Set to True for image classification, False for dense prediction.
     output_stride: If None, then the output will be computed at the nominal
@@ -200,11 +199,7 @@ def resnet_v2(inputs,
     with arg_scope(
         [layers_lib.conv2d, bottleneck, resnet_utils.stack_blocks_dense],
         outputs_collections=end_points_collection):
-      if is_training is not None:
-        bn_scope = arg_scope([layers.batch_norm], is_training=is_training)
-      else:
-        bn_scope = arg_scope([])
-      with bn_scope:
+      with arg_scope([layers.batch_norm], is_training=is_training):
         net = inputs
         if include_root_block:
           if output_stride is not None:
@@ -268,7 +263,7 @@ def resnet_v2_block(scope, base_depth, num_units, stride):
 
 def resnet_v2_50(inputs,
                  num_classes=None,
-                 is_training=None,
+                 is_training=True,
                  global_pool=True,
                  output_stride=None,
                  reuse=None,
@@ -294,8 +289,8 @@ def resnet_v2_50(inputs,
 
 def resnet_v2_101(inputs,
                   num_classes=None,
+                  is_training=True,
                   global_pool=True,
-                  is_training=None,
                   output_stride=None,
                   reuse=None,
                   scope='resnet_v2_101'):
@@ -320,7 +315,7 @@ def resnet_v2_101(inputs,
 
 def resnet_v2_152(inputs,
                   num_classes=None,
-                  is_training=None,
+                  is_training=True,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
@@ -346,7 +341,7 @@ def resnet_v2_152(inputs,
 
 def resnet_v2_200(inputs,
                   num_classes=None,
-                  is_training=None,
+                  is_training=True,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,

@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 #include "tensorflow/core/graph/mkl_tfconversion_pass.h"
-#include "tensorflow/core/util/mkl_util.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 
 namespace tensorflow {
 

@@ -330,7 +330,6 @@ py_library(
         ":stepper_cli",
         ":tensor_format",
         ":ui_factory",
-        "@six_archive//:six",
     ],
 )
 
@@ -800,6 +799,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
@@ -940,6 +940,7 @@ py_test(
         ":cli_shared",
         ":debugger_cli_common",
         ":local_cli_wrapper",
+        ":ui_factory",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

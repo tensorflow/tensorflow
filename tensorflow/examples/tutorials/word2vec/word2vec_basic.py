@@ -89,7 +89,7 @@ def build_dataset(words, n_words):
 # Filling 4 global variables:
 # data - list of codes (integers from 0 to vocabulary_size-1).
 #   This is the original text but words are replaced by their codes
-# count - map of words(strings) to count of occurences
+# count - map of words(strings) to count of occurrences
 # dictionary - map of words(strings) to their codes(integers)
 # reverse_dictionary - maps codes(integers) to words(strings)
 data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,

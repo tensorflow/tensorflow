@@ -18,7 +18,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
+namespace boosted_trees {
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 using shape_inference::DimensionHandle;
@@ -471,5 +471,5 @@ output_gradients: A tensor of gradients, first dimension matches slots
 output_hessians: A tensor of hessians, first dimension matches slots
                  in <partition_id, feature_id>.
 )doc");
-}  // namespace gtflow
+}  // namespace boosted_trees
 }  // namespace tensorflow

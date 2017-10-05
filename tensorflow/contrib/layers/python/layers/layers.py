@@ -22,13 +22,13 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import six
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -100,8 +100,6 @@ DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
 DATA_FORMAT_NCDHW = 'NCDHW'
 DATA_FORMAT_NDHWC = 'NDHWC'
-_FUSED_DEFAULT = os.getenv('TF_DEFAULT_USES_FUSED_BATCH_NORM',
-                           '').lower() in ('true', 't', '1')
 
 
 @add_arg_scope
@@ -165,11 +163,11 @@ def avg_pool3d(inputs,
   It is assumed that the pooling is done per image but not in batch or channels.
 
   Args:
-    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
-      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
-      `data_format` is `NCDHW`.
-    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
-      pooling kernel over which the op is computed. Can be an int if both
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]`
+      if `data_format` is `NDHWC`, and `[batch_size, channels, depth, height,
+      width]` if `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width]
+      of the pooling kernel over which the op is computed. Can be an int if both
       values are the same.
     stride: A list of length 3: [stride_depth, stride_height, stride_width].
       Can be an int if both strides are the same. Note that presently
@@ -287,6 +285,7 @@ def _fused_batch_norm(
     ValueError: If the rank of `inputs` is neither 2 or 4.
     ValueError: If rank or `C` dimension of `inputs` is undefined.
   """
+  # TODO(reedwm): Add support for fp16 inputs.
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with variable_scope.variable_scope(
@@ -354,29 +353,35 @@ def _fused_batch_norm(
       gamma = array_ops.constant(1.0, shape=params_shape)
 
     # Create moving_mean and moving_variance variables and add them to the
-    # appropriate collections.
-    moving_mean_collections = utils.get_variable_collections(
-        variables_collections, 'moving_mean')
-    moving_mean_initializer = param_initializers.get(
-        'moving_mean', init_ops.zeros_initializer())
-    moving_mean = variables.model_variable(
-        'moving_mean',
-        shape=params_shape,
-        dtype=dtype,
-        initializer=moving_mean_initializer,
-        trainable=False,
-        collections=moving_mean_collections)
-    moving_variance_collections = utils.get_variable_collections(
-        variables_collections, 'moving_variance')
-    moving_variance_initializer = param_initializers.get(
-        'moving_variance', init_ops.ones_initializer())
-    moving_variance = variables.model_variable(
-        'moving_variance',
-        shape=params_shape,
-        dtype=dtype,
-        initializer=moving_variance_initializer,
-        trainable=False,
-        collections=moving_variance_collections)
+    # appropriate collections. We disable variable partitioning while creating
+    # them, because assign_moving_average is not yet supported for partitioned
+    # variables (this needs to be handled carefully, as it may break
+    # the checkpoint backward compatibility).
+    with variable_scope.variable_scope(
+        variable_scope.get_variable_scope()) as local_scope:
+      local_scope.set_partitioner(None)
+      moving_mean_collections = utils.get_variable_collections(
+          variables_collections, 'moving_mean')
+      moving_mean_initializer = param_initializers.get(
+          'moving_mean', init_ops.zeros_initializer())
+      moving_mean = variables.model_variable(
+          'moving_mean',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=moving_mean_initializer,
+          trainable=False,
+          collections=moving_mean_collections)
+      moving_variance_collections = utils.get_variable_collections(
+          variables_collections, 'moving_variance')
+      moving_variance_initializer = param_initializers.get(
+          'moving_variance', init_ops.ones_initializer())
+      moving_variance = variables.model_variable(
+          'moving_variance',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=moving_variance_initializer,
+          trainable=False,
+          collections=moving_variance_collections)
 
     def _fused_batch_norm_training():
       return nn.fused_batch_norm(
@@ -433,8 +438,7 @@ def _fused_batch_norm(
       outputs = array_ops.reshape(outputs, array_ops.shape(original_inputs))
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -551,10 +555,8 @@ def batch_norm(inputs,
     ValueError: If the rank of `inputs` is undefined.
     ValueError: If rank or channels dimension of `inputs` is undefined.
   """
-  # This environment variable is only used during the testing period of fused
-  # batch norm and will be removed after that.
   if fused is None:
-    fused = _FUSED_DEFAULT
+    fused = True
 
   # Only use _fused_batch_norm if all of the following three
   # conditions are true:
@@ -653,8 +655,7 @@ def batch_norm(inputs,
 
       if activation_fn is not None:
         outputs = activation_fn(outputs)
-      return utils.collect_named_outputs(outputs_collections,
-                                         sc.original_name_scope, outputs)
+      return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
     # Not supported by layer class: batch_weights argument,
     # and custom updates_collections. In that case, use the legacy BN
@@ -723,10 +724,11 @@ def batch_norm(inputs,
     # Create moving_mean and moving_variance variables and add them to the
     # appropriate collections. We disable variable partitioning while creating
     # them, because assign_moving_average is not yet supported for partitioned
-    # variables.
-    partitioner = variable_scope.get_variable_scope().partitioner
-    try:
-      variable_scope.get_variable_scope().set_partitioner(None)
+    # variables (this needs to be handled carefully, as it may break
+    # the checkpoint backward compatibility).
+    with variable_scope.variable_scope(
+        variable_scope.get_variable_scope()) as local_scope:
+      local_scope.set_partitioner(None)
       moving_mean_collections = utils.get_variable_collections(
           variables_collections, 'moving_mean')
       moving_mean_initializer = param_initializers.get(
@@ -749,8 +751,6 @@ def batch_norm(inputs,
           initializer=moving_variance_initializer,
           trainable=False,
           collections=moving_variance_collections)
-    finally:
-      variable_scope.get_variable_scope().set_partitioner(partitioner)
 
     # If `is_training` doesn't have a constant value, because it is a `Tensor`,
     # a `Variable` or `Placeholder` then is_training_value will be None and
@@ -823,8 +823,7 @@ def batch_norm(inputs,
     outputs.set_shape(inputs_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -896,8 +895,7 @@ def bias_add(inputs,
     outputs = nn.bias_add(inputs, biases, data_format=data_format)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 # TODO(jbms): change `rate` parameter to `dilation_rate` for consistency with
@@ -1045,8 +1043,7 @@ def convolution(inputs,
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 convolution2d = convolution
 convolution3d = convolution
@@ -1151,8 +1148,7 @@ def convolution2d_in_plane(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1264,8 +1260,7 @@ def convolution2d_transpose(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1298,8 +1293,8 @@ def convolution3d_transpose(
       `[batch, depth, height, width, in_channels]` for `NDHWC` data format or
       `[batch, in_channels, depth, height, width]` for `NCDHW` data format.
     num_outputs: Integer, the number of output filters.
-    kernel_size: A list of length 3 holding the [kernel_depth, kernel_height, kernel_width] of
-      of the filters. Can be an int if both values are the same.
+    kernel_size: A list of length 3 holding the [kernel_depth, kernel_height,
+      kernel_width] of the filters. Can be an int if both values are the same.
     stride: A list of length 3: [stride_depth, stride_height, stride_width].
       Can be an int if both strides are the same.  Note that presently
       both strides must have the same value.
@@ -1374,8 +1369,7 @@ def convolution3d_transpose(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1414,8 +1408,7 @@ def dropout(inputs,
                                 name=sc.name,
                                 _scope=sc)
     outputs = layer.apply(inputs, training=is_training)
-    return utils.collect_named_outputs(
-        outputs_collections, sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1438,30 +1431,7 @@ def flatten(inputs,
   """
   with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    inputs_rank = inputs.get_shape().ndims
-    if (inputs_rank is None) or (inputs_rank < 2):
-      raise ValueError('Inputs must have a least 2 dimensions.')
-
-    inputs_shape = array_ops.shape(inputs)
-
-    batch_dim = array_ops.slice(inputs_shape, [0], [1])
-    spatial_dims = array_ops.slice(inputs_shape, [1], [inputs_rank - 1])
-
-    flat_spatial_dim = math_ops.reduce_prod(spatial_dims)
-    flat_spatial_dim = array_ops.expand_dims(flat_spatial_dim, 0)
-    flat_shape = array_ops.concat([batch_dim, flat_spatial_dim], 0)
-
-    outputs = array_ops.reshape(inputs, flat_shape)
-
-    # Attempt to propagate shape information, if it is defined.
-    input_shape = inputs.get_shape().as_list()
-    batch_dim, spatial_dims = input_shape[0], input_shape[1:]
-    if all(spatial_dims):
-      outputs.set_shape([batch_dim,
-                         functools.reduce(lambda x, y: x * y, spatial_dims)])
-    else:
-      outputs.set_shape([batch_dim, None])
-
+    outputs = core_layers.flatten(inputs)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
@@ -1682,8 +1652,7 @@ def fully_connected(inputs,
     if activation_fn is not None:
       outputs = activation_fn(outputs)
 
-    return utils.collect_named_outputs(
-        outputs_collections, sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 class GDN(base.Layer):
@@ -1763,13 +1732,14 @@ class GDN(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(GDN, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(GDN, self).__init__(trainable=trainable, name=name,
+                              activity_regularizer=activity_regularizer,
+                              **kwargs)
     self.inverse = inverse
     self._beta_min = beta_min
     self._gamma_init = gamma_init
     self._reparam_offset = reparam_offset
     self.data_format = data_format
-    self.activity_regularizer = activity_regularizer
     self._channel_axis()  # trigger ValueError early
     self.input_spec = base.InputSpec(min_ndim=3, max_ndim=5)
 
@@ -2121,9 +2091,7 @@ def layer_norm(inputs,
     outputs.set_shape(inputs_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope,
-                                       outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -2188,11 +2156,11 @@ def max_pool3d(inputs,
   It is assumed that the pooling is done per image but not in batch or channels.
 
   Args:
-    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
-      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
-      `data_format` is `NCDHW`.
-    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
-      pooling kernel over which the op is computed. Can be an int if both
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]`
+      if `data_format` is `NDHWC`, and `[batch_size, channels, depth, height,
+      width]` if `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width]
+      of the pooling kernel over which the op is computed. Can be an int if both
       values are the same.
     stride: A list of length 3: [stride_depth, stride_height, stride_width].
       Can be an int if both strides are the same. Note that presently
@@ -2590,8 +2558,7 @@ def separable_convolution2d(
 
     if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections,
-                                       sc.original_name_scope, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -2614,7 +2581,8 @@ def softmax(logits, scope=None):
     logits_2d = array_ops.reshape(logits, [-1, num_logits])
     predictions = nn.softmax(logits_2d)
     predictions = array_ops.reshape(predictions, array_ops.shape(logits))
-    predictions.set_shape(logits.get_shape())
+    if context.in_graph_mode():
+      predictions.set_shape(logits.get_shape())
     return predictions
 
 
@@ -2634,7 +2602,7 @@ def spatial_softmax(features,
 
   Read more here:
   "Learning visual feature spaces for robotic manipulation with
-  deep spatial autoencoders." Finn et. al, http://arxiv.org/abs/1509.06113.
+  deep spatial autoencoders." Finn et al., http://arxiv.org/abs/1509.06113.
 
   Args:
     features: A `Tensor` of size [batch_size, W, H, num_channels]; the

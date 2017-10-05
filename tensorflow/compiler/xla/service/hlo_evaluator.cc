@@ -167,7 +167,15 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleAbs(HloInstruction* abs, HloInstruction* operand) override {
     return HandleAbs<ReturnT>(abs, operand);
-  };
+  }
+
+  Status HandleRound(HloInstruction* round) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[round],
+                        ElementWiseUnaryOp(round, [](ReturnT elem_operand) {
+                          return std::round(elem_operand);
+                        }));
+    return Status::OK();
+  }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
     parent_->evaluated_[broadcast] =
@@ -177,16 +185,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
     std::vector<int64> broadcast_indices(
         ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
-
-    // Special case for broadcasting scalars: ignore broadcast dimension and
-    // broadcast to whatever the output dimension is.
-    // TODO(b/64533549): Remove the need of this once this bug is resolved.
-    if (ShapeUtil::IsScalar(operand_to_broadcast.shape())) {
-      return output->Populate<ReturnT>(
-          [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-            return operand_to_broadcast.Get<ReturnT>({});
-          });
-    }
 
     TF_RET_CHECK(broadcast->dimensions().size() ==
                  ShapeUtil::Rank(operand_to_broadcast.shape()))
@@ -1265,6 +1263,30 @@ std::unique_ptr<Literal> HloEvaluator::TryEvaluate(
   }
 
   return result_or.ConsumeValueOrDie();
+}
+
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
+    const HloInstruction* instruction,
+    const std::unordered_map<const HloInstruction*, const Literal*>&
+        substitutions) {
+  std::vector<std::unique_ptr<HloInstruction>> owned_operands;
+  for (const HloInstruction* operand : instruction->operands()) {
+    auto it = substitutions.find(operand);
+    if (it == substitutions.end()) {
+      owned_operands.push_back(operand->Clone());
+    } else {
+      owned_operands.push_back(
+          HloInstruction::CreateConstant(it->second->CloneToUnique()));
+    }
+  }
+
+  std::vector<HloInstruction*> operands;
+  for (auto& operand : owned_operands) {
+    operands.push_back(operand.get());
+  }
+
+  return Evaluate(
+      instruction->CloneWithNewOperands(instruction->shape(), operands).get());
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {

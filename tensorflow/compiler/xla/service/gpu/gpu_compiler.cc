@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -76,14 +78,11 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
+/* static */ const char* GpuCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
+/* static */ const char* GpuCompiler::kDataLayout =
+    "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+
 namespace {
-
-// The triple that represents our target.
-const char* kTargetTriple = "nvptx64-nvidia-cuda";
-
-// The data layout of the emitted module. Copied from computeDataLayout in
-// NVPTXTargetMachine.cpp.
-const char* kDataLayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 // Any address of a variable residing in global memory or returned by one of the
 // memory allocation routines from the driver or runtime API is always aligned
@@ -129,6 +128,10 @@ tensorflow::Status OptimizeHloModule(
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
         ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
+
+    // TODO(b/64094172): make Call work on GPU instead of inlining.
+    pipeline.AddPass<CallInliner>();
+
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
@@ -144,6 +147,7 @@ tensorflow::Status OptimizeHloModule(
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
+      pass.AddPass<TupleSimplifier>();
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
     }
@@ -279,7 +283,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
     diag_info.print(*printer);
   };
-  llvm_context.setDiagnosticHandler(DiagnosticHandler, &printer);
+  llvm_context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
   llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
@@ -302,6 +306,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
                           BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
                             return kMemoryAlignment;
                           }));
+  // BufferAssignment::ToString() includes a header, so no need for us to
+  // print one ourselves.
+  XLA_VLOG_LINES(2, buffer_assignment->ToString());
 
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();
@@ -317,7 +324,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
-                               module->config().has_hybrid_result(),
                                &ir_emitter_context);
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));
@@ -332,6 +338,16 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
     VLOG(2) << "LLVM module before optimizations:";
     XLA_VLOG_LINES(2, ir_module_string_before_opt);
+  }
+
+  const string& ir_dump_directory =
+      module->config().debug_options().xla_dump_ir_to();
+
+  if (!ir_dump_directory.empty()) {
+    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
+        /*directory_name=*/ir_dump_directory,
+        /*hlo_module_name=*/module->name(), llvm_module,
+        /*optimized=*/false));
   }
 
   // Reserve space for the PTX to be generated for this module.
@@ -355,6 +371,13 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   }
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                          module->config(), libdevice_dir_));
+
+  if (!ir_dump_directory.empty()) {
+    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
+        /*directory_name=*/ir_dump_directory,
+        /*hlo_module_name=*/module->name(), llvm_module,
+        /*optimized=*/true));
+  }
 
   if (user_post_optimization_hook_) {
     TF_CHECK_OK(user_post_optimization_hook_(llvm_module));

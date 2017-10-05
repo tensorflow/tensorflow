@@ -334,6 +334,7 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_VARIANT
       }
     }
   }
@@ -2792,7 +2793,7 @@ op {
   name: "BatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -2801,7 +2802,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -2816,7 +2817,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that batches `batch_size` elements from `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "BatchFFT"
@@ -4228,7 +4228,7 @@ op {
   name: "CacheDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "filename"
@@ -4237,7 +4237,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -4253,7 +4253,6 @@ op {
   }
   summary: "Creates a dataset that caches elements from `input_dataset`."
   description: "A CacheDataset will iterate over the input_dataset, and store tensors. If the\ncache already exists, the cache will be used. If the cache is inappropriate\n(e.g. cannot be opened, contains tensors of the wrong shape / size), an error\nwill the returned when used."
-  is_stateful: true
 }
 op {
   name: "Cast"
@@ -4659,15 +4658,15 @@ op {
   name: "ConcatenateDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "another_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -4682,7 +4681,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that concatenates `input_dataset` with `another_dataset`."
-  is_stateful: true
 }
 op {
   name: "ConditionalAccumulator"
@@ -4760,6 +4758,7 @@ op {
       list {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+        type: DT_VARIANT
       }
     }
   }
@@ -6006,6 +6005,74 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "DecodeAndCropJpeg"
+  input_arg {
+    name: "contents"
+    description: "0-D.  The JPEG-encoded image."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "crop_window"
+    description: "1-D.  The crop window: [crop_y, crop_x, crop_height, crop_width]."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "image"
+    description: "3-D with shape `[height, width, channels]`.."
+    type: DT_UINT8
+  }
+  attr {
+    name: "channels"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Number of color channels for the decoded image."
+  }
+  attr {
+    name: "ratio"
+    type: "int"
+    default_value {
+      i: 1
+    }
+    description: "Downscaling ratio."
+  }
+  attr {
+    name: "fancy_upscaling"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true use a slower but nicer upscaling of the\nchroma planes (yuv420/422 only)."
+  }
+  attr {
+    name: "try_recover_truncated"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true try to recover an image from truncated input."
+  }
+  attr {
+    name: "acceptable_fraction"
+    type: "float"
+    default_value {
+      f: 1
+    }
+    description: "The minimum required fraction of lines before a truncated\ninput is accepted."
+  }
+  attr {
+    name: "dct_method"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "string specifying a hint about the algorithm used for\ndecompression.  Defaults to \"\" which maps to a system-specific\ndefault.  Currently valid values are [\"INTEGER_FAST\",\n\"INTEGER_ACCURATE\"].  The hint may be ignored (e.g., the internal\njpeg library changes to a version that does not have that specific\noption.)"
+  }
+  summary: "Decode and Crop a JPEG-encoded image to a uint8 tensor."
+  description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later.\n\n\nIt is equivalent to a combination of decode and crop, but much faster by only\ndecoding partial jpeg image."
+}
+op {
   name: "DecodeBase64"
   input_arg {
     name: "input"
@@ -6183,7 +6250,7 @@ op {
     description: "string specifying a hint about the algorithm used for\ndecompression.  Defaults to \"\" which maps to a system-specific\ndefault.  Currently valid values are [\"INTEGER_FAST\",\n\"INTEGER_ACCURATE\"].  The hint may be ignored (e.g., the internal\njpeg library changes to a version that does not have that specific\noption.)"
   }
   summary: "Decode a JPEG-encoded image to a uint8 tensor."
-  description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later.\n\nThis op also supports decoding PNGs and non-animated GIFs since the interface is\nthe same, though it is cleaner to use `tf.image.decode_image`."
+  description: "The attr `channels` indicates the desired number of color channels for the\ndecoded image.\n\nAccepted values are:\n\n*   0: Use the number of channels in the JPEG-encoded image.\n*   1: output a grayscale image.\n*   3: output an RGB image.\n\nIf needed, the JPEG-encoded image is transformed to match the requested number\nof color channels.\n\nThe attr `ratio` allows downscaling the image by an integer factor during\ndecoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than\ndownscaling the image later.\n\n\nThis op also supports decoding PNGs and non-animated GIFs since the interface is\nthe same, though it is cleaner to use `tf.image.decode_image`."
 }
 op {
   name: "DecodePng"
@@ -6242,6 +6309,7 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_INT32
+        type: DT_UINT16
         type: DT_UINT8
         type: DT_INT16
         type: DT_INT8
@@ -6365,7 +6433,7 @@ op {
   input_arg {
     name: "input_dataset"
     description: "A handle to an input dataset. Must have a single component."
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -6379,7 +6447,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -6394,7 +6462,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that yields a SparseTensor for each element of the input."
-  is_stateful: true
 }
 op {
   name: "DenseToSparseSetOperation"
@@ -6483,8 +6550,22 @@ op {
     has_minimum: true
     minimum: 2
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+        s: "NCHW_VECT_C"
+      }
+    }
+  }
   summary: "DepthToSpace for tensors of type T."
-  description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height*block_size, width*block_size, depth/(block_size*block_size)]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and that `block_size * block_size` be a divisor of the\ninput depth.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:\n\n```\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```\nx = [[ [1],   [2],  [5],  [6]],\n     [ [3],   [4],  [7],  [8]],\n     [ [9],  [10], [13],  [14]],\n     [ [11], [12], [15],  [16]]]\n\n```"
+  description: "Rearranges data from depth into blocks of spatial data.\nThis is the reverse transformation of SpaceToDepth. More specifically,\nthis op outputs a copy of the input tensor where values from the `depth`\ndimension are moved in spatial blocks to the `height` and `width` dimensions.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Chunks of data of size `block_size * block_size` from depth are rearranged\n    into non-overlapping blocks of size `block_size x block_size`\n  * The width the output tensor is `input_depth * block_size`, whereas the\n    height is `input_height * block_size`.\n  * The Y, X coordinates within each block of the output image are determined\n    by the high order component of the input channel index.\n  * The depth of the input tensor must be divisible by\n    `block_size * block_size`.\n\nThe `data_format` attr specifies the layout of the input and output tensors\nwith the following options:\n  \"NHWC\": `[ batch, height, width, channels ]`\n  \"NCHW\": `[ batch, channels, height, width ]`\n  \"NCHW_VECT_C\":\n      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`\n\nIt is useful to consider the operation as transforming a 6-D Tensor.\ne.g. for data_format = NHWC,\n     Each element in the input tensor can be specified via 6 coordinates,\n     ordered by decreasing memory layout significance as:\n     n,iY,iX,bY,bX,oC  (where n=batch index, iX, iY means X or Y coordinates\n                        within the input image, bX, bY means coordinates\n                        within the output block, oC means output channels).\n     The output would be the input transposed to the following layout:\n     n,iY,bY,iX,bX,oC\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given an input of shape `[1, 1, 1, 4]`, data_format = \"NHWC\" and\nblock_size = 2:\n\n```\nx = [[[[1, 2, 3, 4]]]]\n\n```\n\nThis operation will output a tensor of shape `[1, 2, 2, 1]`:\n\n```\n   [[[[1], [2]],\n     [[3], [4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[1, 1, 4]`,\nthe corresponding output will have 2x2 elements and will have a depth of\n1 channel (1 = `4 / (block_size * block_size)`).\nThe output element shape is `[2, 2, 1]`.\n\nFor an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.\n\n```\nx = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nThis operation, for block size of 2, will return the following tensor of shape\n`[1, 2, 2, 3]`\n\n```\n   [[[[1, 2, 3], [4, 5, 6]],\n     [[7, 8, 9], [10, 11, 12]]]]\n\n```\n\nSimilarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:\n\n```\nx =  [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 4 4 1]`:\n\n```\nx = [[[ [1],   [2],  [5],  [6]],\n      [ [3],   [4],  [7],  [8]],\n      [ [9],  [10], [13],  [14]],\n      [ [11], [12], [15],  [16]]]]\n\n```"
 }
 op {
   name: "DepthwiseConv2dNative"
@@ -8295,7 +8376,7 @@ op {
   name: "FilterDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -8304,7 +8385,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "predicate"
@@ -8330,7 +8411,6 @@ op {
   }
   summary: "Creates a dataset containing elements of `input_dataset` matching `predicate`."
   description: "The `predicate` function must return a scalar boolean and accept the\nfollowing arguments:\n\n* One tensor for each component of an element of `input_dataset`.\n* One tensor for each value in `other_arguments`."
-  is_stateful: true
 }
 op {
   name: "FixedLengthRecordDataset"
@@ -8361,7 +8441,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   summary: "Creates a dataset that emits the records from one or more binary files."
   is_stateful: true
@@ -8609,7 +8689,7 @@ op {
   name: "FlatMapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -8617,12 +8697,12 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
     type: "func"
-    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
   }
   attr {
     name: "Targuments"
@@ -8642,8 +8722,7 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  description: "Unlike MapDataset, the `f` in FlatMapDataset is expected to return a\nDataset resource, and FlatMapDataset will flatten successive results\ninto a single Dataset."
-  is_stateful: true
+  description: "Unlike MapDataset, the `f` in FlatMapDataset is expected to return a\nDataset variant, and FlatMapDataset will flatten successive results\ninto a single Dataset."
 }
 op {
   name: "Floor"
@@ -9054,7 +9133,7 @@ op {
   }
   output_arg {
     name: "reserve_space_2"
-    description: "A 1D Tensor for the computed batch variance (inverted variance\nin the cuDNN case), to be used in the gradient computation."
+    description: "A 1D Tensor for the computed batch variance (inverted variance\nin the cuDNN case), to be reused in the gradient computation."
     type_attr: "T"
   }
   attr {
@@ -9113,12 +9192,12 @@ op {
   }
   input_arg {
     name: "reserve_space_1"
-    description: "A 1D Tensor for the computed batch mean, to be reused\nin the gradient computation."
+    description: "When is_training is True, a 1D Tensor for the computed batch\nmean to be reused in gradient computation. When is_training is\nFalse, a 1D Tensor for the population mean to be reused in both\n1st and 2nd order gradient computation."
     type_attr: "T"
   }
   input_arg {
     name: "reserve_space_2"
-    description: "A 1D Tensor for the computed batch variance (inverted variance\nin the cuDNN case), to be used in the gradient computation."
+    description: "When is_training is True, a 1D Tensor for the computed batch\nvariance (inverted variance in the cuDNN case) to be reused in\ngradient computation. When is_training is False, a 1D Tensor\nfor the population variance to be reused in both 1st and 2nd\norder gradient computation."
     type_attr: "T"
   }
   output_arg {
@@ -9181,6 +9260,206 @@ op {
     description: "A bool value to indicate the operation is for training (default)\nor inference."
   }
   summary: "Gradient for batch normalization."
+  description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
+}
+op {
+  name: "FusedBatchNormGradV2"
+  input_arg {
+    name: "y_backprop"
+    description: "A 4D Tensor for the gradient with respect to y."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x"
+    description: "A 4D Tensor for input data."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    description: "A 1D Tensor for scaling factor, to scale the normalized x."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "reserve_space_1"
+    description: "When is_training is True, a 1D Tensor for the computed batch\nmean to be reused in gradient computation. When is_training is\nFalse, a 1D Tensor for the population mean to be reused in both\n1st and 2nd order gradient computation."
+    type_attr: "U"
+  }
+  input_arg {
+    name: "reserve_space_2"
+    description: "When is_training is True, a 1D Tensor for the computed batch\nvariance (inverted variance in the cuDNN case) to be reused in\ngradient computation. When is_training is False, a 1D Tensor\nfor the population variance to be reused in both 1st and 2nd\norder gradient computation."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "x_backprop"
+    description: "A 4D Tensor for the gradient with respect to x."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "scale_backprop"
+    description: "A 1D Tensor for the gradient with respect to scale."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "offset_backprop"
+    description: "A 1D Tensor for the gradient with respect to offset."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "reserve_space_3"
+    description: "Unused placeholder to match the mean input in FusedBatchNorm."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "reserve_space_4"
+    description: "Unused placeholder to match the variance input\nin FusedBatchNorm."
+    type_attr: "U"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The data type for the elements of input and output Tensors."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "U"
+    type: "type"
+    description: "The data type for the scale, offset, mean, and variance."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+    default_value {
+      f: 0.0001
+    }
+    description: "A small float number added to the variance of x."
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "The data format for y_backprop, x, x_backprop.\nEither \"NHWC\" (default) or \"NCHW\"."
+  }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "A bool value to indicate the operation is for training (default)\nor inference."
+  }
+  summary: "Gradient for batch normalization."
+  description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
+}
+op {
+  name: "FusedBatchNormV2"
+  input_arg {
+    name: "x"
+    description: "A 4D Tensor for input data."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    description: "A 1D Tensor for scaling factor, to scale the normalized x."
+    type_attr: "U"
+  }
+  input_arg {
+    name: "offset"
+    description: "A 1D Tensor for offset, to shift to the normalized x."
+    type_attr: "U"
+  }
+  input_arg {
+    name: "mean"
+    description: "A 1D Tensor for population mean. Used for inference only;\nmust be empty for training."
+    type_attr: "U"
+  }
+  input_arg {
+    name: "variance"
+    description: "A 1D Tensor for population variance. Used for inference only;\nmust be empty for training."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "y"
+    description: "A 4D Tensor for output data."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "batch_mean"
+    description: "A 1D Tensor for the computed batch mean, to be used by TensorFlow\nto compute the running mean."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "batch_variance"
+    description: "A 1D Tensor for the computed batch variance, to be used by\nTensorFlow to compute the running variance."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "reserve_space_1"
+    description: "A 1D Tensor for the computed batch mean, to be reused\nin the gradient computation."
+    type_attr: "U"
+  }
+  output_arg {
+    name: "reserve_space_2"
+    description: "A 1D Tensor for the computed batch variance (inverted variance\nin the cuDNN case), to be reused in the gradient computation."
+    type_attr: "U"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The data type for the elements of input and output Tensors."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "U"
+    type: "type"
+    description: "The data type for the scale, offset, mean, and variance."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+    default_value {
+      f: 0.0001
+    }
+    description: "A small float number added to the variance of x."
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "The data format for x and y. Either \"NHWC\" (default) or \"NCHW\"."
+  }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "A bool value to indicate the operation is for training (default)\nor inference."
+  }
+  summary: "Batch normalization."
   description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
 }
 op {
@@ -9600,7 +9879,7 @@ op {
   name: "GroupByWindowDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "key_func_other_arguments"
@@ -9616,7 +9895,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "key_func"
@@ -9660,7 +9939,6 @@ op {
   }
   summary: "Creates a dataset that computes a windowed group-by on `input_dataset`."
   description: "// TODO(mrry): Support non-int64 keys."
-  is_stateful: true
 }
 op {
   name: "HSVToRGB"
@@ -10074,11 +10352,11 @@ op {
   name: "IgnoreErrorsDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -10093,7 +10371,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that contains the elements of `input_dataset` ignoring errors."
-  is_stateful: true
 }
 op {
   name: "Imag"
@@ -10172,6 +10449,7 @@ op {
         type: DT_UINT8
         type: DT_FLOAT
         type: DT_HALF
+        type: DT_DOUBLE
       }
     }
   }
@@ -10453,7 +10731,7 @@ op {
   name: "InterleaveDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -10469,12 +10747,12 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
     type: "func"
-    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
   }
   attr {
     name: "Targuments"
@@ -10494,8 +10772,7 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  description: "Unlike MapDataset, the `f` in InterleaveDataset is expected to return\na Dataset resource, and InterleaveDataset will flatten successive\nresults into a single Dataset. Unlike FlatMapDataset,\nInterleaveDataset will interleave sequences of up to `block_length`\nconsecutive elements from `cycle_length` input elements."
-  is_stateful: true
+  description: "Unlike MapDataset, the `f` in InterleaveDataset is expected to return\na Dataset variant, and InterleaveDataset will flatten successive\nresults into a single Dataset. Unlike FlatMapDataset,\nInterleaveDataset will interleave sequences of up to `block_length`\nconsecutive elements from `cycle_length` input elements."
 }
 op {
   name: "Inv"
@@ -10532,11 +10809,11 @@ op {
 op {
   name: "InvGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -10739,15 +11016,6 @@ op {
     minimum: 1
   }
   summary: "A container for an iterator resource."
-  is_stateful: true
-}
-op {
-  name: "IteratorDispose"
-  input_arg {
-    name: "iterator"
-    type: DT_RESOURCE
-  }
-  summary: "Releases any resources used by the given iterator."
   is_stateful: true
 }
 op {
@@ -11793,7 +12061,7 @@ op {
   name: "MakeIterator"
   input_arg {
     name: "dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "iterator"
@@ -11846,7 +12114,7 @@ op {
   name: "MapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -11854,7 +12122,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -11878,7 +12146,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "MapIncompleteSize"
@@ -12534,7 +12801,7 @@ op {
     }
   }
   summary: "Solves systems of linear equations with upper or lower triangular matrices by"
-  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of each inner-most\nmatrix is assumed to be zero and not accessed.\n`rhs` is a tensor of shape `[..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `adjoint` is\n`True` then the innermost matrices in output` satisfy matrix equations\n`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `False` then the strictly then the  innermost matrices in\n`output` satisfy matrix equations\n`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`."
+  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of each inner-most\nmatrix is assumed to be zero and not accessed.\n`rhs` is a tensor of shape `[..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `adjoint` is\n`True` then the innermost matrices in `output` satisfy matrix equations\n`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `False` then the strictly then the  innermost matrices in\n`output` satisfy matrix equations\n`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`."
 }
 op {
   name: "Max"
@@ -12628,6 +12895,7 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_QINT8
       }
     }
   }
@@ -12667,6 +12935,7 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "NCHW_VECT_C"
       }
     }
   }
@@ -13401,6 +13670,7 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_QINT8
       }
     }
   }
@@ -13426,6 +13696,7 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
+        s: "NCHW_VECT_C"
       }
     }
   }
@@ -14647,7 +14918,7 @@ op {
   attr {
     name: "dataset_factory"
     type: "func"
-    description: "A function of type `() -> DT_RESOURCE`, where the returned\nDT_RESOURCE is a handle to a dataset."
+    description: "A function of type `() -> DT_VARIANT`, where the returned\nDT_VARIANT is a dataset."
   }
   attr {
     name: "output_types"
@@ -15167,7 +15438,7 @@ op {
   name: "PaddedBatchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "batch_size"
@@ -15187,7 +15458,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -15208,7 +15479,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that batches and pads `batch_size` elements from the input."
-  is_stateful: true
 }
 op {
   name: "PaddingFIFOQueue"
@@ -15379,7 +15649,7 @@ op {
   name: "ParallelMapDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -15392,7 +15662,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
@@ -15417,7 +15687,6 @@ op {
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
   description: "Unlike a \"MapDataset\", which applies `f` sequentially, this dataset invokes up\nto `num_parallel_calls` copies of `f` in parallel."
-  is_stateful: true
 }
 op {
   name: "ParameterizedTruncatedNormal"
@@ -15805,25 +16074,6 @@ op {
   summary: "Transforms a serialized tensorflow.TensorProto proto into a Tensor."
 }
 op {
-  name: "SerializeTensor"
-  input_arg {
-    name: "tensor"
-    description: "A Tensor of type `T`."
-    type: "T"
-  }
-  output_arg {
-    name: "serialized"
-    description: "A serialized TensorProto proto of the input tensor."
-    type_attr: DT_STRING
-  }
-  attr {
-    name: "T"
-    type: "type"
-    description: "The type of the input tensor."
-  }
-  summary: "Transforms a Tensor into a serialized TensorProto proto."
-}
-op {
   name: "Placeholder"
   output_arg {
     name: "output"
@@ -15986,7 +16236,7 @@ op {
   name: "PrefetchDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "buffer_size"
@@ -15995,7 +16245,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -16010,7 +16260,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that asynchronously prefetches elements from `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "PreventGradient"
@@ -18945,7 +19194,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -19353,11 +19602,11 @@ op {
 op {
   name: "ReciprocalGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -19873,7 +20122,7 @@ op {
   name: "RepeatDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -19882,7 +20131,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -19897,7 +20146,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that emits the outputs of `input_dataset` `count` times."
-  is_stateful: true
 }
 op {
   name: "RequantizationRange"
@@ -20135,6 +20383,43 @@ op {
   }
   summary: "Resize `images` to `size` using bicubic interpolation."
   description: "Input images can be of different types but output images are always float."
+}
+op {
+  name: "ResizeBicubicGrad"
+  input_arg {
+    name: "grads"
+    description: "4-D with shape `[batch, height, width, channels]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "original_image"
+    description: "4-D with shape `[batch, orig_height, orig_width, channels]`,\nThe image tensor that was resized."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "4-D with shape `[batch, orig_height, orig_width, channels]`.\nGradients with respect to the input image. Input image must have been\nfloat or double."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale grads by (orig_height - 1) / (height - 1), which\nexactly aligns the 4 corners of grads and original_image. If false, rescale by\norig_height / height. Treat similarly the width dimension."
+  }
+  summary: "Computes the gradient of bicubic interpolation."
 }
 op {
   name: "ResizeBilinear"
@@ -22431,11 +22716,11 @@ op {
 op {
   name: "RsqrtGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -24209,7 +24494,7 @@ op {
   name: "ShuffleDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "buffer_size"
@@ -24228,7 +24513,15 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
+  }
+  attr {
+    name: "reshuffle_each_iteration"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If true, each iterator over this dataset will be given\na different pseudorandomly generated seed, based on a sequence seeded by the\n`seed` and `seed2` inputs. If false, each iterator will be given the same\nseed, and repeated iteration over this dataset will yield the exact same\nsequence of results."
   }
   attr {
     name: "output_types"
@@ -24243,7 +24536,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that shuffles elements from `input_dataset` pseudorandomly."
-  is_stateful: true
 }
 op {
   name: "Sigmoid"
@@ -24274,11 +24566,11 @@ op {
 op {
   name: "SigmoidGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -24413,7 +24705,7 @@ op {
   name: "SkipDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -24422,7 +24714,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -24437,7 +24729,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that skips `count` elements from the `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "Skipgram"
@@ -24558,7 +24849,7 @@ op {
   name: "SloppyInterleaveDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "other_arguments"
@@ -24574,12 +24865,12 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "f"
     type: "func"
-    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset variant that contains elements matching\n`output_types` and `output_shapes`."
   }
   attr {
     name: "Targuments"
@@ -24600,7 +24891,6 @@ op {
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
   description: "The resulting dataset is similar to the `InterleaveDataset`, with the exception\nthat if retrieving the next value from a dataset would cause the requester to\nblock, it will skip that input dataset. This dataset is especially useful\nwhen loading data from a variable-latency datastores (e.g. HDFS, GCS), as it\nallows the training step to proceed so long as some data is available.\n\n!! WARNING !! This dataset is not deterministic!"
-  is_stateful: true
 }
 op {
   name: "Softmax"
@@ -24911,8 +25201,22 @@ op {
     has_minimum: true
     minimum: 2
   }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+        s: "NCHW_VECT_C"
+      }
+    }
+  }
   summary: "SpaceToDepth for tensors of type T."
-  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `input_depth * block_size * block_size`.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height/block_size, width/block_size, depth*block_size*block_size]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and a divisor of both the input `height` and `width`.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:\n\n```\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
+  description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `block_size * block_size * input_depth`.\n  * The Y, X coordinates within each block of the input become the high order\n    component of the output channel index.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThe `data_format` attr specifies the layout of the input and output tensors\nwith the following options:\n  \"NHWC\": `[ batch, height, width, channels ]`\n  \"NCHW\": `[ batch, channels, height, width ]`\n  \"NCHW_VECT_C\":\n      `qint8 [ batch, channels / 4, height, width, channels % 4 ]`\n\nIt is useful to consider the operation as transforming a 6-D Tensor.\ne.g. for data_format = NHWC,\n     Each element in the input tensor can be specified via 6 coordinates,\n     ordered by decreasing memory layout significance as:\n     n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates\n                        within the output image, bX, bY means coordinates\n                        within the input block, iC means input channels).\n     The output would be a transpose to the following layout:\n     n,oY,oX,bY,bX,iC\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given an input of shape `[1, 2, 2, 1]`, data_format = \"NHWC\" and\nblock_size = 2:\n\n```\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
 }
 op {
   name: "SparseAccumulatorApplyGradient"
@@ -27639,7 +27943,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Tvalues"
@@ -27874,7 +28178,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -27920,11 +28224,11 @@ op {
 op {
   name: "SqrtGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -29022,7 +29326,7 @@ op {
     }
   }
   summary: "Return substrings from `Tensor` of strings."
-  description: "For each string in the input `Tensor`, creates a substring starting at index\n`pos` with a total length of `len`.\n\nIf `len` defines a substring that would extend beyond the length of the input\nstring, then as many characters as possible are used.\n\nIf `pos` is negative or specifies a character index larger than any of the input\nstrings, then an `InvalidArgumentError` is thrown.\n\n`pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on\nOp creation.\n\n*NOTE*: `Substr` supports broadcasting up to two dimensions. More about\nbroadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)\n\n---\n\nExamples\n\nUsing scalar `pos` and `len`:\n\n```python\ninput = [b\'Hello\', b\'World\']\nposition = 1\nlength = 3\n\noutput = [b\'ell\', b\'orl\']\n```\n\nUsing `pos` and `len` with same shape as `input`:\n\n```python\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\']]\nposition = [[1, 2, 3],\n            [1, 2, 3],\n            [1, 2, 3]]\nlength =   [[2, 3, 4],\n            [4, 3, 2],\n            [5, 5, 5]]\n\noutput = [[b\'en\', b\'eve\', b\'lve\'],\n          [b\'hirt\', b\'urt\', b\'te\'],\n          [b\'ixtee\', b\'vente\', b\'hteen\']]\n```\n\nBroadcasting `pos` and `len` onto `input`:\n\n```\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\'],\n         [b\'nineteen\', b\'twenty\', b\'twentyone\']]\nposition = [1, 2, 3]\nlength =   [1, 2, 3]\n\noutput = [[b\'e\', b\'ev\', b\'lve\'],\n          [b\'h\', b\'ur\', b\'tee\'],\n          [b\'i\', b\'ve\', b\'hte\'],\n          [b\'i\', b\'en\', b\'nty\']]\n```\n\nBroadcasting `input` onto `pos` and `len`:\n\n```\ninput = b\'thirteen\'\nposition = [1, 5, 7]\nlength =   [3, 2, 1]\n\noutput = [b\'hir\', b\'ee\', b\'n\"]\n```"
+  description: "For each string in the input `Tensor`, creates a substring starting at index\n`pos` with a total length of `len`.\n\nIf `len` defines a substring that would extend beyond the length of the input\nstring, then as many characters as possible are used.\n\nIf `pos` is negative or specifies a character index larger than any of the input\nstrings, then an `InvalidArgumentError` is thrown.\n\n`pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on\nOp creation.\n\n*NOTE*: `Substr` supports broadcasting up to two dimensions. More about\nbroadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)\n\n---\n\nExamples\n\nUsing scalar `pos` and `len`:\n\n```python\ninput = [b\'Hello\', b\'World\']\nposition = 1\nlength = 3\n\noutput = [b\'ell\', b\'orl\']\n```\n\nUsing `pos` and `len` with same shape as `input`:\n\n```python\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\']]\nposition = [[1, 2, 3],\n            [1, 2, 3],\n            [1, 2, 3]]\nlength =   [[2, 3, 4],\n            [4, 3, 2],\n            [5, 5, 5]]\n\noutput = [[b\'en\', b\'eve\', b\'lve\'],\n          [b\'hirt\', b\'urt\', b\'te\'],\n          [b\'ixtee\', b\'vente\', b\'hteen\']]\n```\n\nBroadcasting `pos` and `len` onto `input`:\n\n```\ninput = [[b\'ten\', b\'eleven\', b\'twelve\'],\n         [b\'thirteen\', b\'fourteen\', b\'fifteen\'],\n         [b\'sixteen\', b\'seventeen\', b\'eighteen\'],\n         [b\'nineteen\', b\'twenty\', b\'twentyone\']]\nposition = [1, 2, 3]\nlength =   [1, 2, 3]\n\noutput = [[b\'e\', b\'ev\', b\'lve\'],\n          [b\'h\', b\'ur\', b\'tee\'],\n          [b\'i\', b\'ve\', b\'hte\'],\n          [b\'i\', b\'en\', b\'nty\']]\n```\n\nBroadcasting `input` onto `pos` and `len`:\n\n```\ninput = b\'thirteen\'\nposition = [1, 5, 7]\nlength =   [3, 2, 1]\n\noutput = [b\'hir\', b\'ee\', b\'n\']\n```"
 }
 op {
   name: "Sum"
@@ -29221,7 +29525,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   summary: "Creates a dataset that emits the records from one or more TFRecord files."
   is_stateful: true
@@ -29297,7 +29601,7 @@ op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   input_arg {
     name: "count"
@@ -29306,7 +29610,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -29321,7 +29625,6 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that contains `count` elements from the `input_dataset`."
-  is_stateful: true
 }
 op {
   name: "TakeManySparseFromTensorsMap"
@@ -29425,11 +29728,11 @@ op {
 op {
   name: "TanhGrad"
   input_arg {
-    name: "x"
+    name: "y"
     type_attr: "T"
   }
   input_arg {
-    name: "y"
+    name: "dy"
     type_attr: "T"
   }
   output_arg {
@@ -30458,7 +30761,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -30483,7 +30786,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "Toutput_types"
@@ -30589,7 +30892,7 @@ op {
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   summary: "Creates a dataset that emits the lines of one or more text files."
   is_stateful: true
@@ -31455,14 +31758,40 @@ op {
   name: "Where"
   input_arg {
     name: "input"
-    type: DT_BOOL
+    type_attr: "T"
   }
   output_arg {
     name: "index"
     type: DT_INT64
   }
-  summary: "Returns locations of true values in a boolean tensor."
-  description: "This operation returns the coordinates of true elements in `input`. The\ncoordinates are returned in a 2-D tensor where the first dimension (rows)\nrepresents the number of true elements, and the second dimension (columns)\nrepresents the coordinates of the true elements. Keep in mind, the shape of\nthe output tensor can vary depending on how many true values there are in\n`input`. Indices are output in row-major order.\n\nFor example:\n\n```\n# \'input\' tensor is [[True, False]\n#                    [True, False]]\n# \'input\' has two true values, so output has two coordinates.\n# \'input\' has rank of 2, so coordinates have two indices.\nwhere(input) ==> [[0, 0],\n                  [1, 0]]\n\n# `input` tensor is [[[True, False]\n#                     [True, False]]\n#                    [[False, True]\n#                     [False, True]]\n#                    [[False, False]\n#                     [False, True]]]\n# \'input\' has 5 true values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n```"
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_BOOL
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_BOOL
+      }
+    }
+  }
+  summary: "Returns locations of nonzero / true values in a tensor."
+  description: "This operation returns the coordinates of true elements in `input`. The\ncoordinates are returned in a 2-D tensor where the first dimension (rows)\nrepresents the number of true elements, and the second dimension (columns)\nrepresents the coordinates of the true elements. Keep in mind, the shape of\nthe output tensor can vary depending on how many true values there are in\n`input`. Indices are output in row-major order.\n\nFor example:\n\n```\n# \'input\' tensor is [[True, False]\n#                    [True, False]]\n# \'input\' has two true values, so output has two coordinates.\n# \'input\' has rank of 2, so coordinates have two indices.\nwhere(input) ==> [[0, 0],\n                  [1, 0]]\n\n# `input` tensor is [[[True, False]\n#                     [True, False]]\n#                    [[False, True]\n#                     [False, True]]\n#                    [[False, False]\n#                     [False, True]]]\n# \'input\' has 5 true values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n\n# `input` tensor is [[[1.5,  0.0]\n#                     [-0.5, 0.0]]\n#                    [[0.0,  0.25]\n#                     [0.0,  0.75]]\n#                    [[0.0,  0.0]\n#                     [0.0,  0.01]]]\n# \'input\' has 5 nonzero values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n\n# `input` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]\n#                     [0.0 + 0.5j, 0.0  + 0.0j]]\n#                    [[0.0 + 0.0j, 0.25 + 1.5j]\n#                     [0.0 + 0.0j, 0.75 + 0.0j]]\n#                    [[0.0 + 0.0j, 0.0  + 0.0j]\n#                     [0.0 + 0.0j, 0.01 + 0.0j]]]\n# \'input\' has 5 nonzero magnitude values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n```"
 }
 op {
   name: "WholeFileReader"
@@ -31583,12 +31912,12 @@ op {
   name: "ZipDataset"
   input_arg {
     name: "input_datasets"
-    type: DT_RESOURCE
+    type: DT_VARIANT
     number_attr: "N"
   }
   output_arg {
     name: "handle"
-    type: DT_RESOURCE
+    type: DT_VARIANT
   }
   attr {
     name: "output_types"
@@ -31609,5 +31938,4 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that zips together `input_datasets`."
-  is_stateful: true
 }

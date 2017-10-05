@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -110,7 +111,8 @@ Node::Node()
       cost_id_(-1),
       class_(NC_UNINITIALIZED),
       props_(nullptr),
-      assigned_device_name_index_(0) {}
+      assigned_device_name_index_(0),
+      while_ctx_(nullptr) {}
 
 void Node::Initialize(int id, int cost_id,
                       std::shared_ptr<NodeProperties> props) {
@@ -258,7 +260,6 @@ Status Node::input_node(int idx, const Node** const_n) const {
   *const_n = n;
   return Status::OK();
 }
-
 
 // Graph
 
@@ -418,6 +419,34 @@ void Graph::RemoveEdge(const Edge* e) {
   --num_edges_;
 }
 
+Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
+                         int dst_index) {
+  TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
+  TF_RETURN_IF_ERROR(IsValidInputTensor(dst, dst_index));
+  const Edge* e = FindEdge(dst, dst_index);
+  if (e == nullptr) {
+    return errors::InvalidArgument("Couldn't find edge to ",
+                                   dst->DebugString());
+  }
+  RemoveEdge(e);
+  AddEdge(new_src, new_src_index, dst, dst_index);
+  dst->MaybeCopyOnWrite();
+  (*dst->props_->node_def.mutable_input())[dst_index] =
+      strings::StrCat(new_src->name(), ":", new_src_index);
+  return Status::OK();
+}
+
+const Edge* Graph::FindEdge(const Node* dst, int index) {
+  for (const Edge* e : edges_) {
+    // edges_ will contain null edges if RemoveEdge() was called.
+    if (e == nullptr) continue;
+    if (e->dst() == dst && e->dst_input() == index) {
+      return e;
+    }
+  }
+  return nullptr;
+}
+
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
   return ops_.AddLibrary(fdef_lib);
 }
@@ -526,10 +555,21 @@ Status Graph::IsValidNode(const Node* node) const {
 Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
   if (idx >= node->num_outputs()) {
-    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
-                                   node->op_def().name(),
-                                   "', num of outputs: ", node->num_outputs(),
-                                   ") does not have ", "output ", idx);
+    return errors::OutOfRange("Node '", node->name(), "' (type: '",
+                              node->op_def().name(),
+                              "', num of outputs: ", node->num_outputs(),
+                              ") does not have ", "output ", idx);
+  }
+  return Status::OK();
+}
+
+Status Graph::IsValidInputTensor(const Node* node, int idx) const {
+  TF_RETURN_IF_ERROR(IsValidNode(node));
+  if (idx >= node->num_inputs()) {
+    return errors::OutOfRange("Node '", node->name(), "' (type: '",
+                              node->op_def().name(),
+                              "', num of inputs: ", node->num_inputs(),
+                              ") does not have ", "input ", idx);
   }
   return Status::OK();
 }
@@ -580,6 +620,27 @@ int Graph::InternDeviceName(const string& device_name) {
   index_cell = index;
   device_names_.push_back(device_name);
   return index;
+}
+
+Status Graph::AddWhileContext(StringPiece frame_name,
+                              std::vector<Node*> enter_nodes,
+                              std::vector<Node*> exit_nodes,
+                              OutputTensor cond_output,
+                              std::vector<OutputTensor> body_inputs,
+                              std::vector<OutputTensor> body_outputs,
+                              WhileContext** result) {
+  auto pair = while_ctxs_.insert(std::pair<string, WhileContext>(
+      frame_name.ToString(),
+      WhileContext(frame_name, std::move(enter_nodes), std::move(exit_nodes),
+                   cond_output, std::move(body_inputs),
+                   std::move(body_outputs))));
+  if (!pair.second) {
+    *result = nullptr;
+    return errors::InvalidArgument("WhileContext with frame name '", frame_name,
+                                   "' already exists");
+  }
+  *result = &pair.first->second;
+  return Status::OK();
 }
 
 string Edge::DebugString() const {

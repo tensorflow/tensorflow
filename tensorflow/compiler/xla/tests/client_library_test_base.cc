@@ -40,7 +40,7 @@ namespace {
 Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
   StatusOr<Client*> result =
       ClientLibrary::GetOrCreateLocalClient(client_options);
-  TF_CHECK_OK(result.status()) << "could not create local client for testing";
+  TF_CHECK_OK(result.status()) << " could not create local client for testing";
   return result.ValueOrDie();
 }
 }  // namespace
@@ -258,7 +258,8 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     LOG(WARNING) << "performing exact comparison of floating point numbers";
   } else {
     TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
-                 expected.shape().element_type() == PRED);
+                 expected.shape().element_type() == PRED)
+        << ShapeUtil::HumanString(expected.shape());
   }
   auto expect_equal = [&](const Literal& actual, const string& error_message) {
     LiteralTestUtil::ExpectEqual(expected, actual, error_message);

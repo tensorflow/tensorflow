@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
@@ -30,13 +31,15 @@ from tensorflow.python.ops import special_math_ops
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.python.ops.linalg_impl import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
 
 # Linear algebra ops.
 band_part = array_ops.matrix_band_part
 cholesky = linalg_ops.cholesky
 cholesky_solve = linalg_ops.cholesky_solve
 det = linalg_ops.matrix_determinant
+# pylint: disable=protected-access
+slogdet = gen_linalg_ops._log_matrix_determinant
+# pylint: disable=protected-access
 diag = array_ops.matrix_diag
 diag_part = array_ops.matrix_diag_part
 eigh = linalg_ops.self_adjoint_eig
@@ -55,21 +58,13 @@ trace = math_ops.trace
 transpose = array_ops.matrix_transpose
 triangular_solve = linalg_ops.matrix_triangular_solve
 
-# Additional aliases for consistency with root namespace for ops whose names
-# changed significantly when moving to the linalg namespace.
-self_adjoint_eig = linalg_ops.self_adjoint_eig
-self_adjoint_eigvals = linalg_ops.self_adjoint_eigvals
-solve_ls = linalg_ops.matrix_solve_ls
-
 # Seal API.
 del absolute_import
 del array_ops
 del division
+del gen_linalg_ops
 del linalg_ops
 del math_ops
+del ops
 del print_function
 del special_math_ops
-
-_allowed_symbols = []
-
-remove_undocumented(__name__, _allowed_symbols)

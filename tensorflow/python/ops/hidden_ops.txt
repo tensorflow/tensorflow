@@ -167,6 +167,7 @@ NonMaxSuppression
 NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
+ResizeBicubicGrad
 ResizeNearestNeighborGrad
 SampleDistortedBoundingBox
 SampleDistortedBoundingBoxV2
@@ -206,6 +207,7 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -218,6 +220,7 @@ BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
+LogMatrixDeterminant
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -284,6 +287,7 @@ AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
+FusedBatchNormV2
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad

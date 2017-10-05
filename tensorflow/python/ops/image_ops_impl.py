@@ -397,9 +397,10 @@ def central_crop(image, central_fraction):
 
   img_shape = array_ops.shape(image)
   depth = image.get_shape()[2]
-  fraction_offset = int(1 / ((1 - central_fraction) / 2.0))
-  bbox_h_start = math_ops.div(img_shape[0], fraction_offset)
-  bbox_w_start = math_ops.div(img_shape[1], fraction_offset)
+  img_h = math_ops.to_double(img_shape[0])
+  img_w = math_ops.to_double(img_shape[1])
+  bbox_h_start = math_ops.to_int32((img_h - img_h * central_fraction) / 2)
+  bbox_w_start = math_ops.to_int32((img_w - img_w * central_fraction) / 2)
 
   bbox_h_size = img_shape[0] - bbox_h_start * 2
   bbox_w_size = img_shape[1] - bbox_w_start * 2
@@ -707,6 +708,12 @@ def resize_images(images,
   *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
     https://en.wikipedia.org/wiki/Bicubic_interpolation)
   *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
+
+  The return value has the same type as `images` if `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
+  if the size of `images` can be statically determined to be the same as `size`,
+  because `images` is returned in this case. Otherwise, the return value has
+  type `float32`.
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or
@@ -1061,7 +1068,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         # Scaling up, cast first, then scale. The scale will not map in.max to
         # out.max, but converting back and forth should result in no change.
         if saturate:
-          cast = math_ops.saturate_cast(scaled, dtype)
+          cast = math_ops.saturate_cast(image, dtype)
         else:
           cast = math_ops.cast(image, dtype)
         scale = (scale_out + 1) // (scale_in + 1)

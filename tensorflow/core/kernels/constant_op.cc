@@ -77,14 +77,7 @@ REGISTER_KERNEL(GPU, int64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
-// TODO(ebrevdo): Add callbacks based on Variant TypeName for
-// Variant tensors in rendezvous.  At that point, MakeTensorFromProto() will
-// work correctly and so will Variant _Send/_Recv calls; and we will
-// no longer have to mark Variant inputs/outputs as sitting on host in
-// kernel registrations.  Then we can uncomment this registration.
-// REGISTER_KERNEL(GPU, Variant);
-
-// Currently we do not support string constants on GPU
+REGISTER_KERNEL(GPU, Variant);
 #undef REGISTER_KERNEL
 #endif
 
@@ -279,13 +272,15 @@ class ZerosLikeOp : public OpKernel {
     const Tensor& input = ctx->input(0);
     const Device& d = ctx->eigen_device<Device>();
     if (std::is_same<T, Variant>::value) {
-      OP_REQUIRES(ctx, input.dims() == 0,
-                  errors::InvalidArgument(
-                      "ZerosLike of non-unary Variant not supported."));
+      OP_REQUIRES(
+          ctx, input.dims() == 0,
+          errors::InvalidArgument("ZerosLike non-scalar Tensor with "
+                                  "dtype=DT_VARIANT is not supported."));
       const Variant& v = input.scalar<Variant>()();
       Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
       Variant* out_v = &(out.scalar<Variant>()());
-      OP_REQUIRES_OK(ctx, CreateZerosLikeVariant<Device>(ctx, v, out_v));
+      OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(
+                              ctx, ZEROS_LIKE_VARIANT_UNARY_OP, v, out_v));
       ctx->set_output(0, out);
     } else {
       Tensor* out = nullptr;

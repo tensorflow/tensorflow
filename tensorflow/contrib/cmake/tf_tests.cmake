@@ -145,6 +145,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
     "${tensorflow_source_dir}/tensorflow/python/meta_graph_transform/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/platform/build_info_test.py"
     "${tensorflow_source_dir}/tensorflow/python/profiler/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/profiler/internal/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
@@ -243,7 +244,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"  # Needs portpicker.
       "${tensorflow_source_dir}/tensorflow/python/training/server_lib_test.py"  # Test occasionally deadlocks.
 
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops     
+      # Dataset tests
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/dataset_constructor_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/iterator_ops_cluster_test.py"
       # Broken tensorboard test due to cmake issues.
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/dataset_constructor_op_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_cluster_test.py"  # Needs portpicker

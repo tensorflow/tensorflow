@@ -36,6 +36,11 @@ limitations under the License.
 
 namespace xla {
 
+std::ostream& operator<<(std::ostream& out, const Literal& literal) {
+  out << literal.ToString();
+  return out;
+}
+
 Literal::StrideConfig::StrideConfig(
     const Shape& source_shape, const Shape& dest_shape,
     tensorflow::gtl::ArraySlice<int64> dimensions)
@@ -146,10 +151,18 @@ Status Literal::Copy(const Literal& src_literal,
                      tensorflow::gtl::ArraySlice<int64> copy_size) {
   TF_RET_CHECK(ShapeUtil::SameElementType(src_literal.shape(), shape()));
   switch (src_literal.shape().element_type()) {
+    case U8:
+      return CopyRange<uint8>(src_literal, src_base, dest_base, copy_size);
+    case U16:
+      return CopyRange<uint16>(src_literal, src_base, dest_base, copy_size);
     case U32:
       return CopyRange<uint32>(src_literal, src_base, dest_base, copy_size);
     case U64:
       return CopyRange<uint64>(src_literal, src_base, dest_base, copy_size);
+    case S8:
+      return CopyRange<int8>(src_literal, src_base, dest_base, copy_size);
+    case S16:
+      return CopyRange<int16>(src_literal, src_base, dest_base, copy_size);
     case S32:
       return CopyRange<int32>(src_literal, src_base, dest_base, copy_size);
     case S64:
@@ -333,17 +346,28 @@ Status Literal::Copy(const Literal& src_literal,
   return CreateR2FromArray2D(*value);
 }
 
-std::unique_ptr<Literal> Literal::Relayout(const Layout& layout) const {
-  CHECK(ShapeUtil::IsArray(shape()));
-  std::unique_ptr<Literal> result = CloneToUnique();
-  *result->mutable_shape()->mutable_layout() = layout;
+std::unique_ptr<Literal> Literal::Relayout(
+    const Layout& new_layout, const ShapeIndex& shape_index) const {
+  std::unique_ptr<Literal> outer_result = CloneToUnique();
 
-  DimensionVector base(ShapeUtil::Rank(shape()), 0);
-  DimensionVector copy_size(shape().dimensions().begin(),
-                            shape().dimensions().end());
+  const Literal* copy_from = this;
+  Literal* copy_to = outer_result.get();
+  for (int64 i = 0; i < shape_index.size(); i++) {
+    *ShapeUtil::GetMutableSubshape(copy_to->mutable_shape(), {shape_index, i})
+         ->mutable_layout() = new_layout;
+    copy_from = &copy_from->tuple_literals_[shape_index[i]];
+    copy_to = &copy_to->tuple_literals_[shape_index[i]];
+  }
 
-  TF_CHECK_OK(result->Copy(*this, base, base, copy_size));
-  return result;
+  DimensionVector base(ShapeUtil::Rank(copy_from->shape()), 0);
+  DimensionVector copy_size(copy_from->shape().dimensions().begin(),
+                            copy_from->shape().dimensions().end());
+
+  CHECK(ShapeUtil::IsArray(copy_from->shape()));
+  CHECK(ShapeUtil::IsArray(copy_to->shape()));
+  *copy_to->mutable_shape()->mutable_layout() = new_layout;
+  TF_CHECK_OK(copy_to->Copy(*copy_from, base, base, copy_size));
+  return outer_result;
 }
 
 StatusOr<std::unique_ptr<Literal>> Literal::Reshape(
@@ -662,7 +686,7 @@ string Literal::ToString() const {
   std::vector<Shape> shape;
   for (auto& tuple_element : elements) {
     shape.push_back(tuple_element->shape());
-    literal->add_tuple_literals()->Swap(tuple_element.get());
+    *literal->add_tuple_literals() = std::move(*tuple_element);
   }
   *literal->mutable_shape() = ShapeUtil::MakeTupleShape(shape);
   return literal;
@@ -907,16 +931,16 @@ bool EqualElements(const Literal& literal1, const Literal& literal2,
 
 }  // namespace
 
-bool Literal::Equal(const Literal& literal2) const {
-  if (!ShapeUtil::Compatible(shape(), literal2.shape())) {
+bool Literal::operator==(const Literal& other) const {
+  if (!ShapeUtil::Compatible(shape(), other.shape())) {
     return false;
   }
   if (ShapeUtil::IsTuple(shape())) {
     // Because the shapes are compatible, they must have the same number of
     // tuple elements.
-    CHECK_EQ(tuple_literals_size(), literal2.tuple_literals_size());
+    CHECK_EQ(tuple_literals_size(), other.tuple_literals_size());
     for (int i = 0; i < tuple_literals_size(); ++i) {
-      if (!tuple_literals(i).Equal(literal2.tuple_literals(i))) {
+      if (tuple_literals(i) != other.tuple_literals(i)) {
         return false;
       }
     }
@@ -925,23 +949,23 @@ bool Literal::Equal(const Literal& literal2) const {
     std::vector<int64> multi_index(ShapeUtil::Rank(shape()), 0);
     switch (shape().element_type()) {
       case PRED:
-        return EqualElements<bool>(*this, literal2, 0, &multi_index);
+        return EqualElements<bool>(*this, other, 0, &multi_index);
       case U8:
-        return EqualElements<uint8>(*this, literal2, 0, &multi_index);
+        return EqualElements<uint8>(*this, other, 0, &multi_index);
       case S32:
-        return EqualElements<int32>(*this, literal2, 0, &multi_index);
+        return EqualElements<int32>(*this, other, 0, &multi_index);
       case S64:
-        return EqualElements<int64>(*this, literal2, 0, &multi_index);
+        return EqualElements<int64>(*this, other, 0, &multi_index);
       case U32:
-        return EqualElements<uint32>(*this, literal2, 0, &multi_index);
+        return EqualElements<uint32>(*this, other, 0, &multi_index);
       case U64:
-        return EqualElements<uint64>(*this, literal2, 0, &multi_index);
+        return EqualElements<uint64>(*this, other, 0, &multi_index);
       case F32:
-        return EqualElements<float>(*this, literal2, 0, &multi_index);
+        return EqualElements<float>(*this, other, 0, &multi_index);
       case F64:
-        return EqualElements<double>(*this, literal2, 0, &multi_index);
+        return EqualElements<double>(*this, other, 0, &multi_index);
       case F16:
-        return EqualElements<half>(*this, literal2, 0, &multi_index);
+        return EqualElements<half>(*this, other, 0, &multi_index);
       default:
         LOG(FATAL) << "Unimplemented: Literal::Equal for type "
                    << PrimitiveType_Name(shape().element_type());
@@ -968,6 +992,20 @@ tensorflow::gtl::MutableArraySlice<uint8> Literal::GetMutableArraySlice() {
   auto values = mutable_u8s();
   return tensorflow::gtl::MutableArraySlice<uint8>(values->data(),
                                                    values->size());
+}
+
+template <>
+tensorflow::gtl::MutableArraySlice<int16> Literal::GetMutableArraySlice() {
+  auto values = mutable_s16s();
+  return tensorflow::gtl::MutableArraySlice<int16>(values->data(),
+                                                   values->size());
+}
+
+template <>
+tensorflow::gtl::MutableArraySlice<uint16> Literal::GetMutableArraySlice() {
+  auto values = mutable_u16s();
+  return tensorflow::gtl::MutableArraySlice<uint16>(values->data(),
+                                                    values->size());
 }
 
 template <>
@@ -1055,6 +1093,18 @@ tensorflow::gtl::ArraySlice<int8> Literal::GetArraySlice<int8>() const {
   CHECK_EQ(shape().element_type(), S8);
   return tensorflow::gtl::ArraySlice<int8>(
       reinterpret_cast<const int8*>(u8s().data()), u8s().size());
+}
+
+template <>
+tensorflow::gtl::ArraySlice<uint16> Literal::GetArraySlice<uint16>() const {
+  CHECK_EQ(shape().element_type(), U16);
+  return tensorflow::gtl::ArraySlice<uint16>(u16s().data(), u16s().size());
+}
+
+template <>
+tensorflow::gtl::ArraySlice<int16> Literal::GetArraySlice<int16>() const {
+  CHECK_EQ(shape().element_type(), S16);
+  return tensorflow::gtl::ArraySlice<int16>(s16s().data(), s16s().size());
 }
 
 template <>
@@ -1352,6 +1402,18 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
     default:
       LOG(FATAL) << "Unhandled primitive type " << shape().element_type();
   }
+}
+
+const Literal& Literal::GetSubliteral(const ShapeIndex& index) const {
+  return const_cast<Literal*>(this)->GetSubliteral(index);
+}
+
+Literal& Literal::GetSubliteral(const ShapeIndex& index) {
+  Literal* subliteral = this;
+  for (int64 i : index) {
+    subliteral = &subliteral->tuple_literals_.at(i);
+  }
+  return *subliteral;
 }
 
 }  // namespace xla

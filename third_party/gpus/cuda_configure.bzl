@@ -117,7 +117,7 @@ def get_cxx_inc_directories(repository_ctx, cc):
   includes_cpp = _get_cxx_inc_directories_impl(repository_ctx, cc, True)
   includes_c = _get_cxx_inc_directories_impl(repository_ctx, cc, False)
 
-  includes_cpp_set = set(includes_cpp)
+  includes_cpp_set = depset(includes_cpp)
   return includes_cpp + [inc for inc in includes_c
                          if inc not in includes_cpp_set]
 
@@ -982,6 +982,7 @@ def _create_local_cuda_repository(repository_ctx):
     cuda_defines["%{clang_path}"] = cc
     _tpl(repository_ctx, "crosstool:BUILD", {"%{linker_files}": ":empty"})
     _tpl(repository_ctx, "crosstool:CROSSTOOL_clang", cuda_defines, out="crosstool/CROSSTOOL")
+    repository_ctx.file("crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc", "")
   else:
     nvcc_path = str(repository_ctx.path("%s/bin/nvcc%s" %
         (cuda_config.cuda_toolkit_path,

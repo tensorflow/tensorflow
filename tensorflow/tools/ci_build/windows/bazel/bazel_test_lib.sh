@@ -97,15 +97,7 @@ exclude_cpu_cc_tests="${failing_cpu_cc_tests} + ${broken_cpu_cc_tests}"
 exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
 
 function clean_output_base() {
-  # TODO(pcloudy): bazel clean --expunge doesn't work on Windows yet.
-  # Clean the output base manually to ensure build correctness
-  bazel clean
-  output_base=$(bazel info output_base)
-  bazel shutdown
-  # Sleep 5s to wait for jvm shutdown completely
-  # otherwise rm will fail with device or resource busy error
-  sleep 5
-  rm -rf ${output_base}
+  bazel clean --expunge
 }
 
 function run_configure_for_cpu_build {

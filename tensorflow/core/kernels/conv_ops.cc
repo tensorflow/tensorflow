@@ -447,9 +447,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     int col_stride, const Padding& padding, Tensor* output,
     TensorFormat data_format) {
   using perftools::gputools::dnn::AlgorithmConfig;
-  using perftools::gputools::dnn::AlgorithmType;
+  using perftools::gputools::dnn::AlgorithmDesc;
   using perftools::gputools::dnn::ProfileResult;
-  using perftools::gputools::dnn::kDefaultAlgorithm;
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -663,7 +662,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
-    std::vector<AlgorithmType> algorithms;
+    std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;

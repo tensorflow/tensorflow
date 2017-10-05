@@ -28,6 +28,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.platform import app
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_inspect
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -53,6 +54,7 @@ class _EagerContext(threading.local):
     self.mode = _default_mode
     self.scope_name = ""
     self.recording_summaries = False
+    self.scalar_cache = {}
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -119,16 +121,6 @@ class Context(object):
     else:
       return devices
 
-  def __del__(self):
-    try:
-      if self._context_handle is not None:
-        with errors.raise_exception_on_not_ok_status() as status:
-          pywrap_tensorflow.TFE_DeleteContext(self._context_handle, status)
-    except (AttributeError, TypeError):
-      # Sometimes deletion during program shutdown throws exception as other
-      # modules are no longer available.
-      pass
-
   def __str__(self):
     if self._context_handle is None:
       return "Eager TensorFlow Context. Devices currently uninitialized."
@@ -156,6 +148,10 @@ class Context(object):
   def in_eager_mode(self):
     """Returns True if current thread is in EAGER mode."""
     return self._eager_context.mode == EAGER_MODE
+
+  def scalar_cache(self):
+    """Per-device cache for scalars."""
+    return self._eager_context.scalar_cache
 
   @property
   def scope_name(self):
@@ -245,6 +241,23 @@ class Context(object):
     # TODO(ashankar): Use TF_DeviceListType to count GPU devices.
     return len(self._devices) - 1
 
+  def add_function_def(self, fdef):
+    """Add a function definition to the context.
+
+    Once added, the function (identified by its name) can be executed like any
+    other operation.
+
+    Args:
+      fdef: A FunctionDef protocol buffer message.
+    """
+    fdef_string = fdef.SerializeToString()
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.TFE_ContextAddFunctionDef(
+          self._handle,  # pylint: disable=protected-access
+          fdef_string,
+          len(fdef_string),
+          status)
+
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
 
@@ -264,8 +277,8 @@ class Context(object):
         it is unset.
       `attrs` contains the attributes of the operation as a `tuple` of
         alternating attribute names and attribute values.
-      `inputs` is the `list` of input `tfe.Tensor`(s) to the op.
-      `outputs` is the `list` of output `tfe.Tensor`(s) from the op.
+      `inputs` is the `list` of input `Tensor`(s) to the op.
+      `outputs` is the `list` of output `Tensor`(s) from the op.
        Return value(s) from the callback are ignored.
     """
     # TODO(cais): (b/64674139) Allow access to function-internal operations.
@@ -292,7 +305,7 @@ def _initialize_context():
 
 
 def context():
-  """Returns a singleton Context object."""
+  """Returns a singleton context object."""
   if _context is None:
     _initialize_context()
   return _context
@@ -347,12 +360,12 @@ def scope_name():
 def device(name):
   """Context-manager to force placement of operations and Tensors on a device.
 
-  For example:
+  Example:
   ```python
   with tfe.device('gpu:0'):
     with tfe.device('cpu:0'):
-      shape = tfe.Tensor([], dtype=tf.int32)
-    x = ops.truncated_normal(shape, tf.float32)
+      shape = tf.constant([], dtype=tf.int32)
+    x = tf.truncated_normal(shape, tf.float32)
   ```
   will ensure that the `shape` Tensor is on CPU but the `truncated_normal`
   operation runs on GPU 0.
@@ -368,13 +381,28 @@ def device(name):
 
 
 def run(main=None, argv=None):
-  """Runs the program with an optional 'main' function and 'argv' list.
+  """Runs the program with an optional main function and argv list.
 
   The program will run with eager execution enabled.
 
+  Example:
+  ```python
+  import tensorflow as tf
+  # Import subject to future changes:
+  from tensorflow.contrib.eager.python import tfe
+
+  def main(_):
+    u = tf.constant(6.0)
+    v = tf.constant(7.0)
+    print(u * v)
+
+  if __name__ == "__main__":
+    tfe.run()
+  ```
+
   Args:
-    main: the main function to run
-    argv: the arguments to pass to it
+    main: the main function to run.
+    argv: the arguments to pass to it.
   """
   enable_eager_execution()
   app.run(main, argv)
@@ -384,8 +412,49 @@ def run(main=None, argv=None):
 def enable_eager_execution():
   """Enables, for the rest of the lifetime of this program, eager execution.
 
-  If not called immediately on startup risks creating breakage and bugs.
+  If not called immediately on startup risks creating breakage and bugs. Calling
+  this method more than once in the same process will lead to an exception.
+
+  Example:
+  ```python
+  # Before eager execution is enabled, `Tensor`s are symbolic and do not hold
+  # concrete values (they are to be executed in a `tf.Session`).
+  assert not hasattr(tf.multiply(6, 7), "numpy")
+
+  tfe.enable_eager_execution()
+
+  # After eager execution is enabled, operations are executed as they are
+  # defined and `Tensor`s hold concrete values, which can be accessed as
+  # `numpy.ndarray`s through the `numpy()` method.
+  assert tf.multiply(6, 7).numpy() == 42
+  ```
+
+  Raises:
+    ValueError: If this method has already been invoked in the current process.
   """
   global _default_mode
-  assert _default_mode == GRAPH_MODE
+  if _default_mode == EAGER_MODE:
+    func_name = (
+        "tfe." + tf_inspect.getframeinfo(tf_inspect.currentframe()).function)
+    raise ValueError(
+        "Do not call %s more than once in the same process. Note eager-mode "
+        "methods such as tfe.run() also call %s." % (func_name, func_name))
   _default_mode = EAGER_MODE
+
+
+def list_devices():
+  """List the names of the available devices.
+
+  Returns:
+    Names of the available devices, as a `list`.
+  """
+  return context().devices()
+
+
+def num_gpus():
+  """Get the number of available GPU devices.
+
+  Returns:
+    The number of available GPU devices.
+  """
+  return context().num_gpus()

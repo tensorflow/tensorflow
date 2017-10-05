@@ -153,7 +153,7 @@ int ServiceOptions::intra_op_parallelism_threads() const {
 Service::Service(const ServiceOptions& options,
                  std::unique_ptr<Backend> execute_backend)
     : options_(options), execute_backend_(std::move(execute_backend)) {
-  CHECK(options_.number_of_replicas() > 0);
+  CHECK_GT(options_.number_of_replicas(), 0);
   if (execute_backend_) {
     if (execute_backend_->device_count() > 0) {
       CHECK_GE(execute_backend_->device_count(), options_.number_of_replicas())
@@ -268,7 +268,7 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
-    const ExecutionOptions* execution_options, bool has_hybrid_result) {
+    const ExecutionOptions* execution_options) {
   auto config = MakeUnique<HloModuleConfig>(program_shape);
   auto* computation_layout = config->mutable_entry_computation_layout();
 
@@ -305,7 +305,6 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   }
 
   config->set_replica_count(options_.number_of_replicas());
-  config->set_has_hybrid_result(has_hybrid_result);
   if (execution_options != nullptr) {
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
@@ -930,9 +929,10 @@ tensorflow::Status Service::TransferToClient(const TransferToClientRequest* arg,
   }
 
   Literal literal;
-  auto status = LiteralFromAllocation(allocation, *literal_shape, &literal);
+  TF_RETURN_IF_ERROR(
+      LiteralFromAllocation(allocation, *literal_shape, &literal));
   *result->mutable_literal() = literal.ToProto();
-  return status;
+  return tensorflow::Status::OK();
 }
 
 tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
@@ -1179,8 +1179,7 @@ tensorflow::Status Service::GetComputationStats(
   HloCostAnalysis analysis(
       execute_backend_->compiler()->ShapeSizeBytesFunction());
 
-  TF_RETURN_IF_ERROR(
-      module->entry_computation()->root_instruction()->Accept(&analysis));
+  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
 
   ComputationStats stats;
   stats.set_flop_count(analysis.flop_count());
@@ -1388,6 +1387,8 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
   // proto in the above switch statement.
   TF_ASSIGN_OR_RETURN(ComputationDataHandle handle, handle_status);
   TF_RETURN_IF_ERROR(computation->SetOpMetadata(handle, arg->metadata()));
+  TF_RETURN_IF_ERROR(
+      computation->SetOpDeviceAssignment(handle, arg->device_assignment()));
 
   return tensorflow::Status::OK();
 }

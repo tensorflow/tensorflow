@@ -93,6 +93,33 @@ class LogdetTest(test.TestCase):
         self.assertAllClose(logdet_np, logdet_tf.eval(), atol=atol)
 
 
+class SlogdetTest(test.TestCase):
+
+  def setUp(self):
+    self.rng = np.random.RandomState(42)
+
+  def test_works_with_five_different_random_pos_def_matrices(self):
+    for n in range(1, 6):
+      for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
+                             (np.complex64, 0.05), (np.complex128, 1e-5)]:
+        matrix = _RandomPDMatrix(n, self.rng, np_dtype)
+        sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
+        with self.test_session(use_gpu=True):
+          sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
+          self.assertAllClose(log_abs_det_np, log_abs_det_tf.eval(), atol=atol)
+          self.assertAllClose(sign_np, sign_tf.eval(), atol=atol)
+
+  def test_works_with_underflow_case(self):
+    for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5),
+                           (np.complex64, 0.05), (np.complex128, 1e-5)]:
+      matrix = (np.eye(20) * 1e-6).astype(np_dtype)
+      sign_np, log_abs_det_np = np.linalg.slogdet(matrix)
+      with self.test_session(use_gpu=True):
+        sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
+        self.assertAllClose(log_abs_det_np, log_abs_det_tf.eval(), atol=atol)
+        self.assertAllClose(sign_np, sign_tf.eval(), atol=atol)
+
+
 class EyeTest(test.TestCase):
   pass  # Will be filled in below
 

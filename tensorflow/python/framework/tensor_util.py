@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from autograd import core as ag_core
 import numpy as np
 import six
 
@@ -607,7 +606,7 @@ def ShapeEquals(tensor_proto, shape):
 
 def _ConstantValue(tensor, partial):
   # TODO(touts): Support Variables?
-  if not isinstance(ag_core.getval(tensor), ops.Tensor):
+  if not isinstance(tensor, ops.Tensor):
     raise TypeError("tensor is not a Tensor")
   if tensor.op.type == "Const":
     return MakeNdarray(tensor.op.get_attr("value"))
@@ -627,7 +626,7 @@ def _ConstantValue(tensor, partial):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims]),
+      return np.ndarray(shape=(), buffer=np.array([input_shape.ndims], dtype=np.int32),
                         dtype=np.int32)
     else:
       return None
@@ -676,6 +675,9 @@ def _ConstantValue(tensor, partial):
     # and shouldn't be produced, but to deal sensibly with them here we check
     # and return None.
     if not tensor.op.inputs:
+      return None
+    # We can't handle axis != 0 Packs at the moment.
+    if tensor.op.get_attr("axis") != 0:
       return None
     for x in tensor.op.inputs:
       value = constant_value(x, partial)
@@ -737,7 +739,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Raises:
     TypeError: if tensor is not an ops.Tensor.
   """
-  if isinstance(ag_core.getval(tensor), ops.EagerTensor):
+  if isinstance(tensor, ops.EagerTensor):
     return tensor.numpy()
   ret = _ConstantValue(tensor, partial)
   if ret is not None:
@@ -770,6 +772,9 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
     ret = tensor_shape.scalar()  # Empty list.
+    # Since we expect rank 1 inputs, Pack's axis must be zero, otherwise it
+    # would not be rank 1.
+    assert tensor.op.get_attr("axis") == 0
     for pack_input in tensor.op.inputs:
       # `pack_input` must be a scalar. Attempt to evaluate it, and append it
       # to `ret`.

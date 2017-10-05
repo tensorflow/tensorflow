@@ -30,21 +30,21 @@ namespace grappler {
 static Costs::NanoSeconds PredictExecutionTime(
     const GraphProperties& properties, const OpLevelCostEstimator& estimator,
     const VirtualPlacer& placer, const NodeDef& node) {
-  OpInfo op_features;
-  op_features.set_op(node.op());
-  *op_features.mutable_attr() = node.attr();
+  OpContext op_context;
+  op_context.op_info.set_op(node.op());
+  *op_context.op_info.mutable_attr() = node.attr();
 
   std::vector<OpInfo::TensorProperties> inputs =
       properties.GetInputProperties(node.name());
   for (auto& input : inputs) {
-    op_features.add_inputs()->Swap(&input);
+    op_context.op_info.add_inputs()->Swap(&input);
   }
 
   DeviceProperties device = placer.get_device(node);
-  op_features.mutable_device()->Swap(&device);
+  op_context.op_info.mutable_device()->Swap(&device);
 
   Costs::NanoSeconds estimate =
-      estimator.PredictCosts(op_features).execution_time;
+      estimator.PredictCosts(op_context).execution_time;
 
   // Make sure our estimates are at least one nanosecond per node.
   return std::max(estimate, Costs::NanoSeconds(1));

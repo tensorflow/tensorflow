@@ -330,6 +330,15 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
   ClearDecrefCache();
 }
 
+std::vector<TF_Output> GetOperationInputs(TF_Operation* oper) {
+  int num_inputs = TF_OperationNumInputs(oper);
+  std::vector<TF_Output> inputs(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs[i] = TF_OperationInput({oper, i});
+  }
+  return inputs;
+}
+
 std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
     TF_Operation* oper) {
   std::vector<TF_Operation*> control_inputs(TF_OperationNumControlInputs(oper));
@@ -338,14 +347,12 @@ std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
   return control_inputs;
 }
 
-TF_Function* TF_GraphToFunction_wrapper(const TF_Graph* fn_body,
-                                        const char* fn_name,
-                                        const std::vector<TF_Operation*>* opers,
-                                        const std::vector<TF_Output>& inputs,
-                                        const std::vector<TF_Output>& outputs,
-                                        const NameVector& output_names,
-                                        const TF_FunctionOptions* opts,
-                                        TF_Status* out_status) {
+TF_Function* TF_GraphToFunction_wrapper(
+    const TF_Graph* fn_body, const char* fn_name, bool append_hash_to_fn_name,
+    const std::vector<TF_Operation*>* opers,
+    const std::vector<TF_Output>& inputs, const std::vector<TF_Output>& outputs,
+    const NameVector& output_names, const TF_FunctionOptions* opts,
+    const char* description, TF_Status* out_status) {
   if (!output_names.empty() && output_names.size() != outputs.size()) {
     Set_TF_Status_from_Status(
         out_status,
@@ -367,9 +374,10 @@ TF_Function* TF_GraphToFunction_wrapper(const TF_Graph* fn_body,
       output_names.empty() ? nullptr
                            : const_cast<const char**>(output_names.data());
 
-  return TF_GraphToFunction(fn_body, fn_name, nopers, opers_array,
-                            inputs.size(), inputs.data(), outputs.size(),
-                            outputs.data(), output_names_ptr, opts, out_status);
+  return TF_GraphToFunction(fn_body, fn_name, append_hash_to_fn_name, nopers,
+                            opers_array, inputs.size(), inputs.data(),
+                            outputs.size(), outputs.data(), output_names_ptr,
+                            opts, description, out_status);
 }
 
 }  // namespace tensorflow

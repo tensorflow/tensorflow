@@ -229,6 +229,11 @@ string DebugStringWhole(const GraphDef& gdef);
 // of NodeDefs doesn't matter.
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 
+// Return a hash of `fdef` that is consistent with FunctionDefsEqual method.
+// In other words, if two fdefs compare equal, their hash values will be the
+// same.
+uint64 FunctionDefHash(const FunctionDef& fdef);
+
 // Returns a canonicalized string for the instantiation of the
 // function of the given "name" and attributes "attrs".
 //
@@ -349,7 +354,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   }
 
  private:
-  // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
+  // Shape inference for functions is handled separately by ShapeRefiner.
+
   struct FunctionDefAndOpRegistration {
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
@@ -417,6 +423,8 @@ class FunctionLibraryRuntime {
   // "done" is called with an error status.
   //
   // Does not take ownership of "rets".
+  // In the cross-process scenario, runner isn't used for making the Async
+  // RPC calls.
   struct Options {
     // The id of the step that is calling this function.
     int64 step_id = 0;
@@ -426,6 +434,10 @@ class FunctionLibraryRuntime {
     StepStatsCollector* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
+
+    // Parameters for remote function execution.
+    bool remote_execution = false;
+    string source_device = "";  // Fully specified device name.
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
@@ -466,6 +478,40 @@ const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
 typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
                              std::unique_ptr<OpKernel>*)>
     CustomKernelCreator;
+
+// Used to instantiate and run functions in a distributed system.
+class DistributedFunctionLibraryRuntime {
+ public:
+  virtual ~DistributedFunctionLibraryRuntime() {}
+
+  // The _target attr in attrs determines where the function is instantiated.
+  virtual Status Instantiate(const string& function_name,
+                             const FunctionLibraryDefinition& lib_def,
+                             AttrSlice attrs,
+                             FunctionLibraryRuntime::LocalHandle* handle) = 0;
+
+  // opts.runner isn't used for execution.
+  virtual void Run(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::LocalHandle handle,
+                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   FunctionLibraryRuntime::DoneCallback done) = 0;
+};
+
+// Extracts the actual type from "attr_values" based on its definition
+// "arg_def".
+//
+// If "arg_def" is a N*T type, *is_type_list is set to false, and
+// *dtypes is set to be a vector of size N and each element is T.
+//
+// If "arg_def" is a list(type), *is_type_list is set to true, and
+// *dtypes is set to be a vector of types specified in attrs for
+// arg_def.
+//
+// Otherwise (arg_def is a simple type T), *is_type_list is set to
+// false, and *dtypes is set to a single element vector, whose only
+// element is T.
+Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
+                  bool* is_type_list, DataTypeVector* dtypes);
 
 // To register a gradient function for a builtin op, one should use
 //   REGISTER_OP_GRADIENT(<op_name>, <c++ grad factory>);

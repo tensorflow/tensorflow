@@ -555,7 +555,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     int col_stride, const Padding& padding, Tensor* filter_backprop,
     TensorFormat data_format) {
   using perftools::gputools::dnn::AlgorithmConfig;
-  using perftools::gputools::dnn::AlgorithmType;
+  using perftools::gputools::dnn::AlgorithmDesc;
   using perftools::gputools::dnn::ProfileResult;
 
   std::vector<int32> strides(4, 1);
@@ -816,7 +816,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
-    std::vector<AlgorithmType> algorithms;
+    std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;

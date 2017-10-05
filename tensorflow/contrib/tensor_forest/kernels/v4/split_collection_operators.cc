@@ -55,6 +55,10 @@ std::unique_ptr<GrowStats> SplitCollectionOperator::CreateGrowStats(
       return std::unique_ptr<GrowStats>(new LeastSquaresRegressionGrowStats(
           params_, depth));
 
+    case STATS_FIXED_SIZE_SPARSE_GINI:
+      return std::unique_ptr<GrowStats>(
+          new FixedSizeSparseClassificationGrowStats(params_, depth));
+
     default:
       LOG(ERROR) << "Unknown grow stats type: " << params_.stats_type();
       return nullptr;

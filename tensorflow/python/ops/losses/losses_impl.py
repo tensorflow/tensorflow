@@ -27,7 +27,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
-from tensorflow.python.platform import tf_logging as logging
 
 
 class Reduction(object):
@@ -614,9 +613,7 @@ def sigmoid_cross_entropy(
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
                       (logits, multi_class_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
-    logging.info("logits.dtype=%s.", logits.dtype)
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
-    logging.info("multi_class_labels.dtype=%s.", multi_class_labels.dtype)
     logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     if label_smoothing > 0:
@@ -626,7 +623,6 @@ def sigmoid_cross_entropy(
     losses = nn.sigmoid_cross_entropy_with_logits(labels=multi_class_labels,
                                                   logits=logits,
                                                   name="xentropy")
-    logging.info("losses.dtype=%s.", losses.dtype)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -759,8 +755,8 @@ def sparse_softmax_cross_entropy(
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
       `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
-    weights: Coefficients for the loss. This must be scalar or of same rank as
-      `labels`
+    weights: Coefficients for the loss. This must be scalar or broadcastable to
+      `labels` (i.e. same rank and each dimension is either 1 or the same).
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
     reduction: Type of reduction to apply to loss.

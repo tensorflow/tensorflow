@@ -32,6 +32,9 @@ GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef) {
   fetch = other.fetch;
   init_ops = other.init_ops;
   expected_init_time = other.expected_init_time;
+  save_op = other.save_op;
+  restore_op = other.restore_op;
+  save_restore_loc_tensor = other.save_restore_loc_tensor;
   queue_runners = other.queue_runners;
   graph.Swap(&graphDef);
 }
@@ -76,6 +79,16 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
   for (const auto& node : init_ops) {
     result.insert(NodeName(node));
   }
+  if (!save_op.empty()) {
+    result.insert(NodeName(save_op));
+  }
+  if (!restore_op.empty()) {
+    result.insert(NodeName(restore_op));
+  }
+  if (!save_restore_loc_tensor.empty()) {
+    result.insert(NodeName(save_restore_loc_tensor));
+  }
+
   for (const auto& queue_runner : queue_runners) {
     for (const string& enqueue_op : queue_runner.enqueue_op_name()) {
       result.insert(NodeName(enqueue_op));
