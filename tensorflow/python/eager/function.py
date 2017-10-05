@@ -47,6 +47,28 @@ _scoped_captures = threading.local()
 _scoped_captures.tensors = None
 
 
+def make_function_def(graph, operations, inputs, outputs):
+  """Makes function def where accesses to resources are serialized."""
+  last_op_using_resource_tensor = {}
+
+  # TODO(apassos) probably control flow has to be handled delicately here as in
+  # if a resource is accessed inside a control flow context we need the control
+  # dependency to point to something outside the context which is guaranteed to
+  # happen after the access.
+  #
+  # TODO(apassos) this should do some form of alias analysis as ops which
+  # forward the resources such as Identity and Switch can cause serialization to
+  # fail.
+  for op in operations:
+    for t in op.inputs:
+      if t.dtype == dtypes.resource:
+        if t.name in last_op_using_resource_tensor:
+          op._add_control_input(last_op_using_resource_tensor[t.name])  # pylint: disable=protected-access
+        last_op_using_resource_tensor[t.name] = op
+  return graph_to_function_def.graph_to_function_def(
+      graph, operations, inputs, outputs)
+
+
 @contextlib.contextmanager
 def capture_tensors(captures):
   old = _scoped_captures.__dict__.get("tensors", None)
@@ -217,14 +239,14 @@ class _GraphModeFunction(object):
             grad_ys=self._out_grad_placeholders)
         shapes = [x.shape for x in in_gradients if x is not None]
     captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
-    forward_function_def = graph_to_function_def.graph_to_function_def(
+    forward_function_def = make_function_def(
         self._graph, self._ops, self._input_placeholders,
         filtered_outputs + captures)
     self._forward_fdef = _DefinedFunction(forward_function_def)
     _register_with_name(_forward_name(self._func_name), forward_function_def)
     backward_outputs = [x for x in in_gradients if x is not None]
     all_inputs = self._out_grad_placeholders + captures
-    backward_function_def = graph_to_function_def.graph_to_function_def(
+    backward_function_def = make_function_def(
         self._graph, [x.op for x in self._out_grad_placeholders
                      ] + list(sorted(c.known_ops, key=lambda x: x.name)),
         all_inputs, backward_outputs)
@@ -386,7 +408,7 @@ def _defun_internal(name, func, args, kwds):
   all_inputs = flat_inputs + list(extra_placeholders)
 
   func_def_outputs = [x for x in outputs_list if x is not None]
-  inference_function_def = graph_to_function_def.graph_to_function_def(
+  inference_function_def = make_function_def(
       tmp_graph, tmp_graph.get_operations(), all_inputs, func_def_outputs)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.

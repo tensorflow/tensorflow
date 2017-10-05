@@ -308,7 +308,6 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",

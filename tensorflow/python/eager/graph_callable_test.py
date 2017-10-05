@@ -100,6 +100,19 @@ class GraphCallableTest(test.TestCase):
                          constant_op.constant([2.],
                                               dtype=dtypes.float32)).numpy())
 
+  def testUpdatesAreOrdered(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      v.assign(x + 1)
+      v.assign(v * x)
+      return v.read_value()
+
+    self.assertEqual(my_function(constant_op.constant(2.0)).numpy(), 6.0)
+
   def testEmptyInitializer(self):
 
     @graph_callable.graph_callable(
