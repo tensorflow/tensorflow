@@ -61,10 +61,11 @@ def get_compile_flags():
     The compilation flags.
   """
   import tensorflow as tf
-  flags = '-I%s' % get_include()
-  flags += ' -I%s/external/nsync/public' % get_include()
+  flags = []
+  flags.append('-I%s' % get_include())
+  flags.append('-I%s/external/nsync/public' % get_include())
   if tf.__cxx11_abi__ != -1:
-    flags += ' -D_GLIBCXX_USE_CXX11_ABI=%d' % tf.__cxx11_abi__
+    flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % tf.__cxx11_abi__)
   return flags
 
 
@@ -74,8 +75,9 @@ def get_link_flags():
   Returns:
     The link flags.
   """
-  flags = '-L%s' % get_lib()
-  flags += ' -ltensorflow_framework'
+  flags = []
+  flags.append('-L%s' % get_lib())
+  flags.append('-ltensorflow_framework')
   return flags
 
 _allowed_symbols = []
