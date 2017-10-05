@@ -328,29 +328,29 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   Setting environment variable depends on the platform. For example, on Linux,
   it can be done as follows (`$` is the shell prompt):
   ```
-  $ TF_CONFIG="<replace_with_real_content>" python train_model.py
+  $ TF_CONFIG='<replace_with_real_content>' python train_model.py
   ```
 
   For the content in `TF_CONFIG`, assume that the training cluster spec looks
   like:
   ```
-  cluster = {'chief': ['host0:2222'],
-             'worker': ['host1:2222', 'host2:2222', 'host3:2222'],
-             'ps': ['host4:2222', 'host5:2222']}
+  cluster = {"chief": ["host0:2222"],
+             "worker": ["host1:2222", "host2:2222", "host3:2222"],
+             "ps": ["host4:2222", "host5:2222"]}
   ```
 
   Example of `TF_CONFIG` for chief training worker (must have one and only one):
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
-  TF_CONFIG="{
-      'cluster': {
-          'chief': ['host0:2222'],
-          'worker': ['host1:2222', 'host2:2222', 'host3:2222'],
-          'ps': ['host4:2222', 'host5:2222']
+  TF_CONFIG='{
+      "cluster": {
+          "chief": ["host0:2222"],
+          "worker": ["host1:2222", "host2:2222", "host3:2222"],
+          "ps": ["host4:2222", "host5:2222"]
       },
-      'task': {'type': 'chief', 'index': 0}
-  }"
+      "task": {"type": "chief", "index": 0}
+  }'
   ```
   Note that the chief worker also does the model training job, similar to other
   non-chief training workers (see next paragraph). In addition to the model
@@ -362,14 +362,14 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
-  TF_CONFIG="{
-      'cluster': {
-          'chief': ['host0:2222'],
-          'worker': ['host1:2222', 'host2:2222', 'host3:2222'],
-          'ps': ['host4:2222', 'host5:2222']
+  TF_CONFIG='{
+      "cluster": {
+          "chief": ["host0:2222"],
+          "worker": ["host1:2222", "host2:2222", "host3:2222"],
+          "ps": ["host4:2222", "host5:2222"]
       },
-      'task': {'type': 'worker', 'index': 0}
-  }"
+      "task": {"type": "worker", "index": 0}
+  }'
   ```
   where the `task.index` should be set as 0, 1, 2, in this example, respectively
   for non-chief training workers.
@@ -378,14 +378,14 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
-  TF_CONFIG="{
-      'cluster': {
-          'chief': ['host0:2222'],
-          'worker': ['host1:2222', 'host2:2222', 'host3:2222'],
-          'ps': ['host4:2222', 'host5:2222']
+  TF_CONFIG='{
+      "cluster": {
+          "chief": ["host0:2222"],
+          "worker": ["host1:2222", "host2:2222", "host3:2222"],
+          "ps": ["host4:2222", "host5:2222"]
       },
-      'task': {'type': 'ps', 'index': 0}
-  }"
+      "task": {"type": "ps", "index": 0}
+  }'
   ```
   where the `task.index` should be set as 0 and 1, in this example, respectively
   for parameter servers.
@@ -396,14 +396,14 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   ```
   # This should be a JSON string, which is set as environment variable. Usually
   # the cluster manager handles that.
-  TF_CONFIG="{
-      'cluster': {
-          'chief': ['host0:2222'],
-          'worker': ['host1:2222', 'host2:2222', 'host3:2222'],
-          'ps': ['host4:2222', 'host5:2222']
+  TF_CONFIG='{
+      "cluster": {
+          "chief": ["host0:2222"],
+          "worker": ["host1:2222", "host2:2222", "host3:2222"],
+          "ps": ["host4:2222", "host5:2222"]
       },
-      'task': {'type': 'evaluator', 'index': 0}
-  }"
+      "task": {"type": "evaluator", "index": 0}
+  }'
   ```
 
   Args:
