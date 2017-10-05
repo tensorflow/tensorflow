@@ -388,12 +388,6 @@ def _magic_gradient_function(op_name, attr_tuple, num_inputs,
   if grad_fn is None:
     return [None] * num_inputs
 
-  none_indices = _grad_fn_accepts_none_for_indices.get(op_name, [])
-  out_grads = [
-      o if (o is not None or i in none_indices)
-      else array_ops.zeros_like(outputs[i])
-      for i, o in enumerate(out_grads)
-  ]
   return grad_fn(mock_op, *out_grads)
 
 
