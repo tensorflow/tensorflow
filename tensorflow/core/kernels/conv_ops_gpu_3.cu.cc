@@ -439,7 +439,7 @@ struct GreaterThan {
   constexpr bool operator()(int a, int b) const { return a > b; }
 };
 
-// Tile size posibility frontier denotes, for each data type, the tile size
+// For each data type, the tile size posibility frontier denotes the tile size
 // combinations that consume the most computational resources constrained by
 // - number of threads per SM limit,
 // - limit on size of the short dimension (<=15) due to the definition of
@@ -452,10 +452,17 @@ struct GreaterThan {
 // constraint mentioned above is hit. Tile size combinations lying outside this
 // frontier are either not possible, or are slower than the alternatives.
 //
-// It is instrumental to consider two subsets of the frontier:
-// - long side frontier: the union of the biggest tile size combinations for
+// It is instrumental to consider, for each data type, two subsets of the
+// corresponding frontier:
+// - long side frontier: the union of the biggest tile size combination for
 //   each legal long side len.
 // - non long side frontier: the frontier set minus the long side frontier.
+//
+// The following function TileSizePossibilityFrontierCheck will define the
+// frontier using only the long side frontier tile size combinations (since
+// one can easily extrapolate the entire frontier from this subset). It
+// serves as a utility function to help us determine where a tile size
+// combination of interest lies with resepect to the frontier.
 template <typename Op>
 constexpr bool TileSizePossibilityFrontierCheck(int TileLongSide,
                                                 int TileShortSide,
@@ -542,15 +549,12 @@ void LaunchBatchNarrowMatrixTransposeKernel(
 // the short side len.
 //
 // We have three specializations of this search function depending on where the
-// current tile size combination lies with respect to the frontier and boundary
-// of the performant subspace.
+// current tile size combination lies with respect to the frontier.
 // - It lies within the frontier. If request is not satisfied, for the next tile
-// size combination, we can either double the long side len or increment the
-// short side len.
-//
+// size combination, we first try doubling the long side len and if that does
+// not work, we then increment the short side len.
 // - It lies on the non long side frontier. If the request is not satisfied, we
 // can only increment the short side len.
-//
 // - It lies on the long side frontier. We launch the kernel without checking if
 // the request is satisfied or not.
 template <typename T, int TileLongSide, int TileShortSide,
@@ -613,8 +617,8 @@ struct BatchNarrowMatrixTransposeDispatcher<
     }
 
     // If the execution reaches here, then the kernel was not launched; since
-    // we are on the boundary of the performant subspace but not on the
-    // frontier, we increment the short dimension and try again.
+    // we are on the non long side frontier, we increment the short dimension
+    // and try again.
     BatchNarrowMatrixTransposeDispatcher<
         T, TileLongSide, TileShortSide + 1>::DoIt(d, tile_size_i, tile_size_j,
                                                   total_tiles_count, input,
@@ -642,11 +646,14 @@ struct BatchNarrowMatrixTransposeDispatcher<
 };
 
 // This function tries to recover, in a brute force way, the frontier defined in
-// TileSizePossibilityFrontierCheck as a vector of tile size combinations.
-// Note that if one changes the frontier definition as in
-// TileSizePossibilityFrontierCheck and forgets to set the corresponding short
-// side len of the last legal long side len with just one possibility of 2, this
-// function will fail and produce an error.
+// TileSizePossibilityFrontierCheck as a vector of tile size combinations lying
+// on the long side frontier. This vector is sufficient to determine the entire
+// frontier.
+//
+// Note that if one changes the frontier definition in
+// TileSizePossibilityFrontierCheck and forgets to set the largest short
+// side len of the largest legal long side len to 2, this function will fail
+// and crash the program.
 template <int SizeOfT>
 const std::vector<std::pair<int, int>>& GetTileSizesFrontier() {
   static_assert(
@@ -682,7 +689,6 @@ const std::vector<std::pair<int, int>>& GetTileSizesFrontier() {
     LOG(FATAL)
         << "The corresponding short side length of the largest long side "
            "length has to be 2.";
-    return frontier;
   }();
   return *frontier;
 }
