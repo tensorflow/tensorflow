@@ -304,7 +304,7 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
   while (offset < sbuf.st_size) {
     size_t chunk = (sbuf.st_size - offset) < SSIZE_MAX ? (sbuf.st_size - offset)
                                                        : SSIZE_MAX;
-    rc = sendfile64(target_fd, src_fd, &offset, chunk);
+    rc = sendfile(target_fd, src_fd, &offset, chunk);
     if (rc <= 0) {
       break;
     }
