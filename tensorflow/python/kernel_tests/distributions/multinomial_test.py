@@ -254,7 +254,7 @@ class MultinomialTest(test.TestCase):
     with self.test_session() as sess:
       # batch_shape=[3, 2], event_shape=[3]
       dist = multinomial.Multinomial(n, theta)
-      x = dist.sample(int(250e3), seed=1)
+      x = dist.sample(int(1000e3), seed=1)
       sample_mean = math_ops.reduce_mean(x, 0)
       x_centered = x - sample_mean[array_ops.newaxis, ...]
       sample_cov = math_ops.reduce_mean(math_ops.matmul(
