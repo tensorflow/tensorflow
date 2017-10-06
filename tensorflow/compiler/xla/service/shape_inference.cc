@@ -1894,16 +1894,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   Shape inferred_shape =
       ShapeUtil::MakeShape(operand.element_type(), new_sizes);
-  VLOG(3) << "Reshape inferred shape: "
-          << ShapeUtil::HumanString(inferred_shape);
 
   if (ShapeUtil::ElementsIn(operand) != ShapeUtil::ElementsIn(inferred_shape)) {
     return InvalidArgument(
-        "reshape operation has mismatched element counts: from=%lld (%s) "
-        "to=%lld (%s)",
-        ShapeUtil::ElementsIn(operand), ShapeUtil::HumanString(operand).c_str(),
-        ShapeUtil::ElementsIn(inferred_shape),
-        ShapeUtil::HumanString(inferred_shape).c_str());
+        "reshape operation has mismatched element counts: from=%lld to=%lld",
+        ShapeUtil::ElementsIn(operand), ShapeUtil::ElementsIn(inferred_shape));
   }
 
   std::vector<int64> indices(ShapeUtil::Rank(operand));
