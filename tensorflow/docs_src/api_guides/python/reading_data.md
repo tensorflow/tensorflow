@@ -58,7 +58,7 @@ A typical pipeline for reading records from files has the following stages:
 8.  Example queue
 
 Note: This section discusses implementing input pipelines using the
-queue-based APIs which can be cleanly replaced by the ${$datasets$Dataset API}.
+queue-based APIs which can be cleanly replaced by the @{$datasets$Datasets API}.
 
 ### Filenames, shuffling, and epoch limits
 
