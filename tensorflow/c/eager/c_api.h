@@ -107,6 +107,12 @@ TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_St
 
 TF_CAPI_EXPORT extern TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
                                                     unsigned char* is_list, TF_Status* status);
+// Get an attribute type given an op name; a fusion of TFE_NewOp and
+// TFE_OpGetAttrType for use from Python without the overhead of the individual
+// calls and memory management of TFE_Op.
+TF_CAPI_EXPORT extern TF_AttrType TFE_OpNameGetAttrType(
+    TFE_Context* ctx, const char* op_or_function_name, const char* attr_name,
+    unsigned char* is_list, TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_OpSetAttrString(TFE_Op* op, const char* attr_name,
                                                const char* value);

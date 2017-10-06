@@ -109,6 +109,72 @@ TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
                    [](const NodeDef& node) { return node.op() == "Reshape"; }));
 }
 
+TEST_F(ArithmeticOptimizerTest, ReorderTransposeCast) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/gpu:0");
+  Output nhwc_uint8 =
+      ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({8, 28, 28, 3}));
+  Output nhwc_fp32 = ops::Cast(s, nhwc_uint8, DT_FLOAT);
+  Output nchw_fp32 =
+      ops::Transpose(s, nhwc_fp32, ops::Const(s, {0, 3, 1, 2}, {4}));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), nchw_fp32);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  const NodeDef* transpose_node = nullptr;
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "Transpose") {
+      EXPECT_EQ(transpose_node, nullptr);
+      EXPECT_EQ(DT_UINT8, node.attr().at("T").type());
+      transpose_node = &node;
+    }
+  }
+  EXPECT_NE(transpose_node, nullptr);
+
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "Cast") {
+      EXPECT_EQ(NodeName(node.input(0)), transpose_node->name());
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, NoReorderTransposeCast) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/gpu:0");
+  Output nhwc_fp32 =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({8, 28, 28, 3}));
+  Output nhwc_uint8 = ops::Cast(s, nhwc_fp32, DT_UINT8);
+  Output nchw_uint8 =
+      ops::Transpose(s, nhwc_uint8, ops::Const(s, {0, 3, 1, 2}, {4}));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), nchw_uint8);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  int num_transposes = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "Transpose") {
+      EXPECT_EQ(DT_UINT8, node.attr().at("T").type());
+      EXPECT_EQ(node.input(0), "Cast");
+      ++num_transposes;
+    }
+  }
+  EXPECT_EQ(1, num_transposes);
+}
+
 TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =

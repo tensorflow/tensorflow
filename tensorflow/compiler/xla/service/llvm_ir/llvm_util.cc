@@ -402,13 +402,6 @@ void EmitLogging(const char* tag, llvm::Value* value,
       {ir_builder->getInt64(tensorflow::bit_cast<int64>(tag)), value});
 }
 
-void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
-                           bool is_pointer_to) {
-  // TODO(b/62903316): TBAA metadata causes LLVM to miscompile generated code,
-  // most likely because the generated metadata is incorrect.  Disable TBAA
-  // metadata while we resolve this.
-}
-
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
   llvm::LLVMContext& context = load->getContext();
   llvm::Type* int64_ty = llvm::Type::getInt64Ty(context);

@@ -19,8 +19,7 @@ limitations under the License.
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_ContextAddFunctionDef;
-%rename("%s") TFE_NewOp;
-%rename("%s") TFE_OpGetAttrType;
+%rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_Execute;

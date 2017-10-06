@@ -180,7 +180,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "mkl-dnn-b01e3a55a07be62172e713bcd2644c5176360212",
       build_file = str(Label("//third_party/mkl_dnn:mkldnn.BUILD")),
   )
-  
+
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
