@@ -68,6 +68,18 @@ class AbsoluteValueTest(test.TestCase):
         sess.run(abs_bijector.inverse_log_det_jacobian([1.]),
                  feed_dict={event_ndims: 1})
 
+  def testNegativeYRaisesForInverseIfValidateArgs(self):
+    with self.test_session() as sess:
+      bijector = AbsoluteValue(event_ndims=0, validate_args=True)
+      with self.assertRaisesOpError("y was negative"):
+        sess.run(bijector.inverse(-1.))
+
+  def testNegativeYRaisesForILDJIfValidateArgs(self):
+    with self.test_session() as sess:
+      bijector = AbsoluteValue(event_ndims=0, validate_args=True)
+      with self.assertRaisesOpError("y was negative"):
+        sess.run(bijector.inverse_log_det_jacobian(-1.))
+
 
 if __name__ == "__main__":
   test.main()

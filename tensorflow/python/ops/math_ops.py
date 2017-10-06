@@ -2317,6 +2317,10 @@ def conj(x, name=None):
   Raises:
     TypeError: If `x` is not a numeric tensor.
   """
+  if isinstance(x, ops.Tensor):
+    dt = x.dtype
+    if dt.is_floating or dt.is_integer:
+      return x
   with ops.name_scope(name, "Conj", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     if x.dtype.is_complex or x.dtype == dtypes.variant:

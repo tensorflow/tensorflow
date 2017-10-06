@@ -68,7 +68,7 @@ def dense_to_sparse_batch(batch_size, row_shape):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):
@@ -87,7 +87,7 @@ def unbatch():
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
 
   def _apply_fn(dataset):
@@ -106,7 +106,7 @@ def unbatch():
 def batch_and_drop_remainder(batch_size):
   """A batching transformation that omits the final small batch (if present).
 
-  Like @{tf.contrib.data.Dataset.batch}, this transformation combines
+  Like @{tf.data.Dataset.batch}, this transformation combines
   consecutive elements of this dataset into batches. However, if the batch
   size does not evenly divide the input dataset size, this transformation will
   drop the final smaller element.
@@ -115,7 +115,7 @@ def batch_and_drop_remainder(batch_size):
   transformation and `Dataset.batch()`:
 
   ```python
-  dataset = tf.contrib.data.Dataset.range(200)
+  dataset = tf.data.Dataset.range(200)
   batched = dataset.apply(tf.contrib.data.batch_and_drop_remainder(128))
   print(batched.output_shapes)  # ==> "(128,)" (the batch dimension is known)
   ```
@@ -130,7 +130,7 @@ def batch_and_drop_remainder(batch_size):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}
+    @{tf.data.Dataset.apply}
   """
 
   def _apply_fn(dataset):
