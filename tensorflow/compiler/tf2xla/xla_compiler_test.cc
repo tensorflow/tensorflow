@@ -63,6 +63,7 @@ class DummyReadResourceOp : public XlaOpKernel {
     dummy->Unref();
 
     ctx->SetOutput(0, ctx->Input(0));
+    ctx->SetOutput(1, ctx->Input(0));
   }
 };
 
@@ -80,22 +81,25 @@ class DummyReadResourceCC {
     if (!scope.ok()) return;
     scope.UpdateStatus(scope.DoShapeInference(ret));
     if (!scope.ok()) return;
-    this->output_ = Output(ret, 0);
+    this->output1_ = Output(ret, 0);
+    this->output2_ = Output(ret, 1);
   }
-  Node* node() const { return output_.node(); }
 
-  Output output_;
+  Output output1_;
+  Output output2_;
 };
 
 REGISTER_OP("DummyReadResource")
     .Input("input: int32")
-    .Output("output: int32")
+    .Output("output1: int32")
+    .Output("output2: int32")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 A dummy Op.
 
 input: dummy input.
-output: dummy output.
+output1: dummy output.
+output2: dummy output.
 )doc");
 
 REGISTER_XLA_OP(Name("DummyReadResource"), DummyReadResourceOp);
@@ -316,7 +320,8 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto b = DummyReadResourceCC(scope.WithOpName("B"), a);
-  auto c = ops::_Retval(scope.WithOpName("C"), b.output_, 0);
+  auto c = ops::Add(scope.WithOpName("C"), b.output2_, b.output1_);
+  auto d = ops::_Retval(scope.WithOpName("D"), c, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
 
@@ -347,6 +352,58 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   EXPECT_EQ(1, resource->Get());
 
   resource->Unref();
+}
+
+// Tests compilation and execution of a graph that adds two tensors.
+TEST_F(XlaCompilerTest, DeterministicCompilation) {
+  // Builds a graph that contains a node with two output edges. The compiler
+  // should always traverse them in the same order.
+  const int64 test_count = 2;
+
+  std::vector<XlaCompiler::CompilationResult> results(test_count);
+
+  for (int64 i = 0; i < test_count; ++i) {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+    auto b = ops::Neg(scope.WithOpName("B"), a);
+    auto c = ops::Neg(scope.WithOpName("C"), a);
+    auto d = ops::Add(scope.WithOpName("D"), b, c);
+    auto e = ops::_Retval(scope.WithOpName("E"), d, 0);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+    // Builds a description of the argument.
+    std::vector<XlaCompiler::Argument> args(1);
+    args[0].kind = XlaCompiler::Argument::kParameter;
+    args[0].type = DT_INT32;
+    args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+
+    // Compiles the graph.
+    auto options = DefaultOptions();
+    XlaCompiler compiler(options);
+
+    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "dummy",
+                                       std::move(graph), args, &results[i]));
+  }
+
+  for (int64 i = 1; i < test_count; ++i) {
+    auto m1 =
+        results[i - 1].computation->Snapshot().ValueOrDie()->entry().requests();
+    auto m2 =
+        results[i].computation->Snapshot().ValueOrDie()->entry().requests();
+    // Check if every entry is the same.
+    for (auto& entry1 : m1) {
+      int64 key = entry1.first;
+      auto value1 = entry1.second;
+      auto entry2 = m2.find(key);
+      auto value2 = entry2->second;
+      EXPECT_TRUE(entry2 != m2.end());
+      string str1, str2;
+      value1.AppendToString(&str1);
+      value2.AppendToString(&str2);
+      EXPECT_EQ(str1, str2);
+    }
+  }
 }
 
 // Tests a computation that receives a TensorArray resource as input and

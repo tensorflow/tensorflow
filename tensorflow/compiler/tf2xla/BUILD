@@ -102,11 +102,13 @@ cc_library(
         "xla_helpers.cc",
         "xla_op_kernel.cc",
         "xla_op_registry.cc",
+        "graph_compiler.cc",
         "xla_cpu_backend.cc",
     ] + if_cuda_is_configured([
         "xla_gpu_backend.cc",
     ]),
     hdrs = [
+        "graph_compiler.h",
         "xla_compilation_device.h",
         "xla_compiler.h",
         "xla_context.h",
