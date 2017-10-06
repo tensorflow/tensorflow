@@ -90,7 +90,6 @@ See the @{$python/nn} guide.
 @@in_top_k
 @@nce_loss
 @@sampled_softmax_loss
-@@sampled_sparse_softmax_loss
 @@uniform_candidate_sampler
 @@log_uniform_candidate_sampler
 @@learned_unigram_candidate_sampler

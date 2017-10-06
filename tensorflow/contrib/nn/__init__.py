@@ -19,6 +19,7 @@
 @@deprecated_flipped_sparse_softmax_cross_entropy_with_logits
 @@deprecated_flipped_sigmoid_cross_entropy_with_logits
 @@rank_sampled_softmax_loss
+@@sampled_sparse_softmax_loss
 """
 
 from __future__ import absolute_import

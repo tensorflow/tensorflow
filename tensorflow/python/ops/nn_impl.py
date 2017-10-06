@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -893,6 +894,7 @@ def _compute_sampled_logits(weights,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
                             partition_strategy="mod",
+                            labels_as_indices=False,
                             name=None):
   """Helper function for nce_loss and sampled_softmax_loss functions.
 
@@ -930,12 +932,18 @@ def _compute_sampled_logits(weights,
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
+    labels_as_indices: A `bool`. Whether the returned labels represent the
+        indices of the true classes. Default is `False`.
     name: A name for the operation (optional).
   Returns:
-    out_logits, out_labels: `Tensor` objects each with shape
+    out_logits: `Tensor` object with shape
         `[batch_size, num_true + num_sampled]`, for passing to either
         `nn.sigmoid_cross_entropy_with_logits` (NCE) or
         `nn.softmax_cross_entropy_with_logits` (sampled softmax).
+    out_labels: If `labels_as_indices` is `False`, a Tensor object with the same
+        shape as `out_logits`. Otherwise a `Tensor` of shape
+        `[batch_size, num_true]` with the indices of the target classes for each
+        row of `out_logits`.
   """
 
   if isinstance(weights, variables.PartitionedVariable):
@@ -1046,13 +1054,19 @@ def _compute_sampled_logits(weights,
 
     # Construct output logits and labels. The true labels/logits start at col 0.
     out_logits = array_ops.concat([true_logits, sampled_logits], 1)
-    # true_logits is a float tensor, ones_like(true_logits) is a float tensor
-    # of ones. We then divide by num_true to ensure the per-example labels sum
-    # to 1.0, i.e. form a proper probability distribution.
-    out_labels = array_ops.concat([
-        array_ops.ones_like(true_logits) / num_true,
-        array_ops.zeros_like(sampled_logits)
-    ], 1)
+    if labels_as_indices:
+        # We want each row of labels to be the indices of the targets, which
+        # start at col 0 and end at col num_true-1.
+        out_labels = gen_array_ops.tile(
+                [math_ops.range(num_true)], [array_ops.shape(true_logits)[0], 1])
+    else:
+        # true_logits is a float tensor, ones_like(true_logits) is a float
+        # tensor of ones. We then divide by num_true to ensure the per-example
+        # labels sum to 1.0, i.e. form a proper probability distribution.
+        out_labels = array_ops.concat([
+            array_ops.ones_like(true_logits) / num_true,
+            array_ops.zeros_like(sampled_logits)
+        ], 1)
 
   return out_logits, out_labels
 
@@ -1255,104 +1269,6 @@ def sampled_softmax_loss(weights,
       partition_strategy=partition_strategy,
       name=name)
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(
-      labels=labels, logits=logits)
-  # sampled_losses is a [batch_size] tensor.
-  return sampled_losses
-
-
-def sampled_sparse_softmax_loss(weights,
-                                biases,
-                                labels,
-                                inputs,
-                                num_sampled,
-                                num_classes,
-                                sampled_values=None,
-                                remove_accidental_hits=True,
-                                partition_strategy="mod",
-                                name="sampled_sparse_softmax_loss"):
-  """Computes and returns the sampled sparse softmax training loss.
-
-  This is a faster way to train a softmax classifier over a huge number of
-  classes.
-
-  This operation is for training only.  It is generally an underestimate of
-  the full softmax loss.
-
-  A common use case is to use this method for training, and calculate the full
-  softmax loss for evaluation or inference. In this case, you must set
-  `partition_strategy="div"` for the two losses to be consistent, as in the
-  following example:
-
-  ```python
-  if mode == "train":
-    loss = tf.nn.sampled_sparse_softmax_loss(
-        weights=weights,
-        biases=biases,
-        labels=labels,
-        inputs=inputs,
-        ...,
-        partition_strategy="div")
-  elif mode == "eval":
-    logits = tf.matmul(inputs, tf.transpose(weights))
-    logits = tf.nn.bias_add(logits, biases)
-    labels_one_hot = tf.one_hot(labels, n_classes)
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels_one_hot,
-        logits=logits)
-  ```
-
-  See our [Candidate Sampling Algorithms Reference]
-  (https://www.tensorflow.org/extras/candidate_sampling.pdf)
-
-  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
-  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
-
-  Args:
-    weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
-        objects whose concatenation along dimension 0 has shape
-        [num_classes, dim].  The (possibly-sharded) class embeddings.
-    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
-    labels: A `Tensor` of type `int64` and shape `[batch_size, 1]`.
-        The index of the single target class for each row of logits.  Note that
-        this format differs from the `labels` argument of
-        `nn.sparse_softmax_cross_entropy_with_logits`.
-    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
-        activations of the input network.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
-    num_classes: An `int`. The number of possible classes.
-    sampled_values: a tuple of (`sampled_candidates`, `true_expected_count`,
-        `sampled_expected_count`) returned by a `*_candidate_sampler` function.
-        (if None, we default to `log_uniform_candidate_sampler`)
-    remove_accidental_hits:  A `bool`.  whether to remove "accidental hits"
-        where a sampled class equals one of the target classes.  Default is
-        True.
-    partition_strategy: A string specifying the partitioning strategy, relevant
-        if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
-        Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `batch_size` 1-D tensor of per-example sampled softmax losses.
-
-  """
-  logits, labels = _compute_sampled_logits(
-      weights=weights,
-      biases=biases,
-      labels=labels,
-      inputs=inputs,
-      num_sampled=num_sampled,
-      num_classes=num_classes,
-      num_true=1,
-      sampled_values=sampled_values,
-      subtract_log_q=True,
-      remove_accidental_hits=remove_accidental_hits,
-      partition_strategy=partition_strategy,
-      name=name)
-
-  # labels returned by _compute_sampled_logits are one_hot. Convert to indices.
-  labels = array_ops.reshape(math_ops.argmax(labels, axis=1), [-1])
-
-  sampled_losses = nn_ops.sparse_softmax_cross_entropy_with_logits(
       labels=labels, logits=logits)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses
