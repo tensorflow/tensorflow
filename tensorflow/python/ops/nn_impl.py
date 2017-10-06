@@ -1055,18 +1055,18 @@ def _compute_sampled_logits(weights,
     # Construct output logits and labels. The true labels/logits start at col 0.
     out_logits = array_ops.concat([true_logits, sampled_logits], 1)
     if labels_as_indices:
-        # We want each row of labels to be the indices of the targets, which
-        # start at col 0 and end at col num_true-1.
-        out_labels = gen_array_ops.tile(
-                [math_ops.range(num_true)], [array_ops.shape(true_logits)[0], 1])
+      # We want each row of labels to be the indices of the targets, which
+      # start at col 0 and end at col num_true-1.
+      out_labels = gen_array_ops.tile(
+          [math_ops.range(num_true)], [array_ops.shape(true_logits)[0], 1])
     else:
-        # true_logits is a float tensor, ones_like(true_logits) is a float
-        # tensor of ones. We then divide by num_true to ensure the per-example
-        # labels sum to 1.0, i.e. form a proper probability distribution.
-        out_labels = array_ops.concat([
-            array_ops.ones_like(true_logits) / num_true,
-            array_ops.zeros_like(sampled_logits)
-        ], 1)
+      # true_logits is a float tensor, ones_like(true_logits) is a float
+      # tensor of ones. We then divide by num_true to ensure the per-example
+      # labels sum to 1.0, i.e. form a proper probability distribution.
+      out_labels = array_ops.concat([
+          array_ops.ones_like(true_logits) / num_true,
+          array_ops.zeros_like(sampled_logits)
+      ], 1)
 
   return out_logits, out_labels
 
