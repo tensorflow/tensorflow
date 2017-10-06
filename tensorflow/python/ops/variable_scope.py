@@ -1728,12 +1728,12 @@ def variable_scope(name_or_scope,
         raise TypeError("VariableScope: name_or_scope must be a string or "
                         "VariableScope.")
       if isinstance(name_or_scope, six.string_types):
-        name_scope = name_or_scope
+        name = name_or_scope
       else:
-        name_scope = name_or_scope.name.split("/")[-1]
-      if name_scope:
+        name = name_or_scope.name.split("/")[-1]
+      if name:
         if isinstance(name_or_scope, six.string_types):
-          with ops.name_scope(name_scope) as cur_name_scope:
+          with ops.name_scope(name) as cur_name_scope:
             old_name_scope = cur_name_scope
         else:
           old_name_scope = name_or_scope.original_name_scope
