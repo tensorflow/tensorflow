@@ -108,17 +108,13 @@ class Conv3DTest(test.TestCase):
         values = sess.run(tensor_results)
         for i in range(len(tensor_results)):
           value = values[i]
-          print("use_gpu:", test_params[i][0])
-          print("dtype:", test_params[i][1])
-          print("data_format:", test_params[i][2])
-
           print("expected = ", expected)
           print("actual = ", value)
           tol = 1e-5
           if value.dtype == np.float16:
             tol = 1e-3
             # fp16 using may result in inf values and large absolute errors
-            # when used with large numbers
+            # when used with large numbers (fp16 max is 65004.)
             if np.any(value > 1e4):
               print("fp16 using may result in inf values and large absolute "
                     "errors when used with large numbers, skipping")
