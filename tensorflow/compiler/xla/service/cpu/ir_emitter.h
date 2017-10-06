@@ -220,8 +220,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Gets the IR Value emitted previously for the given hlo.
   //
-  // Prefer calling GetIrArrayForOp if the value you're reading is a buffer,
-  // because GetIrArrayForOp annotates buffer's loads/stores with noalias
+  // Prefer calling GetIrArrayFor if the value you're reading is a buffer,
+  // because GetIrArrayFor annotates buffer's loads/stores with noalias
   // metadata.
   //
   // Make sure to call this only when you're certain a value *was* emitted - if
@@ -229,7 +229,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* GetEmittedValueFor(const HloInstruction* hlo);
 
   // Gets an IrArray representing the given hlo.
-  llvm_ir::IrArray GetIrArrayForOp(const HloInstruction* hlo);
+  llvm_ir::IrArray GetIrArrayFor(const HloInstruction* hlo);
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
