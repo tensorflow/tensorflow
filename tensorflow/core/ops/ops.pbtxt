@@ -2040,6 +2040,27 @@ op {
   description: "This operation outputs \"ref\" after the update is done.\nThis makes it easier to chain operations that need to use the reset value."
 }
 op {
+  name: "AssignAddVariableOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource in which to store the variable."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    description: "the value by which the variable will be incremented."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the dtype of the value."
+  }
+  summary: "Adds a value to the current value of a variable."
+  description: "Any ReadVariableOp which depends directly or indirectly on this assign is\nguaranteed to see the incremented value or a subsequent newer one.\n\nOutputs the incremented value, which can be used to totally order the\nincrements to this variable."
+  is_stateful: true
+}
+op {
   name: "AssignSub"
   input_arg {
     name: "ref"
@@ -2090,6 +2111,48 @@ op {
   }
   summary: "Update \'ref\' by subtracting \'value\' from it."
   description: "This operation outputs \"ref\" after the update is done.\nThis makes it easier to chain operations that need to use the reset value."
+}
+op {
+  name: "AssignSubVariableOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource in which to store the variable."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    description: "the value by which the variable will be incremented."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the dtype of the value."
+  }
+  summary: "Subtracts a value from the current value of a variable."
+  description: "Any ReadVariableOp which depends directly or indirectly on this assign is\nguaranteed to see the incremented value or a subsequent newer one.\n\nOutputs the incremented value, which can be used to totally order the\nincrements to this variable."
+  is_stateful: true
+}
+op {
+  name: "AssignVariableOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource in which to store the variable."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    description: "the value to set the new tensor to use."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the dtype of the value."
+  }
+  summary: "Assigns a new value to a variable."
+  description: "Any ReadVariableOp with a control dependency on this op is guaranteed to return\nthis value or a subsequent newer value of the variable."
+  is_stateful: true
 }
 op {
   name: "Atan"
@@ -6828,6 +6891,25 @@ op {
   }
   summary: "Deserialize and concatenate `SparseTensors` from a serialized minibatch."
   description: "The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where\n`N` is the minibatch size and the rows correspond to packed outputs of\n`SerializeSparse`.  The ranks of the original `SparseTensor` objects\nmust all match.  When the final `SparseTensor` is created, it has rank one\nhigher than the ranks of the incoming `SparseTensor` objects\n(they have been concatenated along a new row dimension).\n\nThe output `SparseTensor` object\'s shape values for all dimensions but the\nfirst are the max across the input `SparseTensor` objects\' shape values\nfor the corresponding dimensions.  Its first shape value is `N`, the minibatch\nsize.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the serialized input is a `[2 x 3]` matrix representing two\noriginal `SparseTensor` objects:\n\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n\nand\n\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n\nthen the final deserialized `SparseTensor` will be:\n\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]"
+}
+op {
+  name: "DestroyResourceOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource to delete."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "ignore_lookup_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "whether to ignore the error when the resource\ndoesn\'t exist."
+  }
+  summary: "Deletes the resource specified by the handle."
+  description: "All subsequent operations using the resource will result in a NotFound\nerror status."
+  is_stateful: true
 }
 op {
   name: "DestroyTemporaryVariable"
@@ -19352,6 +19434,26 @@ op {
   summary: "Reads and outputs the entire contents of the input filename."
 }
 op {
+  name: "ReadVariableOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource in which to store the variable."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the dtype of the value."
+  }
+  summary: "Reads the value of a variable."
+  description: "The tensor returned by this operation is immutable.\n\nThe value returned by this operation is guaranteed to be influenced by all the\nwrites on which this operation depends directly or indirectly, and to not be\ninfluenced by any of the writes which depend directly or indirectly on this\noperation."
+  is_stateful: true
+}
+op {
   name: "ReaderNumRecordsProduced"
   input_arg {
     name: "reader_handle"
@@ -21549,6 +21651,98 @@ op {
   }
   summary: "Update \'*var\' according to the RMSProp algorithm."
   description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+  is_stateful: true
+}
+op {
+  name: "ResourceGather"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Gather slices from the variable pointed to by `resource` according to `indices`."
+  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n```python\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n```"
+  is_stateful: true
+}
+op {
+  name: "ResourceScatterAdd"
+  input_arg {
+    name: "resource"
+    description: "Should be from a `Variable` node."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    description: "A tensor of indices into the first dimension of `ref`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A tensor of updated values to add to `ref`."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Adds sparse updates to the variable referenced by `resource`."
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/ScatterAdd.png\" alt>\n</div>"
   is_stateful: true
 }
 op {
@@ -31796,6 +31990,56 @@ op {
   is_stateful: true
 }
 op {
+  name: "VarHandleOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "the container this variable is placed in."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "the name by which this variable is referred to."
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the type of this variable. Must agree with the dtypes\nof all ops using this variable."
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The (possibly partially specified) shape of this variable."
+  }
+  summary: "Creates a handle to a Variable resource."
+  is_stateful: true
+}
+op {
+  name: "VarIsInitializedOp"
+  input_arg {
+    name: "resource"
+    description: "the input resource handle."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    description: "a scalar boolean which is true if the variable has been\ninitialized."
+    type: DT_BOOL
+  }
+  summary: "Checks whether a resource handle-based variable has been initialized."
+  is_stateful: true
+}
+op {
   name: "Variable"
   output_arg {
     name: "ref"
@@ -31825,6 +32069,33 @@ op {
     }
   }
   summary: "Use VariableV2 instead."
+  is_stateful: true
+}
+op {
+  name: "VariableShape"
+  input_arg {
+    name: "input"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Returns the shape of the variable pointed to by `resource`."
+  description: "This operation returns a 1-D integer tensor representing the shape of `input`.\n\nFor example:\n\n```\n# \'t\' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]\nshape(t) ==> [2, 2, 3]\n```"
   is_stateful: true
 }
 op {
