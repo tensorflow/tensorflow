@@ -1,9 +1,13 @@
 #ifndef THIRD_PARTY_EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
 #define THIRD_PARTY_EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_PACKETMATHAVX2_H_
 
+#ifdef _MSC_VER
+
 #include <immintrin.h>
 #include <emmintrin.h>
 #include <smmintrin.h>
+
+#endif
 
 inline int _mm256_extract_epi16_N0(const __m256i X)
 {
@@ -24,6 +28,7 @@ inline int _mm256_extract_epi8_N1(const __m256i X)
 {
 	return _mm_extract_epi8(_mm256_extractf128_si256((X), 1 >> 4), 1 % 16);
 }
+
 
 namespace Eigen {
 namespace internal {
