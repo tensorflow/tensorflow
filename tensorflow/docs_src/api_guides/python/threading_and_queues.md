@@ -1,13 +1,14 @@
 # Threading and Queues
 
 Note: In versions of TensorFlow before 1.2, we recommended using multi-threaded,
-queue-based input pipelines for performance. Beginning with TensorFlow 1.2,
-however, we recommend using the `tf.contrib.data` module instead. (See
-[Datasets](datasets) for details.) The `tf.contrib.data` module offers an
-easier-to-use interface for constructing efficient input pipelines. Furthermore,
-we've stopped developing the old multi-threaded, queue-based input pipelines.
-We've retained the documentation in this file to help developers who are still
-maintaining older code.
+queue-based input pipelines for performance. Beginning with TensorFlow 1.4,
+however, we recommend using the `tf.data` module instead. (See
+[Datasets](datasets) for details. In TensorFlow 1.2 and 1.3, the module was
+called `tf.contrib.data`.) The `tf.data` module offers an easier-to-use
+interface for constructing efficient input pipelines. Furthermore, we've stopped
+developing the old multi-threaded, queue-based input pipelines.  We've retained
+the documentation in this file to help developers who are still maintaining
+older code.
 
 Multithreaded queues are a powerful and widely used mechanism supporting
 asynchronous computation.
@@ -58,9 +59,9 @@ prepare inputs for training a model as follows:
 * A training thread executes a training op that dequeues mini-batches from the
   queue
 
-We recommend using the @{tf.contrib.data.Dataset.shuffle$`shuffle`}
-and @{tf.contrib.data.Dataset.batch$`batch`} methods of a
-@{tf.contrib.data.Dataset$`Dataset`} to accomplish this. However, if you'd prefer
+We recommend using the @{tf.data.Dataset.shuffle$`shuffle`}
+and @{tf.data.Dataset.batch$`batch`} methods of a
+@{tf.data.Dataset$`Dataset`} to accomplish this. However, if you'd prefer
 to use a queue-based version instead, you can find a full implementation in the
 @{tf.train.shuffle_batch} function.
 
@@ -103,7 +104,7 @@ The simplest possible use of this function might be something like this:
 ``` python
 # create a dataset that counts from 0 to 99
 input = tf.constant(list(range(100)))
-input = tf.contrib.data.Dataset.from_tensor_slices(input)
+input = tf.data.Dataset.from_tensor_slices(input)
 input = input.make_one_shot_iterator().get_next()
 
 # Create a slightly shuffled batch from the sorted elements

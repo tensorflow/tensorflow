@@ -27,7 +27,6 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -186,11 +185,10 @@ class _VariableCapturingScope(object):
           shared_name=name, shape=shape, dtype=dtype)
       if initializer is None:
         initializer = _default_initializer(name, shape, dtype)
-      with tf_ops.control_dependencies(
-          [resource_variable_ops.assign_variable_op(
-              graph_mode_resource, initializer(shape, dtype))]):
-        handle = array_ops.identity(v.variable.handle)
-      return _VariableFromResource(handle, dtype, name, shape=v.shape)
+      resource_variable_ops.assign_variable_op(
+          graph_mode_resource, initializer(shape, dtype))
+      return _VariableFromResource(
+          graph_mode_resource, dtype, name, shape=v.shape)
 
     scope = variable_scope.get_variable_scope()
     with variable_scope.variable_scope(scope, custom_getter=_custom_getter):
@@ -324,7 +322,9 @@ def _graph_callable_internal(func, shape_and_dtypes):
           captures):
         func_outputs = func(*func_inputs)
       outputs_list = nest.flatten(func_outputs)
-      output_shapes = [x.shape for x in outputs_list if x is not None]
+      if len(outputs_list) == 1 and outputs_list[0] is None:
+        outputs_list = []
+      output_shapes = [x.shape for x in outputs_list]
       if not all(isinstance(x, tf_ops.Tensor) for x in outputs_list):
         raise ValueError("Found non-tensor output in %s" % str(outputs_list))
       initializing_operations = tmp_graph.get_operations()
@@ -355,7 +355,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
   all_inputs = variable_placeholders + placeholder_inputs
 
   func_def_outputs = [x for x in outputs_list if isinstance(x, tf_ops.Tensor)]
-  initializer_function_def = graph_to_function_def.graph_to_function_def(
+  initializer_function_def = function.make_function_def(
       tmp_graph,
       initializing_operations,
       placeholder_inputs,
@@ -379,7 +379,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   capture_func_def_outputs = [
       x for x in captured_outlist if isinstance(x, tf_ops.Tensor)]
-  captured_function_def = graph_to_function_def.graph_to_function_def(
+  captured_function_def = function.make_function_def(
       tmp_graph,
       capturing_operations,
       all_inputs,
@@ -419,6 +419,9 @@ def graph_callable(shape_and_dtypes):
 
   Note that the wrapped function is not allowed to change the values of the
   variables, just use them.
+
+  The return value of the wrapped function must be one of the following:
+  (1) None,  (2) a Tensor, or (3) a possibly nested sequence of Tensors.
 
   Example:
 

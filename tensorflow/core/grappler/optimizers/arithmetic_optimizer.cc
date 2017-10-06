@@ -274,7 +274,7 @@ static bool SimplyReordersData(const NodeDef& node) {
   return node.op() == "Transpose";
 }
 
-const NodeDef* ArithmeticOptimizer::TrySimplifyAndReplaceUses(
+string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
     std::vector<const NodeDef*>* new_nodes) const {
   // Remove inverse transposes.
@@ -288,7 +288,7 @@ const NodeDef* ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       if (Int32ValuesFromNode(*node_perm, &node_perm_values) &&
           Int32ValuesFromNode(*input_perm, &input_perm_values) &&
           AreInversePermutations(node_perm_values, input_perm_values)) {
-        return node_map->GetNode(input->input(0));
+        return input->input(0);
       }
     }
   }
@@ -316,7 +316,7 @@ const NodeDef* ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       reshape->set_input(0, input->input(0));
       node_map->UpdateInput(reshape->name(), input->name(), input->input(0));
       new_nodes->push_back(reshape);
-      return reshape;
+      return reshape->name();
     }
   }
 
@@ -409,14 +409,14 @@ const NodeDef* ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             consumer_of_mul->set_input(0, mul->input(0));
             node_map->UpdateInput(consumer_of_mul->name(), mul->name(),
                                   other->name());
-            return conv;
+            return conv->name();
           }
         }
       }
     }
   }
 
-  return nullptr;
+  return "";
 }
 
 namespace {
@@ -459,28 +459,28 @@ void ArithmeticOptimizer::SimplifyArithmeticOps(
   while (!nodes_to_simplify.Empty()) {
     const NodeDef* node = nodes_to_simplify.PopBack();
     std::vector<const NodeDef*> new_nodes;
-    const NodeDef* simplified_node =
+    const string simplified_tensor =
         TrySimplifyAndReplaceUses(node, optimized_graph, &node_map, &new_nodes);
-    if (!simplified_node) {
+    if (simplified_tensor.empty()) {
       continue;
     }
 
-    if (simplified_node->name() != node->name()) {
+    if (NodeName(simplified_tensor) != node->name()) {
       // When `node` is simplifed to another node rather than in-place, the
-      // consumers of `node` are redirected to `simplified_node`. Re-push the
-      // consumers into `nodes_to_simplify` for further optimizations.
+      // consumers of `node` are already redirected to `simplified_tensor`.
+      // Re-push the consumers into `nodes_to_simplify` for further
+      // optimizations.
       std::set<NodeDef*> consumers = node_map.GetOutputs(node->name());
       for (NodeDef* consumer : consumers) {
         // Update `consumer`'s use of `node` to `input`'s operand.
         for (int i = 0; i < consumer->input_size(); ++i) {
           if (NodeName(consumer->input(i)) == node->name()) {
-            *consumer->mutable_input(i) = simplified_node->name();
+            *consumer->mutable_input(i) = simplified_tensor;
           }
         }
         VLOG(2) << "Update input " << node->name() << " of " << consumer->name()
-                << " to " << simplified_node->name();
-        node_map.UpdateInput(consumer->name(), node->name(),
-                             simplified_node->name());
+                << " to " << simplified_tensor;
+        node_map.UpdateInput(consumer->name(), node->name(), simplified_tensor);
         if (!nodes_to_simplify.Exists(consumer)) {
           nodes_to_simplify.PushBack(consumer);
         }

@@ -129,8 +129,8 @@ def _get_tfbt(output_dir):
 def _make_experiment_fn(output_dir):
   """Creates experiment for gradient boosted decision trees."""
   data = tf.contrib.learn.datasets.mnist.load_mnist()
-  train_input_fn = get_input_fn(data.train, batch_size=256)
-  eval_input_fn = get_input_fn(data.validation, batch_size=5000)
+  train_input_fn = get_input_fn(data.train, FLAGS.batch_size)
+  eval_input_fn = get_input_fn(data.validation, FLAGS.eval_batch_size)
 
   return tf.contrib.learn.Experiment(
       estimator=_get_tfbt(output_dir),

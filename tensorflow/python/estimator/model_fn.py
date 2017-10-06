@@ -77,6 +77,7 @@ class EstimatorSpec(
     """Creates a validated `EstimatorSpec` instance.
 
     Depending on the value of `mode`, different arguments are required. Namely
+
     * For `mode == ModeKeys.TRAIN`: required fields are `loss` and `train_op`.
     * For `mode == ModeKeys.EVAL`: required field is `loss`.
     * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.

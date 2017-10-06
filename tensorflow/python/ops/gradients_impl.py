@@ -594,11 +594,19 @@ def gradients(ys,
           # If no grad_fn is defined or none of out_grads is available,
           # just propagate a list of None backwards.
           in_grads = [None] * len(op.inputs)
-        for t_in, in_grad in zip(op.inputs, in_grads):
+        for i, (t_in, in_grad) in enumerate(zip(op.inputs, in_grads)):
           if in_grad is not None:
             if (isinstance(in_grad, ops.Tensor) and
                 t_in.dtype != dtypes.resource):
-              in_grad.set_shape(t_in.get_shape())
+              try:
+                in_grad.set_shape(t_in.get_shape())
+              except ValueError:
+                raise ValueError(
+                    "Incompatible shapes between op input and calculated "
+                    "input gradient.  Forward operation: %s.  Input index: %d. "
+                    "Original input shape: %s.  "
+                    "Calculated input gradient shape: %s"
+                    % (op.name, i, t_in.shape, in_grad.shape))
             _SetGrad(grads, t_in, in_grad)
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)

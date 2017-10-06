@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/runtime.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -50,64 +51,6 @@ string DeviceName(tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
 }  // namespace
-
-struct TFE_Context {
-  explicit TFE_Context(TF_Session* s) : session(s) {}
-
-  // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
-  TF_Session* session;
-  tensorflow::Rendezvous* rendezvous;
-
-  tensorflow::mutex functions_mu;
-  tensorflow::FunctionLibraryDefinition func_lib_def GUARDED_BY(functions_mu){
-      tensorflow::OpRegistry::Global(), {}};
-
-  // One FunctionLibraryRuntime per device.
-  // func_libs[i] is the FunctionLibraryRuntime corresponding to
-  // session->devices[i].
-  std::unique_ptr<tensorflow::ProcessFunctionLibraryRuntime> pflr;
-
-  std::unordered_map<tensorflow::Fprint128, tensorflow::KernelAndDevice*,
-                     tensorflow::Fprint128Hasher>
-      kernel_cache;
-
-  tensorflow::FunctionLibraryRuntime* func_lib(tensorflow::Device* d) {
-    return pflr->GetFLR(d->name());
-  }
-
-  const std::vector<tensorflow::Device*>& devices() { return session->devices; }
-};
-
-struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
-      : t(t), d(d) {}
-
-  tensorflow::Tensor t;
-  // TODO(ashankar): d == nullptr iff local CPU
-  // This was expedient, but perhaps worth revisiting ('d' should always be a
-  // valid pointer?)
-  // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are
-  // provided with the appropriate TFE_Context.
-  //
-  // TODO(ashankar): Reference count TFE_Context to ensure that 'd' of a
-  // TFE_TensorHandle does not outlive the TFE_Context from which it came?
-  tensorflow::Device* d;
-};
-
-struct TFE_Op {
-  TFE_Op(TFE_Context* ctx, const char* op, const tensorflow::AttrTypeMap* t)
-      : ctx(ctx), name(op), attrs(op), attr_types(t), device(nullptr) {}
-
-  bool const is_function() const { return attr_types == nullptr; }
-
-  TFE_Context* ctx;  // Must outlive the TFE_Op.
-  const string name;
-  tensorflow::AttrBuilder attrs;
-  const tensorflow::AttrTypeMap* attr_types;
-  std::vector<tensorflow::Tensor> inputs;
-  std::vector<tensorflow::Device*> input_devices;
-  tensorflow::Device* device;
-};
 
 extern "C" {
 

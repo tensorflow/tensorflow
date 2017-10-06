@@ -1,6 +1,16 @@
 # Release 1.4.0
 
 ## Major Features And Improvements
+* `tf.data` is now part of the core TensorFlow API.
+  * The API is now subject to backwards compatibility guarantees.
+  * For a guide to migrating from the `tf.contrib.data` API, see the
+    [README] (https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/contrib/data/README.md).
+  * Major new features include `Dataset.from_generator()` (for building an input
+    pipeline from a Python generator), and the `Dataset.apply()` method for
+    applying custom transformation functions.
+  * Several custom transformation functions have been added, including
+    `tf.contrib.data.batch_and_drop_remainder()` and
+    `tf.contrib.data.sloppy_interleave()`.
 * Java:
   * Generics (e.g., `Tensor<Integer>`) for improved type-safety (courtesy @andrewcmyers).
   * Support for multi-dimensional string tensors.
@@ -15,6 +25,11 @@
 * Removed `tf.contrib.training.python_input`.  The same behavior, in a more
   flexible and reproducible package, is available via the new
   `tf.contrib.data.Dataset.from_generator` method!
+
+## Breaking Changes to the API
+* The signature of the `tf.contrib.data.rejection_resample()` function has been
+  changed. It now returns a function that can be used as an argument to
+  `Dataset.apply()`.
 
 # Release 1.3.0
 
