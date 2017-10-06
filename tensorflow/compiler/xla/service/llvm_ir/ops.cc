@@ -73,12 +73,13 @@ void EmitTuple(IrArray tuple,
                tensorflow::gtl::ArraySlice<llvm::Value*> operands,
                llvm::IRBuilder<>* ir_builder) {
   for (size_t i = 0; i < operands.size(); ++i) {
-    ir_builder->CreateStore(
+    auto* store = ir_builder->CreateStore(
         ir_builder->CreatePointerCast(operands[i],
                                       PrimitiveTypeToIrType(TUPLE, ir_builder)),
         ir_builder->CreateInBoundsGEP(
             tuple.GetBasePointer(),
             {ir_builder->getInt64(0), ir_builder->getInt64(i)}));
+    tuple.AnnotateLoadStoreInstructionWithMetadata(store);
   }
 }
 
