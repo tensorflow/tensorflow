@@ -5720,7 +5720,8 @@ func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source
 //	batch_size: A scalar representing the number of elements to accumulate in a
 // batch.
 //	row_shape: A vector representing the dense shape of each row in the produced
-// SparseTensor.
+// SparseTensor. The shape may be partially specified, using `-1` to indicate
+// that a particular dimension should use the maximum size of all batch elements.
 //
 //
 func DenseToSparseBatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, row_shape tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
@@ -9310,6 +9311,16 @@ func DecodeCSVFieldDelim(value string) DecodeCSVAttr {
 func DecodeCSVUseQuoteDelim(value bool) DecodeCSVAttr {
 	return func(m optionalAttr) {
 		m["use_quote_delim"] = value
+	}
+}
+
+// DecodeCSVNaValue sets the optional na_value attribute to value.
+//
+// value: Additional string to recognize as NA/NaN.
+// If not specified, defaults to ""
+func DecodeCSVNaValue(value string) DecodeCSVAttr {
+	return func(m optionalAttr) {
+		m["na_value"] = value
 	}
 }
 
