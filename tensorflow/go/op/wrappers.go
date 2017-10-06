@@ -22810,7 +22810,8 @@ func ResizeBicubic(scope *Scope, images tf.Output, size tf.Output, optional ...R
 //
 // Arguments:
 //	gradients: The backpropagated gradients to the corresponding Relu6 operation.
-//	features: The features passed as input to the corresponding Relu6 operation.
+//	features: The features passed as input to the corresponding Relu6 operation, or
+// its output; using either one produces the same result.
 //
 // Returns The gradients:
 // `gradients * (features > 0) * (features < 6)`.
