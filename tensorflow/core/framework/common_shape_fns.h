@@ -75,6 +75,32 @@ Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
                              Padding padding_type, int64* output_size,
                              int64* padding_size);
 
+// The V2 version computes the same outputs with arbitrary dilation_rate.
+// The output dimensions are computed as follows:
+// - When adding dilation_rate (D), we compute an effective filter size (K'):
+//     K' = (K - 1) * D + 1
+// - When Padding = SAME: the output size is (H'), where
+//     H' = ceil(float(H) / float(S))
+//   where ceil is the ceiling function. The number of padded cells
+//   is computed as:
+//     Pc = ((H' - 1) * S + K' - H) / 2
+//   When the stride is 1, the expression simplifies to
+//     H' = H, Pc = (K'-1)/2.
+//   This is where SAME comes from - the output has the same size as the input
+//   has.
+//
+// - When Padding = VALID: the output size is computed as
+//     H' = ceil(float(H - K' + 1) / float(S))
+//   and the number of padded cells is always zero.
+//   When the stride is 1, the expression simplifies to
+//     H' = H-K'+1.
+//
+// TODO(b/67112639): Merge V2 versions and the original versions eventually.
+Status GetWindowedOutputSizeV2(int64 input_size, int64 filter_size,
+                               int64 dilation_rate, int64 stride,
+                               Padding padding_type, int64* output_size,
+                               int64* padding_size);
+
 // Returns the same output dimensions as in GetWindowedOutputSize, but returns
 // verbose padding dimensions (before/after). Any excess padding
 // (caused by an odd padding size value) is added to the 'padding_after'
@@ -84,6 +110,14 @@ Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
                                     int64* output_size, int64* padding_before,
                                     int64* padding_after);
 
+// The V2 version computes the same outputs with arbitrary dilation_rate. For
+// detailed equations, refer to the comments for GetWindowedOutputSizeV2().
+Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
+                                      int64 dilation_rate, int64 stride,
+                                      Padding padding_type, int64* output_size,
+                                      int64* padding_before,
+                                      int64* padding_after);
+
 // Given an input tensor, kernel, stride and padding type, populates the 3D size
 // of the output tensor and padding to be applied to the input tensor at the
 // lower end of every dimension. Use for 3D convolutions, where the input data
@@ -92,8 +126,17 @@ Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
 Status Get3dOutputSize(const std::array<int64, 3>& input,
                        const std::array<int64, 3>& window,
                        const std::array<int64, 3>& strides,
-                       Padding padding_type, std::array<int64, 3>* output,
-                       std::array<int64, 3>* padding);
+                       Padding padding_type, std::array<int64, 3>* output_ptr,
+                       std::array<int64, 3>* padding_ptr);
+
+// The V2 version computes the same outputs with arbitrary dilation_rate. For
+// detailed equations, refer to the comments for GetWindowedOutputSizeV2().
+Status Get3dOutputSizeV2(const std::array<int64, 3>& input,
+                         const std::array<int64, 3>& window,
+                         const std::array<int64, 3>& dilations,
+                         const std::array<int64, 3>& strides,
+                         Padding padding_type, std::array<int64, 3>* output_ptr,
+                         std::array<int64, 3>* padding_ptr);
 
 namespace shape_inference {
 
@@ -103,6 +146,15 @@ Status GetWindowedOutputSizeFromDims(InferenceContext* c,
                                      DimensionOrConstant filter_size,
                                      int64 stride, Padding padding_type,
                                      DimensionHandle* output_size);
+
+// The V2 version computes the same outputs with arbitrary dilation_rate. For
+// detailed equations, refer to the comments for GetWindowedOutputSizeV2().
+Status GetWindowedOutputSizeFromDimsV2(InferenceContext* c,
+                                       DimensionHandle input_size,
+                                       DimensionOrConstant filter_size,
+                                       int64 dilation_rate, int64 stride,
+                                       Padding padding_type,
+                                       DimensionHandle* output_size);
 
 // Transfers shape of input(0) to output(0).
 Status UnchangedShape(shape_inference::InferenceContext* c);

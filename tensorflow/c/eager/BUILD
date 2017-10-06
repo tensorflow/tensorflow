@@ -10,13 +10,15 @@ load(
 
 tf_cuda_library(
     name = "c_api",
-    srcs = ["c_api.cc"],
+    srcs = [
+        "c_api.cc",
+        "c_api_internal.h",
+    ],
     hdrs = ["c_api.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
@@ -31,6 +33,21 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
         ],
     }),
+)
+
+tf_cuda_library(
+    name = "c_api_internal",
+    hdrs = ["c_api_internal.h"],
+    deps = [
+        ":c_api",
+        ":runtime",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
 tf_cc_test(
@@ -53,7 +70,6 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [

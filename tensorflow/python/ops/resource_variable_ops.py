@@ -38,9 +38,11 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.util import compat
 
 
-def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode,
-                                container=None):
+def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   """Creates a variable handle with information to do shape inference."""
+  container = ops.get_default_graph()._container  # pylint: disable=protected-access
+  if container is None:
+    container = ""
   handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                    shared_name=shared_name,
                                                    name=name,
@@ -305,8 +307,7 @@ class ResourceVariable(variables.Variable):
                 dtype=initial_value.dtype.base_dtype,
                 shared_name=handle_name,
                 name=name,
-                graph_mode=False,
-                container="")
+                graph_mode=False)
             self._handle_device = (
                 self._handle.device if self._in_graph_mode else
                 context.get_default_context().device_name)
@@ -332,8 +333,7 @@ class ResourceVariable(variables.Variable):
               dtype=initial_value.dtype.base_dtype,
               shared_name=handle_name,
               name=name,
-              graph_mode=self._in_graph_mode,
-              container="")
+              graph_mode=self._in_graph_mode)
           self._handle_device = (self._handle.device if self._in_graph_mode else
                                  context.get_default_context().device_name)
           self._graph_shape = initial_value.get_shape()
@@ -540,16 +540,8 @@ class ResourceVariable(variables.Variable):
      the read operation.
     """
     with ops.name_scope("Read"):
-      # In graph mode, ensure we read the variable in the same device as the
-      # handle. In eager mode, however, this sometimes tries to read a GPU
-      # variable in the CPU because the handle is host memory. For now, then, we
-      # need to skip the device block in eager. TODO(apassos): eager should have
-      # separate notions of device and memory, so handle.device can be GPU while
-      # handle.memory_space is always CPU.
-      if context.in_graph_mode():
-        with ops.device(self._handle_device):
-          value = self._read_variable_op()
-      else:
+      # Ensure we read the variable in the same device as the handle.
+      with ops.device(self._handle_device):
         value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
