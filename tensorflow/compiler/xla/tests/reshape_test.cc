@@ -47,10 +47,26 @@ class ReshapeTest : public ClientLibraryTestBase {
 };
 
 // Collapses 2-dimensional pseudo-scalar (single-element array) to 1 dimension.
-XLA_TEST_F(ReshapeTest, Trivial1x1) {
+XLA_TEST_F(ReshapeTest, CollapseTrivial1x1) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR2<float>({{1.0}});
   builder.Collapse(/*operand=*/a, /*dimensions=*/{0, 1});
+
+  ComputeAndCompareR1<float>(&builder, {1.0f}, {}, zero_error_spec_);
+}
+
+XLA_TEST_F(ReshapeTest, CollapseTrivialR1EmptyDims) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({1.0});
+  builder.Collapse(/*operand=*/a, /*dimensions=*/{});
+
+  ComputeAndCompareR1<float>(&builder, {1.0f}, {}, zero_error_spec_);
+}
+
+XLA_TEST_F(ReshapeTest, CollapseTrivialR1OnlyDim) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({1.0});
+  builder.Collapse(/*operand=*/a, /*dimensions=*/{0});
 
   ComputeAndCompareR1<float>(&builder, {1.0f}, {}, zero_error_spec_);
 }

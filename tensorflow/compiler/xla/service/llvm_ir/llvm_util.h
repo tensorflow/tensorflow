@@ -227,12 +227,6 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 void EmitLogging(const char* tag, llvm::Value* value,
                  llvm::IRBuilder<>* ir_builder);
 
-// Adds TBAA metadata to a load or store instruction using the given shape as
-// it's type.  The is_pointer_to parameter is used to indicate whether or not
-// this instruction loads or stores a pointer to an array.
-void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
-                           bool is_pointer_to);
-
 // Adds alignment metadata to a load instruction using the given alignment.
 // The alignment refers to the result of the load, not the load itself.
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment);

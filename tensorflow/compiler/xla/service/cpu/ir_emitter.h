@@ -220,8 +220,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Gets the IR Value emitted previously for the given hlo.
   //
-  // Prefer calling GetIrArrayForOp if the value you're reading is a buffer,
-  // because GetIrArrayForOp annotates buffer's loads/stores with noalias
+  // Prefer calling GetIrArrayFor if the value you're reading is a buffer,
+  // because GetIrArrayFor annotates buffer's loads/stores with noalias
   // metadata.
   //
   // Make sure to call this only when you're certain a value *was* emitted - if
@@ -229,7 +229,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* GetEmittedValueFor(const HloInstruction* hlo);
 
   // Gets an IrArray representing the given hlo.
-  llvm_ir::IrArray GetIrArrayForOp(const HloInstruction* hlo);
+  llvm_ir::IrArray GetIrArrayFor(const HloInstruction* hlo);
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
@@ -353,11 +353,10 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitMemcpy(const HloInstruction& source,
                     const HloInstruction& destination);
 
-  // Emit IR to compute the target address of the buffer for the given op.
-  // The returned Value is a pointer to a IR type that represents the op's
-  // element type.
-  StatusOr<llvm::Value*> EmitTargetAddressForOp(
-      const HloInstruction* op, const ShapeIndex& shape_index = {});
+  // Emits IR to compute the target address of the buffer for the given op.
+  // After calling this function, you can get a pointer to this buffer by
+  // calling GetIrArrayForOp or GetEmittedValueFor.
+  Status EmitTargetAddressForOp(const HloInstruction* op);
 
   // Structurizes "array_elements" into an MD array that represents "shape".
   // This is a recursive function, and "dimension_index" indicates the index of
