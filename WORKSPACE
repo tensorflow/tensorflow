@@ -1,5 +1,6 @@
 workspace(name = "org_tensorflow")
 
+
 http_archive(
     name = "io_bazel_rules_closure",
     sha256 = "110fe68753413777944b473c25eed6368c4a0487cee23a7bac1b13cc49d3e257",
