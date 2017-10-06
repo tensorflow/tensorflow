@@ -851,7 +851,7 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
   xgrad = array_ops.where(xmask, grad, zeros)
-  ygrad = array_ops.where(math_ops.logical_not(xmask), grad, zeros)
+  ygrad = array_ops.where(xmask, zeros, grad)
   gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
   gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
   return (gx, gy)

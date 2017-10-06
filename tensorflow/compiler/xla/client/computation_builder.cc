@@ -1433,10 +1433,20 @@ ComputationDataHandle ComputationBuilder::ReduceWindow(
     return ComputationDataHandle();
   }
 
-  return ReduceWindowWithGeneralPadding(
-      operand, init_value, computation, window_dimensions, window_strides,
+  Status padding_valid =
+      ValidatePaddingValues(AsInt64Slice(shape.ValueOrDie()->dimensions()),
+                            window_dimensions, window_strides);
+  if (!padding_valid.ok()) {
+    first_error_ = padding_valid;
+    return ComputationDataHandle();
+  }
+
+  std::vector<std::pair<int64, int64>> padding_values =
       MakePadding(AsInt64Slice(shape.ValueOrDie()->dimensions()),
-                  window_dimensions, window_strides, padding));
+                  window_dimensions, window_strides, padding);
+  return ReduceWindowWithGeneralPadding(operand, init_value, computation,
+                                        window_dimensions, window_strides,
+                                        padding_values);
 }
 
 ComputationDataHandle ComputationBuilder::ReduceWindowWithGeneralPadding(

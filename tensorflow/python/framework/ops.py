@@ -73,9 +73,13 @@ def tensor_id(tensor):
   return tensor._id  # pylint: disable=protected-access
 
 
-@tf_contextlib.contextmanager
-def _null_contextmanager():
-  yield
+class _NullContextmanager(object):
+
+  def __enter__(self):
+    pass
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    return False  # False values do not suppress exceptions
 
 
 def _override_helper(clazz_object, operator, func):
@@ -671,7 +675,7 @@ class _EagerTensorBase(Tensor):
     if not context.in_graph_mode():
       self_device = self.device
       def grad_fun(dresult):
-        return dresult._copy(device_name=self_device)
+        return [dresult._copy(device_name=self_device)]
       tape.record_operation("_copy", [new_tensor], [self], [], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
@@ -2804,19 +2808,14 @@ class Graph(object):
       ValueError: if another function is defined with the same name.
     """
     name = function.name
-    previous = self._functions.get(name, None)
-    if previous:
-      raise ValueError("Another function is already defined with that name")
     # Sanity checks on gradient definition.
     if (function.grad_func_name is not None) and (function.python_grad_func is
                                                   not None):
       raise ValueError("Gradient defined twice for function %s" % name)
-    # Need a new-enough consumer to support the functions we add to the graph.
-    if self._graph_def_versions.min_consumer < 12:
-      self._graph_def_versions.min_consumer = 12
-    self._functions[name] = function
+
+    # Add function to graph
+    # pylint: disable=protected-access
     if self._c_graph:
-      # pylint: disable=protected-access
       assert function._c_func, (
           "Cannot add function created without C API support to graph "
           "created with C API support")
@@ -2824,7 +2823,26 @@ class Graph(object):
         gradient = function._grad_func._c_func if function._grad_func else None
         c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient,
                                    status)
-      # pylint: enable=protected-access
+    else:
+      # If there is already a function with the same name, raise an error
+      # if bodies are different. Else, do nothing. The C API version above
+      # has the same behavior.
+      previous = self._functions.get(name, None)
+      if previous:
+        # This check is not ideal as we can have a hash collision with only
+        # 32 bits in the hash, but the non C API mode is being deprecated.
+        # Don't bother changing it now.
+        if previous._hash_str == function._hash_str:
+          return
+        else:
+          raise ValueError("Another function is already defined with that name")
+    # pylint: enable=protected-access
+
+    self._functions[name] = function
+
+    # Need a new-enough consumer to support the functions we add to the graph.
+    if self._graph_def_versions.min_consumer < 12:
+      self._graph_def_versions.min_consumer = 12
 
   @property
   def building_function(self):
@@ -4263,7 +4281,7 @@ def colocate_with(op, ignore_existing=False):
     if op is not None:
       return device(op.device)
     else:
-      return _null_contextmanager()
+      return _NullContextmanager()
 
 
 def control_dependencies(control_inputs):
@@ -4285,7 +4303,7 @@ def control_dependencies(control_inputs):
   if context.in_graph_mode():
     return get_default_graph().control_dependencies(control_inputs)
   else:
-    return _null_contextmanager()
+    return _NullContextmanager()
 
 
 class _DefaultStack(threading.local):
@@ -4839,10 +4857,11 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
-# pylint: disable=g-doc-return-or-yield
-@tf_contextlib.contextmanager
-def name_scope(name, default_name=None, values=None):
-  """Returns a context manager for use when defining a Python op.
+# Named like a function for backwards compatibility with the
+# @tf_contextlib.contextmanager version, which was switched to a class to avoid
+# some object creation overhead.
+class name_scope(object):  # pylint: disable=invalid-name
+  """A context manager for use when defining a Python op.
 
   This context manager validates that the given `values` are from the
   same graph, makes that graph the default graph, and pushes a
@@ -4861,48 +4880,64 @@ def name_scope(name, default_name=None, values=None):
       # Define some computation that uses `a`, `b`, and `c`.
       return foo_op(..., name=scope)
   ```
-
-  Args:
-    name: The name argument that is passed to the op function.
-    default_name: The default name to use if the `name` argument is `None`.
-    values: The list of `Tensor` arguments that are passed to the op function.
-
-  Returns:
-    A context manager for use in defining Python ops. Yields the name scope.
-
-  Raises:
-    ValueError: if neither `name` nor `default_name` is provided
-      but `values` are.
   """
-  name = default_name if name is None else name
-  ctx = context.context()
-  if ctx.in_eager_mode():
-    old_name = ctx.scope_name
-    if name:
-      scope_name = "%s%s/" % (old_name, name) if old_name else "%s/" % name
+
+  def __init__(self, name, default_name=None, values=None):
+    """Initialize the context manager.
+
+    Args:
+      name: The name argument that is passed to the op function.
+      default_name: The default name to use if the `name` argument is `None`.
+      values: The list of `Tensor` arguments that are passed to the op function.
+    """
+    self._name = default_name if name is None else name
+    self._default_name = default_name
+    self._values = values
+    self._ctx = context.context()
+    self._in_eager_mode = self._ctx.in_eager_mode()
+
+  def __enter__(self):
+    """Start the scope block.
+
+    Returns:
+      The scope name.
+
+    Raises:
+      ValueError: if neither `name` nor `default_name` is provided
+        but `values` are.
+    """
+    if self._in_eager_mode:
+      self._old_name = self._ctx.scope_name
+      if self._name:
+        scope_name = (self._old_name + self._name + "/"
+                      if self._old_name else self._name + "/")
+      else:
+        scope_name = ""
+      self._ctx.scope_name = scope_name
+      return scope_name
     else:
-      scope_name = ""
-    ctx.scope_name = scope_name
-    try:
-      yield scope_name
-    finally:
-      ctx.scope_name = old_name
-  else:
-    if name is None and values is not None:
-      # We only raise an error if values is not None (provided) because
-      # currently tf.name_scope(None) (values=None then) is sometimes used as an
-      # idiom to reset to top scope.
-      raise ValueError(
-          "At least one of name (%s) and default_name (%s) must be provided." %
-          (name, default_name))
-    if values is None:
-      values = []
-    g = _get_graph_from_inputs(values)
-    with g.as_default(), g.name_scope(name) as scope:
-      yield scope
+      if self._name is None and self._values is not None:
+        # We only raise an error if values is not None (provided) because
+        # currently tf.name_scope(None) (values=None then) is sometimes used as
+        # an idiom to reset to top scope.
+        raise ValueError(
+            "At least one of name (%s) and default_name (%s) must be provided."
+            % (self._name, self._default_name))
+      if self._values is None:
+        self._values = []
+      g = _get_graph_from_inputs(self._values)
+      self._g_manager = g.as_default()
+      self._g_manager.__enter__()
+      self._name_scope = g.name_scope(self._name)
+      return self._name_scope.__enter__()
 
-
-# pylint: enable=g-doc-return-or-yield
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    if self._in_eager_mode:
+      self._ctx.scope_name = self._old_name
+    else:
+      self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
+      self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
+    return False  # False values do not suppress exceptions
 
 
 def strip_name_scope(name, export_scope):
