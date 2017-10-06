@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+find_package( OpenCV REQUIRED )
+
 set(tf_label_image_example_srcs
     "${tensorflow_source_dir}/tensorflow/examples/label_image/main.cc"
 )
@@ -33,4 +35,5 @@ target_link_libraries(tf_label_image_example PUBLIC
     tf_protos_cc
     ${tf_core_gpu_kernels_lib}
     ${tensorflow_EXTERNAL_LIBRARIES}
+	${OpenCV_LIBS}
 )

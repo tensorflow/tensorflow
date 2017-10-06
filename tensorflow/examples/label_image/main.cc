@@ -37,6 +37,8 @@ limitations under the License.
 #include <fstream>
 #include <utility>
 #include <vector>
+#include <stdio.h>
+#include <opencv2/opencv.hpp>
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
@@ -63,6 +65,8 @@ using tensorflow::Tensor;
 using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::int32;
+
+using namespace cv;
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -339,6 +343,19 @@ int main(int argc, char* argv[]) {
     LOG(ERROR) << read_tensor_status;
     return -1;
   }
+
+  // Get the image and use OpenCV show
+  Mat cv_image;
+  cv_image = imread(image_path, 1);
+
+  if (!cv_image.data)
+  {
+	  printf("No image data \n");
+	  return -1;
+  }
+  namedWindow("Display Image", WINDOW_AUTOSIZE);
+  imshow("Display Image", cv_image);
+
   const Tensor& resized_tensor = resized_tensors[0];
 
   // Actually run the image through the model.
@@ -373,5 +390,6 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
+  waitKey(0);
   return 0;
 }
