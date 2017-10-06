@@ -138,21 +138,21 @@ class Iterator(object):
     This method allows you to define a "feedable" iterator where you can choose
     between concrete iterators by feeding a value in a @{tf.Session.run} call.
     In that case, `string_handle` would a @{tf.placeholder}, and you would feed
-    it with the value of @{tf.contrib.data.Iterator.string_handle} in each step.
+    it with the value of @{tf.data.Iterator.string_handle} in each step.
 
     For example, if you had two iterators that marked the current position in
     a training dataset and a test dataset, you could choose which to use in
     each step as follows:
 
     ```python
-    train_iterator = tf.contrib.data.Dataset(...).make_one_shot_iterator()
+    train_iterator = tf.data.Dataset(...).make_one_shot_iterator()
     train_iterator_handle = sess.run(train_iterator.string_handle())
 
-    test_iterator = tf.contrib.data.Dataset(...).make_one_shot_iterator()
+    test_iterator = tf.data.Dataset(...).make_one_shot_iterator()
     test_iterator_handle = sess.run(test_iterator.string_handle())
 
     handle = tf.placeholder(tf.string, shape=[])
-    iterator = tf.contrib.data.Iterator.from_string_handle(
+    iterator = tf.data.Iterator.from_string_handle(
         handle, train_iterator.output_types)
 
     next_element = iterator.get_next()

@@ -1636,6 +1636,9 @@ class CondContext(ControlFlowContext):
         self._values.add(result.name)
       with ops.control_dependencies(None):
         result = _SwitchRefOrTensor(result, self._pred)[self._branch]
+        if self._outer_context:
+          self._outer_context.AddInnerOp(result.op)
+
       result.op.graph.prevent_fetching(result.op)
       # pylint: disable=protected-access
       result.op._set_control_flow_context(self)
@@ -1677,6 +1680,9 @@ class CondContext(ControlFlowContext):
 
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
+
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
 
   def _ProcessOutputTensor(self, val):
     """Process an output tensor of a conditional branch."""

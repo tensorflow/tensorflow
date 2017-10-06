@@ -118,7 +118,7 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
     return SloppyInterleaveDataset(

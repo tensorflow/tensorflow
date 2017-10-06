@@ -49,7 +49,9 @@ namespace xla {
       AssertEqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
     }
   } else {
-    ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual));
+    ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual))
+        << "want rank of: " << ShapeUtil::HumanString(expected)
+        << " got rank of: " << ShapeUtil::HumanString(actual);
     ASSERT_EQ(expected.element_type(), actual.element_type())
         << PrimitiveType_Name(expected.element_type()) << " vs "
         << PrimitiveType_Name(actual.element_type());
