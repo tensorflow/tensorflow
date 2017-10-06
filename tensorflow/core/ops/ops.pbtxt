@@ -6219,6 +6219,14 @@ op {
     }
     description: "If false, treats double quotation marks as regular\ncharacters inside of the string fields (ignoring RFC 4180, Section 2,\nBullet 5)."
   }
+  attr {
+    name: "na_value"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Additional string to recognize as NA/NaN."
+  }
   summary: "Convert CSV records to tensors. Each column maps to one tensor."
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
 }
@@ -6505,7 +6513,7 @@ op {
   }
   input_arg {
     name: "row_shape"
-    description: "A vector representing the dense shape of each row in the produced\nSparseTensor."
+    description: "A vector representing the dense shape of each row in the produced\nSparseTensor. The shape may be partially specified, using `-1` to indicate\nthat a particular dimension should use the maximum size of all batch elements."
     type: DT_INT64
   }
   output_arg {
