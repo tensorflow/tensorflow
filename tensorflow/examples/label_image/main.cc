@@ -39,6 +39,11 @@ limitations under the License.
 #include <vector>
 #include <stdio.h>
 #include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/dnn.hpp>
+#include <opencv2/highgui/highgui_c.h>
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
@@ -336,6 +341,37 @@ int main(int argc, char* argv[]) {
   // to the specifications the main graph expects.
   std::vector<Tensor> resized_tensors;
   string image_path = tensorflow::io::JoinPath(root_dir, image);
+
+  // Open Video if the extension is *.264
+  if (image_path.substr(image_path.length() - 3, 3) == "264")
+  {
+	  printf("capture from video file %s\n", image);
+	  VideoCapture capture(0);
+	  bool readsuccess = capture.open(image_path);
+	  if (!readsuccess) { printf("Couldn't open %s\n", image); return -1; }
+	  if (capture.isOpened())
+	  {
+		  cvNamedWindow("Video", 1);
+		  Mat imagRGB;
+		  IplImage* rawImage = 0;
+		  while (true)
+		  {
+			  bool readsuccess = capture.read(imagRGB);
+			  if (!readsuccess)
+			  {
+				  break;
+			  }
+			  // cvtColor(imagRGB, im_gray, CV_BGR2GRAY);
+			  rawImage = cvCloneImage(&(IplImage)imagRGB);
+			  cvShowImage("Video", rawImage);
+		  }
+		  waitKey(0);
+		  capture.release();
+		  cvDestroyWindow("Video");
+	  }
+	  return 0;
+  }
+
   Status read_tensor_status =
       ReadTensorFromImageFile(image_path, input_height, input_width, input_mean,
                               input_std, &resized_tensors);
