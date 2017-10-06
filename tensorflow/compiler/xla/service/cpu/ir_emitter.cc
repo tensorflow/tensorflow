@@ -281,6 +281,7 @@ Status IrEmitter::HandleConstant(HloInstruction* constant,
       /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
       /*Initializer=*/initializer,
       /*Name=*/"");
+  global_for_const->setAlignment(MinimumAlignmentForShape(literal.shape()));
   emitted_value_[constant] = global_for_const;
   VLOG(2) << "  emitted value: " << llvm_ir::DumpToString(*global_for_const);
   VLOG(2) << "  its type: "
