@@ -37,6 +37,13 @@ limitations under the License.
 #include <fstream>
 #include <utility>
 #include <vector>
+#include <stdio.h>
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/dnn.hpp>
+#include <opencv2/highgui/highgui_c.h>
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
@@ -63,6 +70,8 @@ using tensorflow::Tensor;
 using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::int32;
+
+using namespace cv;
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -332,6 +341,37 @@ int main(int argc, char* argv[]) {
   // to the specifications the main graph expects.
   std::vector<Tensor> resized_tensors;
   string image_path = tensorflow::io::JoinPath(root_dir, image);
+
+  // Open Video if the extension is *.264
+  if (image_path.substr(image_path.length() - 3, 3) == "264")
+  {
+	  printf("capture from video file %s\n", image);
+	  VideoCapture capture(0);
+	  bool readsuccess = capture.open(image_path);
+	  if (!readsuccess) { printf("Couldn't open %s\n", image); return -1; }
+	  if (capture.isOpened())
+	  {
+		  cvNamedWindow("Video", 1);
+		  Mat imagRGB;
+		  IplImage* rawImage = 0;
+		  while (true)
+		  {
+			  bool readsuccess = capture.read(imagRGB);
+			  if (!readsuccess)
+			  {
+				  break;
+			  }
+			  // cvtColor(imagRGB, im_gray, CV_BGR2GRAY);
+			  rawImage = cvCloneImage(&(IplImage)imagRGB);
+			  cvShowImage("Video", rawImage);
+		  }
+		  waitKey(0);
+		  capture.release();
+		  cvDestroyWindow("Video");
+	  }
+	  return 0;
+  }
+
   Status read_tensor_status =
       ReadTensorFromImageFile(image_path, input_height, input_width, input_mean,
                               input_std, &resized_tensors);
@@ -339,6 +379,19 @@ int main(int argc, char* argv[]) {
     LOG(ERROR) << read_tensor_status;
     return -1;
   }
+
+  // Get the image and use OpenCV show
+  Mat cv_image;
+  cv_image = imread(image_path, 1);
+
+  if (!cv_image.data)
+  {
+	  printf("No image data \n");
+	  return -1;
+  }
+  namedWindow("Display Image", WINDOW_AUTOSIZE);
+  imshow("Display Image", cv_image);
+
   const Tensor& resized_tensor = resized_tensors[0];
 
   // Actually run the image through the model.
@@ -373,5 +426,6 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
+  waitKey(0);
   return 0;
 }
