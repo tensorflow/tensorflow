@@ -37,9 +37,6 @@ class FileDeleter {
 // Writes binary data to a file.
 Status WriteFile(const string& filename, tensorflow::StringPiece contents);
 
-// Gets a temp filename in an appropriate location.
-string GetTempFilename(const string& extension);
-
 // Reads an audio file using ffmpeg and converts it into an array of samples in
 // [-1.0, 1.0]. If there are multiple channels in the audio then each frame will
 // contain a separate sample for each channel. Frames are ordered by time.

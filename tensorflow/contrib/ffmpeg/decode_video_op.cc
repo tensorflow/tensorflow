@@ -49,7 +49,7 @@ class DecodeVideoOp : public OpKernel {
 
     // Write the input data to a temp file.
     string extension;
-    const string temp_filename = GetTempFilename(extension);
+    const string temp_filename = io::GetTempFilename(extension);
     OP_REQUIRES_OK(context, WriteFile(temp_filename, contents));
     FileDeleter deleter(temp_filename);
 

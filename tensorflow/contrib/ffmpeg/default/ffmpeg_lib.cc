@@ -217,14 +217,6 @@ string BuildWavFile(int32 samples_per_second, int32 channel_count,
   return data;
 }
 
-// Returns a unique number every time it is called.
-int64 UniqueId() {
-  static mutex mu(LINKER_INITIALIZED);
-  static int64 id = 0;
-  mutex_lock l(mu);
-  return ++id;
-}
-
 Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
                     uint32* frames) {
   string data;
@@ -311,42 +303,11 @@ Status WriteFile(const string& filename, StringPiece contents) {
   return Status::OK();
 }
 
-string GetTempFilename(const string& extension) {
-  for (const char* dir : std::vector<const char*>(
-           {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {
-    if (!dir || !dir[0]) {
-      continue;
-    }
-    struct stat statbuf;
-    if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
-      // UniqueId is added here because mkstemps is not as thread safe as it
-      // looks. https://github.com/tensorflow/tensorflow/issues/5804 shows
-      // the problem.
-      string tmp_filepath;
-      int fd;
-      if (extension.length()) {
-        tmp_filepath =io::JoinPath( dir, StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.", extension));
-        fd = mkstemps(&tmp_filepath[0], extension.length() + 1);
-      } else {
-        tmp_filepath = io::JoinPath(dir, StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX."));
-        fd = mkstemp(&tmp_filepath[0]);
-      }
-      if (fd < 0) {
-        LOG(FATAL) << "Failed to create temp file.";
-      } else {
-        close(fd);
-        return tmp_filepath;
-      }
-    }
-  }
-  LOG(FATAL) << "No temp directory found.";
-}
-
 Status ReadAudioFile(const string& filename, const string& audio_format_id,
                      int32 samples_per_second, int32 channel_count,
                      std::vector<float>* output_samples) {
   // Create an argument list.
-  string output_filename = GetTempFilename("raw");
+  string output_filename = io::GetTempFilename("raw");
   const std::vector<string> args =
       FfmpegAudioCommandLine(filename, output_filename, audio_format_id,
                              samples_per_second, channel_count);
@@ -398,8 +359,8 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
     return Status(error::Code::NOT_FOUND, StrCat("FFmpeg could not be found."));
   }
 
-  string output_filename = GetTempFilename("raw");
-  string stderr_filename = GetTempFilename("err");
+  string output_filename = io::GetTempFilename("raw");
+  string stderr_filename = io::GetTempFilename("err");
 
   // Create an argument list.
   const std::vector<string> args =

@@ -46,7 +46,7 @@ void Decode(OpKernelContext* context,
             const string& file_format, const int32 samples_per_second,
             const int32 channel_count) {
   // Write the input data to a temp file.
-  const string temp_filename = GetTempFilename(file_format);
+  const string temp_filename = io::GetTempFilename(file_format);
   OP_REQUIRES_OK(context, WriteFile(temp_filename, file_contents));
   FileDeleter deleter(temp_filename);
 
