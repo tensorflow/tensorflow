@@ -193,11 +193,17 @@ TF_CALL_POD_TYPES(REGISTER_KERNEL);
 namespace functor {
 #define DECLARE_GPU_SPEC(T, Dims)                                         \
   template <>                                                             \
-  void Pad<GPUDevice, T, Dims>::operator()(                               \
+  void Pad<GPUDevice, T, int32, Dims>::operator()(                               \
       const GPUDevice& d, typename TTypes<T, Dims>::Tensor output,        \
       typename TTypes<T, Dims>::ConstTensor input,                        \
       Eigen::array<Eigen::IndexPair<int32>, Dims> paddings, T pad_value); \
-  extern template struct Pad<GPUDevice, T, Dims>;
+  extern template struct Pad<GPUDevice, T, int32, Dims>; \
+  template <>                                                             \
+  void Pad<GPUDevice, T, int64, Dims>::operator()(                               \
+      const GPUDevice& d, typename TTypes<T, Dims>::Tensor output,        \
+      typename TTypes<T, Dims>::ConstTensor input,                        \
+      Eigen::array<Eigen::IndexPair<int64>, Dims> paddings, T pad_value); \
+  extern template struct Pad<GPUDevice, T, int64, Dims>;
 
 #define DECLARE_GPU_SPECS(T) \
   DECLARE_GPU_SPEC(T, 0);    \
