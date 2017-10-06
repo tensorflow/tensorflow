@@ -89,7 +89,7 @@ def numpy_input_fn(x,
     ValueError: if the shape of `y` mismatches the shape of values in `x` (i.e.,
       values in `x` have same shape).
     ValueError: if duplicate keys are in both `x` and `y` when `y` is a dict.
-    ValueError: if x or y is a empty dict.
+    ValueError: if x or y is an empty dict.
     TypeError: `x` is not a dict or `shuffle` is not bool.
   """
 
