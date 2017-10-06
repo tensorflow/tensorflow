@@ -291,8 +291,7 @@ Status IrEmitter::HandleConstant(HloInstruction* constant,
 Status IrEmitter::HandleCopy(HloInstruction* copy) {
   if (ShapeUtil::IsTuple(copy->shape())) {
     // kCopy shallow copies a tuple so just memcpy the top-level buffer.
-    TF_ASSIGN_OR_RETURN(llvm::Value * copy_value, EmitTargetAddressForOp(copy));
-    emitted_value_[copy] = copy_value;
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
   } else {
     // Use the elemental emitter for non-tuple shapes.
@@ -395,9 +394,7 @@ Status IrEmitter::HandleSelect(HloInstruction* select, HloInstruction* pred,
   TF_RET_CHECK(pred->shape().element_type() == PRED);
 
   if (ShapeUtil::IsTuple(select->shape())) {
-    TF_ASSIGN_OR_RETURN(llvm::Value * output_address,
-                        EmitTargetAddressForOp(select));
-    emitted_value_[select] = output_address;
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(select));
     llvm_ir::EmitTupleSelect(GetIrArrayForOp(select), GetIrArrayForOp(pred),
                              GetEmittedValueFor(on_true),
                              GetEmittedValueFor(on_false), &ir_builder_);
@@ -414,8 +411,8 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
 
   // The infeed operation produces data (dequeued from the infeed queue) at this
   // address, which has been provided by buffer assignment.
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(infeed));
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(infeed));
+  llvm_ir::IrArray infeed_array = GetIrArrayForOp(infeed);
 
   if (ShapeUtil::IsTuple(shape)) {
     TF_RET_CHECK(!ShapeUtil::IsNestedTuple(shape));
@@ -433,9 +430,9 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
           ShapeUtil::GetTupleElementShape(shape, i);
 
       // Only the outer tuple buffer's target address is obtained from
-      // EmitTargetAddressForOp to handle the case when Infeed is the
-      // root instruction. Target addresses for internal elements can
-      // be obtained from EmitTempBufferPointer.
+      // GetEmittedValueFor, to handle the case when Infeed is the root
+      // instruction. Target addresses for internal elements can be obtained
+      // from EmitTempBufferPointer.
       llvm::Value* tuple_element_address =
           EmitTempBufferPointer(buffer, tuple_element_shape);
 
@@ -445,14 +442,11 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
       tuple_element_addresses.push_back(tuple_element_address);
     }
 
-    llvm_ir::EmitTuple(llvm_ir::IrArray(target_address, shape),
-                       tuple_element_addresses, &ir_builder_);
+    llvm_ir::EmitTuple(infeed_array, tuple_element_addresses, &ir_builder_);
   } else {
-    TF_RETURN_IF_ERROR(
-        EmitXfeedTransfer(XfeedKind::kInfeed, shape, target_address));
+    TF_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kInfeed, shape,
+                                         GetEmittedValueFor(infeed)));
   }
-
-  emitted_value_[infeed] = target_address;
 
   return Status::OK();
 }
@@ -567,15 +561,12 @@ Status IrEmitter::HandleSort(HloInstruction* sort, HloInstruction* operand) {
 Status IrEmitter::HandleTuple(
     HloInstruction* tuple,
     tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(tuple));
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple));
   std::vector<llvm::Value*> base_ptrs;
   for (auto operand : operands) {
     base_ptrs.push_back(GetEmittedValueFor(operand));
   }
-  llvm_ir::EmitTuple(llvm_ir::IrArray(target_address, tuple->shape()),
-                     base_ptrs, &ir_builder_);
-  emitted_value_[tuple] = target_address;
+  llvm_ir::EmitTuple(GetIrArrayForOp(tuple), base_ptrs, &ir_builder_);
   return Status::OK();
 }
 
@@ -892,11 +883,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot, HloInstruction* lhs,
   llvm_ir::IrArray lhs_array(GetIrArrayForOp(lhs));
   llvm_ir::IrArray rhs_array(GetIrArrayForOp(rhs));
 
-  Shape target_shape = dot->shape();
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(dot));
-  llvm_ir::IrArray target_array(target_address, target_shape);
-  AddAliasingInformationToIrArray(*dot, &target_array);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dot));
+  llvm_ir::IrArray target_array = GetIrArrayForOp(dot);
 
   VLOG(2) << "HandleDot: ";
   VLOG(2) << "  lhs operand: "
@@ -907,13 +895,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot, HloInstruction* lhs,
           << llvm_ir::DumpToString(*target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
+  return DotOpEmitter::EmitDotOperation(
       *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
       lhs_array, rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_,
-      hlo_module_config_));
-
-  emitted_value_[dot] = target_address;
-  return Status::OK();
+      hlo_module_config_);
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution,
@@ -941,8 +926,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
       bool one_dim_convolution = lhs_shape.dimensions_size() == 3;
       llvm::Value* lhs_address = GetEmittedValueFor(lhs);
       llvm::Value* rhs_address = GetEmittedValueFor(rhs);
-      TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                          EmitTargetAddressForOp(convolution));
+      TF_RETURN_IF_ERROR(EmitTargetAddressForOp(convolution));
 
       const ConvolutionDimensionNumbers& dnums =
           convolution->convolution_dimension_numbers();
@@ -1024,35 +1008,33 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
       conv_func->setDoesNotThrow();
       conv_func->setOnlyAccessesArgMemory();
       ir_builder_.CreateCall(
-          conv_func,
-          {
-              GetExecutableRunOptionsArgument(),
-              ir_builder_.CreateBitCast(target_address, float_ptr_type),
-              ir_builder_.CreateBitCast(lhs_address, float_ptr_type),
-              ir_builder_.CreateBitCast(rhs_address, float_ptr_type),
-              ir_builder_.getInt64(input_batch),
-              ir_builder_.getInt64(input_rows),
-              ir_builder_.getInt64(input_cols),
-              ir_builder_.getInt64(input_channels),
-              ir_builder_.getInt64(kernel_rows),
-              ir_builder_.getInt64(kernel_cols),
-              ir_builder_.getInt64(kernel_channels),
-              ir_builder_.getInt64(kernel_filters),
-              ir_builder_.getInt64(output_rows),
-              ir_builder_.getInt64(output_cols),
-              ir_builder_.getInt64(row_stride),
-              ir_builder_.getInt64(col_stride),
-              ir_builder_.getInt64(padding_top),
-              ir_builder_.getInt64(padding_bottom),
-              ir_builder_.getInt64(padding_left),
-              ir_builder_.getInt64(padding_right),
-              ir_builder_.getInt64(lhs_row_dilation),
-              ir_builder_.getInt64(lhs_col_dilation),
-              ir_builder_.getInt64(rhs_row_dilation),
-              ir_builder_.getInt64(rhs_col_dilation),
-          });
-      target_address->setName(AsStringRef(IrName(convolution)));
-      emitted_value_[convolution] = target_address;
+          conv_func, {
+                         GetExecutableRunOptionsArgument(),
+                         ir_builder_.CreateBitCast(
+                             GetEmittedValueFor(convolution), float_ptr_type),
+                         ir_builder_.CreateBitCast(lhs_address, float_ptr_type),
+                         ir_builder_.CreateBitCast(rhs_address, float_ptr_type),
+                         ir_builder_.getInt64(input_batch),
+                         ir_builder_.getInt64(input_rows),
+                         ir_builder_.getInt64(input_cols),
+                         ir_builder_.getInt64(input_channels),
+                         ir_builder_.getInt64(kernel_rows),
+                         ir_builder_.getInt64(kernel_cols),
+                         ir_builder_.getInt64(kernel_channels),
+                         ir_builder_.getInt64(kernel_filters),
+                         ir_builder_.getInt64(output_rows),
+                         ir_builder_.getInt64(output_cols),
+                         ir_builder_.getInt64(row_stride),
+                         ir_builder_.getInt64(col_stride),
+                         ir_builder_.getInt64(padding_top),
+                         ir_builder_.getInt64(padding_bottom),
+                         ir_builder_.getInt64(padding_left),
+                         ir_builder_.getInt64(padding_right),
+                         ir_builder_.getInt64(lhs_row_dilation),
+                         ir_builder_.getInt64(lhs_col_dilation),
+                         ir_builder_.getInt64(rhs_row_dilation),
+                         ir_builder_.getInt64(rhs_col_dilation),
+                     });
 
       return Status::OK();
     }
@@ -1367,9 +1349,7 @@ Status IrEmitter::HandleBatchNormTraining(HloInstruction* batch_norm_training) {
           mean_array, &ir_builder_)
           .EmitLoop(IrName(batch_norm_training, "mean_var")));
 
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(batch_norm_training));
-
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(batch_norm_training));
   TF_ASSIGN_OR_RETURN(
       const BufferAllocation::Slice slice,
       assignment_.GetUniqueSlice(batch_norm_training, /*index=*/{0}));
@@ -1425,11 +1405,8 @@ Status IrEmitter::HandleBatchNormTraining(HloInstruction* batch_norm_training) {
           target_array, &ir_builder_)
           .EmitLoop(IrName(batch_norm_training, "normalize")));
 
-  llvm_ir::EmitTuple(
-      llvm_ir::IrArray(target_address, batch_norm_training->shape()),
-      {normalized, mean, var}, &ir_builder_);
-  emitted_value_[batch_norm_training] = target_address;
-
+  llvm_ir::EmitTuple(GetIrArrayForOp(batch_norm_training),
+                     {normalized, mean, var}, &ir_builder_);
   return Status::OK();
 }
 
@@ -1789,6 +1766,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   }
 
   CHECK(!ShapeUtil::IsTuple(reduce->shape()));
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(reduce));
 
   // We know we're not reducing over the most minor dimension, which means we
   // can lower the reduction loop as:
@@ -1851,10 +1829,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
                             reduction_generator, array_index, vector_type,
                             init_value, arg, dimensions, element_alignment));
 
-    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                        EmitTargetAddressForOp(reduce));
-    llvm_ir::IrArray target_array(target_address, reduce->shape());
-    AddAliasingInformationToIrArray(*reduce, &target_array);
+    llvm_ir::IrArray target_array = GetIrArrayForOp(reduce);
     llvm::Value* output_address =
         target_array.EmitArrayElementAddress(array_index, &ir_builder_);
     EmitShardedVectorStore(output_address, accumulator, element_alignment,
@@ -1886,10 +1861,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
                             reduction_generator, array_index, vector_type,
                             init_value, arg, dimensions, element_alignment));
 
-    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                        EmitTargetAddressForOp(reduce));
-    llvm_ir::IrArray target_array(target_address, reduce->shape());
-    AddAliasingInformationToIrArray(*reduce, &target_array);
+    llvm_ir::IrArray target_array = GetIrArrayForOp(reduce);
     llvm::Value* output_address =
         target_array.EmitArrayElementAddress(array_index, &ir_builder_);
     EmitShardedVectorStore(output_address, accumulator, element_alignment,
@@ -1900,10 +1872,6 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     ir_builder_.SetInsertPoint(outermost_loop_exit_block);
   }
 
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(reduce));
-
-  emitted_value_[reduce] = target_address;
   return true;
 }
 
@@ -2003,9 +1971,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
     return DefaultAction(slice);
   }
 
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(slice));
-  emitted_value_[slice] = target_address;
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(slice));
 
   if (ShapeUtil::HasZeroElements(slice->shape())) {
     return Status::OK();
@@ -2077,8 +2043,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
     outer_dims.push_back(memcpy_dim);
   }
 
-  llvm_ir::IrArray target_array(target_address, slice->shape());
-  AddAliasingInformationToIrArray(*slice, &target_array);
+  llvm_ir::IrArray target_array = GetIrArrayForOp(slice);
 
   const int64 num_outer_loops = outer_dims.size();
   llvm_ir::ForLoopNest loops(IrName(slice), &ir_builder_);
@@ -2131,10 +2096,7 @@ Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
                                      HloInstruction* operand,
                                      HloInstruction* /*start_indices*/) {
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
-    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                        EmitTargetAddressForOp(dynamic_slice));
-    target_address->setName(AsStringRef(IrName(dynamic_slice)));
-    emitted_value_[dynamic_slice] = target_address;
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_slice));
     return EmitMemcpy(*operand, *dynamic_slice);
   }
   return DefaultAction(dynamic_slice);
@@ -2190,10 +2152,7 @@ Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                            HloInstruction* update,
                                            HloInstruction* start_indices) {
   if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
-    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                        EmitTargetAddressForOp(dynamic_update_slice));
-    target_address->setName(AsStringRef(IrName(dynamic_update_slice)));
-    emitted_value_[dynamic_update_slice] = target_address;
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
     return EmitMemcpy(*update, *dynamic_update_slice);
   } else if (CanUpdateDynamicSliceInPlace(assignment_, dynamic_update_slice)) {
     VLOG(2) << "Emitting HandleDynamicUpdateSlice in-place.";
@@ -2247,9 +2206,7 @@ Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
         llvm_ir::LoopEmitter(loop_body_emitter, update->shape(), &ir_builder_)
             .EmitLoop(IrName(dynamic_update_slice, "in_place")));
 
-    TF_ASSIGN_OR_RETURN(llvm::Value * dynamic_update_slice_address,
-                        EmitTargetAddressForOp(dynamic_update_slice));
-    emitted_value_[dynamic_update_slice] = dynamic_update_slice_address;
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
     return Status::OK();
   }
   return DefaultAction(dynamic_update_slice);
@@ -2348,11 +2305,8 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray rhs_array(GetIrArrayForOp(rhs));
 
     Shape target_shape = fusion->shape();
-    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                        EmitTargetAddressForOp(fusion));
-    llvm_ir::IrArray target_array(target_address, target_shape);
-    AddAliasingInformationToIrArray(*fusion, &target_array);
-
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
+    llvm_ir::IrArray target_array = GetIrArrayForOp(fusion);
     VLOG(2) << "HandleFusion kTransposeDot: ";
     VLOG(2) << "  lhs operand: "
             << llvm_ir::DumpToString(*lhs_array.GetBasePointer());
@@ -2366,8 +2320,6 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         *dot, dot->operand(0)->IsRank2Transpose(),
         dot->operand(1)->IsRank2Transpose(), target_array, lhs_array, rhs_array,
         GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_));
-
-    emitted_value_[fusion] = target_address;
     return Status::OK();
   } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kLoop) {
     std::vector<llvm_ir::IrArray> parameter_arrays;
@@ -2393,14 +2345,9 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
     parameter_addresses.push_back(GetEmittedValueFor(operand));
   }
 
-  TF_ASSIGN_OR_RETURN(llvm::Value * output_address,
-                      EmitTargetAddressForOp(call));
-  output_address->setName(AsStringRef(IrName(call)));
-
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
   EmitArrayFunctionCallInto(call_ir_function, parameter_addresses,
-                            output_address, computation->name());
-
-  emitted_value_[call] = output_address;
+                            emitted_value_[call], computation->name());
   return Status::OK();
 }
 
@@ -2429,17 +2376,13 @@ Status IrEmitter::HandleCustomCall(
               /*Params=*/{i8_ptr_type, operands_alloca->getType()},
               /*isVarArg=*/false)));
 
-  TF_ASSIGN_OR_RETURN(llvm::Value * output_address,
-                      EmitTargetAddressForOp(custom_call));
-  output_address->setName(AsStringRef(IrName(custom_call)));
-
-  auto* output_address_arg =
-      ir_builder_.CreatePointerCast(output_address, i8_ptr_type);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  auto* output_address_arg = ir_builder_.CreatePointerCast(
+      GetEmittedValueFor(custom_call), i8_ptr_type);
 
   ir_builder_.CreateCall(custom_call_ir_function,
                          {output_address_arg, operands_alloca});
 
-  emitted_value_[custom_call] = output_address;
   return Status::OK();
 }
 
@@ -2583,10 +2526,8 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   llvm::Type* i8_ptr_type = ir_builder_.getInt8PtrTy();
   llvm::Type* i8_type = ir_builder_.getInt8Ty();
 
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(concatenate));
-
-  llvm_ir::IrArray target_array(target_address, output_shape);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(concatenate));
+  llvm_ir::IrArray target_array = GetIrArrayForOp(concatenate);
 
   llvm_ir::ForLoopNest loops(IrName(concatenate), &ir_builder_);
   llvm_ir::IrArray::Index outer_dims_index =
@@ -2602,8 +2543,6 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   PrimitiveType primitive_type = output_shape.element_type();
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-
-  AddAliasingInformationToIrArray(*concatenate, &target_array);
 
   // Contiguous subregions from each operand to the concatenate contribute to a
   // contiguous subregion in the target buffer starting at target_region_begin.
@@ -2646,8 +2585,6 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   if (!outer_dims.empty()) {
     SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &ir_builder_);
   }
-
-  emitted_value_[concatenate] = target_address;
 
   return true;
 }
@@ -2842,15 +2779,6 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
 }
 
 Status IrEmitter::Postprocess(HloInstruction* hlo) {
-  // Set the name of the emitted llvm::Value to IrName(hlo).  Outfeed and send
-  // the only ops that don't emit a value.
-  if (hlo->opcode() != HloOpcode::kOutfeed &&
-      hlo->opcode() != HloOpcode::kSend) {
-    auto it = emitted_value_.find(hlo);
-    CHECK(it != emitted_value_.end());
-    it->second->setName(AsStringRef(IrName(hlo)));
-  }
-
   if (auto* prof_counter = GetProfileCounterFor(hlo)) {
     profiling_state_.RecordCycleDelta(&ir_builder_, hlo, prof_counter);
   }
@@ -3027,10 +2955,10 @@ llvm::Value* IrEmitter::EmitArrayFunctionCall(
   return return_value_buffer;
 }
 
-StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
-    const HloInstruction* op, const ShapeIndex& shape_index) {
-  const Shape& target_shape = ShapeUtil::GetSubshape(op->shape(), shape_index);
-  if (op == op->parent()->root_instruction() && shape_index.empty()) {
+Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
+  llvm::Value* addr;
+  const Shape& target_shape = op->shape();
+  if (op == op->parent()->root_instruction()) {
     // For the root node, we write directly to the output buffer of the
     // function.
     llvm::Argument* retval = GetResultArgument();
@@ -3040,15 +2968,18 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
       attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));
       retval->addAttrs(attr_builder);
     }
-    return ir_builder_.CreateBitCast(retval,
+    addr = ir_builder_.CreateBitCast(retval,
                                      IrShapeType(target_shape)->getPointerTo());
+  } else {
+    // For other nodes, we need the temporary buffer allocated for this node to
+    // write the result into.
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                        assignment_.GetUniqueTopLevelSlice(op));
+    addr = EmitTempBufferPointer(slice, target_shape);
   }
-
-  // For other nodes, we need the temporary buffer allocated for this node to
-  // write the result into.
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                      assignment_.GetUniqueTopLevelSlice(op));
-  return EmitTempBufferPointer(slice, target_shape);
+  addr->setName(AsStringRef(IrName(op)));
+  emitted_value_[op] = addr;
+  return Status::OK();
 }
 
 Status IrEmitter::EmitTargetElementLoop(
@@ -3062,12 +2993,9 @@ Status IrEmitter::EmitTargetElementLoop(
     const llvm_ir::ElementGenerator& element_generator) {
   VLOG(2) << "EmitTargetElementLoop: " << target_op->ToString();
 
-  // target_address will hold the address of the target buffer we will write the
-  // result of the computation into.
   const Shape& target_shape = target_op->shape();
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(target_op));
-  VLOG(2) << "  target address: " << llvm_ir::DumpToString(*target_address);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
+  llvm_ir::IrArray target_array = GetIrArrayForOp(target_op);
 
   if (target_op->IsMultiOutputFusion()) {
     // For multiple outputs fusion, we need to emit each operand and the root.
@@ -3090,13 +3018,9 @@ Status IrEmitter::EmitTargetElementLoop(
     for (int64 i = 0; i < output_arrays.size(); ++i) {
       tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
     }
-    llvm_ir::EmitTuple(llvm_ir::IrArray(target_address, target_shape),
-                       tuple_operand_ptrs, &ir_builder_);
+    llvm_ir::EmitTuple(target_array, tuple_operand_ptrs, &ir_builder_);
 
   } else {
-    llvm_ir::IrArray target_array(target_address, target_shape);
-    AddAliasingInformationToIrArray(*target_op, &target_array);
-
     if (ShouldEmitParallelLoopFor(*target_op)) {
       TF_RETURN_IF_ERROR(EmitParallelTargetElementLoop(
           target_shape, element_generator, IrName(target_op), &target_array));
@@ -3106,8 +3030,6 @@ Status IrEmitter::EmitTargetElementLoop(
               .EmitLoop(IrName(target_op)));
     }
   }
-
-  emitted_value_[target_op] = target_address;
   return Status::OK();
 }
 
