@@ -28,6 +28,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops as tf_ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -54,7 +55,7 @@ class _VariableFromResource(resource_variable_ops.ResourceVariable):
 
   def __init__(self, resource, dtype, name, shape):
     self._handle = resource
-    self._graph_shape = shape
+    self._graph_shape = tensor_shape.as_shape(shape)
     self._handle_device = resource.device
     self._handle_name = name
     self._cached_value = None
