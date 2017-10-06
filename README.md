@@ -38,10 +38,11 @@ People who are a little more adventurous can also try our nightly binaries:
 
 **Nightly pip packages**
 * We are pleased to announce that TensorFlow now offers nightly pip packages
-under the [tf-nightly](https://pypi.python.org/pypi/tf-nightly) project on pypi.
-Simply run `pip install tf-nightly` in a clean environment to install the nightly
-tensorflow  build. We currently only support CPU packages on Linux, Mac, and Windows.
-GPU packages on all platforms will arrive soon!
+under the [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
+[tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) project on pypi.
+Simply run `pip install tf-nightly` or `pip install tf-nightly-gpu` in a clean
+environment to install the nightly TensorFlow build. We support CPU and GPU
+packages on Linux, Mac, and Windows.
 
 
 **Individual whl files**
