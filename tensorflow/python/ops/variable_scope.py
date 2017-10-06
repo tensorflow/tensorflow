@@ -1728,28 +1728,28 @@ def variable_scope(name_or_scope,
         raise TypeError("VariableScope: name_or_scope must be a string or "
                         "VariableScope.")
       if isinstance(name_or_scope, six.string_types):
-        name_scope = name_or_scope
+        name = name_or_scope
       else:
-        name_scope = name_or_scope.name.split("/")[-1]
-      if name_scope:
-        with ops.name_scope(name_scope) as cur_name_scope:
-          if isinstance(name_or_scope, six.string_types):
+        name = name_or_scope.name.split("/")[-1]
+      if name:
+        if isinstance(name_or_scope, six.string_types):
+          with ops.name_scope(name) as cur_name_scope:
             old_name_scope = cur_name_scope
-          else:
-            old_name_scope = name_or_scope.original_name_scope
-          with _pure_variable_scope(
-              name_or_scope,
-              reuse=reuse,
-              initializer=initializer,
-              regularizer=regularizer,
-              caching_device=caching_device,
-              partitioner=partitioner,
-              custom_getter=custom_getter,
-              old_name_scope=old_name_scope,
-              dtype=dtype,
-              use_resource=use_resource,
-              constraint=constraint) as vs:
-            yield vs
+        else:
+          old_name_scope = name_or_scope.original_name_scope
+        with _pure_variable_scope(
+            name_or_scope,
+            reuse=reuse,
+            initializer=initializer,
+            regularizer=regularizer,
+            caching_device=caching_device,
+            partitioner=partitioner,
+            custom_getter=custom_getter,
+            old_name_scope=old_name_scope,
+            dtype=dtype,
+            use_resource=use_resource,
+            constraint=constraint) as vs:
+          yield vs
       else:
         # This can only happen if someone is entering the root variable scope.
         with _pure_variable_scope(
