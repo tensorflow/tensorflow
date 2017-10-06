@@ -248,6 +248,9 @@ int64 UniqueId() {
 }
 
 string GetTempFilename(const string& extension) {
+#if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
+  LOG(FATAL) << "GetTempFilename is not implemented in this platform.";
+#else
   for (const char* dir : std::vector<const char*>(
            {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {
     if (!dir || !dir[0]) {
@@ -261,10 +264,13 @@ string GetTempFilename(const string& extension) {
       string tmp_filepath;
       int fd;
       if (extension.length()) {
-        tmp_filepath = io::JoinPath(dir, StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.", extension));
+        tmp_filepath = io::JoinPath(
+            dir,
+            StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX.", extension));
         fd = mkstemps(&tmp_filepath[0], extension.length() + 1);
       } else {
-        tmp_filepath = io::JoinPath(dir, StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX."));
+        tmp_filepath = io::JoinPath(
+            dir, StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX."));
         fd = mkstemp(&tmp_filepath[0]);
       }
       if (fd < 0) {
@@ -276,6 +282,7 @@ string GetTempFilename(const string& extension) {
     }
   }
   LOG(FATAL) << "No temp directory found.";
+#endif
 }
 
 }  // namespace io
