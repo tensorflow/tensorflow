@@ -2008,7 +2008,7 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              NodeExecStatsWrapper* stats,
                              TaggedNodeReadyQueue* inline_ready) {
   nodestats::SetAllEnd(stats);
-  if (!SetTimelineLabel(node, stats)) {
+  if (stats_collector_ != nullptr && !SetTimelineLabel(node, stats)) {
     // Only record non-transfer nodes.
     // Transfers 'stats' ownership to 'stats_collector_'.
     stats_collector_->Save(impl_->params_.device->name(), stats);
