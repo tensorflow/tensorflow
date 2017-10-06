@@ -20,12 +20,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
-#include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -180,34 +178,9 @@ Status XlaCompiler::CompileFunction(
 
 namespace {
 
-// Builds XlaCompiler argument descriptions `args` from `ctx`.
-Status MakeXlaCompilerArgumentsFromInputs(
-    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args) {
-  VLOG(2) << "Num inputs " << ctx->num_inputs();
-  args->resize(ctx->num_inputs());
-  for (int i = 0; i < ctx->num_inputs(); ++i) {
-    VLOG(2) << "  Input " << i
-            << " type: " << DataTypeString(ctx->input_type(i))
-            << " shape: " << ctx->InputShape(i).DebugString();
-    XlaCompiler::Argument& arg = (*args)[i];
-    DataType type = ctx->input_type(i);
-
-    if (type == DT_RESOURCE) {
-      return errors::InvalidArgument(
-          "Resource as function argument is not yet implemented.");
-    } else {
-      arg.kind = XlaCompiler::Argument::kParameter;
-      arg.type = ctx->input_type(i);
-      TF_RETURN_IF_ERROR(
-          TensorShapeToXLAShape(arg.type, ctx->InputShape(i), &arg.shape));
-    }
-  }
-  return Status::OK();
-}
-
-Status ExecuteGraph(XlaCompiler* compiler, XlaContext* xla_context,
-                    std::unique_ptr<Graph> graph, XlaCompilationDevice* device,
-                    FunctionLibraryRuntime* flib, int64 step_id) {
+Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
+                    XlaCompilationDevice* device, FunctionLibraryRuntime* flib,
+                    int64 step_id) {
   // Resource cleanup is a bit messy. XlaContext is a ref-counted resource; the
   // resource manager takes ownership via Create, and unrefs via Cleanup.  We
   // explicitly add a reference to ensure the refcount at entry is maintained at
@@ -224,27 +197,56 @@ Status ExecuteGraph(XlaCompiler* compiler, XlaContext* xla_context,
   TF_RETURN_IF_ERROR(device->resource_manager()->Create(
       step_container->name(), XlaContext::kXlaContextResourceName,
       xla_context));
-  // Compile_func is used to tell the serial executor how to compile a function.
-  auto compile_func = [&](const NameAttrList& function,
-                          XlaOpKernelContext* xla_op_context)
-      -> xla::StatusOr<std::shared_ptr<xla::Computation>> {
-    std::vector<XlaCompiler::Argument> arguments;
 
-    TF_RETURN_IF_ERROR(
-        MakeXlaCompilerArgumentsFromInputs(xla_op_context, &arguments));
+  // Create a LocalExecutor that will own and run the graph.
+  // TODO(b/66947550): migrate away from using an Executor in order to guarantee
+  // determinism and thread-safety.
+  LocalExecutorParams exec_params;
+  exec_params.device = device;
+  exec_params.function_library = flib;
+  exec_params.create_kernel = [flib](const NodeDef& ndef, OpKernel** kernel) {
+    return flib->CreateKernel(ndef, kernel);
+  };
+  exec_params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
+  Executor* exec_ptr = nullptr;
+  TF_RETURN_IF_ERROR(NewLocalExecutor(exec_params, graph.release(), &exec_ptr));
+  std::unique_ptr<Executor> exec(exec_ptr);
+  // At this point ownership of the graph has been transferred to exec.
 
-    XlaCompiler::CompilationResult result;
-    TF_RETURN_IF_ERROR(compiler->CompileFunction(XlaCompiler::CompileOptions(),
-                                                 function, arguments, &result));
-    return result.computation;
+  // Run the graph symbolically, turning the graph into an XLA computation.
+  Executor::Args exec_args;
+  exec_args.step_id = step_id;
+  exec_args.step_container = step_container.get();
+
+  // Pushes closures to run onto `worklist`. We don't run the closures directly
+  // from 'runner' since that might lead to a stack overflow for large graphs.
+  std::deque<Executor::Args::Closure> worklist;
+  exec_args.runner = [&](Executor::Args::Closure c) {
+    worklist.push_back(std::move(c));
   };
 
-  GraphCompiler graph_compiler(xla_context, device, graph.get(), flib,
-                               step_container.get(), compile_func);
-  TF_RETURN_IF_ERROR(graph_compiler.Compile());
+  // The following code assumes there is only one thread involved and no
+  // concurrency, because we did not provide Executor a threaded runner. Async
+  // ops on the XlaCompilation device must not use threads or concurrency
+  // internally.
+  bool done = false;
+  exec->RunAsync(exec_args, [&](const Status& s) {
+    status = s;
+    done = true;
+  });
+  // Repeatedly run closures from the worklist until `done` is signalled.
+  while (!done) {
+    TF_RET_CHECK(!worklist.empty());
+    Executor::Args::Closure& c = worklist.front();
+    c();
+    worklist.pop_front();
+  }
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      status, "Conversion from TensorFlow graph to XLA computation failed.");
+
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
-  return Status::OK();
+  return status;
 }
 
 // Builds XLA computations for each of the arguments to the computation.
@@ -492,7 +494,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       &result->input_mapping, &result->xla_input_shapes));
   context->set_args(std::move(arg_expressions));
 
-  TF_RETURN_IF_ERROR(ExecuteGraph(this, context, std::move(graph), device_,
+  TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
                                   flib_runtime_, NextStepId()));
 
   int num_nonconst_outputs;

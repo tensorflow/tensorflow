@@ -240,7 +240,7 @@ class XlaCompiler {
     bool use_tuple_arg = false;
 
     // If 'return_updated_values_for_all_resources' is true, then updated
-    // values of all resource arguments will be included in the
+    // values of all resource resources arguments will be included in the
     // 'resource_updates' of the computation, even if the resource was not
     // modified by the computation. Used when compiling loop bodies to ensure
     // the input and output signatures match.
