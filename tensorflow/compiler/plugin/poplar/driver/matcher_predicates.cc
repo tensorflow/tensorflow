@@ -92,6 +92,26 @@ bool IsDepthwisePadding(HloInstruction *inst) {
   return true;
 }
 
+bool IsConvFilterSpatialReverse(HloInstruction *inst) {
+  // If this reverse feeds a convolution and it is reversing the
+  // spatial dimensions of the convolution, then we can use the
+  // special 'reverse spatial dimensions' feature of the convolution
+  // to achieve the reverse
+  if (inst->users().size() != 1) return false;
+  const std::vector<int64>& rev(inst->dimensions());
+
+  HloInstruction* conv = inst->users()[0];
+  const ConvolutionDimensionNumbers& d(conv->convolution_dimension_numbers());
+
+  if (rev.size() != d.spatial_dimensions_size()) return false;
+  for (int64 i = 0; i < rev.size(); i++) {
+    if (d.kernel_spatial_dimensions(i) != rev[i]) return false;
+  }
+
+  return true;
+}
+
+
 }
 }
 

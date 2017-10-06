@@ -254,10 +254,6 @@ CreateConv2D(poplar::Graph &graph,
     kernel = AddGroupsDimensionToWeights(kernel);
   }
 
-  // TODO If the weight input and output channels are reversed, then we can use
-  // TODO the poplar feature the reorder them internally. - this would require
-  // TODO the reverse op to be fused with the conv op in the backward pass.
-
   // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
                                             false, prog, inst->name(), opts);
@@ -362,6 +358,71 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
   // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
                                             false, prog, inst->name(), opts);
+
+  shuffle[d.output_batch_dimension()] = 0;
+  shuffle[d.spatial_dimensions(0)] = 1;
+  shuffle[d.spatial_dimensions(1)] = 2;
+  shuffle[d.output_feature_dimension()] = 3;
+
+  if (!is_identity_shuffle(shuffle)) {
+    out = out.dimShuffle(shuffle);
+  }
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return prog;
+}
+
+port::StatusOr<poplar::program::Program>
+Create2DConvWithReverse(poplar::Graph &graph,
+                        CompilerResources& res,
+                        const HloInstruction *inst,
+                        const xla::Shape& output_shape,
+                        TensorMap& tensor_map) {
+  const HloInstruction* conv =
+          inst->to_apply()->root_instruction();
+
+  // Find the input tensor
+  poplar::Tensor in;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 1));
+
+  // Find the kernel tensor
+  poplar::Tensor kernel;
+  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 0));
+
+  popconv::ConvOptions opts;
+  opts.cache = &res.convolution_cache;
+
+  const ConvolutionDimensionNumbers& d(conv->convolution_dimension_numbers());
+
+  popconv::ConvParams params;
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(conv));
+
+  poplar::program::Sequence prog;
+
+  std::vector<unsigned int> shuffle(4);
+  shuffle[0] = d.input_batch_dimension();
+  shuffle[1] = d.spatial_dimensions(0);
+  shuffle[2] = d.spatial_dimensions(1);
+  shuffle[3] = d.input_feature_dimension();
+
+  if (!is_identity_shuffle(shuffle)) {
+    in = in.dimShuffle(shuffle);
+  }
+
+  shuffle[0] = d.kernel_spatial_dimensions(0);
+  shuffle[1] = d.kernel_spatial_dimensions(1);
+  shuffle[2] = d.kernel_input_feature_dimension();
+  shuffle[3] = d.kernel_output_feature_dimension();
+
+  if (!is_identity_shuffle(shuffle)) {
+    kernel = kernel.dimShuffle(shuffle);
+  }
+  kernel = AddGroupsDimensionToWeights(kernel);
+
+  // Add the convolution
+  poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
+                                            true, prog, conv->name(), opts);
 
   shuffle[d.output_batch_dimension()] = 0;
   shuffle[d.spatial_dimensions(0)] = 1;

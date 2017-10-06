@@ -416,6 +416,17 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     }
+    else if (name == "conv_with_reverse") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          Create2DConvWithReverse(*graph_,
+                                                  resources_,
+                                                  inst,
+                                                  GetOutputShape(inst),
+                                                  tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
     else {
       return port::Status(port::error::FAILED_PRECONDITION,
                           port::StrCat("Unrecognized special call op ",

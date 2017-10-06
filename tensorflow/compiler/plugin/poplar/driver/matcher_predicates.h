@@ -19,6 +19,7 @@ bool IsAveragePool(HloInstruction *inst);
 bool IsReductionWindowNYXC(HloInstruction *inst);
 bool IsScalarConstant(HloInstruction *inst);
 bool IsDepthwisePadding(HloInstruction *inst);
+bool IsConvFilterSpatialReverse(HloInstruction *inst);
 
 }
 }

@@ -42,6 +42,7 @@ static const char* names[] = {
   "avgpool_same",
   "avgpool_valid",
   "depthwise_conv",
+  "conv_with_reverse",
   "wide_const",
 };
 
@@ -170,6 +171,10 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kReshape, true, nullptr, {2}},
    {HloOpcode::kPad, true, IsDepthwisePadding, {-1, 3}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
+
+  // Backprop input convolution
+  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
+   {HloOpcode::kReverse, true, IsConvFilterSpatialReverse, {-1}}},
 
   // Broadcast scalar constant (must be low priority)
   {{HloOpcode::kBroadcast, true, nullptr, {1}},

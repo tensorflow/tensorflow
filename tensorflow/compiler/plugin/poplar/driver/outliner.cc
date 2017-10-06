@@ -23,11 +23,16 @@ namespace xla {
 namespace poplarplugin {
 
 static const char* names[] = {
+  "pop_backprop_conv",
   "pop_depth_conv",
   "pop_convolution",
 };
 
 static const std::vector<HloMatcherPattern> patterns = {
+
+  // Backprop input convolution
+  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
+   {HloOpcode::kReverse, true, nullptr, {-1}}},
 
   // Depthwise convolution (forward pass)
   {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
