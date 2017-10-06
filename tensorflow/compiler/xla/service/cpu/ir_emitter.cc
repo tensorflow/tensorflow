@@ -1447,9 +1447,6 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
       param_address_untyped, IrShapeType(param_shape)->getPointerTo());
   emitted_value_[parameter] = param_address_typed;
 
-  // Parameters of different types may not alias one another.
-  llvm_ir::SetTbaaForInstruction(param_address_untyped, param_shape,
-                                 /*is_pointer_to=*/true);
   if (!ShapeUtil::IsOpaque(param_shape)) {
     AttachAlignmentMetadataForLoad(param_address_untyped, param_shape);
     AttachDereferenceableMetadataForLoad(param_address_untyped, param_shape);
@@ -2867,8 +2864,6 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
         llvm::LLVMContext::MD_invariant_load,
         llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
   }
-  llvm_ir::SetTbaaForInstruction(tempbuf_address_base, target_shape,
-                                 /*is_pointer_to=*/true);
   AttachAlignmentMetadataForLoad(tempbuf_address_base, allocation.size());
   AttachDereferenceableMetadataForLoad(tempbuf_address_base, allocation.size());
 

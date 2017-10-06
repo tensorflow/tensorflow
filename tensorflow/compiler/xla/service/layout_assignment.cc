@@ -1180,8 +1180,6 @@ Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
 // to match the layout of its corresponding fusion instruction operand. Also,
 // set the layout of the fused root to match the layout of the fusion
 // instruction itself.
-// Fused GetTupleElement requires a layout so that TBAA metadata for the tuple
-// element array pointer load can be added.
 Status SetFusionLayouts(HloInstruction* fusion) {
   TF_RET_CHECK(fusion->opcode() == HloOpcode::kFusion);
   for (auto* fused_instruction : fusion->fused_instructions()) {

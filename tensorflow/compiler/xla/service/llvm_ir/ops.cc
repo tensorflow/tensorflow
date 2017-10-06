@@ -89,7 +89,6 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
   llvm::Value* element_ptr = ir_builder->CreateInBoundsGEP(
       operand, {ir_builder->getInt64(0), ir_builder->getInt64(index)});
   llvm::LoadInst* src_buffer = ir_builder->CreateLoad(element_ptr);
-  SetTbaaForInstruction(src_buffer, target_shape, /*is_pointer_to=*/true);
   SetAlignmentMetadataForLoad(src_buffer, alignment);
   llvm::Type* element_type = ShapeToIrType(target_shape, ir_builder);
   llvm::Value* ret_val =
