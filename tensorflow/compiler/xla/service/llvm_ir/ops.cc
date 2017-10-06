@@ -89,7 +89,15 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
   llvm::Value* element_ptr = ir_builder->CreateInBoundsGEP(
       operand, {ir_builder->getInt64(0), ir_builder->getInt64(index)});
   llvm::LoadInst* src_buffer = ir_builder->CreateLoad(element_ptr);
+
+  // Mark the loaded pointer as dereferenceable if we know its shape.
+  if (!ShapeUtil::IsOpaque(target_shape)) {
+    SetDereferenceableMetadataForLoad(
+        src_buffer,
+        ByteSizeOf(target_shape, src_buffer->getModule()->getDataLayout()));
+  }
   SetAlignmentMetadataForLoad(src_buffer, alignment);
+
   llvm::Type* element_type = ShapeToIrType(target_shape, ir_builder);
   llvm::Value* ret_val =
       ir_builder->CreateBitCast(src_buffer, element_type->getPointerTo());
