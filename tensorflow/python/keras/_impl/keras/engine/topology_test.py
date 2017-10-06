@@ -200,7 +200,7 @@ class TopologyConstructionTest(test.TestCase):
     with self.assertRaises(ValueError):
       _ = keras.layers.Input(shape=(32,), batch_shape=(10, 32))
     with self.assertRaises(ValueError):
-      _ = keras.layers.Input(shape=(32,), unknwon_kwarg=None)
+      _ = keras.layers.Input(shape=(32,), unknown_kwarg=None)
 
     self.assertListEqual(a.get_shape().as_list(), [None, 32])
     a_layer, a_node_index, a_tensor_index = a._keras_history

@@ -383,7 +383,8 @@ input_dataset: A handle to an input dataset. Must have a single component.
 batch_size: A scalar representing the number of elements to accumulate in a
   batch.
 row_shape: A vector representing the dense shape of each row in the produced
-  SparseTensor.
+  SparseTensor. The shape may be partially specified, using `-1` to indicate
+  that a particular dimension should use the maximum size of all batch elements.
 )doc");
 
 REGISTER_OP("RangeDataset")

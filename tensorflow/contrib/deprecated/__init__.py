@@ -91,7 +91,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-# pylint: disable=unused-import,line-too-long
+# pylint: disable=unused-import
 from tensorflow.python.ops.logging_ops import audio_summary
 from tensorflow.python.ops.logging_ops import histogram_summary
 from tensorflow.python.ops.logging_ops import image_summary

@@ -171,6 +171,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "and will be removed in the future.")
 
   native.new_http_archive(
+      name = "mkl_dnn",
+      urls = [
+          "https://github.com/01org/mkl-dnn/archive/b01e3a55a07be62172e713bcd2644c5176360212.tar.gz",
+          "http://mirror.bazel.build/github.com/01org/mkl-dnn/archive/b01e3a55a07be62172e713bcd2644c5176360212.tar.gz",
+      ],
+      sha256 = "0d529ad4c49dc799e6df07c2b88b115d0668735da15fb3b3862d28d33fa68165",
+      strip_prefix = "mkl-dnn-b01e3a55a07be62172e713bcd2644c5176360212",
+      build_file = str(Label("//third_party/mkl_dnn:mkldnn.BUILD")),
+  )
+
+  native.new_http_archive(
       name = "eigen_archive",
       urls = [
           "https://bitbucket.org/eigen/eigen/get/429aa5254200.tar.gz",
@@ -373,10 +384,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   patched_http_archive(
       name = "protobuf_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
+          "http://mirror.bazel.build/github.com/google/protobuf/archive/b04e5cba356212e4e8c66c61bbe0c3a20537c5b9.tar.gz",
       ],
-      sha256 = "6d43b9d223ce09e5d4ce8b0060cb8a7513577a35a64c7e3dad10f0703bf3ad93",
-      strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
+      sha256 = "e178a25c52efcb6b05988bdbeace4c0d3f2d2fe5b46696d1d9898875c3803d6a",
+      strip_prefix = "protobuf-b04e5cba356212e4e8c66c61bbe0c3a20537c5b9",
       # TODO: remove patching when tensorflow stops linking same protos into
       #       multiple shared libraries loaded in runtime by python.
       #       This patch fixes a runtime crash when tensorflow is compiled

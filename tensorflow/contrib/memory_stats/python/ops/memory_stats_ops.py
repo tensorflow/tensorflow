@@ -26,6 +26,11 @@ _memory_stats_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_memory_stats_ops.so"))
 
 
+def BytesInUse():
+  """Generates an op that computes the current memory of a device."""
+  return gen_memory_stats_ops.bytes_in_use()
+
+
 def BytesLimit():
   """Generates an op that measures the total memory (in bytes) of a device."""
   return gen_memory_stats_ops.bytes_limit()
