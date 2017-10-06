@@ -206,7 +206,6 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     *request.mutable_execution_options() = *execution_options;
   }
   for (GlobalData* argument : arguments) {
-    CHECK(argument != nullptr) << "Argument pointers must not be null.";
     *request.add_arguments() = argument->handle();
   }
 
