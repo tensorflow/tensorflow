@@ -146,7 +146,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   //
   // Default action which emits code for most operations. Operations which are
   // special in some way are handled explicitly in HandleFoo methods.
-  Status DefaultAction(HloInstruction* hlo_instruction) override;
+  Status DefaultAction(HloInstruction* hlo) override;
 
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant,
@@ -175,7 +175,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleReduceWindow(HloInstruction* reduce_window,
                             HloInstruction* operand, const Window& window,
                             HloComputation* function) override;
-  Status HandleSelectAndScatter(HloInstruction* instruction) override;
+  Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleSlice(HloInstruction* slice,
                      HloInstruction* /*operand*/) override;
@@ -208,7 +208,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
-  Status Postprocess(HloInstruction* visited) override;
+  Status Postprocess(HloInstruction* hlo) override;
 
  private:
   // Private helper to initialize an IR function for the computation.
@@ -304,7 +304,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   void EmitArrayFunctionCallInto(
       llvm::Function* function,
       tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
-      llvm::Value* return_value, tensorflow::StringPiece name);
+      llvm::Value* return_value_buffer, tensorflow::StringPiece name);
 
   // Array function call emitter.  Returns a Value for the function's return
   // value buffer address. The return value buffer is alloca'ed by this
@@ -446,10 +446,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                             int64 element_count, PrimitiveType primitive_type,
                             const llvm_ir::IrArray& target_array,
                             const llvm_ir::IrArray& source_array);
-
-  // Name of the computation entry function. This function serves as the
-  // top-level "main" of the computation and will be invoked by the JIT.
-  string entry_function_name_;
 
   // Assignment of the temporary buffers needed by the computation and their
   // shape information.

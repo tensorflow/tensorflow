@@ -260,6 +260,14 @@ class MixtureSameFamily(distribution.Distribution):
           probs * self.components_distribution.mean(),
           axis=-1 - self._event_ndims)                       # [B, E]
 
+  def _log_cdf(self, x):
+    x = self._pad_sample_dims(x)
+    log_cdf_x = self.components_distribution.log_cdf(x)      # [S, B, k]
+    log_mix_prob = nn_ops.log_softmax(
+        self.mixture_distribution.logits, dim=-1)            # [B, k]
+    return math_ops.reduce_logsumexp(
+        log_cdf_x + log_mix_prob, axis=-1)                   # [S, B]
+
   def _variance(self):
     with ops.control_dependencies(self._runtime_assertions):
       # Law of total variance: Var(Y) = E[Var(Y|X)] + Var(E[Y|X])

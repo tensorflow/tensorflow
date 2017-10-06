@@ -57,7 +57,7 @@ def group_by_window(key_func,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
 
   Raises:
     ValueError: if neither or both of {`window_size`, `window_size_func`} are

@@ -140,6 +140,40 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
             std::set<string>({"inputs_shape", "inputs", "outputs"}));
 }
 
+TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs_shape =
+      ops::Const(s.WithOpName("inputs_shape"), {8, 9, 28, 28}, {4});
+  Output inputs = ops::Placeholder(s.WithOpName("inputs"), DT_FLOAT,
+                                   ops::Placeholder::Shape({8, 12, 28, 28}));
+  OutputList split = ops::Split(s, ops::Const(s, 1), inputs, 3).output;
+  Output perm1 = ops::Const(s, {0, 2, 3, 1}, {4});
+  Output perm2 = ops::Const(s, {0, 3, 1, 2}, {4});
+  Output branch0 = split[0];
+  Output branch1 = ops::Transpose(s, ops::Transpose(s, split[1], perm1), perm2);
+  Output branch2 = split[2];
+  Output concat = ops::Concat(s, {branch0, branch1, branch2}, ops::Const(s, 1));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), concat);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  for (const NodeDef& node : output.node()) {
+    if (node.op() == "Concat") {
+      EXPECT_EQ(node.input(0), "Split");
+      EXPECT_EQ(node.input(1), "Split:1");
+      EXPECT_EQ(node.input(2), "Split:2");
+    }
+  }
+}
+
 TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =

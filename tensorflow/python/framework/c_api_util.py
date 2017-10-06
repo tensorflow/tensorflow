@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.util import tf_contextlib
 
 
 class ScopedTFStatus(object):
@@ -46,3 +47,25 @@ class ScopedTFGraph(object):
     # terminating) we can have already deleted other modules.
     if c_api.TF_DeleteGraph is not None:
       c_api.TF_DeleteGraph(self.graph)
+
+
+@tf_contextlib.contextmanager
+def tf_buffer():
+  """Context manager that creates and deletes TF_Buffer.
+
+  Example usage:
+    wtih tf_buffer() as buf:
+      # get serialized graph def into buf
+      ...
+      proto_data = c_api.TF_GetBuffer(buf)
+      graph_def.ParseFromString(compat.as_bytes(proto_data))
+    # buf has been deleted
+
+  Yields:
+    Created TF_Buffer
+  """
+  buf = c_api.TF_NewBuffer()
+  try:
+    yield buf
+  finally:
+    c_api.TF_DeleteBuffer(buf)
