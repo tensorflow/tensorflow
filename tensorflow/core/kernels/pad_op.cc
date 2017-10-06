@@ -218,14 +218,27 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
                               .TypeConstraint<T>("T")             \
                               .TypeConstraint<int32>("Tpaddings") \
                               .HostMemory("paddings"),            \
-                          PadOp<GPUDevice, T>);                   \
+                          PadOp<GPUDevice, T, int32>);            \
+  REGISTER_KERNEL_BUILDER(Name("Pad")                             \
+                              .Device(DEVICE_GPU)                 \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int64>("Tpaddings") \
+                              .HostMemory("paddings"),            \
+                          PadOp<GPUDevice, T, int64>);            \
   REGISTER_KERNEL_BUILDER(Name("PadV2")                           \
                               .Device(DEVICE_GPU)                 \
                               .TypeConstraint<T>("T")             \
                               .TypeConstraint<int32>("Tpaddings") \
                               .HostMemory("paddings")             \
                               .HostMemory("constant_values"),     \
-                          PadOp<GPUDevice, T>)
+                          PadOp<GPUDevice, T, int32>)             \
+  REGISTER_KERNEL_BUILDER(Name("PadV2")                           \
+                              .Device(DEVICE_GPU)                 \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int64>("Tpaddings") \
+                              .HostMemory("paddings")             \
+                              .HostMemory("constant_values"),     \
+                          PadOp<GPUDevice, T, int64>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 
@@ -239,7 +252,15 @@ REGISTER_KERNEL_BUILDER(Name("Pad")
                             .HostMemory("input")
                             .HostMemory("paddings")
                             .HostMemory("output"),
-                        PadOp<CPUDevice, int32>);
+                        PadOp<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("Pad")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32, int64>);
 REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
@@ -248,7 +269,16 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .HostMemory("paddings")
                             .HostMemory("constant_values")
                             .HostMemory("output"),
-                        PadOp<CPUDevice, int32>);
+                        PadOp<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("PadV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("constant_values")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32, int64>);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -259,14 +289,27 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                               .TypeConstraint<T>("T")             \
                               .TypeConstraint<int32>("Tpaddings") \
                               .HostMemory("paddings"),            \
-                          PadOp<SYCLDevice, T>);                  \
+                          PadOp<SYCLDevice, T, int32>);           \
+  REGISTER_KERNEL_BUILDER(Name("Pad")                             \
+                              .Device(DEVICE_SYCL)                \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int64>("Tpaddings") \
+                              .HostMemory("paddings"),            \
+                          PadOp<SYCLDevice, T, int64>);           \
   REGISTER_KERNEL_BUILDER(Name("PadV2")                           \
                               .Device(DEVICE_SYCL)                \
                               .TypeConstraint<T>("T")             \
                               .TypeConstraint<int32>("Tpaddings") \
                               .HostMemory("paddings")             \
                               .HostMemory("constant_values"),     \
-                          PadOp<SYCLDevice, T>)
+                          PadOp<SYCLDevice, T, int32>)            \
+  REGISTER_KERNEL_BUILDER(Name("PadV2")                           \
+                              .Device(DEVICE_SYCL)                \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int64>("Tpaddings") \
+                              .HostMemory("paddings")             \
+                              .HostMemory("constant_values"),     \
+                          PadOp<SYCLDevice, T, int64>)
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
 REGISTER_KERNEL_BUILDER(Name("Pad")
@@ -276,7 +319,15 @@ REGISTER_KERNEL_BUILDER(Name("Pad")
                             .HostMemory("input")
                             .HostMemory("paddings")
                             .HostMemory("output"),
-                        PadOp<CPUDevice, int32>);
+                        PadOp<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("Pad")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32, int64>);
 REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -285,7 +336,16 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .HostMemory("paddings")
                             .HostMemory("constant_values")
                             .HostMemory("output"),
-                        PadOp<CPUDevice, int32>);
+                        PadOp<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("PadV2")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("constant_values")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32, int64>);
 #undef REGISTER_SYCL_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
