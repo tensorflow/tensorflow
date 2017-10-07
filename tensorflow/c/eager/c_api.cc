@@ -273,6 +273,20 @@ TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
   return ret;
 }
 
+TF_AttrType TFE_OpNameGetAttrType(TFE_Context* ctx,
+                                  const char* op_or_function_name,
+                                  const char* attr_name, unsigned char* is_list,
+                                  TF_Status* status) {
+  TF_AttrType ret;
+  TFE_Op* op = TFE_NewOp(ctx, op_or_function_name, status);
+  if (!status->status.ok()) {
+    return TF_ATTR_INT;  // Same dummy return as TFE_OpGetAttrType.
+  }
+  ret = TFE_OpGetAttrType(op, attr_name, is_list, status);
+  TFE_DeleteOp(op);
+  return ret;
+}
+
 void TFE_OpSetAttrString(TFE_Op* op, const char* attr_name, const char* value) {
   op->attrs.Set(attr_name, value);
 }

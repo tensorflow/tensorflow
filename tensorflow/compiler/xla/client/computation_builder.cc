@@ -489,6 +489,16 @@ ComputationDataHandle ComputationBuilder::Collapse(
   }
   std::unique_ptr<Shape> original_shape = shape_or_status.ConsumeValueOrDie();
 
+  VLOG(3) << "original shape: " << ShapeUtil::HumanString(*original_shape);
+  VLOG(3) << "dims to collapse: "
+          << tensorflow::str_util::Join(dims_to_collapse, ",");
+
+  if (dims_to_collapse.size() <= 1) {
+    // Not collapsing anything, trivially we can return the operand versus
+    // enqueueing a trivial reshape.
+    return operand;
+  }
+
   std::vector<int64> new_sizes;
   for (int i = 0; i < ShapeUtil::Rank(*original_shape); ++i) {
     if (i <= dims_to_collapse.front() || i > dims_to_collapse.back()) {
@@ -497,6 +507,9 @@ ComputationDataHandle ComputationBuilder::Collapse(
       new_sizes.back() *= original_shape->dimensions(i);
     }
   }
+
+  VLOG(3) << "new sizes: [" << tensorflow::str_util::Join(new_sizes, ",")
+          << "]";
 
   return Reshape(operand, new_sizes);
 }
