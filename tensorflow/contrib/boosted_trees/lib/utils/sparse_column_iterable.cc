@@ -101,6 +101,11 @@ class IndicesRowIterator
     return (row_idx_ == other.row_idx_);
   }
 
+  bool operator<(const IndicesRowIterator& other) const {
+    QCHECK_LT(iter_, other.iter_);
+    return (row_idx_ < other.row_idx_);
+  }
+
   Eigen::Index row_idx() const { return row_idx_; }
 
  private:
