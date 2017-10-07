@@ -2062,6 +2062,22 @@ op {
   }
 }
 op {
+  name: "AssignAddVariableOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
+}
+op {
   name: "AssignSub"
   input_arg {
     name: "ref"
@@ -2106,6 +2122,38 @@ op {
       b: false
     }
   }
+}
+op {
+  name: "AssignSubVariableOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
+}
+op {
+  name: "AssignVariableOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
 }
 op {
   name: "Atan"
@@ -6784,6 +6832,56 @@ op {
   }
 }
 op {
+  name: "DecodeCSV"
+  input_arg {
+    name: "records"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "record_defaults"
+    type_list_attr: "OUT_TYPE"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "OUT_TYPE"
+  }
+  attr {
+    name: "OUT_TYPE"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "field_delim"
+    type: "string"
+    default_value {
+      s: ","
+    }
+  }
+  attr {
+    name: "use_quote_delim"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "na_value"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
   name: "DecodeGif"
   input_arg {
     name: "contents"
@@ -7621,6 +7719,21 @@ op {
     name: "dtype"
     type: "type"
   }
+}
+op {
+  name: "DestroyResourceOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "ignore_lookup_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "DestroyTemporaryVariable"
@@ -20717,6 +20830,22 @@ op {
   }
 }
 op {
+  name: "ReadVariableOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
+}
+op {
   name: "ReaderNumRecordsProduced"
   input_arg {
     name: "reader_handle"
@@ -22737,6 +22866,91 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "ResourceGather"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "ResourceScatterAdd"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
     }
   }
   is_stateful: true
@@ -32720,6 +32934,48 @@ op {
   is_stateful: true
 }
 op {
+  name: "VarHandleOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  is_stateful: true
+}
+op {
+  name: "VarIsInitializedOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  is_stateful: true
+}
+op {
   name: "Variable"
   output_arg {
     name: "ref"
@@ -32746,6 +33002,31 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "VariableShape"
+  input_arg {
+    name: "input"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
     }
   }
   is_stateful: true

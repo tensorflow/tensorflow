@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -274,6 +275,26 @@ static bool SimplyReordersData(const NodeDef& node) {
   return node.op() == "Transpose";
 }
 
+// Returns the data type in attribute `attr_name` of `node`. If that attribute
+// doesn't exist, returns DT_INVALID.
+static DataType GetDataTypeFromAttr(const NodeDef& node,
+                                    const string& attr_name) {
+  if (!node.attr().count(attr_name)) {
+    return DT_INVALID;
+  }
+  const auto& attr = node.attr().at(attr_name);
+  if (attr.value_case() != AttrValue::kType) {
+    return DT_INVALID;
+  }
+  return attr.type();
+}
+
+static bool IsNumberType(DataType dtype) {
+  DataTypeVector number_types = NumberTypes();
+  return std::find(number_types.begin(), number_types.end(), dtype) !=
+         number_types.end();
+}
+
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
     std::vector<const NodeDef*>* new_nodes) const {
@@ -317,6 +338,66 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       node_map->UpdateInput(reshape->name(), input->name(), input->input(0));
       new_nodes->push_back(reshape);
       return reshape->name();
+    }
+  }
+
+  if (node->op() == "Transpose") {
+    // Reorder Cast and Transpose if beneficial.
+    //
+    // A common pattern after the layout optimizer is casting an uint8 NHWC
+    // image to float before transposing it to NCHW. It is beneficial to reorder
+    // the cast and the transpose to make the transpose process smaller amount
+    // of data. This optimization converts
+    //   Transpose(Cast(image, dst_type), perm)
+    // to
+    //   Cast(Transpose(image, perm), dst_type)
+    // when sizeof(image.type) < sizeof(dst_type).
+    //
+    // TODO(jingyue): This optimization can be generalized to a cast followed by
+    // a chain of ops that merely reorder elements (e.g. Reshape and
+    // DepthToSpace).
+    const NodeDef* transpose = node;
+    string dontcare;
+    string device;
+    // This optimization can be dangerous on devices other than CPU and GPU. The
+    // transpose might not be implemented for image.type, or might be slower
+    // with image.type than with dst_type.
+    if (DeviceNameUtils::SplitDeviceName(transpose->device(), &dontcare,
+                                         &device) &&
+        (StringPiece(device).contains(DEVICE_CPU) ||
+         StringPiece(device).contains(DEVICE_GPU))) {
+      const NodeDef* cast = node_map->GetNode(transpose->input(0));
+      if (cast->op() == "Cast") {
+        const NodeDef* input = node_map->GetNode(cast->input(0));
+        const DataType src_type = GetDataTypeFromAttr(*cast, "SrcT");
+        const DataType dst_type = GetDataTypeFromAttr(*cast, "DstT");
+        if (IsNumberType(src_type) && IsNumberType(dst_type) &&
+            DataTypeSize(src_type) < DataTypeSize(dst_type)) {
+          NodeDef* new_transpose = graph_def->add_node();
+          *new_transpose = *transpose;
+          new_transpose->set_name(transpose->name() + "_" +
+                                  DataTypeString(src_type));
+          (*new_transpose->mutable_attr())["T"].set_type(src_type);
+          node_map->AddNode(new_transpose->name(), new_transpose);
+
+          new_transpose->set_input(0, cast->input(0));
+          node_map->AddOutput(input->name(), new_transpose->name());
+          node_map->AddOutput(NodeName(new_transpose->input(1)),
+                              new_transpose->name());
+
+          NodeDef* new_cast = graph_def->add_node();
+          *new_cast = *cast;
+          new_cast->set_name(cast->name() + "_new");
+          node_map->AddNode(new_cast->name(), new_cast);
+
+          new_cast->set_input(0, new_transpose->name());
+          node_map->AddOutput(new_transpose->name(), new_cast->name());
+
+          new_nodes->push_back(new_transpose);
+          new_nodes->push_back(new_cast);
+          return new_cast->name();
+        }
+      }
     }
   }
 

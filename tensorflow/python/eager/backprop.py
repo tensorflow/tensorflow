@@ -49,8 +49,8 @@ def op_attr_type(op_type, attr_name):
   except KeyError:
     with errors.raise_exception_on_not_ok_status() as status:
       h = context.context()._handle  # pylint: disable=protected-access
-      op = pywrap_tensorflow.TFE_NewOp(h, op_type, status)
-      attr_type = pywrap_tensorflow.TFE_OpGetAttrType(op, attr_name, status)
+      attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(
+          h, op_type, attr_name, status)
     _op_attr_type_cache[(op_type, attr_name)] = attr_type
     return attr_type
 
