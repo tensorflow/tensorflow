@@ -127,7 +127,7 @@ def dataset(y_name="price", train_fraction=0.7):
   def in_test_set(line):
     """Returns a boolean tensor, true if the line is in the training set."""
     # Items not in the training set are in the test set.
-    # This line must use `~` instead of `not` beacuse `not` only works on python
+    # This line must use `~` instead of `not` because `not` only works on python
     # booleans but we are dealing with symbolic tensors.
     return ~in_training_set(line)
 
