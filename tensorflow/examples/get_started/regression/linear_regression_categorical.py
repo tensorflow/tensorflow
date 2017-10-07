@@ -67,7 +67,7 @@ def main(argv):
 
   # The second way, appropriate for an unspecified vocabulary, is to create a
   # hashed column. It will create a fixed length list of weights, and
-  # automatically assign each input categort to a weight. Due to the
+  # automatically assign each input category to a weight. Due to the
   # pseudo-randomness of the process, some weights may be shared between
   # categories, while others will remain unused.
   make_column = tf.feature_column.categorical_column_with_hash_bucket(
