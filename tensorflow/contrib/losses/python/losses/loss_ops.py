@@ -639,6 +639,7 @@ def cosine_distance(
     weights: Coefficients for the loss a scalar, a tensor of shape
       [batch_size] or a tensor whose shape matches `predictions`.
     scope: The scope for the operations performed in computing the loss.
+    dim: The old (deprecated) name for `axis`.
 
   Returns:
     A scalar `Tensor` representing the loss value.
@@ -652,7 +653,7 @@ def cosine_distance(
       raise ValueError("Cannot specify both 'axis' and 'dim'")
     axis = dim
   if axis is None and dim is None:
-    raise ValueError("`axis` and `dim` cannot both be None.")
+    raise ValueError("You must specify 'axis'.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())

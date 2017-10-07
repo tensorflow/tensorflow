@@ -252,6 +252,7 @@ def cosine_distance(
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: Type of reduction to apply to loss.
+    dim: The old (deprecated) name for `axis`.
 
   Returns:
     Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
@@ -266,7 +267,7 @@ def cosine_distance(
       raise ValueError("Cannot specify both 'axis' and 'dim'")
     axis = dim
   if axis is None and dim is None:
-    raise ValueError("`axis` and `dim` cannot both be None.")
+    raise ValueError("You must specify 'axis'.")
   if labels is None:
     raise ValueError("labels must not be None.")
   if predictions is None:
