@@ -204,6 +204,34 @@ class Estimator(object):
 
     return public_model_fn
 
+  # TODO(ispir): support a list of names
+  def get_variable_value(self, name):
+    """Returns value of the variable given by name.
+
+    Args:
+      name: string or a list of string, name of the tensor.
+
+    Returns:
+      Numpy array - value of the tensor.
+
+    Raises:
+      ValueError: If the Estimator has not produced a checkpoint yet.
+    """
+    _check_checkpoint_available(self.model_dir)
+    return training.load_variable(self.model_dir, name)
+
+  def get_variable_names(self):
+    """Returns list of all variable names in this model.
+
+    Returns:
+      List of names.
+
+    Raises:
+      ValueError: If the Estimator has not produced a checkpoint yet.
+    """
+    _check_checkpoint_available(self.model_dir)
+    return [name for name, _ in training.list_variables(self.model_dir)]
+
   def latest_checkpoint(self):
     """Finds the filename of latest saved checkpoint file in `model_dir`.
 
@@ -816,6 +844,13 @@ class Estimator(object):
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 
     return eval_results
+
+
+def _check_checkpoint_available(model_dir):
+  latest_path = saver.latest_checkpoint(model_dir)
+  if not latest_path:
+    raise ValueError(
+        'Could not find trained model in model_dir: {}.'.format(model_dir))
 
 
 def _check_hooks_type(hooks):

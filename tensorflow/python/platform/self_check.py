@@ -21,7 +21,13 @@ from __future__ import print_function
 import os
 
 
-from tensorflow.python.platform import build_info
+try:
+  from tensorflow.python.platform import build_info
+except ImportError:
+  raise ImportError("Could not import tensorflow. Do not import tensorflow "
+                    "from its source directory; change directory to outside "
+                    "the TensorFlow source tree, and relaunch your Python "
+                    "interpreter from there.")
 
 
 def preload_check():

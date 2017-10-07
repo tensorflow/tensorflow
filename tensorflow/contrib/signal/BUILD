@@ -5,7 +5,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
 
 py_library(
     name = "signal_py",
