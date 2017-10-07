@@ -260,7 +260,8 @@ class Multinomial(distribution.Distribution):
 
   def _log_unnormalized_prob(self, counts):
     counts = self._maybe_assert_valid_sample(counts)
-    return math_ops.reduce_sum(counts * math_ops.log(self.probs), -1)
+    logsumexp = math_ops.reduce_logsumexp(self.logits, -1, keep_dims=True)
+    return math_ops.reduce_sum(counts * (self.logits - logsumexp), -1)
 
   def _log_normalization(self, counts):
     counts = self._maybe_assert_valid_sample(counts)
