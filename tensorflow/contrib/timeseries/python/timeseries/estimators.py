@@ -39,8 +39,8 @@ from tensorflow.python.training import training as train
 class TimeSeriesRegressor(estimator_lib.Estimator):
   """An Estimator to fit and evaluate a time series model."""
 
-  def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
-               config=None):
+  def __init__(self, model, state_manager=None, optimizer=None,
+               weight_column=None, model_dir=None, config=None):
     """Initialize the Estimator.
 
     Args:
@@ -49,6 +49,10 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
           PassthroughStateManager if none is needed.
       optimizer: The optimization algorithm to use when training, inheriting
           from tf.train.Optimizer. Defaults to Adam with step size 0.02.
+      weight_column: A string or a `_NumericColumn` created by
+          `tf.feature_column.numeric_column` defining feature column representing
+          weights. It is used to down weight or boost examples during training.
+          It will be multiplied by the loss of the example.
       model_dir: See `Estimator`.
       config: See `Estimator`.
     """
@@ -60,8 +64,10 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
       optimizer = train.AdamOptimizer(0.02)
     self._model = model
     model_fn = ts_head_lib.time_series_regression_head(
-        model, state_manager, optimizer,
-        input_statistics_generator=input_statistics_generator).create_estimator_spec
+      model, state_manager, optimizer,
+      input_statistics_generator=input_statistics_generator,
+      weight_column=weight_column
+    ).create_estimator_spec
     super(TimeSeriesRegressor, self).__init__(
         model_fn=model_fn,
         model_dir=model_dir,
@@ -161,7 +167,7 @@ class ARRegressor(TimeSeriesRegressor):
       num_features, num_time_buckets=10,
       loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS, hidden_layer_sizes=None,
       anomaly_prior_probability=None, anomaly_distribution=None,
-      optimizer=None, model_dir=None, config=None):
+      weight_column=None, optimizer=None, model_dir=None, config=None):
     """Initialize the Estimator.
 
     Args:
@@ -194,6 +200,10 @@ class ARRegressor(TimeSeriesRegressor):
         `AnomalyMixtureARModel`. Defaults to `GAUSSIAN_ANOMALY`.
       optimizer: The optimization algorithm to use when training, inheriting
           from tf.train.Optimizer. Defaults to Adagrad with step size 0.1.
+      weight_column: A string or a `_NumericColumn` created by
+          `tf.feature_column.numeric_column` defining feature column representing
+          weights. It is used to down weight or boost examples during training.
+          It will be multiplied by the loss of the example.
       model_dir: See `Estimator`.
       config: See `Estimator`.
     Raises:
@@ -232,6 +242,7 @@ class ARRegressor(TimeSeriesRegressor):
         model=model,
         state_manager=state_manager,
         optimizer=optimizer,
+        weight_column=weight_column,
         model_dir=model_dir,
         config=config)
 
@@ -239,8 +250,8 @@ class ARRegressor(TimeSeriesRegressor):
 class StateSpaceRegressor(TimeSeriesRegressor):
   """An Estimator for general state space models."""
 
-  def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
-               config=None):
+  def __init__(self, model, state_manager=None, optimizer=None,
+               weight_column=None, model_dir=None, config=None):
     """See TimeSeriesRegressor. Uses the ChainingStateManager by default."""
     if not isinstance(model, state_space_model.StateSpaceModel):
       raise ValueError(
@@ -252,6 +263,7 @@ class StateSpaceRegressor(TimeSeriesRegressor):
         model=model,
         state_manager=state_manager,
         optimizer=optimizer,
+        weight_column=weight_column,
         model_dir=model_dir,
         config=config)
 
@@ -295,6 +307,7 @@ class StructuralEnsembleRegressor(StateSpaceRegressor):
                dtype=dtypes.float64,
                anomaly_prior_probability=None,
                optimizer=None,
+               weight_column=None,
                model_dir=None,
                config=None):
     """Initialize the Estimator.
@@ -351,6 +364,10 @@ class StructuralEnsembleRegressor(StateSpaceRegressor):
           be slightly faster.
       optimizer: The optimization algorithm to use when training, inheriting
           from tf.train.Optimizer. Defaults to Adam with step size 0.02.
+      weight_column: A string or a `_NumericColumn` created by
+          `tf.feature_column.numeric_column` defining feature column representing
+          weights. It is used to down weight or boost examples during training.
+          It will be multiplied by the loss of the example.
       model_dir: See `Estimator`.
       config: See `Estimator`.
     """
@@ -375,5 +392,6 @@ class StructuralEnsembleRegressor(StateSpaceRegressor):
     super(StructuralEnsembleRegressor, self).__init__(
         model=model,
         optimizer=optimizer,
+        weight_column=weight_column,
         model_dir=model_dir,
         config=config)
