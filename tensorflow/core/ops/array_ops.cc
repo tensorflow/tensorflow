@@ -2292,6 +2292,24 @@ Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
   return Status::OK();
 }
 
+Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
+                   ShapeHandle sizes_value,
+                   std::vector<DimensionHandle>* dims) {
+  for (int i = 0; i < c->Rank(sizes_value); ++i) {
+    DimensionHandle dim = c->Dim(sizes_value, i);
+    DimensionHandle begin = c->Dim(begin_value, i);
+    if (c->ValueKnown(begin) && c->ValueKnown(dim)) {
+      // If both `begin` and `size` are known, processing:
+      DimensionHandle result;
+      TF_RETURN_IF_ERROR(c->Subtract(dim, c->Dim(begin_value, i), &result));
+      dims->emplace_back(result);
+    } else {
+      dims->emplace_back(c->UnknownDim());
+    }
+  }
+
+  return Status::OK();
+}
 }  // namespace
 
 // --------------------------------------------------------------------------
@@ -2344,6 +2362,26 @@ REGISTER_OP("Slice")
         c->set_output(0, c->MakeShape(dims));
         return Status::OK();
       } else {
+        // In case `sizes` is not available, we could try to use
+        // `MakeShapeFromShapeTensor` here. If sizes contain -1, we will
+        // simply consider it as `Unknown`. This is less than ideal but
+        // still with improvement of shape inference.
+        // The following is an example that returns [None, 1, None] now
+        // (used to return [None, None, None]):
+        //   z = tf.zeros((1, 2, 3))
+        //   m = tf.slice(z, [0, 0, 0], [tf.constant(1) + 0, 1, -1])
+        //   m.get_shape().as_list()
+        ShapeHandle sizes_value;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &sizes_value));
+        if (c->RankKnown(sizes_value)) {
+          TF_RETURN_IF_ERROR(
+              c->WithRank(begin_value, c->Rank(sizes_value), &begin_value));
+          std::vector<DimensionHandle> dims;
+          TF_RETURN_IF_ERROR(SliceHelper(c, begin_value, sizes_value, &dims));
+          c->set_output(0, c->MakeShape(dims));
+          return Status::OK();
+        }
+
         // We might know the rank of the input.
         if (c->RankKnown(input)) {
           c->set_output(0, c->UnknownShapeOfRank(c->Rank(input)));
