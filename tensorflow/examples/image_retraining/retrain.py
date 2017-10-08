@@ -170,8 +170,8 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage, ver
       if verify_images:
         # Prune invalid image files
         try:
-          im = Image.open(file_name)
-          im.verify()
+          im = Image.open(file_name, 'r')
+          im.load()
         except Exception as e:
           tf.logging.warning('Found invalid image: %s (%s)' % (file_name, str(e)))
           file_list.remove(file_name)
