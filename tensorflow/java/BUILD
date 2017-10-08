@@ -14,6 +14,7 @@ load(
     "tf_copts",
     "tf_custom_op_library",
     "tf_java_test",
+    "tf_cc_tests",
 )
 
 java_library(
@@ -97,17 +98,40 @@ tf_java_op_gen_srcjar(
 # file before making it an executable. See tf_java_op_gen_srcjar().
 cc_library(
     name = "java_op_gen_tool",
-    srcs = glob([
-        "src/gen/cc/*.h",
-        "src/gen/cc/*.cc",
-    ]),
+    srcs = glob(["src/gen/cc/op_gen_main.cc"]),
     copts = tf_copts(),
+    deps = [
+        ":java_op_gen_lib",
+    ],
+)
+
+cc_library(
+    name = "java_op_gen_lib",
+    srcs = glob(
+        [
+            "src/gen/cc/*.h",
+            "src/gen/cc/*.cc",
+        ],
+        exclude = [
+            "src/gen/cc/*_test.cc",
+            "src/gen/cc/op_gen_main.cc",
+        ],
+    ),
+    copts = tf_copts(),
+    data = [":java_op_gen_resources"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+)
+
+filegroup(
+    name = "java_op_gen_resources",
+    srcs = glob([
+        "src/gen/resources/*",
+    ]),
 )
 
 java_library(
@@ -301,6 +325,19 @@ filegroup(
         "src/test/resources/org/tensorflow/**/*.java",
         "src/main/java/org/tensorflow/op/annotation/Operator.java",
     ]),
+)
+
+tf_cc_tests(
+    name = "java_op_gen_cc_tests",
+    size = "small",
+    srcs = glob(["src/gen/cc/*_test.cc"]),
+    deps = [
+        ":java_op_gen_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 filegroup(
