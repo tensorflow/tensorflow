@@ -565,7 +565,8 @@ class BaseEstimator(
       input_fn: Input function. If set, `x` and 'batch_size' must be `None`.
       batch_size: Override default batch size. If set, 'input_fn' must be
         'None'.
-      outputs: list of `str`, name of the output to predict.
+      outputs: list of `str`, name of the output(s) to predict. Valid values are 
+      "classes", "probabilities", and "logits".
         If `None`, returns all.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
