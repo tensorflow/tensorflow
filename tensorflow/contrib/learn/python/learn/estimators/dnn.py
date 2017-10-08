@@ -382,20 +382,21 @@ class DNNClassifier(estimator.Estimator):
       as_iterable=False)
   @deprecated_arg_values(
       "2017-03-01",
-      "Please switch to predict_classes, or set `outputs` argument.",
+      "Please switch to predict_classes, or set `outputs="classes"`.",
       outputs=None)
   def predict(self, x=None, input_fn=None, batch_size=None, outputs=None,
               as_iterable=True):
     """Returns predictions for given features.
 
     By default, returns predicted classes. But this default will be dropped
-    soon. Users should either pass `outputs`, or call `predict_classes` method.
+    soon. Users should either pass `outputs="classes"`, or call `predict_classes` method.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
-      outputs: list of `str`, name of the output to predict.
+      outputs: list of `str`, name of the output(s) to predict. Valid values are 
+      "classes", "probabilities", and "logits".
         If `None`, returns classes.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
