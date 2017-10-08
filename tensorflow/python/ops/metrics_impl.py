@@ -946,7 +946,7 @@ def mean_iou(labels,
       # If the number of valid entries is 0 (no classes) we return 0.
       result = array_ops.where(
           math_ops.greater(num_valid_entries, 0),
-          math_ops.reduce_sum(iou, name=name)/num_valid_entries,
+          math_ops.reduce_sum(iou, name=name) / num_valid_entries,
           0)
       return result
 
