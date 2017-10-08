@@ -942,7 +942,13 @@ def mean_iou(labels,
           denominator,
           array_ops.ones_like(denominator))
       iou = math_ops.div(cm_diag, denominator)
-      return math_ops.reduce_sum(iou, name=name)/num_valid_entries
+
+      # If the number of valid entries is 0 (no classes) we return 0.
+      result = array_ops.where(
+          math_ops.greater(num_valid_entries, 0),
+          math_ops.reduce_sum(iou, name=name)/num_valid_entries,
+          0)
+      return result
 
     mean_iou_v = compute_mean_iou('mean_iou')
 
