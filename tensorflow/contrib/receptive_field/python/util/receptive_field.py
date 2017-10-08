@@ -321,19 +321,20 @@ class ReceptiveField:
     self.stride = np.asarray(stride)
     self.padding = np.asarray(padding)
 
-  def compute_input_center_coordinates(self, x, axis=None):
+  def compute_input_center_coordinates(self, y, axis=None):
     """
     Computes the center of the receptive field that generated a feature.
 
     Args:
-      x: An array of feature coordinates with shape `(..., d)`, where `d` is the
+      y: An array of feature coordinates with shape `(..., d)`, where `d` is the
         number of dimensions of the coordinates.
       axis: The dimensions for which to compute the input center coordinates.
         If `None` (the default), compute the input center coordinates for all
         dimensions.
 
     Returns:
-      y: Center of the receptive field that generated the features.
+      x: Center of the receptive field that generated the features, at the input
+        of the network.
 
     Raises:
       ValueError: If the number of dimensions of the feature coordinates does
@@ -344,27 +345,27 @@ class ReceptiveField:
       axis = range(self.size.size)
     # Ensure axis is a list because tuples have different indexing behavior.
     axis = list(axis)
-    x = np.asarray(x)
-    if x.shape[-1] != len(axis):
-      raise ValueError("Dimensionality of the feature coordinates `x` (%d) "
+    y = np.asarray(y)
+    if y.shape[-1] != len(axis):
+      raise ValueError("Dimensionality of the feature coordinates `y` (%d) "
                        "does not match dimensionality of `axis` (%d)" %
-                       (x.shape[-1], len(axis)))
-    return - self.padding[axis] + x * self.stride[axis] + \
+                       (y.shape[-1], len(axis)))
+    return - self.padding[axis] + y * self.stride[axis] + \
       (self.size[axis] - 1) / 2
 
-  def compute_feature_coordinates(self, y, axis=None):
+  def compute_feature_coordinates(self, x, axis=None):
     """
     Computes the position of a feature given the center of a receptive field.
 
     Args:
-      y: An array of input center coordinates with shape `(..., d)`, where `d`
+      x: An array of input center coordinates with shape `(..., d)`, where `d`
         is the number of dimensions of the coordinates.
       axis: The dimensions for which to compute the feature coordinates.
         If `None` (the default), compute the feature coordinates for all
         dimensions.
 
     Returns:
-      x: Coordinates of the features.
+      y: Coordinates of the features.
 
     Raises:
       ValueError: If the number of dimensions of the input center coordinates
@@ -375,12 +376,12 @@ class ReceptiveField:
       axis = range(self.size.size)
     # Ensure axis is a list because tuples have different indexing behavior.
     axis = list(axis)
-    y = np.asarray(y)
-    if y.shape[-1] != len(axis):
-      raise ValueError("Dimensionality of the input center coordinates `y` "
+    x = np.asarray(x)
+    if x.shape[-1] != len(axis):
+      raise ValueError("Dimensionality of the input center coordinates `x` "
                        "(%d) does not match dimensionality of `axis` (%d)" %
-                       (y.shape[-1], len(axis)))
-    return (y + self.padding[axis] + (1 - self.size[axis]) / 2) / \
+                       (x.shape[-1], len(axis)))
+    return (x + self.padding[axis] + (1 - self.size[axis]) / 2) / \
       self.stride[axis]
 
   def __iter__(self):
