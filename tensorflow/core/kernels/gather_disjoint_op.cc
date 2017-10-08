@@ -118,6 +118,7 @@ class GatherDisjointOpBase : public OpKernel {
         // Fill repeated slices with value 0
         auto output = out->shaped<T, 2>({N, inner_size});
         this->HandleRepeatedSlices(c, &used_slices, indices_flat,
+                                   static_cast<Index>(gather_dim_size),
                                    reverse_order_, output);
       }
     }
@@ -128,7 +129,7 @@ class GatherDisjointOpBase : public OpKernel {
   virtual void HandleRepeatedSlices(OpKernelContext* c,
                                     SliceBitSet* used_slices,
                                     typename TTypes<Index>::ConstFlat indices,
-                                    bool reverse_order,
+                                    Index gather_dim_size, bool reverse_order,
                                     typename TTypes<T, 2>::Tensor output) = 0;
 
  private:
@@ -153,7 +154,7 @@ class GatherDisjointOpGPU : public GatherDisjointOpBase<GPUDevice, T, Index> {
  protected:
   void HandleRepeatedSlices(OpKernelContext* c, SliceBitSet* used_slices,
                             typename TTypes<Index>::ConstFlat indices,
-                            bool reverse_order,
+                            Index gather_dim_size, bool reverse_order,
                             typename TTypes<T, 2>::Tensor output) {
     const int64 out_size = output.size();
     if (out_size > 0) {
@@ -179,6 +180,9 @@ class GatherDisjointOpGPU : public GatherDisjointOpBase<GPUDevice, T, Index> {
       // which resolves collisions in a CPU loop before calling the kernel.
       for (; i != end; i += step) {
         const Index index = internal::SubtleMustCopy(indices(i));
+        // We must check the index here because the Gather GPU kernel
+        // does not do bound validation
+        if (!FastBoundsCheck(index, gather_dim_size)) break;
         // Check if the index was already used and if yes,
         // mark the location.
         if (used_slices->IsSet(static_cast<int64>(index)))
@@ -186,6 +190,8 @@ class GatherDisjointOpGPU : public GatherDisjointOpBase<GPUDevice, T, Index> {
         else
           used_slices->SetBit(static_cast<int64>(index));
       }
+      OP_REQUIRES(c, i == end, errors::InvalidArgument("Index ", indices(i),
+                                                       " out of range"));
       OP_REQUIRES_OK(c, zero_indicator.Finalize());
 
       GatherDisjointOpGPUImpl<T>(c->eigen_gpu_device(), indices_size,
@@ -206,7 +212,7 @@ class GatherDisjointOpCPU : public GatherDisjointOpBase<CPUDevice, T, Index> {
  protected:
   void HandleRepeatedSlices(OpKernelContext* c, SliceBitSet* used_slices,
                             typename TTypes<Index>::ConstFlat indices,
-                            bool reverse_order,
+                            Index gather_dim_size, bool reverse_order,
                             typename TTypes<T, 2>::Tensor output) {
     T* out_base = &output(0, 0);
     // Compute the inner size of the output
