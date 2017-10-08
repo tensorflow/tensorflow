@@ -339,10 +339,10 @@ class ReceptiveField:
       ValueError: If the number of dimensions of the feature coordinates does
         not match the number of elements in `axis`.
     """
-    # Use all dimensions
+    # Use all dimensions.
     if axis is None:
       axis = range(self.size.size)
-    # Ensure axis is a list because tuples have different indexing behavior
+    # Ensure axis is a list because tuples have different indexing behavior.
     axis = list(axis)
     x = np.asarray(x)
     if x.shape[-1] != len(axis):
@@ -370,10 +370,10 @@ class ReceptiveField:
       ValueError: If the number of dimensions of the input center coordinates
         does not match the number of elements in `axis`.
     """
-    # Use all dimensions
+    # Use all dimensions.
     if axis is None:
       axis = range(self.size.size)
-    # Ensure axis is a list because tuples have different indexing behavior
+    # Ensure axis is a list because tuples have different indexing behavior.
     axis = list(axis)
     y = np.asarray(y)
     if y.shape[-1] != len(axis):
@@ -423,11 +423,11 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node,
       cannot be found. For network criterion alignment, see
       photos/vision/features/delf/g3doc/rf_computation.md
   """
-  # Convert a graph to graph_def if necessary
+  # Convert a graph to graph_def if necessary.
   if isinstance(graph_def, framework_ops.Graph):
     graph_def = graph_def.as_graph_def()
 
-  # Convert tensors to names
+  # Convert tensors to names.
   if isinstance(input_node, framework_ops.Tensor):
     input_node = input_node.op.name
   if isinstance(output_node, framework_ops.Tensor):
@@ -526,7 +526,7 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node,
 
       # Loop over this node's inputs and potentially propagate information down.
       for inp_name in node.input:
-        # Stop the propagation of the receptive field
+        # Stop the propagation of the receptive field.
         if any(inp_name.startswith(stop) for stop in stop_propagation):
           logging.vlog(3, "Skipping explicitly ignored node %s.", node.name)
           continue

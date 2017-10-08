@@ -251,7 +251,7 @@ class RfUtilsTest(test.TestCase):
     input_node = 'input_image'
     output_node = 'output'
     # Compute the receptive field but stop the propagation for the random
-    # uniform variable of the dropout
+    # uniform variable of the dropout.
     (receptive_field_x, receptive_field_y, effective_stride_x,
      effective_stride_y, effective_padding_x, effective_padding_y) = (
          receptive_field.compute_receptive_field_from_graph_def(
