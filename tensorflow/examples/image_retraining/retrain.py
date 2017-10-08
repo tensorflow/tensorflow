@@ -96,6 +96,7 @@ from __future__ import print_function
 
 import argparse
 from datetime import datetime
+from PIL import Image
 import hashlib
 import os.path
 import random
@@ -121,7 +122,7 @@ FLAGS = None
 MAX_NUM_IMAGES_PER_CLASS = 2 ** 27 - 1  # ~134M
 
 
-def create_image_lists(image_dir, testing_percentage, validation_percentage):
+def create_image_lists(image_dir, testing_percentage, validation_percentage, verify_images):
   """Builds a list of training images from the file system.
 
   Analyzes the sub folders in the image directory, splits them into stable
@@ -132,6 +133,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     image_dir: String path to a folder containing subfolders of images.
     testing_percentage: Integer percentage of the images to reserve for tests.
     validation_percentage: Integer percentage of images reserved for validation.
+    verify_images: Boolean whether we should test for image validity and skip bad files.
 
   Returns:
     A dictionary containing an entry for each label subfolder, with images split
@@ -160,18 +162,19 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     if not file_list:
       tf.logging.warning('No files found')
       continue
-    if len(file_list) < 20:
-      tf.logging.warning(
-          'WARNING: Folder has less than 20 images, which may cause issues.')
-    elif len(file_list) > MAX_NUM_IMAGES_PER_CLASS:
-      tf.logging.warning(
-          'WARNING: Folder {} has more than {} images. Some images will '
-          'never be selected.'.format(dir_name, MAX_NUM_IMAGES_PER_CLASS))
     label_name = re.sub(r'[^a-z0-9]+', ' ', dir_name.lower())
     training_images = []
     testing_images = []
     validation_images = []
     for file_name in file_list:
+      if verify_images:
+        # Prune invalid image files
+        try:
+          im = Image.open(file_name)
+          im.verify()
+        except Exception as e:
+          tf.logging.warning('Found invalid image: %s (%s)' % (file_name, str(e)))
+          file_list.remove(file_name)
       base_name = os.path.basename(file_name)
       # We want to ignore anything after '_nohash_' in the file name when
       # deciding which set to put an image in, the data set creator has a way of
@@ -196,6 +199,15 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
         testing_images.append(base_name)
       else:
         training_images.append(base_name)
+
+    if len(file_list) < 20:
+      tf.logging.warning(
+          'WARNING: Folder has less than 20 images, which may cause issues.')
+    elif len(file_list) > MAX_NUM_IMAGES_PER_CLASS:
+      tf.logging.warning(
+          'WARNING: Folder {} has more than {} images. Some images will '
+          'never be selected.'.format(dir_name, MAX_NUM_IMAGES_PER_CLASS))
+
     result[label_name] = {
         'dir': dir_name,
         'training': training_images,
@@ -985,7 +997,7 @@ def main(_):
 
   # Look at the folder structure, and create lists of all the images.
   image_lists = create_image_lists(FLAGS.image_dir, FLAGS.testing_percentage,
-                                   FLAGS.validation_percentage)
+                                   FLAGS.validation_percentage, FLAGS.verify_images)
   class_count = len(image_lists.keys())
   if class_count == 0:
     tf.logging.error('No valid folders of images found at ' + FLAGS.image_dir)
@@ -1147,6 +1159,12 @@ if __name__ == '__main__':
       type=str,
       default='',
       help='Path to folders of labeled images.'
+  )
+  parser.add_argument(
+      '--verify_images',
+      default=False,
+      help='Whether to test for valid images before processing them',
+      action='store_true'
   )
   parser.add_argument(
       '--output_graph',
