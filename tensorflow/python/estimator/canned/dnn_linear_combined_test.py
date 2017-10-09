@@ -714,7 +714,7 @@ class DNNLinearCombinedTests(test.TestCase):
         [0.0, 0.0],
         [1.0, 0.0],
         [0.0, 1.0]])
-      y = constant_op.constant([1.0, 1.0, 0.0, 0.0])
+      y = constant_op.constant([0.0, 0.0, 1.0, 1.0])
       with ops.name_scope(''):
         w = variables_lib.Variable(w_initial_values, name="input_fn_w")
       x = math_ops.matmul(x, w)
