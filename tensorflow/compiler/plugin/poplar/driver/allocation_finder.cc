@@ -23,6 +23,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+namespace {
+
 class FindAllocatingInstructions : public DfsHloVisitorWithDefault {
 public:
   FindAllocatingInstructions() {}
@@ -72,6 +74,9 @@ public:
 
   std::vector<HloInstruction*> allocating_instructions;
 };
+
+}
+
 
 TensorTarget
 AllocationFinder::FindConsumers(HloInstruction* inst) {

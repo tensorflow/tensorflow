@@ -23,6 +23,7 @@ cc_library(
         "driver/inplace_finder.cc",
         "driver/matcher_predicates.cc",
         "driver/outliner.cc",
+        "driver/scheduler.cc",
     ],
     hdrs = [
         "driver/allocation_finder.h",
@@ -31,6 +32,7 @@ cc_library(
         "driver/inplace_finder.h",
         "driver/matcher_predicates.h",
         "driver/outliner.h",
+        "driver/scheduler.h",
     ],
     deps = [
         "//tensorflow/compiler/xla:xla_headers_lib",

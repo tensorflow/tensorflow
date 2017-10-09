@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_rewriter.h"
@@ -322,9 +323,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   VLOG(1) << "Compiling main computation " << entry->name();
   XLA_VLOG_LINES(1, entry->ToString());
 
+  std::vector<const HloInstruction*> instruction_order =
+          Scheduler::schedule(entry);
+
   EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {
-    TF_RETURN_IF_ERROR(entry->Accept(&visitor));
+    TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
   }
   catch (std::logic_error e) {
     return port::Status(port::error::UNKNOWN,
