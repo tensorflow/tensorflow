@@ -37,6 +37,7 @@ from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
@@ -61,18 +62,41 @@ def benchmark_create_tensor(n):
   def label(s):
     return "{:20s}".format(s)
 
-  with timer(label("np.array([[3]])"), iters=n) as iters:
+  with timer(label("np.array([[3.0]])"), iters=n) as iters:
     for _ in iters:
-      np.array([[3]])
-
-  with timer(label("Tensor([[3]])"), iters=n) as iters:
-    for _ in iters:
-      ops.EagerTensor([[3]], context.context())
+      np.array([[3.0]])
 
   ctx = context.context()
-  with timer(label("Tensor([[3]], ctx)"), iters=n) as iters:
+  handle = ctx._handle
+  device = ctx.device_name
+  # May be warmup GPU.
+  ops.EagerTensor([[3.0]], context=handle, device=device)
+
+  # float32
+  dtype = dtypes.float32.as_datatype_enum
+  three = [[3.0]]
+  with timer(label("EagerTensor([[3.0]])"), iters=n) as iters:
     for _ in iters:
-      ops.EagerTensor([[3]], ctx)
+      ops.EagerTensor(three, context=handle, device=device, dtype=dtype)
+
+  np_3 = np.array([[3.0]], dtype=np.float32)
+  with timer(label("EagerTensor(np.array([[3.0]]))"), iters=n) as iters:
+    for _ in iters:
+      ops.EagerTensor(np_3, context=handle, device=device, dtype=dtype)
+
+  # int32.
+  # This is interesting since int32 will be kept on host memory for the GPU
+  # case.
+  dtype = dtypes.int32.as_datatype_enum
+  three = [[3]]
+  with timer(label("EagerTensor([[3]])"), iters=n) as iters:
+    for _ in iters:
+      ops.EagerTensor(three, context=handle, device=device, dtype=dtype)
+
+  np_3 = np.array([[3]], dtype=np.int32)
+  with timer(label("EagerTensor(np.array([[3]]))"), iters=n) as iters:
+    for _ in iters:
+      ops.EagerTensor(np_3, context=handle, device=device, dtype=dtype)
 
 
 def benchmark_matmul(shape, n, use_gpu=False):
@@ -103,17 +127,16 @@ def benchmark_matmul(shape, n, use_gpu=False):
     for _ in iters:
       gen_math_ops._mat_mul(m, m, transpose_b=transpose_b)
 
+  inputs = [m, m]
   # pylint: disable=protected-access
-  input_handles = [m._handle, m._handle]
   ctx_handle = context.context()._handle
   # pylint: enable=protected-access
   attrs = ("transpose_a", False, "transpose_b", transpose_b, "T",
            m.dtype.as_datatype_enum)
   with timer(label("TFE_Py_Execute"), iters=n) as iters:
     for _ in iters:
-      pywrap_tensorflow.TFE_DeleteTensorHandle(
-          pywrap_tensorflow.TFE_Py_Execute(ctx_handle, None, "MatMul",
-                                           input_handles, attrs, 1)[0])
+      pywrap_tensorflow.TFE_Py_Execute(ctx_handle, None, "MatMul",
+                                       inputs, attrs, 1)
 
   f = function.defun(math_ops.matmul)
   with timer(label("defun(tf.matmul)"), iters=n) as iters:
@@ -133,6 +156,8 @@ class BenchmarksTest(test_util.TensorFlowTestCase):
 
     if context.context().num_gpus() > 0:
       print("---- RUNNING ON GPU NOW ----")
+      with context.device("/device:GPU:0"):
+        benchmark_create_tensor(FLAGS.iters or 30000)
       benchmark_matmul([2, 2], FLAGS.iters or 30000, use_gpu=True)
       benchmark_matmul([100, 28 * 28], FLAGS.iters or 1000, use_gpu=True)
 

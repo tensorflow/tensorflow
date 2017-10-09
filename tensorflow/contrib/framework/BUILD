@@ -10,9 +10,8 @@ package(default_visibility = [
     "//tensorflow:__subpackages__",
 ])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -27,6 +26,7 @@ tf_custom_op_py_library(
         "python/framework/experimental.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
+        "python/ops/accumulate_n_v2.py",
         "python/ops/arg_scope.py",
         "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
@@ -146,6 +146,31 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "accumulate_n_v2_test",
+    size = "small",
+    srcs = ["python/ops/accumulate_n_v2_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+py_test(
+    name = "accumulate_n_v2_eager_test",
+    size = "small",
+    srcs = ["python/ops/accumulate_n_v2_eager_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/eager:backprop",
     ],
 )
 

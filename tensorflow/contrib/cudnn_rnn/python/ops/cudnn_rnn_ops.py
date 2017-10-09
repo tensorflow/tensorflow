@@ -65,7 +65,7 @@ class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
 
   def __init__(self, num_units, reuse=None):
     super(CudnnCompatibleLSTMCell, self).__init__(
-        num_units, forget_bias=0, clip_cell=False, use_peephole=False,
+        num_units, forget_bias=0, cell_clip=None, use_peephole=False,
         reuse=reuse)
     self._names.update({"scope": "cudnn_compatible_lstm_cell"})
 
@@ -717,12 +717,6 @@ _cudnn_rnn_common_doc_string = """
 """
 
 
-def _check_direction(direction):
-  if direction not in (CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION):
-    raise ValueError("Invalid direction: %s, expect %s or %s" %
-                     (direction, CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION))
-
-
 def _check_rnn_mode(rnn_mode):
   if rnn_mode not in (CUDNN_LSTM, CUDNN_GRU, CUDNN_RNN_TANH, CUDNN_RNN_RELU):
     raise ValueError("Invalid rnn_mode: %s, expect one of (%s, %s, %s, %s)" %
@@ -737,14 +731,31 @@ def _get_seed(seed):
   return seed, seed2
 
 
+def check_direction(direction):
+  """Check validity of direction."""
+  if direction not in (CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION):
+    raise ValueError("Invalid direction: %s, expecting %s or %s" %
+                     (direction, CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION))
+
+
+def check_input_mode(input_mode):
+  if input_mode not in (CUDNN_INPUT_LINEAR_MODE, CUDNN_INPUT_SKIP_MODE,
+                        CUDNN_INPUT_AUTO_MODE):
+    raise ValueError("Invalid input_mode: %s, expect one of (%s, %s, %s)" %
+                     (input_mode, CUDNN_INPUT_LINEAR_MODE,
+                      CUDNN_INPUT_SKIP_MODE, CUDNN_INPUT_AUTO_MODE))
+
+
 def _get_num_params(rnn_mode, num_layers, direction):
   """Return num params for given Cudnn config."""
   if rnn_mode == CUDNN_LSTM:
-    num_params_per_layer = 8
+    num_params_per_layer = CUDNN_LSTM_PARAMS_PER_LAYER
   elif rnn_mode == CUDNN_GRU:
-    num_params_per_layer = 6
-  elif rnn_mode in (CUDNN_RNN_RELU, CUDNN_RNN_TANH):
-    num_params_per_layer = 2
+    num_params_per_layer = CUDNN_GRU_PARAMS_PER_LAYER
+  elif rnn_mode == CUDNN_RNN_RELU:
+    num_params_per_layer = CUDNN_RNN_RELU_PARAMS_PER_LAYER
+  elif rnn_mode == CUDNN_RNN_TANH:
+    num_params_per_layer = CUDNN_RNN_TANH_PARAMS_PER_LAYER
   else:
     raise ValueError("Invalid \'rnn_mode\': %s", rnn_mode)
   num_params = num_layers * num_params_per_layer
@@ -794,7 +805,8 @@ def _cudnn_rnn(inputs,
     outputs, output_h, output_c
   """
   _check_rnn_mode(rnn_mode)
-  _check_direction(direction)
+  check_direction(direction)
+  check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
   outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
       input=inputs,
@@ -1017,16 +1029,16 @@ def cudnn_rnn_tanh(inputs,
                                seed, name)
 
 
-def cudnn_rnn_params_to_canonical(rnn_mode,
-                                  num_layers,
-                                  num_units,
-                                  input_size,
-                                  params,
-                                  input_mode=CUDNN_INPUT_LINEAR_MODE,
-                                  direction=CUDNN_RNN_UNIDIRECTION,
-                                  dropout=0,
-                                  seed=0,
-                                  name=None):
+def cudnn_rnn_opaque_params_to_canonical(rnn_mode,
+                                         num_layers,
+                                         num_units,
+                                         input_size,
+                                         params,
+                                         input_mode=CUDNN_INPUT_LINEAR_MODE,
+                                         direction=CUDNN_RNN_UNIDIRECTION,
+                                         dropout=0,
+                                         seed=0,
+                                         name=None):
   """Convert cudnn opaque params to canonical.
 
   Args:
@@ -1058,7 +1070,8 @@ def cudnn_rnn_params_to_canonical(rnn_mode,
   """
 
   _check_rnn_mode(rnn_mode)
-  _check_direction(direction)
+  check_direction(direction)
+  check_input_mode(input_mode)
   num_params = _get_num_params(rnn_mode, num_layers, direction)
   seed, seed2 = random_seed.get_seed(seed)
   weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
@@ -1077,17 +1090,17 @@ def cudnn_rnn_params_to_canonical(rnn_mode,
   return weights, biases
 
 
-def cudnn_rnn_canonical_to_params(rnn_mode,
-                                  num_layers,
-                                  num_units,
-                                  input_size,
-                                  weights,
-                                  biases,
-                                  input_mode=CUDNN_INPUT_LINEAR_MODE,
-                                  direction=CUDNN_RNN_UNIDIRECTION,
-                                  dropout=0,
-                                  seed=0,
-                                  name=None):
+def cudnn_rnn_canonical_to_opaque_params(rnn_mode,
+                                         num_layers,
+                                         num_units,
+                                         input_size,
+                                         weights,
+                                         biases,
+                                         input_mode=CUDNN_INPUT_LINEAR_MODE,
+                                         direction=CUDNN_RNN_UNIDIRECTION,
+                                         dropout=0,
+                                         seed=0,
+                                         name=None):
   """Converts params from the canonical format to a specific format of cuDNN.
 
   Args:
@@ -1119,7 +1132,8 @@ def cudnn_rnn_canonical_to_params(rnn_mode,
     ValueError: if rnn_mode or direction is invalid.
   """
   _check_rnn_mode(rnn_mode)
-  _check_direction(direction)
+  check_direction(direction)
+  check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
   return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
       rnn_mode=rnn_mode,
@@ -1136,16 +1150,16 @@ def cudnn_rnn_canonical_to_params(rnn_mode,
       name=name)
 
 
-def cudnn_opaque_params_size(rnn_mode,
-                             num_layers,
-                             num_units,
-                             input_size,
-                             input_mode=CUDNN_INPUT_LINEAR_MODE,
-                             direction=CUDNN_RNN_UNIDIRECTION,
-                             dtype=dtypes.float32,
-                             dropout=0,
-                             seed=0,
-                             name=None):
+def cudnn_rnn_opaque_params_size(rnn_mode,
+                                 num_layers,
+                                 num_units,
+                                 input_size,
+                                 input_mode=CUDNN_INPUT_LINEAR_MODE,
+                                 direction=CUDNN_RNN_UNIDIRECTION,
+                                 dtype=dtypes.float32,
+                                 dropout=0,
+                                 seed=0,
+                                 name=None):
   """Returns opaque params size for specific Cudnn config.
 
   Args:
@@ -1176,7 +1190,8 @@ def cudnn_opaque_params_size(rnn_mode,
     ValueError: if rnn_mode or direction is invalid.
   """
   _check_rnn_mode(rnn_mode)
-  _check_direction(direction)
+  check_direction(direction)
+  check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
   return gen_cudnn_rnn_ops.cudnn_rnn_params_size(
       rnn_mode=rnn_mode,
@@ -1278,7 +1293,7 @@ class _CudnnRNN(object):
     Returns:
       The calculated parameter buffer size.
     """
-    return cudnn_opaque_params_size(
+    return cudnn_rnn_opaque_params_size(
         rnn_mode=self._rnn_mode,
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -1327,7 +1342,7 @@ class _CudnnRNN(object):
     Returns:
       A function for the specific-to-canonical conversion.
     """
-    return cudnn_rnn_params_to_canonical(
+    return cudnn_rnn_opaque_params_to_canonical(
         rnn_mode=self._rnn_mode,
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -1348,7 +1363,7 @@ class _CudnnRNN(object):
     Returns:
       A function for the canonical-to-params-to-specific conversion..
     """
-    return cudnn_rnn_canonical_to_params(
+    return cudnn_rnn_canonical_to_opaque_params(
         rnn_mode=self._rnn_mode,
         num_layers=self._num_layers,
         num_units=self._num_units,

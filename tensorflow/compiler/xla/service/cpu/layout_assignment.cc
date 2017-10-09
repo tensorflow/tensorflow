@@ -78,10 +78,10 @@ Status CpuLayoutAssignment::AddBackendConstraints(
   };
 
   const HloComputation* computation = constraints->computation();
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kConvolution &&
         PotentiallyImplementedAsEigenConvolution(*instruction)) {
-      const HloInstruction* convolution = instruction.get();
+      const HloInstruction* convolution = instruction;
       const HloInstruction* lhs_instruction = convolution->operand(0);
       const HloInstruction* rhs_instruction = convolution->operand(1);
 
@@ -102,12 +102,12 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, convolution));
     } else if (should_make_rhs_col_major(*instruction)) {
-      auto* dot = instruction.get();
+      auto* dot = instruction;
       const auto& rhs_shape = dot->operand(1)->shape();
       TF_RETURN_IF_ERROR(
           constraints->SetOperandLayout(col_major_shape(rhs_shape), dot, 1));
     } else if (PotentiallyImplementedAsEigenDot(*instruction)) {
-      const HloInstruction* dot = instruction.get();
+      const HloInstruction* dot = instruction;
       const HloInstruction* lhs_instruction = dot->operand(0);
       const HloInstruction* rhs_instruction = dot->operand(1);
 
@@ -128,23 +128,21 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       for (int64 operand_no = 0; operand_no < instruction->operand_count();
            ++operand_no) {
         // Skip operands which already have a constraint.
-        if (constraints->OperandLayout(instruction.get(), operand_no) !=
-            nullptr) {
+        if (constraints->OperandLayout(instruction, operand_no) != nullptr) {
           continue;
         }
         // Skip over forwarded operands.
-        if (constraints->OperandBufferForwarded(instruction.get(),
-                                                operand_no)) {
+        if (constraints->OperandBufferForwarded(instruction, operand_no)) {
           continue;
         }
         Shape operand_shape(
             row_major_shape(instruction->operand(operand_no)->shape()));
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-            operand_shape, instruction.get(), operand_no));
+            operand_shape, instruction, operand_no));
       }
       // Skip over the root instruction for the top-level computation.
       if (computation->parent()->entry_computation() == computation &&
-          computation->root_instruction() == instruction.get()) {
+          computation->root_instruction() == instruction) {
         continue;
       }
       // Skip instructions which don't produce array shapes (tuples, opaque,

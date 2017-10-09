@@ -49,7 +49,7 @@ except ImportError:
 def _fill_array(arr, seq, fillvalue=0):
   """ 
   Recursively fills padded arr with elements from seq. 
-  If lenght of seq is less then arr padded length, fillvalue used.
+  If length of seq is less than arr padded length, fillvalue used.
 
   Args:
     arr: Padded tensor of shape [batch_size, ..., max_padded_dim_len].

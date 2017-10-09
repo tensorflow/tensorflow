@@ -189,9 +189,8 @@ void CallGraph::SetCallContexts() {
 
   // Initialize worklist with all roots of the call graph (computations without
   // callers).
-  for (const std::unique_ptr<HloComputation>& computation :
-       module_->computations()) {
-    CallGraphNode& node = GetNode(computation.get());
+  for (const HloComputation* computation : module_->computations()) {
+    CallGraphNode& node = GetNode(computation);
     if (node.callers().empty()) {
       node.set_context(CallContext::kSequential);
       worklist.push(&node);
@@ -228,9 +227,8 @@ void CallGraph::SetCallContexts() {
   }
 
   // No node should have a kNone calling context.
-  for (const std::unique_ptr<HloComputation>& computation :
-       module_->computations()) {
-    CHECK_NE(GetNode(computation.get()).context(), CallContext::kNone);
+  for (const HloComputation* computation : module_->computations()) {
+    CHECK_NE(GetNode(computation).context(), CallContext::kNone);
   }
 }
 
@@ -243,27 +241,24 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
   XLA_VLOG_LINES(2, module->ToString());
 
   // Construct nodes of the call graph and populate the callsites.
-  for (const std::unique_ptr<HloComputation>& computation :
-       module->computations()) {
+  for (HloComputation* computation : module->computations()) {
     auto it_added = call_graph->node_indices_.insert(
-        {computation.get(), call_graph->nodes_.size()});
+        {computation, call_graph->nodes_.size()});
     // All computations should be unique, so the computation should not already
     // exist in the map.
     CHECK(it_added.second);
-    call_graph->nodes_.emplace_back(computation.get());
+    call_graph->nodes_.emplace_back(computation);
 
     // Add all callsites in this computation.
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
-      call_graph->nodes_.back().AddCallSiteForInstruction(instruction.get());
+    for (HloInstruction* instruction : computation->instructions()) {
+      call_graph->nodes_.back().AddCallSiteForInstruction(instruction);
     }
   }
 
   // Add caller callsites to each node.
-  for (const std::unique_ptr<HloComputation>& computation :
-       module->computations()) {
+  for (const HloComputation* computation : module->computations()) {
     for (const CallSite& callsite :
-         call_graph->GetNode(computation.get()).callsites()) {
+         call_graph->GetNode(computation).callsites()) {
       for (auto* callee : callsite.called_computations()) {
         // Add caller callsites.
         call_graph->GetNode(callee).AddCallerCallSite(callsite);

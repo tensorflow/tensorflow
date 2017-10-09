@@ -132,11 +132,9 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
 
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                                      const HloComputation* hlo_computation,
-                                     bool has_hybrid_result,
                                      IrEmitterContext* ir_emitter_context)
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
-      hlo_computation_(hlo_computation),
-      has_hybrid_result_(has_hybrid_result) {
+      hlo_computation_(hlo_computation) {
   // Initialize thunk_sequence_ to an empty list of thunks.
   thunk_sequence_.reset(new ThunkSequence());
 }
@@ -1372,13 +1370,6 @@ Status IrEmitterUnnested::HandleTuple(
         tuple_element_buffers, GetAllocationSlice(*tuple), tuple));
     return Status::OK();
   }
-  // If `inst` is a nested thunk that can be disassembled from the result tuple,
-  // GpuExecutable will disassemble it and return it as part of the resultant
-  // ShapedBuffer.
-  if (has_hybrid_result_ &&
-      ReachRootViaOnlyTuples(*tuple, *hlo_computation_->root_instruction())) {
-    return Status::OK();
-  }
   thunk_sequence_->emplace_back(BuildKernelThunk(tuple));
   return IrEmitter::HandleTuple(tuple, operands);
 }
@@ -1888,14 +1879,12 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildWhileThunk(
   // Generate thunk sequence for while 'condition'.
   HloComputation* condition = hlo->while_condition();
   IrEmitterUnnested ir_emitter_condition(hlo_module_config_, condition,
-                                         /*has_hybrid_result=*/false,
                                          ir_emitter_context_);
   TF_CHECK_OK(condition->root_instruction()->Accept(&ir_emitter_condition));
 
   // Generate thunk sequence for while 'body'.
   HloComputation* body = hlo->while_body();
   IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
-                                    false /* has_hybrid_result */,
                                     ir_emitter_context_);
   TF_CHECK_OK(body->root_instruction()->Accept(&ir_emitter_body));
 
@@ -1914,7 +1903,6 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
   // Generate thunk sequence for while 'body' (will be used a For loop body).
   HloComputation* body = hlo->while_body();
   IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
-                                    false /* has_hybrid_result */,
                                     ir_emitter_context_);
   TF_CHECK_OK(body->root_instruction()->Accept(&ir_emitter_body));
 

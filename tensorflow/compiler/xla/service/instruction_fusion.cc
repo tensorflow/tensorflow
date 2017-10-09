@@ -203,16 +203,12 @@ bool InstructionFusion::CanFuseOnAllPaths(
 }
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
+  VLOG(2) << "Before instruction fusion:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   bool changed = false;
   module_ = module;
-  std::vector<HloComputation*> computations;
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(computation.get());
-  }
-  for (auto& computation : computations) {
+  for (auto* computation : module->MakeNonfusionComputations()) {
     CHECK(!computation->IsFusionComputation());
     computation_ = computation;
 
@@ -378,6 +374,10 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       }
     }
   }
+
+  VLOG(2) << "After instruction fusion:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   return changed;
 }
 

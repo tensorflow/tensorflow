@@ -37,4 +37,4 @@ sub locchk {
 &locchk("$rsrc/tftypes.csv");
 
 system("perl $dir/tftypes.pl -t $rsrc/tftypes.csv $pkg/types");
-# system("perl $dir/tftypes.pl -c $rsrc/tftypes.csv $rsrc/Tensors.java.tmpl > $pkg/op/Tensors.java");
+system("perl $dir/tftypes.pl -c $rsrc/tftypes.csv $rsrc/Tensors.java.tmpl > $pkg/Tensors.java");

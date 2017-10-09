@@ -44,7 +44,7 @@ from tensorflow.python.framework import test_util
 
 
 # pylint: enable=protected-access
-linear = rnn_cell_impl._linear
+Linear = rnn_cell_impl._Linear  # pylint: disable=invalid-name
 
 
 class RNNCellTest(test.TestCase):
@@ -54,20 +54,20 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(1.0)):
         x = array_ops.zeros([1, 2])
-        l = linear([x], 2, False)
+        l = Linear([x], 2, False)([x])
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run([l], {x.name: np.array([[1., 2.]])})
         self.assertAllClose(res[0], [[3.0, 3.0]])
 
         # Checks prevent you from accidentally creating a shared function.
         with self.assertRaises(ValueError):
-          l1 = linear([x], 2, False)
+          l1 = Linear([x], 2, False)([x])
 
         # But you can create a new one in a new scope and share the variables.
         with variable_scope.variable_scope("l1") as new_scope:
-          l1 = linear([x], 2, False)
+          l1 = Linear([x], 2, False)([x])
         with variable_scope.variable_scope(new_scope, reuse=True):
-          linear([l1], 2, False)
+          Linear([l1], 2, False)([l1])
         self.assertEqual(len(variables_lib.trainable_variables()), 2)
 
   def testBasicRNNCell(self):
@@ -141,58 +141,67 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[0], [[0.156736, 0.156736]])
 
   def testBasicLSTMCell(self):
-    with self.test_session() as sess:
-      with variable_scope.variable_scope(
-          "root", initializer=init_ops.constant_initializer(0.5)):
-        x = array_ops.zeros([1, 2])
-        m = array_ops.zeros([1, 8])
-        cell = rnn_cell_impl.MultiRNNCell(
-            [
-                rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=False)
-                for _ in range(2)
-            ],
-            state_is_tuple=False)
-        g, out_m = cell(x, m)
-        expected_variable_names = [
-            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
-            rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
-            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
-            rnn_cell_impl._BIAS_VARIABLE_NAME,
-            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
-            rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
-            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
-            rnn_cell_impl._BIAS_VARIABLE_NAME
-        ]
-        self.assertEqual(
-            expected_variable_names, [v.name for v in cell.trainable_variables])
-        self.assertFalse(cell.non_trainable_variables)
-        sess.run([variables_lib.global_variables_initializer()])
-        res = sess.run(
-            [g, out_m],
-            {x.name: np.array([[1., 1.]]),
-             m.name: 0.1 * np.ones([1, 8])})
-        self.assertEqual(len(res), 2)
-        variables = variables_lib.global_variables()
-        self.assertEqual(expected_variable_names, [v.name for v in variables])
-        # The numbers in results were not calculated, this is just a smoke test.
-        self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
-        expected_mem = np.array([[
-            0.68967271, 0.68967271, 0.44848421, 0.44848421, 0.39897051,
-            0.39897051, 0.24024698, 0.24024698
-        ]])
-        self.assertAllClose(res[1], expected_mem)
-      with variable_scope.variable_scope(
-          "other", initializer=init_ops.constant_initializer(0.5)):
-        x = array_ops.zeros(
-            [1, 3])  # Test BasicLSTMCell with input_size != num_units.
-        m = array_ops.zeros([1, 4])
-        g, out_m = rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=False)(x, m)
-        sess.run([variables_lib.global_variables_initializer()])
-        res = sess.run(
-            [g, out_m],
-            {x.name: np.array([[1., 1., 1.]]),
-             m.name: 0.1 * np.ones([1, 4])})
-        self.assertEqual(len(res), 2)
+    for dtype in [dtypes.float16, dtypes.float32]:
+      np_dtype = dtype.as_numpy_dtype
+      with self.test_session(graph=ops.Graph()) as sess:
+        with variable_scope.variable_scope(
+            "root", initializer=init_ops.constant_initializer(0.5)):
+          x = array_ops.zeros([1, 2], dtype=dtype)
+          m = array_ops.zeros([1, 8], dtype=dtype)
+          cell = rnn_cell_impl.MultiRNNCell(
+              [
+                  rnn_cell_impl.BasicLSTMCell(
+                      2, state_is_tuple=False)
+                  for _ in range(2)
+              ],
+              state_is_tuple=False)
+          self.assertEqual(cell.dtype, None)
+          g, out_m = cell(x, m)
+          # Layer infers the input type.
+          self.assertEqual(cell.dtype, dtype.name)
+          expected_variable_names = [
+              "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
+              rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
+              rnn_cell_impl._BIAS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
+              rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
+              rnn_cell_impl._BIAS_VARIABLE_NAME
+          ]
+          self.assertEqual(
+              expected_variable_names,
+              [v.name for v in cell.trainable_variables])
+          self.assertFalse(cell.non_trainable_variables)
+          sess.run([variables_lib.global_variables_initializer()])
+          res = sess.run(
+              [g, out_m],
+              {x.name: np.array([[1., 1.]]),
+               m.name: 0.1 * np.ones([1, 8])})
+          self.assertEqual(len(res), 2)
+          variables = variables_lib.global_variables()
+          self.assertEqual(expected_variable_names, [v.name for v in variables])
+          # The numbers in results were not calculated, this is just a
+          # smoke test.
+          self.assertAllClose(
+              res[0], np.array([[0.240, 0.240]], dtype=np_dtype), 1e-2)
+          expected_mem = np.array(
+              [[0.689, 0.689, 0.448, 0.448, 0.398, 0.398, 0.240, 0.240]],
+              dtype=np_dtype)
+          self.assertAllClose(res[1], expected_mem, 1e-2)
+        with variable_scope.variable_scope(
+            "other", initializer=init_ops.constant_initializer(0.5)):
+          # Test BasicLSTMCell with input_size != num_units.
+          x = array_ops.zeros([1, 3], dtype=dtype)
+          m = array_ops.zeros([1, 4], dtype=dtype)
+          g, out_m = rnn_cell_impl.BasicLSTMCell(
+              2, state_is_tuple=False)(x, m)
+          sess.run([variables_lib.global_variables_initializer()])
+          res = sess.run(
+              [g, out_m],
+              {x.name: np.array([[1., 1., 1.]], dtype=np_dtype),
+               m.name: 0.1 * np.ones([1, 4], dtype=np_dtype)})
+          self.assertEqual(len(res), 2)
 
   def testBasicLSTMCellDimension0Error(self):
     """Tests that dimension 0 in both(x and m) shape must be equal."""
@@ -441,6 +450,17 @@ class RNNCellTest(test.TestCase):
       outputs, _ = cell(x, m)
       self.assertTrue("cpu:14159" in outputs.device.lower())
 
+  def _retrieve_cpu_gpu_stats(self, run_metadata):
+    cpu_stats = None
+    gpu_stats = None
+    step_stats = run_metadata.step_stats
+    for ds in step_stats.dev_stats:
+      if "cpu:0" in ds.device[-5:].lower():
+        cpu_stats = ds.node_stats
+      if "gpu:0" == ds.device[-5:].lower():
+        gpu_stats = ds.node_stats
+    return cpu_stats, gpu_stats
+
   def testDeviceWrapperDynamicExecutionNodesAreAllProperlyLocated(self):
     if not test.is_gpu_available():
       # Can't perform this test w/o a GPU
@@ -462,10 +482,7 @@ class RNNCellTest(test.TestCase):
         sess.run([variables_lib.global_variables_initializer()])
         _ = sess.run(outputs, options=opts, run_metadata=run_metadata)
 
-      step_stats = run_metadata.step_stats
-      ix = 0 if gpu_dev in step_stats.dev_stats[0].device else 1
-      gpu_stats = step_stats.dev_stats[ix].node_stats
-      cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+      cpu_stats, gpu_stats = self._retrieve_cpu_gpu_stats(run_metadata)
       self.assertFalse([s for s in cpu_stats if "gru_cell" in s.node_name])
       self.assertTrue([s for s in gpu_stats if "gru_cell" in s.node_name])
 
@@ -829,7 +846,8 @@ def basic_rnn_cell(inputs, state, num_units, scope=None):
   else:
     with variable_scope.variable_scope(scope, "basic_rnn_cell",
                                        [inputs, state]):
-      output = math_ops.tanh(linear([inputs, state], num_units, True))
+      output = math_ops.tanh(
+          Linear([inputs, state], num_units, True)([inputs, state]))
     return output, output
 
 

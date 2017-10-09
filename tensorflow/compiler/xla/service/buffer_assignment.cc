@@ -388,10 +388,10 @@ Status BufferAssignment::ComputeSummaryStats() {
     const std::vector<const HloInstruction*>* sequence =
         liveness_->hlo_ordering().SequentialOrder(*computation);
     if (sequence != nullptr) {
-      module_sequence.emplace(computation.get(), *sequence);
+      module_sequence.emplace(computation, *sequence);
     }
   }
-  if (module_sequence.size() == module_->computations().size()) {
+  if (module_sequence.size() == module_->computation_count()) {
     TF_ASSIGN_OR_RETURN(
         const int64 min_size,
         MinimumMemoryForSequence(module_sequence, buffer_size_));
@@ -535,7 +535,7 @@ Status GatherComputationsByAllocationType(
       global_set.insert(computation);
     }
 
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       for (HloComputation* subcomputation :
            instruction->called_computations()) {
         switch (instruction->opcode()) {
@@ -688,13 +688,13 @@ Status BufferAssigner::AssignBuffersForComputation(
   // Buffers are sorted and assigned to BufferAllocations in decreasing order of
   // size.
   std::vector<const LogicalBuffer*> sorted_buffers;
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     // Add all buffers which this instruction defines. Instruction which don't
     // define buffers (eg, bitcast which just forwards a pointer) don't need
     // any allocations.
     for (const LogicalBuffer* buffer :
          assignment->points_to_analysis().GetBuffersDefinedByInstruction(
-             instruction.get())) {
+             instruction)) {
       sorted_buffers.push_back(buffer);
     }
   }
@@ -1121,6 +1121,7 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
   // Scan 'colocated_buffer_sets' in reverse order for locality; colocated sets
   // are added in postorder over computations and instructions.
   const int64 init_buffer_size = buffer_size(*while_init_buffer);
+  const bool is_live_out = buffer_liveness.MaybeLiveOut(*while_result_buffer);
   for (int i = colocated_buffer_sets->size() - 1; i >= 0; --i) {
     const ColocatedBufferSet& predecessor_set = (*colocated_buffer_sets)[i];
 
@@ -1137,6 +1138,20 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
     if (std::any_of(predecessor_set.begin(), predecessor_set.end(),
                     [&while_hlo](const LogicalBuffer* buffer) {
                       return buffer->instruction() == while_hlo;
+                    })) {
+      continue;
+    }
+
+    // Skip predecessor sets with entry parameter if the while result is live
+    // out.
+    if (is_live_out &&
+        std::any_of(predecessor_set.begin(), predecessor_set.end(),
+                    [](const LogicalBuffer* buffer) {
+                      auto* instruction = buffer->instruction();
+                      auto* computation = instruction->parent();
+                      auto* module = computation->parent();
+                      return instruction->opcode() == HloOpcode::kParameter &&
+                             computation == module->entry_computation();
                     })) {
       continue;
     }

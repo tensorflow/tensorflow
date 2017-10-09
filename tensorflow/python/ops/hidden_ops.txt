@@ -42,6 +42,7 @@ UniformCandidateSampler
 GenerateVocabRemapping
 LoadAndRemapMatrix
 
+
 # control_flow_ops
 Switch
 Merge
@@ -207,6 +208,7 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -219,6 +221,7 @@ BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
+LogMatrixDeterminant
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -238,6 +241,7 @@ TensorSummaryV2
 
 # math_ops
 Abs
+AccumulateNV2
 AddN
 All
 Any
@@ -285,6 +289,7 @@ AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
+FusedBatchNormV2
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad

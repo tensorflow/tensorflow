@@ -1255,7 +1255,7 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
           break;
         default:
           // unsupported value
-          CHECK(false);
+          LOG(FATAL);
       }
     }
   }
@@ -1389,7 +1389,7 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
       dst_ptr = tensor->flat<uint16>().data();
       break;
     default:
-      CHECK(false) << "type " << tensor->dtype() << " is not supported.";
+      LOG(FATAL) << "type " << tensor->dtype() << " is not supported.";
       break;
   }
   CHECK_NOTNULL(dst_ptr);

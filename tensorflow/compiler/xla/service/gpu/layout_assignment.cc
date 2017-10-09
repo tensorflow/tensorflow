@@ -30,7 +30,7 @@ namespace gpu {
 
 Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
-  for (auto& instruction : constraints->computation()->instructions()) {
+  for (auto* instruction : constraints->computation()->instructions()) {
     // cuDNN is called with specific layouts on the input, output, and filter:
     //
     //   input: DataLayout::kBatchDepthYX
@@ -51,19 +51,19 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       if (instruction->opcode() == HloOpcode::kConvolution) {
         input = instruction->mutable_operand(0);
         filter = instruction->mutable_operand(1);
-        output = instruction.get();
+        output = instruction;
       } else {
         CHECK_EQ(HloOpcode::kFusion, instruction->opcode());
         switch (instruction->fusion_kind()) {
           case HloInstruction::FusionKind::kConvBackwardFilter:
             // filter = BackwardFilterConvolve(input, output)
             input = instruction->mutable_operand(0);
-            filter = instruction.get();
+            filter = instruction;
             output = instruction->mutable_operand(1);
             break;
           case HloInstruction::FusionKind::kConvBackwardInput:
             // input = BackwardInputConvolve(output, filter)
-            input = instruction.get();
+            input = instruction;
             filter = instruction->mutable_operand(1);
             output = instruction->mutable_operand(0);
             break;
