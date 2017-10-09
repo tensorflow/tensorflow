@@ -2,6 +2,8 @@
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_MATCHER_PREDICATES_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
+
 
 namespace xla {
 namespace poplarplugin {
@@ -111,6 +113,34 @@ bool IsConvFilterSpatialReverse(HloInstruction *inst) {
   return true;
 }
 
+bool IsBiasReduce(HloInstruction *inst) {
+  HloInstruction* root(inst->to_apply()->root_instruction());
+  if (!hlo_query::AllOperandsAreParameters(*root)) {
+    return false;
+  }
+  if (root->opcode() != HloOpcode::kAdd) {
+      return false;
+  }
+
+  if (ShapeUtil::Rank(inst->shape()) != 1) return false;
+
+  const std::vector<int64>& dims(inst->dimensions());
+  if (dims.size() != ShapeUtil::Rank(inst->operand(0)->shape()) - 1) {
+    return false;
+  }
+  for (int64 d : dims) {
+    if (d == ShapeUtil::Rank(inst->operand(0)->shape()) - 1) return false;
+  }
+  return true;
+}
+
+bool IsOutputFeed(HloInstruction *inst) {
+  HloInstruction* root = inst->parent()->root_instruction();
+  if (inst == root) return true;
+  if (inst->user_count() != 1) return false;
+  if (inst->users()[0] == root) return true;
+  return false;
+}
 
 }
 }

@@ -20,6 +20,8 @@ bool IsReductionWindowNYXC(HloInstruction *inst);
 bool IsScalarConstant(HloInstruction *inst);
 bool IsDepthwisePadding(HloInstruction *inst);
 bool IsConvFilterSpatialReverse(HloInstruction *inst);
+bool IsBiasReduce(HloInstruction *inst);
+bool IsOutputFeed(HloInstruction *inst);
 
 }
 }
