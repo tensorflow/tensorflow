@@ -58,20 +58,13 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
   // parse src_name and dst_name
   string src_name, dst_name, unused;
   if (!DeviceNameUtils::SplitDeviceName(parsed.src_device, &src_name,
+                                        &unused) ||
+      !DeviceNameUtils::SplitDeviceName(parsed.dst_device, &dst_name,
                                         &unused)) {
     s = errors::Internal("Could not parse src name.");
   }
-  CHECK(s.ok()) << "s is not ok, error code " << s.error_message();
   if (!s.ok()) {
-    done(s, Args(), recv_args, Tensor{}, false);
-    return;
-  }
-  if (!DeviceNameUtils::SplitDeviceName(parsed.dst_device, &dst_name,
-                                        &unused)) {
-    s = errors::Internal("Could not parse dst name.");
-  }
-  CHECK(s.ok()) << "s is not ok, error code " << s.error_message();
-  if (!s.ok()) {
+    LOG(ERROR) << "s is not ok, error code " << s.error_message();
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
@@ -82,18 +75,13 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
   // insert callback
   rc->InsertRecvCallback(key_with_step_id, [this, key, key_with_step_id, rc,
                                             recv_args, parsed, done]() {
-    Status s;
-    Device* src_dev;
-    s = env_->device_mgr->LookupDevice("CPU:0", &src_dev);
-    CHECK(s.ok()) << "s is not ok, error code " << s.error_message();
-    if (!s.ok()) {
-      done(s, Args(), recv_args, Tensor(), true);
-      return;
-    }
-    Device* dst_dev;
-    s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_dev);
-    CHECK(s.ok()) << "s is not ok, error code " << s.error_message();
-    if (!s.ok()) {
+    Status src_s, dst_s, s;
+    Device* src_dev, *dst_dev;
+    src_s = env_->device_mgr->LookupDevice("CPU:0", &src_dev);
+    dst_s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_dev);
+    if (!src_s.ok() || !dst_s.ok()) {
+      s = src_s.ok() ? dst_s : src_s;
+      LOG(ERROR) << "s is not ok, error code " << s.error_message();
       done(s, Args(), recv_args, Tensor(), true);
       return;
     }
@@ -111,8 +99,8 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
         if (dst_dev->tensorflow_gpu_device_info() &&
             (!recv_args.alloc_attrs.on_host())) {
           CHECK(recv_args.device_context)
-            << "send dev name: " << src_dev->name()
-            << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
+              << "send dev name: " << src_dev->name()
+              << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
           Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
           Tensor copy(alloc, rm.data_type_, rm.tensor_shape_);
           memcpy(DMAHelper::base(&copy), input, rm.tensor_bytes_);
@@ -122,8 +110,8 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
 
           GPUUtil::CopyCPUTensorToGPU(
               &copy, recv_args.device_context, dst_dev, &gpu_copy,
-              [this, gpu_copy, key, key_with_step_id, recv_args, done, rm,
-               rc](const Status& s) {
+              [this, gpu_copy, key, key_with_step_id, recv_args, done, rm, rc](
+                  const Status& s) {
                 CHECK(s.ok()) << "copy tensor to gpu sync";
                 Tensor val;
                 val = std::move(gpu_copy);
