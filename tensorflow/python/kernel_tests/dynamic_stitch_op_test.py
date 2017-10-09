@@ -46,6 +46,13 @@ class DynamicStitchTestBase(object):
         # Dimension 0 is max(flatten(indices))+1.
         self.assertEqual([2], stitched_t.get_shape().as_list())
 
+        # Test gradients
+        self.assertLess(
+            gradient_checker.compute_gradient_error(
+                data, [x.get_shape().as_list() for x in data],
+                stitched_t, array_ops.shape(stitched_t).eval()),
+            1e-4)
+
   def testShapeInferenceForScalarWithNonConstantIndices(self):
     with self.test_session(use_gpu=True):
       indices = [array_ops.placeholder(dtype=dtypes.int32),
@@ -57,13 +64,6 @@ class DynamicStitchTestBase(object):
         # not a constant tensor, so we can only infer it as a vector of unknown
         # length.
         self.assertEqual([None], stitched_t.get_shape().as_list())
-
-        # Test gradients
-        self.assertLess(
-            gradient_checker.compute_gradient_error(
-                data, [x.get_shape().as_list() for x in data],
-                stitched_t, array_ops.shape(stitched_t).eval()),
-            1e-4)
 
   def testSimpleOneDimensional(self):
     with self.test_session(use_gpu=True):
@@ -173,7 +173,7 @@ class DynamicStitchTestBase(object):
       stitched_val = stitched_t.eval()
       correct = [3, 12, 13, 25, 26, 36, 33, 35]
       self.assertAllEqual(correct, stitched_val)
-      self.assertEqual([None], stitched_t.get_shape().as_list())
+      self.assertEqual([8], stitched_t.get_shape().as_list())
 
       # Test gradients
       self.assertLess(
