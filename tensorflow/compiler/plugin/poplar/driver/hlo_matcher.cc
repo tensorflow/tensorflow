@@ -129,10 +129,8 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
 
   } else {
     // Copy list of computations as we will be introducing new ones
-    std::vector<HloComputation*> comps;
-    for (auto& comp : module->computations()) {
-      comps.push_back(comp.get());
-    }
+    std::vector<HloComputation*> comps(module->computations().begin(),
+                                       module->computations().end());
 
     for (auto* comp : comps) {
       if (!comp->IsFusionComputation()) {
@@ -229,7 +227,7 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
           HloInstruction::CreateCall(root->shape(), arguments,
                                      nested_computation));
 
-  TF_CHECK_OK(matched.computation->ReplaceUsesOfInstruction(root, call));
+  TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
   ReplacedInstructions replaced;
   for (auto i = instructions_to_outline.begin();
