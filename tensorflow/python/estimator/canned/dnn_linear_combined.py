@@ -192,7 +192,7 @@ def _dnn_linear_combined_model_fn(
     global_step = training_util.get_global_step()
 
     if model == "combined":
-      all_vars = ops.trainable_variables()
+      all_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       linear_vars = ops.get_collection(
         ops.GraphKeys.TRAINABLE_VARIABLES,
         scope=linear_parent_scope)
