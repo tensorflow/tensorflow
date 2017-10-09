@@ -38,10 +38,6 @@ HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
 TARGET_NSYNC_LIB="$HOST_NSYNC_LIB"
 export HOST_NSYNC_LIB TARGET_NSYNC_LIB
 
-# Compile double-conversion
-HOST_DOUBLE_CONVERSION_LIB=`tensorflow/contrib/makefile/compile_double_conversion.sh`
-export HOST_DOUBLE_CONVERSION_LIB
-
 # Compile protobuf.
 tensorflow/contrib/makefile/compile_linux_protobuf.sh
 

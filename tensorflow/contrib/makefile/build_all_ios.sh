@@ -53,10 +53,6 @@ HOST_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh`
 TARGET_NSYNC_LIB=`tensorflow/contrib/makefile/compile_nsync.sh -t ios`
 export HOST_NSYNC_LIB TARGET_NSYNC_LIB
 
-# Compile double-conversion
-HOST_DOUBLE_CONVERSION_LIB=`tensorflow/contrib/makefile/compile_double_conversion.sh`
-export HOST_DOUBLE_CONVERSION_LIB
-
 # Build the iOS TensorFlow libraries.
 tensorflow/contrib/makefile/compile_ios_tensorflow.sh "-O3"
 

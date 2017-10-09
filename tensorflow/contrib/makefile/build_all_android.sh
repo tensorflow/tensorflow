@@ -74,10 +74,6 @@ TARGET_NSYNC_LIB=`CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
       tensorflow/contrib/makefile/compile_nsync.sh -t android -a armeabi-v7a`
 export HOST_NSYNC_LIB TARGET_NSYNC_LIB
 
-# Compile double-conversion
-HOST_DOUBLE_CONVERSION_LIB=`tensorflow/contrib/makefile/compile_double_conversion.sh`
-export HOST_DOUBLE_CONVERSION_LIB
-
 if [[ ! -z "${HEXAGON_LIB_PATH}" ]]; then
     echo "Copy hexagon libraries from ${HEXAGON_LIB_PATH}"
 
