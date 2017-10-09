@@ -40,12 +40,10 @@ static Window GetDefaultWindow() {
 
 static ConvolutionDimensionNumbers GetDefaultDimensions() {
   ConvolutionDimensionNumbers dimension;
-  dimension.set_input_batch_dimension(0);
-  dimension.set_output_batch_dimension(0);
+  dimension.set_batch_dimension(0);
   dimension.add_spatial_dimensions(1);
   dimension.add_spatial_dimensions(2);
-  dimension.set_input_feature_dimension(3);
-  dimension.set_output_feature_dimension(3);
+  dimension.set_feature_dimension(3);
   dimension.set_kernel_output_feature_dimension(0);
   dimension.set_kernel_input_feature_dimension(1);
   dimension.add_kernel_spatial_dimensions(2);
@@ -93,13 +91,13 @@ TEST_F(OutlinerTest, Convolution) {
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
 
-  EXPECT_THAT(hlo_module->computations().size(), 1);
+  EXPECT_THAT(hlo_module->computation_count(), 1);
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 10);
 
 
   Outliner outliner;
   EXPECT_TRUE(outliner.Run(hlo_module.get()).ValueOrDie());
-  EXPECT_THAT(hlo_module->computations().size(), 3);
+  EXPECT_THAT(hlo_module->computation_count(), 3);
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 10);
 }
 
