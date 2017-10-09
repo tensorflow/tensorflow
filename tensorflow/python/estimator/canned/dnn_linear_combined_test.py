@@ -34,8 +34,10 @@ from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.estimator.inputs import pandas_io
 from tensorflow.python.feature_column import feature_column
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -701,6 +703,33 @@ class DNNLinearCombinedTests(test.TestCase):
     self.assertEqual(100.,
                      checkpoint_utils.load_variable(
                          self._model_dir, 'dnn_called'))
+
+  def test_train_op_calls_input_fn(self):
+    w_initial_values = [[-1.0], [-1.0]]
+
+    def input_fn():
+      # XOR sample, non-linear
+      x = constant_op.constant([
+        [1.0, 1.0],
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [0.0, 1.0]])
+      y = constant_op.constant([1.0, 1.0, 0.0, 0.0])
+      with ops.name_scope(''):
+        w = variables_lib.Variable(w_initial_values, name="input_fn_w")
+      x = math_ops.matmul(x, w)
+      return {"x": x}, y
+
+    x_column = feature_column.numeric_column('x')
+    est = dnn_linear_combined.DNNLinearCombinedClassifier(
+      linear_feature_columns=[x_column],
+      dnn_hidden_units=[1],
+      dnn_feature_columns=[x_column],
+      model_dir=self._model_dir)
+    est.train(input_fn, steps=1)
+    # verify `w` is updated
+    w_trained = checkpoint_utils.load_variable(self._model_dir, 'input_fn_w')
+    self.assertFalse(np.array_equal(w_initial_values, w_trained))
 
   def test_dnn_and_linear_logits_are_added(self):
     with ops.Graph().as_default():
