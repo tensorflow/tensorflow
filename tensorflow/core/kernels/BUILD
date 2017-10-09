@@ -5791,6 +5791,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "scan_dataset_op",
+    srcs = ["scan_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "flat_map_dataset_op",
     srcs = ["flat_map_dataset_op.cc"],
     deps = [
@@ -6061,6 +6075,7 @@ tf_kernel_library(
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",
+        ":scan_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
         ":sloppy_interleave_dataset_op",
