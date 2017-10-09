@@ -408,8 +408,8 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
 
   Args:
     estimator: An `Estimator` instance to train and evaluate.
-    train_spec: A `TrainSpec instance to specify the training specification.
-    eval_spec: A `EvalSpec instance to specify the evaluation and export
+    train_spec: A `TrainSpec` instance to specify the training specification.
+    eval_spec: A `EvalSpec` instance to specify the evaluation and export
       specification.
 
   Raises:
