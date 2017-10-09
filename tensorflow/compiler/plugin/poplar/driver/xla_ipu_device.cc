@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+
 #include "tensorflow/compiler/tf2xla/kernels/gather_op.h"
+#include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
 
 namespace se = ::perftools::gputools;
 
@@ -48,7 +50,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
   std::unique_ptr<XlaDevice> device;
   TF_RETURN_IF_ERROR(XlaDevice::Create("Poplar", DEVICE_XLA_IPU, 0,
                                        DEVICE_IPU_XLA_JIT, options, name_prefix,
-                                       &device));
+                                       true, &device));
 
   devices->push_back(device.release());
   return Status::OK();
@@ -80,5 +82,8 @@ REGISTER_XLA_OP(Name("GatherV2")
         .Device(DEVICE_IPU_XLA_JIT),
         GatherOpDynamicSlice);
 
+REGISTER_XLA_OP(Name("ArgMax")
+        .Device(DEVICE_IPU_XLA_JIT),
+        XlaArgMaxOp);
 
 }  // namespace tensorflow
