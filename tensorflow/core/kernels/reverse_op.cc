@@ -322,7 +322,13 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                               .TypeConstraint<T>("T")        \
                               .TypeConstraint<int32>("Tidx") \
                               .HostMemory("axis"),           \
-                          ReverseV2Op<GPUDevice, T>)
+                          ReverseV2Op<GPUDevice, T, int32>)  \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<T>("T")        \
+                              .TypeConstraint<int64>("Tidx") \
+                              .HostMemory("axis"),           \
+                          ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
 // TODO decide whether we want to enable the bool kernel.
@@ -351,7 +357,15 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .HostMemory("tensor")
                             .HostMemory("axis")
                             .HostMemory("output"),
-                        ReverseV2Op<CPUDevice, int32>);
+                        ReverseV2Op<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("ReverseV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tidx")
+                            .HostMemory("tensor")
+                            .HostMemory("axis")
+                            .HostMemory("output"),
+                        ReverseV2Op<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
