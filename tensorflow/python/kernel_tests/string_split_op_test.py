@@ -151,17 +151,31 @@ class StringSplitOpTest(test.TestCase):
     strings = [b"\xE6\x82\xA8\xE5\xA5\xBD", b"\xE4\xB8\x96\xE7\x95\x8C"]
 
     with self.test_session() as sess:
-      tokens = string_ops.string_split(strings, delimiter="", encoding="utf8")
+      tokens = string_ops.string_utf8_split(strings, delimiter="")
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
       self.assertAllEqual(values, [b"\xE6\x82\xA8", b"\xE5\xA5\xBD",
                                    b"\xE4\xB8\x96", b"\xE7\x95\x8C"])
       self.assertAllEqual(shape, [2, 2])
 
+  def testStringSplitWithUtf8AndUtf8MultiBytesDelimiter(self):
+    # utf8 \xE6\x82\xA8 \xE5\xA5\xBD, \xE6\x82\xA8 \xE5\xA5\xBD
+    strings = [b"\xE5\xA5\xBD\xE6\x82\xA8\xE4\xB8\x96\xE7\x95\x8C",
+               b"\xE4\xB8\x96\xE7\x95\x8C\xE6\x82\xA8\xE5\xA5\xBD"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_utf8_split(strings, delimiter=b"\xE6\x82\xA8")
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(values,
+                          [b"\xE5\xA5\xBD", b"\xE4\xB8\x96\xE7\x95\x8C",
+                           b"\xE4\xB8\x96\xE7\x95\x8C", b"\xE5\xA5\xBD"])
+      self.assertAllEqual(shape, [2, 2])
+
   def testStringSplitWithInvalidUtf8(self):
-    # Invalid char
+   # Invalid char
     strings1 = [b"\xE2\x28\xA1"]
-    tokens1 = string_ops.string_split(strings1, delimiter="", encoding="utf8")
+    tokens1 = string_ops.string_utf8_split(strings1, delimiter="")
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Invalid UTF8 encoding at position of 1"):
       with self.test_session() as sess:
@@ -169,7 +183,7 @@ class StringSplitOpTest(test.TestCase):
 
     # Not enough char
     strings2 = [b"\xE6\x82"]
-    tokens2 = string_ops.string_split(strings2, delimiter="", encoding="utf8")
+    tokens2 = string_ops.string_utf8_split(strings2, delimiter="")
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Not enough characters for UTF8 encoding"):
       with self.test_session() as sess:
@@ -177,10 +191,9 @@ class StringSplitOpTest(test.TestCase):
 
     # Invalid delimiter
     strings3 = [b"\xE6\x82\xA8\xE5\xA5\xBD"]
-    tokens3 = string_ops.string_split(strings3, delimiter=b"\xE6",
-                                      encoding="utf8")
+    tokens3 = string_ops.string_utf8_split(strings3, delimiter=b"\xE6")
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Delimiter is not properly encoded"):
+                                 "Not enough characters for UTF8 encoding"):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens3)
 

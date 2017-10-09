@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "StringSplit"
+  graph_op_name: "StringUTF8Split"
   in_arg {
     name: "input"
     description: <<END
@@ -9,7 +9,7 @@ END
   in_arg {
     name: "delimiter"
     description: <<END
-0-D. Delimiter characters (bytes), or empty string.
+1-D. Delimiter characters (bytes), or empty string.
 END
   }
   out_arg {
@@ -45,7 +45,7 @@ element of `input` based on `delimiter` and return a `SparseTensor`
 containing the splitted tokens. Empty tokens are ignored.
 
 `delimiter` can be empty, or a string of split characters. If `delimiter` is an
- empty string, each element of `input` is split into individual single-byte
+ empty string, each element of `input` is split into individual single-UTF-8
  character strings, including splitting of UTF-8 multibyte sequences. Otherwise
  every character of `delimiter` is a potential split point.
 

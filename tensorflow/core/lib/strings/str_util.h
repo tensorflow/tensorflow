@@ -141,6 +141,9 @@ std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 Status SplitUTF8(StringPiece text, const string& delim,
                  std::vector<string>* result);
 
+// Validate "text" as a UTF8 encoding
+Status ValidUTF8(StringPiece text);
+
 // Split "text" at "delim" characters, and parse each component as
 // an integer.  If successful, adds the individual numbers in order
 // to "*result" and returns true.  Otherwise returns false.

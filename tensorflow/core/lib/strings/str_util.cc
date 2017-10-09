@@ -515,6 +515,39 @@ Status SplitUTF8(StringPiece text, const string& delim,
   return Status::OK();
 }
 
+Status ValidUTF8(StringPiece text) {
+  // Bytes    Byte 1    Byte 2    Byte 3    Byte 4
+  //   1     0xxxxxxx
+  //   2     110xxxxx  10xxxxxx
+  //   3     1110xxxx  10xxxxxx  10xxxxxx
+  //   4     11110xxx  10xxxxxx  10xxxxxx  10xxxxxx
+  if (text.size() == 0) {
+    return Status::OK();
+  }
+  size_t len = 0;
+  if ((text[0] & 0x80) == 0x00) {
+    len = 1;
+  } else if ((text[0] & 0xE0) == 0xC0) {
+    len = 2;
+  } else if ((text[0] & 0xF0) == 0xE0) {
+    len = 3;
+  } else if ((text[0] & 0xF8) == 0xF0) {
+    len = 4;
+  } else {
+    return errors::InvalidArgument("Invalid UTF8 encoding at position of 0");
+  }
+  if (text.size() != len) {
+    return errors::InvalidArgument("Not enough characters for UTF8 encoding");
+  }
+  for (size_t i = 1; i < len; i++) {
+    if (TF_PREDICT_FALSE((text[i] & 0xC0) != 0x80)) {
+      return errors::InvalidArgument("Invalid UTF8 encoding at position of ",
+                                     i);
+    }
+  }
+  return Status::OK();
+}
+
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result) {
   return SplitAndParseAsInts<int32>(text, delim, strings::safe_strto32, result);
