@@ -28,13 +28,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/graph/mkl_graph_util.h"
 
 #ifdef INTEL_MKL_DNN
 #include "mkldnn.hpp"
@@ -227,8 +227,7 @@ class MklShape {
   (IS_MKL_TENSOR_OFFSET + sizeof(size_t))  // Location of dimension_
 // Location of sizes. Note dim is not used here, left here
 // to make macros consistent.
-#define SIZES_OFFSET(dims) \
-  (DIMS_OFFSET + sizeof(size_t))
+#define SIZES_OFFSET(dims) (DIMS_OFFSET + sizeof(size_t))
 #define STRIDES_OFFSET(dims) \
   (SIZES_OFFSET(dims) + dims * sizeof(size_t))  // Location of strides
 #define MKL_LAYOUT_OFFSET(dims) \
@@ -436,7 +435,7 @@ inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
 
 template <typename T>
 inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
-                              TensorShape tf_shape) {
+                           TensorShape tf_shape) {
   OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::v(),
                                                  tf_shape, tensor_out));
 }
@@ -708,17 +707,18 @@ inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
 
 #ifdef INTEL_MKL_DNN
 
-using mkldnn::memory;
-using mkldnn::reorder;
-using mkldnn::primitive;
-using mkldnn::padding_kind;
 using mkldnn::engine;
+using mkldnn::memory;
+using mkldnn::padding_kind;
+using mkldnn::primitive;
+using mkldnn::reorder;
 
 /// Return MKL-DNN data type (memory::data_type) for input type T
 ///
 /// @input None
 /// @return memory::data_type corresponding to type T
-template<typename T> static memory::data_type MklDnnType();
+template <typename T>
+static memory::data_type MklDnnType();
 
 /// Instantiation for float type. Add similar instantiations for other
 /// type if needed.
@@ -733,10 +733,11 @@ memory::data_type MklDnnType<float>() {
 /// @return: memory::format corresponding to TensorFlow data format;
 ///          Fails with an error if invalid data format.
 inline memory::format TFDataFormatToMklDnnDataFormat(TensorFormat format) {
-  if (format == FORMAT_NHWC) return memory::format::nhwc;
-  else if (format == FORMAT_NCHW) return memory::format::nchw;
-  TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT,
-                     "Unsupported data format"));
+  if (format == FORMAT_NHWC)
+    return memory::format::nhwc;
+  else if (format == FORMAT_NCHW)
+    return memory::format::nchw;
+  TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT, "Unsupported data format"));
   // Return to get rid of compiler warning
   return memory::format::format_undef;
 }
@@ -768,7 +769,7 @@ inline memory::dims TFShapeToMklDnnDims(const TensorShape& shape) {
 /// @input TensorShape object in shape
 /// @return memory::dims in MKL-DNN required NCHW format
 inline memory::dims TFShapeToMklDnnDimsInNCHW(const TensorShape& shape,
-                                            TensorFormat format) {
+                                              TensorFormat format) {
   // Check validity of format.
   CHECK_NE(TFDataFormatToMklDnnDataFormat(format),
            memory::format::format_undef);
@@ -807,21 +808,23 @@ class MklDnnData {
   const engine* cpu_engine_;
 
  public:
-  explicit MklDnnData(const engine* e) : user_memory_(nullptr),
-                                         reorder_memory_(nullptr),
-                                         op_md_(nullptr), cpu_engine_(e) {}
+  explicit MklDnnData(const engine* e)
+      : user_memory_(nullptr),
+        reorder_memory_(nullptr),
+        op_md_(nullptr),
+        cpu_engine_(e) {}
 
   ~MklDnnData() {
     cpu_engine_ = nullptr;  // We don't own this.
-    delete(user_memory_);
-    delete(reorder_memory_);
-    delete(op_md_);
+    delete (user_memory_);
+    delete (reorder_memory_);
+    delete (op_md_);
   }
 
   void* GetTensorBuffer(const Tensor* tensor) {
     CHECK_NOTNULL(tensor);
-    return const_cast<void*>(static_cast<const void*>(
-                                tensor->flat<T>().data()));
+    return const_cast<void*>(
+        static_cast<const void*>(tensor->flat<T>().data()));
   }
 
   /// Set user memory primitive using specified dimensions, memory format and
@@ -836,9 +839,10 @@ class MklDnnData {
     CHECK_NOTNULL(data_buffer);
     CHECK_NOTNULL(cpu_engine_);
     // TODO(nhasabni): can we remove dynamic memory allocation?
-    user_memory_ = new memory(memory::primitive_desc(
-                                memory::desc(dim, MklDnnType<T>(), fm),
-                              *cpu_engine_), data_buffer);
+    user_memory_ =
+        new memory(memory::primitive_desc(
+                       memory::desc(dim, MklDnnType<T>(), fm), *cpu_engine_),
+                   data_buffer);
   }
 
   void SetUsrMem(memory::dims dim, memory::format fm, const Tensor* tensor) {
@@ -854,8 +858,8 @@ class MklDnnData {
     CHECK_NOTNULL(data_buffer);
     CHECK_NOTNULL(cpu_engine_);
     // TODO(nhasabni): can we remove dynamic memory allocation?
-    user_memory_ = new memory(memory::primitive_desc(md, *cpu_engine_),
-                              data_buffer);
+    user_memory_ =
+        new memory(memory::primitive_desc(md, *cpu_engine_), data_buffer);
   }
 
   /// A version of SetUsrMem with memory descriptor and tensor
@@ -942,7 +946,7 @@ class MklDnnData {
   /// @input: net - net to which to add reorder primitive in case it is needed.
   /// @return: true in case reorder of input is needed; false, otherwise.
   bool CheckReorderToOpMem(const memory::primitive_desc& op_pd,
-                             std::vector<primitive>* net) {
+                           std::vector<primitive>* net) {
     CHECK_NOTNULL(net);
     CHECK_NOTNULL(user_memory_);
     if (op_pd != user_memory_->get_primitive_desc()) {

@@ -751,10 +751,14 @@ class TFExampleDecoderTest(test.TestCase):
       serialized_example = array_ops.reshape(serialized_example, shape=[])
 
       keys_to_features = {
-          'image/object/bbox/ymin': parsing_ops.FixedLenSequenceFeature([], dtypes.float32, allow_missing=True),
-          'image/object/bbox/xmin': parsing_ops.FixedLenSequenceFeature([], dtypes.float32, allow_missing=True),
-          'image/object/bbox/ymax': parsing_ops.FixedLenSequenceFeature([], dtypes.float32, allow_missing=True),
-          'image/object/bbox/xmax': parsing_ops.FixedLenSequenceFeature([], dtypes.float32, allow_missing=True),
+          'image/object/bbox/ymin': parsing_ops.FixedLenSequenceFeature(
+              [], dtypes.float32, allow_missing=True),
+          'image/object/bbox/xmin': parsing_ops.FixedLenSequenceFeature(
+              [], dtypes.float32, allow_missing=True),
+          'image/object/bbox/ymax': parsing_ops.FixedLenSequenceFeature(
+              [], dtypes.float32, allow_missing=True),
+          'image/object/bbox/xmax': parsing_ops.FixedLenSequenceFeature(
+              [], dtypes.float32, allow_missing=True),
       }
 
       items_to_handlers = {

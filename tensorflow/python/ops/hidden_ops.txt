@@ -42,6 +42,7 @@ UniformCandidateSampler
 GenerateVocabRemapping
 LoadAndRemapMatrix
 
+
 # control_flow_ops
 Switch
 Merge
@@ -240,6 +241,7 @@ TensorSummaryV2
 
 # math_ops
 Abs
+AccumulateNV2
 AddN
 All
 Any

@@ -342,6 +342,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
   if (TF_GetCode(out_status) == TF_OK) {
     SetOpAttrs(ctx, op, attrs, out_status);
   }
+  Py_BEGIN_ALLOW_THREADS;
   if (TF_GetCode(out_status) == TF_OK) {
     int num_outputs = outputs->size();
     TFE_Execute(op, outputs->data(), &num_outputs, out_status);
@@ -354,6 +355,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                      .c_str());
   }
   TFE_DeleteOp(op);
+  Py_END_ALLOW_THREADS;
 }
 
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {

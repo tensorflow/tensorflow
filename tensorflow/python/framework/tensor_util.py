@@ -27,8 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
-# TODO(opensource): Add support for pyx_library in the open-source build.
-# For now, we use the slow versions that fast_tensor_util replaces.
+# Fallback in case fast_tensor_util is not properly compiled.
 # pylint: disable=g-import-not-at-top
 try:
   from tensorflow.python.framework import fast_tensor_util

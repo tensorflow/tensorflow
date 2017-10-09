@@ -20,9 +20,11 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -178,6 +180,23 @@ class RandomPoissonTest(test.TestCase):
         shape=[50],
         seed=12345)
     self.assertIs(None, rnd.get_shape().ndims)
+
+  def testDTypeCombinationsV2(self):
+    """Tests random_poisson_v2() for all supported dtype combinations."""
+    # All supported dtypes by random_poisson_v2().
+    supported_dtypes = [
+        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+        dtypes.int64
+    ]
+
+    with self.test_session():
+      for lam_dt in supported_dtypes:
+        for out_dt in supported_dtypes:
+          # TODO(dhananjayn): Change this to use random_poisson() after
+          # switching it to RandomPoissonV2.
+          gen_random_ops.random_poisson_v2(
+              [10], constant_op.constant([1], dtype=lam_dt),
+              dtype=out_dt).eval()
 
 
 if __name__ == "__main__":

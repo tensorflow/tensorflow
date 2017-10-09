@@ -51,6 +51,9 @@ COSINE_DISTANCE = 'cosine'
 RANDOM_INIT = 'random'
 KMEANS_PLUS_PLUS_INIT = 'kmeans_plus_plus'
 
+# The name of the variable holding the cluster centers. Used by the Estimator.
+CLUSTERS_VAR_NAME = 'clusters'
+
 
 class KMeans(object):
   """Creates the graph for k-means clustering."""
@@ -279,7 +282,7 @@ class KMeans(object):
     """
     init_value = array_ops.constant([], dtype=dtypes.float32)
     cluster_centers = variable_scope.variable(
-        init_value, name='clusters', validate_shape=False)
+        init_value, name=CLUSTERS_VAR_NAME, validate_shape=False)
     cluster_centers_initialized = variable_scope.variable(
         False, dtype=dtypes.bool, name='initialized')
 
@@ -337,7 +340,6 @@ class KMeans(object):
         assigned cluster instead.
       cluster_centers_initialized: scalar indicating whether clusters have been
         initialized.
-      cluster_centers_var: a Variable holding the cluster centers.
       init_op: an op to initialize the clusters.
       training_op: an op that runs an iteration of training.
     """
@@ -381,7 +383,7 @@ class KMeans(object):
           inputs, num_clusters, cluster_idx, cluster_centers_var)
 
     return (all_scores, cluster_idx, scores, cluster_centers_initialized,
-            cluster_centers_var, init_op, training_op)
+            init_op, training_op)
 
   def _mini_batch_sync_updates_op(self, update_in_steps, cluster_centers_var,
                                   cluster_centers_updated, total_counts):

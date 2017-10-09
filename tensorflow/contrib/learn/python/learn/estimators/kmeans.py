@@ -106,7 +106,7 @@ def _kmeans_clustering_model_fn(features, labels, mode, params, config):
   """Model function for KMeansClustering estimator."""
   assert labels is None, labels
   (all_scores, model_predictions, losses,
-   is_initialized, _, init_op, training_op) = clustering_ops.KMeans(
+   is_initialized, init_op, training_op) = clustering_ops.KMeans(
        _parse_tensor_or_dict(features),
        params.get('num_clusters'),
        initial_clusters=params.get('training_initial_clusters'),

@@ -112,8 +112,10 @@ class Layer(object):
     self._per_input_losses = {}
     self._per_input_updates = {}
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
-    self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
-                                   or hasattr(self, 'compute_mask'))
+    call_fn_args = estimator_util.fn_args(self.call)
+    self._compute_previous_mask = ('mask' in call_fn_args or
+                                   hasattr(self, 'compute_mask'))
+    self._call_has_scope_arg = 'scope' in call_fn_args
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -134,7 +136,8 @@ class Layer(object):
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
-      self._scope = next(vs.variable_scope(scope).gen)
+      with vs.variable_scope(scope) as captured_scope:
+        self._scope = captured_scope
     else:
       self._scope = None
 
@@ -223,18 +226,17 @@ class Layer(object):
     The `get_updates_for` method allows to retrieve the updates relevant to a
     specific set of inputs.
 
+    This call is ignored in Eager mode.
+
     Arguments:
       updates: Update op, or list/tuple of update ops.
       inputs: Optional input tensor(s) that the update(s) depend on. Must
         match the `inputs` argument passed to the `__call__` method at the time
         the updates are created. If `None` is passed, the updates are assumed
         to be unconditional, and will apply across all dataflows of the layer.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
     if context.in_eager_mode():
-      raise RuntimeError('Layer.add_update not supported in Eager mode.')
+      return  # Updates already applied when in eager mode.
     updates = _to_list(updates)
     if not updates:
       return
@@ -401,11 +403,13 @@ class Layer(object):
     if self._scope is None:
       # If constructed with _scope=None, lazy setting of scope.
       if self._reuse:
-        self._scope = next(vs.variable_scope(
-            scope if scope is not None else self._base_name).gen)
+        with vs.variable_scope(
+            scope if scope is not None else self._base_name) as captured_scope:
+          self._scope = captured_scope
       else:
-        self._scope = next(vs.variable_scope(
-            scope, default_name=self._base_name).gen)
+        with vs.variable_scope(
+            scope, default_name=self._base_name) as captured_scope:
+          self._scope = captured_scope
 
   def add_variable(self, name, shape, dtype=None,
                    initializer=None, regularizer=None,
@@ -555,7 +559,15 @@ class Layer(object):
             self.build(input_shapes[0])
           else:
             self.build(input_shapes)
-        if 'scope' in estimator_util.fn_args(self.call):
+        try:
+          # Note: not all sub-classes of Layer call Layer.__init__ (especially
+          # the ones under tensorflow/python/keras). Hence we recompute this
+          # attribute here if it is not set.
+          # TODO(agarwal): Fix the sub-classes and avoid this complexity.
+          call_has_scope_arg = self._call_has_scope_arg
+        except AttributeError:
+          call_has_scope_arg = 'scope' in estimator_util.fn_args(self.call)
+        if call_has_scope_arg:
           kwargs['scope'] = scope
         # Check input assumptions set after layer building, e.g. input shape.
         if in_graph_mode:
@@ -1431,10 +1443,13 @@ class Network(Layer):
       base_name = _to_snake_case(self.__class__.__name__)
       self._name = _unique_layer_name(base_name)
     self._activity_regularizer = None
-    self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
+    with vs.variable_scope(None, default_name=base_name) as captured_scope:
+      self._scope = captured_scope
     self._base_name = base_name
-    self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
-                                   or hasattr(self, 'compute_mask'))
+    call_fn_args = estimator_util.fn_args(self.call)
+    self._compute_previous_mask = ('mask' in call_fn_args or
+                                   hasattr(self, 'compute_mask'))
+    self._call_has_scope_arg = 'scope' in call_fn_args
 
     # This acts just like the `trainable` attribute of any layer instance.
     # It does not affect users of the underlying layers, only users of the

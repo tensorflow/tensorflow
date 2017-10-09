@@ -1,3 +1,18 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+"""Timeseries head."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,31 +37,34 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
 
-def time_series_regression_head(
-        model, state_manager, optimizer, input_statistics_generator=None):
+def time_series_regression_head(model,
+                                state_manager,
+                                optimizer,
+                                input_statistics_generator=None):
   """Creates a `_Head` for time series regression.
 
   Args:
-    weight_column: A string or a `_NumericColumn` created by
-      `tf.feature_column.numeric_column` defining feature column representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    label_dimension: Number of regression labels per example. This is the size
-      of the last dimension of the labels `Tensor` (typically, this has shape
-      `[batch_size, label_dimension]`).
+    model: A model for time series regression.
+    state_manager: A state manager.
+    optimizer: An optimizer.
+    input_statistics_generator: A input statistics generator.
 
   Returns:
     An instance of `_Head` for time series regression.
   """
-  return _TimeSeriesRegressionHead(
-    model, state_manager, optimizer, input_statistics_generator)
+  return _TimeSeriesRegressionHead(model, state_manager, optimizer,
+                                   input_statistics_generator)
 
 
 class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-access
   """See `time_series_regression_head`."""
 
-  def __init__(self, model, state_manager, optimizer,
-    input_statistics_generator=None, name=None):
+  def __init__(self,
+               model,
+               state_manager,
+               optimizer,
+               input_statistics_generator=None,
+               name=None):
     self.model = model
     self.state_manager = state_manager
     self.optimizer = optimizer
@@ -56,31 +74,33 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   def _train_ops(self, features):
     """Add training ops to the graph."""
     with variable_scope.variable_scope("model"):
-      model_outputs = self.state_manager.define_loss(self.model, features,
-                                                     estimator_lib.ModeKeys.TRAIN)
-    train_op = optimizers.optimize_loss(
-      model_outputs.loss,
-      global_step=variables.get_global_step(),
-      optimizer=self.optimizer,
-      # Learning rate is set in the Optimizer object
-      learning_rate=None)
-    return estimator_lib.EstimatorSpec(
-      loss=model_outputs.loss,
-      mode=estimator_lib.ModeKeys.TRAIN,
-      train_op=train_op)
+      model_outputs = self.state_manager.define_loss(
+          self.model, features, estimator_lib.ModeKeys.TRAIN)
 
-  # TODO: suffix summary and metrics keys by `"/" + name`
+    train_op = optimizers.optimize_loss(
+        model_outputs.loss,
+        global_step=variables.get_global_step(),
+        optimizer=self.optimizer,
+        # Learning rate is set in the Optimizer object
+        learning_rate=None)
+    return estimator_lib.EstimatorSpec(
+        loss=model_outputs.loss,
+        mode=estimator_lib.ModeKeys.TRAIN,
+        train_op=train_op)
+
+  # TODO(terrytangyuan): suffix summary and metrics keys by `"/" + name`
   @property
   def name(self):
     return self._name
 
-  # TOOD: unused for now. Need to decouple `state_manager.define_loss`
-  # to satisfy the extendable return signature of `_Head.create_loss`.
+  # TODO(terrytangyuan): unused for now. Need to decouple
+  # `state_manager.define_loss` to satisfy the extendable return signature of
+  # `_Head.create_loss`.
   def create_loss(self, features, mode, logits, labels):
     """See `_Head`."""
     return None
 
-  # TODO: check label dimension
+  # TODO(terrytangyuan): check label dimension
   @property
   def logits_dimension(self):
     return None
@@ -88,58 +108,59 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   def _evaluate_ops(self, features):
     """Add ops for evaluation (aka filtering) to the graph."""
     with variable_scope.variable_scope("model"):
-      model_outputs = self.state_manager.define_loss(self.model, features,
-                                                     estimator_lib.ModeKeys.EVAL)
+      model_outputs = self.state_manager.define_loss(
+          self.model, features, estimator_lib.ModeKeys.EVAL)
     metrics = {}
     # Just output in-sample predictions for the last chunk seen
     for prediction_key, prediction_value in model_outputs.predictions.items():
       metrics[prediction_key] = _identity_metric_single(prediction_key,
                                                         prediction_value)
     metrics[feature_keys.FilteringResults.TIMES] = _identity_metric_single(
-      feature_keys.FilteringResults.TIMES, model_outputs.prediction_times)
+        feature_keys.FilteringResults.TIMES, model_outputs.prediction_times)
     metrics[feature_keys.FilteringResults.STATE_TUPLE] = (
-      _identity_metric_nested(feature_keys.FilteringResults.STATE_TUPLE,
-                              model_outputs.end_state))
+        _identity_metric_nested(feature_keys.FilteringResults.STATE_TUPLE,
+                                model_outputs.end_state))
     return estimator_lib.EstimatorSpec(
-      loss=model_outputs.loss,
-      mode=estimator_lib.ModeKeys.EVAL,
-      eval_metric_ops=metrics,
-      predictions={})
+        loss=model_outputs.loss,
+        mode=estimator_lib.ModeKeys.EVAL,
+        eval_metric_ops=metrics,
+        predictions={})
 
   def _predict_ops(self, features):
     """Add ops for prediction to the graph."""
     with variable_scope.variable_scope("model"):
       prediction = self.model.predict(features=features)
     prediction[feature_keys.PredictionResults.TIMES] = features[
-      feature_keys.PredictionFeatures.TIMES]
+        feature_keys.PredictionFeatures.TIMES]
     return estimator_lib.EstimatorSpec(
-      predictions=prediction, mode=estimator_lib.ModeKeys.PREDICT)
+        predictions=prediction, mode=estimator_lib.ModeKeys.PREDICT)
 
   def _serving_ops(self, features):
     """Add ops for serving to the graph."""
     with variable_scope.variable_scope("model"):
       prediction_outputs = self.model.predict(features=features)
     with variable_scope.variable_scope("model", reuse=True):
-      filtering_outputs = self.state_manager.define_loss(self.model, features,
-                                                         estimator_lib.ModeKeys.EVAL)
+      filtering_outputs = self.state_manager.define_loss(
+          self.model, features, estimator_lib.ModeKeys.EVAL)
+
     return estimator_lib.EstimatorSpec(
-      mode=estimator_lib.ModeKeys.PREDICT,
-      export_outputs={
-        feature_keys.SavedModelLabels.PREDICT:
-          export_lib.PredictOutput(prediction_outputs),
-        feature_keys.SavedModelLabels.FILTER:
-          export_lib.PredictOutput(
-            state_to_dictionary(filtering_outputs.end_state))
-      },
-      # Likely unused, but it is necessary to return `predictions` to satisfy
-      # the Estimator's error checking.
-      predictions={})
+        mode=estimator_lib.ModeKeys.PREDICT,
+        export_outputs={
+            feature_keys.SavedModelLabels.PREDICT:
+                export_lib.PredictOutput(prediction_outputs),
+            feature_keys.SavedModelLabels.FILTER:
+                export_lib.PredictOutput(
+                    state_to_dictionary(filtering_outputs.end_state))
+        },
+        # Likely unused, but it is necessary to return `predictions` to satisfy
+        # the Estimator's error checking.
+        predictions={})
 
   def _convert_feature_to_tensor(self, name, value):
     """Casts features to the correct dtype based on their name."""
     if name in [
-      feature_keys.TrainEvalFeatures.TIMES,
-      feature_keys.PredictionFeatures.TIMES
+        feature_keys.TrainEvalFeatures.TIMES,
+        feature_keys.PredictionFeatures.TIMES
     ]:
       return math_ops.cast(value, dtypes.int64)
     if name == feature_keys.TrainEvalFeatures.VALUES:
@@ -164,39 +185,45 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
       del features[key]
     numbered_state.sort(key=lambda number, *_: number)
     features[feature_keys.State.STATE_TUPLE] = nest.pack_sequence_as(
-      structure=self.model.get_start_state(),
-      flat_sequence=[tensor for _, _, tensor in numbered_state])
+        structure=self.model.get_start_state(),
+        flat_sequence=[tensor for _, _, tensor in numbered_state])
     return features, True
 
   def create_estimator_spec(self, features, mode, labels=None):
     """Performs basic error checking and returns an EstimatorSpec."""
     with ops.name_scope("head"):
       if labels:
-        raise ValueError("The model received a `labels` dictionary, which is not"
-                         " supported. Pass '{}' and '{}' as features.".format(
-          feature_keys.TrainEvalFeatures.TIMES,
-          feature_keys.TrainEvalFeatures.VALUES))
+        raise ValueError(
+            "The model received a `labels` dictionary, which is "
+            "not supported. Pass '{}' and '{}' as "
+            "features.".format(feature_keys.TrainEvalFeatures.TIMES,
+                               feature_keys.TrainEvalFeatures.VALUES))
       del labels
-      features = {name: self._convert_feature_to_tensor(name=name, value=value)
-                  for name, value in features.items()}
+      features = {
+          name: self._convert_feature_to_tensor(name=name, value=value)
+          for name, value in features.items()
+      }
       if self.input_statistics_generator is not None:
         input_statistics = self.input_statistics_generator.initialize_graph(
-          features, update_statistics=(mode == estimator_lib.ModeKeys.TRAIN))
+            features, update_statistics=(mode == estimator_lib.ModeKeys.TRAIN))
       else:
         input_statistics = None
       self.model.initialize_graph(input_statistics=input_statistics)
-      # _gather_state requires the model to have its graph initialized (so it has
-      # access to the structure of the model's state)
+
+      # _gather_state requires the model to have its graph initialized (so it
+      # has access to the structure of the model's state)
       features, passed_flat_state = self._gather_state(features)
-      if (mode == estimator_lib.ModeKeys.TRAIN
-          or mode == estimator_lib.ModeKeys.EVAL):
+      if (mode == estimator_lib.ModeKeys.TRAIN or
+          mode == estimator_lib.ModeKeys.EVAL):
         _check_train_eval_features(features, self.model)
       elif mode == estimator_lib.ModeKeys.PREDICT:
         _check_predict_features(features)
       else:
         raise ValueError("Unknown mode '{}' passed to model_fn.".format(mode))
+
       self.state_manager.initialize_graph(
-        model=self.model, input_statistics=input_statistics)
+          model=self.model, input_statistics=input_statistics)
+
       if mode == estimator_lib.ModeKeys.TRAIN:
         return self._train_ops(features)
       elif mode == estimator_lib.ModeKeys.EVAL:
@@ -210,8 +237,10 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
         return self._serving_ops(features)
 
 
-def _check_feature_shapes_compatible_with(
-        features, compatible_with_name, compatible_with_value, ignore=None):
+def _check_feature_shapes_compatible_with(features,
+                                          compatible_with_name,
+                                          compatible_with_value,
+                                          ignore=None):
   """Checks all features are compatible with the given time-like feature."""
   if ignore is None:
     ignore = set()
@@ -223,77 +252,77 @@ def _check_feature_shapes_compatible_with(
       continue
     if feature_shape.ndims < 2:
       raise ValueError(
-        ("Features must have shape (batch dimension, window size, ...) "
-         "(got rank {} for feature '{}')").format(
-          feature_shape.ndims, name))
+          ("Features must have shape (batch dimension, window size, ...) "
+           "(got rank {} for feature '{}')").format(feature_shape.ndims, name))
     if not feature_shape[:2].is_compatible_with(
-            compatible_with_value.get_shape()):
+        compatible_with_value.get_shape()):
       raise ValueError(
-        ("Features must have shape (batch dimension, window size, ...) "
-         "where batch dimension and window size match the "
-         "'{times_feature}' feature (got shape {feature_shape} for "
-         "feature '{feature_name}' but shape {times_shape} for feature "
-         "'{times_feature}')").format(
-          times_feature=compatible_with_name,
-          feature_shape=feature_shape,
-          feature_name=name,
-          times_shape=compatible_with_value.get_shape()))
+          ("Features must have shape (batch dimension, window size, ...) "
+           "where batch dimension and window size match the "
+           "'{times_feature}' feature (got shape {feature_shape} for "
+           "feature '{feature_name}' but shape {times_shape} for feature "
+           "'{times_feature}')").format(
+               times_feature=compatible_with_name,
+               feature_shape=feature_shape,
+               feature_name=name,
+               times_shape=compatible_with_value.get_shape()))
 
 
 def _check_predict_features(features):
   """Raises errors if features are not suitable for prediction."""
   if feature_keys.PredictionFeatures.TIMES not in features:
     raise ValueError("Expected a '{}' feature for prediction.".format(
-      feature_keys.PredictionFeatures.TIMES))
+        feature_keys.PredictionFeatures.TIMES))
   if feature_keys.PredictionFeatures.STATE_TUPLE not in features:
     raise ValueError("Expected a '{}' feature for prediction.".format(
-      feature_keys.PredictionFeatures.STATE_TUPLE))
+        feature_keys.PredictionFeatures.STATE_TUPLE))
   times_feature = features[feature_keys.PredictionFeatures.TIMES]
   if not times_feature.get_shape().is_compatible_with([None, None]):
     raise ValueError(
-      ("Expected shape (batch dimension, window size) for feature '{}' "
-       "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
-                                times_feature.get_shape()))
+        ("Expected shape (batch dimension, window size) for feature '{}' "
+         "(got shape {})").format(feature_keys.PredictionFeatures.TIMES,
+                                  times_feature.get_shape()))
   _check_feature_shapes_compatible_with(
-    features=features,
-    compatible_with_name=feature_keys.PredictionFeatures.TIMES,
-    compatible_with_value=times_feature,
-    ignore=set([
-      feature_keys.PredictionFeatures.STATE_TUPLE  # Model-dependent shapes
-    ]))
+      features=features,
+      compatible_with_name=feature_keys.PredictionFeatures.TIMES,
+      compatible_with_value=times_feature,
+      ignore=set([
+          feature_keys.PredictionFeatures.STATE_TUPLE  # Model-dependent shapes
+      ]))
 
 
 def _check_train_eval_features(features, model):
   """Raise errors if features are not suitable for training/evaluation."""
   if feature_keys.TrainEvalFeatures.TIMES not in features:
     raise ValueError("Expected a '{}' feature for training/evaluation.".format(
-      feature_keys.TrainEvalFeatures.TIMES))
+        feature_keys.TrainEvalFeatures.TIMES))
   if feature_keys.TrainEvalFeatures.VALUES not in features:
     raise ValueError("Expected a '{}' feature for training/evaluation.".format(
-      feature_keys.TrainEvalFeatures.VALUES))
+        feature_keys.TrainEvalFeatures.VALUES))
   times_feature = features[feature_keys.TrainEvalFeatures.TIMES]
   if not times_feature.get_shape().is_compatible_with([None, None]):
     raise ValueError(
-      ("Expected shape (batch dimension, window size) for feature '{}' "
-       "(got shape {})").format(feature_keys.TrainEvalFeatures.TIMES,
-                                times_feature.get_shape()))
+        ("Expected shape (batch dimension, window size) for feature '{}' "
+         "(got shape {})").format(feature_keys.TrainEvalFeatures.TIMES,
+                                  times_feature.get_shape()))
   values_feature = features[feature_keys.TrainEvalFeatures.VALUES]
   if not values_feature.get_shape().is_compatible_with(
-          [None, None, model.num_features]):
+      [None, None, model.num_features]):
     raise ValueError(
-      ("Expected shape (batch dimension, window size, {num_features}) "
-       "for feature '{feature_name}', since the model was configured "
-       "with num_features={num_features} (got shape {got_shape})").format(
-        num_features=model.num_features,
-        feature_name=feature_keys.TrainEvalFeatures.VALUES,
-        got_shape=times_feature.get_shape()))
+        ("Expected shape (batch dimension, window size, {num_features}) "
+         "for feature '{feature_name}', since the model was configured "
+         "with num_features={num_features} (got shape {got_shape})").format(
+             num_features=model.num_features,
+             feature_name=feature_keys.TrainEvalFeatures.VALUES,
+             got_shape=times_feature.get_shape()))
   _check_feature_shapes_compatible_with(
-    features=features,
-    compatible_with_name=feature_keys.TrainEvalFeatures.TIMES,
-    compatible_with_value=times_feature,
-    ignore=set([
-      feature_keys.State.STATE_TUPLE  # Model-dependent shapes
-    ]))
+      features=features,
+      compatible_with_name=feature_keys.TrainEvalFeatures.TIMES,
+      compatible_with_value=times_feature,
+      ignore=set([
+          feature_keys.State.STATE_TUPLE  # Model-dependent shapes
+      ]))
+
 
 def _identity_metric_single(name, input_tensor):
   """A metric which takes on its last updated value.
@@ -311,12 +340,12 @@ def _identity_metric_single(name, input_tensor):
     A tuple of (value, update_op).
   """
   metric_variable = variable_scope.variable(
-    name="{}_identity_metric".format(name),
-    initial_value=array_ops.zeros([], dtype=input_tensor.dtype),
-    collections=[ops.GraphKeys.LOCAL_VARIABLES],
-    validate_shape=False)
-  update_op = state_ops.assign(metric_variable, input_tensor,
-                               validate_shape=False)
+      name="{}_identity_metric".format(name),
+      initial_value=array_ops.zeros([], dtype=input_tensor.dtype),
+      collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      validate_shape=False)
+  update_op = state_ops.assign(
+      metric_variable, input_tensor, validate_shape=False)
   # This shape will be correct once the first update runs (but may be
   # incomplete, so is not helpful for initializing the variable).
   metric_variable.set_shape(input_tensor.get_shape())
@@ -329,12 +358,12 @@ def _identity_metric_nested(name, input_tensors):
   value_tensors = []
   for tensor_number, tensor in enumerate(nest.flatten(input_tensors)):
     value_tensor, update_op = _identity_metric_single(
-      name="{}_{}".format(name, tensor_number),
-      input_tensor=tensor)
+        name="{}_{}".format(name, tensor_number), input_tensor=tensor)
     update_ops.append(update_op)
     value_tensors.append(value_tensor)
   return (nest.pack_sequence_as(input_tensors, value_tensors),
           control_flow_ops.group(*update_ops))
+
 
 def state_to_dictionary(state_tuple):
   """Flatten model state into a dictionary with string keys."""
@@ -344,4 +373,3 @@ def state_to_dictionary(state_tuple):
                                              state_number)
     flattened[prefixed_state_name] = state_value
   return flattened
-

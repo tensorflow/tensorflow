@@ -39,9 +39,9 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& options,
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Host", DEVICE_XLA_CPU, 0,
-                                       DEVICE_CPU_XLA_JIT, options, name_prefix,
-                                       &device));
+  TF_RETURN_IF_ERROR(XlaDevice::Create(
+      "Host", DEVICE_XLA_CPU, 0, DEVICE_CPU_XLA_JIT, options, name_prefix,
+      /*register_device_for_compilation=*/true, &device));
   devices->push_back(device.release());
   return Status::OK();
 }

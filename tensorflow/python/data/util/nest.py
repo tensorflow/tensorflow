@@ -106,7 +106,7 @@ def is_sequence(seq):
 
   NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
   which *does* treat a Python list as a sequence. For ergonomic
-  reasons, `tf.contrib.data` users would prefer to treat lists as
+  reasons, `tf.data` users would prefer to treat lists as
   implict `tf.Tensor` objects, and dicts as (nested) sequences.
 
   Args:
