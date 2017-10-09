@@ -415,6 +415,7 @@ class Tensor(_TensorLike):
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
+    # TODO(skyewm): call C API
     self._shape = self._shape.merge_with(shape)
 
   @property
@@ -1873,6 +1874,7 @@ class Operation(object):
     """The list of `Tensor` objects representing the data inputs of this op."""
     if self._c_op:
       tf_outputs = c_api.GetOperationInputs(self._c_op)
+      # TODO(skyewm): return Operation._InputList
       # pylint: disable=protected-access
       return [self.graph._get_tensor_by_tf_output(tf_output)
               for tf_output in tf_outputs]
@@ -4340,14 +4342,17 @@ class _DefaultStack(threading.local):
       self.stack.append(default)
       yield default
     finally:
-      if self._enforce_nesting:
-        if self.stack[-1] is not default:
-          raise AssertionError(
-              "Nesting violated for default stack of %s objects" %
-              type(default))
-        self.stack.pop()
-      else:
-        self.stack.remove(default)
+      # stack may be empty if reset() was called
+      if self.stack:
+        if self._enforce_nesting:
+          if self.stack[-1] is not default:
+            raise AssertionError(
+                "Nesting violated for default stack of %s objects" %
+                type(default))
+          self.stack.pop()
+        else:
+          self.stack.remove(default)
+
 
 _default_session_stack = _DefaultStack()  # pylint: disable=protected-access
 
