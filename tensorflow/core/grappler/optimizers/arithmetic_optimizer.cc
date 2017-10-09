@@ -465,7 +465,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             scaled_weights->set_name(weights->name() + "_scaled");
             scaled_weights->set_op("Mul");
             scaled_weights->set_device(weights->device());
-            (*scaled_weights->mutable_attr())["dtype"] =
+            (*scaled_weights->mutable_attr())["T"] =
                 weights->attr().at("dtype");
             node_map->AddNode(scaled_weights->name(), scaled_weights);
             new_nodes->push_back(scaled_weights);
@@ -490,6 +490,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             consumer_of_mul->set_input(0, mul->input(0));
             node_map->UpdateInput(consumer_of_mul->name(), mul->name(),
                                   other->name());
+            new_nodes->push_back(consumer_of_mul);
             return conv->name();
           }
         }
