@@ -229,7 +229,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cholesky_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/ops/init_ops.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/init_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/self_adjoint_eig_op_test.py"
       # misc
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/variable_scope_test.py"
