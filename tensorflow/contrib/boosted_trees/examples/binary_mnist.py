@@ -12,24 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Demonstrates a regression on Boston housing data.
+r"""Demonstrates multiclass MNIST TF Boosted trees example.
 
   This example demonstrates how to run experiments with TF Boosted Trees on
-  a regression dataset. We split all the data into 20% test and 80% train,
-  and are using l2 loss and l2 regularization.
+  a binary dataset. We use digits 4 and 9 from the original MNIST dataset.
 
   Example Usage:
+  python tensorflow/contrib/boosted_trees/examples/binary_mnist.py \
+  --output_dir="/tmp/binary_mnist" --depth=4 --learning_rate=0.3 \
+  --batch_size=10761 --examples_per_layer=10761 --eval_batch_size=1030 \
+  --num_eval_steps=1 --num_trees=10 --l2=1 --vmodule=training_ops=1 \
 
-  python tensorflow/contrib/boosted_trees/examples/boston.py \
-  --batch_size=404 --output_dir="/tmp/boston" --depth=4 --learning_rate=0.1 \
-  --num_eval_steps=1 --num_trees=500 --l2=4 \
-  --vmodule=training_ops=1
+  When training is done, accuracy on eval data is reported. Point tensorboard
+  to the directory for the run to see how the training progresses:
 
-  When training is done, mean squared error on eval data is reported.
-  Point tensorboard to the directory for the run to see how the training
-  progresses:
-
-  tensorboard --logdir=/tmp/boston
+  tensorboard --logdir=/tmp/binary_mnist
 
 """
 from __future__ import absolute_import
@@ -38,38 +35,60 @@ from __future__ import print_function
 
 import argparse
 import sys
+
+import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.boosted_trees.estimator_batch.estimator import GradientBoostedDecisionTreeRegressor
+from tensorflow.contrib.boosted_trees.estimator_batch.estimator import GradientBoostedDecisionTreeClassifier
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
-from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn import learn_runner
 
-_BOSTON_NUM_FEATURES = 13
+
+def get_input_fn(data,
+                 batch_size,
+                 capacity=10000,
+                 min_after_dequeue=3000):
+  """Input function over MNIST data."""
+  # Keep only 4 and 9 digits.
+  ids = np.where((data.labels == 4) | (data.labels == 9))
+  images = data.images[ids]
+  labels = data.labels[ids]
+  # Make digit 4 label 0, 9 is 1.
+  labels = labels == 4
+
+  def _input_fn():
+    """Prepare features and labels."""
+    images_batch, labels_batch = tf.train.shuffle_batch(
+        tensors=[images,
+                 labels.astype(np.int32)],
+        batch_size=batch_size,
+        capacity=capacity,
+        min_after_dequeue=min_after_dequeue,
+        enqueue_many=True,
+        num_threads=4)
+    features_map = {"images": images_batch}
+    return features_map, labels_batch
+
+  return _input_fn
 
 
 # Main config - creates a TF Boosted Trees Estimator based on flags.
-def _get_tfbt(output_dir, feature_cols):
+def _get_tfbt(output_dir):
   """Configures TF Boosted Trees estimator based on flags."""
   learner_config = learner_pb2.LearnerConfig()
 
   learner_config.learning_rate_tuner.fixed.learning_rate = FLAGS.learning_rate
   learner_config.regularization.l1 = 0.0
-  # Set the regularization per instance in such a way that
-  # regularization for the full training data is equal to l2 flag.
-  learner_config.regularization.l2 = FLAGS.l2 / FLAGS.batch_size
+  learner_config.regularization.l2 = FLAGS.l2 / FLAGS.examples_per_layer
   learner_config.constraints.max_tree_depth = FLAGS.depth
-  learner_config.growing_mode = learner_pb2.LearnerConfig.WHOLE_TREE
 
+  growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
+  learner_config.growing_mode = growing_mode
   run_config = tf.contrib.learn.RunConfig(save_checkpoints_secs=300)
 
-  # Create a TF Boosted trees regression estimator.
-  estimator = GradientBoostedDecisionTreeRegressor(
+  # Create a TF Boosted trees estimator that can take in custom loss.
+  estimator = GradientBoostedDecisionTreeClassifier(
       learner_config=learner_config,
-      # For the WHOLE_TREE strategy, set the examples_per_layer to be equal to
-      # batch size.
-      examples_per_layer=FLAGS.batch_size,
-      feature_columns=feature_cols,
-      label_dimension=1,
+      examples_per_layer=FLAGS.examples_per_layer,
       model_dir=output_dir,
       num_trees=FLAGS.num_trees,
       center_bias=False,
@@ -79,25 +98,12 @@ def _get_tfbt(output_dir, feature_cols):
 
 def _make_experiment_fn(output_dir):
   """Creates experiment for gradient boosted decision trees."""
-  (x_train, y_train), (x_test,
-                       y_test) = tf.keras.datasets.boston_housing.load_data()
-
-  train_input_fn = tf.estimator.inputs.numpy_input_fn(
-      x={"x": x_train},
-      y=y_train,
-      batch_size=FLAGS.batch_size,
-      num_epochs=None,
-      shuffle=True)
-
-  eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-      x={"x": x_test}, y=y_test, num_epochs=1, shuffle=False)
-
-  feature_columns = [
-      feature_column.real_valued_column("x", dimension=_BOSTON_NUM_FEATURES)
-  ]
+  data = tf.contrib.learn.datasets.mnist.load_mnist()
+  train_input_fn = get_input_fn(data.train, FLAGS.batch_size)
+  eval_input_fn = get_input_fn(data.validation, FLAGS.eval_batch_size)
 
   return tf.contrib.learn.Experiment(
-      estimator=_get_tfbt(output_dir, feature_columns),
+      estimator=_get_tfbt(output_dir),
       train_input_fn=train_input_fn,
       eval_input_fn=eval_input_fn,
       train_steps=None,
@@ -117,15 +123,20 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   # Define the list of flags that users can change.
   parser.add_argument(
+      "--output_dir",
+      type=str,
+      required=True,
+      help="Choose the dir for the output.")
+  parser.add_argument(
       "--batch_size",
       type=int,
       default=1000,
       help="The batch size for reading data.")
   parser.add_argument(
-      "--output_dir",
-      type=str,
-      required=True,
-      help="Choose the dir for the output.")
+      "--eval_batch_size",
+      type=int,
+      default=1000,
+      help="Size of the batch for eval.")
   parser.add_argument(
       "--num_eval_steps",
       type=int,
@@ -142,6 +153,11 @@ if __name__ == "__main__":
       default=0.1,
       help="Learning rate (shrinkage weight) with which each new tree is added."
   )
+  parser.add_argument(
+      "--examples_per_layer",
+      type=int,
+      default=1000,
+      help="Number of examples to accumulate stats for per layer.")
   parser.add_argument(
       "--num_trees",
       type=int,
