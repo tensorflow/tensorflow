@@ -93,14 +93,14 @@ Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder) {
   return CreateScalarComputation(
       "logical_and", PRED, builder,
       [](ComputationBuilder* b, const ComputationDataHandle& lhs,
-         const ComputationDataHandle& rhs) { return b->LogicalAnd(lhs, rhs); });
+         const ComputationDataHandle& rhs) { return b->And(lhs, rhs); });
 }
 
 Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder) {
   return CreateScalarComputation(
       "logical_or", PRED, builder,
       [](ComputationBuilder* b, const ComputationDataHandle& lhs,
-         const ComputationDataHandle& rhs) { return b->LogicalOr(lhs, rhs); });
+         const ComputationDataHandle& rhs) { return b->Or(lhs, rhs); });
 }
 
 StatusOr<ComputationDataHandle> Any(const ComputationDataHandle& predicates,
