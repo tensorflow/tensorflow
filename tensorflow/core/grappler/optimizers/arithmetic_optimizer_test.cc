@@ -240,6 +240,31 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
   }
 }
 
+TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({2, 3}));
+  Output transpose1 = ops::Transpose(s, inputs, ops::Const(s, {1, 0}));
+  Output transpose2 = ops::Transpose(s, transpose1, ops::Const(s, {1, 0}));
+  Output outputs =
+      ops::Identity(s.WithOpName("outputs").WithControlDependencies(transpose2),
+                    ops::Const(s.WithOpName("outputs_const"), 1.0f));
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* outputs_node = node_map.GetNode("outputs");
+  EXPECT_EQ(2, outputs_node->input_size());
+  EXPECT_EQ(outputs_node->input(0), "outputs_const");
+  EXPECT_EQ(outputs_node->input(1), "^Placeholder");
+}
+
 TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =
