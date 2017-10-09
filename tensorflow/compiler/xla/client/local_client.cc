@@ -283,11 +283,10 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   int device_ordinal = options.device_ordinal() == -1
                            ? default_device_ordinal()
                            : options.device_ordinal();
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      local_service_->CompileExecutable(computation.handle(), argument_layouts,
-                                        options.result_layout(), device_ordinal,
-                                        options.has_hybrid_result()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      local_service_->CompileExecutable(
+                          computation.handle(), argument_layouts,
+                          options.result_layout(), device_ordinal));
   return WrapUnique(new LocalExecutable(std::move(executable),
                                         local_service_->mutable_backend(),
                                         device_ordinal, options));

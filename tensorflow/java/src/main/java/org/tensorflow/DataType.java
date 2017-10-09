@@ -21,8 +21,6 @@ import org.tensorflow.types.UInt8;
 
 /**
  * Represents the type of elements in a {@link Tensor} as an enum.
- *
- * @see org.tensorflow.types
  */
 public enum DataType {
   /** 32-bit single precision floating point. */
@@ -61,7 +59,7 @@ public enum DataType {
   int c() {
     return value;
   }
-
+  
   // Cached to avoid copying it
   private static final DataType[] values = values();
 

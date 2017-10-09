@@ -24,7 +24,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:variable_ops",
     ],
     alwayslink = 1,

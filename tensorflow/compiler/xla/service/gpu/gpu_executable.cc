@@ -108,9 +108,10 @@ class HloExecutionProfiler {
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    tensorflow::StringPiece ptx, std::unique_ptr<ThunkSchedule> thunk_schedule,
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<BufferAssignment> assignment,
+    tensorflow::StringPiece ptx,
+    std::unique_ptr<const ThunkSchedule> thunk_schedule,
+    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<const BufferAssignment> assignment,
     HloCostAnalysis::ShapeSizeFunction shape_size_function)
     : Executable(std::move(hlo_module)),
       ptx_(ptx),
@@ -183,9 +184,6 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteOnStream(
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  // This ExecuteOnStream overload should only be called if has_hybrid_result is
-  // false.
-  TF_RET_CHECK(!module_config().has_hybrid_result());
 
   BufferAllocations::Builder buffer_allocations_builder;
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
@@ -263,9 +261,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  // This ExecuteOnStream overload should only be called by the LocalService
-  // which sets has_hybrid_result to true.
-  TF_RET_CHECK(module_config().has_hybrid_result());
 
   if (GetRootPointsToSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");

@@ -32,7 +32,6 @@ limitations under the License.
 //   --tf_xla_test_repetitions=20
 
 // TODO(phawkins): add tests for:
-// * ArgMax
 // * DepthwiseConv2DNative
 // * Gather
 // * InvertPermutation
@@ -898,6 +897,38 @@ TEST_F(OpTest, ApproximateEqual) {
   });
 }
 
+TEST_F(OpTest, ArgMax) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1, 5);
+    int num_dims = dims.size();
+    int reduce_dim =
+        std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ArgMax")
+            .RandomInput(DT_FLOAT, dims)
+            .Input(test::AsScalar<int32>(reduce_dim))
+            .Attr("T", DT_FLOAT)
+            .Attr("Tidx", DT_INT32)
+            .Attr("output_type", DT_INT32));
+  });
+}
+
+TEST_F(OpTest, ArgMin) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1, 5, 1);
+    int num_dims = dims.size();
+    int reduce_dim =
+        std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ArgMin")
+            .RandomInput(DT_FLOAT, dims)
+            .Input(test::AsScalar<int32>(reduce_dim))
+            .Attr("T", DT_FLOAT)
+            .Attr("Tidx", DT_INT32)
+            .Attr("output_type", DT_INT32));
+  });
+}
+
 TEST_F(OpTest, Asinh) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
@@ -1134,6 +1165,20 @@ TEST_F(OpTest, BiasAddV1) {
                                              .RandomInput(DT_FLOAT, x_dims)
                                              .RandomInput(DT_FLOAT, y_dims)
                                              .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, BroadcastArgs) {
+  Repeatedly([this]() {
+    // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
+    // DataType type = Choose<DataType>({DT_INT32, DT_INT64});
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("BroadcastArgs")
+            .Input(AsIntTensor(type, dims.first))
+            .Input(AsIntTensor(type, dims.second))
+            .Attr("T", type));
   });
 }
 
@@ -2608,7 +2653,8 @@ TEST_F(OpTest, Split) {
     std::vector<int64> dims = RandomDims(1);
     std::uniform_int_distribution<int> ud;
     int32 dim = std::uniform_int_distribution<int32>(
-        0, static_cast<int32>(dims.size()) - 1)(generator());
+        -static_cast<int32>(dims.size()),
+        static_cast<int32>(dims.size()) - 1)(generator());
     int n = std::uniform_int_distribution<int>(1, 5)(generator());
     // Ensure 'dim' is evenly divisible by 'n'.
     dims[dim] /= n;

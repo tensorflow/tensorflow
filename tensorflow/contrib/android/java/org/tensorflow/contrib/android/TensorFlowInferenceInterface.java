@@ -36,6 +36,7 @@ import org.tensorflow.Operation;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
 import org.tensorflow.TensorFlow;
+import org.tensorflow.Tensors;
 import org.tensorflow.types.UInt8;
 
 /**
@@ -337,7 +338,7 @@ public class TensorFlowInferenceInterface {
    * a Java {@code String} (which is a sequence of characters).
    */
   public void feedString(String inputName, byte[] src) {
-    addFeed(inputName, Tensor.create(src));
+    addFeed(inputName, Tensors.create(src));
   }
 
   /**
@@ -346,7 +347,7 @@ public class TensorFlowInferenceInterface {
    * arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of characters).
    */
   public void feedString(String inputName, byte[][] src) {
-    addFeed(inputName, Tensor.create(src));
+    addFeed(inputName, Tensors.create(src));
   }
 
   // Methods for taking a native Tensor and filling it with src from Java native IO buffers.
@@ -616,7 +617,7 @@ public class TensorFlowInferenceInterface {
   private List<String> feedNames = new ArrayList<String>();
   private List<Tensor<?>> feedTensors = new ArrayList<Tensor<?>>();
   private List<String> fetchNames = new ArrayList<String>();
-  private List<Tensor<?>> fetchTensors = null;
+  private List<Tensor<?>> fetchTensors = new ArrayList<Tensor<?>>();
 
   // Mutable state.
   private RunStats runStats;

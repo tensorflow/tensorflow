@@ -81,6 +81,13 @@ class Chain(bijector.Bijector):
     if bijectors is None:
       bijectors = ()
     self._bijectors = bijectors
+
+    for a_bijector in bijectors:
+      if not a_bijector._is_injective:  # pylint: disable=protected-access
+        raise NotImplementedError(
+            "Invert is not implemented for non-injective bijector ({})".format(
+                a_bijector.name))
+
     dtype = list(set([b.dtype for b in bijectors]))
     if len(dtype) > 2:
       raise ValueError("incompatible dtypes: %s" % dtype)

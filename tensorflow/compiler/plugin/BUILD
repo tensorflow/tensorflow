@@ -25,7 +25,7 @@
 
     deps = ["//tensorflow/compiler/plugin/example:plugin_lib"],
 
-  ** PLEASE DON'T REMOVE THIS FILE. IT IS SUPPORTING 3RD PARTY PLUGINS **
+  ** Please don't remove this file - it is supporting some 3rd party plugins **
 """
 
 licenses(["notice"])
@@ -38,5 +38,6 @@ cc_library(
     name = "plugin",
     deps = [
         "//tensorflow/compiler/plugin/poplar:poplar_lib",
+        #"//tensorflow/compiler/plugin/example:example_lib",
     ],
 )

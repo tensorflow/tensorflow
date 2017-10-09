@@ -27,8 +27,21 @@ namespace tensorflow {
 class ProcessFunctionLibraryRuntime {
  public:
   // Creates FunctionLibraryRuntime objects for each device in the provided
-  // DeviceMgr. Caller needs to make sure that device_mgr and lib_def outlive
-  // this object.
+  // DeviceMgr. Caller needs to make sure that device_mgr, lib_def and parent
+  // (if provided) outlive this object.
+  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
+                                int graph_def_version,
+                                const FunctionLibraryDefinition* lib_def,
+                                const OptimizerOptions& optimizer_options,
+                                DistributedFunctionLibraryRuntime* parent);
+
+  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
+                                int graph_def_version,
+                                const FunctionLibraryDefinition* lib_def,
+                                const OptimizerOptions& optimizer_options,
+                                CustomKernelCreator custom_kernel_creator,
+                                DistributedFunctionLibraryRuntime* parent);
+
   ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
                                 int graph_def_version,
                                 const FunctionLibraryDefinition* lib_def,
@@ -77,7 +90,7 @@ class ProcessFunctionLibraryRuntime {
 
   // For a given canonicalized key signature of the function instantiated
   // on device `device_name` and a `local_handle`, creates a handle and returns
-  // that value. Use core/common_runtime/framework/function.h::Canonicalize
+  // that value. Uses core/common_runtime/framework/function.h::Canonicalize
   // to canonicalize the function signature.
   FunctionLibraryRuntime::Handle AddHandle(
       const string& function_key, const string& device_name,
@@ -124,12 +137,22 @@ class ProcessFunctionLibraryRuntime {
 
   mutable mutex mu_;
 
+  struct FunctionData {
+    const string target_device;
+    const FunctionLibraryRuntime::LocalHandle local_handle;
+
+    FunctionData(const string& target_device,
+                 FunctionLibraryRuntime::LocalHandle local_handle)
+        : target_device(target_device), local_handle(local_handle) {}
+  };
+
+  const FunctionLibraryDefinition* lib_def_;
   // Holds all the function invocations here.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
       GUARDED_BY(mu_);
-  std::vector<std::pair<string, FunctionLibraryRuntime::LocalHandle>>
-      function_data_ GUARDED_BY(mu_);
+  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
   std::unordered_map<string, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
+  DistributedFunctionLibraryRuntime* const parent_;
 };
 
 }  // namespace tensorflow

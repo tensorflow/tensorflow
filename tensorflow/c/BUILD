@@ -72,6 +72,7 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
         ],
     }),
 )
@@ -168,7 +169,6 @@ tf_cc_test(
     srcs = ["c_api_function_test.cc"],
     deps = [
         ":c_api",
-        ":c_api_internal",
         ":c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

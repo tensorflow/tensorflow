@@ -20,6 +20,7 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as _saver
@@ -41,21 +42,66 @@ def _init_from_checkpoint(self, *args, **kwargs):
   # pylint: enable=protected-access
 
 
+@contextlib.contextmanager
+def restore_variables_on_create(save_path):
+  """ContextManager that restores variables on creation.
+
+    When save_path is None (e.g. No checkpoint), does nothing.
+    Otherwise, it preloads all values from checkpoint. When the
+    corresponding variable is first created, it assigns the checkpoint
+    value to the variable.
+
+    ```python
+    with restore_variables_on_create(
+        tf.train.latest_checkpoint(checkpoint_dir)):
+    ```
+
+  Args:
+    save_path: The checkpoint file prefix.
+
+  Yields:
+    Nothing.
+
+  Raises:
+    NotFoundError: If the variable is not found in checkpoint.
+  """
+  if save_path:
+    ckpt_var_cache = dict()
+    reader = checkpoint_utils.load_checkpoint(save_path)
+    for k, _ in checkpoint_utils.list_variables(save_path):
+      ckpt_var_cache[k] = reader.get_tensor(k)
+
+    old_init = getattr(
+        resource_variable_ops.ResourceVariable, "_init_from_args", None)
+    assert old_init, "ResourceVariable misses _init_from_args method."
+    setattr(resource_variable_ops.ResourceVariable, "_init_from_args",
+            _init_from_checkpoint)
+    setattr(resource_variable_ops.ResourceVariable, "old_init", old_init)
+    setattr(resource_variable_ops.ResourceVariable, "ckpt_var_cache",
+            ckpt_var_cache)
+  try:
+    yield
+  except Exception as e:
+    raise e
+  finally:
+    if save_path:
+      setattr(resource_variable_ops.ResourceVariable, "_init_from_args",
+              old_init)
+      setattr(resource_variable_ops.ResourceVariable, "old_init", None)
+      setattr(resource_variable_ops.ResourceVariable, "ckpt_var_cache", None)
+
+
 class Saver(object):
   """A simple tf.train.Saver adapter for eager mode.
 
     save and restore API are similar to the tf.train.Saver, except that
     session is not needed.
 
-    restore_on_create is eager mode's way to reload checkpoint value during
-    the execution. (unlike graph mode's reload before run).
-
   Args:
-    var_list: See tf.train.Saver. Works the same for save/restore. Ignored
-        by restore_on_create.
+    var_list: A list of variables.
   """
 
-  def __init__(self, var_list=None):
+  def __init__(self, var_list):
     self._saver = _saver.Saver(var_list=var_list)
 
   def save(self, save_path, global_step=None):
@@ -68,8 +114,9 @@ class Saver(object):
     Returns:
       See save method in tf.train.Saver.
     """
-    return self._saver.save(None, save_path, write_meta_graph=False,
-                            global_step=global_step)
+    with ops.device("/device:CPU:0"):
+      return self._saver.save(None, save_path, write_meta_graph=False,
+                              global_step=global_step)
 
   def restore(self, save_path):
     """Restores previously saved variables.
@@ -77,47 +124,6 @@ class Saver(object):
     Args:
       save_path: See restore method in tf.train.Saver.
     """
-    self._saver.restore(None, save_path)
+    with ops.device("/device:CPU:0"):
+      self._saver.restore(None, save_path)
 
-  @contextlib.contextmanager
-  def maybe_restore_on_create(self, save_path):
-    """ContextManager that restores variables on creation.
-
-      When save_path is None (e.g. No checkpoint), does nothing.
-      Otherwise, it preloads all values from checkpoint. When the
-      corresponding variable is first created, it assigns the checkpoint
-      value to the variable.
-
-    Args:
-      save_path: Same as save_path of retore. If None, do not restore.
-
-    Yields:
-      Nothing.
-
-    Raises:
-      NotFoundError: If the variable is not found in checkpoint.
-    """
-    if save_path:
-      ckpt_var_cache = dict()
-      reader = checkpoint_utils.load_checkpoint(save_path)
-      for k, _ in checkpoint_utils.list_variables(save_path):
-        ckpt_var_cache[k] = reader.get_tensor(k)
-
-      old_init = getattr(
-          resource_variable_ops.ResourceVariable, "_init_from_args", None)
-      assert old_init, "ResourceVariable misses _init_from_args method."
-      setattr(resource_variable_ops.ResourceVariable, "_init_from_args",
-              _init_from_checkpoint)
-      setattr(resource_variable_ops.ResourceVariable, "old_init", old_init)
-      setattr(resource_variable_ops.ResourceVariable, "ckpt_var_cache",
-              ckpt_var_cache)
-    try:
-      yield
-    except Exception as e:
-      raise e
-    finally:
-      if save_path:
-        setattr(resource_variable_ops.ResourceVariable, "_init_from_args",
-                old_init)
-        setattr(resource_variable_ops.ResourceVariable, "old_init", None)
-        setattr(resource_variable_ops.ResourceVariable, "ckpt_var_cache", None)

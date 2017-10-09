@@ -32,6 +32,7 @@ from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated_args
 
 
 # TODO(josh11b): SWIG the code from node_def_util instead of duplicating
@@ -153,6 +154,10 @@ def _FindAttrInOpDef(attr_name, op_def):
   return None
 
 
+@deprecated_args(None, 'Please file an issue at '
+                 'https://github.com/tensorflow/tensorflow/issues if you depend'
+                 ' on this feature.',
+                 'op_dict')
 def import_graph_def(graph_def, input_map=None, return_elements=None,
                      name=None, op_dict=None, producer_op_list=None):
   """Imports the graph from `graph_def` into the current default `Graph`.
@@ -177,15 +182,12 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     name: (Optional.) A prefix that will be prepended to the names in
       `graph_def`. Note that this does not apply to imported function names.
       Defaults to `"import"`.
-    op_dict: (Optional.) A dictionary mapping op type names to `OpDef` protos.
-      Must contain an `OpDef` proto for each op type named in `graph_def`.
-      If omitted, uses the `OpDef` protos registered in the global registry.
+    op_dict: (Optional.) Deprecated, do not use.
     producer_op_list: (Optional.) An `OpList` proto with the (possibly stripped)
-      list of `OpDef`s used by the producer of the graph. If provided, attrs
-      for ops in `graph_def` that are not in `op_dict` that have their default
-      value according to `producer_op_list` will be removed. This will allow
-      some more `GraphDef`s produced by later binaries to be accepted by
-      earlier binaries.
+      list of `OpDef`s used by the producer of the graph. If provided,
+      unrecognized attrs for ops in `graph_def` that have their default value
+      according to `producer_op_list` will be removed. This will allow some more
+      `GraphDef`s produced by later binaries to be accepted by earlier binaries.
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
@@ -229,8 +231,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
   name_to_op = {}
 
-  if op_dict is None:
-    op_dict = op_def_registry.get_registered_ops()
+  op_dict = op_def_registry.get_registered_ops()
 
   if producer_op_list is None:
     producer_op_dict = None

@@ -653,7 +653,7 @@ BundleReader::~BundleReader() {
   delete table_;
   // InputBuffer does not own the underlying RandomAccessFile.
   for (auto pair : data_) {
-    if (pair.second->file() != nullptr) {
+    if (pair.second != nullptr && pair.second->file() != nullptr) {
       delete pair.second->file();
     }
   }
