@@ -55,18 +55,30 @@ class MklCPUAllocator : public Allocator {
 
     // Set upper bound on memory allocation to physical RAM available on the
     // CPU unless explicitly specified by user
-    uint64 max_mem_bytes =
+    uint64 max_mem_bytes = 64LL << 30;  // Default - 64 GB
+#if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+    max_mem_bytes =
         (uint64)sysconf(_SC_PHYS_PAGES) * (uint64)sysconf(_SC_PAGESIZE);
+#endif
     char* user_mem_bytes = getenv(kMaxAllocSize);
 
     if (user_mem_bytes != NULL) {
-      if (!strings::safe_strtou64(user_mem_bytes, &max_mem_bytes)) {
+      uint64 user_val = 0;
+      if (!strings::safe_strtou64(user_mem_bytes, &user_val)) {
         string err_msg = "Invalid memory limit (" + string(user_mem_bytes) +
                          ") specified for MKL allocator through " +
                          string(kMaxAllocSize);
         Status s = Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
         TF_CHECK_OK(s);
       }
+#if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+      if (user_val > max_mem_bytes) {
+        LOG(WARNING) << "User specified memory limit " << user_val
+                     << " greater than available physical memory "
+                     << max_mem_bytes << "!!! Could lead to perf slowdowns.";
+      }
+#endif
+      max_mem_bytes = user_val;
     }
 
     VLOG(1) << "MklCPUAllocator: Setting max_mem_bytes: " << max_mem_bytes;
