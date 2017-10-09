@@ -339,6 +339,13 @@ Create2DConvWithReverse(poplar::Graph &graph,
                         const xla::Shape& output_shape,
                         TensorMap& tensor_map);
 
+port::StatusOr<poplar::program::Program>
+ConvBiasApply(poplar::Graph &graph,
+              CompilerResources& res,
+              const HloInstruction *inst,
+              const xla::Shape& output_shape,
+              TensorMap& tensor_map);
+
 /* Optimization tests */
 
 bool

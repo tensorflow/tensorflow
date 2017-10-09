@@ -258,8 +258,8 @@ Status BaseVisitor::HandleFusion(HloInstruction* inst) {
 
 
 Status BaseVisitor::HandleCall(HloInstruction* inst) {
-  VLOG(1) << "Processing " << inst->name();
   HloComputation* comp = inst->to_apply();
+  VLOG(1) << "Processing " << inst->name() << " : " << comp->name();
 
   // If is is a special fusion-type op
   if (comp->name().substr(0, 8) == "_pop_op_") {
@@ -424,6 +424,17 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
                                                   inst,
                                                   GetOutputShape(inst),
                                                   tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    else if (name == "bias_apply") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          ConvBiasApply(*graph_,
+                                        resources_,
+                                        inst,
+                                        GetOutputShape(inst),
+                                        tensor_map));
       sequence.add(prog);
       return Status::OK();
     }

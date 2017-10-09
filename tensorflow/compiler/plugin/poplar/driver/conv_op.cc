@@ -297,6 +297,40 @@ CreateBiasAddOp(poplar::Graph &graph,
 }
 
 port::StatusOr<poplar::program::Program>
+ConvBiasApply(poplar::Graph &graph,
+              CompilerResources& res,
+              const HloInstruction *inst,
+              const xla::Shape& output_shape,
+              TensorMap& tensor_map) {
+  const HloInstruction* root =
+          inst->to_apply()->root_instruction();
+
+  // Find the deltas
+  poplar::Tensor deltas;
+  TF_ASSIGN_OR_RETURN(deltas, FindInstructionInput(tensor_map, inst, 0));
+
+  // Find the biases
+  poplar::Tensor biases;
+  TF_ASSIGN_OR_RETURN(biases, FindInstructionInput(tensor_map, inst, 1));
+
+  // Find the learning rate constant
+  auto literal = root->operand(1)->operand(0)->operand(0)->literal();
+
+  std::unique_ptr<Literal> float_lit;
+  TF_ASSIGN_OR_RETURN(float_lit, literal.Convert(F32));
+
+  float learning_rate = float_lit->GetFirstElement<float>();
+
+  poplar::program::Sequence prog;
+  popconv::convolutionBiasUpdate(graph, deltas, biases, learning_rate, "float",
+                                 prog, inst->name());
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, biases));
+
+  return prog;
+}
+
+port::StatusOr<poplar::program::Program>
 CreateDepthwiseConvolutionOp(poplar::Graph &graph,
                              CompilerResources& res,
                              const HloInstruction *inst,
