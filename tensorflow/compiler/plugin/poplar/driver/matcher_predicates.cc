@@ -124,6 +124,8 @@ bool IsBiasReduce(HloInstruction *inst) {
 
   if (ShapeUtil::Rank(inst->shape()) != 1) return false;
 
+  if (ShapeUtil::Rank(inst->operand(0)->shape()) != 4) return false;
+
   const std::vector<int64>& dims(inst->dimensions());
   if (dims.size() != ShapeUtil::Rank(inst->operand(0)->shape()) - 1) {
     return false;
