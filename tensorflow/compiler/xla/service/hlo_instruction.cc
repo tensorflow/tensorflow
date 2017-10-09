@@ -126,7 +126,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -161,8 +161,8 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case (HloOpcode::kPower):
     case (HloOpcode::kRemainder):
     case (HloOpcode::kSubtract):
-    case (HloOpcode::kLogicalAnd):
-    case (HloOpcode::kLogicalOr):
+    case (HloOpcode::kAnd):
+    case (HloOpcode::kOr):
       break;
     default:
       LOG(FATAL) << "Invalid binary instruction opcode "
@@ -879,7 +879,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -903,8 +903,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kMinimum:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
       CHECK_EQ(new_operands.size(), 2);
       return CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
     // Ternary ops.
@@ -1258,9 +1258,9 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalNot:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -1957,9 +1957,9 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleMaximum(this);
     case HloOpcode::kMinimum:
       return visitor->HandleMinimum(this);
-    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kAnd:
       return visitor->HandleLogicalAnd(this, operands_[0], operands_[1]);
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kOr:
       return visitor->HandleLogicalOr(this, operands_[0], operands_[1]);
     case HloOpcode::kConcatenate:
       return visitor->HandleConcatenate(this, operands_);
@@ -2016,7 +2016,7 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleSin(this, operands_[0]);
     case HloOpcode::kIsFinite:
       return visitor->HandleIsFinite(this, operands_[0]);
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
       return visitor->HandleLogicalNot(this, operands_[0]);
     case HloOpcode::kBitcast:
       return visitor->HandleBitcast(this);
@@ -2319,8 +2319,8 @@ bool HloInstruction::IsElementwiseBinary() const {
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
       return true;
     default:
       return false;
@@ -2344,7 +2344,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
@@ -2368,8 +2368,8 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
       return true;
 
     // Ternary elementwise operations.

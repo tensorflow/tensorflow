@@ -1511,11 +1511,11 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
                                 : ir_builder->CreateFMul(lhs, rhs);
       };
 
-    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kAnd:
       return [](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
                 llvm::Value* rhs) { return ir_builder->CreateAnd(lhs, rhs); };
 
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kOr:
       return [](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
                 llvm::Value* rhs) { return ir_builder->CreateOr(lhs, rhs); };
 
