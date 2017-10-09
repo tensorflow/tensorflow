@@ -1958,9 +1958,9 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kMinimum:
       return visitor->HandleMinimum(this);
     case HloOpcode::kAnd:
-      return visitor->HandleLogicalAnd(this, operands_[0], operands_[1]);
+      return visitor->HandleAnd(this, operands_[0], operands_[1]);
     case HloOpcode::kOr:
-      return visitor->HandleLogicalOr(this, operands_[0], operands_[1]);
+      return visitor->HandleOr(this, operands_[0], operands_[1]);
     case HloOpcode::kConcatenate:
       return visitor->HandleConcatenate(this, operands_);
     case HloOpcode::kConvert:
@@ -2017,7 +2017,7 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kIsFinite:
       return visitor->HandleIsFinite(this, operands_[0]);
     case HloOpcode::kNot:
-      return visitor->HandleLogicalNot(this, operands_[0]);
+      return visitor->HandleNot(this, operands_[0]);
     case HloOpcode::kBitcast:
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
