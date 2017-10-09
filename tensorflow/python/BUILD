@@ -4012,6 +4012,17 @@ cuda_py_test(
     main = "client/session_benchmark.py",
 )
 
+cuda_py_test(
+    name = "nn_grad_test",
+    size = "small",
+    srcs = ["ops/nn_grad_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":nn_ops",
+    ],
+)
+
 py_library(
     name = "tf_optimizer",
     srcs = [
