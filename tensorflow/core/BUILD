@@ -267,7 +267,9 @@ cc_library(
         "platform/types.h",
     ] + glob(tf_additional_proto_hdrs()) + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
-    deps = tf_lib_proto_parsing_deps(),
+    deps = tf_lib_proto_parsing_deps() + [
+        "@double_conversion//:double-conversion",
+    ],
 )
 
 # This build rule (along with :lib_internal, :framework, and
@@ -1004,6 +1006,7 @@ cc_library(
         "//third_party/eigen3",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
+        "@double_conversion//:double-conversion",
     ],
     alwayslink = 1,
 )
@@ -1030,6 +1033,7 @@ cc_library(
         "@gemmlowp//:gemmlowp",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
+        "@double_conversion//:double-conversion",
     ],
     alwayslink = 1,
 )
@@ -1093,6 +1097,7 @@ cc_library(
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf",
+        "@double_conversion//:double-conversion",
     ],
     alwayslink = 1,
 )
@@ -1116,6 +1121,7 @@ cc_library(
         "//third_party/eigen3",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
+        "@double_conversion//:double-conversion",
     ],
     alwayslink = 1,
 )
