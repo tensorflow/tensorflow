@@ -86,12 +86,22 @@ Status InlinerVisitor::HandleMap(
     }
     VLOG(10) << "inlining map({X ... Y}, op) => : op(X ... Y) with function "
              << root.ToShortString();
+
+    std::vector<HloInstruction*> sorted(operands.begin(), operands.end());
+    std::sort(sorted.begin(), sorted.end(),
+              [](HloInstruction* a, HloInstruction* b) {
+                return a->parameter_number() < b->parameter_number(); });
+
     // If the input is a constant then the shape of the constant could be
     // different than the map shape. Hence, a broadcast is needed, else the
     // cloned operand with new shape and operands work.
     if (root.opcode() != HloOpcode::kConstant) {
+      std::vector<HloInstruction*> params;
+      for (int64 o = 0; o < root.operands().size(); o++) {
+        params.push_back(sorted[root.operand(o)->parameter_number()]);
+      }
       HloInstruction* placed_instruction = computation_->AddInstruction(
-          root.CloneWithNewOperands(map->shape(), operands));
+          root.CloneWithNewOperands(map->shape(), params));
       TF_RETURN_IF_ERROR(
           computation_->ReplaceInstruction(map, placed_instruction));
     } else {
