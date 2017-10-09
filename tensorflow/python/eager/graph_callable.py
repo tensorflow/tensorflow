@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import contextlib
 
 from tensorflow.python.eager import context
@@ -241,15 +240,27 @@ class _InitializingFunctionObject(object):
   from the graph, which might not be possible in general.
   """
 
-  def __init__(self, call_fn, init_fn):
+  def __init__(self, call_fn, init_fn, shape_and_dtypes):
     self._init_fn = init_fn
     self._call_fn = call_fn
+    self.shape_and_dtypes = shape_and_dtypes
+    self.flattened_shapes = [tensor_shape.as_shape(sd.shape) for sd in
+                             nest.flatten(self.shape_and_dtypes)]
 
   @property
   def variables(self):
     return self._call_fn.variables
 
   def __call__(self, *args):
+    nest.assert_same_structure(self.shape_and_dtypes, args, check_types=False)
+    if not all([
+        shape.is_compatible_with(arg.shape)
+        for shape, arg in zip(self.flattened_shapes, nest.flatten(args))
+    ]):
+      raise ValueError(
+          "Declared shapes do not match argument shapes: Expected %s, found %s."
+          % (self.flattened_shapes, [arg.shape for arg in nest.flatten(args)]))
+
     initialized = [resource_variable_ops.var_is_initialized_op(
         v.handle).numpy() for v in self._call_fn.variables]
     if all(x for x in initialized):
@@ -398,12 +409,19 @@ def _graph_callable_internal(func, shape_and_dtypes):
       function._map_sequence_obj_to_idx(capture_func_def_outputs),  # pylint: disable=protected-access
       output_shapes)
 
-  return _InitializingFunctionObject(captured_function, initializer_function)
+  return _InitializingFunctionObject(captured_function, initializer_function,
+                                     shape_and_dtypes)
 
 
-# Data type that packages together shape and type information for arguments to
-# graph callables. See graph_callable() for an example.
-ShapeAndDtype = collections.namedtuple("ShapeAndDtype", ["shape", "dtype"])
+class ShapeAndDtype(object):
+  """Data type that packages together shape and type information.
+
+  Used for arguments to graph callables. See graph_callable() for an example.
+  """
+
+  def __init__(self, shape, dtype):
+    self.shape = shape
+    self.dtype = dtype
 
 
 def graph_callable(shape_and_dtypes):

@@ -219,6 +219,20 @@ class GraphCallableTest(test.TestCase):
 
     my_function()
 
+  def testIncorrectlyShapedInputs(self):
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(3), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      return v + x
+
+    with self.assertRaises(ValueError):
+      my_function([1, 2])
+
+    self.assertTrue(([1, 2, 3] == my_function(
+        constant_op.constant([1, 2, 3], dtype=dtypes.float32)).numpy()).all())
+
 
 if __name__ == "__main__":
   test.main()
