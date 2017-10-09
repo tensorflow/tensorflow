@@ -310,11 +310,6 @@ class UnaryOpsTest(XLATestCase):
               dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
-          nn_ops.softplus,
-          np.array([[-2, 0, 8]], dtype=dtype),
-          expected=np.array([[0.126928, 0.6931472, 8.0003354]], dtype=dtype))
-
-      self._assertOpOutputMatchesExpected(
           nn_ops.softsign,
           np.array([[-2, -1, 0, 1, 2]], dtype=dtype),
           expected=np.array([[-0.66666669, -0.5, 0, 0.5, 0.66666669]],
@@ -543,6 +538,25 @@ class UnaryOpsTest(XLATestCase):
                               [[9, 10, 11, 12],
                                [13, 14, 15, 16]]]], dtype=dtype))
 
+  def _assertSoftplusMatchesExpected(self, features, dtype):
+    features = np.array(features, dtype=dtype)
+    zero = np.asarray(0).astype(dtype)
+    expected = np.logaddexp(zero, features)
+    self._assertOpOutputMatchesExpected(
+        nn_ops.softplus, features, expected=expected)
+
+  def testSoftplus(self):
+    for dtype in self.float_types:
+      self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)
+      self._assertSoftplusMatchesExpected(
+          [[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]], dtype)
+      log_eps = np.log(np.finfo(dtype).eps)
+      one = dtype(1)
+      ten = dtype(10)
+      self._assertSoftplusMatchesExpected([
+          log_eps, log_eps - one, log_eps + one, log_eps - ten,
+          log_eps + ten, -log_eps, -log_eps - one, -log_eps + one,
+          -log_eps - ten, -log_eps + ten], dtype)
 
 if __name__ == "__main__":
   googletest.main()

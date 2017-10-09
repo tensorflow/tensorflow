@@ -29,4 +29,11 @@ void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
   op->node.set_requested_device(device);
 }
 
+void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
+                TF_Status* status) {
+  mutex_lock l(graph->mu);
+  status->status = graph->graph.UpdateEdge(&new_src.oper->node, new_src.index,
+                                           &dst.oper->node, dst.index);
+}
+
 }  // namespace tensorflow

@@ -20,12 +20,17 @@ limitations under the License.
 //                    instead of complex values. The current CPU implementation
 //                    outputs the singular values as complex values and then
 //                    casts them to reals in the python wrapper.
+// TODO(rmlarsen/shamanDevel): This could use a bit of cleanup. We don't need to
+// pass quite as many raw pointers around. Would also be nice to reduce code
+// duplication.
+
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
 #include <algorithm>
 #include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -39,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -75,7 +79,7 @@ __global__ void ExtractSignOfVKernel(CudaLaunchConfig config, Scalar* V) {
     V[i] = V[i] >= 0 ? Scalar(1) : Scalar(-1);
   }
 }
-}
+}  // namespace
 
 // Scalar: The input scalar type (can be complex)
 template <class Scalar>
@@ -91,16 +95,16 @@ class SvdOpGpu : public AsyncOpKernel {
   void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,
               int64 p, int64 batch_size, Scalar* input_ptr,
               RealScalar* outputS_ptr, Scalar* outputU_ptr,
-              Scalar* outputVT_ptr, int* dev_info_ptr, CudaSolver& solver) {
+              Scalar* outputVT_ptr, int* dev_info_ptr, CudaSolver* solver) {
     // Save the input matrix
     // Needed for the n=1 fix, see below, since SVD destroys the input
     Tensor input_copy;
     if (compute_uv_ && n == 1) {
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          context->allocate_temp(DataTypeToEnum<Scalar>::v(),
-                                 TensorShape({batch_size, m}), &input_copy),
-          done);
+      OP_REQUIRES_OK_ASYNC(context,
+                           solver->allocate_scoped_tensor(
+                               DataTypeToEnum<Scalar>::v(),
+                               TensorShape({batch_size, m}), &input_copy),
+                           done);
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memcpy(input_copy.flat<Scalar>().data(), input_ptr,
                batch_size * m * sizeof(Scalar));
@@ -129,8 +133,9 @@ class SvdOpGpu : public AsyncOpKernel {
       }
 
       OP_REQUIRES_OK_ASYNC(
-          context, solver.Gesvd(jobu, jobvt, m, n, input, m, outputS, outputU,
-                                m, outputVT, n, dev_info_ptr + batch),
+          context,
+          solver->Gesvd(jobu, jobvt, m, n, input, m, outputS, outputU, m,
+                        outputVT, n, dev_info_ptr + batch),
           done);
     }
 
@@ -165,9 +170,10 @@ class SvdOpGpu : public AsyncOpKernel {
 
   void CheckResult(OpKernelContext* context, DoneCallback done,
                    const std::vector<DeviceLapackInfo>& dev_info,
-                   CudaSolver& solver, Tensor& catch1, Tensor& catch2) {
-    auto info_checker = [context, dev_info, done, catch1, catch2](
-        const Status& status, const std::vector<HostLapackInfo>& /* unused */) {
+                   std::unique_ptr<CudaSolver> solver) {
+    auto info_checker = [context, done](
+                            const Status& status,
+                            const std::vector<HostLapackInfo>& /* unused */) {
       Status full_status = status;
       if (!full_status.ok()) {
         full_status.Update(errors::InvalidArgument(kErrMsg));
@@ -176,9 +182,8 @@ class SvdOpGpu : public AsyncOpKernel {
       done();
     };
 
-    OP_REQUIRES_OK_ASYNC(context, solver.CopyLapackInfoToHostAsync(
-                                      dev_info, std::move(info_checker)),
-                         done);
+    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                    std::move(info_checker));
   }
 
   // The SVD if m >= n
@@ -195,8 +200,11 @@ class SvdOpGpu : public AsyncOpKernel {
     input_shape.AddDim(n);
     input_shape.AddDim(m);
     Tensor input_copy;
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
     OP_REQUIRES_OK_ASYNC(
-        context, context->allocate_temp(M.dtype(), input_shape, &input_copy),
+        context,
+        solver->allocate_scoped_tensor(M.dtype(), input_shape, &input_copy),
         done);
     auto device = context->eigen_device<GPUDevice>();
     OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, M, perm, &input_copy),
@@ -215,7 +223,8 @@ class SvdOpGpu : public AsyncOpKernel {
         u_shape.AddDim(m);
       }
       OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_temp(U->dtype(), u_shape, &u_copy), done);
+          context, solver->allocate_scoped_tensor(U->dtype(), u_shape, &u_copy),
+          done);
     }
 
     // get the pointers to the data
@@ -234,10 +243,10 @@ class SvdOpGpu : public AsyncOpKernel {
     // call the SVD
     const int64 batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "gesvd");
-    CudaSolver solver(context);
+    dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "gesvd"));
     RunSVD(context, done, m, n, p, batch_size, input_ptr, outputS_ptr,
-           outputU_ptr, outputV_ptr, dev_info.back().mutable_data(), solver);
+           outputU_ptr, outputV_ptr, dev_info.back().mutable_data(),
+           solver.get());
 
     // Transpose U
     if (compute_uv_) {
@@ -245,7 +254,7 @@ class SvdOpGpu : public AsyncOpKernel {
     }
 
     // now check if the SVD operation succeeded or not
-    CheckResult(context, done, dev_info, solver, input_copy, u_copy);
+    CheckResult(context, std::move(done), dev_info, std::move(solver));
   }
 
   // The SVD if m < n
@@ -255,14 +264,16 @@ class SvdOpGpu : public AsyncOpKernel {
     // Perform the SVD on M'
 
     // Reuse the input buffer or make a copy for the SVD depending on whether
-    // this op owns the
-    // input buffer exclusively. This is needed because the SVD modifies the
-    // input
+    // this op owns the input buffer exclusively. This is needed because the
+    // SVD modifies the input
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
     Tensor input_copy;
-    OP_REQUIRES_OK_ASYNC(context, context->forward_input_or_allocate_temp(
-                                      {0}, DataTypeToEnum<Scalar>::value,
-                                      M.shape(), &input_copy),
-                         done);
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        solver->forward_input_or_allocate_scoped_tensor(
+            {0}, DataTypeToEnum<Scalar>::value, M.shape(), &input_copy),
+        done);
 
     if (!M.SharesBufferWith(input_copy)) {
       const GPUDevice& d = context->eigen_device<GPUDevice>();
@@ -284,7 +295,8 @@ class SvdOpGpu : public AsyncOpKernel {
         v_shape.AddDim(n);
       }
       OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_temp(V->dtype(), v_shape, &v_copy), done);
+          context, solver->allocate_scoped_tensor(V->dtype(), v_shape, &v_copy),
+          done);
     }
 
     // get the pointers to the data
@@ -304,11 +316,11 @@ class SvdOpGpu : public AsyncOpKernel {
     // call the SVD
     const int64 batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "gesvd");
-    CudaSolver solver(context);
+    dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "gesvd"));
     // Note that m and n are flipped
     RunSVD(context, done, n, m, p, batch_size, input_ptr, outputS_ptr,
-           outputU_ptr, outputV_ptr, dev_info.back().mutable_data(), solver);
+           outputU_ptr, outputV_ptr, dev_info.back().mutable_data(),
+           solver.get());
 
     // Transpose V
     if (compute_uv_) {
@@ -317,7 +329,7 @@ class SvdOpGpu : public AsyncOpKernel {
     }
 
     // now check if the SVD operation succeeded or not
-    CheckResult(context, done, dev_info, solver, input_copy, v_copy);
+    CheckResult(context, std::move(done), dev_info, std::move(solver));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
@@ -402,6 +414,8 @@ class SvdOpGpu : public AsyncOpKernel {
 // TODO: add support for complex types
 REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<double>), double);
+
+// Deprecated kernels.
 REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<double>), double);
 

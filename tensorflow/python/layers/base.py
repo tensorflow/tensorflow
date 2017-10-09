@@ -14,11 +14,7 @@
 # =============================================================================
 
 # pylint: disable=unused-import,g-bad-import-order
-"""Contains the base Layer class, from which all layers inherit.
-
-This is a private class and its internal implementation is subject to changes
-in the future.
-"""
+"""Contains the base Layer class, from which all layers inherit."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -44,9 +40,6 @@ from tensorflow.python.util import nest
 class Layer(object):
   """Base layer class.
 
-  WARNING: Do not subclass this layer unless you know what you are doing:
-  the API is subject to future changes.
-
   This is the class from which all layers inherit, implementing common
   infrastructure functionality.
 
@@ -54,22 +47,38 @@ class Layer(object):
   as convolution, batch norm, etc. These operations require managing variables,
   losses, and updates, as well as applying TensorFlow ops to input tensors.
 
-  Properties:
-    trainable: Whether the layer should be trained (boolean).
-    name: The name of the layer (string).
-    dtype: Default dtype of the layer (default of None means use the
+  Users will just instantiate it and then treat it as a callable.
+
+  We recommend that descendants of Layer implement the following methods:
+  * `__init__()`: Save configuration in member variables
+  * `build()`: Called once from `__call__`, when we know the shapes of inputs
+    and `dtype`. Should have the calls to `add_variable()`, and then
+    call the super's `build()` (which sets `self.built = True`, which is
+    nice in case the user wants to call `build()` manually before the
+    first `__call__`).
+  * `call()`: Called in `__call__` after making sure `build()` has been called
+    once. Should actually perform the logic of applying the layer to the
+    input tensors (which should be passed in as the first argument).
+
+  Read-only properties:
+    `name`: The name of the layer (string).
+    `dtype`: Default dtype of the layer (default of `None` means use the
       type of the first input).
-    trainable_variables: List of trainable variables.
-    non_trainable_variables: List of non-trainable variables.
-    variables: List of all variables of this layer, trainable and non-trainable.
-    updates: List of update ops of this layer.
-    losses: List of losses added by this layer.
-    input_spec: Object specifying the constraints on inputs that can be
-      accepted by the layer.
+    `trainable_variables`: List of trainable variables.
+    `non_trainable_variables`: List of non-trainable variables.
+    `variables`: List of all variables of this layer, trainable and
+      non-trainable.
+    `updates`: List of update ops of this layer.
+    `losses`: List of losses added by this layer.
+
+  Mutable properties:
+    `trainable`: Whether the layer should be trained (boolean).
+    `input_spec`: Optional (list of) `InputSpec` object(s) specifying the
+      constraints on inputs that can be accepted by the layer.
   """
 
-  def __init__(self, trainable=True, name=None,
-               dtype=None, **kwargs):
+  def __init__(self, trainable=True, name=None, dtype=None,
+               activity_regularizer=None, **kwargs):
     # We use a kwargs dict here because these kwargs only exist
     # for compatibility reasons.
     # The list of kwargs is subject to changes in the future.
@@ -88,8 +97,12 @@ class Layer(object):
       if kwarg not in allowed_kwargs:
         raise TypeError('Keyword argument not understood:', kwarg)
 
+    # Mutable properties
     self.trainable = trainable
     self.built = False
+    self.input_spec = None
+
+    self._activity_regularizer = activity_regularizer
     self._trainable_weights = []
     self._non_trainable_weights = []
     self._updates = []
@@ -99,48 +112,59 @@ class Layer(object):
     self._per_input_losses = {}
     self._per_input_updates = {}
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
-    self.input_spec = None
-    self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
-                                   or hasattr(self, 'compute_mask'))
+    call_fn_args = estimator_util.fn_args(self.call)
+    self._compute_previous_mask = ('mask' in call_fn_args or
+                                   hasattr(self, 'compute_mask'))
+    self._call_has_scope_arg = 'scope' in call_fn_args
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
-    self.inbound_nodes = []
-    self.outbound_nodes = []
+    self._inbound_nodes = []
+    self._outbound_nodes = []
 
     # Determine layer name (non-unique).
     if isinstance(name, vs.VariableScope):
       base_name = name.name
     else:
       base_name = name
-      self.name = name
+      self._name = name
     if not name:
       base_name = _to_snake_case(self.__class__.__name__)
-      self.name = _unique_layer_name(base_name)
+      self._name = _unique_layer_name(base_name)
     self._base_name = base_name
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
-      self._scope = next(vs.variable_scope(scope).gen)
+      with vs.variable_scope(scope) as captured_scope:
+        self._scope = captured_scope
     else:
       self._scope = None
 
-    # Set `batch_input_shape` attribute
+    # Set `_batch_input_shape` attribute
     # for compatibility with Keras `Sequential` model.
     if 'input_shape' in kwargs:
       batch_size = kwargs.get('batch_size')
-      self.batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
+      self._batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
 
   @property
   def dtype(self):
     return self._dtype
 
   @property
+  def name(self):
+    return self._name
+
+  @property
+  def activity_regularizer(self):
+    """Optional regularizer function for the output of this layer."""
+    return self._activity_regularizer
+
+  @property
   def scope_name(self):
     if not self._scope:
       raise ValueError('No name available for layer scope because the layer "' +
-                       self.name + '" has not been used yet. The scope name ' +
+                       self._name + '" has not been used yet. The scope name ' +
                        ' is determined the first time the layer instance is ' +
                        'called. You must therefore call the layer before ' +
                        'querying `scope_name`.')
@@ -202,18 +226,17 @@ class Layer(object):
     The `get_updates_for` method allows to retrieve the updates relevant to a
     specific set of inputs.
 
+    This call is ignored in Eager mode.
+
     Arguments:
       updates: Update op, or list/tuple of update ops.
       inputs: Optional input tensor(s) that the update(s) depend on. Must
         match the `inputs` argument passed to the `__call__` method at the time
         the updates are created. If `None` is passed, the updates are assumed
         to be unconditional, and will apply across all dataflows of the layer.
-
-    Raises:
-      RuntimeError: If called in Eager mode.
     """
     if context.in_eager_mode():
-      raise RuntimeError('Layer.add_update not supported in Eager mode.')
+      return  # Updates already applied when in eager mode.
     updates = _to_list(updates)
     if not updates:
       return
@@ -307,6 +330,7 @@ class Layer(object):
     if inputs_hash not in self._per_input_losses:
       self._per_input_losses[inputs_hash] = []
     self._per_input_losses[inputs_hash] += losses
+    _add_elements_to_collection(losses, ops.GraphKeys.REGULARIZATION_LOSSES)
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -337,8 +361,7 @@ class Layer(object):
     return self._per_input_losses.get(inputs_hash, [])
 
   def build(self, _):
-    """Creates the variables of the layer.
-    """
+    """Creates the variables of the layer."""
     self.built = True
 
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
@@ -346,7 +369,7 @@ class Layer(object):
 
     Arguments:
       inputs: input tensor(s).
-     **kwargs: additional keyword arguments.
+      **kwargs: additional keyword arguments.
 
     Returns:
       Output tensor(s).
@@ -380,11 +403,13 @@ class Layer(object):
     if self._scope is None:
       # If constructed with _scope=None, lazy setting of scope.
       if self._reuse:
-        self._scope = next(vs.variable_scope(
-            scope if scope is not None else self._base_name).gen)
+        with vs.variable_scope(
+            scope if scope is not None else self._base_name) as captured_scope:
+          self._scope = captured_scope
       else:
-        self._scope = next(vs.variable_scope(
-            scope, default_name=self._base_name).gen)
+        with vs.variable_scope(
+            scope, default_name=self._base_name) as captured_scope:
+          self._scope = captured_scope
 
   def add_variable(self, name, shape, dtype=None,
                    initializer=None, regularizer=None,
@@ -422,9 +447,8 @@ class Layer(object):
       dtype = self.dtype or dtypes.float32
 
     self._set_scope(None)
-    vs_reuse = ((self.built or self._reuse)
-                if context.in_graph_mode() else vs.AUTO_REUSE)
-    with vs.variable_scope(self._scope, reuse=vs_reuse) as scope:
+    with vs.variable_scope(
+        self._scope, reuse=(self.built or self._reuse)) as scope:
       with ops.name_scope(scope.original_name_scope):
         variable = vs.get_variable(name,
                                    shape=shape,
@@ -444,16 +468,12 @@ class Layer(object):
                   regularization = regularizer(v)
               if regularization is not None:
                 self.add_loss(regularization)
-                _add_elements_to_collection(
-                    regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
           else:
             with ops.colocate_with(variable.op):
               with ops.name_scope(name + '/Regularizer'):
                 regularization = regularizer(variable)
             if regularization is not None:
               self.add_loss(regularization)
-              _add_elements_to_collection(
-                  regularization, ops.GraphKeys.REGULARIZATION_LOSSES)
     if trainable:
       self._trainable_weights.append(variable)
     else:
@@ -508,15 +528,13 @@ class Layer(object):
         # to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
-    vs_reuse = ((self.built or self._reuse)
-                if context.in_graph_mode else vs.AUTO_REUSE)
-    with vs.variable_scope(self._scope, reuse=vs_reuse) as scope:
+    with vs.variable_scope(
+        self._scope, reuse=(self.built or self._reuse)) as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
           if not in_graph_mode:
-            # Activity regularization is unsupported in Eager mode.
-            if hasattr(self,
-                       'activity_regularizer') and self.activity_regularizer:
+            # Activity regularization is currently unsupported in Eager mode.
+            if self._activity_regularizer:
               raise ValueError('activity_regularizer currently unsupported in '
                                'Eager mode. Found an activity_regularizer in '
                                '%s(%s).' % (self.__class__.__name__, self))
@@ -541,7 +559,15 @@ class Layer(object):
             self.build(input_shapes[0])
           else:
             self.build(input_shapes)
-        if 'scope' in estimator_util.fn_args(self.call):
+        try:
+          # Note: not all sub-classes of Layer call Layer.__init__ (especially
+          # the ones under tensorflow/python/keras). Hence we recompute this
+          # attribute here if it is not set.
+          # TODO(agarwal): Fix the sub-classes and avoid this complexity.
+          call_has_scope_arg = self._call_has_scope_arg
+        except AttributeError:
+          call_has_scope_arg = 'scope' in estimator_util.fn_args(self.call)
+        if call_has_scope_arg:
           kwargs['scope'] = scope
         # Check input assumptions set after layer building, e.g. input shape.
         if in_graph_mode:
@@ -556,15 +582,12 @@ class Layer(object):
           # Apply activity regularization.
           # Note that it should be applied every time the layer creates a new
           # output, since it is output-specific.
-          if hasattr(self,
-                     'activity_regularizer') and self.activity_regularizer:
+          if self._activity_regularizer:
             output_list = _to_list(outputs)
             for output in output_list:
               with ops.name_scope('ActivityRegularizer'):
-                activity_regularization = self.activity_regularizer(output)
+                activity_regularization = self._activity_regularizer(output)
               self.add_loss(activity_regularization)
-              _add_elements_to_collection(activity_regularization,
-                                          ops.GraphKeys.REGULARIZATION_LOSSES)
 
         # Handle mask computation and propagation to the next layer.
         if hasattr(self, 'compute_mask'):
@@ -691,7 +714,7 @@ class Layer(object):
       # The allows layer reuse (multiple nodes per layer) and multi-output
       # or multi-input layers (e.g. a layer can return multiple tensors,
       # and each can be sent to a different layer).
-      output_tensors[i]._keras_history = (self, len(self.inbound_nodes) - 1, i)  # pylint: disable=protected-access
+      output_tensors[i]._keras_history = (self, len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
 
   def _get_node_attribute_at_index(self, node_index, attr, attr_name):
     """Private utility to retrieves an attribute (e.g. inputs) from a node.
@@ -717,14 +740,14 @@ class Layer(object):
         ValueError: If the index provided does not match any node.
     """
     assert context.in_graph_mode()
-    if not self.inbound_nodes:
+    if not self._inbound_nodes:
       raise RuntimeError('The layer has never been called '
                          'and thus has no defined ' + attr_name + '.')
-    if not len(self.inbound_nodes) > node_index:
+    if not len(self._inbound_nodes) > node_index:
       raise ValueError('Asked to get ' + attr_name + ' at node ' +
                        str(node_index) + ', but the layer has only ' +
-                       str(len(self.inbound_nodes)) + ' inbound nodes.')
-    values = getattr(self.inbound_nodes[node_index], attr)
+                       str(len(self._inbound_nodes)) + ' inbound nodes.')
+    values = getattr(self._inbound_nodes[node_index], attr)
     if len(values) == 1:
       return values[0]
     else:
@@ -834,7 +857,7 @@ class Layer(object):
     """
     if context.in_eager_mode():
       raise RuntimeError('Layer.input not supported in Eager mode.')
-    if not self.inbound_nodes:
+    if not self._inbound_nodes:
       raise AttributeError('Layer ' + self.name +
                            ' is not connected, no input to return.')
     return self._get_node_attribute_at_index(0, 'input_tensors', 'input')
@@ -856,7 +879,7 @@ class Layer(object):
     """
     if context.in_eager_mode():
       raise RuntimeError('Layer.output not supported in Eager mode.')
-    if not self.inbound_nodes:
+    if not self._inbound_nodes:
       raise AttributeError('Layer ' + self.name + ' has no inbound nodes.')
     return self._get_node_attribute_at_index(0, 'output_tensors', 'output')
 
@@ -878,13 +901,13 @@ class Layer(object):
     """
     if context.in_eager_mode():
       raise RuntimeError('Layer.input_shape not supported in Eager mode.')
-    if not self.inbound_nodes:
+    if not self._inbound_nodes:
       raise AttributeError('The layer has never been called '
                            'and thus has no defined input shape.')
     all_input_shapes = set(
-        [str(node.input_shapes) for node in self.inbound_nodes])
+        [str(node.input_shapes) for node in self._inbound_nodes])
     if len(all_input_shapes) == 1:
-      input_shapes = self.inbound_nodes[0].input_shapes
+      input_shapes = self._inbound_nodes[0].input_shapes
       if len(input_shapes) == 1:
         return tuple(tensor_shape.TensorShape(input_shapes[0]).as_list())
       else:
@@ -939,13 +962,13 @@ class Layer(object):
     """
     if context.in_eager_mode():
       raise RuntimeError('Layer.output_shape not supported in Eager mode.')
-    if not self.inbound_nodes:
+    if not self._inbound_nodes:
       raise AttributeError('The layer has never been called '
                            'and thus has no defined output shape.')
     all_output_shapes = set(
-        [str(node.output_shapes) for node in self.inbound_nodes])
+        [str(node.output_shapes) for node in self._inbound_nodes])
     if len(all_output_shapes) == 1:
-      output_shapes = self.inbound_nodes[0].output_shapes
+      output_shapes = self._inbound_nodes[0].output_shapes
       if len(output_shapes) == 1:
         return tuple(tensor_shape.TensorShape(output_shapes[0]).as_list())
       else:
@@ -961,6 +984,16 @@ class Layer(object):
                            'ill-defined for the layer. '
                            'Use `get_output_shape_at(node_index)` '
                            'instead.' % self.name)
+
+  @property
+  def inbound_nodes(self):
+    """Deprecated, do NOT use! Only for compatibility with external Keras."""
+    return self._inbound_nodes
+
+  @property
+  def outbound_nodes(self):
+    """Deprecated, do NOT use! Only for compatibility with external Keras."""
+    return self._outbound_nodes
 
   def _assert_input_compatibility(self, inputs):
     """Checks compatibility between the layer and provided inputs.
@@ -1100,9 +1133,9 @@ class Node(object):
   """A `Node` describes the connectivity between two layers.
 
   Each time a layer is connected to some new input,
-  a node is added to `layer.inbound_nodes`.
+  a node is added to `layer._inbound_nodes`.
   Each time the output of a layer is used by another layer,
-  a node is added to `layer.outbound_nodes`.
+  a node is added to `layer._outbound_nodes`.
 
   Arguments:
       outbound_layer: the layer that takes
@@ -1131,8 +1164,8 @@ class Node(object):
   describing the origin of the `input_tensors`.
 
   A node from layer A to layer B is added to:
-    - A.outbound_nodes
-    - B.inbound_nodes
+    - A._outbound_nodes
+    - B._inbound_nodes
   """
 
   def __init__(self,
@@ -1186,7 +1219,11 @@ class Node(object):
     # Add nodes to all layers involved.
     for layer in inbound_layers:
       if layer is not None:
+        # For compatibility with external Keras, we use the deprecated
+        # accessor here.
         layer.outbound_nodes.append(self)
+    # For compatibility with external Keras, we use the deprecated
+    # accessor here.
     outbound_layer.inbound_nodes.append(self)
 
   def get_config(self):
@@ -1265,11 +1302,11 @@ class InputLayer(Layer):
 
       # For compatibility with Keras API.
       self.is_placeholder = True
-      self.batch_input_shape = batch_input_shape
+      self._batch_input_shape = batch_input_shape
     else:
       # For compatibility with Keras API.
       self.is_placeholder = False
-      self.batch_input_shape = tuple(input_tensor.get_shape().as_list())
+      self._batch_input_shape = tuple(input_tensor.get_shape().as_list())
 
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
@@ -1339,7 +1376,7 @@ def Input(  # pylint: disable=invalid-name
       input_tensor=tensor)
   # Return tensor including `_keras_history` metadata.
   # Note that in this case train_output and test_output are the same pointer.
-  outputs = input_layer.inbound_nodes[0].output_tensors
+  outputs = input_layer._inbound_nodes[0].output_tensors  # pylint: disable=protected-access
   if len(outputs) == 1:
     return outputs[0]
   else:
@@ -1401,14 +1438,18 @@ class Network(Layer):
       base_name = name.name
     else:
       base_name = name
-      self.name = name
+      self._name = name
     if not name:
       base_name = _to_snake_case(self.__class__.__name__)
-      self.name = _unique_layer_name(base_name)
-    self._scope = next(vs.variable_scope(None, default_name=base_name).gen)
+      self._name = _unique_layer_name(base_name)
+    self._activity_regularizer = None
+    with vs.variable_scope(None, default_name=base_name) as captured_scope:
+      self._scope = captured_scope
     self._base_name = base_name
-    self._compute_previous_mask = ('mask' in estimator_util.fn_args(self.call)
-                                   or hasattr(self, 'compute_mask'))
+    call_fn_args = estimator_util.fn_args(self.call)
+    self._compute_previous_mask = ('mask' in call_fn_args or
+                                   hasattr(self, 'compute_mask'))
+    self._call_has_scope_arg = 'scope' in call_fn_args
 
     # This acts just like the `trainable` attribute of any layer instance.
     # It does not affect users of the underlying layers, only users of the
@@ -1489,9 +1530,10 @@ class Network(Layer):
                          'Received: ' + str(x) +
                          ' (missing previous layer metadata).')
       # Check that x is an input tensor.
-      layer, node_index, tensor_index = x._keras_history  # pylint: disable=protected-access
-      if len(layer.inbound_nodes) > 1 or (
-          layer.inbound_nodes and layer.inbound_nodes[0].inbound_layers):
+      # pylint: disable=protected-access
+      layer, node_index, tensor_index = x._keras_history
+      if len(layer._inbound_nodes) > 1 or (
+          layer._inbound_nodes and layer._inbound_nodes[0].inbound_layers):
         cls_name = self.__class__.__name__
         logging.warning(cls_name + ' inputs must come from '
                         '`tf.layers.Input` (thus holding past layer metadata), '
@@ -1503,6 +1545,7 @@ class Network(Layer):
                         'Note that input tensors are '
                         'instantiated via `tensor = tf.layers.Input(shape)`.\n'
                         'The tensor that caused the issue was: ' + str(x.name))
+      # pylint: enable=protected-access
     for x in self.outputs:
       if not hasattr(x, '_keras_history'):
         cls_name = self.__class__.__name__
@@ -1560,7 +1603,7 @@ class Network(Layer):
       Raises:
           ValueError: if a cycle is detected.
       """
-      node = layer.inbound_nodes[node_index]
+      node = layer._inbound_nodes[node_index]  # pylint: disable=protected-access
 
       # Prevent cycles.
       if node in nodes_in_progress:
@@ -1623,7 +1666,7 @@ class Network(Layer):
       for i in range(len(node.inbound_layers)):
         inbound_layer = node.inbound_layers[i]
         node_index = node.node_indices[i]
-        inbound_node = inbound_layer.inbound_nodes[node_index]
+        inbound_node = inbound_layer._inbound_nodes[node_index]  # pylint: disable=protected-access
         previous_depth = nodes_depths.get(inbound_node, 0)
         nodes_depths[inbound_node] = max(depth + 1, previous_depth)
 
@@ -1700,8 +1743,8 @@ class Network(Layer):
     # Layer parameters.
     # The new network starts with a single inbound node
     # for its inputs, and no outbound nodes.
-    self.outbound_nodes = []  # Will be appended to by future calls to __call__
-    self.inbound_nodes = [
+    self._outbound_nodes = []  # Will be appended to by future calls to __call__
+    self._inbound_nodes = [
     ]  # Will be appended to below, and by future calls to __call__
     # Create the node linking internal inputs to internal outputs.
     Node(
@@ -1727,10 +1770,8 @@ class Network(Layer):
     Raises:
         ValueError: In case of invalid layer name or index.
     """
-    # It would be unreliable to build a dictionary
-    # based on layer names, because names can potentially
-    # be changed at any point by the user
-    # without the network being notified of it.
+    # TODO(fchollet): We could build a dictionary based on layer names
+    # since they are constant, but we have not done that yet.
     if index is not None:
       if len(self.layers) <= index:
         raise ValueError('Was asked to retrieve layer at index ' + str(index) +
@@ -1763,7 +1804,7 @@ class Network(Layer):
       if hasattr(layer, 'updates'):
         # Collect updates that are dependent on inputs
         # that are part of the model.
-        for node_index, node in enumerate(layer.inbound_nodes):
+        for node_index, node in enumerate(layer._inbound_nodes):  # pylint: disable=protected-access
           node_key = _make_node_key(layer.name, node_index)
           if node_key in self._network_nodes:
             # The model owns this layer node.
@@ -1791,7 +1832,7 @@ class Network(Layer):
       if hasattr(layer, 'losses'):
         # Collect losses that are dependent on inputs
         # that are part of the model.
-        for node_index, node in enumerate(layer.inbound_nodes):
+        for node_index, node in enumerate(layer._inbound_nodes):  # pylint: disable=protected-access
           node_key = _make_node_key(layer.name, node_index)
           if node_key in self._network_nodes:
             # The model owns this layer node.
@@ -1950,7 +1991,7 @@ class Network(Layer):
                   tuple(tensor_shape.TensorShape(output_shape).as_list())
               ]
 
-            node_index = layer.inbound_nodes.index(node)
+            node_index = layer._inbound_nodes.index(node)  # pylint: disable=protected-access
             for j in range(len(output_shapes)):
               shape_key = layer.name + '_%s_%s' % (node_index, j)
               layers_to_output_shapes[shape_key] = output_shapes[j]
@@ -2062,8 +2103,7 @@ class Network(Layer):
                 output_masks = [None for _ in range(len(output_tensors))]
 
             # Apply activity regularizer if any:
-            if hasattr(layer, 'activity_regularizer'
-                      ) and layer.activity_regularizer is not None:
+            if layer.activity_regularizer is not None:
               regularization_losses = [
                   layer.activity_regularizer(x) for x in computed_tensors
               ]

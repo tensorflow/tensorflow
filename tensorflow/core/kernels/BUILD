@@ -827,6 +827,7 @@ tf_kernel_library(
     hdrs = ["transpose_op.h"],
     deps = ARRAY_DEPS + if_mkl([
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn//:mkl_dnn",
     ]),
 )
 
@@ -2621,6 +2622,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + if_mkl([
         "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn//:mkl_dnn",
     ]) + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]),
@@ -4525,6 +4527,7 @@ filegroup(
         "cwise_op_exp.cc",
         "cwise_op_floor.cc",
         "cwise_op_floor_div.cc",
+        "cwise_op_floor_mod.cc",
         "cwise_op_greater.cc",
         "cwise_op_greater_equal.cc",
         "cwise_op_invert.cc",
@@ -4542,6 +4545,7 @@ filegroup(
         "cwise_op_neg.cc",
         "cwise_op_pow.cc",
         "cwise_op_reciprocal.cc",
+        "cwise_op_round.cc",
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
         "cwise_op_sigmoid.cc",
@@ -5524,8 +5528,10 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+    ] + if_mkl([
         "//third_party/mkl:intel_binary_blob",
-    ],
+        "@mkl_dnn//:mkl_dnn",
+    ]),
 )
 
 tf_mkl_kernel_library(
@@ -5539,8 +5545,10 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+    ] + if_mkl([
         "//third_party/mkl:intel_binary_blob",
-    ],
+        "@mkl_dnn//:mkl_dnn",
+    ]),
 )
 
 tf_mkl_kernel_library(
@@ -5589,16 +5597,19 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+    ] + if_mkl([
         "//third_party/mkl:intel_binary_blob",
-    ],
+        "@mkl_dnn//:mkl_dnn",
+    ]),
 )
 
 tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
-    deps = NN_DEPS + [
+    deps = NN_DEPS + if_mkl([
         "//third_party/mkl:intel_binary_blob",
-    ],
+        "@mkl_dnn//:mkl_dnn",
+    ]),
 )
 
 tf_mkl_kernel_library(
@@ -5612,9 +5623,10 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
-    deps = ARRAY_DEPS + [
+    deps = ARRAY_DEPS + if_mkl([
         "//third_party/mkl:intel_binary_blob",
-    ],
+        "@mkl_dnn//:mkl_dnn",
+    ]),
 )
 
 tf_mkl_kernel_library(
@@ -5628,17 +5640,19 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_identity_op",
     prefix = "mkl_identity_op",
-    deps = ARRAY_DEPS + [
+    deps = ARRAY_DEPS + if_mkl([
         "//third_party/mkl:intel_binary_blob",
-    ],
+        "@mkl_dnn//:mkl_dnn",
+    ]),
 )
 
 tf_mkl_kernel_library(
     name = "mkl_lrn_op",
     prefix = "mkl_lrn_op",
-    deps = NN_DEPS + [
+    deps = NN_DEPS + if_mkl([
         "//third_party/mkl:intel_binary_blob",
-    ],
+        "@mkl_dnn//:mkl_dnn",
+    ]),
 )
 
 tf_mkl_kernel_library(

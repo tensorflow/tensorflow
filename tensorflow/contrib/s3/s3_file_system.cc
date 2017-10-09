@@ -222,7 +222,6 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 
 S3FileSystem::S3FileSystem() {
   Aws::SDKOptions options;
-  options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
   options.cryptoOptions.sha256Factory_create_fn = []() {
     return Aws::MakeShared<S3SHA256Factory>(S3CryptoAllocationTag);
   };
@@ -234,7 +233,6 @@ S3FileSystem::S3FileSystem() {
 
 S3FileSystem::~S3FileSystem() {
   Aws::SDKOptions options;
-  options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
   Aws::ShutdownAPI(options);
 }
 

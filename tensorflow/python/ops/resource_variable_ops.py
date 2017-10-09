@@ -38,9 +38,11 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.util import compat
 
 
-def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode,
-                                container=None):
+def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   """Creates a variable handle with information to do shape inference."""
+  container = ops.get_default_graph()._container  # pylint: disable=protected-access
+  if container is None:
+    container = ""
   handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                    shared_name=shared_name,
                                                    name=name,
@@ -192,6 +194,10 @@ class ResourceVariable(variables.Variable):
           dtype=dtype,
           constraint=constraint)
 
+  # LINT.IfChange
+  # _VariableFromResource inherits from ResourceVariable but
+  # doesn't call the constructor, so changes here might need to be reflected
+  # there.
   # pylint: disable=unused-argument
   def _init_from_args(self,
                       initial_value=None,
@@ -290,6 +296,7 @@ class ResourceVariable(variables.Variable):
               self._handle_device = (
                   self._handle.device if self._in_graph_mode else
                   context.get_default_context().device_name)
+              self._graph_shape = initial_value.get_shape()
           else:
             initial_value = initial_value()
             with ops.name_scope("Initializer"):
@@ -300,11 +307,11 @@ class ResourceVariable(variables.Variable):
                 dtype=initial_value.dtype.base_dtype,
                 shared_name=handle_name,
                 name=name,
-                graph_mode=False,
-                container="")
+                graph_mode=False)
             self._handle_device = (
                 self._handle.device if self._in_graph_mode else
                 context.get_default_context().device_name)
+            self._graph_shape = initial_value.get_shape()
         # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
@@ -326,10 +333,10 @@ class ResourceVariable(variables.Variable):
               dtype=initial_value.dtype.base_dtype,
               shared_name=handle_name,
               name=name,
-              graph_mode=self._in_graph_mode,
-              container="")
+              graph_mode=self._in_graph_mode)
           self._handle_device = (self._handle.device if self._in_graph_mode else
                                  context.get_default_context().device_name)
+          self._graph_shape = initial_value.get_shape()
 
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
@@ -396,6 +403,8 @@ class ResourceVariable(variables.Variable):
     self._handle = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.variable_name, import_scope=import_scope))
+    self._graph_shape = tensor_shape.TensorShape(
+        self._handle.op.get_attr("shape"))
     self._handle_device = self._handle.device
     self._handle_name = self._handle.name
     self._initializer_op = g.as_graph_element(
@@ -416,6 +425,7 @@ class ResourceVariable(variables.Variable):
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._graph_element = self.value()
     self._constraint = None
+  # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
   @property
   def dtype(self):
@@ -441,7 +451,7 @@ class ResourceVariable(variables.Variable):
   def shape(self):
     """The shape of this variable."""
     if self._in_graph_mode:
-      return tensor_shape.TensorShape(self._handle.op.get_attr("shape"))
+      return self._graph_shape
     return tensor_shape.TensorShape(
         tensor_util.constant_value(
             gen_resource_variable_ops.variable_shape(self._handle)))
@@ -530,16 +540,8 @@ class ResourceVariable(variables.Variable):
      the read operation.
     """
     with ops.name_scope("Read"):
-      # In graph mode, ensure we read the variable in the same device as the
-      # handle. In eager mode, however, this sometimes tries to read a GPU
-      # variable in the CPU because the handle is host memory. For now, then, we
-      # need to skip the device block in eager. TODO(apassos): eager should have
-      # separate notions of device and memory, so handle.device can be GPU while
-      # handle.memory_space is always CPU.
-      if context.in_graph_mode():
-        with ops.device(self._handle_device):
-          value = self._read_variable_op()
-      else:
+      # Ensure we read the variable in the same device as the handle.
+      with ops.device(self._handle_device):
         value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.

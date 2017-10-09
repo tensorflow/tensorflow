@@ -21,7 +21,6 @@ from __future__ import print_function
 import abc
 import collections
 
-import collections
 import six
 
 from tensorflow.python.estimator import model_fn
@@ -46,6 +45,12 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+
+# The above default is defined by TF Serving, but these next three are just
+# a local convention without any special meaning.
+_CLASSIFY_SERVING_KEY = 'classification'
+_REGRESS_SERVING_KEY = 'regression'
+_PREDICT_SERVING_KEY = 'predict'
 
 
 LossAndLabels = collections.namedtuple('LossAndLabels',
@@ -146,7 +151,7 @@ class _Head(object):
       features: Input `dict` of `Tensor` objects.
       mode: Estimator's `ModeKeys`.
       logits: logits `Tensor` to be used for loss construction.
-      labels: Labels `Tensor`.
+      labels: Labels `Tensor`, or `dict` of same.
 
     Returns:
       A LossAndLabels that contains the `Tensor` representing the loss and
@@ -470,15 +475,17 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         export_output_classes = array_ops.tile(
             input=array_ops.expand_dims(input=export_class_list, axis=0),
             multiples=[batch_size, 1])
+        classifier_output = export_output.ClassificationOutput(
+            scores=probabilities,
+            # `ClassificationOutput` requires string classes.
+            classes=export_output_classes)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
-                '':
-                    export_output.ClassificationOutput(
-                        scores=probabilities,
-                        # `ClassificationOutput` requires string classes.
-                        classes=export_output_classes)
+                _DEFAULT_SERVING_KEY: classifier_output,
+                _CLASSIFY_SERVING_KEY: classifier_output,
+                _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
             })
 
       # Eval.
@@ -723,10 +730,11 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
-                '': classifier_output,  # to be same as other heads.
-                'classification': classifier_output,  # to be called by name.
-                _DEFAULT_SERVING_KEY: classifier_output,  # default
-                'regression': export_output.RegressionOutput(value=logistic)
+                _DEFAULT_SERVING_KEY: classifier_output,
+                _CLASSIFY_SERVING_KEY: classifier_output,
+                _REGRESS_SERVING_KEY: export_output.RegressionOutput(
+                    value=logistic),
+                _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
             })
 
       # Eval.
@@ -830,10 +838,15 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       logits = _check_logits(logits, self._logits_dimension)
       predictions = {prediction_keys.PredictionKeys.PREDICTIONS: logits}
       if mode == model_fn.ModeKeys.PREDICT:
+        regression_output = export_output.RegressionOutput(value=logits)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
-            export_outputs={'': export_output.RegressionOutput(value=logits)})
+            export_outputs={
+                _DEFAULT_SERVING_KEY: regression_output,
+                _REGRESS_SERVING_KEY: regression_output,
+                _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
+            })
 
       # Eval.
       unweighted_loss, _ = self.create_loss(

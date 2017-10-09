@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
@@ -260,7 +261,7 @@ class Multinomial(distribution.Distribution):
 
   def _log_unnormalized_prob(self, counts):
     counts = self._maybe_assert_valid_sample(counts)
-    return math_ops.reduce_sum(counts * math_ops.log(self.probs), -1)
+    return math_ops.reduce_sum(counts * nn_ops.log_softmax(self.logits), -1)
 
   def _log_normalization(self, counts):
     counts = self._maybe_assert_valid_sample(counts)

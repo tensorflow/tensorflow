@@ -336,4 +336,13 @@ std::vector<std::pair<int64, int64>> CommonFactors(
   return bounds;
 }
 
+string SanitizeFileName(string file_name) {
+  for (char& c : file_name) {
+    if (c == '/' || c == '\\' || c == '[' || c == ']') {
+      c = '_';
+    }
+  }
+  return file_name;
+}
+
 }  // namespace xla

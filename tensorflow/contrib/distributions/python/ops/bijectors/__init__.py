@@ -14,6 +14,7 @@
 # ==============================================================================
 """Bijector Ops.
 
+@@AbsoluteValue
 @@Affine
 @@AffineLinearOperator
 @@Bijector
@@ -39,6 +40,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+from tensorflow.contrib.distributions.python.ops.bijectors.absolute_value import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import *
 from tensorflow.contrib.distributions.python.ops.bijectors.chain import *

@@ -100,6 +100,31 @@ tensorflow::ImportNumpy();
   }
 }
 
+%unignore GetOperationInputs;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception GetOperationInputs;
+
+// Build a Python list of TF_Outputs and return it.
+// TODO(skyewm): is there some way to generalize this pattern? Maybe a macro?
+%typemap(out) std::vector<TF_Output> tensorflow::GetOperationInputs {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>> via &
+  std::vector<TF_Output>* tf_outputs = &$1;
+  for (size_t i = 0; i < $1.size(); ++i) {
+    // We used wrapped heap-allocated pointers in the Python runtime (this is
+    // what SWIG generates by default for functions returning TF_Output).
+    TF_Output* tf_output_ptr = new TF_Output((*tf_outputs)[i]);
+    // Use SWIG_POINTER_OWN so the TF_Output* is deleted by Python.
+    PyList_SET_ITEM($result, i,
+                    SWIG_NewPointerObj(tf_output_ptr, SWIGTYPE_p_TF_Output,
+                                       SWIG_POINTER_OWN));
+  }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()

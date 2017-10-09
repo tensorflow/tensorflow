@@ -21,6 +21,7 @@ import threading
 
 import numpy as np
 
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -433,6 +434,30 @@ class DatasetConstructorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testFromGeneratorImplicitConversion(self):
+    def generator():
+      yield [1]
+      yield [2]
+      yield [3]
+
+    for dtype in [dtypes.int8, dtypes.int32, dtypes.int64]:
+      iterator = (dataset_ops.Dataset.from_generator(
+          generator, output_types=dtype, output_shapes=[1])
+                  .make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+
+      self.assertEqual(dtype, get_next.dtype)
+
+      with self.test_session() as sess:
+        sess.run(init_op)
+        for expected in [[1], [2], [3]]:
+          next_val = sess.run(get_next)
+          self.assertEqual(dtype.as_numpy_dtype, next_val.dtype)
+          self.assertAllEqual(expected, next_val)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
   def testFromGeneratorTypeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)
@@ -450,7 +475,7 @@ class DatasetConstructorTest(test.TestCase):
       sess.run(init_op)
       self.assertAllEqual([1, 2, 3], sess.run(get_next))
       self.assertAllEqual([4, 5, 6], sess.run(get_next))
-      with self.assertRaisesOpError(r"element of type .*int64.* was expected"):
+      with self.assertRaisesOpError(r"invalid literal for long\(\)"):
         sess.run(get_next)
       self.assertAllEqual([7, 8, 9], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
@@ -523,8 +548,7 @@ class DatasetConstructorTest(test.TestCase):
 
     for new_types, new_shape_lists in test_cases:
       # pylint: disable=protected-access
-      new = dataset_ops._RestructuredDataset(
-          dataset, new_types, new_shape_lists)
+      new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
       # pylint: enable=protected-access
       self.assertEqual(new_types, new.output_types)
       if new_shape_lists is not None:
@@ -544,8 +568,7 @@ class DatasetConstructorTest(test.TestCase):
     for new_types, new_shape_lists in fail_cases:
       with self.assertRaises(ValueError):
         # pylint: disable=protected-access
-        new = dataset_ops._RestructuredDataset(
-            dataset, new_types, new_shape_lists)
+        new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
         # pylint: enable=protected-access
 
 

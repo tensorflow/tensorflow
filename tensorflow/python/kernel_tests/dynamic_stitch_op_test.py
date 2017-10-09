@@ -43,8 +43,18 @@ class DynamicStitchTestBase(object):
         stitched_t = self.stitch_op(indices[::step], data)
         stitched_val = stitched_t.eval()
         self.assertAllEqual([40, 60][::step], stitched_val)
-        # Dimension 0 is determined by the max index in indices, so we
-        # can only infer that the output is a vector of some unknown
+        # Dimension 0 is max(flatten(indices))+1.
+        self.assertEqual([2], stitched_t.get_shape().as_list())
+
+  def testShapeInferenceForScalarWithNonConstantIndices(self):
+    with self.test_session(use_gpu=True):
+      indices = [array_ops.placeholder(dtype=dtypes.int32),
+                 constant_op.constant(1)]
+      data = [constant_op.constant(40), constant_op.constant(60)]
+      for step in -1, 1:
+        stitched_t = self.stitch_op(indices[::step], data)
+        # Dimension 0 is max(flatten(indices))+1, but the first indices input is
+        # not a constant tensor, so we can only infer it as a vector of unknown
         # length.
         self.assertEqual([None], stitched_t.get_shape().as_list())
 
@@ -67,10 +77,8 @@ class DynamicStitchTestBase(object):
       stitched_t = self.stitch_op(indices, data)
       stitched_val = stitched_t.eval()
       self.assertAllEqual([0, 10, 20, 30, 40, 50, 60, 70], stitched_val)
-      # Dimension 0 is determined by the max index in indices, so we
-      # can only infer that the output is a vector of some unknown
-      # length.
-      self.assertEqual([None], stitched_t.get_shape().as_list())
+      # Dimension 0 is max(flatten(indices))+1.
+      self.assertEqual([8], stitched_t.get_shape().as_list())
 
       # Test gradients
       self.assertLess(
@@ -87,10 +95,8 @@ class DynamicStitchTestBase(object):
       stitched_t = self.stitch_op(indices, data)
       stitched_val = stitched_t.eval()
       self.assertAllEqual([0, 10, 20, 30, 40, 50, 60, 70], stitched_val)
-      # Dimension 0 is determined by the max index in indices, so we
-      # can only infer that the output is a vector of some unknown
-      # length.
-      self.assertEqual([None], stitched_t.get_shape().as_list())
+      # Dimension 0 is max(flatten(indices))+1.
+      self.assertEqual([8], stitched_t.get_shape().as_list())
 
       # Test gradients
       self.assertLess(
@@ -114,10 +120,8 @@ class DynamicStitchTestBase(object):
       stitched_val = stitched_t.eval()
       self.assertAllEqual([[0, 1], [10, 11], [20, 21], [30, 31], [40, 41],
                            [50, 51], [60, 61], [70, 71]], stitched_val)
-      # Dimension 0 is determined by the max index in indices, so we
-      # can only infer that the output is a matrix with 2 columns and
-      # some unknown number of rows.
-      self.assertEqual([None, 2], stitched_t.get_shape().as_list())
+      # Dimension 0 is max(flatten(indices))+1.
+      self.assertEqual([8, 2], stitched_t.get_shape().as_list())
 
       # Test gradients
       self.assertLess(
@@ -141,7 +145,7 @@ class DynamicStitchTestBase(object):
       stitched_val = stitched_t.eval()
       correct = 10 * np.arange(7)[:, None] + [1, 2]
       self.assertAllEqual(correct, stitched_val)
-      self.assertEqual([None, 2], stitched_t.get_shape().as_list())
+      self.assertEqual([7, 2], stitched_t.get_shape().as_list())
       # Test gradients
       stitched_grad = 7 * stitched_val
       grads = gradients_impl.gradients(stitched_t, indices + data,
@@ -244,10 +248,8 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
         stitched_t = data_flow_ops.dynamic_stitch(indices[::step], data)
         stitched_val = stitched_t.eval()
         self.assertAllEqual([40.0, 60.0][::step], stitched_val)
-        # Dimension 0 is determined by the max index in indices, so we
-        # can only infer that the output is a vector of some unknown
-        # length.
-        self.assertEqual([None], stitched_t.get_shape().as_list())
+        # Dimension 0 is max(flatten(indices))+1.
+        self.assertEqual([2], stitched_t.get_shape().as_list())
 
   def testHigherRank(self):
     with self.test_session(use_gpu=True) as sess:
@@ -266,7 +268,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
       stitched_val = stitched_t.eval()
       correct = 10 * np.arange(7)[:, None] + [1.0, 2.0]
       self.assertAllEqual(correct, stitched_val)
-      self.assertEqual([None, 2], stitched_t.get_shape().as_list())
+      self.assertEqual([7, 2], stitched_t.get_shape().as_list())
       # Test gradients
       stitched_grad = 7 * stitched_val
       grads = gradients_impl.gradients(stitched_t, indices + data,
@@ -284,10 +286,8 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
         stitched_t = data_flow_ops.dynamic_stitch(indices[::step], data)
         stitched_val = stitched_t.eval()
         self.assertAllEqual([40.0, 60.0][::step], stitched_val)
-        # Dimension 0 is determined by the max index in indices, so we
-        # can only infer that the output is a vector of some unknown
-        # length.
-        self.assertEqual([None], stitched_t.get_shape().as_list())
+        # Dimension 0 is max(flatten(indices))+1.
+        self.assertEqual([2], stitched_t.get_shape().as_list())
 
   def testHigherRankGPU(self):
     with self.test_session() as sess:
@@ -305,7 +305,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
       stitched_val = stitched_t.eval()
       correct = 10 * np.arange(7)[:, None] + [1.0, 2.0]
       self.assertAllEqual(correct, stitched_val)
-      self.assertEqual([None, 2], stitched_t.get_shape().as_list())
+      self.assertEqual([7, 2], stitched_t.get_shape().as_list())
       # Test gradients
       stitched_grad = 7 * stitched_val
       grads = gradients_impl.gradients(stitched_t, indices + data,

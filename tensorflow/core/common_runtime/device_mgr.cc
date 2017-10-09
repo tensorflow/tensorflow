@@ -29,13 +29,16 @@ DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
   for (Device* d : devices) {
     devices_.push_back(d);
 
-    // Register under the (1) full name, (2) canonical name, and (3) local name.
+    // Register under the (1) full name and (2) canonical name.
     for (const string& name :
          DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
       device_map_[CopyToBackingStore(name)] = d;
     }
-    string lname = DeviceNameUtils::LocalName(d->name());
-    device_map_[CopyToBackingStore(lname)] = d;
+    // Register under the (3) local name and (4) legacy local name.
+    for (const string& name :
+         DeviceNameUtils::GetLocalNamesForDeviceMappings(d->parsed_name())) {
+      device_map_[CopyToBackingStore(name)] = d;
+    }
     device_type_counts_[d->device_type()]++;
   }
 }

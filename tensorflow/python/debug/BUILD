@@ -330,7 +330,6 @@ py_library(
         ":stepper_cli",
         ":tensor_format",
         ":ui_factory",
-        "@six_archive//:six",
     ],
 )
 
@@ -941,6 +940,7 @@ py_test(
         ":cli_shared",
         ":debugger_cli_common",
         ":local_cli_wrapper",
+        ":ui_factory",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
