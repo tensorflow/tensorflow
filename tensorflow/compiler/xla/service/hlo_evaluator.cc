@@ -1285,8 +1285,17 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
     operands.push_back(operand.get());
   }
 
-  return Evaluate(
-      instruction->CloneWithNewOperands(instruction->shape(), operands).get());
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      instruction->CloneWithNewOperands(instruction->shape(), operands);
+  auto result = Evaluate(cloned_instruction.get());
+
+  // Clean up our cloned instructions before returning.
+  cloned_instruction->DetachFromOperands();
+  for (auto& operand : owned_operands) {
+    operand->DetachFromOperands();
+  }
+
+  return result;
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {

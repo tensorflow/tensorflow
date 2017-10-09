@@ -95,11 +95,18 @@ class Context(object):
         device_list = pywrap_tensorflow.TFE_ContextListDevices(
             self._context_handle, status)
       try:
+        self._num_gpus = 0
         for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
           with errors.raise_exception_on_not_ok_status() as status:
             dev_name = pywrap_tensorflow.TF_DeviceListName(
                 device_list, i, status)
           self._context_devices.append(pydev.canonical_name(dev_name))
+          with errors.raise_exception_on_not_ok_status() as status:
+            dev_type = pywrap_tensorflow.TF_DeviceListType(
+                device_list, i, status)
+          if dev_type == "GPU":
+            self._num_gpus += 1
+
       finally:
         pywrap_tensorflow.TF_DeleteDeviceList(device_list)
 
@@ -238,8 +245,8 @@ class Context(object):
 
   def num_gpus(self):
     """The number of GPUs available to execute operations."""
-    # TODO(ashankar): Use TF_DeviceListType to count GPU devices.
-    return len(self._devices) - 1
+    self._initialize_handle_and_devices()
+    return self._num_gpus
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.

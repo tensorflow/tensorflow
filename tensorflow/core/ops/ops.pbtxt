@@ -20208,7 +20208,7 @@ op {
   }
   input_arg {
     name: "features"
-    description: "The features passed as input to the corresponding Relu6 operation."
+    description: "The features passed as input to the corresponding Relu6 operation, or\nits output; using either one produces the same result."
     type_attr: "T"
   }
   output_arg {
