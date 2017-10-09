@@ -182,8 +182,7 @@ def imperative_grad(
       else:
         out_gradients[i] = vspace.aggregate_fn(out_gradients[i])
 
-    in_gradients = op_trace.backward_function(
-        *(out_gradients + op_trace.side_outputs))
+    in_gradients = op_trace.backward_function(*(out_gradients))
     for i, t in enumerate(op_trace.input_ids):
       if in_gradients[i] is not None:
         vspace.add_new_grads_fn(gradients, gradients_size, t, in_gradients[i])
