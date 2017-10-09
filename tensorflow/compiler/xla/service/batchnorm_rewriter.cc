@@ -531,16 +531,7 @@ Status BatchNormRewriterVisitor::HandleBatchNormGrad(
 StatusOr<bool> BatchNormRewriter::Run(HloModule* module) {
   XLA_VLOG_LINES(2, "BatchNormRewriter::Run(), before:\n" + module->ToString());
   bool changed = false;
-  // Make a copy of the computations because we may add computations to the
-  // module, invalidating iteration.
-  std::vector<HloComputation*> computations;
-  for (auto& comp : module->computations()) {
-    if (comp->IsFusionComputation()) {
-      continue;
-    }
-    computations.push_back(comp.get());
-  }
-  for (auto& comp : computations) {
+  for (auto* comp : module->MakeNonfusionComputations()) {
     if (BatchNormRewriterVisitor::Run(comp, rewrite_training_op_,
                                       rewrite_inference_op_, rewrite_grad_op_,
                                       use_fusion_)) {

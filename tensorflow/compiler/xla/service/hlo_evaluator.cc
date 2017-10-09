@@ -167,7 +167,15 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleAbs(HloInstruction* abs, HloInstruction* operand) override {
     return HandleAbs<ReturnT>(abs, operand);
-  };
+  }
+
+  Status HandleRound(HloInstruction* round) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[round],
+                        ElementWiseUnaryOp(round, [](ReturnT elem_operand) {
+                          return std::round(elem_operand);
+                        }));
+    return Status::OK();
+  }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
     parent_->evaluated_[broadcast] =
@@ -1255,6 +1263,30 @@ std::unique_ptr<Literal> HloEvaluator::TryEvaluate(
   }
 
   return result_or.ConsumeValueOrDie();
+}
+
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
+    const HloInstruction* instruction,
+    const std::unordered_map<const HloInstruction*, const Literal*>&
+        substitutions) {
+  std::vector<std::unique_ptr<HloInstruction>> owned_operands;
+  for (const HloInstruction* operand : instruction->operands()) {
+    auto it = substitutions.find(operand);
+    if (it == substitutions.end()) {
+      owned_operands.push_back(operand->Clone());
+    } else {
+      owned_operands.push_back(
+          HloInstruction::CreateConstant(it->second->CloneToUnique()));
+    }
+  }
+
+  std::vector<HloInstruction*> operands;
+  for (auto& operand : owned_operands) {
+    operands.push_back(operand.get());
+  }
+
+  return Evaluate(
+      instruction->CloneWithNewOperands(instruction->shape(), operands).get());
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {

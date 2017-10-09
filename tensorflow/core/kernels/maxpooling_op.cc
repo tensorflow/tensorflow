@@ -1374,6 +1374,8 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
 
+// TODO(b/65847473): Re-enable once the underlying build error is fixed.
+#if !defined(PLATFORM_WINDOWS)
 REGISTER_KERNEL_BUILDER(
     Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     MaxPoolingNoMaskOp<GPUDevice, qint8>);
@@ -1392,6 +1394,7 @@ REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")
                             .TypeConstraint<qint8>("T")
                             .Label("eigen_tensor"),
                         MaxPoolingV2Op<GPUDevice, qint8>);
+#endif  // !defined(PLATFORM_WINDOWS)
 
 #undef REGISTER_GPU_ONLY_POOL_KERNELS
 

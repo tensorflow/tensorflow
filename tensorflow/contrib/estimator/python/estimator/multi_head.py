@@ -62,8 +62,7 @@ def multi_head(heads, head_weights=None):
     # Create multi-head from two simple heads.
     head = multi_head([head1, head2])
     # Create logits for each head, and combine them into a dict.
-    logits1 = ...
-    logits2 = ...
+    logits1, logits2 = logit_fn()
     logits = {'head1': logits1, 'head2': logits2}
     # Return the merged EstimatorSpec
     return head.create_estimator_spec(..., logits=logits, ...)

@@ -33,7 +33,6 @@ namespace xla {
 
 namespace {
 void DumpModule(const HloModule& module,
-
                 const string& message) {
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(3) << "HLO " << message << ":";

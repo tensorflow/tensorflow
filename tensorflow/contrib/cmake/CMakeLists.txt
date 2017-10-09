@@ -245,7 +245,7 @@ if (tensorflow_ENABLE_GPU)
       "#define CUDA_CUDA_CONFIG_H_\n"
       "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.0\"),CudaVersion(\"3.5\"),CudaVersion(\"5.2\")\n"
       "#define TF_CUDA_VERSION \"64_80\"\n"
-      "#define TF_CUDNN_VERSION \"64_5\"\n"
+      "#define TF_CUDNN_VERSION \"64_6\"\n"
       "#define TF_CUDA_TOOLKIT_PATH \"${CUDA_TOOLKIT_ROOT_DIR}\"\n"
       "#endif  // CUDA_CUDA_CONFIG_H_\n"
     )
@@ -264,8 +264,23 @@ if (tensorflow_ENABLE_GPU)
     include_directories(${tensorflow_source_dir}/third_party/gpus)
     # add cuda libraries to tensorflow_EXTERNAL_LIBRARIES
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${CUDA_LIBRARIES})
-  endif()
-endif()
+
+    # NOTE(mrry): Update these flags when the version of CUDA or cuDNN used
+    # in the default build is upgraded.
+    set(tensorflow_BUILD_INFO_FLAGS --build_config cuda --key_value
+      msvcp_dll_name=msvcp140.dll
+      cudart_dll_name=cudart64_80.dll
+      cuda_version_number=8.0
+      nvcuda_dll_name=nvcuda.dll
+      cudnn_dll_name=cudnn64_6.dll
+      cudnn_version_number=6)
+  else(WIN32)
+    message(FATAL_ERROR "CMake GPU build is currently only supported on Windows.")
+  endif(WIN32)
+else(tensorflow_ENABLE_GPU)
+  set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
+    msvcp_dll_name=msvcp140.dll)
+endif(tensorflow_ENABLE_GPU)
 
 # Find python executable
 include(FindPythonInterp)

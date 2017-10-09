@@ -117,6 +117,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   // instructions with no auxiliary fields.
   switch (opcode) {
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
@@ -856,7 +857,7 @@ bool HloInstruction::HasSideEffect() const {
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) {
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
@@ -869,6 +870,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   switch (opcode_) {
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
@@ -1024,7 +1026,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 
 HloInstruction::~HloInstruction() {}
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
+std::unique_ptr<HloInstruction> HloInstruction::Clone(
+    const string& suffix) const {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
   if (suffix.empty()) {
@@ -1060,13 +1063,14 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
       }
     }
   }
-  clone->set_parent(parent());
+  clone->set_parent(parent_);
   clone->set_metadata(metadata_);
   return clone;
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(parent() != nullptr);
 
@@ -1104,7 +1108,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
         old_fused_instruction->CloneWithNewOperands(
             old_fused_instruction->shape(), new_operands));
     HloInstruction* new_fused_instruction = new_fused_instructions.back().get();
-    new_fused_instruction->set_parent(parent());
+    new_fused_instruction->set_parent(parent_);
     InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
   }
   new_instruction->fusion_kind_ = fusion_kind_;
@@ -1123,7 +1127,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
       CHECK_NOTNULL(GetModule())
           ->AddEmbeddedComputation(
               computation_builder.Build(FindOrDie(old_to_new, fused_root_))));
-  new_instruction->set_parent(parent());
+  new_instruction->set_parent(parent_);
   return new_instruction;
 }
 
@@ -1237,6 +1241,7 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
@@ -1457,6 +1462,9 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
   user_set_.clear();
   if (new_producer_is_user) {
     AddUser(new_producer);
+  }
+  if (parent_ && parent_->root_instruction() == this) {
+    parent_->set_root_instruction(new_producer);
   }
 
   return Status::OK();
@@ -1694,6 +1702,10 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
                        })));
   }
 
+  if (opcode() == HloOpcode::kSend || opcode() == HloOpcode::kRecv) {
+    extra.push_back(StrCat("channel_id=", channel_id_));
+  }
+
   if (opcode() == HloOpcode::kGetTupleElement) {
     extra.push_back(StrCat("index=", tuple_index()));
   }
@@ -1881,10 +1893,23 @@ const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
   return fused_instructions_computation()->parameter_instructions();
 }
 
-const std::list<std::unique_ptr<HloInstruction>>&
+const tensorflow::gtl::iterator_range<UnwrappingIterator<
+    std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloInstruction::fused_instructions() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
+  const HloComputation* subcomp = fused_instructions_computation();
+  return subcomp->instructions();
+}
+
+const tensorflow::gtl::iterator_range<
+    UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+HloInstruction::fused_instructions() {
+  CHECK_EQ(opcode_, HloOpcode::kFusion);
   return fused_instructions_computation()->instructions();
+}
+
+int64 HloInstruction::fused_instruction_count() const {
+  return fused_instructions_computation()->instruction_count();
 }
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
@@ -1899,6 +1924,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this, operands_[0]);
+    case HloOpcode::kRoundNearestAfz:
+      return visitor->HandleRound(this);
     case HloOpcode::kBatchNormTraining:
       return visitor->HandleBatchNormTraining(this);
     case HloOpcode::kBatchNormInference:
@@ -2308,6 +2335,7 @@ bool HloInstruction::IsElementwise() const {
 
     // Unary elementwise operations.
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
@@ -2358,7 +2386,7 @@ bool HloInstruction::IsElementwise() const {
       if (fusion_kind() != FusionKind::kLoop) {
         return false;
       }
-      for (auto& fused : fused_instructions()) {
+      for (auto* fused : fused_instructions()) {
         if (fused->opcode() != HloOpcode::kParameter &&
             !fused->IsElementwise()) {
           return false;
@@ -2369,6 +2397,11 @@ bool HloInstruction::IsElementwise() const {
     default:
       return false;
   }
+}
+
+bool HloInstruction::ImplicitlyBroadcastsOperand(int64 operand_idx) const {
+  CHECK(IsElementwise());
+  return !ShapeUtil::Equal(shape(), operand(operand_idx)->shape());
 }
 
 namespace {
@@ -2514,8 +2547,16 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
         }
       }
       return UseKind::kReuse;
+    case HloOpcode::kDynamicUpdateSlice:
+      // Dynamic-update-slice reuses only operand 2 (start_indices).
+      if (i == 0 || i == 1) {
+        return UseKind::kUse;
+      }
+      return UseKind::kReuse;
     default:
-      return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
+      return IsElementwise() && !ImplicitlyBroadcastsOperand(i)
+                 ? UseKind::kUse
+                 : UseKind::kReuse;
   }
 }
 

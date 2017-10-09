@@ -51,54 +51,51 @@ class GatherTest(xla_test.XLATestCase):
           gather_val = session.run(gather_t, feed_dict={params: params_np})
           np_val = params_np[indices]
           self.assertAllEqual(np_val, gather_val)
-          self.assertEqual(np_val.shape, gather_val.shape)
 
   def testScalar2D(self):
     with self.test_session() as session, self.test_scope():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                        [12, 13, 14]])
       for dtype in _TEST_TYPES:
-        params_np = self._buildParams(data, dtype)
-        params = array_ops.placeholder(dtype=dtype)
-        indices = constant_op.constant(2)
-        gather_t = array_ops.gather(params, indices)
-        gather_val = session.run(gather_t, feed_dict={params: params_np})
-        self.assertAllEqual(np.take(params_np, 2, axis=0), gather_val)
-        expected_shape = data.shape[:0] + data.shape[1:]
-        self.assertEqual(expected_shape, gather_val.shape)
+        for axis in 0, 1, -1:
+          params_np = self._buildParams(data, dtype)
+          params = array_ops.placeholder(dtype=dtype)
+          indices = constant_op.constant(2)
+          gather_t = array_ops.gather(params, indices, axis=axis)
+          gather_val = session.run(gather_t, feed_dict={params: params_np})
+          expected = np.take(params_np, 2, axis=axis)
+          self.assertAllEqual(expected, gather_val)
 
   def testSimpleTwoD32(self):
     with self.test_session() as session, self.test_scope():
       data = np.array([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                        [12, 13, 14]])
       for dtype in _TEST_TYPES:
-        params_np = self._buildParams(data, dtype)
-        params = array_ops.placeholder(dtype=dtype)
-        # The indices must be in bounds for any axis.
-        indices = constant_op.constant([0, 1, 0, 2])
-        gather_t = array_ops.gather(params, indices)
-        gather_val = session.run(gather_t, feed_dict={params: params_np})
-        self.assertAllEqual(
-            np.take(params_np, [0, 1, 0, 2], axis=0), gather_val)
-        expected_shape = data.shape[:0] + (4,) + data.shape[1:]
-        self.assertEqual(expected_shape, gather_val.shape)
+        for axis in 0, 1, -1:
+          params_np = self._buildParams(data, dtype)
+          params = array_ops.placeholder(dtype=dtype)
+          # The indices must be in bounds for any axis.
+          indices = constant_op.constant([0, 1, 0, 2])
+          gather_t = array_ops.gather(params, indices, axis=axis)
+          gather_val = session.run(gather_t, feed_dict={params: params_np})
+          expected = np.take(params_np, [0, 1, 0, 2], axis=axis)
+          self.assertAllEqual(expected, gather_val)
 
   def testHigherRank(self):
     # Check that scalar and empty indices shapes work as well.
     shape = (2, 1, 3, 2)
     for indices_shape in (), (0,), (2, 0), (2, 3):
       for dtype in _TEST_TYPES:
-        params = self._buildParams(np.random.randn(*shape), dtype)
-        indices = np.random.randint(shape[0], size=indices_shape)
-        with self.test_session() as sess, self.test_scope():
-          tf_params = array_ops.placeholder(dtype=dtype)
-          tf_indices = constant_op.constant(indices, dtype=dtypes.int32)
-          gather = array_ops.gather(tf_params, tf_indices)
-          gather_value = sess.run(gather, feed_dict={tf_params: params})
-          gather_np = np.take(params, indices, 0)
-          self.assertAllEqual(gather_np, gather_value)
-          expected_shape = (params.shape[:0] + indices.shape + params.shape[1:])
-          self.assertEqual(expected_shape, gather_value.shape)
+        for axis in 0, 1, 2, 3, -1, -2:
+          params = self._buildParams(np.random.randn(*shape), dtype)
+          indices = np.random.randint(shape[axis], size=indices_shape)
+          with self.test_session() as sess, self.test_scope():
+            tf_params = array_ops.placeholder(dtype=dtype)
+            tf_indices = constant_op.constant(indices, dtype=dtypes.int32)
+            gather = array_ops.gather(tf_params, tf_indices, axis=axis)
+            gather_value = sess.run(gather, feed_dict={tf_params: params})
+            gather_np = np.take(params, indices, axis=axis)
+            self.assertAllEqual(gather_np, gather_value)
 
 
 if __name__ == "__main__":

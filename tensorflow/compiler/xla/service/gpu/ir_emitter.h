@@ -218,7 +218,6 @@ class IrEmitterUnnested : public IrEmitter {
  public:
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     const HloComputation* hlo_computation,
-                    bool has_hybrid_result,
                     IrEmitterContext* ir_emitter_context);
   IrEmitterUnnested(const IrEmitterUnnested&) = delete;
   IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
@@ -366,10 +365,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   // The HloComputation that this IrEmitter emits code for.
   const HloComputation* hlo_computation_;
-
-  // Whether this computation will produce a hybrid result, that is the
-  // computation produces a ShapedBuffer.
-  bool has_hybrid_result_;
 };
 
 // Emits LLVM IR for a nested computation to the resultant function.

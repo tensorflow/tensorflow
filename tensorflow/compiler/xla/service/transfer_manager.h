@@ -97,6 +97,16 @@ class TransferManager {
       const perftools::gputools::DeviceMemoryBase& source,
       const Shape& shape) = 0;
 
+  // Writes the given device-memory pointers in 'elements' to the given region
+  // to construct a tuple in the platform-specific tuple representation. This
+  // can handle nested tuples as well. In the nested case, the element
+  // DeviceMemoryBase points to another array of pointers on the device.
+  virtual Status WriteTuplePointersToDevice(
+      perftools::gputools::StreamExecutor* executor,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          elements,
+      const Shape& shape, perftools::gputools::DeviceMemoryBase* region) = 0;
+
   // Returns all buffer pointers that the tuple `source` refers to. Unlike
   // ShallowCopyTupleFromDevice, this function gather buffer pointers in nested
   // tuples as well. Also, the returned DeviceMemoryBase objects are

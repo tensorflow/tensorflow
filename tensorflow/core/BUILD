@@ -218,7 +218,6 @@ tf_proto_library(
     j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
-    js_codegen = "jspb",
     visibility = ["//visibility:public"],
 )
 
@@ -446,6 +445,7 @@ tf_cuda_library(
         "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
+        "util/reffed_status_callback.h",
         "util/saved_tensor_slice_util.h",
         "util/sparse/group_iterator.h",
         "util/sparse/sparse_tensor.h",
@@ -651,14 +651,15 @@ cc_library(
         ":image_ops_op_lib",
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
-        ":lookup_ops_op_lib",
         ":logging_ops_op_lib",
+        ":lookup_ops_op_lib",
         ":math_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
+        ":resource_variable_ops_op_lib",
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
@@ -1280,6 +1281,13 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_pyclif_proto_library(
+    name = "protobuf/meta_graph_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/meta_graph.proto",
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
 # Internal targets
 
@@ -1765,6 +1773,7 @@ tf_cuda_library(
     ) + if_mkl(
         [
             "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn//:mkl_dnn",
         ],
     ),
     alwayslink = 1,
@@ -1925,11 +1934,12 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/visitable_allocator.h",
     "graph/gradients.h",
     "graph/quantize_training.h",
-]
+] + if_mkl(["graph/mkl_graph_util.h"])
 
 tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [
+        "common_runtime/accumulate_n_optimizer.cc",
         "common_runtime/allocator_retry.cc",
         "common_runtime/bfc_allocator.cc",
         "common_runtime/build_graph_options.cc",
@@ -2026,7 +2036,10 @@ tf_cuda_library(
         "//third_party/eigen3",
         "//tensorflow/core/kernels:required",
     ] + if_mkl(
-        ["//third_party/mkl:intel_binary_blob"],
+        [
+            "//third_party/mkl:intel_binary_blob",
+            "@mkl_dnn//:mkl_dnn",
+        ],
     ) + tf_additional_core_deps() + if_static([":core_cpu_impl"]),
     alwayslink = 1,
 )
@@ -2576,6 +2589,7 @@ tf_cc_tests(
         "util/example_proto_helper_test.cc",
         "util/memmapped_file_system_test.cc",
         "util/presized_cuckoo_map_test.cc",
+        "util/reffed_status_callback_test.cc",
         "util/reporter_test.cc",
         "util/saved_tensor_slice_util_test.cc",
         "util/semver_test.cc",
@@ -2612,6 +2626,7 @@ tf_cc_tests(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/cc:while_loop",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
@@ -2660,7 +2675,7 @@ tf_cc_test_mkl(
         "graph/mkl_layout_pass_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
+    linkstatic = 1,
     deps = [
         ":core",
         ":core_cpu",
@@ -2678,18 +2693,6 @@ tf_cc_test_mkl(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core/kernels:mkl_aggregate_ops",
-        "//tensorflow/core/kernels:mkl_concat_op",
-        "//tensorflow/core/kernels:mkl_conv_op",
-        "//tensorflow/core/kernels:mkl_cwise_ops_common",
-        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
-        "//tensorflow/core/kernels:mkl_identity_op",
-        "//tensorflow/core/kernels:mkl_input_conversion_op",
-        "//tensorflow/core/kernels:mkl_lrn_op",
-        "//tensorflow/core/kernels:mkl_pooling_ops",
-        "//tensorflow/core/kernels:mkl_relu_op",
-        "//tensorflow/core/kernels:mkl_reshape_op",
-        "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
@@ -2860,9 +2863,11 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:resource_variable_ops",
         "//third_party/eigen3",
     ],
 )

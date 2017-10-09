@@ -56,16 +56,16 @@ namespace cpu {
 
 ParallelCpuExecutable::ParallelCpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
-    std::unique_ptr<BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<std::map<HloInstruction*, string>> function_names,
+    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<const std::map<HloInstruction*, string>> function_names,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
     : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
-      functions_names_(std::move(function_names)),
+      function_names_(std::move(function_names)),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)),
       aligned_constants_(std::move(aligned_constants)) {}
 
@@ -106,7 +106,7 @@ class Executor {
            const ServiceExecutableRunOptions* run_options,
            std::list<HloInstruction*>* pending,
            std::map<HloInstruction*, const void*>* results, void** temps_array,
-           uint64* profile_counters_array, BufferAssignment* assignment)
+           uint64* profile_counters_array, const BufferAssignment* assignment)
       : functions_(functions),
         run_options_(run_options),
         pending_(pending),
@@ -149,7 +149,7 @@ class Executor {
   void** temps_array_;
   uint64* profile_counters_array_;
   tensorflow::thread::ThreadPool* thread_pool_;
-  BufferAssignment* assignment_;
+  const BufferAssignment* assignment_;
 
   // Members used to manage instruction execution.
   tensorflow::mutex completion_queue_lock_;
@@ -377,7 +377,6 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     HloExecutionProfile* hlo_execution_profile) {
   std::vector<se::DeviceMemoryBase> argument_buffers(arguments.size());
   for (int i = 0; i < arguments.size(); ++i) {
-    TF_RET_CHECK(!ShapeUtil::IsTuple(arguments[i]->shape()));
     argument_buffers[i] = arguments[i]->buffer(/*index=*/{});
   }
   return ExecuteComputeFunctions(run_options, argument_buffers, buffers,
@@ -402,7 +401,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
 
   // Resolve functions for all the HLO instructions ahead of time.
   std::map<HloInstruction*, ComputeFunctionType> functions;
-  for (auto& entry : *functions_names_) {
+  for (auto& entry : *function_names_) {
     tensorflow::mutex_lock lock(jit_mutex_);
     HloInstruction* instruction = entry.first;
     llvm::JITSymbol sym = jit_->FindSymbol(entry.second);
@@ -546,10 +545,9 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result_buffer,
-                      ShapedBuffer::MakeShapedBuffer(
-                          result_shape(), stream->parent()->platform(),
-                          stream->parent()->device_ordinal()));
+  auto result_buffer =
+      MakeUnique<ShapedBuffer>(result_shape(), stream->parent()->platform(),
+                               stream->parent()->device_ordinal());
 
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
@@ -557,15 +555,14 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   TF_RETURN_IF_ERROR(ExecuteComputeFunctions(run_options, arguments, buffers,
                                              hlo_execution_profile));
 
-  // Copy DeviceMemoryBase values which contain the array(s) of the result into
-  // the respective location in ShapedBuffer which is returned to the caller.
+  // Copy DeviceMemoryBase values which into the respective location in
+  // ShapedBuffer which is returned to the caller.
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_RETURN_IF_ERROR(
       result_buffer->mutable_shape_index_to_buffer_entry()
           ->ForEachMutableElementWithStatus(
               [&buffers, &buffers_in_result, &result_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
-                if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
                   const auto& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
@@ -590,7 +587,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
                   *buffer_entry = result_buffer->mutable_buffers()->size();
                   result_buffer->mutable_buffers()->push_back(buffer);
                   buffers_in_result[buffer_index] = true;
-                }
                 return Status::OK();
               }));
 

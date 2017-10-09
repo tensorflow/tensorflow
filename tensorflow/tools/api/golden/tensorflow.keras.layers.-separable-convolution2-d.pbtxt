@@ -8,7 +8,19 @@ tf_class {
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "activity_regularizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "inbound_nodes"
     mtype: "<type \'property\'>"
   }
   member {
@@ -28,11 +40,19 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "non_trainable_variables"
     mtype: "<type \'property\'>"
   }
   member {
     name: "non_trainable_weights"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "outbound_nodes"
     mtype: "<type \'property\'>"
   }
   member {

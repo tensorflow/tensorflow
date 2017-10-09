@@ -8,25 +8,6 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-py_library(
-    name = "estimator_py",
-    srcs = ["estimator_lib.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":dnn",
-        ":dnn_linear_combined",
-        ":estimator",
-        ":export",
-        ":inputs",
-        ":linear",
-        ":model_fn",
-        ":parsing_utils",
-        ":run_config",
-        ":training",
-        "//tensorflow/python:util",
-    ],
-)
-
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -37,6 +18,76 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+py_library(
+    name = "estimator_py",
+    srcs = ["estimator_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dnn",
+        ":dnn_linear_combined",
+        ":estimator",
+        ":export",
+        ":exporter",
+        ":inputs",
+        ":linear",
+        ":model_fn",
+        ":parsing_utils",
+        ":run_config",
+        ":training",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "exporter",
+    srcs = ["exporter.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gc",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "exporter_test",
+    size = "small",
+    srcs = ["exporter_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":exporter",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "gc",
+    srcs = ["gc.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "gc_test",
+    size = "small",
+    srcs = ["gc_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gc",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_library(
@@ -77,19 +128,37 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
+        ":exporter",
+        ":run_config",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "training_test",
-    size = "small",
+    size = "medium",
     srcs = ["training_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
+        ":dnn",
+        ":estimator",
+        ":exporter",
+        ":inputs",
+        ":run_config",
         ":training",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python/feature_column",
     ],
 )
 

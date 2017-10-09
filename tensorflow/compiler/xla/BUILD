@@ -163,6 +163,7 @@ cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = [
+        "iterator_util.h",
         "map_util.h",
         "ptr_util.h",
         "util.h",
@@ -203,6 +204,16 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "iterator_util_test",
+    srcs = ["iterator_util_test.cc"],
+    deps = [
+        ":test",
+        ":util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "shape_util",
     srcs = [
@@ -227,6 +238,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
     ],
 )

@@ -62,6 +62,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kLogicalNot;
     case UNOP_NEGATE:
       return HloOpcode::kNegate;
+    case UNOP_ROUND_NEAREST_AFZ:
+      return HloOpcode::kRoundNearestAfz;
     case UNOP_SIGN:
       return HloOpcode::kSign;
     case UNOP_SIN:
@@ -419,7 +421,8 @@ StatusOr<ComputationDataHandle> UserComputation::AddMapInstruction(
       to_apply_computation.ComputeProgramShape(to_apply_version));
   TF_ASSIGN_OR_RETURN(
       Shape inferred_shape,
-      ShapeInference::InferMapShape(operand_shapes, *to_apply_program_shape));
+      ShapeInference::InferMapShape(operand_shapes, *to_apply_program_shape,
+                                    AsInt64Slice(map_request.dimensions())));
 
   ComputationDataHandle handle = CreateComputationDataHandle();
 
@@ -1289,13 +1292,30 @@ Status UserComputation::SetOpMetadata(const ComputationDataHandle& handle,
 
   int64 handle_value = handle.handle();
   if (session_computation_.requests().count(handle_value) == 0) {
-    return InvalidArgument("Invalid handle in SetDebugMetadata (%lld)",
+    return InvalidArgument("Invalid handle in SetOpMetadata (%lld)",
                            handle_value);
   }
   *session_computation_.mutable_requests()
        ->at(handle_value)
        .mutable_request()
        ->mutable_metadata() = metadata;
+  return Status::OK();
+}
+
+Status UserComputation::SetOpDeviceAssignment(
+    const ComputationDataHandle& handle,
+    const OpDeviceAssignment& device_assignment) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  int64 handle_value = handle.handle();
+  if (session_computation_.requests().count(handle_value) == 0) {
+    return InvalidArgument("Invalid handle in SetOpDeviceAssignment (%lld)",
+                           handle_value);
+  }
+  *session_computation_.mutable_requests()
+       ->at(handle_value)
+       .mutable_request()
+       ->mutable_device_assignment() = device_assignment;
   return Status::OK();
 }
 
@@ -2476,8 +2496,10 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
       operand->shape().element_type(), AsInt64Slice(output_shape.dimensions()));
   // Do explicit broadcast for scalar.
   if (ShapeUtil::IsScalar(operand->shape())) {
-    return hlo_builder_.AddInstruction(
+    HloInstruction* broadcast = hlo_builder_.AddInstruction(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
+    broadcast->set_device_assignment(operand->device_assignment());
+    return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
   std::vector<int64> broadcast_dimensions;
@@ -2494,9 +2516,13 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
           ShapeUtil::MakeShape(operand->shape().element_type(),
                                reshaped_dimensions),
           operand));
+  reshaped_operand->set_device_assignment(operand->device_assignment());
   // Broadcast 'reshape' up to the larger size.
-  return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
-      broadcast_shape, reshaped_operand, broadcast_dimensions));
+  HloInstruction* broadcast =
+      hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
+          broadcast_shape, reshaped_operand, broadcast_dimensions));
+  broadcast->set_device_assignment(operand->device_assignment());
+  return broadcast;
 }
 
 void ComputationLowerer::Visit(
@@ -2510,6 +2536,8 @@ void ComputationLowerer::Visit(
     HloInstruction* hlo_instruction =
         hlo_builder_.AddInstruction(std::move(instruction));
     hlo_instruction->set_metadata(request.request().metadata());
+    hlo_instruction->set_device_assignment(
+        request.request().device_assignment());
     return hlo_instruction;
   };
   auto lookup_instruction = [&](const ComputationDataHandle& handle) {
@@ -2962,10 +2990,10 @@ void ComputationLowerer::Visit(
       HloInstruction* lhs = lookup_instruction(binary_op_request.lhs());
       HloInstruction* rhs = lookup_instruction(binary_op_request.rhs());
       auto hlo_opcode = BinaryOperationToHloOpcode(binary_op_request.binop());
-      if (binary_op_request.broadcast_dimensions_size() > 0) {
+      if (binary_op_request.broadcast_dimensions_size() > 0 &&
+          ShapeUtil::Rank(lhs->shape()) != ShapeUtil::Rank(rhs->shape())) {
         // Emit a broadcast instruction to perform the "broadcast in dimension"
         // operation.
-        CHECK_NE(ShapeUtil::Rank(lhs->shape()), ShapeUtil::Rank(rhs->shape()));
         HloInstruction* operand_to_broadcast =
             ShapeUtil::Rank(lhs->shape()) < ShapeUtil::Rank(rhs->shape()) ? lhs
                                                                           : rhs;

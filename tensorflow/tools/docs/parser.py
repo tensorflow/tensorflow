@@ -507,7 +507,7 @@ def _parse_function_details(docstring):
   pairs = list(_gen_pairs(parts[1:]))
 
   function_details = []
-  item_re = re.compile(r'^   ? ?(\*?\*?\w+\s*):\s', re.MULTILINE)
+  item_re = re.compile(r'^   ? ?(\*?\*?\w[\w.]*?\s*):\s', re.MULTILINE)
 
   for keyword, content in pairs:
     content = item_re.split(content)
@@ -923,7 +923,7 @@ class _ClassPageInfo(object):
     """Sets the `aliases` list.
 
     Args:
-      aliases: A list of strings. Containing all the obejct's full names.
+      aliases: A list of strings. Containing all the object's full names.
     """
     assert self.aliases is None
     self._aliases = aliases
@@ -1438,7 +1438,7 @@ class _PythonBuiltin(object):
 class _PythonFile(object):
   """This class indicates that the object is defined in a regular python file.
 
-  This can be used for the `defined_in` slot of the `PageInfo` obejcts.
+  This can be used for the `defined_in` slot of the `PageInfo` objects.
   """
 
   def __init__(self, path, parser_config):

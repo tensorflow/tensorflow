@@ -45,6 +45,87 @@ class GraphCallableTest(test.TestCase):
     self.assertEqual(
         3, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
 
+  def testFunctionWithoutReturnValue(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      v.assign(x)
+
+    my_function(constant_op.constant(4, dtype=dtypes.float32))
+    self.assertEqual(4, my_function.variables[0].read_value().numpy())
+
+  def testFunctionWithoutReturnValueAndArgs(self):
+
+    @graph_callable.graph_callable([])
+    def my_function():
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      v.assign(4)
+
+    my_function()
+    self.assertEqual(4, my_function.variables[0].read_value().numpy())
+
+  def testVariableAPI(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      return v.read_value() + x
+
+    self.assertEqual(
+        2, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
+
+    my_function.variables[0].assign(1.)
+    self.assertEqual(
+        3, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
+
+  def testTensorShape(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(1), dtype=dtypes.float32)])
+    def my_function(x):
+      _ = x.get_shape()
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=[x.shape[0]])
+      self.assertEqual(v.shape[0], x.shape[0])
+      return v + x
+
+    self.assertEqual([2.],
+                     my_function(
+                         constant_op.constant([2.],
+                                              dtype=dtypes.float32)).numpy())
+
+  def testUpdatesAreOrdered(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      v.assign(x + 1)
+      v.assign(v * x)
+      return v.read_value()
+
+    self.assertEqual(my_function(constant_op.constant(2.0)).numpy(), 6.0)
+
+  def testEmptyInitializer(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(1), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable("v", shape=[1])
+      return x + 0 * v
+
+    self.assertEqual([2.],
+                     my_function(
+                         constant_op.constant([2.],
+                                              dtype=dtypes.float32)).numpy())
+
   def testMismatchingNumArgs(self):
     # pylint: disable=anomalous-backslash-in-string
     with self.assertRaisesRegexp(TypeError,

@@ -383,7 +383,8 @@ input_dataset: A handle to an input dataset. Must have a single component.
 batch_size: A scalar representing the number of elements to accumulate in a
   batch.
 row_shape: A vector representing the dense shape of each row in the produced
-  SparseTensor.
+  SparseTensor. The shape may be partially specified, using `-1` to indicate
+  that a particular dimension should use the maximum size of all batch elements.
 )doc");
 
 REGISTER_OP("RangeDataset")
@@ -410,6 +411,7 @@ REGISTER_OP("ShuffleDataset")
     .Input("seed: int64")
     .Input("seed2: int64")
     .Output("handle: variant")
+    .Attr("reshuffle_each_iteration: bool = true")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -419,6 +421,11 @@ Creates a dataset that shuffles elements from `input_dataset` pseudorandomly.
 buffer_size: The number of output elements to buffer in an iterator over
   this dataset. Compare with the `min_after_dequeue` attr when creating a
   `RandomShuffleQueue`.
+reshuffle_each_iteration: If true, each iterator over this dataset will be given
+  a different pseudorandomly generated seed, based on a sequence seeded by the
+  `seed` and `seed2` inputs. If false, each iterator will be given the same
+  seed, and repeated iteration over this dataset will yield the exact same
+  sequence of results.
 seed: A scalar seed for the random number generator. If either seed or
   seed2 is set to be non-zero, the random number generator is seeded
   by the given seed.  Otherwise, a random seed is used.
@@ -629,13 +636,6 @@ REGISTER_OP("IteratorGetNext")
     })
     .Doc(R"doc(
 Gets the next output from the given iterator.
-)doc");
-
-REGISTER_OP("IteratorDispose")
-    .Input("iterator: resource")
-    .SetShapeFn(shape_inference::NoOutputs)
-    .Doc(R"doc(
-Releases any resources used by the given iterator.
 )doc");
 
 REGISTER_OP("IteratorToStringHandle")

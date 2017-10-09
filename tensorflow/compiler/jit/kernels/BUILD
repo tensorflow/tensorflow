@@ -7,9 +7,9 @@ package(
 )
 
 cc_library(
-    name = "xla_local_launch_op",
-    srcs = ["xla_local_launch_op.cc"],
-    hdrs = ["xla_local_launch_op.h"],
+    name = "xla_launch_op",
+    srcs = ["xla_launch_op.cc"],
+    hdrs = ["xla_launch_op.h"],
     deps = [
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_compilation_cache",
@@ -24,7 +24,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:variable_ops",
     ],
     alwayslink = 1,

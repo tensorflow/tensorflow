@@ -857,7 +857,7 @@ def stack(values, axis=0, name="stack"):
   This is the opposite of unstack.  The numpy equivalent is
 
   ```python
-  tf.stack([x, y, z]) = np.asarray([x, y, z])
+  tf.stack([x, y, z]) = np.stack([x, y, z])
   ```
 
   Args:
@@ -997,7 +997,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
 
   This is the opposite of stack.  The numpy equivalent is
 
-      tf.unstack(x, n) = list(x)
+      tf.unstack(x, n) = np.unstack(x)
 
   Args:
     value: A rank `R > 0` `Tensor` to be unstacked.
@@ -2098,6 +2098,20 @@ def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=r
 space_to_batch.__doc__ = gen_array_ops._space_to_batch.__doc__
 
 
+def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
+  return gen_array_ops.space_to_depth(input, block_size, data_format, name=name)
+
+
+space_to_depth.__doc__ = gen_array_ops.space_to_depth.__doc__
+
+
+def depth_to_space(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
+  return gen_array_ops.depth_to_space(input, block_size, data_format, name=name)
+
+
+depth_to_space.__doc__ = gen_array_ops.depth_to_space.__doc__
+
+
 def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=redefined-builtin
   result = batch_to_space_nd(
       input,
@@ -2254,37 +2268,60 @@ def one_hot(indices,
                                   name)
 
 
-def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
-  """Return a mask tensor representing the first N positions of each row.
+def _all_dimensions(x):
+  """Returns a 1D-tensor listing all dimensions in x."""
+  # Fast path: avoid creating Rank and Range ops if ndims is known.
+  if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+    return constant_op.constant(
+        np.arange(x.get_shape().ndims), dtype=dtypes.int32)
+  if (isinstance(x, sparse_tensor.SparseTensor) and
+      x.dense_shape.get_shape().is_fully_defined()):
+    r = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
+    return constant_op.constant(np.arange(r), dtype=dtypes.int32)
 
-  Example:
+  # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+  return range(0, rank(x))
+
+
+def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
+  """Returns a mask tensor representing the first N positions of each cell.
+
+  If `lengths` has shape `[d_1, d_2, ..., d_n]` the resulting tensor `mask` has
+  dtype `dtype` and shape `[d_1, d_2, ..., d_n, maxlen]`, with
+
+  ```
+  mask[i_1, i_2, ..., i_n, j] = (j < lengths[i_1, i_2, ..., i_n])
+  ```
+
+  Examples:
 
   ```python
   tf.sequence_mask([1, 3, 2], 5)  # [[True, False, False, False, False],
                                   #  [True, True, True, False, False],
                                   #  [True, True, False, False, False]]
+
+  tf.sequence_mask([[1, 3],[2,0]])  # [[[True, False, False],
+                                    #   [True, True, True]],
+                                    #  [[True, True, False],
+                                    #   [False, False, False]]]
   ```
 
   Args:
-    lengths: 1D integer tensor, all its values <= maxlen.
-    maxlen: scalar integer tensor, maximum length of each row. Default: use
-            maximum over lengths.
+    lengths: integer tensor, all its values <= maxlen.
+    maxlen: scalar integer tensor, size of last dimension of returned tensor.
+      Default is the maximum value in `lengths`.
     dtype: output type of the resulting tensor.
     name: name of the op.
   Returns:
-    A 2D mask tensor, as shown in the example above, cast to specified dtype.
-
+    A mask tensor of shape `lengths.shape + (maxlen,)`, cast to specified dtype.
   Raises:
-    ValueError: if the arguments have invalid rank.
+    ValueError: if `maxlen` is not a scalar.
   """
   with ops.name_scope(name, "SequenceMask", [lengths, maxlen]):
     lengths = ops.convert_to_tensor(lengths)
-    if lengths.get_shape().ndims != 1:
-      raise ValueError("lengths must be 1D for sequence_mask. Got shape %s" %
-                       lengths.get_shape())
 
     if maxlen is None:
-      maxlen = gen_math_ops._max(lengths, [0])
+      maxlen = gen_math_ops._max(lengths, _all_dimensions(lengths))
     else:
       maxlen = ops.convert_to_tensor(maxlen)
     if maxlen.get_shape().ndims != 0:
@@ -2299,7 +2336,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
         constant(0, maxlen.dtype), maxlen, constant(1, maxlen.dtype))
     # Since maxlen >= max(lengths), it is safe to use maxlen as a cast
     # authoritative type. Whenever maxlen fits into tf.int32, so do the lengths.
-    matrix = gen_math_ops.cast(expand_dims(lengths, 1), maxlen.dtype)
+    matrix = gen_math_ops.cast(expand_dims(lengths, -1), maxlen.dtype)
     result = row_vector < matrix
 
     if dtype is None or result.dtype.base_dtype == dtype.base_dtype:

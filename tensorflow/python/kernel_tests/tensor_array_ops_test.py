@@ -1305,7 +1305,7 @@ class TensorArrayTest(test.TestCase):
     dev_stats = {d.device: list(d.node_stats)
                  for d in run_metadata.step_stats.dev_stats}
     for d in dev_stats:
-      if "/task:0/" in d and "cpu" in d:  # Skip any GPU node stats
+      if "/task:0/" in d and "CPU" in d:  # Skip any GPU node stats
         self.assertTrue(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
       else:

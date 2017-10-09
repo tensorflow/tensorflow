@@ -1843,11 +1843,12 @@ def matmul(a,
 
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
-    a_shape = a.get_shape()
-    b_shape = b.get_shape()
+    # TODO(apassos) remove _shape_tuple here when it is not needed.
+    a_shape = a._shape_tuple()  # pylint: disable=protected-access
+    b_shape = b._shape_tuple()  # pylint: disable=protected-access
     if (not a_is_sparse and not b_is_sparse) and (
-        (a_shape.ndims is None or a_shape.ndims > 2) and
-        (b_shape.ndims is None or b_shape.ndims > 2)):
+        (a_shape is None or len(a_shape) > 2) and
+        (b_shape is None or len(b_shape) > 2)):
       # BatchMatmul does not support transpose, so we conjugate the matrix and
       # use adjoint instead. Conj() is a noop for real matrices.
       if transpose_a:
@@ -2089,13 +2090,12 @@ def sigmoid(x, name=None):
   Specifically, `y = 1 / (1 + exp(-x))`.
 
   Args:
-    x: A Tensor with type `float32`, `float64`, `int32`, `complex64`, `int64`,
-      or `qint32`.
+    x: A Tensor with type `float16`, `float32`, `float64`, `complex64`,
+      or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor with the same type as `x` if `x.dtype != qint32`
-      otherwise the return type is `quint8`.
+    A Tensor with the same type as `x`.
 
   @compatibility(numpy)
   Equivalent to np.scipy.special.expit
@@ -2128,8 +2128,8 @@ def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
   Args:
-    x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
-      `complex64`, or `int64`.
+    x: A Tensor or SparseTensor with type `float16`, `float32`, `double`,
+      `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2317,6 +2317,10 @@ def conj(x, name=None):
   Raises:
     TypeError: If `x` is not a numeric tensor.
   """
+  if isinstance(x, ops.Tensor):
+    dt = x.dtype
+    if dt.is_floating or dt.is_integer:
+      return x
   with ops.name_scope(name, "Conj", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     if x.dtype.is_complex or x.dtype == dtypes.variant:

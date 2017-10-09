@@ -9,8 +9,10 @@ load(":build_defs.bzl", "JAVACOPTS")
 load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_copts",
+    "tf_binary_additional_srcs",
     "tf_cc_binary",
+    "tf_copts",
+    "tf_custom_op_library",
     "tf_java_test",
 )
 
@@ -179,10 +181,16 @@ tf_java_test(
     ],
 )
 
+tf_custom_op_library(
+    name = "my_test_op.so",
+    srcs = ["src/test/native/my_test_op.cc"],
+)
+
 tf_java_test(
     name = "TensorFlowTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],
+    data = [":my_test_op.so"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.TensorFlowTest",
     deps = [
@@ -303,7 +311,7 @@ genrule(
     outs = ["pom.xml"],
     cmd = "$(location generate_pom) >$@",
     output_to_bindir = 1,
-    tools = [":generate_pom"],
+    tools = [":generate_pom"] + tf_binary_additional_srcs(),
 )
 
 tf_cc_binary(

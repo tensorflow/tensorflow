@@ -526,6 +526,7 @@ def tf_cc_test(name,
                extra_copts=[],
                suffix="",
                linkopts=[],
+               nocopts=None,
                **kwargs):
   native.cc_test(
       name="%s%s" % (name, suffix),
@@ -547,6 +548,7 @@ def tf_cc_test(name,
           clean_dep("//tensorflow:darwin"): 1,
           "//conditions:default": 0,
       }),
+      nocopts=nocopts,
       **kwargs)
 
 
@@ -649,7 +651,8 @@ def tf_cc_tests(srcs,
                 tags=[],
                 size="medium",
                 args=None,
-                linkopts=[]):
+                linkopts=[],
+                nocopts=None):
   for src in srcs:
     tf_cc_test(
         name=src_to_test_name(src),
@@ -659,7 +662,8 @@ def tf_cc_tests(srcs,
         tags=tags,
         size=size,
         args=args,
-        linkopts=linkopts)
+        linkopts=linkopts,
+        nocopts=nocopts)
 
 
 def tf_cc_test_mkl(srcs,
@@ -669,7 +673,7 @@ def tf_cc_test_mkl(srcs,
                    tags=[],
                    size="medium",
                    args=None):
-  if_mkl(tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args))
+  if_mkl(tf_cc_tests(srcs, deps, name, linkstatic=linkstatic, tags=tags, size=size, args=args, nocopts="-fno-exceptions"))
 
 
 def tf_cc_tests_gpu(srcs,
@@ -867,18 +871,33 @@ def tf_mkl_kernel_library(name,
                           deps=None,
                           alwayslink=1,
                           copts=tf_copts(),
+                          nocopts="-fno-exceptions",
                           **kwargs):
+  """A rule to build MKL-based TensorFlow kernel libraries."""
+  gpu_srcs = gpu_srcs  # unused argument
+  kwargs = kwargs  # unused argument
+
+  if not bool(srcs):
+    srcs = []
+  if not bool(hdrs):
+    hdrs = []
+
+  if prefix:
+    srcs = srcs + native.glob(
+        [prefix + "*.cc"])
+    hdrs = hdrs + native.glob(
+        [prefix + "*.h"])
+
   if_mkl(
-      tf_kernel_library(
-          name,
-          prefix=prefix,
+      native.cc_library(
+          name=name,
           srcs=srcs,
-          gpu_srcs=gpu_srcs,
           hdrs=hdrs,
           deps=deps,
           alwayslink=alwayslink,
           copts=copts,
-          **kwargs))
+          nocopts=nocopts
+      ))
 
 
 # Bazel rules for building swig files.

@@ -28,6 +28,7 @@ py_library(
         ":dnn",
         ":extenders",
         ":head",
+        ":logit_fns",
         ":multi_head",
         "//tensorflow/python:util",
     ],
@@ -75,11 +76,14 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:util",
+        "@six_archive//:six",
     ],
 )
 
@@ -95,10 +99,11 @@ py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:metrics",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:linear",
-        "//tensorflow/python/estimator:run_config",
         "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
     ],
@@ -153,6 +158,33 @@ py_test(
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "logit_fns",
+    srcs = [
+        "python/estimator/logit_fns.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/estimator:dnn",
+        "//tensorflow/python/estimator:linear",
+        "//tensorflow/python/estimator:util",
+    ],
+)
+
+py_test(
+    name = "logit_fns_test",
+    size = "small",
+    srcs = ["python/estimator/logit_fns_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":logit_fns",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/estimator:model_fn",
     ],
 )
 

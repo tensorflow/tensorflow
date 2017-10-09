@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
@@ -78,6 +79,15 @@ string PyRepr(PyObject* obj) {
   return "<error computing repr()>";
 }
 
+bool IsPyDimension(PyObject* obj) {
+  const char* tp_name = obj->ob_type->tp_name;
+  if (strcmp(tp_name, "Dimension") != 0) return false;
+  bool ret =
+      StringPiece(PyRepr(PyType(obj)))
+          .ends_with("tensorflow.python.framework.tensor_shape.Dimension'>");
+  return ret;
+}
+
 Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
   while (true) {
     // We test strings first, in case a string is considered a sequence.
@@ -98,6 +108,8 @@ Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
       // Have to test for bool before int, since IsInt(True/False) == true.
       *dtype = DT_BOOL;
     } else if (IsPyInt(obj)) {
+      *dtype = DT_INT64;
+    } else if (IsPyDimension(obj)) {
       *dtype = DT_INT64;
     } else if (PyComplex_Check(obj) ||
                PyIsInstance(obj, &PyComplexFloatingArrType_Type)) {  // NumPy
@@ -200,7 +212,7 @@ const char* ConvertOneInt64(PyObject* v, int64* out) {
     return nullptr;
   }
 #endif
-  if (TF_PREDICT_TRUE(PyLong_Check(v))) {
+  if (TF_PREDICT_TRUE(PyLong_Check(v) || IsPyDimension(v))) {
     int overflow = 0;
     // Have to use LongLong for 64 bits, since long is 32 bits on Windows.
     *out = PyLong_AsLongLongAndOverflow(v, &overflow);
@@ -228,7 +240,7 @@ const char* ConvertOneInt32(PyObject* v, int32* out) {
     i = PyInt_AS_LONG(v);
   } else
 #endif
-      if (PyLong_Check(v)) {
+      if (PyLong_Check(v) || IsPyDimension(v)) {
     int overflow = 0;
     // Have to use LongLong for 64 bits, since long is 32 bits on Windows.
     i = PyLong_AsLongLongAndOverflow(v, &overflow);

@@ -122,6 +122,9 @@ class DfsHloVisitor {
   virtual Status HandleAbs(HloInstruction* abs, HloInstruction* operand) {
     return HandleElementwiseUnary(abs);
   }
+  virtual Status HandleRound(HloInstruction* round) {
+    return HandleElementwiseUnary(round);
+  }
   virtual Status HandleSign(HloInstruction* sign, HloInstruction* operand) {
     return HandleElementwiseUnary(sign);
   }

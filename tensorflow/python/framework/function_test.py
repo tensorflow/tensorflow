@@ -107,8 +107,9 @@ class FunctionTest(test.TestCase):
 
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(
-          ValueError, (r"Length of out_names \(2\) does not match number of "
-                       r"outputs \(1\): my_result1, my_result2")):
+          errors_impl.InvalidArgumentError,
+          (r"output names must be either empty or equal in size to outputs. "
+           "output names size = 2 outputs size = 1")):
         MyIdentityFunc([18.0])
 
   def testDefineFunction2Args(self):
@@ -123,18 +124,16 @@ class FunctionTest(test.TestCase):
       with session.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
 
-  def testValueErrorOnFunctionWithNoOutput(self):
-    # TODO(iga): Remove this restriction and this test
+  def testFunctionWithNoOutput(self):
 
     @function.Defun(dtypes.float32, dtypes.float32)
     def APlus2B(a, b):
-      print(a + b * 2)  # Create some ops to have nodes in the body
-      # Using 'print' to make lint happy
+      c = a + b * 2  # Create some ops to have nodes in the body
+      print(c)  # Using 'print' to make lint happy
 
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError,
-                                   "Function can not return None"):
-        APlus2B([1.0], [2.0])
+      # Call function. There should be no exceptions.
+      APlus2B([1.0], [2.0])
 
   def testDefineFunction2ArgsOutputName(self):
 
@@ -502,14 +501,6 @@ class FunctionTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, "can not return None"):
 
         @function.Defun()
-        def NoResult():
-          pass
-
-        _ = NoResult.definition
-
-      with self.assertRaisesRegexp(ValueError, "can not return None"):
-
-        @function.Defun()
         def TwoNone():
           return None, None
 
@@ -685,90 +676,6 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclare(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def FooImpl(x):
-      return x * x + 1
-
-    x = array_ops.placeholder(dtypes.float32)
-    y = foo(x)
-
-    g = ops.get_default_graph()
-    FooImpl.add_to_graph(g)
-
-    with self.test_session():
-      rand = np.random.uniform(size=(3, 3))
-      expected = rand * rand + 1.0
-      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
-
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclareUsedInDefun(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun()
-    def Bar(x):
-      return foo(x)
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def FooImpl(x):
-      return x * x + 1
-
-    x = array_ops.placeholder(dtypes.float32)
-    y = Bar(x)
-
-    g = ops.get_default_graph()
-    FooImpl.add_to_graph(g)
-
-    with self.test_session():
-      rand = np.random.uniform(size=(3, 3))
-      expected = rand * rand + 1.0
-      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
-
-  @test_util.disable_c_api   # Function Declaration doesn't work with C API
-  def testDeclareTypeMistake(self):
-    foo = function.Declare("Foo", [("x", dtypes.float32)], [("y",
-                                                             dtypes.float32)])
-
-    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
-    def Foo(x):
-      return x * x + 1
-
-    g = ops.Graph()
-    with g.as_default():
-      y = foo(2.0)
-      with self.test_session(graph=g):
-        with self.assertRaisesRegexp(errors_impl.NotFoundError,
-                                     "not registered"):
-          _ = y.eval()
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      y = foo(2)
-      with self.test_session(graph=g):
-        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                     "int32.*float"):
-          _ = y.eval()
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      with self.assertRaisesRegexp(
-          ValueError, "Expected number of arguments: 1, received: 2"):
-        _ = foo(2.0, 2.0)
-
-    g = ops.Graph()
-    with g.as_default():
-      Foo.add_to_graph(g)
-      y = foo(2.0)
-      with self.test_session(graph=g):
-        self.assertAllEqual(y.eval(), 5.0)
-
   def testCapture(self):
     g = ops.Graph()
     with g.as_default():
@@ -814,7 +721,14 @@ class FunctionTest(test.TestCase):
     def Foo(x, y, z):
       return math_ops.tanh(math_ops.matmul(x, y) + z)
 
-    self.assertEqual("Foo_d643acf7", Foo.instantiate([dtypes.float32] * 3).name)
+    # We added more randomness to function names in C API.
+    # TODO(iga): Remove this if statement when we switch to C API.
+    if ops._USE_C_API:  # pylint: disable=protected-access
+      self.assertEqual("Foo_aCYSbwBkR5A",
+                       Foo.instantiate([dtypes.float32] * 3).name)
+    else:
+      self.assertEqual("Foo_d643acf7",
+                       Foo.instantiate([dtypes.float32] * 3).name)
 
   def testSignatureHash(self):
     # Foo.Inner and Bar.Inner have identical function body but have
@@ -1091,7 +1005,8 @@ class FunctionsFromProtos(test.TestCase):
     library.function.extend([F1.definition])
 
     with self.assertRaisesRegexp(
-        ValueError, "FunctionDefLibrary missing 'G1_........' FunctionDef"):
+        ValueError,
+        "FunctionDefLibrary missing 'G1_[0-9a-zA-Z]{8,11}' FunctionDef"):
       function._from_library(library)
 
     # Create invalid function def that is missing F1 function def
@@ -1100,7 +1015,8 @@ class FunctionsFromProtos(test.TestCase):
     library.function.extend([G1.definition])
 
     with self.assertRaisesRegexp(
-        ValueError, "FunctionDefLibrary missing 'F1_........' FunctionDef"):
+        ValueError,
+        "FunctionDefLibrary missing 'F1_[0-9a-zA-Z]{8,11}' FunctionDef"):
       function._from_library(library)
 
   def testFromLibraryCyclicGradFuncs(self):

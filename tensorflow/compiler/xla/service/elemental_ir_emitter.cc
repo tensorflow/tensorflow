@@ -44,8 +44,11 @@ limitations under the License.
 
 namespace xla {
 
+using llvm_ir::AsStringRef;
 using llvm_ir::IrArray;
+using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
+using tensorflow::strings::StrCat;
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) const {
@@ -193,6 +196,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     case HloOpcode::kAbs:
       return llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::fabs, {operand_value}, {operand_value->getType()},
+          ir_builder_);
+    case HloOpcode::kRoundNearestAfz:
+      return llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::round, {operand_value}, {operand_value->getType()},
           ir_builder_);
     case HloOpcode::kSign: {
       // TODO(b/32151903): Ensure consistent sign behavior for -0.0
@@ -717,9 +724,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
 
           if (ir_builder_->GetInsertPoint() == in_block->end()) {
             body_block = llvm_ir::CreateBasicBlock(
-                nullptr, llvm_ir::IrName(hlo, "rng_body"), ir_builder_);
+                nullptr, IrName(hlo, "rng_body"), ir_builder_);
             out_block = llvm_ir::CreateBasicBlock(
-                nullptr, llvm_ir::IrName(hlo, "rng_out"), ir_builder_);
+                nullptr, IrName(hlo, "rng_out"), ir_builder_);
             llvm::BranchInst::Create(body_block, in_block);
           } else {
             body_block = in_block->splitBasicBlock(
@@ -779,6 +786,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     const {
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
@@ -887,12 +895,10 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
              ++operand_idx) {
           const HloInstruction* operand = hlo->operand(operand_idx);
           auto true_block = llvm_ir::CreateBasicBlock(
-              exit_block, tensorflow::strings::StrCat(
-                      "concat_index_from_operand", operand_idx),
+              exit_block, StrCat("concat_index_from_operand", operand_idx),
               ir_builder_);
           auto false_block = llvm_ir::CreateBasicBlock(
-              exit_block, tensorflow::strings::StrCat(
-                      "concat_index_not_from_operand", operand_idx),
+              exit_block, StrCat("concat_index_not_from_operand", operand_idx),
               ir_builder_);
           auto concat_dim_size =
               llvm::ConstantInt::get(source_index[concat_dim]->getType(),
@@ -967,6 +973,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           TF_ASSIGN_OR_RETURN(
               llvm::Value * start_index_value,
               operand_to_generator.at(hlo->operand(1))(dim_index));
+          start_index_value->setName(
+              AsStringRef(IrName(hlo, StrCat("start_idx", i))));
           slice_start_index[i] = start_index_value;
         }
 
@@ -999,6 +1007,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           llvm_ir::IrArray::Index dim_index(1, ir_builder_->getInt64(i));
           TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
                               operand_to_generator.at(start_hlo)(dim_index));
+          start_index_value->setName(
+              AsStringRef(IrName(hlo, StrCat("start_idx", i))));
           slice_start_index[i] = ir_builder_->CreateZExtOrBitCast(
               start_index_value, index[i]->getType());
           // Emit IR to compute: slice_limit_index = start_index + update_dim
@@ -1158,7 +1168,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
 
         std::unique_ptr<llvm_ir::ForLoop> inner_loop =
             llvm_ir::ForLoop::EmitForLoop(
-                llvm_ir::IrName(hlo, "inner"), ir_builder_->getInt64(0),
+                IrName(hlo, "inner"), ir_builder_->getInt64(0),
                 ir_builder_->getInt64(contracted_dim_size),
                 ir_builder_->getInt64(1), ir_builder_);
 
@@ -1215,7 +1225,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       };
     default:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
-        return Unimplemented("%s", HloOpcodeString(hlo->opcode()).c_str());
+        return Unimplemented("Unhandled opcode for elemental IR emission: %s",
+                             HloOpcodeString(hlo->opcode()).c_str());
       };
   }
 }
