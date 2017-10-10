@@ -508,6 +508,26 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kGetTupleElement
   int64 tuple_index() const;
 
+  // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
+  // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
+  // (possibly nested) tuple indices used on the path from ancestor to 'hlo'.
+  std::pair<const HloInstruction*, ShapeIndex> LatestNonGteAncestorAndIndex()
+      const;
+
+  std::pair<HloInstruction*, ShapeIndex> LatestNonGteAncestorAndIndex() {
+    auto rv =
+        const_cast<const HloInstruction*>(this)->LatestNonGteAncestorAndIndex();
+    return {const_cast<HloInstruction*>(rv.first), rv.second};
+  }
+
+  // Same as LatestNonGteAncestorAndIndex, but just returns the HloInstruction.
+  const HloInstruction* LatestNonGteAncestor() const;
+
+  HloInstruction* LatestNonGteAncestor() {
+    return const_cast<HloInstruction*>(
+        const_cast<const HloInstruction*>(this)->LatestNonGteAncestor());
+  }
+
   // Gets/sets the to_apply HloComputation for Call, Map, Reduce, etc.
   // The setter should only be called by HloModule or HloComputation methods.
   //

@@ -67,7 +67,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
         // Lookup allocation GetTupleElement operand.
         const BufferAllocation::Slice slice =
             buffer_assignment_
-                ->GetUniqueTopLevelSlice(LatestNonGteAncestor(non_io_hlo))
+                ->GetUniqueTopLevelSlice(non_io_hlo->LatestNonGteAncestor())
                 .ConsumeValueOrDie();
         // We are not in a nested context, so check non-thread-local allocation.
         CHECK(!slice.allocation()->is_thread_local());

@@ -254,27 +254,11 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution,
                                       rhs_instruction, window);
 }
 
-namespace {
-
-// Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
-// If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
-// (possibly nested) tuple indices used on the path from ancestor to 'hlo'.
-const HloInstruction* LatestNonGteAncestorAndIndex(const HloInstruction* hlo,
-                                                   ShapeIndex* index) {
-  if (hlo->opcode() == HloOpcode::kGetTupleElement) {
-    const auto* operand = LatestNonGteAncestorAndIndex(hlo->operand(0), index);
-    index->push_back(hlo->tuple_index());
-    return operand;
-  }
-  return hlo;
-}
-
 // Checks if we can emit code for DynamicUpdateSlice to update data in-place.
 // Returns true if operand 0 of DynamicUpdateSlice and its output buffer
 // share the same buffer allocation.
-// Returns false otherwise.
-bool CanUpdateDynamicSliceInPlace(const BufferAssignment& assignment,
-                                  HloInstruction* fusion) {
+static bool CanUpdateDynamicSliceInPlace(const BufferAssignment& assignment,
+                                         HloInstruction* fusion) {
   CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
   HloInstruction* fused_root = fusion->fused_expression_root();
   if (fused_root->opcode() != HloOpcode::kDynamicUpdateSlice) {
@@ -282,17 +266,16 @@ bool CanUpdateDynamicSliceInPlace(const BufferAssignment& assignment,
   }
   // Walk DynamicUpdateSlice operand(0) to fused parameter and get its
   // associated operand. See if it shares an allocation with this operand.
+  HloInstruction* fusion_operand;
   ShapeIndex index;
-  auto* fusion_operand =
-      LatestNonGteAncestorAndIndex(fused_root->operand(0), &index);
+  std::tie(fusion_operand, index) =
+      fused_root->mutable_operand(0)->LatestNonGteAncestorAndIndex();
   if (fusion_operand->opcode() != HloOpcode::kParameter) {
     return false;
   }
   auto* operand = fusion->operand(fusion_operand->parameter_number());
   return assignment.SharesSliceAtIndex(fusion, {}, operand, index);
 }
-
-}  // namespace
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   HloInstruction* root = fusion->fused_expression_root();
@@ -386,7 +369,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(root->Accept(&fused_emitter));
 
     // Recursively lookup 'fusion_operand' for DynamicUpdateSlice operand 0.
-    auto* fusion_operand = LatestNonGteAncestor(root->operand(0));
+    auto* fusion_operand = root->operand(0)->LatestNonGteAncestor();
     CHECK_EQ(HloOpcode::kParameter, fusion_operand->opcode());
 
     // Operand(0) the input array which shares an allocation with the output.
@@ -1625,7 +1608,7 @@ llvm::Function* IrEmitterUnnested::EmitBasePointersForHloAndItsOperands(
   // with their operand buffer in 'io_hlos' and 'non_io_hlos' below.
   std::vector<const HloInstruction*> non_io_hlos;
   for (const HloInstruction* operand : hlo.operands()) {
-    const HloInstruction* to_lookup = LatestNonGteAncestor(operand);
+    const HloInstruction* to_lookup = operand->LatestNonGteAncestor();
     if (buffer_assignment.HasTopLevelAllocation(to_lookup) &&
         buffer_assignment.GetUniqueTopLevelSlice(to_lookup)
             .ConsumeValueOrDie()
@@ -1665,7 +1648,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(
   std::vector<BufferAllocation::Slice> io_buffers;
   io_buffers.reserve(io_hlos.size());
   for (const HloInstruction* io_hlo : io_hlos) {
-    io_buffers.push_back(GetAllocationSlice(*LatestNonGteAncestor(io_hlo)));
+    io_buffers.push_back(GetAllocationSlice(*io_hlo->LatestNonGteAncestor()));
   }
 
   // Create a KernelThunk that launches the kernel that implements "inst".

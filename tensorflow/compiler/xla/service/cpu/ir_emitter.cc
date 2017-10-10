@@ -2102,19 +2102,6 @@ Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
 
 namespace {
 
-// Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
-// If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
-// (possibly nested) tuple indices used on the path from ancestor to 'hlo'.
-const HloInstruction* LatestNonGteAncestorAndIndex(const HloInstruction* hlo,
-                                                   ShapeIndex* index) {
-  if (hlo->opcode() == HloOpcode::kGetTupleElement) {
-    const auto* operand = LatestNonGteAncestorAndIndex(hlo->operand(0), index);
-    index->push_back(hlo->tuple_index());
-    return operand;
-  }
-  return hlo;
-}
-
 // Checks if we can emit code for DynamicUpdateSlice to update data in-place.
 // Returns true if operand 0 of DynamicUpdateSlice and its output buffer
 // share the same buffer allocation.
@@ -2126,9 +2113,10 @@ bool CanUpdateDynamicSliceInPlace(const BufferAssignment& assignment,
 
   // Walk DynamicUpdateSlice operand(0) to parameter and get its
   // associated operand. See if it shares an allocation with this operand.
+  HloInstruction* operand;
   ShapeIndex index;
-  auto* operand =
-      LatestNonGteAncestorAndIndex(dynamic_update_slice->operand(0), &index);
+  std::tie(operand, index) =
+      dynamic_update_slice->mutable_operand(0)->LatestNonGteAncestorAndIndex();
   if (operand->opcode() != HloOpcode::kParameter) {
     return false;
   }
