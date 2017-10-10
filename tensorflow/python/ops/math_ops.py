@@ -1870,11 +1870,12 @@ def matmul(a,
       b = conj(b)
       transpose_b = True
 
-    sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
-    use_sparse_matmul = (a.dtype in sparse_matmul_types and
-                         b.dtype in sparse_matmul_types and
-                         (a_is_sparse or b_is_sparse))
-    if dtypes.bfloat16 in (a.dtype, b.dtype):
+    use_sparse_matmul = False
+    if a_is_sparse or b_is_sparse:
+      sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
+      use_sparse_matmul = (a.dtype in sparse_matmul_types and
+                           b.dtype in sparse_matmul_types)
+    if a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16:
       # matmul currently doesn't handle bfloat16 inputs.
       use_sparse_matmul = True
     if use_sparse_matmul:
