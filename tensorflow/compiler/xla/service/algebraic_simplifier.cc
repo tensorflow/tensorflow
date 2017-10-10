@@ -912,9 +912,10 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // A Broadcast that feeds a unary element-wise operation can sink the
   // broadcast after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
-      changed_,
+      bool sink_succeeded,
       TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
-  if (changed_) {
+  changed_ |= sink_succeeded;
+  if (sink_succeeded) {
     return Status::OK();
   }
 
@@ -1217,9 +1218,10 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   // A Reshape that feeds a unary element-wise operation can sink the
   // reshape after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
-      changed_,
+      bool sink_succeeded,
       TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(reshape));
-  if (changed_) {
+  changed_ |= sink_succeeded;
+  if (sink_succeeded) {
     return Status::OK();
   }
 

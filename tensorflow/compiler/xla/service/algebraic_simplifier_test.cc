@@ -1077,6 +1077,54 @@ TEST_F(AlgebraicSimplifierTest, ReshapeToScalarNotHoistedAfterEffectiveUnary) {
               op::Maximum(op::Reshape(param), zero));
 }
 
+// Regression test for a bug where if we failed to sink a reshape, we'd set the
+// 'changed' bit in AlgebraicSimplifier to false.
+TEST_F(AlgebraicSimplifierTest, FailureToSinkReshapeDoesntAffectChangedBit) {
+  HloComputation::Builder builder(TestName());
+
+  // This add (param0 + 0) can be simplified.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "param0")),
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          Literal::CreateR2<float>({{0, 0}, {0, 0}})))));
+
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {4}), add));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+}
+
+// Regression test for a bug where if we failed to sink a reshape, we'd set the
+// 'changed' bit in AlgebraicSimplifier to false.
+TEST_F(AlgebraicSimplifierTest, FailureToSinkBroadcastDoesntAffectChangedBit) {
+  HloComputation::Builder builder(TestName());
+
+  // This add (param0 + 0) can be simplified.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "param0")),
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          Literal::CreateR2<float>({{0, 0}, {0, 0}})))));
+
+  builder.AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(F32, {2, 2, 2}), add, /*broadcast_dimensions=*/{0}));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
