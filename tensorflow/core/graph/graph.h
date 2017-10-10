@@ -631,7 +631,7 @@ class Graph {
   std::unordered_map<string, int> device_names_map_;
 
   // All the while contexts owned by this graph, keyed by frame name,
-  // corresonding to all the while loops contained in this graph (including
+  // corresponding to all the while loops contained in this graph (including
   // nested loops). The stored contexts are usually accessed via
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;
