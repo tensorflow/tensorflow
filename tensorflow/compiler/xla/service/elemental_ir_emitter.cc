@@ -879,17 +879,31 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         const int64 concat_dim = hlo->dimensions(0);
         auto source_index = target_index;
 
+        llvm::BasicBlock* init_block = ir_builder_->GetInsertBlock();
+
+        // A terminator should be present iff we're emitting code
+        // into the middle (as opposed to the end) of a basic block.
+        CHECK_EQ(ir_builder_->GetInsertPoint() == init_block->end(),
+                 init_block->getTerminator() == nullptr);
+
+        llvm::BasicBlock* exit_block;
+        if (ir_builder_->GetInsertPoint() == init_block->end()) {
+          exit_block = llvm_ir::CreateBasicBlock(
+              /*insert_before=*/nullptr, IrName(hlo, "merge"), ir_builder_);
+        } else {
+          exit_block = init_block->splitBasicBlock(
+              ir_builder_->GetInsertPoint(), AsStringRef(IrName(hlo, "merge")));
+          init_block->getTerminator()->eraseFromParent();
+        }
+
+        llvm_ir::SetToFirstInsertPoint(exit_block, ir_builder_);
         llvm::PHINode* output = ir_builder_->CreatePHI(
             llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
                                            ir_builder_),
             hlo->operands().size());
-        llvm::BasicBlock* init_block = ir_builder_->GetInsertBlock();
         auto prior_insert_point = ir_builder_->GetInsertPoint();
-        llvm::BasicBlock* exit_block =
-            init_block->splitBasicBlock(output, "concat_merge");
 
         ir_builder_->SetInsertPoint(init_block);
-        init_block->getTerminator()->eraseFromParent();
 
         for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
              ++operand_idx) {
