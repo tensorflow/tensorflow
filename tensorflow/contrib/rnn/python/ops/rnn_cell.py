@@ -2536,9 +2536,8 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
     Args:
       inputs: input Tensor, 2D, batch x num_units.
-      state: if `state_is_tuple` is False, this must be a state Tensor,
-        `2-D, batch x state_size`.  If `state_is_tuple` is True, this must be a
-        tuple of state Tensors, both `2-D`, with column sizes `c_state` and
+      state: this must be a tuple of state Tensors,
+       both `2-D`, with column sizes `c_state` and
         `m_state`.
 
     Returns:
