@@ -269,6 +269,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
+    pass.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
+
     pass.AddPass<BatchNormRewriter>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
