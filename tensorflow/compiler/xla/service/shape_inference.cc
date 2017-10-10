@@ -58,7 +58,7 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
     case HloOpcode::kLog:
       return UNOP_LOG;
     case HloOpcode::kNot:
-      return UNOP_LOGICAL_NOT;
+      return UNOP_NOT;
     case HloOpcode::kNegate:
       return UNOP_NEGATE;
     case HloOpcode::kRoundNearestAfz:
@@ -114,9 +114,9 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
     case HloOpcode::kRemainder:
       return BINOP_REM;
     case HloOpcode::kOr:
-      return BINOP_LOGICAL_OR;
+      return BINOP_OR;
     case HloOpcode::kAnd:
-      return BINOP_LOGICAL_AND;
+      return BINOP_AND;
     default:
       LOG(FATAL) << "unhandled opcode " << opcode;
   }
@@ -322,7 +322,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_SORT:
       return arg;
 
-    case UNOP_LOGICAL_NOT:
+    case UNOP_NOT:
       if (arg.element_type() != PRED) {
         return InvalidArgument(
             "expected pred element type in argument to logical-not operation; "
@@ -750,8 +750,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
 
-    case BINOP_LOGICAL_AND:
-    case BINOP_LOGICAL_OR:
+    case BINOP_AND:
+    case BINOP_OR:
       if (lhs.element_type() != PRED) {
         return InvalidArgument(
             "expected pred element type in argument to logical and/or "

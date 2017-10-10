@@ -958,18 +958,18 @@ ComputationDataHandle ComputationBuilder::Min(
 ComputationDataHandle ComputationBuilder::And(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_LOGICAL_AND, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_AND, lhs, rhs, broadcast_dimensions);
 }
 
 ComputationDataHandle ComputationBuilder::Or(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_LOGICAL_OR, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_OR, lhs, rhs, broadcast_dimensions);
 }
 
 ComputationDataHandle ComputationBuilder::Not(
     const ComputationDataHandle& operand) {
-  return UnaryOp(UNOP_LOGICAL_NOT, operand);
+  return UnaryOp(UNOP_NOT, operand);
 }
 
 ComputationDataHandle ComputationBuilder::Abs(
