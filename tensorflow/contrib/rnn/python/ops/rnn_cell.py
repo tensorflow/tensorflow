@@ -2392,7 +2392,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=None, num_proj_shards=None,
-               forget_bias=1.0, state_is_tuple=True,
+               forget_bias=1.0,
                activation=None, layer_norm=False,
                norm_gain=1.0, norm_shift=0.0, reuse=None):
     """Initialize the parameters for an LSTM cell.
@@ -2417,9 +2417,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
         in order to reduce the scale of forgetting at the beginning of
         the training. Must set it manually to `0.0` when restoring from
         CudnnLSTM trained checkpoints.
-      state_is_tuple: If True, accepted and returned states are 2-tuples of
-        the `c_state` and `m_state`.  If False, they are concatenated
-        along the column axis.  This latter behavior will soon be deprecated.
       activation: Activation function of the inner states.  Default: `tanh`.
       layer_norm: If `True`, layer normalization will be applied.
       norm_gain: float, The layer normalization gain initial value. If
@@ -2434,9 +2431,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
       CudnnCompatibleLSTMCell instead.
     """
     super(LayerNormLSTMCell, self).__init__(_reuse=reuse)
-    if not state_is_tuple:
-      logging.warn("%s: Using a concatenated state is slower and will soon be "
-                   "deprecated.  Use state_is_tuple=True.", self)
     if num_unit_shards is not None or num_proj_shards is not None:
       logging.warn(
         "%s: The num_unit_shards and proj_unit_shards parameters are "
@@ -2452,7 +2446,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     self._num_unit_shards = num_unit_shards
     self._num_proj_shards = num_proj_shards
     self._forget_bias = forget_bias
-    self._state_is_tuple = state_is_tuple
     self._activation = activation or math_ops.tanh
     self._layer_norm = layer_norm
     self._norm_gain = norm_gain
@@ -2461,12 +2454,12 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     if num_proj:
       self._state_size = (
         rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
-        if state_is_tuple else num_units + num_proj)
+        )
       self._output_size = num_proj
     else:
       self._state_size = (
         rnn_cell_impl.LSTMStateTuple(num_units, num_units)
-        if state_is_tuple else 2 * num_units)
+        )
       self._output_size = num_units
 
   @property
