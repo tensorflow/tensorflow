@@ -2559,11 +2559,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     num_proj = self._num_units if self._num_proj is None else self._num_proj
     sigmoid = math_ops.sigmoid
 
-    if self._state_is_tuple:
-      (c_prev, m_prev) = state
-    else:
-      c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
-      m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
+    (c_prev, m_prev) = state
 
     dtype = inputs.dtype
     input_size = inputs.get_shape().with_rank(2)[1]
@@ -2622,7 +2618,5 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
           m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
           # pylint: enable=invalid-unary-operand-type
 
-    new_state = (rnn_cell_impl.LSTMStateTuple(c, m) if self._state_is_tuple else
-                 array_ops.concat([c, m], 1))
+    new_state = (rnn_cell_impl.LSTMStateTuple(c, m))
     return m, new_state
-  
