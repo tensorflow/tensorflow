@@ -297,7 +297,6 @@ def acgan_generator_loss(
 # GANs` (https://arxiv.org/abs/1704.00028).
 
 
-# TODO(joelshor): Figure out why this function can't be inside a name scope.
 def wasserstein_gradient_penalty(
     real_data,
     generated_data,
@@ -339,48 +338,50 @@ def wasserstein_gradient_penalty(
   Raises:
     ValueError: If the rank of data Tensors is unknown.
   """
-  real_data = ops.convert_to_tensor(real_data)
-  generated_data = ops.convert_to_tensor(generated_data)
-  if real_data.shape.ndims is None:
-    raise ValueError('`real_data` can\'t have unknown rank.')
-  if generated_data.shape.ndims is None:
-    raise ValueError('`generated_data` can\'t have unknown rank.')
+  with ops.name_scope(scope, 'wasserstein_gradient_penalty',
+                      (real_data, generated_data)) as scope:
+    real_data = ops.convert_to_tensor(real_data)
+    generated_data = ops.convert_to_tensor(generated_data)
+    if real_data.shape.ndims is None:
+      raise ValueError('`real_data` can\'t have unknown rank.')
+    if generated_data.shape.ndims is None:
+      raise ValueError('`generated_data` can\'t have unknown rank.')
 
-  differences = generated_data - real_data
-  batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
-  alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
-  alpha = random_ops.random_uniform(shape=alpha_shape)
-  interpolates = real_data + (alpha * differences)
+    differences = generated_data - real_data
+    batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
+    alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
+    alpha = random_ops.random_uniform(shape=alpha_shape)
+    interpolates = real_data + (alpha * differences)
 
-  # Reuse variables if a discriminator scope already exists.
-  reuse = False if discriminator_scope is None else True
-  with variable_scope.variable_scope(discriminator_scope, 'gpenalty_dscope',
-                                     reuse=reuse):
-    disc_interpolates = discriminator_fn(interpolates, generator_inputs)
+    with ops.name_scope(None):  # Clear scope so update ops are added properly.
+      # Reuse variables if variables already exists.
+      with variable_scope.variable_scope(discriminator_scope, 'gpenalty_dscope',
+                                         reuse=variable_scope.AUTO_REUSE):
+        disc_interpolates = discriminator_fn(interpolates, generator_inputs)
 
-  if isinstance(disc_interpolates, tuple):
-    # ACGAN case: disc outputs more than one tensor
-    disc_interpolates = disc_interpolates[0]
+    if isinstance(disc_interpolates, tuple):
+      # ACGAN case: disc outputs more than one tensor
+      disc_interpolates = disc_interpolates[0]
 
-  gradients = gradients_impl.gradients(disc_interpolates, interpolates)[0]
-  gradient_squares = math_ops.reduce_sum(
-      math_ops.square(gradients), axis=list(range(1, gradients.shape.ndims)))
-  # Propagate shape information, if possible.
-  if isinstance(batch_size, int):
-    gradient_squares.set_shape([
-        batch_size] + gradient_squares.shape.as_list()[1:])
-  # For numerical stability, add epsilon to the sum before taking the square
-  # root. Note tf.norm does not add epsilon.
-  slopes = math_ops.sqrt(gradient_squares + epsilon)
-  penalties = math_ops.square(slopes - 1.0)
-  penalty = losses.compute_weighted_loss(
-      penalties, weights, scope=scope, loss_collection=loss_collection,
-      reduction=reduction)
+    gradients = gradients_impl.gradients(disc_interpolates, interpolates)[0]
+    gradient_squares = math_ops.reduce_sum(
+        math_ops.square(gradients), axis=list(range(1, gradients.shape.ndims)))
+    # Propagate shape information, if possible.
+    if isinstance(batch_size, int):
+      gradient_squares.set_shape([
+          batch_size] + gradient_squares.shape.as_list()[1:])
+    # For numerical stability, add epsilon to the sum before taking the square
+    # root. Note tf.norm does not add epsilon.
+    slopes = math_ops.sqrt(gradient_squares + epsilon)
+    penalties = math_ops.square(slopes - 1.0)
+    penalty = losses.compute_weighted_loss(
+        penalties, weights, scope=scope, loss_collection=loss_collection,
+        reduction=reduction)
 
-  if add_summaries:
-    summary.scalar('gradient_penalty_loss', penalty)
+    if add_summaries:
+      summary.scalar('gradient_penalty_loss', penalty)
 
-  return penalty
+    return penalty
 
 
 # Original losses from `Generative Adversarial Nets`
