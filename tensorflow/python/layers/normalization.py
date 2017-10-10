@@ -653,6 +653,7 @@ def batch_normalization(inputs,
       trainable=trainable,
       num_virtual_batches=num_virtual_batches,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs, training=training)
