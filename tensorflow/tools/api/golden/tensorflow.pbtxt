@@ -1049,6 +1049,10 @@ tf_module {
     argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\'], "
   }
   member_method {
+    name: "gather_disjoint"
+    argspec: "args=[\'params\', \'indices\', \'reverse_order\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "gather_nd"
     argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
