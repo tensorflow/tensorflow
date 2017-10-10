@@ -2391,7 +2391,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
   def __init__(self, num_units,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None, proj_clip=None,
-               num_unit_shards=None, num_proj_shards=None,
                forget_bias=1.0,
                activation=None, layer_norm=False,
                norm_gain=1.0, norm_shift=0.0, reuse=None):
@@ -2409,10 +2408,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
       proj_clip: (optional) A float value.  If `num_proj > 0` and `proj_clip` is
         provided, then the projected values are clipped elementwise to within
         `[-proj_clip, proj_clip]`.
-      num_unit_shards: Deprecated, will be removed by Jan. 2017.
-        Use a variable_scope partitioner instead.
-      num_proj_shards: Deprecated, will be removed by Jan. 2017.
-        Use a variable_scope partitioner instead.
       forget_bias: Biases of the forget gate are initialized by default to 1
         in order to reduce the scale of forgetting at the beginning of
         the training. Must set it manually to `0.0` when restoring from
@@ -2431,11 +2426,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
       CudnnCompatibleLSTMCell instead.
     """
     super(LayerNormLSTMCell, self).__init__(_reuse=reuse)
-    if num_unit_shards is not None or num_proj_shards is not None:
-      logging.warn(
-        "%s: The num_unit_shards and proj_unit_shards parameters are "
-        "deprecated and will be removed in Jan 2017.  "
-        "Use a variable scope with a partitioner instead.", self)
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes
@@ -2443,8 +2433,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     self._initializer = initializer
     self._num_proj = num_proj
     self._proj_clip = proj_clip
-    self._num_unit_shards = num_unit_shards
-    self._num_proj_shards = num_proj_shards
     self._forget_bias = forget_bias
     self._activation = activation or math_ops.tanh
     self._layer_norm = layer_norm
@@ -2583,10 +2571,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
     scope = vs.get_variable_scope()
     with vs.variable_scope(scope, initializer=self._initializer) as unit_scope:
-      if self._num_unit_shards is not None:
-        unit_scope.set_partitioner(
-          partitioned_variables.fixed_size_partitioner(
-            self._num_unit_shards))
+
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       lstm_matrix = self._linear([inputs, m_prev], 4 * self._num_units, bias=True,
                             bias_initializer=None, layer_norm=self._layer_norm)
@@ -2602,8 +2587,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
       # Diagonal connections
       if self._use_peepholes:
         with vs.variable_scope(unit_scope) as projection_scope:
-          if self._num_unit_shards is not None:
-            projection_scope.set_partitioner(None)
           w_f_diag = vs.get_variable(
             "w_f_diag", shape=[self._num_units], dtype=dtype)
           w_i_diag = vs.get_variable(
@@ -2632,10 +2615,6 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
       if self._num_proj is not None:
         with vs.variable_scope("projection") as proj_scope:
-          if self._num_proj_shards is not None:
-            proj_scope.set_partitioner(
-              partitioned_variables.fixed_size_partitioner(
-                self._num_proj_shards))
           m = self._linear(m, self._num_proj, bias=False)
 
         if self._proj_clip is not None:
@@ -2646,3 +2625,4 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     new_state = (rnn_cell_impl.LSTMStateTuple(c, m) if self._state_is_tuple else
                  array_ops.concat([c, m], 1))
     return m, new_state
+  
