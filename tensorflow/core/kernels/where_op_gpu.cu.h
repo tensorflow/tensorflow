@@ -21,6 +21,8 @@ limitations under the License.
 #include "external/cub_archive/cub/device/device_reduce.cuh"
 #include "external/cub_archive/cub/device/device_select.cuh"
 #include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
+#include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/where_op.h"
@@ -51,23 +53,103 @@ __global__ void PropagateWhereIndicesKernel(
   }
 }
 
+namespace {
+
+template <typename T>
+struct IsNonzero {
+  EIGEN_DEVICE_FUNC IsNonzero() : zero(T(0)) {}
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x) const {
+    return (x != zero);
+  }
+  const T zero;
+};
+
+template <typename T, typename TIndex>
+struct CubDeviceReduceCount {
+  cudaError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
+                         const T* d_in, TIndex* d_out, int num_items,
+                         cudaStream_t stream = 0,
+                         bool debug_synchronous = false) {
+    IsNonzero<T> is_nonzero;
+    cub::TransformInputIterator<bool, IsNonzero<T>, const T*> is_nonzero_iter(
+        d_in, is_nonzero);
+    return cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes,
+                                  is_nonzero_iter, d_out, num_items, stream,
+                                  debug_synchronous);
+  }
+};
+
 template <typename TIndex>
-struct NumTrue<GPUDevice, TIndex> {
+struct CubDeviceReduceCount<bool, TIndex> {
+  cudaError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
+                         const bool* d_in, TIndex* d_out, int num_items,
+                         cudaStream_t stream = 0,
+                         bool debug_synchronous = false) {
+    return cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in,
+                                  d_out, num_items, stream, debug_synchronous);
+  }
+};
+
+template <typename T, typename TIndex, typename OutputIterator,
+          bool IsConvertibleToBool>
+struct CubDeviceSelectFlaggedCounter;
+
+template <typename T, typename TIndex, typename OutputIterator>
+struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
+                                     false /*IsConvertibleToBool*/> {
+  cudaError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
+                         const T* d_flags, OutputIterator d_out,
+                         TIndex* d_num_selected_out, int num_items,
+                         cudaStream_t stream = 0,
+                         bool debug_synchronous = false) {
+    cub::CountingInputIterator<TIndex> select_counter(0);
+    IsNonzero<T> is_nonzero;
+    cub::TransformInputIterator<bool, IsNonzero<T>, const T*> is_nonzero_iter(
+        d_flags, is_nonzero);
+    return cub::DeviceSelect::Flagged(
+        d_temp_storage, temp_storage_bytes, select_counter /*d_in*/,
+        is_nonzero_iter /*d_flags*/, d_out, d_num_selected_out, num_items,
+        stream, debug_synchronous);
+  }
+};
+
+template <typename T, typename TIndex, typename OutputIterator>
+struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
+                                     true /*IsConvertibleToBool*/> {
+  cudaError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
+                         const T* d_flags, OutputIterator d_out,
+                         TIndex* d_num_selected_out, int num_items,
+                         cudaStream_t stream = 0,
+                         bool debug_synchronous = false) {
+    cub::CountingInputIterator<TIndex> select_counter(0);
+    return cub::DeviceSelect::Flagged(
+        d_temp_storage, temp_storage_bytes, select_counter /*d_in*/, d_flags,
+        d_out, d_num_selected_out, num_items, stream, debug_synchronous);
+  }
+};
+
+}  // namespace
+
+template <typename T, typename TIndex>
+struct NumTrue<GPUDevice, T, TIndex> {
   EIGEN_ALWAYS_INLINE static Status Compute(
-      OpKernelContext* ctx, const GPUDevice& d, TTypes<bool>::ConstFlat input,
+      OpKernelContext* ctx, const GPUDevice& d,
+      typename TTypes<T>::ConstFlat input,
       typename TTypes<TIndex>::Scalar num_true) {
     const cudaStream_t& cu_stream = GetCudaStream(ctx);
 
     std::size_t temp_storage_bytes = 0;
-    const bool* input_data = input.data();
+    const T* input_data = input.data();
     TIndex* num_true_data = num_true.data();
 
-    auto first_success =
-        cub::DeviceReduce::Sum(/*temp_storage*/ nullptr, temp_storage_bytes,
-                               /*d_in*/ input_data,
-                               /*d_out*/ num_true_data,
-                               /*num_items*/ input.size(),
-                               /*stream*/ cu_stream);
+    // TODO(ebrevdo): sum doesn't work; perhaps need a different
+    // iterator?
+    auto reducer = CubDeviceReduceCount<T, TIndex>();
+    auto first_success = reducer(/*temp_storage*/ nullptr, temp_storage_bytes,
+                                 /*d_in*/ input_data,
+                                 /*d_out*/ num_true_data,
+                                 /*num_items*/ input.size(),
+                                 /*stream*/ cu_stream);
 
     if (first_success != cudaSuccess) {
       return errors::Internal(
@@ -81,7 +163,7 @@ struct NumTrue<GPUDevice, TIndex> {
         DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
         &temp_storage));
 
-    auto second_success = cub::DeviceReduce::Sum(
+    auto second_success = reducer(
         /*temp_storage*/ temp_storage.flat<int8>().data(), temp_storage_bytes,
         /*d_in*/ input_data,
         /*d_out*/ num_true_data,
@@ -91,7 +173,7 @@ struct NumTrue<GPUDevice, TIndex> {
     if (second_success != cudaSuccess) {
       return errors::Internal(
           "WhereOp: Could not launch cub::DeviceReduce::Sum to count "
-          "number of true indices.  temp_storage_bytes: ",
+          "number of true / nonzero indices.  temp_storage_bytes: ",
           temp_storage_bytes, ", status: ", cudaGetErrorString(second_success));
     }
 
@@ -99,8 +181,20 @@ struct NumTrue<GPUDevice, TIndex> {
   }
 };
 
-template struct NumTrue<GPUDevice, int32>;
-template struct NumTrue<GPUDevice, int64>;
+#define NUMTRUE_GPU_FUNCTOR(T)                  \
+  template struct NumTrue<GPUDevice, T, int32>; \
+  template struct NumTrue<GPUDevice, T, int64>;
+
+// We only need to declare the NumTrue functor once, but this file is
+// included from where_op_gpu_impl_X.cu.cc for X=1,2,...
+// Only declare for X = 1.
+#if GPU_PROVIDED_DIM == 1
+
+TF_CALL_WHERE_GPU_TYPES(NUMTRUE_GPU_FUNCTOR);
+
+#endif  // GPU_PROVIDED_DIM == 1
+
+#undef NUMTRUE_GPU_FUNCTOR
 
 template <int NDIM>
 class WhereOutputIterator {
@@ -143,9 +237,9 @@ class WhereOutputIterator {
   const Eigen::DenseIndex max_row_;
 };
 
-template <typename TIndex, int NDIM>
+template <typename TIndex, typename T, int NDIM>
 Eigen::array<TIndex, NDIM> CalculateStrides(
-    typename TTypes<bool, NDIM>::ConstTensor input) {
+    typename TTypes<T, NDIM>::ConstTensor input) {
   const Eigen::DSizes<Eigen::DenseIndex, NDIM> dims = input.dimensions();
   Eigen::array<TIndex, NDIM> strides;
   EIGEN_STATIC_ASSERT((static_cast<int>(decltype(input)::Layout) ==
@@ -158,12 +252,12 @@ Eigen::array<TIndex, NDIM> CalculateStrides(
   return strides;
 }
 
-template <int NDIM, typename Tindex>
-struct Where<GPUDevice, NDIM, Tindex> {
+template <int NDIM, typename T, typename TIndex>
+struct Where<GPUDevice, NDIM, T, TIndex> {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const GPUDevice& d,
-      typename TTypes<bool, NDIM>::ConstTensor input,
-      typename TTypes<int64>::Matrix output, Tindex* found_true_host) {
+      typename TTypes<T, NDIM>::ConstTensor input,
+      typename TTypes<int64>::Matrix output, TIndex* found_true_host) {
     if (output.dimension(0) == 0) {
       // Nothing to do.
       return Status::OK();
@@ -173,25 +267,26 @@ struct Where<GPUDevice, NDIM, Tindex> {
 
     std::size_t temp_storage_bytes = 0;
 
-    cub::CountingInputIterator<Tindex> select_counter(0);
-
     Tensor found_true_t;
-    TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<Tindex>::v(),
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<TIndex>::v(),
                                           TensorShape({}), &found_true_t));
-    Tindex* found_true_device = found_true_t.scalar<Tindex>().data();
+    TIndex* found_true_device = found_true_t.scalar<TIndex>().data();
 
     WhereOutputIterator<NDIM> output_iterator(
         output.data(),
         /* max_row */ output.dimension(0));
 
-    auto first_success =
-        cub::DeviceSelect::Flagged(/*temp_storage*/ nullptr, temp_storage_bytes,
-                                   /*d_in*/ select_counter,
-                                   /*d_flags*/ input.data(),
-                                   /*d_out*/ output_iterator,
-                                   /*d_num_selected_out*/ found_true_device,
-                                   /*num_items*/ input.size(),
-                                   /*stream*/ cu_stream);
+    typedef std::decay<T> DT;
+    CubDeviceSelectFlaggedCounter<
+        T, TIndex, typeof(output_iterator) /*OutputIterator*/,
+        std::is_convertible<DT, bool>::value /*IsConvertibleToBool*/>
+        counter;
+    auto first_success = counter(/*temp_storage*/ nullptr, temp_storage_bytes,
+                                 /*d_flags*/ input.data(),
+                                 /*d_out*/ output_iterator,
+                                 /*d_num_selected_out*/ found_true_device,
+                                 /*num_items*/ input.size(),
+                                 /*stream*/ cu_stream);
     if (first_success != cudaSuccess) {
       return errors::Internal(
           "WhereOp: Could not launch cub::DeviceSelect::Flagged to calculate "
@@ -204,9 +299,8 @@ struct Where<GPUDevice, NDIM, Tindex> {
         DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
         &temp_storage));
 
-    auto second_success = cub::DeviceSelect::Flagged(
+    auto second_success = counter(
         /*temp_storage*/ temp_storage.flat<int8>().data(), temp_storage_bytes,
-        /*d_in*/ select_counter,
         /*d_flags*/ input.data(),
         /*d_out*/ output_iterator,
         /*d_num_selected_out*/ found_true_device,
@@ -223,11 +317,11 @@ struct Where<GPUDevice, NDIM, Tindex> {
     // TODO(ebrevdo): Find a way to synchronously copy back data from
     // found_true_device to *found_true_host.
 
-    const Eigen::array<Tindex, NDIM> strides =
-        CalculateStrides<Tindex, NDIM>(input);
-    const Tindex output_rows = output.dimension(0);
+    const Eigen::array<TIndex, NDIM> strides =
+        CalculateStrides<TIndex, T, NDIM>(input);
+    const TIndex output_rows = output.dimension(0);
     CudaLaunchConfig config = GetCudaLaunchConfig(output_rows, d);
-    PropagateWhereIndicesKernel<NDIM, Tindex>
+    PropagateWhereIndicesKernel<NDIM, TIndex>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             output_rows, strides, output.data());
 
@@ -235,17 +329,14 @@ struct Where<GPUDevice, NDIM, Tindex> {
   }
 };
 
-#define DECLARE_GPU_SPEC_INDEX(Dims, Tindex) \
-  template struct Where<GPUDevice, Dims, Tindex>
-#define DECLARE_GPU_SPEC(Dims)         \
-  DECLARE_GPU_SPEC_INDEX(Dims, int32); \
-  DECLARE_GPU_SPEC_INDEX(Dims, int64)
+#define DECLARE_GPU_SPEC_INDEX(Dims, T, TIndex) \
+  template struct Where<GPUDevice, Dims, T, TIndex>
 
-DECLARE_GPU_SPEC(1);
-DECLARE_GPU_SPEC(2);
-DECLARE_GPU_SPEC(3);
-DECLARE_GPU_SPEC(4);
-DECLARE_GPU_SPEC(5);
+#define DECLARE_GPU_SPEC(T)                           \
+  DECLARE_GPU_SPEC_INDEX(GPU_PROVIDED_DIM, T, int32); \
+  DECLARE_GPU_SPEC_INDEX(GPU_PROVIDED_DIM, T, int64)
+
+TF_CALL_WHERE_GPU_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_INDEX
@@ -253,4 +344,5 @@ DECLARE_GPU_SPEC(5);
 }  // namespace functor
 
 }  // namespace tensorflow
+
 #endif  // GOOGLE_CUDA

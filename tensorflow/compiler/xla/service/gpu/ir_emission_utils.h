@@ -53,10 +53,6 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
 llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
                              llvm::IRBuilder<>* builder);
 
-// Resolves GetTupleElement instruction operands starting with 'hlo'.
-// Returns the first ancestor instruction which is not a GetTupleElement.
-const HloInstruction* LatestNonGteAncestor(const HloInstruction* hlo);
-
 }  // namespace gpu
 }  // namespace xla
 

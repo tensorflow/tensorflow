@@ -326,6 +326,9 @@ void EagerTensor_dealloc(EagerTensor* self) {
   Py_DECREF(self->keras_mask);
   TFE_DeleteTensorHandle(self->handle);
   self->handle = nullptr;
+  // We have the global interpreter lock, so use this chance to perform delayed
+  // refcount decrements.
+  tensorflow::ClearDecrefCache();
   PyObject* id = PyLong_FromLongLong(self->id);
   PyObject* func = PyObject_GetAttrString(reinterpret_cast<PyObject*>(self),
                                           "_delete_trace");

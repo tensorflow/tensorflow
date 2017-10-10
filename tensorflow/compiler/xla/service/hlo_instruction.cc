@@ -126,7 +126,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -161,8 +161,8 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case (HloOpcode::kPower):
     case (HloOpcode::kRemainder):
     case (HloOpcode::kSubtract):
-    case (HloOpcode::kLogicalAnd):
-    case (HloOpcode::kLogicalOr):
+    case (HloOpcode::kAnd):
+    case (HloOpcode::kOr):
       break;
     default:
       LOG(FATAL) << "Invalid binary instruction opcode "
@@ -879,7 +879,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -903,8 +903,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kMinimum:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
       CHECK_EQ(new_operands.size(), 2);
       return CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
     // Ternary ops.
@@ -1131,6 +1131,29 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
   return new_instruction;
 }
 
+std::pair<const HloInstruction*, ShapeIndex>
+HloInstruction::LatestNonGteAncestorAndIndex() const {
+  const HloInstruction* hlo = this;
+  ShapeIndex index;
+  while (hlo->opcode() == HloOpcode::kGetTupleElement) {
+    index.push_back(hlo->tuple_index());
+    hlo = hlo->operand(0);
+  }
+
+  // We built up index in the reverse order from what we want.
+  std::reverse(index.begin(), index.end());
+
+  return {hlo, index};
+}
+
+const HloInstruction* HloInstruction::LatestNonGteAncestor() const {
+  const HloInstruction* hlo = this;
+  while (hlo->opcode() == HloOpcode::kGetTupleElement) {
+    hlo = hlo->operand(0);
+  }
+  return hlo;
+}
+
 const Literal& HloInstruction::literal() const {
   CHECK_EQ(HloOpcode::kConstant, opcode_);
   return *literal_;
@@ -1258,9 +1281,9 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalNot:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -1957,10 +1980,10 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleMaximum(this);
     case HloOpcode::kMinimum:
       return visitor->HandleMinimum(this);
-    case HloOpcode::kLogicalAnd:
-      return visitor->HandleLogicalAnd(this, operands_[0], operands_[1]);
-    case HloOpcode::kLogicalOr:
-      return visitor->HandleLogicalOr(this, operands_[0], operands_[1]);
+    case HloOpcode::kAnd:
+      return visitor->HandleAnd(this, operands_[0], operands_[1]);
+    case HloOpcode::kOr:
+      return visitor->HandleOr(this, operands_[0], operands_[1]);
     case HloOpcode::kConcatenate:
       return visitor->HandleConcatenate(this, operands_);
     case HloOpcode::kConvert:
@@ -2016,8 +2039,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleSin(this, operands_[0]);
     case HloOpcode::kIsFinite:
       return visitor->HandleIsFinite(this, operands_[0]);
-    case HloOpcode::kLogicalNot:
-      return visitor->HandleLogicalNot(this, operands_[0]);
+    case HloOpcode::kNot:
+      return visitor->HandleNot(this, operands_[0]);
     case HloOpcode::kBitcast:
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
@@ -2319,8 +2342,8 @@ bool HloInstruction::IsElementwiseBinary() const {
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
       return true;
     default:
       return false;
@@ -2344,7 +2367,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
@@ -2368,8 +2391,8 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
       return true;
 
     // Ternary elementwise operations.

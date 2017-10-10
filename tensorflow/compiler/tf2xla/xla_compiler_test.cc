@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
@@ -36,6 +37,37 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+class XlaCompilerTest : public ::testing::Test {
+ protected:
+  XlaCompilerTest() : cpu_device_type_(DEVICE_CPU_XLA_JIT) {}
+
+  void SetUp() override {
+    client_ = xla::ClientLibrary::LocalClientOrDie();
+
+    XlaOpRegistry::RegisterCompilationKernels();
+
+    FunctionDefLibrary flib;
+    flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
+  }
+
+  XlaCompiler::Options DefaultOptions() {
+    XlaCompiler::Options options;
+    options.device_type = &cpu_device_type_;
+    options.client = client_;
+    options.flib_def = flib_def_.get();
+    return options;
+  }
+
+  FunctionLibraryDefinition* LocalFlibDef(XlaCompiler* compiler) {
+    return compiler->local_flib_def_.get();
+  }
+
+  DeviceType cpu_device_type_;
+  xla::Client* client_;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+};
+
 namespace {
 
 // Helper class to test the ability to pass resources through to XLA
@@ -125,31 +157,6 @@ REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_CPU_XLA_JIT),
 REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_GPU_XLA_JIT),
                 DummyDuplicateOp);
 
-class XlaCompilerTest : public ::testing::Test {
- protected:
-  XlaCompilerTest() : cpu_device_type_(DEVICE_CPU_XLA_JIT) {}
-
-  void SetUp() override {
-    client_ = xla::ClientLibrary::LocalClientOrDie();
-
-    XlaOpRegistry::RegisterCompilationKernels();
-
-    FunctionDefLibrary flib;
-    flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
-  }
-
-  XlaCompiler::Options DefaultOptions() {
-    XlaCompiler::Options options;
-    options.device_type = &cpu_device_type_;
-    options.client = client_;
-    options.flib_def = flib_def_.get();
-    return options;
-  }
-
-  DeviceType cpu_device_type_;
-  xla::Client* client_;
-  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
-};
 
 // Tests compilation and execution of an empty graph.
 TEST_F(XlaCompilerTest, EmptyReturnValues) {
@@ -487,6 +494,48 @@ TEST_F(XlaCompilerTest, NewTensorArrayGradientsAreComputationOutputs) {
                                      std::move(graph), args, &result));
 
   EXPECT_EQ(1, result.resource_updates.size());
+}
+
+// Tests CompileFunction with undefined function fails.
+TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
+  XlaCompiler compiler(DefaultOptions());
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  XlaCompiler::CompilationResult result;
+  NameAttrList name_attr;
+  name_attr.set_name("Function_NotDefined_");
+  Status status =
+      compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
+                               /*args=*/{}, &result);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(StringPiece(status.error_message()).contains("is not defined."))
+      << status.error_message();
+}
+
+// Tests CompileFunction with a local function lookup failing, fails with
+// informative error about both lookups.
+TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
+  XlaCompiler compiler(DefaultOptions());
+
+  auto local_flib_def = LocalFlibDef(&compiler);
+  TF_ASSERT_OK(local_flib_def->AddFunctionDef(test::function::XTimesTwo()));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  XlaCompiler::CompilationResult result;
+  NameAttrList name_attr;
+  name_attr.set_name("XTimesTwo");
+  Status status =
+      compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
+                               /*args=*/{}, &result);
+
+  ASSERT_FALSE(status.ok());
+  // Flib lookup failure.
+  EXPECT_TRUE(StringPiece(status.error_message()).contains("is not defined."))
+      << status.error_message();
+  // Local flib lookup failure.
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("Attr T is not found"))
+      << status.error_message();
 }
 
 }  // namespace
