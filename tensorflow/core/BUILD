@@ -1004,9 +1004,9 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
-        "@double_conversion//:double-conversion",
     ],
     alwayslink = 1,
 )
@@ -1029,11 +1029,11 @@ cc_library(
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
+        "@double_conversion//:double-conversion",
         "@fft2d//:fft2d",
         "@gemmlowp//:gemmlowp",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
-        "@double_conversion//:double-conversion",
     ],
     alwayslink = 1,
 )
@@ -1096,8 +1096,8 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
-        "@protobuf_archive//:protobuf",
         "@double_conversion//:double-conversion",
+        "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
 )
@@ -1119,9 +1119,9 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
-        "@double_conversion//:double-conversion",
     ],
     alwayslink = 1,
 )
