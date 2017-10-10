@@ -75,7 +75,8 @@ IrEmitter::IrEmitter(
     const HloModule& hlo_module, const BufferAssignment& assignment,
     llvm::Module* llvm_module,
     const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx,
-    llvm::TargetMachine* target_machine)
+    llvm::TargetMachine* target_machine,
+    ExternalConstantPool* external_constant_pool)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
@@ -86,7 +87,8 @@ IrEmitter::IrEmitter(
       parallel_cpu_backend_(
           options::CpuParallelBackendRequested(hlo_module_config_)),
       is_top_level_computation_(false),
-      target_machine_features_(target_machine) {
+      target_machine_features_(target_machine),
+      external_constant_pool_(external_constant_pool) {
   ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
           .xla_enable_fast_math()));
@@ -272,16 +274,39 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
 Status IrEmitter::HandleConstant(HloInstruction* constant,
                                  const Literal& literal) {
   VLOG(2) << "HandleConstant: " << constant->ToString();
-  llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, &ir_builder_);
-  llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-      /*Module=*/*module_,
-      /*Type=*/initializer->getType(),
-      /*isConstant=*/true,
-      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-      /*Initializer=*/initializer,
-      /*Name=*/"");
-  global_for_const->setAlignment(MinimumAlignmentForShape(literal.shape()));
+  llvm::GlobalVariable* global_for_const;
+
+  // We avoid creating large constants in the LLVM IR since LLVM is not
+  // efficient for large constant arrays.  We still emit "small enough" constant
+  // arrays into the Ir, in the off chance the LLVM optimizer can do something
+  // interesting with it.
+  const int kMaxInternalConstantSizeInBytes = 128;
+  if (external_constant_pool_ &&
+      ByteSizeOf(literal.shape()) >= kMaxInternalConstantSizeInBytes) {
+    string global_name = tensorflow::strings::StrCat(
+        "constant_global_", external_global_constant_counter_++);
+    global_for_const = new llvm::GlobalVariable(
+        /*Module=*/*module_,
+        /*Type=*/IrShapeType(literal.shape()),
+        /*isConstant=*/true,
+        /*Linkage=*/llvm::GlobalValue::ExternalLinkage,
+        /*Initializer=*/nullptr,
+        /*Name=*/AsStringRef(global_name));
+    global_for_const->setAlignment(MinimumAlignmentForShape(literal.shape()));
+    external_constant_pool_->Insert(global_name, literal,
+                                    MinimumAlignmentForShape(literal.shape()));
+  } else {
+    llvm::Constant* initializer =
+        llvm_ir::ConvertLiteralToIrConstant(literal, &ir_builder_);
+    global_for_const = new llvm::GlobalVariable(
+        /*Module=*/*module_,
+        /*Type=*/initializer->getType(),
+        /*isConstant=*/true,
+        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+        /*Initializer=*/initializer,
+        /*Name=*/"");
+    global_for_const->setAlignment(MinimumAlignmentForShape(literal.shape()));
+  }
   emitted_value_[constant] = global_for_const;
   VLOG(2) << "  emitted value: " << llvm_ir::DumpToString(*global_for_const);
   VLOG(2) << "  its type: "

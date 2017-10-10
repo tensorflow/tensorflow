@@ -522,7 +522,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
 
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx, jit->target_machine());
+                         &hlo_to_profile_idx, jit->target_machine(),
+                         jit->external_constant_pool());
 
     std::unique_ptr<std::map<HloInstruction*, string>> function_names(
         new std::map<HloInstruction*, string>());
@@ -602,7 +603,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx, jit->target_machine());
+                         &hlo_to_profile_idx, jit->target_machine(),
+                         jit->external_constant_pool());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -771,7 +773,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
-                         /*hlo_to_profile_idx=*/nullptr, target_machine.get());
+                         /*hlo_to_profile_idx=*/nullptr, target_machine.get(),
+                         /*external_constant_pool=*/nullptr);
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
