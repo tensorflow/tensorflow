@@ -5631,7 +5631,7 @@ op {
     description: "Value used for extrapolation, when applicable."
   }
   summary: "Extracts crops from the input image tensor and bilinearly resizes them (possibly"
-  description: "with aspect ratio change) to a common output size specified by `crop_size`. This\nis more general than the `crop_to_bounding_box` op which extracts a fixed size\nslice from the input image and does not allow resizing or aspect ratio change.\n\nReturns a tensor with `crops` from the input `image` at positions defined at the\nbounding box locations in `boxes`. The cropped boxes are all resized (with\nbilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The\nresult is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`."
+  description: "with aspect ratio change) to a common output size specified by `crop_size`. This\nis more general than the `crop_to_bounding_box` op which extracts a fixed size\nslice from the input image and does not allow resizing or aspect ratio change.\n\nReturns a tensor with `crops` from the input `image` at positions defined at the\nbounding box locations in `boxes`. The cropped boxes are all resized (with\nbilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The\nresult is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`. The\nresizing is corner aligned. In particular, if `boxes = [[0, 0, 1, 1]]`, the\nmethod will give identical results to using `tf.image.resize_bilinear()`\nwith `align_corners=True`."
 }
 op {
   name: "CropAndResizeGradBoxes"
