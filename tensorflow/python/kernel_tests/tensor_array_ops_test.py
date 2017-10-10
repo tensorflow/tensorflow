@@ -1066,7 +1066,10 @@ class TensorArrayTest(test.TestCase):
           infer_shape=True)
       w0 = ta1.split(value, [1, 2])
       r0 = w0.read(0)
-      self.assertAllEqual(r0.get_shape(), tensor_shape.unknown_shape())
+      self.assertEqual(r0.get_shape().ndims, None)
+      self.assertEqual(
+          tensor_shape.TensorShape(
+              ta1.handle.op.get_attr("element_shape")).ndims, None)
 
   def testWriteUnknownShape(self):
     with self.test_session(use_gpu=True):
@@ -1142,10 +1145,11 @@ class TensorArrayTest(test.TestCase):
       # Don't actually perform the pack.  This stores the static shape.
       ta.unstack(array_ops.zeros([0, 3, 5])).mark_used()
       packed = ta.stack()
+      concatenated = ta.concat()
       self.assertAllEqual([0, 3, 5], packed.eval().shape)
       # Concatenating zero tensors along their first dimension gives a
       # first dimension of zero
-      self.assertAllEqual([0, 5], ta.concat().eval().shape)
+      self.assertAllEqual([0, 5], concatenated.eval().shape)
 
   def testTensorArrayEvalEmptyWithDefault(self):
     self._testTensorArrayEvalEmptyWithDefault()
