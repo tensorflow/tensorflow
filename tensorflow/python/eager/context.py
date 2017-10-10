@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import contextlib
 import copy
+import random
 import threading
 
 from tensorflow.python import pywrap_tensorflow
@@ -41,6 +42,8 @@ _default_mode = GRAPH_MODE
 # Note that we do not protect this with a lock and instead rely on python's GIL
 # and the idempotent nature of writes to provide thread safety.
 _device_parsing_cache = {}
+
+_MAXINT32 = 2**31 - 1
 
 
 # TODO(agarwal): better name ?
@@ -76,7 +79,25 @@ class Context(object):
     self._summary_writer_resource = None
     self._post_execution_callbacks = []
     self._config = config
+    self._seed = None
     self._initialize_lock = threading.Lock()
+
+  def _set_global_seed(self, seed):
+    """Set a global eager mode seed for random ops."""
+    self._seed = seed
+    self._rng = random.Random(self._seed)
+
+  def _internal_operation_seed(self):
+    """Returns a fake operation seed.
+
+      In eager mode, user shouldn't set or depend on operation seed.
+      Here, we generate a random seed based on global seed to make
+      operation's randomness different and depend on the global seed.
+
+    Returns:
+      A fake operation seed based on global seed.
+    """
+    return self._rng.randint(0, _MAXINT32)
 
   def _initialize_handle_and_devices(self):
     """Initialize handle and devices."""
@@ -324,6 +345,21 @@ def get_default_context():
   if _context is None:
     _initialize_context()
   return _context
+
+
+def set_global_seed(seed):
+  """Sets the eager mode seed."""
+  context()._set_global_seed(seed)  # pylint: disable=protected-access
+
+
+def global_seed():
+  """Returns the eager mode seed."""
+  return context()._seed  # pylint: disable=protected-access
+
+
+def internal_operation_seed():
+  """Returns the operation seed generated based on global seed."""
+  return context()._internal_operation_seed()  # pylint: disable=protected-access
 
 
 def in_graph_mode():
