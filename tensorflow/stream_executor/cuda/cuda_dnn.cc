@@ -2864,10 +2864,18 @@ bool CudnnSupport::DoFusedConvolve(
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
 #if CUDNN_VERSION < 6000
-  LOG(ERROR) << "cudnnConvolutionBiasActivationForward() is only "
-                "supported for cuDNN version >= 6";
+  LOG(WARNING) << "cudnnConvolutionBiasActivationForward() is only "
+                  "supported for cuDNN version >= 6";
   return false;
 #else
+  int cc_major, cc_minor;
+  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                   &cc_minor);
+  if (cc_major < 6 || (cc_major == 6 && cc_minor < 1)) {
+    LOG(WARNING) << "cudnnConvolutionBiasActivationForward() for int8 is only "
+                    "supported on GPUs with compute capability 6.1 or later.";
+    return false;
+  }
   return DoFusedConvolveImpl<int8, float, float, CUDNN_DATA_INT8x4,
                              CUDNN_DATA_INT32>(
       stream, conv_input_descriptor, conv_input_data, conv_input_scale,
@@ -2875,7 +2883,6 @@ bool CudnnSupport::DoFusedConvolve(
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data, scratch_allocator, algorithm_config,
       output_profile_result);
-  return true;
 #endif
 }
 

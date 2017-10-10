@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.rnn.python.kernel_tests import benchmarking
 from tensorflow.contrib.rnn.python.ops import lstm_ops
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -466,6 +468,56 @@ class LSTMBlockCellTest(test.TestCase):
       self.assertAllClose(basic_grads, unfused_grads)
       for basic, unfused in zip(basic_wgrads, unfused_wgrads):
         self.assertAllClose(basic, unfused, rtol=1e-2, atol=1e-2)
+
+#### Benchmarking.
+
+
+class BenchmarkLSTMBlock(test.Benchmark):
+
+  def benchmarkLSTMBlockCellFpropWithDynamicRNN(self):
+    print("BlockLSTMCell forward propagation via dynamic_rnn().")
+    print("--------------------------------------------------------------")
+    print("LSTMBlockCell Seconds per inference.")
+    print("batch_size,cell_size,input_size,time_steps,use_gpu,wall_time")
+    iters = 10
+    for config in benchmarking.dict_product({
+        "batch_size": [1, 32, 128],
+        "cell_size": [32, 128, 512],
+        "input_size": [128, 512],
+        "time_steps": [10, 25, 100],
+        "use_gpu": [True, False]
+    }):
+      with ops.Graph().as_default():
+        with benchmarking.device(use_gpu=config["use_gpu"]):
+          inputs = variable_scope.get_variable("x", [
+              config["time_steps"], config["batch_size"], config["input_size"]
+          ])
+          cell = lstm_ops.LSTMBlockCell(config["cell_size"])
+          outputs = rnn.dynamic_rnn(
+              cell, inputs, time_major=True, dtype=dtypes.float32)
+          init_op = variables.global_variables_initializer()
+
+        with session.Session() as sess:
+          sess.run(init_op)
+          wall_time = benchmarking.seconds_per_run(outputs, sess, iters)
+
+        # Print to stdout. If the TEST_REPORT_FILE_PREFIX environment variable
+        # is set, this will produce a copy-paste-able CSV file.
+        print(",".join(
+            map(str, [
+                config["batch_size"], config["cell_size"], config["input_size"],
+                config["time_steps"], config["use_gpu"], wall_time
+            ])))
+        benchmark_name_template = "_".join([
+            "LSTMBlockCell_fprop", "BS%(batch_size)i", "CS%(cell_size)i",
+            "IS%(input_size)i", "TS%(time_steps)i", "gpu_%(use_gpu)s"
+        ])
+
+        self.report_benchmark(
+            name=benchmark_name_template % config,
+            iters=iters,
+            wall_time=wall_time,
+            extras=config)
 
 
 if __name__ == "__main__":

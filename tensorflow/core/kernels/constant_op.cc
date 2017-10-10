@@ -54,7 +54,17 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
                               DataTypeString(ctx->output_type(0)), ")"));
 }
 
-void ConstantOp::Compute(OpKernelContext* ctx) { ctx->set_output(0, tensor_); }
+void ConstantOp::Compute(OpKernelContext* ctx) {
+  ctx->set_output(0, tensor_);
+  if (TF_PREDICT_FALSE(ctx->track_allocations())) {
+    AllocatorAttributes attr;
+    if (ctx->allocate_on_host(attr)) {
+      ctx->record_host_persistent_memory_allocation(tensor_.AllocatedBytes());
+    } else {
+      ctx->record_device_persistent_memory_allocation(tensor_.AllocatedBytes());
+    }
+  }
+}
 
 ConstantOp::~ConstantOp() {}
 
