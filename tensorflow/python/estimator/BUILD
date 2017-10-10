@@ -242,7 +242,10 @@ py_test(
     srcs = ["canned/dnn_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":dnn",
         ":dnn_testing_utils",
@@ -296,7 +299,10 @@ py_test(
     srcs = ["canned/dnn_linear_combined_test.py"],
     shard_count = 8,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":dnn_linear_combined",
         ":dnn_testing_utils",
@@ -373,6 +379,7 @@ py_test(
     name = "estimator_test",
     srcs = ["estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67510291
     deps = [
         ":estimator",
         ":export_export",
@@ -646,7 +653,10 @@ py_test(
     srcs = ["canned/linear_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":linear",
         ":linear_testing_utils",

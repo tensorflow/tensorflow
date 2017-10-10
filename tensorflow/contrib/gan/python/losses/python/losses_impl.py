@@ -217,21 +217,25 @@ def acgan_discriminator_loss(
   Raises:
     TypeError: If the discriminator does not output a tuple.
   """
-  loss_on_generated = losses.softmax_cross_entropy(
-      one_hot_labels, discriminator_gen_classification_logits,
-      weights=generated_weights, scope=scope, loss_collection=None,
-      reduction=reduction)
-  loss_on_real = losses.softmax_cross_entropy(
-      one_hot_labels, discriminator_real_classification_logits,
-      weights=real_weights, label_smoothing=label_smoothing, scope=scope,
-      loss_collection=None, reduction=reduction)
-  loss = loss_on_generated + loss_on_real
-  util.add_loss(loss, loss_collection)
+  with ops.name_scope(
+      scope, 'acgan_discriminator_loss',
+      (discriminator_real_classification_logits,
+       discriminator_gen_classification_logits, one_hot_labels)) as scope:
+    loss_on_generated = losses.softmax_cross_entropy(
+        one_hot_labels, discriminator_gen_classification_logits,
+        weights=generated_weights, scope=scope, loss_collection=None,
+        reduction=reduction)
+    loss_on_real = losses.softmax_cross_entropy(
+        one_hot_labels, discriminator_real_classification_logits,
+        weights=real_weights, label_smoothing=label_smoothing, scope=scope,
+        loss_collection=None, reduction=reduction)
+    loss = loss_on_generated + loss_on_real
+    util.add_loss(loss, loss_collection)
 
-  if add_summaries:
-    summary.scalar('discriminator_gen_ac_loss', loss_on_generated)
-    summary.scalar('discriminator_real_ac_loss', loss_on_real)
-    summary.scalar('discriminator_ac_loss', loss)
+    if add_summaries:
+      summary.scalar('discriminator_gen_ac_loss', loss_on_generated)
+      summary.scalar('discriminator_real_ac_loss', loss_on_real)
+      summary.scalar('discriminator_ac_loss', loss)
 
   return loss
 
@@ -275,12 +279,16 @@ def acgan_generator_loss(
     ValueError: if arg module not either `generator` or `discriminator`
     TypeError: if the discriminator does not output a tuple.
   """
-  loss = losses.softmax_cross_entropy(
-      one_hot_labels, discriminator_gen_classification_logits, weights=weights,
-      scope=scope, loss_collection=loss_collection, reduction=reduction)
+  with ops.name_scope(
+      scope, 'acgan_generator_loss',
+      (discriminator_gen_classification_logits, one_hot_labels)) as scope:
+    loss = losses.softmax_cross_entropy(
+        one_hot_labels, discriminator_gen_classification_logits,
+        weights=weights, scope=scope, loss_collection=loss_collection,
+        reduction=reduction)
 
-  if add_summaries:
-    summary.scalar('generator_ac_loss', loss)
+    if add_summaries:
+      summary.scalar('generator_ac_loss', loss)
 
   return loss
 
@@ -546,7 +554,7 @@ def modified_generator_loss(
     discriminator_gen_outputs,
     label_smoothing=0.0,
     weights=1.0,
-    scope='generator_modified_loss',
+    scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
     add_summaries=False):
@@ -576,12 +584,15 @@ def modified_generator_loss(
   Returns:
     A loss Tensor. The shape depends on `reduction`.
   """
-  loss = losses.sigmoid_cross_entropy(
-      array_ops.ones_like(discriminator_gen_outputs), discriminator_gen_outputs,
-      weights, label_smoothing, scope, loss_collection, reduction)
+  with ops.name_scope(scope, 'generator_modified_loss',
+                      [discriminator_gen_outputs]) as scope:
+    loss = losses.sigmoid_cross_entropy(
+        array_ops.ones_like(discriminator_gen_outputs),
+        discriminator_gen_outputs, weights, label_smoothing, scope,
+        loss_collection, reduction)
 
-  if add_summaries:
-    summary.scalar('generator_modified_loss', loss)
+    if add_summaries:
+      summary.scalar('generator_modified_loss', loss)
 
   return loss
 
@@ -739,7 +750,7 @@ def mutual_information_penalty(
     structured_generator_inputs,
     predicted_distributions,
     weights=1.0,
-    scope='generator_modified_loss',
+    scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
     add_summaries=False):
@@ -767,15 +778,16 @@ def mutual_information_penalty(
   _validate_information_penalty_inputs(
       structured_generator_inputs, predicted_distributions)
 
-  # Calculate the negative log-likelihood of the reconstructed noise.
-  log_probs = [math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in
-               zip(predicted_distributions, structured_generator_inputs)]
-  loss = -1 * losses.compute_weighted_loss(
-      log_probs, weights, scope, loss_collection=loss_collection,
-      reduction=reduction)
+  with ops.name_scope(scope, 'mutual_information_loss') as scope:
+    # Calculate the negative log-likelihood of the reconstructed noise.
+    log_probs = [math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in
+                 zip(predicted_distributions, structured_generator_inputs)]
+    loss = -1 * losses.compute_weighted_loss(
+        log_probs, weights, scope, loss_collection=loss_collection,
+        reduction=reduction)
 
-  if add_summaries:
-    summary.scalar('mutual_information_penalty', loss)
+    if add_summaries:
+      summary.scalar('mutual_information_penalty', loss)
 
   return loss
 

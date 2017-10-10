@@ -1782,7 +1782,7 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
 
 // Tries to determine the number of times the given loop executes.  Currently
 // simply returns 0, 1, or "can't tell" (nullopt).
-static optional<int64> GetLoopTripCount(const HloInstruction* while_op) {
+static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
   VLOG(2) << "Getting trip count for loop " << while_op->ToString();
 
@@ -1803,15 +1803,10 @@ static optional<int64> GetLoopTripCount(const HloInstruction* while_op) {
   // compute how many times the loop executes.  Start by computing the induction
   // variable's initial value.
   HloEvaluator evaluator;
-  auto* while_init = while_op->operand(0);
-  auto* indvar_init = while_init->operand(*indvar_tuple_idx);
-  // TODO(b/67157142): This should not be redundant, remove this when the
-  // underlying issue has been addressed.
-  if (!hlo_query::AllOperandsAreConstants(*indvar_init)) {
-    return nullopt;
-  }
+  auto* while_init = while_op->mutable_operand(0);
+  auto* indvar_init = while_init->mutable_operand(*indvar_tuple_idx);
   StatusOr<std::unique_ptr<Literal>> indvar_init_result =
-      evaluator.Evaluate(indvar_init->Clone().get());
+      evaluator.Evaluate(indvar_init);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init: "
             << indvar_init_result.status();

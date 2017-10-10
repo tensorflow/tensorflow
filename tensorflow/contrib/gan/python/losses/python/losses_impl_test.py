@@ -274,8 +274,8 @@ class ACGANLossTest(test.TestCase):
         self._discriminator_real_classification_logits,
         'one_hot_labels': self._one_hot_labels,
     }
-    self._generator_loss_name = 'softmax_cross_entropy_loss/value'
-    self._discriminator_loss_name = 'add'
+    self._generator_loss_name = 'acgan_generator_loss/value'
+    self._discriminator_loss_name = 'acgan_discriminator_loss/add'
     self._expected_g_loss = 3.84974
     self._expected_d_loss = 9.43950
 
@@ -504,7 +504,7 @@ class MutualInformationPenaltyTest(test.TestCase, _PenaltyTest):
         'predicted_distributions': self._predicted_distributions,
     }
     self._expected_loss = 1.61610
-    self._expected_op_name = 'mul'
+    self._expected_op_name = 'mutual_information_loss/mul'
     self._batch_size = 2
 
 
