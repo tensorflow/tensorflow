@@ -2436,7 +2436,9 @@ def where(condition, x=None, y=None, name=None):
     ValueError: When exactly one of `x` or `y` is non-None.
   """
   if x is None and y is None:
-    return gen_array_ops.where(input=condition, name=name)
+    with ops.name_scope(name, "Where", [condition]) as name:
+      condition = ops.convert_to_tensor(condition, dtype=dtypes.bool)
+      return gen_array_ops.where(input=condition, name=name)
   elif x is not None and y is not None:
     return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
   else:
