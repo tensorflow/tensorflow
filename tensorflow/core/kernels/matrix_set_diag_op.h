@@ -30,24 +30,23 @@ template <typename T>
 class OverwriteDiagGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  OverwriteDiagGenerator(typename TTypes<T, 2>::ConstTensor diag,
-                         typename TTypes<T, 3>::Tensor output)
-      : diag_(diag), output_(output) {}
+  OverwriteDiagGenerator(typename TTypes<T, 3>::ConstTensor input,
+                         typename TTypes<T, 2>::ConstTensor diag)
+      : input_(input), diag_(diag) {}
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<Eigen::DenseIndex, 2>& coords) const {
-    Eigen::array<Eigen::DenseIndex, 3> diag_from_coords(
-        {coords[0], coords[1], coords[1]});
-
-    // This is the side effect we care about.
-    output_(diag_from_coords) = diag_(coords);
-
-    return T(0);
+  operator()(const Eigen::array<Eigen::DenseIndex, 3>& coords) const {
+    if (coords[2] == coords[1]) {
+      Eigen::array<Eigen::DenseIndex, 2> diag_coords({coords[0], coords[1]});
+      return diag_(diag_coords);
+    } else {
+      return input_(coords);
+    }
   }
 
  private:
+  typename TTypes<T, 3>::ConstTensor input_;
   typename TTypes<T, 2>::ConstTensor diag_;
-  mutable typename TTypes<T, 3>::Tensor output_;
 };
 
 }  // namespace generator
@@ -59,32 +58,9 @@ struct MatrixSetDiag {
   EIGEN_ALWAYS_INLINE static void Compute(
       const Device& d, typename TTypes<T, 3>::ConstTensor input,
       typename TTypes<T, 2>::ConstTensor diag,
-      typename TTypes<T>::Scalar scratch,
       typename TTypes<T, 3>::Tensor output) {
-    output.device(d) = input;
-    generator::OverwriteDiagGenerator<T> generator(diag, output);
-    // Use sum() to force the generation to aggregate to the scalar
-    // output scratch.  This in turn forces each element of the
-    // generator to execute.  The side effect of the execution is to
-    // update the diagonal components of output with diag.
-    scratch.device(d) = diag.generate(generator).sum();
-  }
-};
-
-template <typename Device>
-struct MatrixSetDiag<Device, bool> {
-  EIGEN_ALWAYS_INLINE static void Compute(const Device& d,
-                                          TTypes<bool, 3>::ConstTensor input,
-                                          TTypes<bool, 2>::ConstTensor diag,
-                                          TTypes<bool>::Scalar scratch,
-                                          TTypes<bool, 3>::Tensor output) {
-    output.device(d) = input;
-    generator::OverwriteDiagGenerator<bool> generator(diag, output);
-    // Use all() to force the generation to aggregate to the scalar
-    // output scratch.  This in turn forces each element of the
-    // generator to execute.  The side effect of the execution is to
-    // update the diagonal components of output with diag.
-    scratch.device(d) = diag.generate(generator).all();
+    generator::OverwriteDiagGenerator<T> generator(input, diag);
+    output.device(d) = output.generate(generator);
   }
 };
 

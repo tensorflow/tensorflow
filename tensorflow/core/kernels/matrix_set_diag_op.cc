@@ -80,15 +80,10 @@ class MatrixSetDiagOp : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, input_shape, &output));
     auto output_reshaped = output->flat_inner_dims<T, 3>();
-    Tensor scratch_tensor;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::value,
-                                          TensorShape({}), &scratch_tensor));
-    auto scratch = scratch_tensor.scalar<T>();
 
     functor::MatrixSetDiag<Device, T>::Compute(context->eigen_device<Device>(),
                                                input_reshaped, diag_reshaped,
-                                               scratch, output_reshaped);
+                                               output_reshaped);
   }
 
  private:
@@ -119,23 +114,7 @@ struct MatrixSetDiag<CPUDevice, T> {
   static void Compute(const CPUDevice& d,
                       typename TTypes<T, 3>::ConstTensor input,
                       typename TTypes<T, 2>::ConstTensor diag,
-                      typename TTypes<T>::Scalar scratch,
                       typename TTypes<T, 3>::Tensor output) {
-    output.device(d) = input;
-    for (int64 r = 0; r < output.dimension(0); ++r) {
-      for (int64 d = 0; d < diag.dimension(1); ++d) {
-        output(r, d, d) = diag(r, d);
-      }
-    }
-  }
-};
-
-template <>
-struct MatrixSetDiag<CPUDevice, bool> {
-  static void Compute(const CPUDevice& d, TTypes<bool, 3>::ConstTensor input,
-                      TTypes<bool, 2>::ConstTensor diag,
-                      TTypes<bool>::Scalar scratch,
-                      TTypes<bool, 3>::Tensor output) {
     output.device(d) = input;
     for (int64 r = 0; r < output.dimension(0); ++r) {
       for (int64 d = 0; d < diag.dimension(1); ++d) {
@@ -155,8 +134,7 @@ namespace functor {
   template <>                                                       \
   void MatrixSetDiag<GPUDevice, T>::Compute(                        \
       const GPUDevice& d, typename TTypes<T, 3>::ConstTensor input, \
-      typename TTypes<T, 2>::ConstTensor diag,                      \
-      typename TTypes<T>::Scalar scratch,                           \
+      const typename TTypes<T, 2>::ConstTensor diag,                      \
       typename TTypes<T, 3>::Tensor output);                        \
   extern template struct MatrixSetDiag<GPUDevice, T>;
 
