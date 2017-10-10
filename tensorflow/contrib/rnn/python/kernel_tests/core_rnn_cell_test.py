@@ -375,7 +375,6 @@ class RNNCellTest(test.TestCase):
           num_units=num_units,
           num_proj=num_proj,
           forget_bias=1.0,
-          state_is_tuple=False,
           layer_norm=True,
           norm_gain=1.0,
           norm_shift=0.0
