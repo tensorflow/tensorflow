@@ -1054,7 +1054,8 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
         // aync instead
         GPUUtil::SetProtoFromGPU(
             in, src_dev, send_args.device_context, &proto, is_dead,
-            [this, proto, buffer_size, key, in, step_id, key_with_step_id, is_dead, send_args, recv_args](const Status& s) mutable {
+	    [this, proto, buffer_size, key, in, step_id, key_with_step_id,
+            is_dead, send_args, recv_args](const Status& s) mutable {
               CHECK(s.ok()) << "copy proto from gpu sync";
               auto tensor_bytes = proto.ByteSize();
               buffer_size += tensor_bytes;
