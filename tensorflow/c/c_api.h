@@ -118,6 +118,8 @@ typedef enum TF_DataType {
   TF_HALF = 19,
   TF_RESOURCE = 20,
   TF_VARIANT = 21,
+  TF_UINT32 = 22,
+  TF_UINT64 = 23,
 } TF_DataType;
 
 // TF_DataTypeSize returns the sizeof() for the underlying type corresponding
