@@ -9,6 +9,7 @@ py_library(
     name = "tfe",
     srcs = ["tfe.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":datasets",
         ":metrics",
