@@ -25,9 +25,11 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -52,13 +54,14 @@ native_sampler = random_ops.multinomial
 
 class MultinomialTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testSmallEntropy(self):
     random_seed.set_random_seed(1618)
-    with self.test_session(use_gpu=True):
+    with test_util.device(use_gpu=True):
       # A logit value of -10 corresponds to a probability of ~5e-5.
       logits = constant_op.constant([[-10., 10., -10.], [-10., -10., 10.]])
       num_samples = 1000
-      samples = random_ops.multinomial(logits, num_samples).eval()
+      samples = self.evaluate(random_ops.multinomial(logits, num_samples))
       self.assertAllEqual([[1] * num_samples, [2] * num_samples], samples)
 
   def testOneOpMultipleStepsIndependent(self):
@@ -68,6 +71,12 @@ class MultinomialTest(test.TestCase):
       sample1a = sess.run(sample_op1)
       sample1b = sess.run(sample_op1)
       self.assertFalse(np.equal(sample1a, sample1b).all())
+
+  def testEagerOneOpMultipleStepsIndependent(self):
+    with context.eager_mode(), test_util.device(use_gpu=True):
+      sample1, sample2 = self._make_ops(10)
+      # Consecutive runs shouldn't yield identical output.
+      self.assertFalse(np.equal(sample1.numpy(), sample2.numpy()).all())
 
   def testTwoOpsIndependent(self):
     with self.test_session(use_gpu=True) as sess:

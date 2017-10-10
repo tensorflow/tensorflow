@@ -19,6 +19,7 @@ cc_library(
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
     }) + glob([
+        "aws-cpp-sdk-core/include/**/*.h",
         "aws-cpp-sdk-core/source/*.cpp",
         "aws-cpp-sdk-core/source/auth/**/*.cpp",
         "aws-cpp-sdk-core/source/config/**/*.cpp",
@@ -38,6 +39,7 @@ cc_library(
         "aws-cpp-sdk-core/source/utils/xml/**/*.cpp",
         "aws-cpp-sdk-core/source/utils/crypto/*.cpp",
         "aws-cpp-sdk-core/source/utils/crypto/factory/**/*.cpp",
+        "aws-cpp-sdk-s3/include/**/*.h",
         "aws-cpp-sdk-s3/source/**/*.cpp",
     ]),
     hdrs = [

@@ -171,19 +171,27 @@ def imperative_grad(
     op = ready_ops.pop()
     op_trace = op_to_entry.pop(op)
     out_gradients = [gradients.pop(t, None) for t in op_trace.output_ids]
+
+    # Cache the last used zero tensor. We reuse it if the next one
+    # we need is of the same shape and dtype. This is very helpful in
+    # large splits and should have negligible overhead in other cases.
+    last_shape_and_dtype = None
+    last_zeros = None
     for i in range(len(out_gradients)):
       if out_gradients[i] is None:
         # TODO(apassos) this should be in the right device
         none_indices = _grad_fn_accepts_none_for_indices.get(
             op_trace.op_type, None)
         if none_indices is None or i not in none_indices:
-          out_gradients[i] = vspace.zeros(
-              *op_trace.output_shape_and_dtype[i])
+          shape_and_dtype = op_trace.output_shape_and_dtype[i]
+          if shape_and_dtype != last_shape_and_dtype:
+            last_shape_and_dtype = shape_and_dtype
+            last_zeros = vspace.zeros(*shape_and_dtype)
+          out_gradients[i] = last_zeros
       else:
         out_gradients[i] = vspace.aggregate_fn(out_gradients[i])
 
-    in_gradients = op_trace.backward_function(
-        *(out_gradients + op_trace.side_outputs))
+    in_gradients = op_trace.backward_function(*(out_gradients))
     for i, t in enumerate(op_trace.input_ids):
       if in_gradients[i] is not None:
         vspace.add_new_grads_fn(gradients, gradients_size, t, in_gradients[i])

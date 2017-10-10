@@ -496,54 +496,54 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantU32s) {
   ComputeAndCompareR1<uint32>(&builder, expected, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalAnd) {
+XLA_TEST_F(ArrayElementwiseOpTest, BooleanAnd) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({false, false, true, true});
   auto b = builder.ConstantR1<bool>({false, true, false, true});
-  auto out = builder.LogicalAnd(a, b);
+  auto out = builder.And(a, b);
 
   ComputeAndCompareR1<bool>(&builder, {false, false, false, true}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalAndZeroElement) {
+XLA_TEST_F(ArrayElementwiseOpTest, BooleanAndZeroElement) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({});
   auto b = builder.ConstantR1<bool>({});
-  auto out = builder.LogicalAnd(a, b);
+  auto out = builder.And(a, b);
 
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalOr) {
+XLA_TEST_F(ArrayElementwiseOpTest, BooleanOr) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({false, false, true, true});
   auto b = builder.ConstantR1<bool>({false, true, false, true});
-  auto out = builder.LogicalOr(a, b);
+  auto out = builder.Or(a, b);
 
   ComputeAndCompareR1<bool>(&builder, {false, true, true, true}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalOrZeroElement) {
+XLA_TEST_F(ArrayElementwiseOpTest, BooleanOrZeroElement) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({});
   auto b = builder.ConstantR1<bool>({});
-  auto out = builder.LogicalOr(a, b);
+  auto out = builder.Or(a, b);
 
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalNot) {
+XLA_TEST_F(ArrayElementwiseOpTest, BooleanNot) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({false, true, true, false});
-  auto out = builder.LogicalNot(a);
+  auto out = builder.Not(a);
 
   ComputeAndCompareR1<bool>(&builder, {true, false, false, true}, {});
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, LogicalNotZeroElement) {
+XLA_TEST_F(ArrayElementwiseOpTest, BooleanNotZeroElement) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<bool>({});
-  auto out = builder.LogicalNot(a);
+  auto out = builder.Not(a);
 
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }

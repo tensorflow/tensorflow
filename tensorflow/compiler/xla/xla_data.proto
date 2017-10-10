@@ -618,7 +618,7 @@ enum UnaryOperation {
   UNOP_INVALID = 0;
 
   // Elementwise, logical negation
-  UNOP_LOGICAL_NOT = 1;
+  UNOP_NOT = 1;
 
   // Elementwise, computes e^x.
   UNOP_EXP = 2;
@@ -707,8 +707,8 @@ enum BinaryOperation {
   BINOP_REM = 17;
 
   // Logical operators
-  BINOP_LOGICAL_AND = 18;
-  BINOP_LOGICAL_OR = 19;
+  BINOP_AND = 18;
+  BINOP_OR = 19;
 }
 
 message BinaryOpRequest {

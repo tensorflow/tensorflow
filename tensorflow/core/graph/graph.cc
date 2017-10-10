@@ -293,6 +293,11 @@ Graph::Graph(const OpRegistryInterface* ops)
 
 Graph::Graph(const FunctionLibraryDefinition& flib_def)
     : Graph(flib_def.default_registry()) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (flib_def.ToProto().function_size() > 0 &&
+      versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
   Status s = ops_.AddLibrary(flib_def);
   CHECK(s.ok()) << s.error_message();
 }
@@ -448,6 +453,10 @@ const Edge* Graph::FindEdge(const Node* dst, int index) {
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (fdef_lib.function_size() > 0 && versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
   return ops_.AddLibrary(fdef_lib);
 }
 

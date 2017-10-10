@@ -117,8 +117,20 @@ const JITSymbolTable& GetJITSymbolTable() {
 }
 
 // A simple SymbolResolver that delegates to the host dynamic linker.
-struct SimpleResolver : public llvm::JITSymbolResolver {
+class SimpleResolver : public llvm::JITSymbolResolver {
+ public:
+  explicit SimpleResolver(ExternalConstantPool* external_constant_pool)
+      : external_constant_pool_(external_constant_pool) {}
+
   llvm::JITSymbol findSymbol(const std::string& name) override {
+    string name_as_string(name);
+    if (const uint8* from_constant_pool =
+            external_constant_pool_->Find(string(name))) {
+      return llvm::JITEvaluatedSymbol(
+          reinterpret_cast<uint64_t>(from_constant_pool),
+          llvm::JITSymbolFlags::None);
+    }
+
     std::string canonical_name = CanonicalizeSymbol(name);
     const JITSymbolTable& jit_symbol_table = GetJITSymbolTable();
 
@@ -136,6 +148,9 @@ struct SimpleResolver : public llvm::JITSymbolResolver {
   llvm::JITSymbol findSymbolInLogicalDylib(const std::string& name) override {
     return nullptr;
   }
+
+ private:
+  ExternalConstantPool* external_constant_pool_;
 };
 
 llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
@@ -205,7 +220,7 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
   auto handle = cantFail(compile_layer_.addModule(
-      std::move(module), MakeUnique<SimpleResolver>()));
+      std::move(module), MakeUnique<SimpleResolver>(external_constant_pool())));
   module_handles_.push_back(handle);
   return handle;
 }

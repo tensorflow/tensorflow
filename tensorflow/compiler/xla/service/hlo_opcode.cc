@@ -95,12 +95,12 @@ string HloOpcodeString(HloOpcode opcode) {
       return "less-than-or-equal-to";
     case HloOpcode::kLog:
       return "log";
-    case HloOpcode::kLogicalAnd:
-      return "logical-and";
-    case HloOpcode::kLogicalOr:
-      return "logical-or";
-    case HloOpcode::kLogicalNot:
-      return "logical-not";
+    case HloOpcode::kAnd:
+      return "and";
+    case HloOpcode::kOr:
+      return "or";
+    case HloOpcode::kNot:
+      return "not";
     case HloOpcode::kLt:
       return "less-than";
     case HloOpcode::kMap:
