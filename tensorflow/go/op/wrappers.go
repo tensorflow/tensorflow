@@ -8523,7 +8523,10 @@ func CropAndResizeExtrapolationValue(value float32) CropAndResizeAttr {
 // Returns a tensor with `crops` from the input `image` at positions defined at the
 // bounding box locations in `boxes`. The cropped boxes are all resized (with
 // bilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The
-// result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`.
+// result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`. The
+// resizing is corner aligned. In particular, if `boxes = [[0, 0, 1, 1]]`, the
+// method will give identical results to using `tf.image.resize_bilinear()`
+// with `align_corners=True`.
 //
 // Arguments:
 //	image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
