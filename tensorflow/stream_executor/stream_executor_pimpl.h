@@ -312,6 +312,10 @@ class StreamExecutor {
   // The value is cached on first use.
   const DeviceDescription &GetDeviceDescription() const;
 
+  // If implemented, returns device specific measurement of load
+  // (e.g. pending requests).
+  int64 GetDeviceLoad() const;
+
   // Returns the underlying device memory usage information, if it is available.
   // If it is not available (false is returned), free/total may not be
   // initialized.

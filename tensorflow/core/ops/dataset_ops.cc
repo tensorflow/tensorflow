@@ -198,6 +198,21 @@ buffer_size: The maximum number of elements to buffer in an iterator over
   this dataset.
 )doc");
 
+REGISTER_OP("ScanDataset")
+    .Input("input_dataset: variant")
+    .Input("initial_state: Tstate")
+    .Input("other_arguments: Targuments")
+    .Output("handle: variant")
+    .Attr("f: func")
+    .Attr("Tstate: list(type) >= 1")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset successively reduces `f` over the elements of `input_dataset`.
+)doc");
+
 REGISTER_OP("FlatMapDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")

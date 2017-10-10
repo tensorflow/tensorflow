@@ -92,7 +92,6 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   }
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-
                                                       FunctionDefLibrary{}));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), options.graph_def_version,
@@ -142,8 +141,17 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  if (!GetFunctionBody(function, local_flib_runtime_, &fbody).ok()) {
-    TF_RETURN_IF_ERROR(GetFunctionBody(function, flib_runtime_, &fbody));
+  // The function may be in either the local_flib_runtime_ or flib_runtime_.
+  // Look up the function in local first and if it is not found then look up the
+  // function in flib_runtime_.
+  auto status = GetFunctionBody(function, local_flib_runtime_, &fbody);
+  if (!status.ok()) {
+    if (!errors::IsNotFound(status)) {
+      return status;
+    }
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        GetFunctionBody(function, flib_runtime_, &fbody),
+        "Local lookup failed with: ", status.error_message());
   }
 
   TF_RETURN_IF_ERROR(CheckSignature(fbody->arg_types, args));
@@ -509,7 +517,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->requires_runtime_context = context->has_context_parameter();
 
   // Tuple arguments and runtime context parameters are incompatible.
-  CHECK(!(options.use_tuple_arg && result->requires_runtime_context));
+  TF_RET_CHECK(!(options.use_tuple_arg && result->requires_runtime_context));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
@@ -546,7 +554,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
        i < context->retvals().size(); ++i) {
     const XlaExpression& retval = context->retvals()[i];
     if (!retval.has_constant_value()) {
-      CHECK_LT(computation_output, num_computation_outputs);
+      TF_RET_CHECK(computation_output < num_computation_outputs)
+          << "Computation has more outputs than expected";
       OutputDescription& output = result->outputs[i];
       output.is_constant = false;
       TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
