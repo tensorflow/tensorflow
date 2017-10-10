@@ -50,7 +50,10 @@ py_test(
     size = "small",
     srcs = ["python/estimator/dnn_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
     deps = [
         ":dnn",
         ":head",
