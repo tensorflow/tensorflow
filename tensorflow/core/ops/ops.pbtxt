@@ -14434,7 +14434,7 @@ op {
     }
   }
   summary: "Returns element-wise remainder of division. This emulates C semantics in that"
-  description: "the result here is consistent with a truncating divide. E.g. `truncate(x / y) *\ny + truncate_mod(x, y) = x`.\n\n*NOTE*: `Mod` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+  description: "the result here is consistent with a truncating divide. E.g.\n`tf.truncatediv(x, y) * y + truncate_mod(x, y) = x`.\n\n*NOTE*: `Mod` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "Mul"
