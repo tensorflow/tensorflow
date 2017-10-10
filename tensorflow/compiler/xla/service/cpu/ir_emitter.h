@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/external_constant_pool.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -104,11 +105,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // llvm_module: the LLVM module to emit IR into.
   // hlo_to_profile_idx: the mapping from HLO to its index in the profiling
   //                     array.
+  // external_constant_pool: if non-null, points to an ExternalConstantPool
+  //                         instance into which the Ir emitter can spill
+  //                         constants.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
             const std::unordered_map<const HloInstruction*, size_t>*
                 hlo_to_profile_idx,
-            llvm::TargetMachine* target_machine);
+            llvm::TargetMachine* target_machine,
+            ExternalConstantPool* external_constant_pool);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -600,6 +605,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   bool is_top_level_computation_;
 
   TargetMachineFeatures target_machine_features_;
+
+  int64 external_global_constant_counter_ = 0;
+  ExternalConstantPool* external_constant_pool_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

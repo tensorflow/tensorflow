@@ -299,6 +299,9 @@ class OpsTest(test_util.TensorFlowTestCase):
     y = flatten_layer(x)
     self.assertAllEqual([[-10, -20, -30, -40], [10, 20, 30, 40]], y.numpy())
 
+  def testIdentity(self):
+    self.assertEqual(2, array_ops.identity(2).numpy())
+
 
 if __name__ == '__main__':
   test.main()

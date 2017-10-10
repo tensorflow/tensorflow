@@ -1791,28 +1791,28 @@ TEST_F(OpTest, Log1p) {
   });
 }
 
-TEST_F(OpTest, LogicalAnd) {
+TEST_F(OpTest, BooleanAnd) {
   Repeatedly([this]() {
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(
-        OpTestBuilder("LogicalAnd")
+        OpTestBuilder("BooleanAnd")
             .RandomInput(DT_BOOL, dims.first)
             .RandomInput(DT_BOOL, dims.second));
   });
 }
 
-TEST_F(OpTest, LogicalNot) {
+TEST_F(OpTest, BooleanNot) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
-        OpTestBuilder("LogicalNot").RandomInput(DT_BOOL));
+        OpTestBuilder("BooleanNot").RandomInput(DT_BOOL));
   });
 }
 
-TEST_F(OpTest, LogicalOr) {
+TEST_F(OpTest, BooleanOr) {
   Repeatedly([this]() {
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(
-        OpTestBuilder("LogicalOr")
+        OpTestBuilder("BooleanOr")
             .RandomInput(DT_BOOL, dims.first)
             .RandomInput(DT_BOOL, dims.second));
   });

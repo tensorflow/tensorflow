@@ -275,7 +275,7 @@ MatchBackwardInput(HloInstruction* conv) {
   Window new_window = old_window;
   for (size_t i = 0; i < spatial_dims.size(); ++i) {
     // Restore backward convolution's padding config from the matched pattern.
-    // See the comment in tensorflow/core/kernels/conv_grad_ops.cc
+    // See the comment in tensorflow/core/kernels/conv_grad_tuple_ops.cc
     // for how we convert backward input convolution to a variant of forward
     // convolution.
     //

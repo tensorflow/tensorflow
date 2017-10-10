@@ -289,6 +289,44 @@ static DataType GetDataTypeFromAttr(const NodeDef& node,
   return attr.type();
 }
 
+static void SetDataTypeToAttr(DataType dtype, const string& attr_name,
+                              NodeDef* node) {
+  (*node->mutable_attr())[attr_name].set_type(dtype);
+}
+
+static string SourceDataTypeAttrName(const NodeDef& node) {
+  if (node.op() == "Bitcast") {
+    return "T";
+  } else if (node.op() == "Cast") {
+    return "SrcT";
+  } else {
+    LOG(FATAL) << "SourceDataTypeAttrName not implemented for op " << node.op();
+  }
+}
+
+static string DestinationDataTypeAttrName(const NodeDef& node) {
+  if (node.op() == "Bitcast") {
+    return "type";
+  } else if (node.op() == "Cast") {
+    return "DstT";
+  } else {
+    LOG(FATAL) << "DestinationDataTypeAttrName not implemented for op "
+               << node.op();
+  }
+}
+
+static DataType GetSourceDataType(const NodeDef& node) {
+  return GetDataTypeFromAttr(node, SourceDataTypeAttrName(node));
+}
+
+static DataType GetDestinationDataType(const NodeDef& node) {
+  return GetDataTypeFromAttr(node, DestinationDataTypeAttrName(node));
+}
+
+static void SetSourceDataType(DataType dtype, NodeDef* node) {
+  SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
+}
+
 static bool IsNumberType(DataType dtype) {
   DataTypeVector number_types = NumberTypes();
   return std::find(number_types.begin(), number_types.end(), dtype) !=
@@ -369,8 +407,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       const NodeDef* cast = node_map->GetNode(transpose->input(0));
       if (cast->op() == "Cast") {
         const NodeDef* input = node_map->GetNode(cast->input(0));
-        const DataType src_type = GetDataTypeFromAttr(*cast, "SrcT");
-        const DataType dst_type = GetDataTypeFromAttr(*cast, "DstT");
+        const DataType src_type = GetSourceDataType(*cast);
+        const DataType dst_type = GetDestinationDataType(*cast);
         if (IsNumberType(src_type) && IsNumberType(dst_type) &&
             DataTypeSize(src_type) < DataTypeSize(dst_type)) {
           NodeDef* new_transpose = graph_def->add_node();
@@ -398,6 +436,32 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           return new_cast->name();
         }
       }
+    }
+  }
+
+  if (node->op() == "Bitcast") {
+    NodeDef* bitcast = node_map->GetNode(node->name());
+    // Bypass bitcasts whose source type and destination type are equal.
+    if (GetSourceDataType(*bitcast) == GetDestinationDataType(*bitcast)) {
+      return bitcast->input(0);
+    }
+
+    const NodeDef* operand = node_map->GetNode(bitcast->input(0));
+    if (operand->op() == bitcast->op()) {
+      // Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
+      bitcast->set_input(0, operand->input(0));
+      SetSourceDataType(GetSourceDataType(*operand), bitcast);
+      node_map->UpdateInput(bitcast->name(), bitcast->input(0),
+                            operand->input(0));
+      new_nodes->push_back(bitcast);
+      return bitcast->name();
+    }
+  }
+
+  if (node->op() == "Cast") {
+    // Bypass casts whose source type and destination type are equal.
+    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
+      return node->input(0);
     }
   }
 
@@ -465,7 +529,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             scaled_weights->set_name(weights->name() + "_scaled");
             scaled_weights->set_op("Mul");
             scaled_weights->set_device(weights->device());
-            (*scaled_weights->mutable_attr())["dtype"] =
+            (*scaled_weights->mutable_attr())["T"] =
                 weights->attr().at("dtype");
             node_map->AddNode(scaled_weights->name(), scaled_weights);
             new_nodes->push_back(scaled_weights);
@@ -490,6 +554,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             consumer_of_mul->set_input(0, mul->input(0));
             node_map->UpdateInput(consumer_of_mul->name(), mul->name(),
                                   other->name());
+            new_nodes->push_back(consumer_of_mul);
             return conv->name();
           }
         }
@@ -555,12 +620,18 @@ void ArithmeticOptimizer::SimplifyArithmeticOps(
       for (NodeDef* consumer : consumers) {
         // Update `consumer`'s use of `node` to `input`'s operand.
         for (int i = 0; i < consumer->input_size(); ++i) {
-          if (NodeName(consumer->input(i)) == node->name()) {
-            *consumer->mutable_input(i) = simplified_tensor;
+          int operand_pos;
+          string operand_node_name =
+              ParseNodeName(consumer->input(i), &operand_pos);
+          if (operand_node_name == node->name()) {
+            *consumer->mutable_input(i) =
+                (operand_pos < 0
+                     ? AsControlDependency(NodeName(simplified_tensor))
+                     : simplified_tensor);
           }
+          VLOG(2) << "Update input " << consumer->input(i) << " of "
+                  << consumer->name() << " to " << simplified_tensor;
         }
-        VLOG(2) << "Update input " << node->name() << " of " << consumer->name()
-                << " to " << simplified_tensor;
         node_map.UpdateInput(consumer->name(), node->name(), simplified_tensor);
         if (!nodes_to_simplify.Exists(consumer)) {
           nodes_to_simplify.PushBack(consumer);

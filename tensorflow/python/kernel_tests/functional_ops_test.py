@@ -371,6 +371,18 @@ class FunctionalOpsTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllEqual(873.0, r.eval())
 
+  def testScanGradientWithPartStopGradient(self):
+    a = variables.Variable(0.0, name="a")
+    b = variables.Variable(0.0, name="b")
+    elems = array_ops.zeros(5)
+    l0, l1 = functional_ops.scan(
+        lambda elem_, input_: (a, b), elems, initializer=(0., 0.))
+    loss = l0 + array_ops.stop_gradient(l1)
+    grad = gradients_impl.gradients(ys=[loss], xs=[a, b])
+    with self.test_session(use_gpu=True) as sess:
+      variables.global_variables_initializer().run()
+      sess.run(grad)
+
   def testFoldShape(self):
     with self.test_session():
       x = constant_op.constant([[1, 2, 3], [4, 5, 6]])

@@ -127,6 +127,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_verified_test_base",
+    testonly = True,
+    srcs = ["hlo_verified_test_base.cc"],
+    hdrs = ["hlo_verified_test_base.h"],
+    deps = [
+        ":hlo_test_base",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],

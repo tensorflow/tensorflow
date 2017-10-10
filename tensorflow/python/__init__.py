@@ -213,6 +213,8 @@ _allowed_symbols.extend([
     'quint16',
     'quint8',
     'string',
+    'uint64',
+    'uint32',
     'uint16',
     'uint8',
     'resource',

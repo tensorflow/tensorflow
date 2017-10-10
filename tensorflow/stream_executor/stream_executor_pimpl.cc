@@ -268,6 +268,10 @@ const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
   return *device_description_;
 }
 
+int64 StreamExecutor::GetDeviceLoad() const {
+  return implementation_->GetDeviceLoad();
+}
+
 int StreamExecutor::PlatformDeviceCount() const {
   return implementation_->PlatformDeviceCount();
 }
