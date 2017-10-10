@@ -1485,6 +1485,21 @@ py_library(
     ],
 )
 
+py_test(
+    name = "clip_ops_test",
+    size = "small",
+    srcs = ["ops/clip_ops_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":client_testlib",
+        ":clip_ops",
+        ":framework_for_generated_wrappers",
+        ":numerics",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "control_flow_grad",
     srcs = ["ops/control_flow_grad.py"],

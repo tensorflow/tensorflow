@@ -281,7 +281,7 @@ def _record_gradient(op_name, inputs, attrs, results, name):
             "output_grads", orig_outputs, "gradients", result)
     return nest.flatten(result)
 
-  tape.record_operation(op_name, results, inputs, [], grad_fn)
+  tape.record_operation(op_name, results, inputs, grad_fn)
   if _tracing:
     print("Computed op", (name if name else op_name), "inputs", inputs,
           "outputs", results)

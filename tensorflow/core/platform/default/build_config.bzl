@@ -465,6 +465,11 @@ def tf_additional_core_deps():
           "//tensorflow/core/platform/hadoop:hadoop_file_system",
       ],
       "//conditions:default": [],
+  }) + select({
+      "//tensorflow:with_s3_support": [
+          "//tensorflow/contrib/s3:s3_file_system",
+      ],
+      "//conditions:default": [],
   })
 
 # TODO(jart, jhseu): Delete when GCP is default on.

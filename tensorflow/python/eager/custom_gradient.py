@@ -85,7 +85,6 @@ def custom_gradient(f):
         f.__name__,
         flat_result,
         input_tensors,
-        [],
         actual_grad_fn)
     flat_result = list(flat_result)
     return result

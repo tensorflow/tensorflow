@@ -44,8 +44,6 @@ from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn import learn_runner
 
-_TEST_SPLIT_RATIO = 0.2
-_TEST_SPLIT_SEED = 42
 _BOSTON_NUM_FEATURES = 13
 
 

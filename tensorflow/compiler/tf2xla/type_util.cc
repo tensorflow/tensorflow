@@ -43,6 +43,12 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
     case tensorflow::DT_UINT16:
       *type = xla::U16;
       return Status::OK();
+    case tensorflow::DT_UINT32:
+      *type = xla::U32;
+      return Status::OK();
+    case tensorflow::DT_UINT64:
+      *type = xla::U64;
+      return Status::OK();
     case tensorflow::DT_HALF:
       *type = xla::F16;
       return Status::OK();

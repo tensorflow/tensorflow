@@ -47,6 +47,9 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@SummaryWriter
 @@restore_variables_on_create
 @@Variable
+
+@@in_eager_mode
+@@in_graph_mode
 """
 
 from __future__ import absolute_import
@@ -65,6 +68,8 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager.custom_gradient import custom_gradient
 from tensorflow.python.eager import function
 from tensorflow.python.eager.context import enable_eager_execution
+from tensorflow.python.eager.context import in_eager_mode
+from tensorflow.python.eager.context import in_graph_mode
 from tensorflow.python.eager.context import list_devices
 from tensorflow.python.eager.context import num_gpus
 from tensorflow.python.eager.context import run

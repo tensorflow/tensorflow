@@ -42,6 +42,7 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":benchmarking",
         ":gru_ops",
         ":lstm_ops",
         "//tensorflow/contrib/compiler:compiler_py",
@@ -384,5 +385,15 @@ py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "benchmarking",
+    srcs = ["python/kernel_tests/benchmarking.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//third_party/py/numpy",
     ],
 )
