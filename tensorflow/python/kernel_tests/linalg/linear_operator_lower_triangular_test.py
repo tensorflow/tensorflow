@@ -17,18 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import linalg as linalg_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_test_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.linalg import linalg as linalg_lib
+from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
 random_seed.set_random_seed(23)
 
 
-class LinearOperatorTriLTest(
+class LinearOperatorLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
@@ -50,10 +50,10 @@ class LinearOperatorTriLTest(
       # tril is random and we want the same value used for both mat and
       # feed_dict.
       tril = tril.eval()
-      operator = linalg.LinearOperatorTriL(tril_ph)
+      operator = linalg.LinearOperatorLowerTriangular(tril_ph)
       feed_dict = {tril_ph: tril}
     else:
-      operator = linalg.LinearOperatorTriL(tril)
+      operator = linalg.LinearOperatorLowerTriangular(tril)
       feed_dict = None
 
     mat = array_ops.matrix_band_part(tril, -1, 0)
@@ -64,14 +64,14 @@ class LinearOperatorTriLTest(
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.test_session():
       tril = [[1., 0.], [1., 0.]]
-      operator = linalg.LinearOperatorTriL(tril)
+      operator = linalg.LinearOperatorLowerTriangular(tril)
       with self.assertRaisesOpError("Singular operator"):
         operator.assert_non_singular().run()
 
   def test_is_x_flags(self):
     # Matrix with two positive eigenvalues.
     tril = [[1., 0.], [1., 1.]]
-    operator = linalg.LinearOperatorTriL(
+    operator = linalg.LinearOperatorLowerTriangular(
         tril,
         is_positive_definite=True,
         is_non_singular=True,
@@ -82,7 +82,7 @@ class LinearOperatorTriLTest(
 
   def test_tril_must_have_at_least_two_dims_or_raises(self):
     with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
-      linalg.LinearOperatorTriL([1.])
+      linalg.LinearOperatorLowerTriangular([1.])
 
 
 if __name__ == "__main__":

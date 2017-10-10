@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.linalg.python.ops import linear_operator
-from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -30,6 +28,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_util
 
 __all__ = [
     "LinearOperatorIdentity",

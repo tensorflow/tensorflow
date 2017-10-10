@@ -18,18 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.linalg.python.ops import linear_operator
-from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_util
 
-__all__ = ["LinearOperatorTriL",]
+__all__ = [
+    "LinearOperatorLowerTriangular",
+]
 
 
-class LinearOperatorTriL(linear_operator.LinearOperator):
+class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] square lower triangular matrix.
 
   This operator acts like a [batch] lower triangular matrix `A` with shape
@@ -37,13 +39,14 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
   an `N x N` matrix.
 
-  `LinearOperatorTriL` is initialized with a `Tensor` having dimensions
-  `[B1,...,Bb, N, N]`. The upper triangle of the last two dimensions is ignored.
+  `LinearOperatorLowerTriangular` is initialized with a `Tensor` having
+  dimensions `[B1,...,Bb, N, N]`. The upper triangle of the last two
+  dimensions is ignored.
 
   ```python
   # Create a 2 x 2 lower-triangular linear operator.
   tril = [[1., 2.], [3., 4.]]
-  operator = LinearOperatorTriL(tril)
+  operator = LinearOperatorLowerTriangular(tril)
 
   # The upper triangle is ignored.
   operator.to_dense()
@@ -62,7 +65,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
   tril = tf.random_normal(shape=[2, 3, 4, 4])
-  operator = LinearOperatorTriL(tril)
+  operator = LinearOperatorLowerTriangular(tril)
   ```
 
   #### Shape compatibility
@@ -77,7 +80,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
 
   #### Performance
 
-  Suppose `operator` is a `LinearOperatorTriL` of shape `[N, N]`,
+  Suppose `operator` is a `LinearOperatorLowerTriangular` of shape `[N, N]`,
   and `x.shape = [N, R]`.  Then
 
   * `operator.matmul(x)` involves `N^2 * R` multiplications.
@@ -108,8 +111,8 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                is_square=None,
-               name="LinearOperatorTriL"):
-    r"""Initialize a `LinearOperatorTriL`.
+               name="LinearOperatorLowerTriangular"):
+    r"""Initialize a `LinearOperatorLowerTriangular`.
 
     Args:
       tril:  Shape `[B1,...,Bb, N, N]` with `b >= 0`, `N >= 0`.
@@ -147,7 +150,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
       self._tril = array_ops.matrix_band_part(tril, -1, 0)
       self._diag = array_ops.matrix_diag_part(self._tril)
 
-      super(LinearOperatorTriL, self).__init__(
+      super(LinearOperatorLowerTriangular, self).__init__(
           dtype=self._tril.dtype,
           graph_parents=[self._tril],
           is_non_singular=is_non_singular,

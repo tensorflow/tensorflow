@@ -18,20 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
-from tensorflow.contrib.linalg.python.ops import linear_operator
-from tensorflow.contrib.linalg.python.ops import linear_operator_diag
-from tensorflow.contrib.linalg.python.ops import linear_operator_identity
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_diag
+from tensorflow.python.ops.linalg import linear_operator_identity
 
-__all__ = ["LinearOperatorUDVHUpdate",]
+__all__ = [
+    "LinearOperatorLowRankUpdate",
+]
 
 
-class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
+class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   """Perturb a `LinearOperator` with a rank `K` update.
 
   This operator acts like a [batch] matrix `A` with shape
@@ -39,7 +41,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
   batch member.  For every batch index `(i1,...,ib)`, `A[i1,...,ib, : :]` is
   an `M x N` matrix.
 
-  `LinearOperatorUDVHUpdate` represents `A = L + U D V^H`, where
+  `LinearOperatorLowRankUpdate` represents `A = L + U D V^H`, where
 
   ```
   L, is a LinearOperator representing [batch] M x N matrices
@@ -65,7 +67,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
       is_positive_definite=True)
 
   # Perturb with a rank 2 perturbation
-  operator = LinearOperatorUDVHUpdate(
+  operator = LinearOperatorLowRankUpdate(
       operator=diag_operator,
       u=[[1., 2.], [-1., 3.], [0., 0.]],
       diag_update=[11., 12.],
@@ -94,7 +96,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
 
   ### Performance
 
-  Suppose `operator` is a `LinearOperatorUDVHUpdate` of shape `[M, N]`,
+  Suppose `operator` is a `LinearOperatorLowRankUpdate` of shape `[M, N]`,
   made from a rank `K` update of `base_operator` which performs `.matmul(x)` on
   `x` having `x.shape = [N, R]` with `O(L_matmul*N*R)` complexity (and similarly
   for `solve`, `determinant`.  Then, if `x.shape = [N, R]`,
@@ -134,8 +136,8 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                is_square=None,
-               name="LinearOperatorUDVHUpdate"):
-    """Initialize a `LinearOperatorUDVHUpdate`.
+               name="LinearOperatorLowRankUpdate"):
+    """Initialize a `LinearOperatorLowRankUpdate`.
 
     This creates a `LinearOperator` of the form `A = L + U D V^H`, with
     `L` a `LinearOperator`, `U, V` both [batch] matrices, and `D` a [batch]
@@ -249,7 +251,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
           self.u, self._diag_update, self.v]
       graph_parents = [p for p in graph_parents if p is not None]
 
-      super(LinearOperatorUDVHUpdate, self).__init__(
+      super(LinearOperatorLowRankUpdate, self).__init__(
           dtype=self._base_operator.dtype,
           graph_parents=graph_parents,
           is_non_singular=is_non_singular,
@@ -262,8 +264,8 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
       self._set_diag_operators(diag_update, is_diag_update_positive)
       self._is_diag_update_positive = is_diag_update_positive
 
-      contrib_tensor_util.assert_same_float_dtype(
-          (base_operator, self.u, self.v, self._diag_update))
+      check_ops.assert_same_float_dtype((base_operator, self.u, self.v,
+                                         self._diag_update))
       self._check_shapes()
 
       # Pre-compute the so-called "capacitance" matrix

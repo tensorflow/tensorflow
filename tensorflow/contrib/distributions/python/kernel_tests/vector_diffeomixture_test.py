@@ -22,9 +22,9 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import test_util
 from tensorflow.contrib.distributions.python.ops import vector_diffeomixture as vector_diffeomixture_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_diag as linop_diag_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_identity as linop_identity_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
+from tensorflow.python.ops.linalg import linear_operator_diag as linop_diag_lib
+from tensorflow.python.ops.linalg import linear_operator_identity as linop_identity_lib
 from tensorflow.python.platform import test
 
 

@@ -1485,8 +1485,8 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:linalg_ns",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/ops/linalg",
     ],
     tags = ["no_windows_gpu"],
 )

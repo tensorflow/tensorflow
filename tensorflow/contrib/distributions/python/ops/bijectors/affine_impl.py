@@ -326,7 +326,7 @@ class Affine(bijector.Bijector):
         shape_hint=shape_hint)
 
     if perturb_factor is not None:
-      return linalg.LinearOperatorUDVHUpdate(
+      return linalg.LinearOperatorLowRankUpdate(
           scale,
           u=perturb_factor,
           diag_update=perturb_diag,

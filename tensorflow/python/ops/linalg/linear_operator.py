@@ -23,13 +23,13 @@ import contextlib
 
 import numpy as np
 
-from tensorflow.contrib import framework as contrib_framework
-from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["LinearOperator"]
@@ -192,7 +192,7 @@ class LinearOperator(object):
 
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
-      if t is None or not contrib_framework.is_tensor(t):
+      if t is None or not tensor_util.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._dtype = dtype
     self._graph_parents = graph_parents

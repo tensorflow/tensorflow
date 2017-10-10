@@ -22,14 +22,14 @@ import abc
 
 import six
 
-from tensorflow.contrib.linalg.python.ops import linear_operator
-from tensorflow.contrib.linalg.python.ops import linear_operator_diag
-from tensorflow.contrib.linalg.python.ops import linear_operator_full_matrix
-from tensorflow.contrib.linalg.python.ops import linear_operator_identity
-from tensorflow.contrib.linalg.python.ops import linear_operator_tril
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_diag
+from tensorflow.python.ops.linalg import linear_operator_full_matrix
+from tensorflow.python.ops.linalg import linear_operator_identity
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular
 
 __all__ = []
 
@@ -347,7 +347,7 @@ class _AddAndReturnTriL(_Adder):
     else:
       op_add_to_tensor, op_other = op2, op1
 
-    return linear_operator_tril.LinearOperatorTriL(
+    return linear_operator_lower_triangular.LinearOperatorLowerTriangular(
         tril=op_add_to_tensor.add_to_tensor(op_other.to_dense()),
         is_non_singular=hints.is_non_singular,
         is_self_adjoint=hints.is_self_adjoint,
@@ -397,7 +397,8 @@ def _type(operator):
   """Returns the type name constant (e.g. _TRIL) for operator."""
   if isinstance(operator, linear_operator_diag.LinearOperatorDiag):
     return _DIAG
-  if isinstance(operator, linear_operator_tril.LinearOperatorTriL):
+  if isinstance(operator,
+                linear_operator_lower_triangular.LinearOperatorLowerTriangular):
     return _TRIL
   if isinstance(operator, linear_operator_full_matrix.LinearOperatorFullMatrix):
     return _MATRIX

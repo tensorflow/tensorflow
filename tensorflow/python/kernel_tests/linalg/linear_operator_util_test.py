@@ -19,16 +19,14 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib import linalg as linalg_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
 
-linalg = linalg_lib
 random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 

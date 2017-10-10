@@ -19,12 +19,12 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib import linalg as linalg_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_test_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg as linalg_lib
+from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
@@ -32,7 +32,7 @@ random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 
-class BaseLinearOperatorUDVHUpdatetest(object):
+class BaseLinearOperatorLowRankUpdatetest(object):
   """Base test for this type of operator."""
 
   # Subclasses should set these attributes to either True or False.
@@ -51,7 +51,7 @@ class BaseLinearOperatorUDVHUpdatetest(object):
   @property
   def _dtypes_to_test(self):
     # TODO(langmore) Test complex types once cholesky works with them.
-    # See comment in LinearOperatorUDVHUpdate.__init__.
+    # See comment in LinearOperatorLowRankUpdate.__init__.
     return [dtypes.float32, dtypes.float64]
 
   @property
@@ -108,7 +108,7 @@ class BaseLinearOperatorUDVHUpdatetest(object):
       base_operator = linalg.LinearOperatorDiag(
           base_diag_ph, is_positive_definite=True)
 
-      operator = linalg.LinearOperatorUDVHUpdate(
+      operator = linalg.LinearOperatorLowRankUpdate(
           base_operator,
           u=u_ph,
           v=v_ph if self._use_v else None,
@@ -122,7 +122,7 @@ class BaseLinearOperatorUDVHUpdatetest(object):
     else:
       base_operator = linalg.LinearOperatorDiag(
           base_diag, is_positive_definite=True)
-      operator = linalg.LinearOperatorUDVHUpdate(
+      operator = linalg.LinearOperatorLowRankUpdate(
           base_operator,
           u,
           v=v if self._use_v else None,
@@ -164,8 +164,8 @@ class BaseLinearOperatorUDVHUpdatetest(object):
     return operator, mat, feed_dict
 
 
-class LinearOperatorUDVHUpdatetestWithDiagUseCholesky(
-    BaseLinearOperatorUDVHUpdatetest,
+class LinearOperatorLowRankUpdatetestWithDiagUseCholesky(
+    BaseLinearOperatorLowRankUpdatetest,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """A = L + UDU^H, D > 0, L > 0 ==> A > 0 and we can use a Cholesky."""
 
@@ -182,8 +182,8 @@ class LinearOperatorUDVHUpdatetestWithDiagUseCholesky(
     self._rtol[dtypes.float64] = 1e-10
 
 
-class LinearOperatorUDVHUpdatetestWithDiagCannotUseCholesky(
-    BaseLinearOperatorUDVHUpdatetest,
+class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
+    BaseLinearOperatorLowRankUpdatetest,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """A = L + UDU^H, D !> 0, L > 0 ==> A !> 0 and we cannot use a Cholesky."""
 
@@ -201,8 +201,8 @@ class LinearOperatorUDVHUpdatetestWithDiagCannotUseCholesky(
     self._rtol[dtypes.float64] = 1e-9
 
 
-class LinearOperatorUDVHUpdatetestNoDiagUseCholesky(
-    BaseLinearOperatorUDVHUpdatetest,
+class LinearOperatorLowRankUpdatetestNoDiagUseCholesky(
+    BaseLinearOperatorLowRankUpdatetest,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """A = L + UU^H, L > 0 ==> A > 0 and we can use a Cholesky."""
 
@@ -219,8 +219,8 @@ class LinearOperatorUDVHUpdatetestNoDiagUseCholesky(
     self._rtol[dtypes.float64] = 1e-10
 
 
-class LinearOperatorUDVHUpdatetestNoDiagCannotUseCholesky(
-    BaseLinearOperatorUDVHUpdatetest,
+class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
+    BaseLinearOperatorLowRankUpdatetest,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """A = L + UV^H, L > 0 ==> A is not symmetric and we cannot use a Cholesky."""
 
@@ -238,8 +238,8 @@ class LinearOperatorUDVHUpdatetestNoDiagCannotUseCholesky(
     self._rtol[dtypes.float64] = 1e-9
 
 
-class LinearOperatorUDVHUpdatetestWithDiagNotSquare(
-    BaseLinearOperatorUDVHUpdatetest,
+class LinearOperatorLowRankUpdatetestWithDiagNotSquare(
+    BaseLinearOperatorLowRankUpdatetest,
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """A = L + UDU^H, D > 0, L > 0 ==> A > 0 and we can use a Cholesky."""
 
@@ -248,7 +248,7 @@ class LinearOperatorUDVHUpdatetestWithDiagNotSquare(
   _use_v = True
 
 
-class LinearOpearatorUDVHUpdateBroadcastsShape(test.TestCase):
+class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
   """Test that the operator's shape is the broadcast of arguments."""
 
   def test_static_shape_broadcasts_up_from_operator_to_other_args(self):
@@ -256,8 +256,7 @@ class LinearOpearatorUDVHUpdateBroadcastsShape(test.TestCase):
     u = array_ops.ones(shape=[2, 3, 2])
     diag = array_ops.ones(shape=[2, 2])
 
-    operator = linalg.LinearOperatorUDVHUpdate(
-        base_operator, u, diag)
+    operator = linalg.LinearOperatorLowRankUpdate(base_operator, u, diag)
 
     # domain_dimension is 3
     self.assertAllEqual([2, 3, 3], operator.shape)
@@ -272,7 +271,7 @@ class LinearOpearatorUDVHUpdateBroadcastsShape(test.TestCase):
     u_shape_ph = array_ops.placeholder(dtypes.int32)
     u = array_ops.ones(shape=u_shape_ph)
 
-    operator = linalg.LinearOperatorUDVHUpdate(base_operator, u)
+    operator = linalg.LinearOperatorLowRankUpdate(base_operator, u)
 
     feed_dict = {
         num_rows_ph: 3,
@@ -290,34 +289,34 @@ class LinearOpearatorUDVHUpdateBroadcastsShape(test.TestCase):
     u = rng.rand(5, 3, 2)
     v = rng.rand(4, 3, 2)
     with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
-      linalg.LinearOperatorUDVHUpdate(base_operator, u=u, v=v)
+      linalg.LinearOperatorLowRankUpdate(base_operator, u=u, v=v)
 
   def test_u_and_base_operator_incompatible_batch_shape_raises(self):
     base_operator = linalg.LinearOperatorIdentity(
         num_rows=3, batch_shape=[4], dtype=np.float64)
     u = rng.rand(5, 3, 2)
     with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
-      linalg.LinearOperatorUDVHUpdate(base_operator, u=u)
+      linalg.LinearOperatorLowRankUpdate(base_operator, u=u)
 
   def test_u_and_base_operator_incompatible_domain_dimension(self):
     base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
     u = rng.rand(5, 4, 2)
     with self.assertRaisesRegexp(ValueError, "not compatible"):
-      linalg.LinearOperatorUDVHUpdate(base_operator, u=u)
+      linalg.LinearOperatorLowRankUpdate(base_operator, u=u)
 
   def test_u_and_diag_incompatible_low_rank_raises(self):
     base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
     u = rng.rand(5, 3, 2)
     diag = rng.rand(5, 4)  # Last dimension should be 2
     with self.assertRaisesRegexp(ValueError, "not compatible"):
-      linalg.LinearOperatorUDVHUpdate(base_operator, u=u, diag_update=diag)
+      linalg.LinearOperatorLowRankUpdate(base_operator, u=u, diag_update=diag)
 
   def test_diag_incompatible_batch_shape_raises(self):
     base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)
     u = rng.rand(5, 3, 2)
     diag = rng.rand(4, 2)  # First dimension should be 5
     with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
-      linalg.LinearOperatorUDVHUpdate(base_operator, u=u, diag_update=diag)
+      linalg.LinearOperatorLowRankUpdate(base_operator, u=u, diag_update=diag)
 
 
 if __name__ == "__main__":

@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Public API for tf.linalg namespace.
-
-@@logdet
-"""
+"""Public API for tf.linalg namespace."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,7 +26,14 @@ from tensorflow.python.ops import special_math_ops
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,unused-import
-from tensorflow.python.ops.linalg_impl import *
+from tensorflow.python.ops.linalg.linalg_impl import *
+from tensorflow.python.ops.linalg.linear_operator import *
+from tensorflow.python.ops.linalg.linear_operator_composition import *
+from tensorflow.python.ops.linalg.linear_operator_diag import *
+from tensorflow.python.ops.linalg.linear_operator_full_matrix import *
+from tensorflow.python.ops.linalg.linear_operator_identity import *
+from tensorflow.python.ops.linalg.linear_operator_low_rank_update import *
+from tensorflow.python.ops.linalg.linear_operator_lower_triangular import *
 # pylint: enable=wildcard-import
 
 # Linear algebra ops.
