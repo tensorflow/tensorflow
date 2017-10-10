@@ -692,8 +692,8 @@ REGISTER_OP("Mod")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns element-wise remainder of division. This emulates C semantics in that
-the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
-y + truncate_mod(x, y) = x`.
+the result here is consistent with a truncating divide. E.g.
+`tf.truncatediv(x, y) * y + truncate_mod(x, y) = x`.
 
 *NOTE*: `Mod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
