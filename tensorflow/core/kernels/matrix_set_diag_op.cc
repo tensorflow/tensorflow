@@ -63,9 +63,12 @@ class MatrixSetDiagOp : public OpKernel {
     // the last two dimensions of input.
     const int64 min_dim = std::min(input_shape.dim_size(rank - 1),
                                    input_shape.dim_size(rank - 2));
-    TensorShape expected_diag_shape = input_shape;
-    expected_diag_shape.RemoveLastDims(2);
+    TensorShape expected_diag_shape;
+    for (int i = 0; i < rank - 2; ++i) {
+      expected_diag_shape.AddDim(input_shape.dim_size(i));
+    }
     expected_diag_shape.AddDim(min_dim);
+
     OP_REQUIRES(context, expected_diag_shape == diag_shape,
                 errors::InvalidArgument(
                     "must have diagonal.shape == input.shape[:-2] + "
@@ -77,8 +80,7 @@ class MatrixSetDiagOp : public OpKernel {
     auto diag_reshaped = diag.flat_inner_dims<T, 2>();
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {0}, 0, input_shape, &output));
+    OP_REQUIRES_OK(context, context->allocate_output(0, input_shape, &output));
     auto output_reshaped = output->flat_inner_dims<T, 3>();
 
     functor::MatrixSetDiag<Device, T>::Compute(context->eigen_device<Device>(),
@@ -134,7 +136,7 @@ namespace functor {
   template <>                                                       \
   void MatrixSetDiag<GPUDevice, T>::Compute(                        \
       const GPUDevice& d, typename TTypes<T, 3>::ConstTensor input, \
-      const typename TTypes<T, 2>::ConstTensor diag,                      \
+      typename TTypes<T, 2>::ConstTensor diag,                      \
       typename TTypes<T, 3>::Tensor output);                        \
   extern template struct MatrixSetDiag<GPUDevice, T>;
 
