@@ -327,7 +327,7 @@ class VirtualScheduler {
 
   // Auxilliary data structures for constructing NodeState and DeviceState.
   GraphProperties graph_properties_;
-  Cluster* cluster_;                   // Not owned.
+  Cluster* cluster_;  // Not owned.
 
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;

@@ -156,17 +156,16 @@ class DfsHloVisitor {
                                 HloInstruction* operand) {
     return HandleElementwiseUnary(is_finite);
   }
-  virtual Status HandleLogicalAnd(HloInstruction* logical_and,
-                                  HloInstruction* lhs, HloInstruction* rhs) {
-    return HandleElementwiseBinary(logical_and);
+  virtual Status HandleAnd(HloInstruction* and_, HloInstruction* lhs,
+                           HloInstruction* rhs) {
+    return HandleElementwiseBinary(and_);
   }
-  virtual Status HandleLogicalNot(HloInstruction* logical_not,
-                                  HloInstruction* operand) {
-    return HandleElementwiseUnary(logical_not);
+  virtual Status HandleNot(HloInstruction* not_, HloInstruction* operand) {
+    return HandleElementwiseUnary(not_);
   }
-  virtual Status HandleLogicalOr(HloInstruction* logical_or,
-                                 HloInstruction* lhs, HloInstruction* rhs) {
-    return HandleElementwiseBinary(logical_or);
+  virtual Status HandleOr(HloInstruction* or_, HloInstruction* lhs,
+                          HloInstruction* rhs) {
+    return HandleElementwiseBinary(or_);
   }
   virtual Status HandleReducePrecision(HloInstruction* reduce_precision) {
     return HandleElementwiseUnary(reduce_precision);

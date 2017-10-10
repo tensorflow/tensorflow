@@ -57,7 +57,7 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_IS_FINITE;
     case HloOpcode::kLog:
       return UNOP_LOG;
-    case HloOpcode::kLogicalNot:
+    case HloOpcode::kNot:
       return UNOP_LOGICAL_NOT;
     case HloOpcode::kNegate:
       return UNOP_NEGATE;
@@ -113,9 +113,9 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
       return BINOP_POW;
     case HloOpcode::kRemainder:
       return BINOP_REM;
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kOr:
       return BINOP_LOGICAL_OR;
-    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kAnd:
       return BINOP_LOGICAL_AND;
     default:
       LOG(FATAL) << "unhandled opcode " << opcode;

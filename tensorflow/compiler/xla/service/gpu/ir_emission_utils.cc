@@ -214,12 +214,5 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
       value->getType());
 }
 
-const HloInstruction* LatestNonGteAncestor(const HloInstruction* hlo) {
-  while (hlo->opcode() == HloOpcode::kGetTupleElement) {
-    hlo = hlo->operand(0);
-  }
-  return hlo;
-}
-
 }  // namespace gpu
 }  // namespace xla
