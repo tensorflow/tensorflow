@@ -35,8 +35,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.layers import base as base_layer
-from tensorflow.python.framework import dtypes
-
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
@@ -560,16 +558,6 @@ class LSTMCell(_LayerRNNCell):
 
   The class uses optional peep-hole connections, optional cell clipping, and
   an optional projection layer.
-  
-  Layer normalization implementation is based on:
-
-    https://arxiv.org/abs/1607.06450.
-
-  "Layer Normalization"
-  Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
-
-  and is applied before the internal nonlinearities.
-  
   """
 
   def __init__(self, num_units,
@@ -1311,8 +1299,7 @@ def _linear(args,
             output_size,
             bias,
             bias_initializer=None,
-            kernel_initializer=None,
-            layer_norm=False):
+            kernel_initializer=None):
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
   Args:
@@ -1322,7 +1309,6 @@ def _linear(args,
     bias_initializer: starting value to initialize the bias
       (default is all zeros).
     kernel_initializer: starting value to initialize the weight.
-    layer_norm: boolean, whether to apply layer normalization.
 
   Returns:
     A 2D Tensor with shape `[batch, output_size]` equal to
@@ -1371,8 +1357,4 @@ def _linear(args,
           _BIAS_VARIABLE_NAME, [output_size],
           dtype=dtype,
           initializer=bias_initializer)
-
-  if not layer_norm:
-    res = nn_ops.bias_add(res, biases)
-
-  return res
+    return nn_ops.bias_add(res, biases)
