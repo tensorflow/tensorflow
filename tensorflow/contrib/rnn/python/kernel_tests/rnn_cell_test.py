@@ -1291,10 +1291,11 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         h1 = array_ops.zeros([1, 2])
         state1 = rnn_cell_impl.LSTMStateTuple(c1, h1)
         cell = rnn_cell_impl.MultiRNNCell(
-          [contrib_rnn_cell.LayerNormLSTMCell(2,
-                                       layer_norm=True,
-                                       norm_gain=1.0,
-                                       norm_shift=0.0) for _ in range(2)])
+          [contrib_rnn_cell.LayerNormLSTMCell(
+              2,
+              layer_norm=True,
+              norm_gain=1.0,
+              norm_shift=0.0) for _ in range(2)])
         h, (s0, s1) = cell(x, (state0, state1))
         sess.run([variables.global_variables_initializer()])
         res = sess.run([h, s0, s1], {

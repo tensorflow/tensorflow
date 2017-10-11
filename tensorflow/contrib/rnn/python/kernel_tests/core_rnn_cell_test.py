@@ -381,8 +381,7 @@ class RNNCellTest(test.TestCase):
           forget_bias=1.0,
           layer_norm=True,
           norm_gain=1.0,
-          norm_shift=0.0
-        )
+          norm_shift=0.0)
         g, out_m = cell(x, state)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run([g, out_m], {

@@ -2440,14 +2440,10 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     self._norm_shift = norm_shift
 
     if num_proj:
-      self._state_size = (
-        rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
-        )
+      self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_proj))
       self._output_size = num_proj
     else:
-      self._state_size = (
-        rnn_cell_impl.LSTMStateTuple(num_units, num_units)
-        )
+      self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_units))
       self._output_size = num_units
 
   @property
@@ -2466,7 +2462,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
               bias_initializer=None,
               kernel_initializer=None,
               layer_norm=False):
-    """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
+    """Linear map: sum_i(args[i] * W[i]), where W[i] is a Variable.
 
     Args:
       args: a 2D Tensor or a list of 2D, batch x n, Tensors.
@@ -2479,8 +2475,8 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
 
     Returns:
-      A 2D Tensor with shape [batch x output_size] equal to
-      sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
+      A 2D Tensor with shape [batch x output_size] taking value
+      sum_i(args[i] * W[i]), where each W[i] is a newly created Variable.
 
     Raises:
       ValueError: if some of the arguments has unspecified or wrong shape.
