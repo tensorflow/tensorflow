@@ -9,36 +9,18 @@ def _tpl(repository_ctx, tpl, substitutions={}, out=None):
       Label("//third_party/toolchains/cpus/arm:%s.tpl" % tpl),
       substitutions)
 
-def _get_python_bin(repository_ctx):
-  """Gets the python bin path."""
-  python_bin = _get_env_var(repository_ctx, _PYTHON_BIN_PATH,
-                            None, False)
-  if python_bin != None:
-    return python_bin
-  python_bin_path = repository_ctx.which("python")
-  if python_bin_path != None:
-    return str(python_bin_path)
-  path = _get_env_var(repository_ctx, "PATH")
-  _python_configure_fail("Cannot find python in PATH, please make sure " +
-      "python is installed and add its directory in PATH, or set the " +
-      "environment variable PYTHON_BIN_PATH.\nPATH=%s" % (path))
-
-def _get_python_include(repository_ctx):
-  """Gets the python include path."""
-  python_bin = _get_python_bin(repository_ctx)
-  result = _execute(repository_ctx,
-                    [python_bin, "-c",
-                     'from __future__ import print_function;' +
-                     'from distutils import sysconfig;' +
-                     'print(sysconfig.get_python_inc())'],
-                    error_msg="Problem getting python include path.",
-                    error_details=("Is the Python binary path set up right? " +
-                                   "(See ./configure or PYTHON_BIN_PATH.) " +
-                                   "Is distutils installed?"))
-  return result.stdout.splitlines()[0]
 
 def _arm_compiler_configure_impl(repository_ctx):
-  python_include_path = _get_python_include(repository_ctx)
+  # We need to find a cross-compilation include directory for Python, so look
+  # for an environment variable. Be warned, this crosstool template is only
+  # regenerated on the first run of Bazel, so if you change the variable after
+  # it may not be reflected in later builds. Doing a shutdown and clean of Bazel
+  # doesn't fix this, you'll need to delete the generated file at something like:
+  # external/local_config_arm_compiler/CROSSTOOL in your Bazel install.
+  if "CROSSTOOL_PYTHON_INCLUDE_PATH" in repository_ctx.os.environ:
+    python_include_path = repository_ctx.os.environ["CROSSTOOL_PYTHON_INCLUDE_PATH"]
+  else:
+    python_include_path = "/usr/include/python2.7"
   _tpl(repository_ctx, "CROSSTOOL", {
       "%{ARM_COMPILER_PATH}%": str(repository_ctx.path(
           repository_ctx.attr.remote_config_repo)),
