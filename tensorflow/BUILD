@@ -121,6 +121,15 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_x86_64",
+    values = {
+        "cc_target_os": "apple",
+        "cpu": "ios_x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
