@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/graph/mkl_tfconversion_pass.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 
 namespace tensorflow {
 
@@ -68,7 +68,7 @@ namespace tensorflow {
 // take place before we hit the op. For this, we add a new op before each
 // element-wise MKL op to deal with the inputs, called _MklInputConversion.
 // This pass has been enhanced to add this capability.
-// 
+//
 // The _MklInputConversion op will check the inputs to the elementwise op and
 // make sure that either both are in MKL format or both are in TF format,
 // depending on their initial state and whether broadcast is needed or not.
