@@ -589,13 +589,10 @@ def complex(real, imag, name=None):
 
 
 def real(input, name=None):
-  r"""Returns the real part of a complex number.
+  r"""Returns the real part of a complex (or real) tensor.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float32` or `float64` that is the real part of each element in `input`.
-  All elements in `input` must be complex numbers of the form \\(a + bj\\),
-  where *a* is the real part returned by this operation and *b* is the
-  imaginary part.
+  Given a tensor `input`, this operation returns a tensor of type `float` that
+  is the real part of each element in `input` considered as a complex number.
 
   For example:
 
@@ -614,19 +611,19 @@ def real(input, name=None):
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Real", [input]) as name:
-    real_dtype = input.dtype.real_dtype
-    if input.dtype.base_dtype == real_dtype:
+    if input.dtype.is_complex:
+      real_dtype = input.dtype.real_dtype
+      return gen_math_ops.real(input, Tout=real_dtype, name=name)
+    else:
       return input
-    return gen_math_ops.real(input, Tout=real_dtype, name=name)
 
 
 def imag(input, name=None):
-  r"""Returns the imaginary part of a complex number.
+  r"""Returns the imaginary part of a complex (or real) tensor.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float` that is the argument of each element in `input`. All elements in
-  `input` must be complex numbers of the form \\(a + bj\\), where *a*
-  is the real part and *b* is the imaginary part returned by the operation.
+  Given a tensor `input`, this operation returns a tensor of type `float` that
+  is the imaginary part of each element in `input` considered as a complex
+  number. If `input` is real, a tensor of all zeros is returned.
 
   For example:
 
@@ -636,26 +633,32 @@ def imag(input, name=None):
   ```
 
   Args:
-    input: A `Tensor`. Must be one of the following types: `complex64`,
-      `complex128`.
+    input: A `Tensor`. Must be one of the following types: `float`, `double`,
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Imag", [input]) as name:
-    return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
+    if input.dtype.is_complex:
+      return gen_math_ops.imag(input, Tout=input.dtype.real_dtype, name=name)
+    else:
+      return array_ops.zeros_like(input)
 
 
 def angle(input, name=None):
-  r"""Returns the argument of a complex number.
+  r"""Returns the element-wise argument of a complex (or real) tensor.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  type `float32` or `float64` that is the argument of each element in `input`.
-  All elements in `input` must be complex numbers of the form \\(a + bj\\),
-  where *a* is the real part and *b* is the imaginary part.
+  Given a tensor `input`, this operation returns a tensor of type `float` that
+  is the argument of each element in `input` considered as a complex number.
+
+  The elements in `input` are considered to be complex numbers of the form
+  \\(a + bj\\), where *a* is the real part and *b* is the imaginary part.
+  If `input` is real then *b* is zero by definition.
 
   The argument returned by this function is of the form \\(atan2(b, a)\\).
+  If `input` is real, a tensor of all zeros is returned.
 
   For example:
 
@@ -665,15 +668,18 @@ def angle(input, name=None):
   ```
 
   Args:
-    input: A `Tensor`. Must be one of the following types: `complex64`,
-      `complex128`.
+    input: A `Tensor`. Must be one of the following types: `float`, `double`,
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Angle", [input]) as name:
-    return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
+    if input.dtype.is_complex:
+      return gen_math_ops.angle(input, Tout=input.dtype.real_dtype, name=name)
+    else:
+      return array_ops.zeros_like(input)
 
 
 # pylint: enable=redefined-outer-name,redefined-builtin
