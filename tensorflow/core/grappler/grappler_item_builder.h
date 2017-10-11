@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
 
 #include <memory>
+#include <set>
 #include <string>
 #include "tensorflow/core/grappler/grappler_item.h"
 
@@ -45,6 +46,10 @@ struct ItemConfig {
   bool erase_noinline_attributes = false;
   // If non-empty, override the directory of asset paths.
   string assets_directory_override;
+  // If true, runs ModelPruner on the graph.
+  bool prune_graph = false;
+  // Override feed nodes list.
+  std::set<string> feed_nodes;
 };
 
 // Factory method for creating a GrapplerItem from a MetaGraphDef.
