@@ -3316,6 +3316,36 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "base_api_def",
+    data = glob(["api_def/base_api/*"]),
+)
+
+tf_cc_test(
+    name = "api_test",
+    srcs = ["api_def/api_test.cc"],
+    data = [
+        ":base_api_def",
+        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":op_gen_lib",
+        ":op_gen_overrides_proto_cc",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+    ],
+)
+
 tf_cc_test_gpu(
     name = "gpu_tracer_test",
     size = "small",
