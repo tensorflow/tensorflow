@@ -4084,13 +4084,15 @@ REGISTER_OP("SpaceToDepth")
       TensorFormat data_format;
       FormatFromString(data_format_str, &data_format);
 
+      constexpr int num_spatial_dims = 2;
+      const int dims =
+          GetTensorDimsFromSpatialDims(num_spatial_dims, data_format);
       ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), dims, &input));
 
       int32 block_size;
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
-      constexpr int num_spatial_dims = 2;
       DimensionHandle batch_size =
           c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'N'));
       DimensionHandle input_height =
