@@ -1264,6 +1264,11 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     return ReplaceInstruction(dynamic_slice, operand);
   }
+  // DynamicSlice where operand has the same size as the output and
+  // start_indices are all zero is simply equal to operand.
+  if (IsAll(start_indices, 0) && SameShape(operand, dynamic_slice)) {
+    return ReplaceInstruction(dynamic_slice, operand);
+  }
   return Status::OK();
 }
 
@@ -1282,8 +1287,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // not to affect the visible behavior of this op even when the indices are out
   // of range.  Currently dynamic-update-slice wraps out-of-range indices, so
   // we can only remove the op if its indices never wrap.)
-  if (start_indices->IsConstant() && start_indices->literal().IsAll(0) &&
-      ShapeUtil::Compatible(dynamic_update_slice->shape(), update->shape())) {
+  if (IsAll(start_indices, 0) && SameShape(dynamic_update_slice, update)) {
     return ReplaceInstruction(dynamic_update_slice, update);
   }
   return Status::OK();

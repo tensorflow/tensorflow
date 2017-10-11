@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -47,7 +47,7 @@ AlgebraicSimplifier::ValidBitcastCallback non_bitcasting_callback() {
   return [](const Shape&, const Shape&) { return false; };
 }
 
-class AlgebraicSimplifierTest : public HloTestBase {
+class AlgebraicSimplifierTest : public HloVerifiedTestBase {
  public:
   // Makes a computation that contains a loop that runs num_iters times.
   HloComputation* MakeSimpleLoop(HloModule* module, int num_iters);
@@ -2211,6 +2211,29 @@ TEST_F(AlgebraicSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
                                  non_bitcasting_callback());
   EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
+}
+
+// A dynamic-slice is trivial if its start indices are all zeroes and the size
+// of its input equals the size of its output.  In this case, the dynamic slice
+// is equal to its input.
+TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
+  HloComputation::Builder builder(TestName());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "slice_from")),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR1<int>({0, 0, 0}))),
+      /*slice_sizes=*/{10, 100, 1000}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Parameter());
 }
 
 // A dynamic-update-slice is trivial if its start indices are all zeroes and the
