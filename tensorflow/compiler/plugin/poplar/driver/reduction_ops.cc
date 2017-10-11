@@ -394,18 +394,18 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
   } else {
     const HloInstruction* pooling_inst;
 
-    PoolingType reduction_type;
+    popnn::PoolingType reduction_type;
 
     // Find the type of the reduction
     if (inst->opcode() == HloOpcode::kCall) {
-      reduction_type = PoolingType::AVG;
+      reduction_type = popnn::PoolingType::AVG;
       pooling_inst = inst->to_apply()->root_instruction()->operand(0);
     } else if (inst->to_apply()->root_instruction()->opcode() ==
                HloOpcode::kMaximum) {
-      reduction_type = PoolingType::MAX;
+      reduction_type = popnn::PoolingType::MAX;
       pooling_inst = inst;
     } else {
-      reduction_type = PoolingType::SUM;
+      reduction_type = popnn::PoolingType::SUM;
       pooling_inst = inst;
     }
 
