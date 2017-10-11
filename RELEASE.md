@@ -1,10 +1,11 @@
 # Release 1.4.0
 
 ## Major Features And Improvements
+* `tf.keras` is now part of the core TensorFlow API.
 * `tf.data` is now part of the core TensorFlow API.
   * The API is now subject to backwards compatibility guarantees.
   * For a guide to migrating from the `tf.contrib.data` API, see the
-    [README] (https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/contrib/data/README.md).
+    [README](https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/contrib/data/README.md).
   * Major new features include `Dataset.from_generator()` (for building an input
     pipeline from a Python generator), and the `Dataset.apply()` method for
     applying custom transformation functions.
@@ -42,6 +43,8 @@
   * Support for multi-dimensional string tensors.
   * Support loading of custom operations (e.g. many in `tf.contrib`) on Linux
     and OS X
+* All our prebuilt binaries have been built with CUDA 8 and cuDNN 6.
+  We anticipate releasing TensorFlow 1.5 with CUDA 9 and cuDNN 7.
 
 ## Bug Fixes and Other Changes
 * `tf.nn.rnn_cell.DropoutWrapper` is now more careful about dropping out LSTM
@@ -58,6 +61,8 @@
 * Resolved a race condition in TensorForest TreePredictionsV4Op.
 * Google Cloud Storage file system and Hadoop file system support are now
   default build options.
+* Custom op libraries must link against libtensorflow_framework.so
+  (installed at `tf.sysconfig.get_lib()`).
 
 ## Breaking Changes to the API
 * The signature of the `tf.contrib.data.rejection_resample()` function has been
