@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -186,20 +187,9 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
   // Even though the type of params and temps is void** in the host's view, in
   // LLVM IR this is represented by i8*, similarly to void*. It's up to the code
   // to use GEPs to unravel the indirection layers.
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
-  llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
-  llvm::Type* i64_ptr_type = llvm::Type::getInt64PtrTy(module_->getContext());
-  std::vector<llvm::Type*> compute_function_params(
-      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
-  if (IsParallelContext()) {
-    compute_function_params.push_back(i64_ptr_type);
-  }
-  if (hlo_to_profile_idx_) {
-    compute_function_params.push_back(i64_ptr_type);
-  }
   llvm::FunctionType* compute_function_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(module_->getContext()),
-      /*Params=*/compute_function_params,
+      /*Params=*/GetComputeFunctionParams(),
       /*isVarArg=*/false);
 
   // Functions with local linkage get an inlining bonus.  Because we know
@@ -221,7 +211,7 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
   (++arg_iter)->setName("run_options");
   (++arg_iter)->setName("params");
   (++arg_iter)->setName("temps");
-  if (IsParallelContext()) {
+  if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
   }
   if (hlo_to_profile_idx_) {
@@ -2286,8 +2276,19 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   }
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
-  EmitArrayFunctionCallInto(call_ir_function, parameter_addresses,
-                            emitted_value_[call], computation->name());
+
+  if (!computation->root_instruction()->outer_dimension_partitions().empty() &&
+      !parallel_cpu_backend_) {
+    // ParallelTaskAssignment assigned partitions, emit call to
+    // ParallelForkJoin.
+    TF_RETURN_IF_ERROR(EmitParallelForkJoin(parameter_addresses,
+                                            emitted_value_[call], computation,
+                                            call_ir_function));
+  } else {
+    EmitArrayFunctionCallInto(call_ir_function, parameter_addresses,
+                              emitted_value_[call], computation->name());
+  }
+
   return Status::OK();
 }
 
@@ -2597,7 +2598,7 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   // For the parallel cpu backend, we record the total for each embedded
   // computation callee with its caller kCall HLO.
   HloInstruction* hlo_to_lookup = nullptr;
-  if (IsParallelContext()) {
+  if (parallel_cpu_backend_ && is_top_level_computation_) {
     auto* computation = root->parent();
     auto* entry_computation = computation->parent()->entry_computation();
     if (computation != entry_computation) {
@@ -2755,12 +2756,27 @@ llvm::Type* IrEmitter::IrShapeType(const Shape& shape) {
   return llvm_ir::ShapeToIrType(shape, &ir_builder_);
 }
 
+std::vector<llvm::Type*> IrEmitter::GetComputeFunctionParams() {
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
+  llvm::Type* i64_ptr_type = llvm::Type::getInt64PtrTy(module_->getContext());
+  std::vector<llvm::Type*> compute_function_params(
+      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
+  if (num_dynamic_loop_bounds_ > 0) {
+    compute_function_params.push_back(i64_ptr_type);
+  }
+  if (hlo_to_profile_idx_) {
+    compute_function_params.push_back(i64_ptr_type);
+  }
+  return compute_function_params;
+}
+
 llvm::Argument* IrEmitter::GetResultArgument() {
   return GetArg(compute_function_, 0);
 }
 
 llvm::Argument* IrEmitter::GetProfileCountersArgument() {
-  const int64 arg_index = IsParallelContext() ? 5 : 4;
+  const int64 arg_index = num_dynamic_loop_bounds_ > 0 ? 5 : 4;
   return hlo_to_profile_idx_ ? GetArg(compute_function_, arg_index) : nullptr;
 }
 
@@ -2843,18 +2859,11 @@ llvm::Value* IrEmitter::EmitElementFunctionCall(
       AsStringRef(tensorflow::strings::StrCat(name, "_return_value")));
 }
 
-// Emits a core function call based on the following pseudo-code.
-//
-//   char** parameter_addresses_buffer =
-//       allocate buffer with a pointer for each parameter to the function
-//   for each parameter index, i.e. for i = 0, ..., #parameters:
-//     parameter_addresses_buffer[i] = parameter_addresses[i]
-//   call function(return_value_buffer,
-//                 parameter_addresses_buffer,
-//                 temps)
-//   return return_value_buffer  -- address of the return value.
-void IrEmitter::EmitArrayFunctionCallInto(
-    llvm::Function* function,
+// Emits code to allocate an array of parameter address pointers, and store
+// each address from 'parameter_addresses'.
+// Returns an array of compute function call arguments (including parameter
+// address buffer).
+std::vector<llvm::Value*> IrEmitter::GetArrayFunctionCallArguments(
     tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
     llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
   llvm::Value* parameter_addresses_buffer =
@@ -2883,7 +2892,26 @@ void IrEmitter::EmitArrayFunctionCallInto(
   if (auto* profile_counters = GetProfileCountersArgument()) {
     arguments.push_back(profile_counters);
   }
-  ir_builder_.CreateCall(function, arguments);
+  return arguments;
+}
+
+// Emits a core function call based on the following pseudo-code.
+//
+//   char** parameter_addresses_buffer =
+//       allocate buffer with a pointer for each parameter to the function
+//   for each parameter index, i.e. for i = 0, ..., #parameters:
+//     parameter_addresses_buffer[i] = parameter_addresses[i]
+//   call function(return_value_buffer,
+//                 parameter_addresses_buffer,
+//                 temps)
+//   return return_value_buffer  -- address of the return value.
+void IrEmitter::EmitArrayFunctionCallInto(
+    llvm::Function* function,
+    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
+  ir_builder_.CreateCall(
+      function, GetArrayFunctionCallArguments(parameter_addresses,
+                                              return_value_buffer, name));
 }
 
 llvm::Value* IrEmitter::EmitArrayFunctionCall(
@@ -2901,6 +2929,110 @@ llvm::Value* IrEmitter::EmitArrayFunctionCall(
   EmitArrayFunctionCallInto(function, parameter_addresses, return_value_buffer,
                             name);
   return return_value_buffer;
+}
+
+// Emits a call to a runtime fork/join function which dispatches parallel
+// calls to 'parallel_function' (and joins threads before returning).
+Status IrEmitter::EmitParallelForkJoin(
+    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    llvm::Value* output_address, HloComputation* computation,
+    llvm::Function* parallel_function) {
+  HloInstruction* root = computation->root_instruction();
+
+  // Build ParallelForkJoin function type.
+  std::vector<llvm::Type*> compute_function_params = GetComputeFunctionParams();
+  // Number of parallel compute functions.
+  compute_function_params.push_back(ir_builder_.getInt32Ty());
+  // Array of partitions. There is an array element for each
+  // partition x partition_dim x 2 (for dimension start and limit).
+  compute_function_params.push_back(
+      llvm::Type::getInt64PtrTy(module_->getContext()));
+  // Number of partitioned most-major dimensions in 'root.shape'.
+  compute_function_params.push_back(ir_builder_.getInt32Ty());
+  // Function pointer for compute function to be dispatched in parallel.
+  compute_function_params.push_back(
+      llvm::Type::getInt8PtrTy(module_->getContext()));
+
+  llvm::FunctionType* fork_join_type = llvm::FunctionType::get(
+      /*Result=*/llvm::Type::getVoidTy(module_->getContext()),
+      /*Params=*/compute_function_params,
+      /*isVarArg=*/false);
+
+  llvm::Function* fork_join_func =
+      llvm::cast<llvm::Function>(module_->getOrInsertFunction(
+          runtime::kParallelForkJoinSymbolName, fork_join_type));
+  fork_join_func->setCallingConv(llvm::CallingConv::C);
+  fork_join_func->setDoesNotThrow();
+
+  // Add common compute function arguments.
+  const string name = computation->name();
+  std::vector<llvm::Value*> arguments =
+      GetArrayFunctionCallArguments(parameter_addresses, output_address, name);
+
+  // Create ShapePartitionIterator to generate all partitions of 'root.shape'.
+  ShapePartitionIterator partition_iterator(root->shape(),
+                                            root->outer_dimension_partitions());
+  const int64 num_partitions = partition_iterator.GetTotalPartitionCount();
+  // Add argument specifying the number of parallel partitions.
+  arguments.push_back(ir_builder_.getInt32(num_partitions));
+
+  // The number of partitioned most-major dimensions in 'root.shape'.
+  const int32 num_partitioned_dims = root->outer_dimension_partitions().size();
+  // A dimension partition consists of two elements: [start_index, limit_index).
+  const int32 dim_partition_size = 2;
+  // Calculate array partition stride.
+  const int32 array_partition_stride =
+      num_partitioned_dims * dim_partition_size;
+  // Calculate the total number of elements in the partition array.
+  const int32 partition_array_size =
+      dim_partition_size * num_partitioned_dims * num_partitions;
+
+  // Store dimension partition values as llvm constants in 'partitions'.
+  // See comments in runtime_fork_join.cc for array layout description.
+  std::vector<llvm::Constant*> partitions(partition_array_size);
+  for (int32 i = 0; i < num_partitions; ++i) {
+    std::vector<std::pair<int64, int64>> dim_partitions =
+        partition_iterator.GetPartition(i);
+    CHECK_EQ(num_partitioned_dims, dim_partitions.size());
+    const int32 partition_index = i * array_partition_stride;
+    for (int32 j = 0; j < num_partitioned_dims; ++j) {
+      const std::pair<int64, int64>& dim_partition = dim_partitions[j];
+      const int32 index = partition_index + j * dim_partition_size;
+      // Store partition [dim_start, dim_limit) intervals for each dimension.
+      partitions[index] = ir_builder_.getInt64(dim_partition.first);
+      partitions[index + 1] =
+          ir_builder_.getInt64(dim_partition.first + dim_partition.second);
+    }
+  }
+
+  // Create global variable out of dimension partitions in 'partitions'.
+  llvm::ArrayType* partitions_array_type =
+      llvm::ArrayType::get(ir_builder_.getInt64Ty(), partition_array_size);
+  llvm::Constant* partitions_array =
+      llvm::ConstantArray::get(partitions_array_type, partitions);
+  llvm::GlobalVariable* global_partitions_array = new llvm::GlobalVariable(
+      /*Module=*/*module_,
+      /*Type=*/partitions_array_type,
+      /*isConstant=*/true,
+      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+      /*Initializer=*/partitions_array,
+      /*Name=*/
+      AsStringRef(
+          tensorflow::strings::StrCat(name, "_parallel_dimension_partitions")));
+
+  // Add argument specifying parallel dimension partitions.
+  arguments.push_back(ir_builder_.CreateBitCast(
+      global_partitions_array,
+      llvm::Type::getInt64PtrTy(module_->getContext())));
+  // Add argument specifying the number of partitioned most-major dimensions.
+  arguments.push_back(ir_builder_.getInt32(num_partitioned_dims));
+  // Add argument for parallel compute function pointer.
+  arguments.push_back(
+      ir_builder_.CreateBitCast(parallel_function, ir_builder_.getInt8PtrTy()));
+  // Emit call to parallel fork/join.
+  ir_builder_.CreateCall(fork_join_func, arguments);
+
+  return Status::OK();
 }
 
 Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
