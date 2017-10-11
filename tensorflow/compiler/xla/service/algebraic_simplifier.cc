@@ -912,9 +912,10 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // A Broadcast that feeds a unary element-wise operation can sink the
   // broadcast after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
-      changed_,
+      bool sink_succeeded,
       TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
-  if (changed_) {
+  changed_ |= sink_succeeded;
+  if (sink_succeeded) {
     return Status::OK();
   }
 
@@ -1217,9 +1218,10 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   // A Reshape that feeds a unary element-wise operation can sink the
   // reshape after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
-      changed_,
+      bool sink_succeeded,
       TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(reshape));
-  if (changed_) {
+  changed_ |= sink_succeeded;
+  if (sink_succeeded) {
     return Status::OK();
   }
 
@@ -1262,6 +1264,11 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     return ReplaceInstruction(dynamic_slice, operand);
   }
+  // DynamicSlice where operand has the same size as the output and
+  // start_indices are all zero is simply equal to operand.
+  if (IsAll(start_indices, 0) && SameShape(operand, dynamic_slice)) {
+    return ReplaceInstruction(dynamic_slice, operand);
+  }
   return Status::OK();
 }
 
@@ -1280,8 +1287,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // not to affect the visible behavior of this op even when the indices are out
   // of range.  Currently dynamic-update-slice wraps out-of-range indices, so
   // we can only remove the op if its indices never wrap.)
-  if (start_indices->IsConstant() && start_indices->literal().IsAll(0) &&
-      ShapeUtil::Compatible(dynamic_update_slice->shape(), update->shape())) {
+  if (IsAll(start_indices, 0) && SameShape(dynamic_update_slice, update)) {
     return ReplaceInstruction(dynamic_update_slice, update);
   }
   return Status::OK();

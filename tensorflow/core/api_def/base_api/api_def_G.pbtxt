@@ -1,0 +1,257 @@
+op {
+  graph_op_name: "Gather"
+  endpoint {
+    name: "Gather"
+  }
+  summary: "Gather slices from `params` according to `indices`."
+  description: <<END
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
+
+```python
+    # Scalar indices
+    output[:, ..., :] = params[indices, :, ... :]
+
+    # Vector indices
+    output[i, :, ..., :] = params[indices[i], :, ... :]
+
+    # Higher rank indices
+    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+```
+
+If `indices` is a permutation and `len(indices) == params.shape[0]` then
+this operation will permute `params` accordingly.
+
+`validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in
+`indices` are always validated to be within range. If assigned to GPU,
+out-of-bound indices result in safe but unspecified behavior, which may include
+raising an error.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "GatherNd"
+  endpoint {
+    name: "GatherNd"
+  }
+  summary: "Gather slices from `params` into a Tensor with shape specified by `indices`."
+  description: <<END
+`indices` is an K-dimensional integer tensor, best thought of as a
+(K-1)-dimensional tensor of indices into `params`, where each element defines a
+slice of `params`:
+
+    output[i_0, ..., i_{K-2}] = params[indices[i0, ..., i_{K-2}]]
+
+Whereas in @{tf.gather} `indices` defines slices into the first
+dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+
+The last dimension of `indices` can be at most the rank of
+`params`:
+
+    indices.shape[-1] <= params.rank
+
+The last dimension of `indices` corresponds to elements
+(if `indices.shape[-1] == params.rank`) or slices
+(if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
+of `params`.  The output tensor has shape
+
+    indices.shape[:-1] + params.shape[indices.shape[-1]:]
+
+Some examples below.
+
+Simple indexing into a matrix:
+
+```python
+    indices = [[0, 0], [1, 1]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = ['a', 'd']
+```
+
+Slice indexing into a matrix:
+
+```python
+    indices = [[1], [0]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [['c', 'd'], ['a', 'b']]
+```
+
+Indexing into a 3-tensor:
+
+```python
+    indices = [[1]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[['a1', 'b1'], ['c1', 'd1']]]
+
+
+    indices = [[0, 1], [1, 0]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [['c0', 'd0'], ['a1', 'b1']]
+
+
+    indices = [[0, 0, 1], [1, 0, 1]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = ['b0', 'b1']
+```
+
+Batched indexing into a matrix:
+
+```python
+    indices = [[[0, 0]], [[0, 1]]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [['a'], ['b']]
+```
+
+Batched slice indexing into a matrix:
+
+```python
+    indices = [[[1]], [[0]]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [[['c', 'd']], [['a', 'b']]]
+```
+
+Batched indexing into a 3-tensor:
+
+```python
+    indices = [[[1]], [[0]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[[['a1', 'b1'], ['c1', 'd1']]],
+              [[['a0', 'b0'], ['c0', 'd0']]]]
+
+    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[['c0', 'd0'], ['a1', 'b1']],
+              [['a0', 'b0'], ['c1', 'd1']]]
+
+
+    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [['b0', 'b1'], ['d0', 'c1']]
+```
+END
+}
+op {
+  graph_op_name: "GatherV2"
+  endpoint {
+    name: "GatherV2"
+  }
+  summary: "Gather slices from `params` axis `axis` according to `indices`."
+  description: <<END
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `params.shape[:axis] + indices.shape +
+params.shape[axis + 1:]` where:
+
+```python
+    # Scalar indices (output is rank(params) - 1).
+    output[a_0, ..., a_n, b_0, ..., b_n] =
+      params[a_0, ..., a_n, indices, b_0, ..., b_n]
+
+    # Vector indices (output is rank(params)).
+    output[a_0, ..., a_n, i, b_0, ..., b_n] =
+      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]
+
+    # Higher rank indices (output is rank(params) + rank(indices) - 1).
+    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
+      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+```
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+</div>
+END
+}
+op {
+  graph_op_name: "GenerateVocabRemapping"
+  endpoint {
+    name: "GenerateVocabRemapping"
+  }
+  summary: "Given a path to new and old vocabulary files, returns a remapping Tensor of"
+  description: <<END
+length `num_new_vocab`, where `remapping[i]` contains the row number in the old
+vocabulary that corresponds to row `i` in the new vocabulary (starting at line
+`new_vocab_offset` and up to `num_new_vocab` entities), or `-1` if entry `i`
+in the new vocabulary is not in the old vocabulary.  `num_vocab_offset` enables
+use in the partitioned variable case, and should generally be set through
+examining partitioning info.  The format of the files should be a text file,
+with each line containing a single entity within the vocabulary.
+
+For example, with `new_vocab_file` a text file containing each of the following
+elements on a single line: `[f0, f1, f2, f3]`, old_vocab_file = [f1, f0, f3],
+`num_new_vocab = 3, new_vocab_offset = 1`, the returned remapping would be
+`[0, -1, 2]`.
+
+The op also returns a count of how many entries in the new vocabulary
+were present in the old vocabulary, which is used to calculate the number of
+values to initialize in a weight matrix remapping
+
+This functionality can be used to remap both row vocabularies (typically,
+features) and column vocabularies (typically, classes) from TensorFlow
+checkpoints.  Note that the partitioning logic relies on contiguous vocabularies
+corresponding to div-partitioned variables.  Moreover, the underlying remapping
+uses an IndexTable (as opposed to an inexact CuckooTable), so client code should
+use the corresponding index_table_from_file() as the FeatureColumn framework
+does (as opposed to tf.feature_to_id(), which uses a CuckooTable).
+END
+}
+op {
+  graph_op_name: "GetSessionHandle"
+  endpoint {
+    name: "GetSessionHandle"
+  }
+  summary: "Store the input tensor in the state of the current session."
+}
+op {
+  graph_op_name: "GetSessionHandleV2"
+  endpoint {
+    name: "GetSessionHandleV2"
+  }
+  summary: "Store the input tensor in the state of the current session."
+}
+op {
+  graph_op_name: "GetSessionTensor"
+  endpoint {
+    name: "GetSessionTensor"
+  }
+  summary: "Get the value of the tensor specified by its handle."
+}
+op {
+  graph_op_name: "Greater"
+  endpoint {
+    name: "Greater"
+  }
+  summary: "Returns the truth value of (x > y) element-wise."
+  description: <<END
+*NOTE*: `Greater` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "GreaterEqual"
+  endpoint {
+    name: "GreaterEqual"
+  }
+  summary: "Returns the truth value of (x >= y) element-wise."
+  description: <<END
+*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "GroupByWindowDataset"
+  endpoint {
+    name: "GroupByWindowDataset"
+  }
+  summary: "Creates a dataset that computes a windowed group-by on `input_dataset`."
+  description: <<END
+// TODO(mrry): Support non-int64 keys.
+END
+}
