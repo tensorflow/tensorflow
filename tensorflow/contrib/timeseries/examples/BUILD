@@ -97,6 +97,7 @@ py_test(
     timeout = "long",  # Moderate but for asan
     srcs = ["lstm_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [":lstm"],
 )
 
