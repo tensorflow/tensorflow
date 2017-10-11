@@ -110,6 +110,64 @@ Status PadShapeFn(InferenceContext* c) {
   }
 }
 
+Status TransposeShapeFn(InferenceContext* c) {
+  ShapeHandle input = c->input(0);
+  ShapeHandle perm_shape = c->input(1);
+  const Tensor* perm = c->input_tensor(1);
+  DimensionHandle perm_elems = c->NumElements(perm_shape);
+  // If we don't have rank information on the input or value information on
+  // perm we can't return any shape information, otherwise we have enough
+  // information to at least find the rank of the output.
+  if (!c->RankKnown(input) && !c->ValueKnown(perm_elems) && perm == nullptr) {
+    c->set_output(0, c->UnknownShape());
+    return Status::OK();
+  }
+
+  // Find our value of the rank.
+  int64 rank;
+  if (c->RankKnown(input)) {
+    rank = c->Rank(input);
+  } else if (c->ValueKnown(perm_elems)) {
+    rank = c->Value(perm_elems);
+  } else {
+    rank = perm->NumElements();
+  }
+  std::vector<DimensionHandle> dims;
+  dims.resize(rank);
+  TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
+  // Ensure that perm is a vector and has rank elements.
+  TF_RETURN_IF_ERROR(c->WithRank(perm_shape, 1, &perm_shape));
+  TF_RETURN_IF_ERROR(c->WithValue(perm_elems, rank, &perm_elems));
+
+  // If we know the rank of the input and the value of perm, we can return
+  // all shape informantion, otherwise we can only return rank information,
+  // but no information for the dimensions.
+  if (perm != nullptr) {
+    std::vector<int64> data;
+    if (perm->dtype() == DT_INT32) {
+      data = AsInt64<int32>(perm, rank);
+    } else {
+      data = AsInt64<int64>(perm, rank);
+    }
+
+    for (int32 i = 0; i < rank; ++i) {
+      int64 in_idx = data[i];
+      if (in_idx >= rank) {
+        return errors::InvalidArgument("perm dim ", in_idx,
+                                       " is out of range of input rank ", rank);
+      }
+      dims[i] = c->Dim(input, in_idx);
+    }
+  } else {
+    for (int i = 0; i < rank; ++i) {
+      dims[i] = c->UnknownDim();
+    }
+  }
+
+  c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
 Status SetOutputShapeForReshape(InferenceContext* c) {
   ShapeHandle in = c->input(0);
   ShapeHandle out;
@@ -1913,69 +1971,28 @@ REGISTER_OP("Transpose")
     .Output("y: T")
     .Attr("T: type")
     .Attr("Tperm: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input = c->input(0);
-      ShapeHandle perm_shape = c->input(1);
-      const Tensor* perm = c->input_tensor(1);
-      DimensionHandle perm_elems = c->NumElements(perm_shape);
-      // If we don't have rank information on the input or value information on
-      // perm we can't return any shape information, otherwise we have enough
-      // information to at least find the rank of the output.
-      if (!c->RankKnown(input) && !c->ValueKnown(perm_elems) &&
-          perm == nullptr) {
-        c->set_output(0, c->UnknownShape());
-        return Status::OK();
-      }
-
-      // Find our value of the rank.
-      int64 rank;
-      if (c->RankKnown(input)) {
-        rank = c->Rank(input);
-      } else if (c->ValueKnown(perm_elems)) {
-        rank = c->Value(perm_elems);
-      } else {
-        rank = perm->NumElements();
-      }
-      std::vector<DimensionHandle> dims;
-      dims.resize(rank);
-      TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
-      // Ensure that perm is a vector and has rank elements.
-      TF_RETURN_IF_ERROR(c->WithRank(perm_shape, 1, &perm_shape));
-      TF_RETURN_IF_ERROR(c->WithValue(perm_elems, rank, &perm_elems));
-
-      // If we know the rank of the input and the value of perm, we can return
-      // all shape informantion, otherwise we can only return rank information,
-      // but no information for the dimensions.
-      if (perm != nullptr) {
-        std::vector<int64> data;
-        if (perm->dtype() == DT_INT32) {
-          data = AsInt64<int32>(perm, rank);
-        } else {
-          data = AsInt64<int64>(perm, rank);
-        }
-
-        for (int32 i = 0; i < rank; ++i) {
-          int64 in_idx = data[i];
-          if (in_idx >= rank) {
-            return errors::InvalidArgument(
-                "perm dim ", in_idx, " is out of range of input rank ", rank);
-          }
-          dims[i] = c->Dim(input, in_idx);
-        }
-      } else {
-        for (int i = 0; i < rank; ++i) {
-          dims[i] = c->UnknownDim();
-        }
-      }
-
-      c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
-    })
+    .SetShapeFn(TransposeShapeFn)
     .Doc(R"doc(
 Shuffle dimensions of x according to a permutation.
 
 The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ConjugateTranspose")
+    .Input("x: T")
+    .Input("perm: Tperm")
+    .Output("y: T")
+    .Attr("T: type")
+    .Attr("Tperm: {int32, int64} = DT_INT32")
+    .SetShapeFn(TransposeShapeFn)
+    .Doc(R"doc(
+Shuffle dimensions of x according to a permutation and conjugate the result.
+
+The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
+  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
+  `y[i,j,k,...,s,t,u] == conj(x[perm[i], perm[j], perm[k],...,perm[s], perm[t], perm[u]])`
 )doc");
 
 // --------------------------------------------------------------------------

@@ -1350,10 +1350,11 @@ tf_kernel_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":conv_ops",
+        ":cwise_op",
         ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:conv_ops",
         "//third_party/eigen3",
     ],
     alwayslink = 0,
@@ -2276,13 +2277,15 @@ LINALG_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:linalg_ops_op_lib",
-]
+] + if_cuda([
+    ":cuda_solvers",
+    ":transpose_functor",
+])
 
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
     deps = if_cuda([
-        ":cuda_solvers",
         ":matrix_band_part_op",
     ]) + LINALG_DEPS,
 )
@@ -2297,7 +2300,6 @@ tf_kernel_library(
     name = "determinant_op",
     prefix = "determinant_op",
     deps = if_cuda([
-        ":cuda_solvers",
         ":fill_functor",
     ]) + LINALG_DEPS,
 )
@@ -2314,17 +2316,13 @@ tf_kernel_library(
     deps = LINALG_DEPS + if_cuda([
         ":cast_op",
         ":cwise_op",
-        ":cuda_solvers",
-        ":transpose_functor",
     ]),
 )
 
 tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
-    deps = if_cuda([
-        ":cuda_solvers",
-    ]) + LINALG_DEPS,
+    deps = LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -2336,10 +2334,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_solve_op",
     prefix = "matrix_solve_op",
-    deps = if_cuda([
-        ":cuda_solvers",
-        ":transpose_functor",
-    ]) + LINALG_DEPS,
+    deps = LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -2354,20 +2349,15 @@ tf_kernel_library(
     name = "qr_op",
     prefix = "qr_op",
     deps = LINALG_DEPS + if_cuda([
-        ":cuda_solvers",
         ":cwise_op",
         ":matrix_band_part_op",
-        ":transpose_functor",
     ]),
 )
 
 tf_kernel_library(
     name = "svd_op",
     prefix = "svd_op",
-    deps = LINALG_DEPS + if_cuda([
-        ":cuda_solvers",
-        ":transpose_functor",
-    ]),
+    deps = LINALG_DEPS,
 )
 
 cc_library(
@@ -2457,7 +2447,6 @@ tf_cc_tests(
 MATH_DEPS = [
     ":bounds_check",
     ":fill_functor",
-    ":transpose_functor",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -2617,7 +2606,7 @@ tf_kernel_library(
     name = "reduction_ops",
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
-    deps = MATH_DEPS + if_cuda(["@cub_archive//:cub"]),
+    deps = MATH_DEPS + [":transpose_functor"] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
