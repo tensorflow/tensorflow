@@ -65,17 +65,17 @@ class MklCPUAllocator : public Allocator {
     if (user_mem_bytes != NULL) {
       uint64 user_val = 0;
       if (!strings::safe_strtou64(user_mem_bytes, &user_val)) {
-        string err_msg = "Invalid memory limit (" + string(user_mem_bytes) +
-                         ") specified for MKL allocator through " +
-                         string(kMaxAllocSize);
-        Status s = Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
-        TF_CHECK_OK(s);
+        TF_CHECK_OK(errors::InvalidArgument(
+            "Invalid memory limit (", user_mem_bytes,
+            ") specified for MKL allocator through ", kMaxAllocSize));
       }
 #if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
       if (user_val > max_mem_bytes) {
-        LOG(WARNING) << "User specified memory limit " << user_val
-                     << " greater than available physical memory "
-                     << max_mem_bytes << "!!! Could lead to perf slowdowns.";
+        LOG(WARNING) << "The user specifed a memory limit " << kMaxAllocSize
+                     << "=" << user_val
+                     << " greater than available physical memory: "
+                     << max_mem_bytes
+                     << ". This could significantly reduce performance!";
       }
 #endif
       max_mem_bytes = user_val;
@@ -137,7 +137,7 @@ class MklCPUAllocator : public Allocator {
   static constexpr const char* kName = "mklcpu";
 
   /// Environment variable that user can set to upper bound on memory allocation
-  static constexpr const char* kMaxAllocSize = "TF_MKLALLOC_MAX_BYTES";
+  static constexpr const char* kMaxAllocSize = "TF_MKL_ALLOC_MAX_BYTES";
 
   /// The alignment that we need for the allocations
   static const size_t kAlignment = 64;
