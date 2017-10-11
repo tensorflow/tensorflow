@@ -22,9 +22,9 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ns as linalg
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
 
 
