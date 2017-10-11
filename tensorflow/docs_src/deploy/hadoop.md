@@ -61,5 +61,15 @@ be set:
     export KRB5CCNAME=/tmp/krb5cc_10002
     ```
 
+If you want TensorFlow to access HDFS as a specific HDFS user, the following environment
+variable must be set:
+
+*   **HADOOP_USER_NAME**: HDFS user TensorFlow will perform operations on the file system. You can
+    export this environment variable by running:
+
+    ```shell
+    export HADOOP_USER_NAME=hdfs_user
+    ```
+    
 If you are running @{$distributed$Distributed TensorFlow}, then all
 workers must have the environment variables set and Hadoop installed.
