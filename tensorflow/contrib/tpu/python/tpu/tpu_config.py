@@ -36,10 +36,16 @@ class TPUConfig(
       global step is increased `iterations_per_loop` times in one `Session.run`.
       It is recommended to be set as number of global steps for next checkpoint.
     num_shards: The number of TPU shards in the system.
-    per_host_input_for_training: If `True`, `input_fn` is invoked per host
-      rather than per shard. Note: This behavior is going to be default as
-      `True` soon, so this flag will be removed after that. Also note that this
-      only works for single-host TPU training now.
+    per_host_input_for_training: If `True`, `input_fn` is invoked Per-Host
+      rather than Per-Core. With Per-Host input pipeline deployment, `input_fn`
+      is invoked once on each host. To be precise, with a global batch size
+      `train_batch_size` in `TPUEstimator` constructor, the batch size for each
+      shard is `train_batch_size` // #hosts. With Per-Core input pipeline
+      deployment, the shard batch size is `train_batch_size` // #cores. Note:
+      This behavior is going to be default as `True` soon, so this flag will be
+      removed after that. Also note that this only works for single-host TPU
+      training now (tracked in b/67051042). For multi-host, please use Per-Core,
+      i.e., `False` for `per_host_input_for_training`.
   """
 
   def __new__(cls,
