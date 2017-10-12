@@ -4021,6 +4021,7 @@ cuda_py_test(
         ":framework_for_generated_wrappers",
         ":nn_grad",
         ":nn_ops",
+        "//third_party/py/numpy",
     ],
 )
 
