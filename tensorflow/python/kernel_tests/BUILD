@@ -1330,7 +1330,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "depthtospace_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["depthtospace_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1898,7 +1898,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "spacetodepth_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["spacetodepth_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

@@ -44,6 +44,10 @@ template <typename Device, typename T, TensorFormat data_format>
 struct DepthToSpaceOpFunctor {
   void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output);
+
+  // This 5-D version is to support NCHW_VECT_C.
+  void operator()(const Device& d, typename TTypes<T, 5>::ConstTensor input,
+                  int block_size, typename TTypes<T, 5>::Tensor output);
 };
 
 }  // namespace functor
