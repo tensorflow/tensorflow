@@ -131,7 +131,7 @@ class CpuCompiler : public LLVMCompiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* module, bool is_aot_compile);
+  Status RunHloPasses(HloModule* module);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

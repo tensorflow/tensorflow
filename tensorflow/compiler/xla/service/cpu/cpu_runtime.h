@@ -51,7 +51,6 @@ extern const char* const kAcquireInfeedBufferForDequeueSymbolName;
 extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName;
 extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
-extern const char* const kParallelForkJoinSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.

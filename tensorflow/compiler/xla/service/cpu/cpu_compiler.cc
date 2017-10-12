@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
-#include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -249,7 +248,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 };
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
+Status CpuCompiler::RunHloPasses(HloModule* module) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
   pipeline.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
@@ -317,14 +316,6 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   if (options::CpuParallelBackendRequested(module->config())) {
     pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
                                                  ShapeSizeBytesFunction());
-  } else if (!is_aot_compile) {
-    // Run ParallelTaskAssigner to assign parallel tasks to HLOs in module.
-    // Note this is not run for AOT because it would bring in thread pool
-    // and thread synchronization dependencies which would likely increase
-    // binary size (and most AOT applications are single-threaded).
-    // TODO(29630486) Support multi-threaded AOT.
-    pipeline.AddPass<ParallelTaskAssigner>(max_parallelism,
-                                           ShapeSizeBytesFunction(), module);
   }
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -459,7 +450,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
-  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get()));
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
@@ -758,7 +749,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     HloModule* module = modules[i].get();
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
-    TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true));
+    TF_RETURN_IF_ERROR(RunHloPasses(module));
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
