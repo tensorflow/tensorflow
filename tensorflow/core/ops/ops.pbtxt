@@ -4881,6 +4881,40 @@ op {
   description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ncomplex numbers that are the complex conjugate of each element in `input`. The\ncomplex numbers in `input` must be of the form \\\\(a + bj\\\\), where *a* is the\nreal part and *b* is the imaginary part.\n\nThe complex conjugate returned by this operation is of the form \\\\(a - bj\\\\).\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]\n```"
 }
 op {
+  name: "ConjugateTranspose"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "perm"
+    type_attr: "Tperm"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tperm"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Shuffle dimensions of x according to a permutation and conjugate the result."
+  description: "The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:\n  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`\n  `y[i,j,k,...,s,t,u] == conj(x[perm[i], perm[j], perm[k],...,perm[s], perm[t], perm[u]])`"
+}
+op {
   name: "Const"
   output_arg {
     name: "output"
