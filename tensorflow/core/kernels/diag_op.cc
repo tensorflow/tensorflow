@@ -107,6 +107,24 @@ class DiagPartOp : public OpKernel {
 };
 
 // Implementation of the functor specialization for CPU.
+// 
+// According to the diagonal definition,
+// `output[i1,..., ik, i1,..., ik] = input[i1,..., ik]`,
+//
+// Let the rank of input is [s1,..., sk], then any offset of input's
+// pointer can be represent by coordinate [i1,..., ik],
+// where `index = i1*(s2*...*sk) + i2*(s3*...*sk) +... + ik`
+//
+// Let new_index is the offset of output's pointer with coordinate 
+// [i1,..., ik, i1,..., ik], then we have
+// `new_index = i1*(s2*...sk*s1*...*sk) + i2*(s3*...*sk*s1*...*sk) +... + \
+//              ik*(s1*...*sk) + i1*(s2*...*sk) + i2*(s3*...*sk) +... + ik
+//            = (i1*(s2*...*sk) + i2*(s3*...*sk) +... + ik) * (1 + s1*...*sk)
+//            = index * (1 + s1*...*sk)
+//
+// Let `size = s1*...*sk`, we finally have `new_index = index * (1 + size)`,
+// which is the transfer function we use below.
+// This trick make our implementations clear and easy to be parallel.
 namespace functor {
 template <typename T>
 struct DiagFunctor<CPUDevice, T> {

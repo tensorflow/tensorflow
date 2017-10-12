@@ -49,10 +49,6 @@ template <typename T>
 struct DiagFunctor<GPUDevice, T> {
   void operator() (const GPUDevice& device, const int64 size,
                       const T* in, T* out) {
-    // using CudaType = typename CUDAComplexT<T>::type;
-    // const CudaType* input_ptr = reinterpret_cast<const CudaType*>(in);
-    // CudaType* output_ptr = reinterpret_cast<CudaType*>(out);
-    //
     CudaLaunchConfig zero_config = GetCudaLaunchConfig(size*size, device);
     ZeroCudaKernel<<<zero_config.block_count,
                      zero_config.thread_per_block,
@@ -89,11 +85,6 @@ template <typename T>
 struct DiagPartFunctor<GPUDevice, T> {
   void operator() (const GPUDevice& device, const int64 size,
                       const T* in, T* out) {
-    // using CudaType = typename CUDAComplexT<T>::type;
-    // const CudaType* input_ptr = reinterpret_cast<const CudaType*>(in);
-    // CudaType* output_ptr = reinterpret_cast<CudaType*>(out);
-    //
-
     CudaLaunchConfig diag_config = GetCudaLaunchConfig(size, device);
     DiagPartCudaKernel<<<diag_config.block_count,
                      diag_config.thread_per_block,
