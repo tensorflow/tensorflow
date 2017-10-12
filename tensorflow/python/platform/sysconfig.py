@@ -64,8 +64,8 @@ def get_compile_flags():
   flags = []
   flags.append('-I%s' % get_include())
   flags.append('-I%s/external/nsync/public' % get_include())
-  if tf.__cxx11_abi__ != -1:
-    flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % tf.__cxx11_abi__)
+  if tf.__cxx11_abi_flag__ != -1:
+    flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % tf.__cxx11_abi_flag__)
   return flags
 
 

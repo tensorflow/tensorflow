@@ -29,7 +29,7 @@ cat <<EOF > ${OUTPUT_FILENAME}
 #include <string>
 const char* tf_git_version() {return "${GIT_VERSION}";}
 const char* tf_compiler_version() {return __VERSION__;}
-const int tf_cxx11_abi() {
+const int tf_cxx11_abi_flag() {
 #ifdef _GLIBCXX_USE_CXX11_ABI
   return _GLIBCXX_USE_CXX11_ABI;
 #else
