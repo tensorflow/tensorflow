@@ -5782,6 +5782,21 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "map_and_batch_dataset_op",
+    srcs = ["map_and_batch_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        ":inplace_ops",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "parallel_map_dataset_op",
     srcs = ["parallel_map_dataset_op.cc"],
     deps = [
@@ -6074,6 +6089,7 @@ tf_kernel_library(
         ":ignore_errors_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",
+        ":map_and_batch_dataset_op",
         ":map_dataset_op",
         ":padded_batch_dataset_op",
         ":parallel_map_dataset_op",
