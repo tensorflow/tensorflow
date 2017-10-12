@@ -398,7 +398,8 @@ class LSTMBlockCellTest(test.TestCase):
             dtype=dtypes.float32,
             initializer=init_ops.zeros_initializer())
 
-      with variable_scope.variable_scope("", reuse=True):
+      with variable_scope.variable_scope(
+          variable_scope.get_variable_scope(), reuse=True):
         cell = lstm_ops.LSTMBlockFusedCell(
             cell_size, cell_clip=0, use_peephole=False)
 
@@ -414,7 +415,8 @@ class LSTMBlockCellTest(test.TestCase):
       # tiny (single-time) subsequences, i.e. unfuse the cell
       unfused_outputs_op = []
       state = None
-      with variable_scope.variable_scope("", reuse=True):
+      with variable_scope.variable_scope(
+          variable_scope.get_variable_scope(), reuse=True):
         for i, inp in enumerate(inputs):
           lengths = [int(i < l) for l in seq_lengths.eval()]
           output, state = cell(
