@@ -385,7 +385,7 @@ class CrfDecodeBackwardRnnCell(rnn_cell.RNNCell):
     """Initialize the CrfDecodeBackwardRnnCell.
 
     Args:
-      num_tags
+      num_tags: An integer.
     """
     self._num_tags = num_tags
 
@@ -426,16 +426,16 @@ def crf_decode(potentials, transition_params, sequence_length):
   This is a function for tensor.
 
   Args:
-    potentials: A [batch_size, max_seq_len, num_tags] tensor, matrix of
+    potentials: A [batch_size, max_seq_len, num_tags] tensor of
               unary potentials.
-    transition_params: A [num_tags, num_tags] tensor, matrix of
+    transition_params: A [num_tags, num_tags] matrix of
               binary potentials.
-    sequence_length: A [batch_size] tensor, containing sequence lengths.
+    sequence_length: A [batch_size] tensor of true sequence lengths.
 
   Returns:
-    decode_tags: A [batch_size, max_seq_len] tensor, with dtype tf.int32.
+    decode_tags: A [batch_size, max_seq_len] tensor, with dtype `tf.int32`.
                 Contains the highest scoring tag indicies.
-    best_score: A [batch_size] tensor, containing the score of decode_tags.
+    best_score: A [batch_size] tensor, containing the score of `decode_tags`.
   """
   # For simplicity, in shape comments, denote:
   # 'batch_size' by 'B', 'max_seq_len' by 'T' , 'num_tags' by 'O' (output).
