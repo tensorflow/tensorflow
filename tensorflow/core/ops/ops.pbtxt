@@ -12330,6 +12330,54 @@ op {
   is_stateful: true
 }
 op {
+  name: "MapAndBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "batch_size"
+    description: "A scalar representing the number of elements to accumulate in a\nbatch. It determines the number of concurrent invocations of `f` that process\nelements from `input_dataset` in parallel."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_parallel_batches"
+    description: "A scalar representing the number of batches to create in\nparallel. Processing multiple batches in parallel benefits workloads prone to\nstragglers."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset` and then"
+  description: "batches `batch_size` of them.\n\nUnlike a \"MapDataset\", which applies `f` sequentially, this dataset invokes up\nto `batch_size * num_parallel_batches` copies of `f` in parallel."
+}
+op {
   name: "MapClear"
   attr {
     name: "capacity"
