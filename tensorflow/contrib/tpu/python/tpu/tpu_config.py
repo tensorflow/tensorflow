@@ -63,7 +63,18 @@ class RunConfig(run_config_lib.RunConfig):
   """RunConfig with TPU support."""
 
   def __init__(self, tpu_config=None, evaluation_master='', master='',
-               **kwargs):
+               tf_random_seed=None, **kwargs):
+    """Constructs a RunConfig.
+
+    Args:
+      tpu_config: the TPUConfig that specifies TPU-specific configuration.
+      evaluation_master: a string. The address of the master to use for eval.
+      master: a string. The address of the master to use for training.
+      tf_random_seed: an int. Sets the TensorFlow random seed. Defaults to None,
+        which initializes it randomly based on the environment.
+    """
+    # We change the default random seed to None because that's a better default.
+    kwargs['tf_random_seed'] = tf_random_seed
     super(RunConfig, self).__init__(**kwargs)
     self._tpu_config = tpu_config or TPUConfig()
     self._evaluation_master = evaluation_master
