@@ -97,6 +97,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["binary_ops_test.py"],
     shard_count = 5,
+    tags = [
+        "optonly",  # Times out frequently in fastbuild mode.
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -179,6 +182,7 @@ tf_xla_py_test(
         "noasan",
         "nomsan",
         "notsan",
+        "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
         ":xla_test",
