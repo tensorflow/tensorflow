@@ -653,6 +653,36 @@ REGISTER_OP("IteratorGetNext")
 Gets the next output from the given iterator.
 )doc");
 
+REGISTER_OP("DatasetToSingleElement")
+    .Input("dataset: variant")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      std::vector<PartialTensorShape> output_shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      if (output_shapes.size() != c->num_outputs()) {
+        return errors::InvalidArgument(
+            "`output_shapes` must be the same length as `output_types` (",
+            output_shapes.size(), " vs. ", c->num_outputs());
+      }
+      for (size_t i = 0; i < output_shapes.size(); ++i) {
+        shape_inference::ShapeHandle output_shape_handle;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            output_shapes[i], &output_shape_handle));
+        c->set_output(static_cast<int>(i), output_shape_handle);
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Outputs the single element from the given dataset.
+
+dataset: A handle to a dataset that contains a single element.
+components: The components of the single element of `input`.
+)doc");
+
 REGISTER_OP("IteratorToStringHandle")
     .Input("resource_handle: resource")
     .Output("string_handle: string")
