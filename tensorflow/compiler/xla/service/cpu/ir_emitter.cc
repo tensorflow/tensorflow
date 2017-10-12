@@ -960,13 +960,14 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
 
       // Input tensor.
       const Shape& input_shape = convolution->operand(0)->shape();
-      int64 input_batch = input_shape.dimensions(dnums.batch_dimension());
+      int64 input_batch = input_shape.dimensions(dnums.input_batch_dimension());
       int64 input_rows = input_shape.dimensions(dnums.spatial_dimensions(0));
       int64 input_cols =
           one_dim_convolution
               ? 1
               : input_shape.dimensions(dnums.spatial_dimensions(1));
-      int64 input_channels = input_shape.dimensions(dnums.feature_dimension());
+      int64 input_channels =
+          input_shape.dimensions(dnums.input_feature_dimension());
 
       // Kernel tensor.
       const Shape& kernel_shape = convolution->operand(1)->shape();
@@ -1081,8 +1082,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
         for (int i = 0; i < num_spatial_dims; ++i) {
           output_spatial[i] = index[dnums.spatial_dimensions(i)];
         }
-        llvm::Value* output_feature = index[dnums.feature_dimension()];
-        llvm::Value* batch = index[dnums.batch_dimension()];
+        llvm::Value* output_feature = index[dnums.output_feature_dimension()];
+        llvm::Value* batch = index[dnums.output_batch_dimension()];
 
         // We will accumulate the products into this sum to calculate
         // the output entry at the given index.
@@ -1106,8 +1107,9 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
         }
         llvm::Value* input_feature =
             loops
-                .AddLoop(0, lhs->shape().dimensions(dnums.feature_dimension()),
-                         "iz")
+                .AddLoop(
+                    0, lhs->shape().dimensions(dnums.input_feature_dimension()),
+                    "iz")
                 ->GetIndVarValue();
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &ir_builder_);
@@ -1187,8 +1189,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
         for (int i = 0; i < num_spatial_dims; ++i) {
           input_index[dnums.spatial_dimensions(i)] = input_spatial[i];
         }
-        input_index[dnums.feature_dimension()] = input_feature;
-        input_index[dnums.batch_dimension()] = batch;
+        input_index[dnums.input_feature_dimension()] = input_feature;
+        input_index[dnums.input_batch_dimension()] = batch;
 
         llvm_ir::IrArray kernel_array(GetIrArrayFor(rhs));
         llvm_ir::IrArray::Index kernel_index(num_dims);
