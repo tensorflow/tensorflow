@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.contrib.tpu.python.tpu import util as util_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 
 
@@ -52,6 +53,14 @@ class TPUConfig(
               iterations_per_loop=2,
               num_shards=2,
               per_host_input_for_training=False):
+
+    # Check iterations_per_loop.
+    util_lib.check_positive_integer(iterations_per_loop,
+                                    'TPUConfig iterations_per_loop')
+
+    # Check num_shards.
+    util_lib.check_positive_integer(num_shards, 'TPUConfig num_shards')
+
     return super(TPUConfig, cls).__new__(
         cls,
         iterations_per_loop=iterations_per_loop,
