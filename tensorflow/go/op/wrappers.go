@@ -5477,6 +5477,39 @@ func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_han
 	return op.Output(0)
 }
 
+// Outputs the single element from the given dataset.
+//
+// Arguments:
+//	dataset: A handle to a dataset that contains a single element.
+//
+//
+//
+// Returns The components of the single element of `input`.
+func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "DatasetToSingleElement",
+		Input: []tf.Input{
+			dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("DatasetToSingleElement", err)
+		return
+	}
+	return components
+}
+
 // Gets the next output from the given iterator.
 func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
 	if scope.Err() != nil {
