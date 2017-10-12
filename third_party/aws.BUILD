@@ -18,6 +18,7 @@ cc_library(
         "@%ws%//tensorflow:darwin": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
+        "//conditions:default": [],
     }) + glob([
         "aws-cpp-sdk-core/include/**/*.h",
         "aws-cpp-sdk-core/source/*.cpp",
