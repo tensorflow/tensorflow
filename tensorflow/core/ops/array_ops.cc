@@ -2266,6 +2266,8 @@ size(t) ==> 12
 
 namespace {
 
+// This SliceHelper processes the output shape of the `slice`
+// when the tensor of `sizes` is available.
 template <typename T>
 Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
                    const Tensor* sizes_value,
@@ -2292,20 +2294,19 @@ Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
   return Status::OK();
 }
 
+// This SliceHelper processes the output shape of the `slice`
+// when the tensor of `sizes` is not available (null).
+// In this situation, we could still obtain partial information
+// from `MakeShapeFromShapeTensor` as a best effort operation.
 Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
                    ShapeHandle sizes_value,
                    std::vector<DimensionHandle>* dims) {
   for (int i = 0; i < c->Rank(sizes_value); ++i) {
     DimensionHandle dim = c->Dim(sizes_value, i);
     DimensionHandle begin = c->Dim(begin_value, i);
-    if (c->ValueKnown(begin) && c->ValueKnown(dim)) {
-      // If both `begin` and `size` are known, processing:
-      DimensionHandle result;
-      TF_RETURN_IF_ERROR(c->Subtract(dim, c->Dim(begin_value, i), &result));
-      dims->emplace_back(result);
-    } else {
-      dims->emplace_back(c->UnknownDim());
-    }
+    DimensionHandle result = c->UnknownDim();
+    TF_RETURN_IF_ERROR(c->Subtract(dim, begin, &result));
+    dims->emplace_back(result);
   }
 
   return Status::OK();
@@ -2340,9 +2341,10 @@ REGISTER_OP("Slice")
       ShapeHandle begin_value;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &begin_value));
 
-      // NOTE(mrry): We can't use `MakeShapeFromShapeTensor` for `sizes` because
-      // it might contain -1, which can't be represented (-1 in the ShapeHandle
-      // would mean "unknown".
+      // We check the tensor value here and will only use
+      // `MakeShapeFromShapeTensor` when `sizes_value` is null.
+      // The reason is that `sizes`might contain -1, which can't
+      // be represented (-1 in the ShapeHandle would mean "unknown".
       const Tensor* sizes_value = c->input_tensor(2);
 
       if (sizes_value != nullptr) {
@@ -2362,12 +2364,12 @@ REGISTER_OP("Slice")
         c->set_output(0, c->MakeShape(dims));
         return Status::OK();
       } else {
-        // In case `sizes` is not available, we could try to use
-        // `MakeShapeFromShapeTensor` here. If sizes contain -1, we will
-        // simply consider it as `Unknown`. This is less than ideal but
-        // still with improvement of shape inference.
-        // The following is an example that returns [None, 1, None] now
-        // (used to return [None, None, None]):
+        // In case `sizes` is not available (`sizes_value` is null),
+        // we could try to use `MakeShapeFromShapeTensor` here.
+        // If sizes contain -1, we will simply consider it as `Unknown`.
+        // This is less than ideal but still an improvement of shape inference.
+        // The following is an example that returns [None, 1, None] with this
+        // code path:
         //   z = tf.zeros((1, 2, 3))
         //   m = tf.slice(z, [0, 0, 0], [tf.constant(1) + 0, 1, -1])
         //   m.get_shape().as_list()
