@@ -21,8 +21,8 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include <stdlib.h>
 #include <unistd.h>
+#include <cstdlib>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -50,28 +50,38 @@ class MklCPUAllocator : public Allocator {
  public:
   // Constructor and other standard functions
 
-  MklCPUAllocator() {
+  /// Environment variable that user can set to upper bound on memory allocation
+  static constexpr const char* kMaxLimitStr = "TF_MKL_ALLOC_MAX_BYTES";
+
+  /// Default upper limit on allocator size - 64GB
+  static const size_t kDefaultMaxLimit = 64LL << 30;
+
+  MklCPUAllocator() { TF_CHECK_OK(Initialize()); }
+
+  ~MklCPUAllocator() override { delete allocator_; }
+
+  Status Initialize() {
     VLOG(2) << "MklCPUAllocator: In MklCPUAllocator";
 
     // Set upper bound on memory allocation to physical RAM available on the
     // CPU unless explicitly specified by user
-    uint64 max_mem_bytes = 64LL << 30;  // Default - 64 GB
+    uint64 max_mem_bytes = kDefaultMaxLimit;
 #if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
     max_mem_bytes =
         (uint64)sysconf(_SC_PHYS_PAGES) * (uint64)sysconf(_SC_PAGESIZE);
 #endif
-    char* user_mem_bytes = getenv(kMaxAllocSize);
+    char* user_mem_bytes = getenv(kMaxLimitStr);
 
     if (user_mem_bytes != NULL) {
       uint64 user_val = 0;
       if (!strings::safe_strtou64(user_mem_bytes, &user_val)) {
-        TF_CHECK_OK(errors::InvalidArgument(
-            "Invalid memory limit (", user_mem_bytes,
-            ") specified for MKL allocator through ", kMaxAllocSize));
+        return errors::InvalidArgument("Invalid memory limit (", user_mem_bytes,
+                                       ") specified for MKL allocator through ",
+                                       kMaxLimitStr);
       }
 #if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
       if (user_val > max_mem_bytes) {
-        LOG(WARNING) << "The user specifed a memory limit " << kMaxAllocSize
+        LOG(WARNING) << "The user specifed a memory limit " << kMaxLimitStr
                      << "=" << user_val
                      << " greater than available physical memory: "
                      << max_mem_bytes
@@ -91,9 +101,9 @@ class MklCPUAllocator : public Allocator {
     i_calloc = CallocHook;
     i_realloc = ReallocHook;
     i_free = FreeHook;
-  }
 
-  ~MklCPUAllocator() override { delete allocator_; }
+    return Status::OK();
+  }
 
   inline string Name() override { return kName; }
 
@@ -104,6 +114,8 @@ class MklCPUAllocator : public Allocator {
   inline void DeallocateRaw(void* ptr) override {
     allocator_->DeallocateRaw(ptr);
   }
+
+  void GetStats(AllocatorStats* stats) { return allocator_->GetStats(stats); }
 
  private:
   // Hooks provided by this allocator for memory allocation routines from MKL
@@ -135,9 +147,6 @@ class MklCPUAllocator : public Allocator {
 
   /// Name
   static constexpr const char* kName = "mklcpu";
-
-  /// Environment variable that user can set to upper bound on memory allocation
-  static constexpr const char* kMaxAllocSize = "TF_MKL_ALLOC_MAX_BYTES";
 
   /// The alignment that we need for the allocations
   static const size_t kAlignment = 64;
