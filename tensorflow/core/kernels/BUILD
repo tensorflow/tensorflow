@@ -838,7 +838,17 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "where_op",
-    prefix = "where_op",
+    srcs = ["where_op.cc"],
+    hdrs = ["where_op.h"],
+    gpu_srcs = [
+        "where_op.h",
+        "where_op_gpu.cu.h",
+        "where_op_gpu_impl_1.cu.cc",
+        "where_op_gpu_impl_2.cu.cc",
+        "where_op_gpu_impl_3.cu.cc",
+        "where_op_gpu_impl_4.cu.cc",
+        "where_op_gpu_impl_5.cu.cc",
+    ],
     deps = if_cuda([
         ":cuda_solvers",
         "@cub_archive//:cub",
@@ -900,7 +910,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "constant_op_test",
     size = "small",
     srcs = ["constant_op_test.cc"],
@@ -5791,6 +5801,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "scan_dataset_op",
+    srcs = ["scan_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "flat_map_dataset_op",
     srcs = ["flat_map_dataset_op.cc"],
     deps = [
@@ -6061,6 +6085,7 @@ tf_kernel_library(
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",
+        ":scan_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
         ":sloppy_interleave_dataset_op",

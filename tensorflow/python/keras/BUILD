@@ -654,6 +654,7 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/models_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67509773
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -667,7 +668,10 @@ py_test(
     size = "medium",
     srcs = ["_impl/keras/estimator_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "noasan",
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

@@ -180,7 +180,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "mkl-dnn-b01e3a55a07be62172e713bcd2644c5176360212",
       build_file = str(Label("//third_party/mkl_dnn:mkldnn.BUILD")),
   )
-  
+
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
@@ -313,7 +313,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   native.new_http_archive(
       name = "sqlite_archive",
-      urls = ["http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip"],
+      urls = [
+          "http://mirror.bazel.build/www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
+          "http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
+      ],
       sha256 = "208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4",
       strip_prefix = "sqlite-amalgamation-3200000",
       build_file = str(Label("//third_party:sqlite.BUILD"))
@@ -722,6 +725,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.bind(
       name = "cub",
       actual = "@cub_archive//:cub",
+  )
+
+  native.new_http_archive(
+      name = "cython",
+      sha256 = "6dcd30b5ceb887b2b965ee7ceb82ea3acb5f0642fe2206c7636b45acea4798e5",
+      urls = [
+          "http://mirror.bazel.build/github.com/cython/cython/archive/3732784c45cfb040a5b0936951d196f83a12ea17.tar.gz",
+          "https://github.com/cython/cython/archive/3732784c45cfb040a5b0936951d196f83a12ea17.tar.gz",
+      ],
+      strip_prefix = "cython-3732784c45cfb040a5b0936951d196f83a12ea17",
+      build_file = str(Label("//third_party:cython.BUILD")),
   )
 
   native.http_archive(

@@ -912,9 +912,10 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // A Broadcast that feeds a unary element-wise operation can sink the
   // broadcast after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
-      changed_,
+      bool sink_succeeded,
       TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
-  if (changed_) {
+  changed_ |= sink_succeeded;
+  if (sink_succeeded) {
     return Status::OK();
   }
 
@@ -1217,9 +1218,10 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   // A Reshape that feeds a unary element-wise operation can sink the
   // reshape after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
-      changed_,
+      bool sink_succeeded,
       TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(reshape));
-  if (changed_) {
+  changed_ |= sink_succeeded;
+  if (sink_succeeded) {
     return Status::OK();
   }
 
@@ -1262,6 +1264,11 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     return ReplaceInstruction(dynamic_slice, operand);
   }
+  // DynamicSlice where operand has the same size as the output and
+  // start_indices are all zero is simply equal to operand.
+  if (IsAll(start_indices, 0) && SameShape(operand, dynamic_slice)) {
+    return ReplaceInstruction(dynamic_slice, operand);
+  }
   return Status::OK();
 }
 
@@ -1280,8 +1287,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // not to affect the visible behavior of this op even when the indices are out
   // of range.  Currently dynamic-update-slice wraps out-of-range indices, so
   // we can only remove the op if its indices never wrap.)
-  if (start_indices->IsConstant() && start_indices->literal().IsAll(0) &&
-      ShapeUtil::Compatible(dynamic_update_slice->shape(), update->shape())) {
+  if (IsAll(start_indices, 0) && SameShape(dynamic_update_slice, update)) {
     return ReplaceInstruction(dynamic_update_slice, update);
   }
   return Status::OK();
@@ -1782,7 +1788,7 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
 
 // Tries to determine the number of times the given loop executes.  Currently
 // simply returns 0, 1, or "can't tell" (nullopt).
-static optional<int64> GetLoopTripCount(const HloInstruction* while_op) {
+static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
   VLOG(2) << "Getting trip count for loop " << while_op->ToString();
 
@@ -1803,15 +1809,10 @@ static optional<int64> GetLoopTripCount(const HloInstruction* while_op) {
   // compute how many times the loop executes.  Start by computing the induction
   // variable's initial value.
   HloEvaluator evaluator;
-  auto* while_init = while_op->operand(0);
-  auto* indvar_init = while_init->operand(*indvar_tuple_idx);
-  // TODO(b/67157142): This should not be redundant, remove this when the
-  // underlying issue has been addressed.
-  if (!hlo_query::AllOperandsAreConstants(*indvar_init)) {
-    return nullopt;
-  }
+  auto* while_init = while_op->mutable_operand(0);
+  auto* indvar_init = while_init->mutable_operand(*indvar_tuple_idx);
   StatusOr<std::unique_ptr<Literal>> indvar_init_result =
-      evaluator.Evaluate(indvar_init->Clone().get());
+      evaluator.Evaluate(indvar_init);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init: "
             << indvar_init_result.status();

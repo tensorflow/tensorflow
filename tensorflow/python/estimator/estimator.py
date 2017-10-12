@@ -51,6 +51,7 @@ from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
@@ -203,6 +204,34 @@ class Estimator(object):
       return self._call_model_fn(features, labels, mode, config)
 
     return public_model_fn
+
+  # TODO(ispir): support a list of names
+  def get_variable_value(self, name):
+    """Returns value of the variable given by name.
+
+    Args:
+      name: string or a list of string, name of the tensor.
+
+    Returns:
+      Numpy array - value of the tensor.
+
+    Raises:
+      ValueError: If the Estimator has not produced a checkpoint yet.
+    """
+    _check_checkpoint_available(self.model_dir)
+    return training.load_variable(self.model_dir, name)
+
+  def get_variable_names(self):
+    """Returns list of all variable names in this model.
+
+    Returns:
+      List of names.
+
+    Raises:
+      ValueError: If the Estimator has not produced a checkpoint yet.
+    """
+    _check_checkpoint_available(self.model_dir)
+    return [name for name, _ in training.list_variables(self.model_dir)]
 
   def latest_checkpoint(self):
     """Finds the filename of latest saved checkpoint file in `model_dir`.
@@ -536,13 +565,16 @@ class Estimator(object):
       return export_dir
 
   def _get_features_from_input_fn(self, input_fn, mode):
+    """Extracts the `features` from return values of `input_fn`."""
     result = self._call_input_fn(input_fn, mode)
-    if not ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
-      logging.warning('Input graph does not contain a QueueRunner. '
-                      'That means predict yields forever. '
-                      'This is probably a mistake.')
     if isinstance(result, (list, tuple)):
-      return result[0]
+      # Unconditionally drop the label (the second element of result).
+      result = result[0]
+
+    if not _has_dataset_or_queue_runner(result):
+      logging.warning('Input graph does not use tf.data.Dataset or contain a '
+                      'QueueRunner. That means predict yields forever. '
+                      'This is probably a mistake.')
     return result
 
   def _get_features_and_labels_from_input_fn(self, input_fn, mode):
@@ -818,6 +850,13 @@ class Estimator(object):
     return eval_results
 
 
+def _check_checkpoint_available(model_dir):
+  latest_path = saver.latest_checkpoint(model_dir)
+  if not latest_path:
+    raise ValueError(
+        'Could not find trained model in model_dir: {}.'.format(model_dir))
+
+
 def _check_hooks_type(hooks):
   """Returns hooks if all are SessionRunHook, raises TypeError otherwise."""
   hooks = list(hooks or [])
@@ -970,3 +1009,16 @@ def _write_dict_to_summary(output_dir,
           key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
+
+
+def _has_dataset_or_queue_runner(maybe_tensor):
+  """Returns True if TF dataset or QueueRunner has been used."""
+  # Check TF dataset first. Here, we use a simple algorithm to check the top
+  # level Tensors only, which should be sufficient for most users.
+  tensors = [x for x in nest.flatten(maybe_tensor) if isinstance(x, ops.Tensor)]
+  if any([t.op.type == 'IteratorGetNext' for t in tensors]):
+    return True
+
+  # Now, check queue.
+  return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
+

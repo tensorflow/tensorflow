@@ -165,8 +165,8 @@ def tf_copts():
       "-DEIGEN_AVOID_STL_ARRAY",
       "-Iexternal/gemmlowp",
       "-Wno-sign-compare",
-      "-ftemplate-depth=900",
       "-fno-exceptions",
+      "-ftemplate-depth=900",
   ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
       ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
@@ -873,18 +873,22 @@ def tf_mkl_kernel_library(name,
                           copts=tf_copts(),
                           nocopts="-fno-exceptions",
                           **kwargs):
-    if not bool(srcs):
-        srcs = []
-    if not bool(hdrs):
-        hdrs = []
+  """A rule to build MKL-based TensorFlow kernel libraries."""
+  gpu_srcs = gpu_srcs  # unused argument
+  kwargs = kwargs  # unused argument
 
-    if prefix:    
-        srcs = srcs + native.glob(
-            [prefix + "*.cc"])
-        hdrs = hdrs + native.glob(
-            [prefix + "*.h"])
+  if not bool(srcs):
+    srcs = []
+  if not bool(hdrs):
+    hdrs = []
 
-    if_mkl(
+  if prefix:
+    srcs = srcs + native.glob(
+        [prefix + "*.cc"])
+    hdrs = hdrs + native.glob(
+        [prefix + "*.h"])
+
+  if_mkl(
       native.cc_library(
           name=name,
           srcs=srcs,

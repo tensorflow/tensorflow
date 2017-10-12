@@ -298,6 +298,17 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   constexpr int rank = is_int8x4 ? 5 : 4;
   constexpr int vect = is_int8x4 ? 4 : 1;
 
+  if (is_int8x4) {
+    int cc_major, cc_minor;
+    stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                     &cc_minor);
+    OP_REQUIRES(
+        ctx, cc_major >= 6 && cc_minor >= 1,
+        errors::Unimplemented(
+            "FusedConv2DBiasActivation for int8 is only supported on GPUs with "
+            "compute capability 6.1 or later."));
+  }
+
   const int batch_size = GetTensorDim(conv_input_param, data_format, 'N');
   int conv_input_rows = GetTensorDim(conv_input_param, data_format, 'H');
   int conv_input_cols = GetTensorDim(conv_input_param, data_format, 'W');

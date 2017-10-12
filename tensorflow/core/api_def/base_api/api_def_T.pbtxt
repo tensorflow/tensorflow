@@ -1,0 +1,619 @@
+op {
+  graph_op_name: "TFRecordDataset"
+  endpoint {
+    name: "TFRecordDataset"
+  }
+  summary: "Creates a dataset that emits the records from one or more TFRecord files."
+}
+op {
+  graph_op_name: "TFRecordReader"
+  endpoint {
+    name: "TFRecordReader"
+  }
+  summary: "A Reader that outputs the records from a TensorFlow Records file."
+}
+op {
+  graph_op_name: "TFRecordReaderV2"
+  endpoint {
+    name: "TFRecordReaderV2"
+  }
+  summary: "A Reader that outputs the records from a TensorFlow Records file."
+}
+op {
+  graph_op_name: "TakeDataset"
+  endpoint {
+    name: "TakeDataset"
+  }
+  summary: "Creates a dataset that contains `count` elements from the `input_dataset`."
+}
+op {
+  graph_op_name: "TakeManySparseFromTensorsMap"
+  endpoint {
+    name: "TakeManySparseFromTensorsMap"
+  }
+  summary: "Read `SparseTensors` from a `SparseTensorsMap` and concatenate them."
+  description: <<END
+The input `sparse_handles` must be an `int64` matrix of shape `[N, 1]` where
+`N` is the minibatch size and the rows correspond to the output handles of
+`AddSparseToTensorsMap` or `AddManySparseToTensorsMap`.  The ranks of the
+original `SparseTensor` objects that went into the given input ops must all
+match.  When the final `SparseTensor` is created, it has rank one
+higher than the ranks of the incoming `SparseTensor` objects
+(they have been concatenated along a new row dimension on the left).
+
+The output `SparseTensor` object's shape values for all dimensions but the
+first are the max across the input `SparseTensor` objects' shape values
+for the corresponding dimensions.  Its first shape value is `N`, the minibatch
+size.
+
+The input `SparseTensor` objects' indices are assumed ordered in
+standard lexicographic order.  If this is not the case, after this
+step run `SparseReorder` to restore index ordering.
+
+For example, if the handles represent an input, which is a `[2, 3]` matrix
+representing two original `SparseTensor` objects:
+
+```
+    index = [ 0]
+            [10]
+            [20]
+    values = [1, 2, 3]
+    shape = [50]
+```
+
+and
+
+```
+    index = [ 2]
+            [10]
+    values = [4, 5]
+    shape = [30]
+```
+
+then the final `SparseTensor` will be:
+
+```
+    index = [0  0]
+            [0 10]
+            [0 20]
+            [1  2]
+            [1 10]
+    values = [1, 2, 3, 4, 5]
+    shape = [2 50]
+```
+END
+}
+op {
+  graph_op_name: "Tan"
+  endpoint {
+    name: "Tan"
+  }
+  summary: "Computes tan of x element-wise."
+}
+op {
+  graph_op_name: "Tanh"
+  endpoint {
+    name: "Tanh"
+  }
+  summary: "Computes hyperbolic tangent of `x` element-wise."
+}
+op {
+  graph_op_name: "TanhGrad"
+  endpoint {
+    name: "TanhGrad"
+  }
+  summary: "Computes the gradient for the tanh of `x` wrt its input."
+  description: <<END
+Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`
+is the corresponding input gradient.
+END
+}
+op {
+  graph_op_name: "TemporaryVariable"
+  endpoint {
+    name: "TemporaryVariable"
+  }
+  summary: "Returns a tensor that may be mutated, but only persists within a single step."
+  description: <<END
+This is an experimental op for internal use only and it is possible to use this
+op in unsafe ways.  DO NOT USE unless you fully understand the risks.
+
+It is the caller's responsibility to ensure that 'ref' is eventually passed to a
+matching 'DestroyTemporaryVariable' op after all other uses have completed.
+
+Outputs a ref to the tensor state so it may be read or modified.
+
+  E.g.
+      var = state_ops._temporary_variable([1, 2], types.float_)
+      var_name = var.op.name
+      var = state_ops.assign(var, [[4.0, 5.0]])
+      var = state_ops.assign_add(var, [[6.0, 7.0]])
+      final = state_ops._destroy_temporary_variable(var, var_name=var_name)
+END
+}
+op {
+  graph_op_name: "TensorArray"
+  endpoint {
+    name: "TensorArray"
+  }
+}
+op {
+  graph_op_name: "TensorArrayClose"
+  endpoint {
+    name: "TensorArrayClose"
+  }
+}
+op {
+  graph_op_name: "TensorArrayCloseV2"
+  endpoint {
+    name: "TensorArrayCloseV2"
+  }
+  summary: "Deprecated. Use TensorArrayCloseV3"
+}
+op {
+  graph_op_name: "TensorArrayCloseV3"
+  endpoint {
+    name: "TensorArrayCloseV3"
+  }
+  summary: "Delete the TensorArray from its resource container."
+  description: <<END
+This enables the user to close and release the resource in the middle
+of a step/run.
+END
+}
+op {
+  graph_op_name: "TensorArrayConcat"
+  endpoint {
+    name: "TensorArrayConcat"
+  }
+}
+op {
+  graph_op_name: "TensorArrayConcatV2"
+  endpoint {
+    name: "TensorArrayConcatV2"
+  }
+  summary: "Deprecated. Use TensorArrayConcatV3"
+}
+op {
+  graph_op_name: "TensorArrayConcatV3"
+  endpoint {
+    name: "TensorArrayConcatV3"
+  }
+  summary: "Concat the elements from the TensorArray into value `value`."
+  description: <<END
+Takes `T` elements of shapes
+
+  ```
+  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)
+  ```
+
+and concatenates them into a Tensor of shape:
+
+  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```
+
+All elements must have the same shape (excepting the first dimension).
+END
+}
+op {
+  graph_op_name: "TensorArrayGather"
+  endpoint {
+    name: "TensorArrayGather"
+  }
+}
+op {
+  graph_op_name: "TensorArrayGatherV2"
+  endpoint {
+    name: "TensorArrayGatherV2"
+  }
+  summary: "Deprecated. Use TensorArrayGatherV3"
+}
+op {
+  graph_op_name: "TensorArrayGatherV3"
+  endpoint {
+    name: "TensorArrayGatherV3"
+  }
+  summary: "Gather specific elements from the TensorArray into output `value`."
+  description: <<END
+All elements selected by `indices` must have the same shape.
+END
+}
+op {
+  graph_op_name: "TensorArrayGrad"
+  endpoint {
+    name: "TensorArrayGrad"
+  }
+}
+op {
+  graph_op_name: "TensorArrayGradV2"
+  endpoint {
+    name: "TensorArrayGradV2"
+  }
+  summary: "Deprecated. Use TensorArrayGradV3"
+}
+op {
+  graph_op_name: "TensorArrayGradV3"
+  endpoint {
+    name: "TensorArrayGradV3"
+  }
+  summary: "Creates a TensorArray for storing the gradients of values in the given handle."
+  description: <<END
+If the given TensorArray gradient already exists, returns a reference to it.
+
+Locks the size of the original TensorArray by disabling its dynamic size flag.
+
+**A note about the input flow_in:**
+
+The handle flow_in forces the execution of the gradient lookup to occur
+only after certain other operations have occurred.  For example, when
+the forward TensorArray is dynamically sized, writes to this TensorArray
+may resize the object.  The gradient TensorArray is statically sized based
+on the size of the forward TensorArray when this operation executes.
+Furthermore, the size of the forward TensorArray is frozen by this call.
+As a result, the flow is used to ensure that the call to generate the gradient
+TensorArray only happens after all writes are executed.
+
+In the case of dynamically sized TensorArrays, gradient computation should
+only be performed on read operations that have themselves been chained via
+flow to occur only after all writes have executed. That way the final size
+of the forward TensorArray is known when this operation is called.
+
+**A note about the source attribute:**
+
+TensorArray gradient calls use an accumulator TensorArray object.  If
+multiple gradients are calculated and run in the same session, the multiple
+gradient nodes may accidentally flow through the same accumulator TensorArray.
+This double counts and generally breaks the TensorArray gradient flow.
+
+The solution is to identify which gradient call this particular
+TensorArray gradient is being called in.  This is performed by identifying
+a unique string (e.g. "gradients", "gradients_1", ...) from the input
+gradient Tensor's name.  This string is used as a suffix when creating
+the TensorArray gradient object here (the attribute `source`).
+
+The attribute `source` is added as a suffix to the forward TensorArray's
+name when performing the creation / lookup, so that each separate gradient
+calculation gets its own TensorArray accumulator.
+END
+}
+op {
+  graph_op_name: "TensorArrayPack"
+  endpoint {
+    name: "TensorArrayPack"
+  }
+}
+op {
+  graph_op_name: "TensorArrayRead"
+  endpoint {
+    name: "TensorArrayRead"
+  }
+}
+op {
+  graph_op_name: "TensorArrayReadV2"
+  endpoint {
+    name: "TensorArrayReadV2"
+  }
+  summary: "Deprecated. Use TensorArrayReadV3"
+}
+op {
+  graph_op_name: "TensorArrayReadV3"
+  endpoint {
+    name: "TensorArrayReadV3"
+  }
+  summary: "Read an element from the TensorArray into output `value`."
+}
+op {
+  graph_op_name: "TensorArrayScatter"
+  endpoint {
+    name: "TensorArrayScatter"
+  }
+}
+op {
+  graph_op_name: "TensorArrayScatterV2"
+  endpoint {
+    name: "TensorArrayScatterV2"
+  }
+  summary: "Deprecated. Use TensorArrayScatterV3"
+}
+op {
+  graph_op_name: "TensorArrayScatterV3"
+  endpoint {
+    name: "TensorArrayScatterV3"
+  }
+  summary: "Scatter the data from the input value into specific TensorArray elements."
+  description: <<END
+`indices` must be a vector, its length must match the first dim of `value`.
+END
+}
+op {
+  graph_op_name: "TensorArraySize"
+  endpoint {
+    name: "TensorArraySize"
+  }
+}
+op {
+  graph_op_name: "TensorArraySizeV2"
+  endpoint {
+    name: "TensorArraySizeV2"
+  }
+  summary: "Deprecated. Use TensorArraySizeV3"
+}
+op {
+  graph_op_name: "TensorArraySizeV3"
+  endpoint {
+    name: "TensorArraySizeV3"
+  }
+  summary: "Get the current size of the TensorArray."
+}
+op {
+  graph_op_name: "TensorArraySplit"
+  endpoint {
+    name: "TensorArraySplit"
+  }
+}
+op {
+  graph_op_name: "TensorArraySplitV2"
+  endpoint {
+    name: "TensorArraySplitV2"
+  }
+  summary: "Deprecated. Use TensorArraySplitV3"
+}
+op {
+  graph_op_name: "TensorArraySplitV3"
+  endpoint {
+    name: "TensorArraySplitV3"
+  }
+  summary: "Split the data from the input value into TensorArray elements."
+  description: <<END
+Assuming that `lengths` takes on values
+
+  ```(n0, n1, ..., n(T-1))```
+
+and that `value` has shape
+
+  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,
+
+this splits values into a TensorArray with T tensors.
+
+TensorArray index t will be the subtensor of values with starting position
+
+  ```(n0 + n1 + ... + n(t-1), 0, 0, ...)```
+
+and having size
+
+  ```nt x d0 x d1 x ...```
+END
+}
+op {
+  graph_op_name: "TensorArrayUnpack"
+  endpoint {
+    name: "TensorArrayUnpack"
+  }
+}
+op {
+  graph_op_name: "TensorArrayV2"
+  endpoint {
+    name: "TensorArrayV2"
+  }
+  summary: "Deprecated. Use TensorArrayV3"
+}
+op {
+  graph_op_name: "TensorArrayV3"
+  endpoint {
+    name: "TensorArrayV3"
+  }
+  summary: "An array of Tensors of given size."
+  description: <<END
+Write data via Write and read via Read or Pack.
+END
+}
+op {
+  graph_op_name: "TensorArrayWrite"
+  endpoint {
+    name: "TensorArrayWrite"
+  }
+}
+op {
+  graph_op_name: "TensorArrayWriteV2"
+  endpoint {
+    name: "TensorArrayWriteV2"
+  }
+  summary: "Deprecated. Use TensorArrayGradV3"
+}
+op {
+  graph_op_name: "TensorArrayWriteV3"
+  endpoint {
+    name: "TensorArrayWriteV3"
+  }
+  summary: "Push an element onto the tensor_array."
+}
+op {
+  graph_op_name: "TensorDataset"
+  endpoint {
+    name: "TensorDataset"
+  }
+  summary: "Creates a dataset that emits `components` as a tuple of tensors once."
+}
+op {
+  graph_op_name: "TensorSliceDataset"
+  endpoint {
+    name: "TensorSliceDataset"
+  }
+  summary: "Creates a dataset that emits each dim-0 slice of `components` once."
+}
+op {
+  graph_op_name: "TensorSummary"
+  endpoint {
+    name: "TensorSummary"
+  }
+  summary: "Outputs a `Summary` protocol buffer with a tensor."
+  description: <<END
+This op is being phased out in favor of TensorSummaryV2, which lets callers pass
+a tag as well as a serialized SummaryMetadata proto string that contains
+plugin-specific data. We will keep this op to maintain backwards compatibility.
+END
+}
+op {
+  graph_op_name: "TensorSummaryV2"
+  endpoint {
+    name: "TensorSummaryV2"
+  }
+  summary: "Outputs a `Summary` protocol buffer with a tensor and per-plugin data."
+}
+op {
+  graph_op_name: "TextLineDataset"
+  endpoint {
+    name: "TextLineDataset"
+  }
+  summary: "Creates a dataset that emits the lines of one or more text files."
+}
+op {
+  graph_op_name: "TextLineReader"
+  endpoint {
+    name: "TextLineReader"
+  }
+  summary: "A Reader that outputs the lines of a file delimited by \'\\n\'."
+}
+op {
+  graph_op_name: "TextLineReaderV2"
+  endpoint {
+    name: "TextLineReaderV2"
+  }
+  summary: "A Reader that outputs the lines of a file delimited by \'\\n\'."
+}
+op {
+  graph_op_name: "ThreadUnsafeUnigramCandidateSampler"
+  endpoint {
+    name: "ThreadUnsafeUnigramCandidateSampler"
+  }
+  summary: "Generates labels for candidate sampling with a learned unigram distribution."
+  description: <<END
+See explanations of candidate sampling and the data formats at
+go/candidate-sampling.
+
+For each batch, this op picks a single set of sampled candidate labels.
+
+The advantages of sampling candidates per-batch are simplicity and the
+possibility of efficient dense matrix multiplication. The disadvantage is that
+the sampled candidates must be chosen independently of the context and of the
+true labels.
+END
+}
+op {
+  graph_op_name: "Tile"
+  endpoint {
+    name: "Tile"
+  }
+  summary: "Constructs a tensor by tiling a given tensor."
+  description: <<END
+This operation creates a new tensor by replicating `input` `multiples` times.
+The output tensor's i'th dimension has `input.dims(i) * multiples[i]` elements,
+and the values of `input` are replicated `multiples[i]` times along the 'i'th
+dimension. For example, tiling `[a b c d]` by `[2]` produces
+`[a b c d a b c d]`.
+END
+}
+op {
+  graph_op_name: "TileGrad"
+  endpoint {
+    name: "TileGrad"
+  }
+  summary: "Returns the gradient of `Tile`."
+  description: <<END
+Since `Tile` takes an input and repeats the input `multiples` times
+along each dimension, `TileGrad` takes in `multiples` and aggregates
+each repeated tile of `input` into `output`.
+END
+}
+op {
+  graph_op_name: "TopK"
+  endpoint {
+    name: "TopK"
+  }
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: <<END
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
+
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
+
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
+
+If `k` varies dynamically, use `TopKV2` below.
+END
+}
+op {
+  graph_op_name: "TopKV2"
+  endpoint {
+    name: "TopKV2"
+  }
+  summary: "Finds values and indices of the `k` largest elements for the last dimension."
+  description: <<END
+If the input is a vector (rank-1), finds the `k` largest entries in the vector
+and outputs their values and indices as vectors.  Thus `values[j]` is the
+`j`-th largest entry in `input`, and its index is `indices[j]`.
+
+For matrices (resp. higher rank input), computes the top `k` entries in each
+row (resp. vector along the last dimension).  Thus,
+
+    values.shape = indices.shape = input.shape[:-1] + [k]
+
+If two elements are equal, the lower-index element appears first.
+END
+}
+op {
+  graph_op_name: "Transpose"
+  endpoint {
+    name: "Transpose"
+  }
+  summary: "Shuffle dimensions of x according to a permutation."
+  description: <<END
+The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
+  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
+END
+}
+op {
+  graph_op_name: "TruncateDiv"
+  endpoint {
+    name: "TruncateDiv"
+  }
+  summary: "Returns x / y element-wise for integer types."
+  description: <<END
+Truncation designates that negative numbers will round fractional quantities
+toward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different
+than Python semantics. See `FloorDiv` for a division function that matches
+Python Semantics.
+
+*NOTE*: `TruncateDiv` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "TruncateMod"
+  endpoint {
+    name: "TruncateMod"
+  }
+  summary: "Returns element-wise remainder of division. This emulates C semantics in that"
+  description: <<END
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
+
+*NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "TruncatedNormal"
+  endpoint {
+    name: "TruncatedNormal"
+  }
+  summary: "Outputs random values from a truncated normal distribution."
+  description: <<END
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+END
+}

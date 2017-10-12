@@ -459,34 +459,32 @@ XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsU32) {
   ComputeAndCompareR0<uint32>(&builder, 2, {});
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalAnd) {
+XLA_TEST_F(ScalarComputationsTest, BooleanAnd) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {
       ComputationBuilder builder(client_, TestName());
-      builder.LogicalAnd(builder.ConstantR0<bool>(x),
-                         builder.ConstantR0<bool>(y));
+      builder.And(builder.ConstantR0<bool>(x), builder.ConstantR0<bool>(y));
 
       ComputeAndCompareR0<bool>(&builder, x && y, {});
     }
   }
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalOr) {
+XLA_TEST_F(ScalarComputationsTest, BooleanOr) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {
       ComputationBuilder builder(client_, TestName());
-      builder.LogicalOr(builder.ConstantR0<bool>(x),
-                        builder.ConstantR0<bool>(y));
+      builder.Or(builder.ConstantR0<bool>(x), builder.ConstantR0<bool>(y));
 
       ComputeAndCompareR0<bool>(&builder, x || y, {});
     }
   }
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalNot) {
+XLA_TEST_F(ScalarComputationsTest, BooleanNot) {
   for (bool x : {false, true}) {
     ComputationBuilder builder(client_, TestName());
-    builder.LogicalNot(builder.ConstantR0<bool>(x));
+    builder.Not(builder.ConstantR0<bool>(x));
 
     ComputeAndCompareR0<bool>(&builder, !x, {});
   }

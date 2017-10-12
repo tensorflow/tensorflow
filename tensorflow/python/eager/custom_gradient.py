@@ -78,14 +78,13 @@ def custom_gradient(f):
     # second derivative this way if they capture any output tensors. Change the
     # signature of custom_gradient.
     def actual_grad_fn(*outputs):
-      return grad_fn(*outputs)
+      return nest.flatten(grad_fn(*outputs))
 
     flat_result = nest.flatten(result)
     tape.record_operation(
         f.__name__,
         flat_result,
         input_tensors,
-        [],
         actual_grad_fn)
     flat_result = list(flat_result)
     return result

@@ -141,12 +141,15 @@ py_library(
 
 py_test(
     name = "training_test",
-    size = "small",
+    size = "medium",
     srcs = ["training_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
+        ":dnn",
         ":estimator",
         ":exporter",
+        ":inputs",
         ":run_config",
         ":training",
         "//tensorflow/python:client_testlib",
@@ -155,6 +158,7 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/feature_column",
     ],
 )
 
@@ -238,7 +242,10 @@ py_test(
     srcs = ["canned/dnn_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":dnn",
         ":dnn_testing_utils",
@@ -292,7 +299,10 @@ py_test(
     srcs = ["canned/dnn_linear_combined_test.py"],
     shard_count = 8,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":dnn_linear_combined",
         ":dnn_testing_utils",
@@ -369,6 +379,7 @@ py_test(
     name = "estimator_test",
     srcs = ["estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67510291
     deps = [
         ":estimator",
         ":export_export",
@@ -395,6 +406,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
@@ -642,7 +654,10 @@ py_test(
     srcs = ["canned/linear_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":linear",
         ":linear_testing_utils",

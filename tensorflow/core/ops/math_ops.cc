@@ -49,6 +49,38 @@ inputs: Must all be the same size and shape.
 
 // --------------------------------------------------------------------------
 
+// Note that the following operator is just a placeholder and has no
+// associated kernel. The code in accumulate_n_optimizer.cc replaces
+// this placeholder with a graph of operators that do have kernels.
+// The Python code that generates instances of this op is currently in
+// contrib/framework/python/ops/accumulate_n_v2.py
+REGISTER_OP("AccumulateNV2")
+    .Input("inputs: N * T")
+    .Output("sum: T")
+    .Attr("N: int >= 1")
+    .Attr("T: numbertype")
+    .Attr("shape: shape")
+    .SetIsCommutative()
+    .SetIsAggregate()
+    .SetShapeFn(shape_inference::ExplicitShape)
+    .Doc(R"doc(
+Returns the element-wise sum of a list of tensors.
+
+`tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
+wait for all of its inputs to be ready before beginning to sum. This can
+save memory if inputs are ready at different times, since minimum temporary
+storage is proportional to the output size rather than the inputs size.
+
+Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
+
+Returns a `Tensor` of same shape and type as the elements of `inputs`.
+
+inputs: A list of `Tensor` objects, each with same shape and type.
+shape: Shape of elements of `inputs`.
+)doc");
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("BatchMatMul")
     .Input("x: T")
     .Input("y: T")
@@ -692,8 +724,8 @@ REGISTER_OP("Mod")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns element-wise remainder of division. This emulates C semantics in that
-the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
-y + truncate_mod(x, y) = x`.
+the result here is consistent with a truncating divide. E.g.
+`tf.truncatediv(x, y) * y + truncate_mod(x, y) = x`.
 
 *NOTE*: `Mod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)

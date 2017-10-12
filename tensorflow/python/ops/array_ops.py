@@ -124,7 +124,13 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   if context.in_graph_mode():
     return gen_array_ops.identity(input, name=name)
   else:
-    if context.context().device_name != input.device:
+    try:
+      in_device = input.device
+    except AttributeError:
+      input = ops.convert_to_tensor(input)
+      in_device = input.device
+    # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
+    if context.context().device_name != in_device:
       return input._copy()  # pylint: disable=protected-access
     return input
 
@@ -2436,7 +2442,9 @@ def where(condition, x=None, y=None, name=None):
     ValueError: When exactly one of `x` or `y` is non-None.
   """
   if x is None and y is None:
-    return gen_array_ops.where(input=condition, name=name)
+    with ops.name_scope(name, "Where", [condition]) as name:
+      condition = ops.convert_to_tensor(condition, dtype=dtypes.bool)
+      return gen_array_ops.where(input=condition, name=name)
   elif x is not None and y is not None:
     return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
   else:

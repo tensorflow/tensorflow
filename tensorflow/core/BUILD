@@ -651,14 +651,15 @@ cc_library(
         ":image_ops_op_lib",
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
-        ":lookup_ops_op_lib",
         ":logging_ops_op_lib",
+        ":lookup_ops_op_lib",
         ":math_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
+        ":resource_variable_ops_op_lib",
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
@@ -1938,6 +1939,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
 tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [
+        "common_runtime/accumulate_n_optimizer.cc",
         "common_runtime/allocator_retry.cc",
         "common_runtime/bfc_allocator.cc",
         "common_runtime/build_graph_options.cc",
@@ -3312,6 +3314,36 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:example_parsing_ops",
+    ],
+)
+
+filegroup(
+    name = "base_api_def",
+    data = glob(["api_def/base_api/*"]),
+)
+
+tf_cc_test(
+    name = "api_test",
+    srcs = ["api_def/api_test.cc"],
+    data = [
+        ":base_api_def",
+        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":op_gen_lib",
+        ":op_gen_overrides_proto_cc",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
     ],
 )
 

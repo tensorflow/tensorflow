@@ -35,7 +35,17 @@ class AbsoluteValue(bijector.Bijector):
   """Computes `Y = g(X) = Abs(X)`, element-wise.
 
   This non-injective bijector allows for transformations of scalar distributions
-  with the absolute value function.
+  with the absolute value function, which maps `(-inf, inf)` to `[0, inf)`.
+
+  * For `y in (0, inf)`, `AbsoluteValue.inverse(y)` returns the set inverse
+    `{x in (-inf, inf) : |x| = y}` as a tuple, `-y, y`.
+  * `AbsoluteValue.inverse(0)` returns `0, 0`, which is not the set inverse
+    (the set inverse is the singleton `{0}`), but "works" in conjunction with
+    `TransformedDistribution` to produce a left semi-continuous pdf.
+  * For `y < 0`, `AbsoluteValue.inverse(y)` happily returns the
+    wrong thing, `-y, y`.  This is done for efficiency.  If
+    `validate_args == True`, `y < 0` will raise an exception.
+
 
   ```python
   abs = ds.bijectors.AbsoluteValue()
@@ -68,7 +78,8 @@ class AbsoluteValue(bijector.Bijector):
         with a particular draw from the distribution.  Currently only zero is
         supported.
       validate_args: Python `bool` indicating whether arguments should be
-        checked for correctness.
+        checked for correctness, in particular whether inputs to `inverse` and
+        `inverse_log_det_jacobian` are non-negative.
       name: Python `str` name given to ops managed by this object.
 
     Raises:
@@ -98,6 +109,10 @@ class AbsoluteValue(bijector.Bijector):
     return math_ops.abs(x)
 
   def _inverse(self, y):
+    if self.validate_args:
+      y = control_flow_ops.with_dependencies(
+          [check_ops.assert_non_negative(y, message="Argument y was negative")],
+          y)
     return -y, y
 
   def _inverse_log_det_jacobian(self, y):
@@ -106,6 +121,10 @@ class AbsoluteValue(bijector.Bijector):
     # so Log|DF^{-1}(y)| = Log[1, 1] = [0, 0].
     batch_shape = array_ops.shape(y)[:array_ops.rank(y) - self.event_ndims]
     zeros = array_ops.zeros(batch_shape, dtype=y.dtype)
+    if self.validate_args:
+      zeros = control_flow_ops.with_dependencies(
+          [check_ops.assert_non_negative(y, message="Argument y was negative")],
+          zeros)
     return zeros, zeros
 
   @property

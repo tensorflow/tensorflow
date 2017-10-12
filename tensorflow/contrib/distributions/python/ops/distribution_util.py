@@ -160,7 +160,7 @@ def make_tril_scale(
 
     scale_tril = array_ops.matrix_set_diag(scale_tril, tril_diag)
 
-    return linalg.LinearOperatorTriL(
+    return linalg.LinearOperatorLowerTriangular(
         tril=_maybe_attach_assertion(scale_tril),
         is_non_singular=True,
         is_self_adjoint=False,

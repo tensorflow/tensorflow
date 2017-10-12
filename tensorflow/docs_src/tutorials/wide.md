@@ -426,8 +426,7 @@ m = tf.estimator.LinearClassifier(
     optimizer=tf.train.FtrlOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=1.0,
-      l2_regularization_strength=1.0),
-    model_dir=model_dir)
+      l2_regularization_strength=1.0))
 ```
 
 One important difference between L1 and L2 regularization is that L1

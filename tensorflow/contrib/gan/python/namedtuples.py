@@ -120,7 +120,7 @@ class GANLoss(
   """GANLoss contains the generator and discriminator losses.
 
   Args:
-    generator_loss: A tensor for the generator loss..
+    generator_loss: A tensor for the generator loss.
     discriminator_loss: A tensor for the discriminator loss.
   """
 

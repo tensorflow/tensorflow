@@ -287,6 +287,8 @@ class XlaCompiler {
   FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
 
  private:
+  friend class XlaCompilerTest;
+
   Options options_;
 
   // Status set to non-OK in the constructor if initialization fails.
