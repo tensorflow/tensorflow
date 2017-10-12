@@ -92,7 +92,7 @@ py_library(
 
 py_test(
     name = "extenders_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/extenders_test.py"],
     srcs_version = "PY2AND3",
     deps = [
