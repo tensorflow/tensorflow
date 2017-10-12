@@ -1,6 +1,6 @@
-path: "tensorflow.profiler.OpLogProto"
+path: "tensorflow.profiler.OpLogProto.IdToStringEntry"
 tf_class {
-  is_instance: "<class \'tensorflow.core.profiler.tfprof_log_pb2.OpLogProto\'>"
+  is_instance: "<class \'tensorflow.core.profiler.tfprof_log_pb2.IdToStringEntry\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
     name: "DESCRIPTOR"
@@ -11,15 +11,11 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
-    name: "ID_TO_STRING_FIELD_NUMBER"
+    name: "KEY_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member {
-    name: "IdToStringEntry"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "LOG_ENTRIES_FIELD_NUMBER"
+    name: "VALUE_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
   member_method {
