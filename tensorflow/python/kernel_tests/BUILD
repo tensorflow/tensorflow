@@ -154,6 +154,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python/ops/linalg",
     ],
     shard_count = 5,
     tags = ["no_windows_gpu"],
@@ -2642,6 +2643,7 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/ops/linalg",
     ],
     shard_count = 20,
 )

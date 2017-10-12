@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
 
@@ -551,7 +552,7 @@ class LinearOperator(object):
         "  Requires conversion to a dense matrix.")
     return check_ops.assert_equal(
         dense,
-        linear_operator_util.matrix_adjoint(dense),
+        linalg.adjoint(dense),
         message="Matrix was not equal to its adjoint.")
 
   def assert_self_adjoint(self, name="assert_self_adjoint"):
@@ -722,7 +723,7 @@ class LinearOperator(object):
     logging.warn(
         "Using (possibly slow) default implementation of solve."
         "  Requires conversion to a dense matrix and O(N^3) operations.")
-    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
+    rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     if self._can_use_cholesky():
       return linalg_ops.cholesky_solve(self._get_cached_chol(), rhs)
     return linalg_ops.matrix_solve(

@@ -57,7 +57,7 @@ def logdet(matrix, name=None):
 
 
 def adjoint(matrix, name=None):
-  """Conjugates and transposes the last two dimensions of tensor `matrix`.
+  """Transposes the last two dimensions of and conjugates tensor `matrix`.
 
   For example:
 
@@ -78,4 +78,5 @@ def adjoint(matrix, name=None):
     matrix.
   """
   with ops.name_scope(name, 'adjoint', [matrix]):
+    matrix = ops.convert_to_tensor(matrix, name='matrix')
     return array_ops.matrix_transpose(matrix, conjugate=True)

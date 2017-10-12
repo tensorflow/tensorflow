@@ -1720,6 +1720,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":linalg_ops",
         ":math_ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
     ],
 )
 
