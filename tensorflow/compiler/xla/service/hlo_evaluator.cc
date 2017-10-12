@@ -1243,8 +1243,14 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     HloInstruction* instruction) {
-  TF_RET_CHECK(hlo_query::AllOperandsAreConstants(*instruction));
-  TF_RET_CHECK(instruction->opcode() != HloOpcode::kParameter);
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    return tensorflow::errors::FailedPrecondition(
+        "Cannot evaluate a parameter.");
+  }
+  if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+    return tensorflow::errors::FailedPrecondition(
+        "Not all operands are constants.");
+  }
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   arg_literals_.clear();
