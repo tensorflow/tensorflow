@@ -2293,24 +2293,6 @@ Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
 
   return Status::OK();
 }
-
-// This SliceHelper processes the output shape of the `slice`
-// when the tensor of `sizes` is not available (null).
-// In this situation, we could still obtain partial information
-// from `MakeShapeFromShapeTensor` as a best effort operation.
-Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
-                   ShapeHandle sizes_value,
-                   std::vector<DimensionHandle>* dims) {
-  for (int i = 0; i < c->Rank(sizes_value); ++i) {
-    DimensionHandle dim = c->Dim(sizes_value, i);
-    DimensionHandle begin = c->Dim(begin_value, i);
-    DimensionHandle result = c->UnknownDim();
-    TF_RETURN_IF_ERROR(c->Subtract(dim, begin, &result));
-    dims->emplace_back(result);
-  }
-
-  return Status::OK();
-}
 }  // namespace
 
 // --------------------------------------------------------------------------
@@ -2379,7 +2361,9 @@ REGISTER_OP("Slice")
           TF_RETURN_IF_ERROR(
               c->WithRank(begin_value, c->Rank(sizes_value), &begin_value));
           std::vector<DimensionHandle> dims;
-          TF_RETURN_IF_ERROR(SliceHelper(c, begin_value, sizes_value, &dims));
+          for (int i = 0; i < c->Rank(sizes_value); ++i) {
+            dims.emplace_back(c->Dim(sizes_value, i));
+          }
           c->set_output(0, c->MakeShape(dims));
           return Status::OK();
         }
