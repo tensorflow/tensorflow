@@ -35,7 +35,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -380,7 +380,13 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                               .TypeConstraint<T>("T")        \
                               .TypeConstraint<int32>("Tidx") \
                               .HostMemory("axis"),           \
-                          ReverseV2Op<SYCLDevice, T>)
+                          ReverseV2Op<SYCLDevice, T, int32>) \
+  REGISTER_KERNEL_BUILDER(Name("ReverseV2")                  \
+                              .Device(DEVICE_SYCL)           \
+                              .TypeConstraint<T>("T")        \
+                              .TypeConstraint<int64>("Tidx") \
+                              .HostMemory("axis"),           \
+                          ReverseV2Op<SYCLDevice, T, int64>)
 TF_CALL_uint8(REGISTER_SYCL_KERNELS);
 TF_CALL_int8(REGISTER_SYCL_KERNELS);
 TF_CALL_float(REGISTER_SYCL_KERNELS);
@@ -400,6 +406,14 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .HostMemory("tensor")
                             .HostMemory("axis")
                             .HostMemory("output"),
-                        ReverseV2Op<CPUDevice, int32>);
-#endif // TENSORFLOW_USE_SYCL
+                        ReverseV2Op<CPUDevice, int32, int32>);
+REGISTER_KERNEL_BUILDER(Name("ReverseV2")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tidx")
+                            .HostMemory("tensor")
+                            .HostMemory("axis")
+                            .HostMemory("output"),
+                        ReverseV2Op<CPUDevice, int32, int64>);
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
