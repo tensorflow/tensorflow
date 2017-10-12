@@ -889,6 +889,7 @@ cc_library(
         ":test",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
     ],
 )
@@ -2122,6 +2123,7 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
     "common_runtime/gpu/gpu_init.h",
+    "common_runtime/gpu/gpu_managed_allocator.h",
     "common_runtime/gpu/gpu_stream_util.h",
     "common_runtime/gpu/gpu_util.h",
     "common_runtime/gpu/pool_allocator.h",
@@ -2136,6 +2138,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
+        "common_runtime/gpu/gpu_managed_allocator.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
         "common_runtime/gpu/gpu_util_platform_specific.cc",
