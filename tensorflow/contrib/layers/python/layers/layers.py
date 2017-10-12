@@ -633,7 +633,6 @@ def batch_norm(inputs,
           renorm_clipping=renorm_clipping,
           renorm_momentum=renorm_decay,
           name=sc.name,
-          dtype=inputs.dtype.base_dtype,
           _scope=sc,
           _reuse=reuse,
           fused=fused)

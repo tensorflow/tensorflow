@@ -90,7 +90,7 @@ class Conv3DTest(test.TestCase):
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
                     expected):
     results = []
-    for (data_format, use_gpu) in GetTestConfigs():
+    for data_format, use_gpu in GetTestConfigs():
       for dtype in self._DtypesToTest(use_gpu):
         result = self._SetupValuesForDevice(
             tensor_in_sizes,
@@ -110,7 +110,7 @@ class Conv3DTest(test.TestCase):
           value = values[i]
           print("expected = ", expected)
           print("actual = ", value)
-          tol = 1e-5
+          tol = 1e-6
           if value.dtype == np.float16:
             tol = 1e-3
             # fp16 using may result in inf values and large absolute errors
@@ -353,50 +353,61 @@ class Conv3DTest(test.TestCase):
     input_data = [x * 1.0 / input_size for x in range(0, input_size)]
     filter_data = [x * 1.0 / filter_size for x in range(0, filter_size)]
 
-    if test.is_gpu_available() and use_gpu:
-      data_type = dtypes.float32
+
+    orig_strides = strides[:]
+    for data_type in self._DtypesToTest(use_gpu=use_gpu):
       # TODO(mjanusz): Modify gradient_checker to also provide max relative
       # error and synchronize the tolerance levels between the tests for forward
       # and backward computations.
-      if test.is_gpu_available():
+      if data_type == dtypes.float32:
         tolerance = 5e-3
       else:
-        # As of Aug 2016, higher tolerance is needed for some CPU architectures.
-        # Runs on a single machine can also generate slightly different errors
-        # because of multithreading.
-        tolerance = 8e-3
-    else:
-      data_type = dtypes.float64
-      tolerance = 1e-8
-    with self.test_session(use_gpu=use_gpu):
-      orig_input_tensor = constant_op.constant(
+        tolerance = 0.01
+
+      with self.test_session(use_gpu=use_gpu):
+        orig_input_tensor = constant_op.constant(
           input_data, shape=input_shape, dtype=data_type, name="input")
-      filter_tensor = constant_op.constant(
+        filter_tensor = constant_op.constant(
           filter_data, shape=filter_shape, dtype=data_type, name="filter")
 
-      if data_format == "NCDHW":
-        input_tensor = test_util.NHWCToNCHW(orig_input_tensor)
-        strides = test_util.NHWCToNCHW(strides)
-      else:
-        input_tensor = orig_input_tensor
+        if data_format == "NCDHW":
+          input_tensor = test_util.NHWCToNCHW(orig_input_tensor)
+          strides = test_util.NHWCToNCHW(orig_strides)
+        else:
+          input_tensor = orig_input_tensor
 
-      conv = nn_ops.conv3d(
+        conv = nn_ops.conv3d(
           input_tensor, filter_tensor, strides, padding,
           data_format=data_format, name="conv")
 
-      if data_format == "NCDHW":
-        conv = test_util.NCHWToNHWC(conv)
+        if data_format == "NCDHW":
+          conv = test_util.NCHWToNHWC(conv)
 
-      if test_input:
-        err = gradient_checker.compute_gradient_error(orig_input_tensor,
-                                                      input_shape,
-                                                      conv, output_shape)
-      else:
-        err = gradient_checker.compute_gradient_error(filter_tensor,
-                                                      filter_shape, conv,
-                                                      output_shape)
-    print("conv3d gradient error = ", err)
-    self.assertLess(err, tolerance)
+        
+        if test_input:
+          print("test_input")
+          jacob_t, jacob_n = gradient_checker.compute_gradient(orig_input_tensor,
+                                                               input_shape,
+                                                               conv,
+                                                               output_shape)
+        else:
+          jacob_t, jacob_n = gradient_checker.compute_gradient(filter_tensor,
+                                                               filter_shape,
+                                                               conv,
+                                                               output_shape)
+        
+        
+        if data_type != dtypes.float16:
+          reference_jacob_t = jacob_t
+          err = np.fabs(jacob_t - jacob_n).max()
+        else:
+          # Compare fp16 theoretical gradients to fp32 theoretical gradients,
+          # since fp16 numerical gradients are too imprecise.
+          err = np.fabs(jacob_t - reference_jacob_t).max()
+
+      print("conv3d gradient error = ", err)
+      self.assertLess(err, tolerance)
+
 
   def ConstructAndTestGradient(self, **kwargs):
     for data_format, use_gpu in GetTestConfigs():
