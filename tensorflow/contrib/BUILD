@@ -53,6 +53,7 @@ py_library(
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
+        "//tensorflow/contrib/losses:metric_learning_py",
         "//tensorflow/contrib/memory_stats:memory_stats_py",
         "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",

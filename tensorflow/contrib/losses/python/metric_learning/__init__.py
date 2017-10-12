@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Ops for building neural network losses.
 
 See @{$python/contrib.losses}.
@@ -22,27 +21,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.losses.python import metric_learning
 # pylint: disable=wildcard-import
-from tensorflow.contrib.losses.python.losses import *
+from tensorflow.contrib.losses.python.metric_learning.metric_loss_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'absolute_difference',
-    'add_loss',
-    'hinge_loss',
-    'compute_weighted_loss',
-    'cosine_distance',
-    'get_losses',
-    'get_regularization_losses',
-    'get_total_loss',
-    'log_loss',
-    'mean_pairwise_squared_error',
-    'mean_squared_error',
-    'sigmoid_cross_entropy',
-    'softmax_cross_entropy',
-    'sparse_softmax_cross_entropy',
-    'metric_learning'
+    'contrastive_loss',
+    'cluster_loss',
+    'lifted_struct_loss',
+    'npairs_loss',
+    'npairs_loss_multilabel',
+    'triplet_semihard_loss',
 ]
 remove_undocumented(__name__, _allowed_symbols)
+
+
