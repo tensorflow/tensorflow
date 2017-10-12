@@ -4019,6 +4019,7 @@ cuda_py_test(
     additional_deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
+        ":nn_grad",
         ":nn_ops",
     ],
 )

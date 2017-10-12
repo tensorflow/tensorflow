@@ -22,6 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import nn_grad
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
@@ -31,7 +32,7 @@ class Relu6OpTest(test.TestCase):
     inputs = constant_op.constant([[-2, -1, 1, 3], [5, 7, 8, 9]],
                                   dtype=dtypes.float32)
     r = nn_ops.relu6(inputs)
-    r_g = gradients_impl.gradients(r, inputs)
+    r_g = gradients_impl.gradients(r, inputs)[0]
     with self.test_session():
       error = gradient_checker.compute_gradient_error(
         inputs, inputs.get_shape().as_list(),
