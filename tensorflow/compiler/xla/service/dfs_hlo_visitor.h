@@ -167,6 +167,21 @@ class DfsHloVisitor {
                           HloInstruction* rhs) {
     return HandleElementwiseBinary(or_);
   }
+  virtual Status HandleShiftLeft(HloInstruction* shift_left,
+                                 HloInstruction* lhs, HloInstruction* rhs) {
+    return HandleElementwiseBinary(shift_left);
+  }
+  virtual Status HandleShiftRightArithmetic(
+      HloInstruction* shift_right_arithmetic, HloInstruction* lhs,
+      HloInstruction* rhs) {
+    return HandleElementwiseBinary(shift_right_arithmetic);
+  }
+  virtual Status HandleShiftRightLogical(HloInstruction* shift_right_logical,
+                                         HloInstruction* lhs,
+                                         HloInstruction* rhs) {
+    return HandleElementwiseBinary(shift_right_logical);
+  }
+
   virtual Status HandleReducePrecision(HloInstruction* reduce_precision) {
     return HandleElementwiseUnary(reduce_precision);
   }

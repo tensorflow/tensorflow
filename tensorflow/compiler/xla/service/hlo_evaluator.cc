@@ -387,6 +387,93 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_integral<NativeT>::value &&
+                !std::is_same<NativeT, bool>::value>::type* = nullptr>
+  Status HandleShiftLeft(HloInstruction* shl, HloInstruction* lhs,
+                         HloInstruction* rhs) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[shl],
+        ElementWiseBinaryOp(shl, [](NativeT lhs_elem, NativeT rhs_elem) {
+          return lhs_elem << rhs_elem;
+        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<!std::is_integral<NativeT>::value ||
+                                    std::is_same<NativeT, bool>::value>::type* =
+                nullptr>
+  Status HandleShiftLeft(HloInstruction* shl, HloInstruction* lhs,
+                         HloInstruction* rhs) {
+    return InvalidArgument("Unsupported type for ShiftLeft");
+  }
+
+  Status HandleShiftLeft(HloInstruction* shl, HloInstruction* lhs,
+                         HloInstruction* rhs) override {
+    return HandleShiftLeft<ReturnT>(shl, lhs, rhs);
+  }
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_integral<NativeT>::value &&
+                !std::is_same<NativeT, bool>::value>::type* = nullptr>
+  Status HandleShiftRightArithmetic(HloInstruction* shr, HloInstruction* lhs,
+                                    HloInstruction* rhs) {
+    typedef typename std::make_signed<NativeT>::type SignedT;
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[shr],
+        ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
+          return static_cast<NativeT>(static_cast<SignedT>(lhs_elem) >>
+                                      rhs_elem);
+        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<!std::is_integral<NativeT>::value ||
+                                    std::is_same<NativeT, bool>::value>::type* =
+                nullptr>
+  Status HandleShiftRightArithmetic(HloInstruction* shr, HloInstruction* lhs,
+                                    HloInstruction* rhs) {
+    return InvalidArgument("Unsupported type for ShiftRightArithmetic");
+  }
+
+  Status HandleShiftRightArithmetic(HloInstruction* shra, HloInstruction* lhs,
+                                    HloInstruction* rhs) override {
+    return HandleShiftRightArithmetic<ReturnT>(shra, lhs, rhs);
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_integral<NativeT>::value &&
+                !std::is_same<NativeT, bool>::value>::type* = nullptr>
+  Status HandleShiftRightLogical(HloInstruction* shr, HloInstruction* lhs,
+                                 HloInstruction* rhs) {
+    typedef typename std::make_unsigned<NativeT>::type UnsignedT;
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[shr],
+        ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
+          return static_cast<NativeT>(static_cast<UnsignedT>(lhs_elem) >>
+                                      rhs_elem);
+        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<!std::is_integral<NativeT>::value ||
+                                    std::is_same<NativeT, bool>::value>::type* =
+                nullptr>
+  Status HandleShiftRightLogical(HloInstruction* shr, HloInstruction* lhs,
+                                 HloInstruction* rhs) {
+    return InvalidArgument("Unsupported type for ShiftRightLogical");
+  }
+
+  Status HandleShiftRightLogical(HloInstruction* shrl, HloInstruction* lhs,
+                                 HloInstruction* rhs) override {
+    return HandleShiftRightLogical<ReturnT>(shrl, lhs, rhs);
+  }
+
   Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
                      HloInstruction* arg, HloInstruction* max) override {
     std::function<ReturnT(ReturnT, ReturnT, ReturnT)> clamp_op =

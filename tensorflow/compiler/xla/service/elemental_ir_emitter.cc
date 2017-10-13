@@ -568,6 +568,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return ir_builder_->CreateAnd(lhs_value, rhs_value);
     case HloOpcode::kOr:
       return ir_builder_->CreateOr(lhs_value, rhs_value);
+    case HloOpcode::kShiftLeft:
+      return ir_builder_->CreateShl(lhs_value, rhs_value);
+    case HloOpcode::kShiftRightArithmetic:
+      return ir_builder_->CreateAShr(lhs_value, rhs_value);
+    case HloOpcode::kShiftRightLogical:
+      return ir_builder_->CreateLShr(lhs_value, rhs_value);
     default:
       return Unimplemented("binary integer op '%s'",
                            HloOpcodeString(op->opcode()).c_str());
@@ -830,6 +836,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSubtract:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         const HloInstruction* lhs = hlo->operand(0);

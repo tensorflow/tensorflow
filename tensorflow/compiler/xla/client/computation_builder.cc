@@ -972,6 +972,24 @@ ComputationDataHandle ComputationBuilder::Not(
   return UnaryOp(UNOP_NOT, operand);
 }
 
+ComputationDataHandle ComputationBuilder::ShiftLeft(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_SHIFT_LEFT, lhs, rhs, broadcast_dimensions);
+}
+
+ComputationDataHandle ComputationBuilder::ShiftRightArithmetic(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_SHIFT_RIGHT_ARITHMETIC, lhs, rhs, broadcast_dimensions);
+}
+
+ComputationDataHandle ComputationBuilder::ShiftRightLogical(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_SHIFT_RIGHT_LOGICAL, lhs, rhs, broadcast_dimensions);
+}
+
 ComputationDataHandle ComputationBuilder::Abs(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_ABS, operand);

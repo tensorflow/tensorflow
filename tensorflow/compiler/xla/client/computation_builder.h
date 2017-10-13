@@ -472,6 +472,16 @@ class ComputationBuilder {
 
   ComputationDataHandle Not(const ComputationDataHandle& operand);
 
+  ComputationDataHandle ShiftLeft(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+  ComputationDataHandle ShiftRightArithmetic(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+  ComputationDataHandle ShiftRightLogical(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
   // Reduces an array among the provided dimensions, given "computation" as a
   // reduction operator.
   ComputationDataHandle Reduce(

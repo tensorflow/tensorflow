@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 
+#include <algorithm>
+#include <iterator>
+
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -194,56 +197,99 @@ Status ShapeForNode(const TransformFuncContext& context,
 Status FoldConstants(const GraphDef& input_graph_def,
                      const TransformFuncContext& context,
                      GraphDef* output_graph_def) {
-  // Some older GraphDefs have saved _output_shapes attributes which are out of
-  // date and cause import errors, so clean them up first.
-  GraphDef cleaned_graph_def;
-  RemoveAttributes(input_graph_def, {"_output_shapes"}, &cleaned_graph_def);
+  Graph input_graph(OpRegistry::Global());
+  TF_RETURN_IF_ERROR(input_graph.AddFunctionLibrary(input_graph_def.library()));
 
-  // Set specified shapes.
-  for (NodeDef& node : *cleaned_graph_def.mutable_node()) {
-    TensorShape shape;
-    bool has_shape_specified;
-    TF_RETURN_IF_ERROR(
-        ShapeForNode(context, node.name(), &shape, &has_shape_specified));
-    if (has_shape_specified) {
-      SetNodeAttr("shape", shape, &node);
+  ShapeRefiner shape_refiner(input_graph.versions(), input_graph.op_registry());
+  shape_refiner.set_require_shape_inference_fns(false);
+  shape_refiner.set_disable_constant_propagation(false);
+  shape_refiner.set_function_library_for_shape_inference(
+      &input_graph.flib_def());
+
+  bool clear_output_shapes;
+  TF_RETURN_IF_ERROR(context.GetOneBoolParameter("clear_output_shapes", true,
+                                                 &clear_output_shapes));
+  if (clear_output_shapes) {
+    // Some older GraphDefs have saved _output_shapes attributes which are out
+    // of date and cause import errors, so clean them up first.
+    GraphDef cleaned_graph_def;
+    RemoveAttributes(input_graph_def, {"_output_shapes"}, &cleaned_graph_def);
+
+    // Set specified shapes.
+    for (NodeDef& node : *cleaned_graph_def.mutable_node()) {
+      TensorShape shape;
+      bool has_shape_specified;
+      TF_RETURN_IF_ERROR(
+          ShapeForNode(context, node.name(), &shape, &has_shape_specified));
+      if (has_shape_specified) {
+        SetNodeAttr("shape", shape, &node);
+      }
     }
+
+    TF_RETURN_IF_ERROR(
+        ImportGraphDef({}, cleaned_graph_def, &input_graph, &shape_refiner));
+  } else {
+    TF_RETURN_IF_ERROR(
+        ImportGraphDef({}, input_graph_def, &input_graph, &shape_refiner));
   }
 
-  Graph input_graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(input_graph.versions(), input_graph.op_registry());
-  shape_refiner.set_require_shape_inference_fns(true);
-  shape_refiner.set_disable_constant_propagation(false);
-  ImportGraphDefOptions import_opts;
-  TF_RETURN_IF_ERROR(ImportGraphDef(import_opts, cleaned_graph_def,
-                                    &input_graph, &shape_refiner));
-  DeviceAttributes device_attributes;
-  subgraph::RewriteGraphMetadata metadata;
-  TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-      &input_graph, context.input_names, context.output_names, {},
-      device_attributes, false /* use_function_convention */, &metadata));
+  // Sorted array of input names as lookup table.
+  std::vector<TensorId> input_names;
+  input_names.reserve(context.input_names.size());
+  std::transform(context.input_names.begin(), context.input_names.end(),
+                 std::back_inserter(input_names),
+                 [](const string& name) { return ParseTensorName(name); });
 
-  ConstantFoldingOptions cf_opts;
+  const auto compare = [](TensorId lhs, TensorId rhs) {
+    return lhs.first < rhs.first;
+  };
+
+  std::sort(input_names.begin(), input_names.end(), compare);
 
   // Set statically inferred shapes.
   std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
   for (const Node* const node : input_graph.nodes()) {
     auto ctx = shape_refiner.GetContext(node);
-    if (ctx == nullptr) continue;
+    if (ctx == nullptr) {
+      continue;
+    }
 
-    std::vector<PartialTensorShape>* partial_shapes = &shape_map[node->name()];
+    std::vector<PartialTensorShape>& partial_shapes = shape_map[node->name()];
     if (ctx->num_outputs() <= 0) continue;
-    partial_shapes->resize(ctx->num_outputs());
+    partial_shapes.resize(ctx->num_outputs());
 
     // Check all outputs.
     for (const Edge* out_edge : node->out_edges()) {
       if (out_edge->IsControlEdge()) continue;
 
       const int output_idx = out_edge->src_output();
-      TF_RETURN_IF_ERROR(ShapeHandleToTensorShape(
-          ctx->output(output_idx), ctx, &(*partial_shapes)[output_idx]));
+      TF_RETURN_IF_ERROR(ShapeHandleToTensorShape(ctx->output(output_idx), ctx,
+                                                  &partial_shapes[output_idx]));
+    }
+
+    // RewriteGraphForExecution() will add a Recv node for each input. Shape
+    // refiner does not include shape information of these Recv nodes. Therefore
+    // we add entries for Recv nodes here.
+    const auto pair = std::equal_range(input_names.begin(), input_names.end(),
+                                       TensorId{node->name(), 0}, compare);
+    for (auto it = pair.first; it != pair.second; ++it) {
+      const string recv_name =
+          strings::StrCat("_recv_", it->first, "_", it->second);
+      auto& recv_partial_shapes = shape_map[recv_name];
+      // For whatever reason (for example, name collision) if the map entry was
+      // already there, then do nothing.
+      if (recv_partial_shapes.empty()) {
+        recv_partial_shapes.push_back(partial_shapes[it->second]);
+      }
     }
   }
+
+  subgraph::RewriteGraphMetadata unused_metadata;
+  TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
+      &input_graph, context.input_names, context.output_names, {}, {},
+      false /* use_function_convention */, &unused_metadata));
+
+  ConstantFoldingOptions cf_opts;
   cf_opts.shape_map = &shape_map;
 
   // Exclude specified nodes from constant folding.
