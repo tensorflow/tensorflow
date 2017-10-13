@@ -115,6 +115,12 @@ HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
       return HloOpcode::kOr;
     case BINOP_AND:
       return HloOpcode::kAnd;
+    case BINOP_SHIFT_LEFT:
+      return HloOpcode::kShiftLeft;
+    case BINOP_SHIFT_RIGHT_ARITHMETIC:
+      return HloOpcode::kShiftRightArithmetic;
+    case BINOP_SHIFT_RIGHT_LOGICAL:
+      return HloOpcode::kShiftRightLogical;
     default:
       LOG(FATAL) << "unhandled operation " << binop;
   }

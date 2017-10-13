@@ -147,6 +147,12 @@ string HloOpcodeString(HloOpcode opcode) {
       return "select";
     case HloOpcode::kSend:
       return "send";
+    case HloOpcode::kShiftLeft:
+      return "shift-left";
+    case HloOpcode::kShiftRightArithmetic:
+      return "shift-right-arithmetic";
+    case HloOpcode::kShiftRightLogical:
+      return "shift-right-logical";
     case HloOpcode::kSign:
       return "sign";
     case HloOpcode::kSin:
