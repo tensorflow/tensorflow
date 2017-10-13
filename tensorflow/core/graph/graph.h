@@ -424,28 +424,36 @@ class Graph {
   // returned instance.
   Node* CopyNode(Node* node);
 
-  // Remove a node from this graph, including all edges from or to it.
+  // Removes a node from this graph, including all edges from or to it.
   // *node should not be accessed after calling this function.
   // REQUIRES: node->IsOp()
   void RemoveNode(Node* node);
 
-  // Add an edge that connects the xth output of "source" to the yth input
-  // of "dest".
+  // Adds an edge that connects the xth output of `source` to the yth input of
+  // `dest` and returns it. Does not update dest's NodeDef.
   const Edge* AddEdge(Node* source, int x, Node* dest, int y);
 
-  // Add a control-edge (no data flows along this edge) that
-  // connects "source" to "dest".
-  const Edge* AddControlEdge(Node* source, Node* dest) {
-    return AddEdge(source, kControlSlot, dest, kControlSlot);
-  }
+  // Adds a control edge (no data flows along this edge) that connects `source`
+  // to `dest`. If `dest`s NodeDef is missing the corresponding control input,
+  // adds the control input.
+  //
+  // If such a control edge already exists and `allow_duplicates` is false, no
+  // edge is added and the function returns nullptr. Otherwise the edge is
+  // unconditionally created and returned. The NodeDef is not updated if
+  // `allow_duplicates` is true.
+  // TODO(skyewm): // TODO(skyewm): allow_duplicates is needed only by
+  // graph_partition.cc. Figure out if we can do away with it.
+  const Edge* AddControlEdge(Node* source, Node* dest,
+                             bool allow_duplicates = false);
 
-  // Removes edge from the graph.
+  // Removes edge from the graph. Does not update the destination node's
+  // NodeDef.
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 
-  // Updates the input to a node.  The existing edge to `dst` is removed
-  // and an edge from `new_src` to `dst` is created. The NodeDef associated with
-  // `dst` is also updated.
+  // Updates the input to a node.  The existing edge to `dst` is removed and an
+  // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`
+  // is also updated.
   Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
 
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
