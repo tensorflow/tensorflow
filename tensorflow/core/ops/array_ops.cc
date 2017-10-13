@@ -1175,7 +1175,7 @@ For example:
 #                  [20, 21, 22, 23]]]]
 # tensor 't' shape is [1, 2, 3, 4]
 
-# 'dims' is [3] or 'dims' is -1
+# 'dims' is [3] or 'dims' is [-1]
 reverse(t, dims) ==> [[[[ 3,  2,  1,  0],
                         [ 7,  6,  5,  4],
                         [ 11, 10, 9, 8]],
