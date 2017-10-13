@@ -363,9 +363,6 @@ class BatchNormalization(base.Layer):
 
     output, mean, variance = utils.smart_cond(
         training, _fused_batch_norm_training, _fused_batch_norm_inference)
-    mean = array_ops.reshape(mean, shape=self.moving_mean.get_shape())
-    variance = array_ops.reshape(variance,
-                                 shape=self.moving_variance.get_shape())
     if not self._bessels_correction_test_only:
       # Remove Bessel's correction to be consistent with non-fused batch norm.
       # Note that the variance computed by fused batch norm is
