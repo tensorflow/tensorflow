@@ -32,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
@@ -260,6 +261,18 @@ class MultiLabelHead(test.TestCase):
           r'labels shape must be \[batch_size, 2\]\. Given: \] \[2\]'):
         actual_unweighted_loss.eval(
             {labels_placeholder: np.array([1, 1], dtype=np.int64)})
+
+  def test_eval_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib.multi_label_head(n_classes=2)
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.EVAL,
+          logits=np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+          labels=None)
 
   def _test_eval(self, head, logits, labels, expected_loss, expected_metrics):
     spec = head.create_estimator_spec(
@@ -503,6 +516,22 @@ class MultiLabelHead(test.TestCase):
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_unweighted_loss, actual_unweighted_loss.eval(), atol=1e-4)
+
+  def test_train_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib.multi_label_head(n_classes=2)
+    def _no_op_train_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+          labels=None,
+          train_op_fn=_no_op_train_fn)
 
   def _test_train(self, head, logits, labels, expected_loss):
     expected_train_result = 'my_train_op'

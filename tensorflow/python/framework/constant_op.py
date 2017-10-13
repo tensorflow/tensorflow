@@ -42,6 +42,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
@@ -110,7 +111,7 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     dtype = dtype.as_datatype_enum
   device = ctx.device_name
   handle = ctx._handle  # pylint: disable=protected-access
-  if isinstance(value, (int, float)):
+  if isinstance(value, (float,) + six.integer_types):
     # Use a scalar cache. This will put each scalar of each type only once on
     # each device. Scalars don't use much device memory but copying scalars can
     # trigger memcpys which are slow.

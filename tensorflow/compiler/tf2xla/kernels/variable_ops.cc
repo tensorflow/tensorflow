@@ -111,9 +111,10 @@ class ResourceGatherOp : public XlaOpKernel {
 
     auto indices = ctx->Input(1);
     auto indices_shape = ctx->InputShape(1);
+    DataType index_type = ctx->input_type(1);
     xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
         ctx, resource_handle, resource_shape, indices, indices_shape, 0,
-        resource_dtype, builder);
+        resource_dtype, index_type, builder);
     ctx->SetOutput(0, gather);
   }
 };

@@ -109,6 +109,8 @@ class TFStats {
   std::map<string, std::unique_ptr<TFGraphNode>> nodes_map_;
   GraphNodeProto empty_graph_node_;
   MultiGraphNodeProto empty_multi_graph_node_;
+
+  std::map<int64, string> id_to_string_;
 };
 
 }  // namespace tfprof

@@ -291,10 +291,11 @@ class GradientsTest(test_util.TensorFlowTestCase):
           array_ops.placeholder(dtypes.float32),
           array_ops.placeholder(dtypes.int32))
       dx, = gradients.gradients(y, x, grad_ys=dy)
-      # The gradient of tf.identity should pass the value through unchanged.
-      # A previous version of the code did this only for tf.Tensor, not
-      # tf.IndexedSlices.
-      self.assertEqual(dx, dy)
+      # The IndexedSlices gradient of tf.identity is the identity map.
+      with self.test_session() as sess:
+        vdx, vdy = sess.run(
+            [dx, dy], feed_dict={x: [1.0], dy.indices: [0], dy.values: [2.0]})
+      self.assertEqual(vdx, vdy)
 
   def testNonDifferentiableSwitchInWhileLoop(self):
     with ops.Graph().as_default():

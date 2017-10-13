@@ -227,6 +227,12 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
     return self._n_classes
 
   def _process_labels(self, labels):
+    if labels is None:
+      raise ValueError(
+          'You must provide a labels Tensor. Given: None. '
+          'Suggested troubleshooting steps: Check that your data contain '
+          'your label feature. Check that your input_fn properly parses and '
+          'returns labels.')
     if isinstance(labels, sparse_tensor.SparseTensor):
       if labels.dtype == dtypes.string:
         label_ids_values = lookup_ops.index_table_from_tensor(

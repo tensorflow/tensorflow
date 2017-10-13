@@ -187,8 +187,9 @@ tensorflow::Status Service::Computation(const ComputationRequest* arg,
 
   *result->mutable_computation() =
       computation_tracker_.NewComputation(arg->name());
-  VLOG(1) << Printf("Created new computation %s on service %p",
-                    result->computation().ShortDebugString().c_str(), this);
+  VLOG(1) << Printf("Created new computation %s on service %p, name %s",
+                    result->computation().ShortDebugString().c_str(), this,
+                    arg->name().c_str());
   return tensorflow::Status::OK();
 }
 

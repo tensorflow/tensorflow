@@ -92,7 +92,7 @@ py_library(
 
 py_test(
     name = "extenders_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/extenders_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -149,6 +149,7 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",

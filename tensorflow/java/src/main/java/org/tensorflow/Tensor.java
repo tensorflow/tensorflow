@@ -47,11 +47,11 @@ public final class Tensor<T> implements AutoCloseable {
   /**
    * Creates a Tensor from a Java object.
    *
-   * <p>A {@code Tensor} is a multi-dimensional array of elements of a limited set of types ({@link
-   * types}), so not all Java objects can be converted to a {@code Tensor}. In particular, the
-   * argument {@code obj} must be either a primitive (float, double, int, long, boolean, byte) or a
-   * multi-dimensional array of one of those primitives. The argument {@code type} specifies how to
-   * interpret the first argument as a TensorFlow type. For example:
+   * <p>A {@code Tensor} is a multi-dimensional array of elements of a limited set of types. Not all
+   * Java objects can be converted to a {@code Tensor}. In particular, the argument {@code obj} must
+   * be either a primitive (float, double, int, long, boolean, byte) or a multi-dimensional array of
+   * one of those primitives. The argument {@code type} specifies how to interpret the first
+   * argument as a TensorFlow type. For example:
    *
    * <pre>{@code
    * // Valid: A 64-bit integer scalar.
@@ -94,9 +94,9 @@ public final class Tensor<T> implements AutoCloseable {
    * Tensor<String> m = Tensor.create(matrix, String.class);
    * }</pre>
    *
-   * @param obj The object to convert to a Tensor<T>. Note that whether it is compatible with the
-   *     type T is not checked by the type system. For type-safe creation of tensors, use {@link
-   *     Tensors}.
+   * @param obj The object to convert to a {@code Tensor<T>}. Note that whether it is compatible
+   *     with the type T is not checked by the type system. For type-safe creation of tensors, use
+   *     {@link Tensors}.
    * @param type The class object representing the type T.
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system.
@@ -229,7 +229,8 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
+   * API</a>.
    *
    * @param <T> the tensor element type
    * @param type the tensor element type, represented as a class object.
@@ -249,7 +250,8 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
+   * API</a>.
    *
    * @param <T> The tensor element type
    * @param type the tensor element type, specified as a DataType. This must agree with T.

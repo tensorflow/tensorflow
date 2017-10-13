@@ -236,6 +236,10 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Gets an IrArray representing the given hlo.
   llvm_ir::IrArray GetIrArrayFor(const HloInstruction* hlo);
 
+  // Gets a list of IrArrays, one for each of hlo's operands.
+  std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
+      const HloInstruction* hlo);
+
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                        llvm_ir::IrArray* array) {
