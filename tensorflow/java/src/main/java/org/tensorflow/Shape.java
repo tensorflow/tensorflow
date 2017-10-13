@@ -77,6 +77,24 @@ public final class Shape {
     return shape[i];
   }
 
+  @Override
+  public int hashCode() {
+    return Arrays.hashCode(shape);
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+
+    if (obj instanceof Shape && Arrays.equals(this.shape, ((Shape) obj).shape)) {
+      return true;
+    }
+
+    return super.equals(obj);
+  }
+
   /** Succinct description of the shape meant for debugging. */
   @Override
   public String toString() {
