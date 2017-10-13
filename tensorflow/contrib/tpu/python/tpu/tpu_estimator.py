@@ -31,6 +31,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import training_loop
+from tensorflow.contrib.tpu.python.tpu import util as util_lib
 
 from tensorflow.core.protobuf import config_pb2
 
@@ -1318,6 +1319,12 @@ class TPUEstimator(estimator_lib.Estimator):
           'For TPU training, one of `steps` or `max_steps` must be set. '
           'Cannot be both `None`.')
 
+    # Estimator.train has explicit positiveness check.
+    if steps is not None:
+      util_lib.check_positive_integer(steps, 'Train steps')
+    if max_steps is not None:
+      util_lib.check_positive_integer(max_steps, 'Train max_steps')
+
     return [_TPUStopAtStepHook(self._iterations_per_training_loop,
                                steps, max_steps)]
 
@@ -1328,8 +1335,8 @@ class TPUEstimator(estimator_lib.Estimator):
 
     if steps is None:
       raise ValueError('Evaluate `steps` must be set on TPU. Cannot be `None`.')
-    if steps <= 0:
-      raise ValueError('Must specify steps > 0, given: {}'.format(steps))
+
+    util_lib.check_positive_integer(steps, 'Eval steps')
 
     hooks = []
     hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
@@ -1609,3 +1616,5 @@ def _validate_tpu_training_graph():
   if not cross_replica_sum_ops:
     raise ValueError(
         'CrossShardOptimizer must be used for model training on TPUs.')
+
+

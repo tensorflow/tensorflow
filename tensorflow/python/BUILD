@@ -70,7 +70,6 @@ py_library(
         ":io_ops",
         ":layers",
         ":lib",
-        ":linalg_ns",
         ":math_ops",
         ":metrics",
         ":nn",
@@ -104,6 +103,7 @@ py_library(
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/linalg",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
     ] + if_not_windows([
@@ -1485,6 +1485,21 @@ py_library(
     ],
 )
 
+py_test(
+    name = "clip_ops_test",
+    size = "small",
+    srcs = ["ops/clip_ops_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":client_testlib",
+        ":clip_ops",
+        ":framework_for_generated_wrappers",
+        ":numerics",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "control_flow_grad",
     srcs = ["ops/control_flow_grad.py"],
@@ -1696,21 +1711,6 @@ py_library(
 )
 
 py_library(
-    name = "linalg_ns",
-    srcs = [
-        "ops/linalg_impl.py",
-        "ops/linalg_ns.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":linalg_ops",
-        ":math_ops",
-        ":special_math_ops",
-    ],
-)
-
-py_library(
     name = "linalg_grad",
     srcs = ["ops/linalg_grad.py"],
     srcs_version = "PY2AND3",
@@ -1720,6 +1720,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":linalg_ops",
         ":math_ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
     ],
 )
 
@@ -2208,6 +2209,7 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/linalg",
     ],
 )
 
@@ -3394,6 +3396,7 @@ cuda_py_test(
         ":training",
         ":platform_test",
         ":client_testlib",
+        ":variable_scope",
         "//third_party/py/numpy",
     ],
 )

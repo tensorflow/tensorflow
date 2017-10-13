@@ -122,6 +122,10 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NHWC> {
         input_height, input_width, input_depth, output_height, output_width,
         output_depth, output.data());
   }
+  void operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
+                  int block_size, typename TTypes<T, 5>::Tensor output) {
+    LOG(FATAL) << "5-D tensors should not be used with NHWC format";
+  }
 };
 
 template <typename T>
@@ -141,12 +145,19 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
         config.virtual_thread_count, input.data(), block_size, output_width,
         input_depth * output_height, output.data());
   }
+  void operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
+                  int block_size, typename TTypes<T, 5>::Tensor output) {
+    LOG(FATAL) << "5-D tensors should not be used with NCHW format";
+  }
 };
 }  // end namespace functor
 
 // Instantiate the GPU implementations for float.
 template struct functor::SpaceToDepthOpFunctor<GPUDevice, float, FORMAT_NCHW>;
 template struct functor::SpaceToDepthOpFunctor<GPUDevice, float, FORMAT_NHWC>;
+
+// NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
+template struct functor::SpaceToDepthOpFunctor<GPUDevice, int32, FORMAT_NCHW>;
 
 }  // end namespace tensorflow
 

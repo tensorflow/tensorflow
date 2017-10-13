@@ -1168,6 +1168,28 @@ TEST_F(OpTest, BiasAddV1) {
   });
 }
 
+TEST_F(OpTest, BitwiseAnd) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BitwiseAnd")
+                                             .RandomInput(type, dims.first)
+                                             .RandomInput(type, dims.second)
+                                             .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, BitwiseOr) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BitwiseOr")
+                                             .RandomInput(type, dims.first)
+                                             .RandomInput(type, dims.second)
+                                             .Attr("T", type));
+  });
+}
+
 TEST_F(OpTest, BroadcastArgs) {
   Repeatedly([this]() {
     // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
@@ -1726,6 +1748,14 @@ TEST_F(OpTest, GreaterEqual) {
                                              .RandomInput(type, dims.first)
                                              .RandomInput(type, dims.second)
                                              .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, Invert) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Invert").RandomInput(type).Attr("T", type));
   });
 }
 

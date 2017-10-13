@@ -127,6 +127,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_verified_test_base",
+    testonly = True,
+    srcs = ["hlo_verified_test_base.cc"],
+    hdrs = ["hlo_verified_test_base.h"],
+    deps = [
+        ":hlo_test_base",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
@@ -373,6 +389,7 @@ xla_test(
     name = "params_test",
     srcs = ["params_test.cc"],
     shard_count = 30,
+    tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
@@ -1461,6 +1478,7 @@ xla_test(
 xla_test(
     name = "local_client_execute_test",
     srcs = ["local_client_execute_test.cc"],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

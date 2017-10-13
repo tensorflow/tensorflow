@@ -9,8 +9,11 @@ py_library(
     name = "tfe",
     srcs = ["tfe.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":datasets",
+        ":metrics",
+        ":network",
         ":saver",
         ":summary_writer",
         "//tensorflow/python:framework_ops",
@@ -112,6 +115,60 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "metrics",
+    srcs = [
+        "metrics.py",
+        "metrics_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":metrics",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "network",
+    srcs = ["network.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_test(
+    name = "network_test",
+    srcs = ["network_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":network",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:layers",
         "//tensorflow/python/eager:test",
     ],
 )

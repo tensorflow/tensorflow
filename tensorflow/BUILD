@@ -121,6 +121,15 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_x86_64",
+    values = {
+        "cc_target_os": "apple",
+        "cpu": "ios_x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -129,6 +138,22 @@ config_setting(
 config_setting(
     name = "linux_ppc64le",
     values = {"cpu": "ppc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_armhf",
+    values = {
+        "cpu": "armeabi-v7a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_arm64",
+    values = {
+        "cpu": "arm64-v8a",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -182,6 +207,12 @@ config_setting(
 config_setting(
     name = "with_hdfs_support",
     values = {"define": "with_hdfs_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_s3_support",
+    values = {"define": "with_s3_support=true"},
     visibility = ["//visibility:public"],
 )
 
@@ -455,6 +486,7 @@ filegroup(
         "//tensorflow/core/kernels/fuzzing:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/kernels/neon:all_files",
+        "//tensorflow/core/lib/db:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
@@ -492,7 +524,9 @@ filegroup(
         "//tensorflow/python/keras:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/kernel_tests/distributions:all_files",
+        "//tensorflow/python/kernel_tests/linalg:all_files",
         "//tensorflow/python/ops/distributions:all_files",
+        "//tensorflow/python/ops/linalg:all_files",
         "//tensorflow/python/profiler:all_files",
         "//tensorflow/python/profiler/internal:all_files",
         "//tensorflow/python/saved_model:all_files",

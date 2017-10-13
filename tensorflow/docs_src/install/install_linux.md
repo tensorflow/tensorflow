@@ -457,7 +457,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
   2. Create a conda environment named <tt>tensorflow</tt> to run a version
      of Python by invoking the following command:
 
-     <pre>$ <b>conda create -n tensorflow python=2.7 # or python=3.3, etc.</b></pre>
+     <pre>$ <b>conda create -n tensorflow pip python=2.7 # or python=3.3, etc.</b></pre>
 
   3. Activate the conda environment by issuing the following command:
 

@@ -140,7 +140,7 @@ class TruncatedNormalOp : public XlaOpKernel {
                                       xla::ComputationBuilder* b) {
       xla::ComputationDataHandle too_large = b->Gt(candidate, two_sd(false, b));
       xla::ComputationDataHandle too_small = b->Lt(candidate, two_sd(true, b));
-      return b->LogicalOr(too_large, too_small);
+      return b->Or(too_large, too_small);
     };
 
     // The algorithm we're using is roughly:

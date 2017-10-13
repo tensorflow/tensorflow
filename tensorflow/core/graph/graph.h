@@ -298,12 +298,12 @@ class Edge {
   Node* dst() const { return dst_; }
   int id() const { return id_; }
 
-  // Return the number of the source output that produces the data
+  // Return the index of the source output that produces the data
   // carried by this edge.  The special value kControlSlot is used
   // for control dependencies.
   int src_output() const { return src_output_; }
 
-  // Return the number of the destination input that consumes the data
+  // Return the index of the destination input that consumes the data
   // carried by this edge.  The special value kControlSlot is used
   // for control dependencies.
   int dst_input() const { return dst_input_; }
@@ -631,7 +631,7 @@ class Graph {
   std::unordered_map<string, int> device_names_map_;
 
   // All the while contexts owned by this graph, keyed by frame name,
-  // corresonding to all the while loops contained in this graph (including
+  // corresponding to all the while loops contained in this graph (including
   // nested loops). The stored contexts are usually accessed via
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;

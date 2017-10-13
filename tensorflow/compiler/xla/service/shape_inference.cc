@@ -57,8 +57,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_IS_FINITE;
     case HloOpcode::kLog:
       return UNOP_LOG;
-    case HloOpcode::kLogicalNot:
-      return UNOP_LOGICAL_NOT;
+    case HloOpcode::kNot:
+      return UNOP_NOT;
     case HloOpcode::kNegate:
       return UNOP_NEGATE;
     case HloOpcode::kRoundNearestAfz:
@@ -113,10 +113,10 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
       return BINOP_POW;
     case HloOpcode::kRemainder:
       return BINOP_REM;
-    case HloOpcode::kLogicalOr:
-      return BINOP_LOGICAL_OR;
-    case HloOpcode::kLogicalAnd:
-      return BINOP_LOGICAL_AND;
+    case HloOpcode::kOr:
+      return BINOP_OR;
+    case HloOpcode::kAnd:
+      return BINOP_AND;
     default:
       LOG(FATAL) << "unhandled opcode " << opcode;
   }
@@ -322,11 +322,12 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_SORT:
       return arg;
 
-    case UNOP_LOGICAL_NOT:
-      if (arg.element_type() != PRED) {
+    case UNOP_NOT:
+      if (arg.element_type() != PRED &&
+          !primitive_util::IsIntegralType(arg.element_type())) {
         return InvalidArgument(
-            "expected pred element type in argument to logical-not operation; "
-            "got %s",
+            "expected pred or an integral element type in argument to not "
+            "operation; got %s",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
@@ -750,17 +751,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
 
-    case BINOP_LOGICAL_AND:
-    case BINOP_LOGICAL_OR:
-      if (lhs.element_type() != PRED) {
+    case BINOP_AND:
+    case BINOP_OR:
+      if (lhs.element_type() != PRED &&
+          !primitive_util::IsIntegralType(lhs.element_type())) {
         return InvalidArgument(
-            "expected pred element type in argument to logical and/or "
-            "operation; got %s",
+            "expected pred or integral type in argument to and/or operation; "
+            "got %s",
             PrimitiveType_Name(lhs.element_type()).c_str());
       }
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
-
     case BINOP_EQ:
     case BINOP_GE:
     case BINOP_GT:
@@ -1406,8 +1407,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   // Verifies that the input and window dimensions are a permutation of
   // the dimension numbers.
   std::vector<int64> input_dnums(num_dims);
-  input_dnums[0] = dnums.batch_dimension();
-  input_dnums[1] = dnums.feature_dimension();
+  input_dnums[0] = dnums.input_batch_dimension();
+  input_dnums[1] = dnums.input_feature_dimension();
   std::copy(dnums.spatial_dimensions().begin(),
             dnums.spatial_dimensions().end(), input_dnums.begin() + 2);
   std::sort(input_dnums.begin(), input_dnums.end());
@@ -1447,8 +1448,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int i = 0; i < num_spatial_dims; ++i) {
     input_spatial_dims[i] = lhs.dimensions(dnums.spatial_dimensions(i));
   }
-  const int64 input_features = lhs.dimensions(dnums.feature_dimension());
-  const int64 input_batch = lhs.dimensions(dnums.batch_dimension());
+  const int64 input_features = lhs.dimensions(dnums.input_feature_dimension());
+  const int64 input_batch = lhs.dimensions(dnums.input_batch_dimension());
 
   std::vector<int64> kernel_spatial_dims(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
@@ -1490,8 +1491,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                              /*allow_negative_padding=*/true));
 
   std::vector<int64> dimensions(num_dims);
-  dimensions[dnums.batch_dimension()] = input_batch;
-  dimensions[dnums.feature_dimension()] = kernel_output_features;
+  dimensions[dnums.output_batch_dimension()] = input_batch;
+  dimensions[dnums.output_feature_dimension()] = kernel_output_features;
   for (int i = 0; i < num_spatial_dims; ++i) {
     dimensions[dnums.spatial_dimensions(i)] = window_output_shape.dimensions(i);
   }

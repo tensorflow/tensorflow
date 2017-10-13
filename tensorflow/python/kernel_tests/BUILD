@@ -154,6 +154,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python/ops/linalg",
     ],
     shard_count = 5,
     tags = ["no_windows_gpu"],
@@ -971,7 +972,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "where_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["where_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1330,7 +1331,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "depthtospace_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["depthtospace_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1485,8 +1486,8 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:linalg_ns",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/ops/linalg",
     ],
     tags = ["no_windows_gpu"],
 )
@@ -1898,7 +1899,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "spacetodepth_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["spacetodepth_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2642,6 +2643,7 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/ops/linalg",
     ],
     shard_count = 20,
 )

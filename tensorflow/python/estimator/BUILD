@@ -36,6 +36,7 @@ py_library(
         ":parsing_utils",
         ":run_config",
         ":training",
+        ":warm_starting_util",
         "//tensorflow/python:util",
     ],
 )
@@ -242,7 +243,10 @@ py_test(
     srcs = ["canned/dnn_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":dnn",
         ":dnn_testing_utils",
@@ -296,7 +300,10 @@ py_test(
     srcs = ["canned/dnn_linear_combined_test.py"],
     shard_count = 8,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":dnn_linear_combined",
         ":dnn_testing_utils",
@@ -373,6 +380,7 @@ py_test(
     name = "estimator_test",
     srcs = ["estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67510291
     deps = [
         ":estimator",
         ":export_export",
@@ -399,6 +407,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
@@ -646,7 +655,10 @@ py_test(
     srcs = ["canned/linear_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",  # b/67510291
+    ],
     deps = [
         ":linear",
         ":linear_testing_utils",
@@ -780,5 +792,41 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "warm_starting_util",
+    srcs = ["warm_starting_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "warm_starting_util_test",
+    size = "small",
+    srcs = ["warm_starting_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":warm_starting_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+        "//third_party/py/numpy",
     ],
 )

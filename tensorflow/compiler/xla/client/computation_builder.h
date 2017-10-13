@@ -354,7 +354,8 @@ class ComputationBuilder {
   // Creates a ConvolutionDimensionNumbers with the given arguments. Returns an
   // error if either the input or the weight dimension numbers have conflicts.
   static StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
-      int64 batch, int64 feature, int64 first_spatial, int64 second_spatial,
+      int64 input_batch, int64 input_feature, int64 output_batch,
+      int64 output_feature, int64 first_spatial, int64 second_spatial,
       int64 kernel_output_feature, int64 kernel_input_feature,
       int64 kernel_first_spatial, int64 kernel_second_spatial);
 
@@ -461,15 +462,15 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Element-wise logical operators
-  ComputationDataHandle LogicalAnd(
+  ComputationDataHandle And(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
-  ComputationDataHandle LogicalOr(
+  ComputationDataHandle Or(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
-  ComputationDataHandle LogicalNot(const ComputationDataHandle& lhs);
+  ComputationDataHandle Not(const ComputationDataHandle& operand);
 
   // Reduces an array among the provided dimensions, given "computation" as a
   // reduction operator.
