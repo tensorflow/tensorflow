@@ -987,8 +987,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTranspose:
       CHECK_EQ(new_operands.size(), 1);
       return CreateTranspose(shape, new_operands[0], dimensions_);
-    case HloOpcode::kTuple:
-      return CreateTuple(new_operands);
+    case HloOpcode::kTuple: {
+      auto new_tuple = CreateTuple(new_operands);
+      *new_tuple->mutable_shape() = shape;
+      return new_tuple;
+    }
     case HloOpcode::kWhile:
       CHECK_EQ(new_operands.size(), 1);
       return CreateWhile(shape, while_condition(), while_body(),
