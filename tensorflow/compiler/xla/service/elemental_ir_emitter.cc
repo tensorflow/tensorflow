@@ -126,14 +126,21 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     }
     case HloOpcode::kNegate:
       return ir_builder_->CreateNeg(operand_value);
-    case HloOpcode::kNot:
-      // It is not sufficient to just call CreateNot() here because a PRED is
-      // represented as an i8 and the truth value is stored only in the bottom
-      // bit.
-      return ir_builder_->CreateZExt(
-          ir_builder_->CreateNot(ir_builder_->CreateTrunc(
-              operand_value, ir_builder_->getInt1Ty())),
-          llvm_ir::PrimitiveTypeToIrType(PRED, ir_builder_));
+    case HloOpcode::kNot: {
+      auto type = op->shape().element_type();
+      if (type == PRED) {
+        // It is not sufficient to just call CreateNot() here because a PRED
+        // is represented as an i8 and the truth value is stored only in the
+        // bottom bit.
+        return ir_builder_->CreateZExt(
+            ir_builder_->CreateNot(ir_builder_->CreateTrunc(
+                operand_value, ir_builder_->getInt1Ty())),
+            llvm_ir::PrimitiveTypeToIrType(PRED, ir_builder_));
+      } else if (primitive_util::IsIntegralType(type)) {
+        return ir_builder_->CreateNot(operand_value);
+      }
+      return Unimplemented("unary op Not is not defined for type '%d'", type);
+    }
     default:
       return Unimplemented("unary integer op '%s'",
                            HloOpcodeString(op->opcode()).c_str());

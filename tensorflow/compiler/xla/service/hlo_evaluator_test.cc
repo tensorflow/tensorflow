@@ -736,8 +736,10 @@ TEST_F(HloEvaluatorTest, SimpleConv1D) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_batch_dimension(0);
-  dnums.set_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_output_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
 
   dnums.set_kernel_output_feature_dimension(0);
@@ -868,8 +870,10 @@ TEST_F(HloEvaluatorTest, Conv2DGeneralDimensions) {
   *window.add_dimensions() = dim;
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_batch_dimension(2);
-  dnums.set_feature_dimension(0);
+  dnums.set_input_batch_dimension(2);
+  dnums.set_output_batch_dimension(2);
+  dnums.set_input_feature_dimension(0);
+  dnums.set_output_feature_dimension(0);
   dnums.add_spatial_dimensions(1);
   dnums.add_spatial_dimensions(3);
 

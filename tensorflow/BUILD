@@ -121,6 +121,15 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_x86_64",
+    values = {
+        "cc_target_os": "apple",
+        "cpu": "ios_x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -129,6 +138,22 @@ config_setting(
 config_setting(
     name = "linux_ppc64le",
     values = {"cpu": "ppc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_armhf",
+    values = {
+        "cpu": "armeabi-v7a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_arm64",
+    values = {
+        "cpu": "arm64-v8a",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -461,6 +486,7 @@ filegroup(
         "//tensorflow/core/kernels/fuzzing:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/kernels/neon:all_files",
+        "//tensorflow/core/lib/db:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
