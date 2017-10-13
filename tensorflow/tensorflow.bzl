@@ -112,9 +112,6 @@ def if_ios(a):
 def if_mobile(a):
   return select({
       clean_dep("//tensorflow:android"): a,
-      # Treat arm linux devices as mobile.
-      clean_dep("//tensorflow:linux_arm64"): a,
-      clean_dep("//tensorflow:linux_armhf"): a,
       clean_dep("//tensorflow:ios"): a,
       "//conditions:default": [],
   })
@@ -123,9 +120,6 @@ def if_mobile(a):
 def if_not_mobile(a):
   return select({
       clean_dep("//tensorflow:android"): [],
-      # Treat arm linux devices as mobile.
-      clean_dep("//tensorflow:linux_arm64"): [],
-      clean_dep("//tensorflow:linux_armhf"): [],
       clean_dep("//tensorflow:ios"): [],
       "//conditions:default": a,
   })
