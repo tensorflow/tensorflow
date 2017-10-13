@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -254,29 +255,6 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution,
                                       rhs_instruction, window);
 }
 
-// Checks if we can emit code for DynamicUpdateSlice to update data in-place.
-// Returns true if operand 0 of DynamicUpdateSlice and its output buffer
-// share the same buffer allocation.
-static bool CanUpdateDynamicSliceInPlace(const BufferAssignment& assignment,
-                                         HloInstruction* fusion) {
-  CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
-  HloInstruction* fused_root = fusion->fused_expression_root();
-  if (fused_root->opcode() != HloOpcode::kDynamicUpdateSlice) {
-    return false;
-  }
-  // Walk DynamicUpdateSlice operand(0) to fused parameter and get its
-  // associated operand. See if it shares an allocation with this operand.
-  HloInstruction* fusion_operand;
-  ShapeIndex index;
-  std::tie(fusion_operand, index) =
-      fused_root->mutable_operand(0)->LatestNonGteAncestorAndIndex();
-  if (fusion_operand->opcode() != HloOpcode::kParameter) {
-    return false;
-  }
-  auto* operand = fusion->operand(fusion_operand->parameter_number());
-  return assignment.SharesSliceAtIndex(fusion, {}, operand, index);
-}
-
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   HloInstruction* root = fusion->fused_expression_root();
   // HandleFusion specializes reduction from a multi-dimensional array to a 1D
@@ -347,95 +325,40 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         LOG(FATAL) << "Bad opcode for input fusion: "
                    << fusion->fused_expression_root()->opcode();
     }
-  } else if (HloInstruction::FusionKind::kLoop == fusion->fusion_kind() &&
-             root->opcode() == HloOpcode::kDynamicUpdateSlice &&
-             CanUpdateDynamicSliceInPlace(
-                 ir_emitter_context_->buffer_assignment(), fusion)) {
-    // Loop fusion instruction with DynamicUpdateSlice as fused root.
-    // DynamicUpdateSlice's operand(0) and 'fusion' output share the same
-    // BufferAllocation::Slice, so it is safe to emit code to update the slice
-    // 'in-place'. This avoids copying data outside of the slice update region.
+  } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(
+                 fusion, ir_emitter_context_->buffer_assignment())) {
+    // Fusion node with dynamic-update-slice as the root where the op's input
+    // (i.e. array to update) shares the same slice as its output.  In this case
+    // we have a special algorithm that modifies the output in place without
+    // touching the un-updated elements.
 
     // Set up kernel thunk and fused ir emitter.
     thunk_sequence_->emplace_back(BuildKernelThunk(fusion));
-    std::vector<llvm_ir::IrArray> parameter_arrays;
+    std::vector<llvm_ir::IrArray> operand_arrays;
     for (HloInstruction* operand : fusion->operands()) {
-      parameter_arrays.push_back(GetIrArray(*operand));
+      operand_arrays.push_back(GetIrArray(*operand));
     }
     GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                             ir_emitter_context_->llvm_module(),
                                             &ir_builder_, GetNestedComputer());
-    FusedIrEmitter fused_emitter(parameter_arrays, &elemental_emitter);
-    TF_RETURN_IF_ERROR(root->Accept(&fused_emitter));
 
-    // Recursively lookup 'fusion_operand' for DynamicUpdateSlice operand 0.
-    auto* fusion_operand = root->operand(0)->LatestNonGteAncestor();
-    CHECK_EQ(HloOpcode::kParameter, fusion_operand->opcode());
+    // Shape of the dynamic-update-slice's "update" operand.
+    Shape update_shape = root->operand(1)->shape();
 
-    // Operand(0) the input array which shares an allocation with the output.
-    const auto* input = root->operand(0);
-    llvm::Value* input_base_ptr = fused_emitter.GetIrValueForGTE(input);
-    // Operand(1) 'update' is slice with which to update input at operand(0).
-    const auto* update = root->operand(1);
-    Shape update_shape = update->shape();
-    TF_RETURN_IF_ERROR(
-        LayoutUtil::CopyLayoutBetweenShapes(fusion->shape(), &update_shape));
-    // Operand(2) the dynamic slice indices at which to write 'update'.
-    const auto* start_indices = root->operand(2);
+    // Array to write into.  Because this is an in-place operation, this is the
+    // same as operand 0's array.
+    llvm_ir::IrArray output_array = GetIrArray(*fusion);
 
-    // Create element generators for 'update' and 'start_indices'.
-    llvm_ir::ElementGenerator element_generator =
-        fused_emitter.GetGenerator(update);
-    llvm_ir::ElementGenerator start_generator =
-        fused_emitter.GetGenerator(start_indices);
-
-    // Create loop body emitter which emits code to do the following:
-    // *) Read dynamic slice start indices into 'start_index'.
-    // *) Map requested 'index' and slice 'start_index' to input/output shape
-    //    as 'output_index'.
-    // *) Reads value from 'update' element generator.
-    // *) Writes value to input/output array at 'output_index'.
-    auto loop_body_emitter =
-        [=](const llvm_ir::IrArray::Index& index) -> Status {
-      // Emit IR to read dynamic start indices from hlo->operand(2).
-      const int64 rank = ShapeUtil::Rank(input->shape());
-      llvm_ir::IrArray::Index start_index(rank);
-      for (int64 i = 0; i < rank; ++i) {
-        llvm_ir::IrArray::Index dim_index({ir_builder_.getInt64(i)});
-        TF_ASSIGN_OR_RETURN(start_index[i], start_generator(dim_index));
-      }
-
-      // Calculate 'output_index' at which to write value from update.
-      llvm_ir::IrArray::Index output_index(rank);
-      for (int64 i = 0; i < rank; ++i) {
-        // Emit IR which computes:
-        //   output_index = (start_index + index) % dim_size
-        llvm::Value* dim_size = llvm::ConstantInt::get(
-            index[i]->getType(), input->shape().dimensions(i));
-        llvm::Value* start_index0 = ir_builder_.CreateZExtOrBitCast(
-            start_index[i], index[i]->getType());
-        output_index[i] = ir_builder_.CreateURem(
-            ir_builder_.CreateAdd(start_index0, index[i]), dim_size);
-      }
-
-      // Read value from 'update'.
-      TF_ASSIGN_OR_RETURN(llvm::Value * input_value, element_generator(index));
-      // Write value to output array.
-      llvm_ir::IrArray(input_base_ptr, input->shape())
-          .EmitWriteArrayElement(output_index, input_value, &ir_builder_);
-      return Status::OK();
-    };
-
-    // Create loop which iterates over 'update' shape.
     LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
         update_shape, ir_emitter_context_->device_description());
     CHECK(Thunk::Kind::kKernel == LastThunk()->kind());
     UpdateLaunchDimensions(launch_dimensions,
                            static_cast<KernelThunk*>(LastThunk()),
                            ir_emitter_context_->llvm_module());
-    return ParallelLoopEmitter(loop_body_emitter, update_shape,
-                               launch_dimensions, &ir_builder_)
-        .EmitLoop(IrName(fusion));
+
+    return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
+        fusion, operand_arrays, output_array, &elemental_emitter,
+        launch_dimensions, &ir_builder_);
   }
   if (ImplementedAsGemm(*fusion)) {
     thunk_sequence_->emplace_back(BuildGemmThunk(fusion));

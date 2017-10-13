@@ -38,6 +38,111 @@ from tensorflow.python.platform import test
 block_lstm = lstm_ops._block_lstm  # pylint: disable=protected-access
 
 
+def blocks_match(sess, use_peephole):
+  batch_size = 2
+  input_size = 3
+  cell_size = 4
+  sequence_length = 4
+
+  inputs = []
+  for _ in range(sequence_length):
+    inp = ops.convert_to_tensor(
+        np.random.randn(batch_size, input_size), dtype=dtypes.float32)
+    inputs.append(inp)
+
+  initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=19890212)
+
+  with variable_scope.variable_scope("test", initializer=initializer):
+    # magic naming so that the cells pick up these variables and resuse them
+    if use_peephole:
+      wci = variable_scope.get_variable(
+          "rnn/lstm_cell/w_i_diag", shape=[cell_size], dtype=dtypes.float32)
+      wcf = variable_scope.get_variable(
+          "rnn/lstm_cell/w_f_diag", shape=[cell_size], dtype=dtypes.float32)
+      wco = variable_scope.get_variable(
+          "rnn/lstm_cell/w_o_diag", shape=[cell_size], dtype=dtypes.float32)
+
+    w = variable_scope.get_variable(
+        "rnn/lstm_cell/kernel",
+        shape=[input_size + cell_size, cell_size * 4],
+        dtype=dtypes.float32)
+    b = variable_scope.get_variable(
+        "rnn/lstm_cell/bias",
+        shape=[cell_size * 4],
+        dtype=dtypes.float32,
+        initializer=init_ops.zeros_initializer())
+
+    if use_peephole:
+      wci_block = variable_scope.get_variable(
+          "rnn/lstm_cell/lstm_block_wrapper/w_i_diag",
+          initializer=wci.initialized_value())
+      wcf_block = variable_scope.get_variable(
+          "rnn/lstm_cell/lstm_block_wrapper/w_f_diag",
+          initializer=wcf.initialized_value())
+      wco_block = variable_scope.get_variable(
+          "rnn/lstm_cell/lstm_block_wrapper/w_o_diag",
+          initializer=wco.initialized_value())
+    w_block = variable_scope.get_variable(
+        "rnn/lstm_cell/lstm_block_wrapper/kernel",
+        initializer=w.initialized_value())
+    b_block = variable_scope.get_variable(
+        "rnn/lstm_cell/lstm_block_wrapper/bias",
+        initializer=b.initialized_value())
+
+    basic_cell = rnn_cell.LSTMCell(
+        cell_size, use_peepholes=use_peephole, state_is_tuple=True, reuse=True)
+    basic_outputs_op, basic_state_op = rnn.static_rnn(
+        basic_cell, inputs, dtype=dtypes.float32)
+
+    if use_peephole:
+      _, _, _, _, _, _, block_outputs_op = block_lstm(
+          ops.convert_to_tensor(sequence_length, dtype=dtypes.int64),
+          inputs,
+          w,
+          b,
+          wci=wci,
+          wcf=wcf,
+          wco=wco,
+          cell_clip=0,
+          use_peephole=True)
+    else:
+      _, _, _, _, _, _, block_outputs_op = block_lstm(
+          ops.convert_to_tensor(sequence_length, dtype=dtypes.int64),
+          inputs,
+          w,
+          b,
+          cell_clip=0)
+
+    with variable_scope.variable_scope("rnn/lstm_cell", reuse=True):
+      fused_cell = lstm_ops.LSTMBlockFusedCell(
+          cell_size, cell_clip=0, use_peephole=use_peephole)
+      fused_outputs_op, fused_state_op = fused_cell(
+          inputs, dtype=dtypes.float32)
+
+    sess.run([variables.global_variables_initializer()])
+    basic_outputs, basic_state = sess.run([basic_outputs_op, basic_state_op[0]])
+    basic_grads = sess.run(gradients_impl.gradients(basic_outputs_op, inputs))
+    xs = [w, b]
+    if use_peephole:
+      xs += [wci, wcf, wco]
+    basic_wgrads = sess.run(gradients_impl.gradients(basic_outputs_op, xs))
+
+    block_outputs = sess.run(block_outputs_op)
+    block_grads = sess.run(gradients_impl.gradients(block_outputs_op, inputs))
+    block_wgrads = sess.run(gradients_impl.gradients(block_outputs_op, xs))
+
+    xs = [w_block, b_block]
+    if use_peephole:
+      xs += [wci_block, wcf_block, wco_block]
+    fused_outputs, fused_state = sess.run([fused_outputs_op, fused_state_op[0]])
+    fused_grads = sess.run(gradients_impl.gradients(fused_outputs_op, inputs))
+    fused_wgrads = sess.run(gradients_impl.gradients(fused_outputs_op, xs))
+
+    return (basic_state, fused_state, basic_outputs, block_outputs,
+            fused_outputs, basic_grads, block_grads, fused_grads, basic_wgrads,
+            block_wgrads, fused_wgrads)
+
+
 class LSTMBlockCellTest(test.TestCase):
 
   def testNoneDimsWithDynamicRNN(self):
@@ -227,173 +332,28 @@ class LSTMBlockCellTest(test.TestCase):
 
   def testLSTMBasicToBlock(self):
     with self.test_session(use_gpu=True) as sess:
-      batch_size = 2
-      input_size = 3
-      cell_size = 4
-      sequence_length = 5
-
-      inputs = []
-      for _ in range(sequence_length):
-        inp = ops.convert_to_tensor(
-            np.random.randn(batch_size, input_size), dtype=dtypes.float32)
-        inputs.append(inp)
-
-      initializer = init_ops.random_uniform_initializer(
-          -0.01, 0.01, seed=19890212)
-      with variable_scope.variable_scope("basic", initializer=initializer):
-        cell = rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
-        outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
-
-        sess.run([variables.global_variables_initializer()])
-        basic_outputs, basic_state = sess.run([outputs, state[0]])
-        basic_grads = sess.run(gradients_impl.gradients(outputs, inputs))
-        basic_wgrads = sess.run(
-            gradients_impl.gradients(outputs, variables.trainable_variables()))
-
-      with variable_scope.variable_scope("block", initializer=initializer):
-        w = variable_scope.get_variable(
-            "w",
-            shape=[input_size + cell_size, cell_size * 4],
-            dtype=dtypes.float32)
-        b = variable_scope.get_variable(
-            "b",
-            shape=[cell_size * 4],
-            dtype=dtypes.float32,
-            initializer=init_ops.zeros_initializer())
-
-        _, _, _, _, _, _, outputs = block_lstm(
-            ops.convert_to_tensor(
-                sequence_length, dtype=dtypes.int64),
-            inputs,
-            w,
-            b,
-            cell_clip=0)
-
-        sess.run([variables.global_variables_initializer()])
-        block_outputs = sess.run(outputs)
-        block_grads = sess.run(gradients_impl.gradients(outputs, inputs))
-        block_wgrads = sess.run(gradients_impl.gradients(outputs, [w, b]))
+      (basic_state, fused_state, basic_outputs, block_outputs, fused_outputs,
+       basic_grads, block_grads, fused_grads, basic_wgrads, block_wgrads,
+       fused_wgrads) = blocks_match(
+           sess, use_peephole=False)
 
       self.assertAllClose(basic_outputs, block_outputs)
       self.assertAllClose(basic_grads, block_grads)
       for basic, block in zip(basic_wgrads, block_wgrads):
-        self.assertAllClose(basic, block, rtol=1e-2, atol=1e-2)
-
-      with variable_scope.variable_scope("fused", initializer=initializer):
-        cell = lstm_ops.LSTMBlockFusedCell(
-            cell_size, cell_clip=0, use_peephole=False)
-        outputs, state = cell(inputs, dtype=dtypes.float32)
-
-        sess.run([variables.global_variables_initializer()])
-        fused_outputs, fused_state = sess.run([outputs, state[0]])
-        fused_grads = sess.run(gradients_impl.gradients(outputs, inputs))
-        fused_vars = [
-            v for v in variables.trainable_variables()
-            if v.name.startswith("fused/")
-        ]
-        fused_wgrads = sess.run(gradients_impl.gradients(outputs, fused_vars))
+        self.assertAllClose(basic, block, rtol=1e-6, atol=1e-6)
 
       self.assertAllClose(basic_outputs, fused_outputs)
       self.assertAllClose(basic_state, fused_state)
       self.assertAllClose(basic_grads, fused_grads)
-      for basic, fused in zip(basic_wgrads, fused_wgrads):
-        self.assertAllClose(basic, fused, rtol=1e-2, atol=1e-2)
+      for basic, fused in zip(block_wgrads, fused_wgrads):
+        self.assertAllClose(basic, fused, rtol=1e-6, atol=1e-6)
 
   def testLSTMBasicToBlockPeeping(self):
     with self.test_session(use_gpu=True) as sess:
-      batch_size = 2
-      input_size = 3
-      cell_size = 4
-      sequence_length = 4
-
-      inputs = []
-      for _ in range(sequence_length):
-        inp = ops.convert_to_tensor(
-            np.random.randn(batch_size, input_size), dtype=dtypes.float32)
-        inputs.append(inp)
-
-      initializer = init_ops.random_uniform_initializer(
-          -0.01, 0.01, seed=19890212)
-
-      with variable_scope.variable_scope("test", initializer=initializer):
-        # magic naming so that the cells pick up these variables and resuse them
-        wci = variable_scope.get_variable(
-            "rnn/lstm_cell/w_i_diag", shape=[cell_size], dtype=dtypes.float32)
-        wcf = variable_scope.get_variable(
-            "rnn/lstm_cell/w_f_diag", shape=[cell_size], dtype=dtypes.float32)
-        wco = variable_scope.get_variable(
-            "rnn/lstm_cell/w_o_diag", shape=[cell_size], dtype=dtypes.float32)
-
-        w = variable_scope.get_variable(
-            "rnn/lstm_cell/kernel",
-            shape=[input_size + cell_size, cell_size * 4],
-            dtype=dtypes.float32)
-        b = variable_scope.get_variable(
-            "rnn/lstm_cell/bias",
-            shape=[cell_size * 4],
-            dtype=dtypes.float32,
-            initializer=init_ops.zeros_initializer())
-
-        wci_block = variable_scope.get_variable(
-            "rnn/lstm_cell/lstm_block_wrapper/w_i_diag",
-            initializer=wci.initialized_value())
-        wcf_block = variable_scope.get_variable(
-            "rnn/lstm_cell/lstm_block_wrapper/w_f_diag",
-            initializer=wcf.initialized_value())
-        wco_block = variable_scope.get_variable(
-            "rnn/lstm_cell/lstm_block_wrapper/w_o_diag",
-            initializer=wco.initialized_value())
-        w_block = variable_scope.get_variable(
-            "rnn/lstm_cell/lstm_block_wrapper/kernel",
-            initializer=w.initialized_value())
-        b_block = variable_scope.get_variable(
-            "rnn/lstm_cell/lstm_block_wrapper/bias",
-            initializer=b.initialized_value())
-
-        basic_cell = rnn_cell.LSTMCell(
-            cell_size, use_peepholes=True, state_is_tuple=True, reuse=True)
-        basic_outputs_op, basic_state_op = rnn.static_rnn(
-            basic_cell, inputs, dtype=dtypes.float32)
-
-        _, _, _, _, _, _, block_outputs_op = block_lstm(
-            ops.convert_to_tensor(sequence_length, dtype=dtypes.int64),
-            inputs,
-            w,
-            b,
-            wci=wci,
-            wcf=wcf,
-            wco=wco,
-            cell_clip=0,
-            use_peephole=True)
-
-        with variable_scope.variable_scope("rnn/lstm_cell", reuse=True):
-          fused_cell = lstm_ops.LSTMBlockFusedCell(
-              cell_size, cell_clip=0, use_peephole=True)
-          fused_outputs_op, fused_state_op = fused_cell(
-              inputs, dtype=dtypes.float32)
-
-        sess.run([variables.global_variables_initializer()])
-        basic_outputs, basic_state = sess.run(
-            [basic_outputs_op, basic_state_op[0]])
-        basic_grads = sess.run(
-            gradients_impl.gradients(basic_outputs_op, inputs))
-        basic_wgrads = sess.run(
-            gradients_impl.gradients(basic_outputs_op, [w, b, wci, wcf, wco]))
-
-        block_outputs = sess.run(block_outputs_op)
-        block_grads = sess.run(
-            gradients_impl.gradients(block_outputs_op, inputs))
-        block_wgrads = sess.run(
-            gradients_impl.gradients(block_outputs_op, [w, b, wci, wcf, wco]))
-
-        fused_outputs, fused_state = sess.run(
-            [fused_outputs_op, fused_state_op[0]])
-        fused_grads = sess.run(
-            gradients_impl.gradients(fused_outputs_op, inputs))
-        fused_wgrads = sess.run(
-            gradients_impl.gradients(
-                fused_outputs_op,
-                [w_block, b_block, wci_block, wcf_block, wco_block]))
+      (basic_state, fused_state, basic_outputs, block_outputs, fused_outputs,
+       basic_grads, block_grads, fused_grads, basic_wgrads, block_wgrads,
+       fused_wgrads) = blocks_match(
+           sess, use_peephole=True)
 
       self.assertAllClose(basic_outputs, block_outputs)
       self.assertAllClose(basic_grads, block_grads)
@@ -423,45 +383,40 @@ class LSTMBlockCellTest(test.TestCase):
 
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890213)
-      with variable_scope.variable_scope("basic", initializer=initializer):
-        cell = rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
-        outputs, state = rnn.static_rnn(
-            cell, inputs, dtype=dtypes.float32, sequence_length=seq_lengths)
-        sess.run([variables.global_variables_initializer()])
-        basic_outputs, basic_state = sess.run([outputs, state[0]])
-        basic_grads = sess.run(gradients_impl.gradients(outputs, inputs))
-        basic_wgrads = sess.run(
-            gradients_impl.gradients(outputs, variables.trainable_variables()))
 
-      with variable_scope.variable_scope("fused", initializer=initializer):
+      with variable_scope.variable_scope(
+          "lstm_block_wrapper", initializer=initializer):
+        # magic naming so that the cells pick up these variables and resuse them
+        variable_scope.get_variable(
+            "kernel",
+            shape=[input_size + cell_size, cell_size * 4],
+            dtype=dtypes.float32)
+
+        variable_scope.get_variable(
+            "bias",
+            shape=[cell_size * 4],
+            dtype=dtypes.float32,
+            initializer=init_ops.zeros_initializer())
+
+      with variable_scope.variable_scope(
+          variable_scope.get_variable_scope(), reuse=True):
         cell = lstm_ops.LSTMBlockFusedCell(
             cell_size, cell_clip=0, use_peephole=False)
-        outputs, state = cell(
+
+        fused_outputs_op, fused_state_op = cell(
             inputs, dtype=dtypes.float32, sequence_length=seq_lengths)
 
-        sess.run([variables.global_variables_initializer()])
-        fused_outputs, fused_state = sess.run([outputs, state[0]])
-        fused_grads = sess.run(gradients_impl.gradients(outputs, inputs))
-        fused_vars = [
-            v for v in variables.trainable_variables()
-            if v.name.startswith("fused/")
-        ]
-        fused_wgrads = sess.run(gradients_impl.gradients(outputs, fused_vars))
-
-      self.assertAllClose(basic_outputs, fused_outputs)
-      self.assertAllClose(basic_state, fused_state)
-      self.assertAllClose(basic_grads, fused_grads)
-      for basic, fused in zip(basic_wgrads, fused_wgrads):
-        self.assertAllClose(basic, fused, rtol=1e-2, atol=1e-2)
+      cell_vars = [
+          v for v in variables.trainable_variables()
+          if v.name.endswith("kernel") or v.name.endswith("bias")
+      ]
 
       # Verify that state propagation works if we turn our sequence into
       # tiny (single-time) subsequences, i.e. unfuse the cell
+      unfused_outputs_op = []
+      state = None
       with variable_scope.variable_scope(
-          "unfused", initializer=initializer) as vs:
-        cell = lstm_ops.LSTMBlockFusedCell(
-            cell_size, cell_clip=0, use_peephole=False)
-        outputs = []
-        state = None
+          variable_scope.get_variable_scope(), reuse=True):
         for i, inp in enumerate(inputs):
           lengths = [int(i < l) for l in seq_lengths.eval()]
           output, state = cell(
@@ -469,25 +424,27 @@ class LSTMBlockCellTest(test.TestCase):
               initial_state=state,
               dtype=dtypes.float32,
               sequence_length=lengths)
-          vs.reuse_variables()
-          outputs.append(output[0])
-        outputs = array_ops.stack(outputs)
+          unfused_outputs_op.append(output[0])
+      unfused_outputs_op = array_ops.stack(unfused_outputs_op)
 
-        sess.run([variables.global_variables_initializer()])
-        unfused_outputs, unfused_state = sess.run([outputs, state[0]])
-        unfused_grads = sess.run(gradients_impl.gradients(outputs, inputs))
-        unfused_vars = [
-            v for v in variables.trainable_variables()
-            if v.name.startswith("unfused/")
-        ]
-        unfused_wgrads = sess.run(
-            gradients_impl.gradients(outputs, unfused_vars))
+      sess.run([variables.global_variables_initializer()])
+      unfused_outputs, unfused_state = sess.run([unfused_outputs_op, state[0]])
+      unfused_grads = sess.run(
+          gradients_impl.gradients(unfused_outputs_op, inputs))
+      unfused_wgrads = sess.run(
+          gradients_impl.gradients(unfused_outputs_op, cell_vars))
 
-      self.assertAllClose(basic_outputs, unfused_outputs)
-      self.assertAllClose(basic_state, unfused_state)
-      self.assertAllClose(basic_grads, unfused_grads)
-      for basic, unfused in zip(basic_wgrads, unfused_wgrads):
-        self.assertAllClose(basic, unfused, rtol=1e-2, atol=1e-2)
+      fused_outputs, fused_state = sess.run(
+          [fused_outputs_op, fused_state_op[0]])
+      fused_grads = sess.run(gradients_impl.gradients(fused_outputs_op, inputs))
+      fused_wgrads = sess.run(
+          gradients_impl.gradients(fused_outputs_op, cell_vars))
+
+      self.assertAllClose(fused_outputs, unfused_outputs)
+      self.assertAllClose(fused_state, unfused_state)
+      self.assertAllClose(fused_grads, unfused_grads)
+      for fused, unfused in zip(fused_wgrads, unfused_wgrads):
+        self.assertAllClose(fused, unfused, rtol=1e-6, atol=1e-6)
 
 #### Benchmarking.
 

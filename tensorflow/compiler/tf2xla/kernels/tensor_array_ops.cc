@@ -307,11 +307,12 @@ class TensorArrayGatherOp : public XlaOpKernel {
     OP_REQUIRES(ctx, indices_shape.dims() == 1,
                 errors::InvalidArgument("indices must be rank 1"));
     auto indices = ctx->Input(1);
+    DataType index_type = ctx->input_type(1);
 
     xla::ComputationDataHandle ta = resource->value;
 
     xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-        ctx, ta, ta_shape, indices, indices_shape, 0, dtype_, b);
+        ctx, ta, ta_shape, indices, indices_shape, 0, dtype_, index_type, b);
     ctx->SetOutput(0, gather);
   }
 

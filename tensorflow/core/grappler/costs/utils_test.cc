@@ -264,13 +264,13 @@ TEST(TensorSizeHistogramTest, Merge) {
 TEST(DeviceClassTest, GetDeviceClass) {
   EXPECT_EQ(
       "Channel: /ps/CPU -> /worker/GPU",
-      GetDeviceClass("Channel from /job:ps/replica:0/task:0/device:CPU:0 to "
-                     "/job:worker/replica:7/task:0/device:GPU:7"));
+      GetDeviceClass("Channel_from_/job_ps/replica_0/task_0/device_CPU_0_to_"
+                     "/job_worker/replica_7/task_0/device_GPU_7"));
   EXPECT_EQ(
       "Channel: /worker_train/CPU -> /ps/GPU",
       GetDeviceClass(
-          "Channel from /job:worker_train/replica:0/task:0/device:CPU:0 to "
-          "/job:ps/replica:7/task:0/device:GPU:7"));
+          "Channel_from_/job_worker_train/replica_0/task_0/device_CPU_0_to_"
+          "/job_ps/replica_7/task_0/device_GPU_7"));
 }
 
 TEST(DeviceClassTest, GetDeviceClassForNonChannelDevice) {
