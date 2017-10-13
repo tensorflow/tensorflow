@@ -431,5 +431,4 @@ py_library(
     name = "imperative_grad",
     srcs = ["imperative_grad.py"],
     srcs_version = "PY2AND3",
-    deps = [":tape"],
 )
