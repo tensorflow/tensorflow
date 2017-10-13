@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -71,7 +73,7 @@ class ConstantFoldingTest : public ::testing::Test {
     test::FillIota<float>(&placeholder_tensor, 1.0f);
     TestConstantFolding(graph_def,
                         {{"placeholder_expect_remains", placeholder_tensor}},
-                        {}, {"output_expect_remains"});
+                        {}, {"output_expect_remains"}, {});
   }
 
   void TestOpExclusionAdd() {
@@ -105,7 +107,7 @@ class ConstantFoldingTest : public ::testing::Test {
     test::FillIota<float>(&placeholder_tensor, 1.0f);
     TestConstantFolding(graph_def,
                         {{"placeholder_expect_remains", placeholder_tensor}},
-                        {"Add"}, {"output_expect_remains"});
+                        {"Add"}, {"output_expect_remains"}, {});
   }
 
   void TestShapePropagation() {
@@ -129,13 +131,46 @@ class ConstantFoldingTest : public ::testing::Test {
     test::FillIota<float>(&placeholder_tensor, 1.0);
     TestConstantFolding(graph_def,
                         {{"placeholder_expect_remains", placeholder_tensor}},
-                        {}, {"output_expect_remains"});
+                        {}, {"output_expect_remains"}, {});
+  }
+
+  void TestPreserveOutputShapes() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    tensorflow::AttrValue shape_attr;
+    auto* shape_proto = shape_attr.mutable_list()->add_shape();
+    shape_proto->add_dim()->set_size(1);
+    shape_proto->add_dim()->set_size(1);
+    shape_proto->add_dim()->set_size(3);
+
+    Output placeholder =
+        Placeholder(root.WithOpName("placeholder_expect_remains"), DT_FLOAT);
+    placeholder.node()->AddAttr("_output_shapes", shape_attr);
+
+    Output shape = Shape(root.WithOpName("shape_expect_removed"), placeholder);
+    Output cast = Cast(root.WithOpName("cast_expect_removed"), shape, DT_FLOAT);
+    Output mul =
+        Mul(root.WithOpName("output_expect_remains"), cast, placeholder);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    Tensor placeholder_tensor(DT_FLOAT, TensorShape({1, 1, 3}));
+    test::FillIota<float>(&placeholder_tensor, 1.0);
+
+    graph_transforms::TransformFuncContext context;
+    context.params["clear_output_shapes"] = {"false"};
+    TestConstantFolding(graph_def,
+                        {{"placeholder_expect_remains", placeholder_tensor}},
+                        {}, {"output_expect_remains"}, context);
   }
 
   void TestConstantFolding(const GraphDef& graph_def,
                            std::vector<std::pair<string, Tensor> > inputs,
                            std::vector<string> excluded_ops,
-                           const std::vector<string>& outputs) {
+                           const std::vector<string>& outputs,
+                           graph_transforms::TransformFuncContext context) {
     std::unique_ptr<tensorflow::Session> unfolded_session(
         tensorflow::NewSession(tensorflow::SessionOptions()));
     TF_ASSERT_OK(unfolded_session->Create(graph_def));
@@ -143,7 +178,6 @@ class ConstantFoldingTest : public ::testing::Test {
     TF_ASSERT_OK(unfolded_session->Run(inputs, outputs, {}, &unfolded_tensors));
 
     GraphDef folded_graph_def;
-    graph_transforms::TransformFuncContext context;
     for (const std::pair<string, Tensor>& input : inputs) {
       context.input_names.push_back(input.first);
     }
@@ -268,6 +302,10 @@ TEST_F(ConstantFoldingTest, TestSimpleAdd) { TestSimpleAdd(); }
 TEST_F(ConstantFoldingTest, TestOpExclusionAdd) { TestOpExclusionAdd(); }
 
 TEST_F(ConstantFoldingTest, TestShapePropagation) { TestShapePropagation(); }
+
+TEST_F(ConstantFoldingTest, TestPreserveOutputShapes) {
+  TestPreserveOutputShapes();
+}
 
 TEST_F(ConstantFoldingTest, TestReplaceSendRecvs) { TestReplaceSendRecvs(); }
 
