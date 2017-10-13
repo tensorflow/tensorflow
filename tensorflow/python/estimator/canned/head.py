@@ -198,6 +198,12 @@ def _maybe_expand_dim(tensor):
 
 def _check_and_reshape_dense_labels(labels, expected_labels_dimension):
   """Checks dense labels type and shape and reshapes to 2D Tensor."""
+  if labels is None:
+    raise ValueError(
+        'You must provide a labels Tensor. Given: None. '
+        'Suggested troubleshooting steps: Check that your data contain '
+        'your label feature. Check that your input_fn properly parses and '
+        'returns labels.')
   with ops.name_scope(None, 'labels', (labels,)) as scope:
     labels = sparse_tensor.convert_to_tensor_or_sparse_tensor(labels)
     if isinstance(labels, sparse_tensor.SparseTensor):
@@ -829,8 +835,8 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode, features  # Unused for this head.
-    labels = _check_and_reshape_dense_labels(
-        math_ops.to_float(labels), self._logits_dimension)
+    labels = _check_and_reshape_dense_labels(labels, self._logits_dimension)
+    labels = math_ops.to_float(labels)
     return LossAndLabels(
         unweighted_loss=losses.mean_squared_error(
             labels=labels, predictions=logits, reduction=losses.Reduction.NONE),

@@ -87,6 +87,7 @@ XLAJIT_MAKE_UNARY(Log, b->Log(x));
 // TODO(b/34703906): use a more accurate implementation of log1p.
 XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
 
+XLAJIT_MAKE_UNARY(Invert, b->Not(x));
 XLAJIT_MAKE_UNARY(LogicalNot, b->Not(x));
 XLAJIT_MAKE_UNARY(Neg, b->Neg(x));
 

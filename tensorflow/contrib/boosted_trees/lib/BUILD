@@ -132,7 +132,6 @@ tf_cc_test(
         ":random_tree_gen",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -149,7 +148,6 @@ cc_library(
     deps = [
         ":utils",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
     ],
@@ -197,7 +195,6 @@ tf_cc_test(
     srcs = ["quantiles/weighted_quantiles_buffer_test.cc"],
     deps = [
         ":weighted_quantiles",
-        "//tensorflow/core",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -210,7 +207,6 @@ tf_cc_test(
     srcs = ["quantiles/weighted_quantiles_summary_test.cc"],
     deps = [
         ":weighted_quantiles",
-        "//tensorflow/core",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

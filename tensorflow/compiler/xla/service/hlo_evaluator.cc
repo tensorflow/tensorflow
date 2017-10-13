@@ -480,14 +480,17 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
-    // Dimension number applicable for both input (lhs), and output.
-    const int64 batch_dim = dnums.batch_dimension();
-    const int64 z_dim = dnums.feature_dimension();
+    // Dimension number applicable for input (lhs).
+    const int64 input_batch_dim = dnums.input_batch_dimension();
+    const int64 input_z_dim = dnums.input_feature_dimension();
     // Dimension number applicable for kernel (rhs).
     const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
     const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+    // Dimension number applicable for output.
+    const int64 output_batch_dim = dnums.output_batch_dimension();
+    const int64 output_z_dim = dnums.output_feature_dimension();
 
-    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, z_dim);
+    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, input_z_dim);
 
     std::vector<int64> window_dimension_sizes;
     for (auto i : dnums.kernel_spatial_dimensions()) {
@@ -508,13 +511,13 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       std::fill(rhs_index.begin(), rhs_index.end(), 0);
       std::fill(rhs_spatial_index.begin(), rhs_spatial_index.end(), 0);
 
-      lhs_index[batch_dim] = out_index[batch_dim];
-      rhs_index[kernel_output_z_dim] = out_index[z_dim];
+      lhs_index[input_batch_dim] = out_index[output_batch_dim];
+      rhs_index[kernel_output_z_dim] = out_index[output_z_dim];
 
       // Convolve input feature with kernel.
       do {
         for (int64 iz = 0; iz < z_size; ++iz) {
-          lhs_index[z_dim] = iz;
+          lhs_index[input_z_dim] = iz;
           rhs_index[kernel_input_z_dim] = iz;
 
           // Find corresponding spatial dimension index for input (lhs).
@@ -1240,8 +1243,14 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     HloInstruction* instruction) {
-  TF_RET_CHECK(hlo_query::AllOperandsAreConstants(*instruction));
-  TF_RET_CHECK(instruction->opcode() != HloOpcode::kParameter);
+  if (instruction->opcode() == HloOpcode::kParameter) {
+    return tensorflow::errors::FailedPrecondition(
+        "Cannot evaluate a parameter.");
+  }
+  if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+    return tensorflow::errors::FailedPrecondition(
+        "Not all operands are constants.");
+  }
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(instruction->shape()));
 
   arg_literals_.clear();

@@ -38,14 +38,16 @@ class TransposeTest(test.TestCase):
     ret = ret.transpose(perm)
     return ret
 
-  def _compareCpu(self, x, p):
+  def _compareCpu(self, x, p, conjugate=False):
     np_ans = self._np_transpose(x, p)
+    if conjugate:
+      np_ans = np.conj(np_ans)
     with self.test_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
-      y = array_ops.transpose(inx, p)
+      y = array_ops.transpose(inx, p, conjugate=conjugate)
       tf_ans = y.eval()
-      self.assertAllEqual(np_ans, tf_ans)
       self.assertShapeEqual(np_ans, y)
+      self.assertAllEqual(np_ans, tf_ans)
 
       jacob_t = None
       # Gradient check on CPU.
@@ -62,11 +64,13 @@ class TransposeTest(test.TestCase):
 
       return tf_ans, jacob_t
 
-  def _compareGpu(self, x, p):
+  def _compareGpu(self, x, p, conjugate=False):
     np_ans = self._np_transpose(x, p)
+    if conjugate:
+      np_ans = np.conj(np_ans)
     with self.test_session(use_gpu=True):
       inx = ops.convert_to_tensor(x)
-      y = array_ops.transpose(inx, p)
+      y = array_ops.transpose(inx, p, conjugate=conjugate)
       tf_ans = y.eval()
 
       self.assertAllEqual(np_ans, tf_ans)
@@ -92,10 +96,12 @@ class TransposeTest(test.TestCase):
     # generate all permutations of [0, 1, ... n-1] in random order.
     all_perm = np.random.permutation(
         [p for p in itertools.permutations(range(n))]).astype(np.int32)
-    for p in all_perm[:2]:
-      self._compareCpu(x, p)
-      if use_gpu:
-        self._compareGpu(x, p)
+    cs = [False, True] if x.dtype in [np.complex64, np.complex128] else [False]
+    for c in cs:
+      for p in all_perm[:2]:
+        self._compareCpu(x, p, conjugate=c)
+        if use_gpu:
+          self._compareGpu(x, p, conjugate=c)
 
   def _compare_cpu_gpu(self, x):
     n = np.ndim(x)

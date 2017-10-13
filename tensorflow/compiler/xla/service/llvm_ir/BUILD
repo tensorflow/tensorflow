@@ -124,6 +124,24 @@ cc_library(
 )
 
 cc_library(
+    name = "ops",
+    srcs = ["ops.cc"],
+    hdrs = ["ops.h"],
+    deps = [
+        ":fused_ir_emitter",
+        ":ir_array",
+        ":llvm_util",
+        ":loop_emitter",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:elemental_ir_emitter",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
+        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
+        "@llvm//:core",
+    ],
+)
+
+cc_library(
     name = "tuple_ops",
     srcs = ["tuple_ops.cc"],
     hdrs = ["tuple_ops.h"],
