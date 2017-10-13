@@ -278,7 +278,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
 
     typedef std::decay<T> DT;
     CubDeviceSelectFlaggedCounter<
-        T, TIndex, typeof(output_iterator) /*OutputIterator*/,
+        T, TIndex, decltype(output_iterator) /*OutputIterator*/,
         std::is_convertible<DT, bool>::value /*IsConvertibleToBool*/>
         counter;
     auto first_success = counter(/*temp_storage*/ nullptr, temp_storage_bytes,

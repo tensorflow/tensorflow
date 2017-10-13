@@ -25,6 +25,11 @@ namespace grappler {
 
 VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
   CHECK(cluster);
+
+  // Default job name for canonical device name. Needs to be set before the
+  // first call to to_lfqn_or_empty()
+  default_job_name_lowercase_ = "localhost";
+
   devices_ = cluster->GetDevices();
   lfqn_map_.reserve(devices_.size());
   for (const auto& kv : devices_) {
@@ -83,8 +88,6 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
     }
   }
 
-  // Default job name for canonical device name.
-  default_job_name_lowercase_ = "localhost";
   // Scan the device names from the cluster, and if there is one job name used,
   // use it for canonical device name.
   std::unordered_set<string> job_names_from_cluster;

@@ -303,6 +303,7 @@ class VirtualScheduler {
   std::pair<const NodeDef*, const NodeDef*> CreateSendRecv(
       const NodeDef* from, const NodeDef* to, const string& input_name);
   string DeviceName(const NodeDef* node) const;
+  string SanitizedDeviceName(const NodeDef* node) const;
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
 
   // Helper methods.

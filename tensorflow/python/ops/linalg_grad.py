@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg_impl as _linalg
 
 
 @ops.RegisterGradient("MatrixInverse")
@@ -76,7 +77,7 @@ def _CholeskyGrad(op, grad):
   grad_a = math_ops.matmul(
       math_ops.matmul(l_inverse, middle, adjoint_a=True), l_inverse)
 
-  grad_a += math_ops.conj(array_ops.matrix_transpose(grad_a))
+  grad_a += _linalg.adjoint(grad_a)
   return grad_a * 0.5
 
 
@@ -229,8 +230,7 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
                                    adjoint_b=True))
     # The forward op only depends on the lower triangular part of a, so here we
     # symmetrize and take the lower triangle
-    grad_a = array_ops.matrix_band_part(
-        grad_a + math_ops.conj(array_ops.matrix_transpose(grad_a)), -1, 0)
+    grad_a = array_ops.matrix_band_part(grad_a + _linalg.adjoint(grad_a), -1, 0)
     grad_a = array_ops.matrix_set_diag(grad_a,
                                        0.5 * array_ops.matrix_diag_part(grad_a))
     return grad_a
@@ -239,9 +239,6 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
 @ops.RegisterGradient("Svd")
 def _SvdGrad(op, grad_s, grad_u, grad_v):
   """Gradient for Svd based on Giles' algorithm. Reference at top of file."""
-
-  def _Adjoint(x):
-    return math_ops.conj(array_ops.matrix_transpose(x))
 
   if op.get_attr("compute_uv") and not op.get_attr("full_matrices"):
     raise NotImplementedError(
@@ -337,8 +334,8 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
       f_v = f * v_gv[..., :m, :m]
 
     grad_a_nouv = (
-        grad_s_mat + math_ops.matmul(f_u + _Adjoint(f_u), s_mat) +
-        math_ops.matmul(s_mat, f_v + _Adjoint(f_v)))
+        grad_s_mat + math_ops.matmul(f_u + _linalg.adjoint(f_u), s_mat) +
+        math_ops.matmul(s_mat, f_v + _linalg.adjoint(f_v)))
 
     if m != n:
       grad_a_nouv = array_ops.concat(

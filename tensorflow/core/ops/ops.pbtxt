@@ -4881,6 +4881,40 @@ op {
   description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ncomplex numbers that are the complex conjugate of each element in `input`. The\ncomplex numbers in `input` must be of the form \\\\(a + bj\\\\), where *a* is the\nreal part and *b* is the imaginary part.\n\nThe complex conjugate returned by this operation is of the form \\\\(a - bj\\\\).\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]\n```"
 }
 op {
+  name: "ConjugateTranspose"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "perm"
+    type_attr: "Tperm"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tperm"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Shuffle dimensions of x according to a permutation and conjugate the result."
+  description: "The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:\n  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`\n  `y[i,j,k,...,s,t,u] == conj(x[perm[i], perm[j], perm[k],...,perm[s], perm[t], perm[u]])`"
+}
+op {
   name: "Const"
   output_arg {
     name: "output"
@@ -5926,6 +5960,32 @@ op {
   }
   summary: "Compute the cumulative sum of the tensor `x` along `axis`."
   description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
+}
+op {
+  name: "DatasetToSingleElement"
+  input_arg {
+    name: "dataset"
+    description: "A handle to a dataset that contains a single element."
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    description: "The components of the single element of `input`."
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Outputs the single element from the given dataset."
 }
 op {
   name: "DebugGradientIdentity"
@@ -12268,6 +12328,54 @@ op {
   summary: "Makes a new iterator from the given `dataset` and stores it in `iterator`."
   description: "This operation may be executed multiple times. Each execution will reset the\niterator in `iterator` to the first element of `dataset`."
   is_stateful: true
+}
+op {
+  name: "MapAndBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "batch_size"
+    description: "A scalar representing the number of elements to accumulate in a\nbatch. It determines the number of concurrent invocations of `f` that process\nelements from `input_dataset` in parallel."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_parallel_batches"
+    description: "A scalar representing the number of batches to create in\nparallel. Processing multiple batches in parallel benefits workloads prone to\nstragglers."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset` and then"
+  description: "batches `batch_size` of them.\n\nUnlike a \"MapDataset\", which applies `f` sequentially, this dataset invokes up\nto `batch_size * num_parallel_batches` copies of `f` in parallel."
 }
 op {
   name: "MapClear"

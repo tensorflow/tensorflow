@@ -19,10 +19,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
 namespace tensorflow {
 namespace internal {
 
-template <typename Device, typename T>
+template <typename Device, typename T, bool conjugate>
 void TransposeSimple(const Device& d, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   const int ndims = in.dims();
@@ -41,122 +43,90 @@ void TransposeSimple(const Device& d, const Tensor& in,
       i_idx += (t / out_strides[i]) * in_strides[perm[i]];
       t = t % out_strides[i];
     }
-    q[o_idx] = p[i_idx];
+    if (conjugate) {
+      q[o_idx] = Eigen::numext::conj(p[i_idx]);
+    } else {
+      q[o_idx] = p[i_idx];
+    }
   }
 }
 
 }  // end namespace internal
 
-typedef Eigen::ThreadPoolDevice CPUDevice;
-
-template <typename T>
-struct Transpose<CPUDevice, T> {
+template <typename T, bool conjugate>
+struct Transpose<CPUDevice, T, conjugate> {
   static void run(const CPUDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
     switch (in.dims()) {
       case 2:
-        internal::TransposeUsingEigen<CPUDevice, T, 2>(d, in, perm, out);
+        internal::TransposeUsingEigen<CPUDevice, T, 2>(d, in, perm, conjugate,
+                                                       out);
         break;
       case 3:
-        internal::TransposeUsingEigen<CPUDevice, T, 3>(d, in, perm, out);
+        internal::TransposeUsingEigen<CPUDevice, T, 3>(d, in, perm, conjugate,
+                                                       out);
         break;
       case 4:
-        internal::TransposeUsingEigen<CPUDevice, T, 4>(d, in, perm, out);
+        internal::TransposeUsingEigen<CPUDevice, T, 4>(d, in, perm, conjugate,
+                                                       out);
         break;
       case 5:
-        internal::TransposeUsingEigen<CPUDevice, T, 5>(d, in, perm, out);
+        internal::TransposeUsingEigen<CPUDevice, T, 5>(d, in, perm, conjugate,
+                                                       out);
         break;
       default:
-        internal::TransposeSimple<CPUDevice, T>(d, in, perm, out);
+        internal::TransposeSimple<CPUDevice, T, conjugate>(d, in, perm, out);
         break;
     }
   }
 };
 
-// TODO(yangzihao): Merge this code with its GPU counterpart to reduce code
-// duplication.
 template <>
-Status DoTranspose<CPUDevice>(const CPUDevice& d, const Tensor& in,
-                              const gtl::ArraySlice<int32> perm, Tensor* out) {
-  typedef CPUDevice Device;
-  CHECK_GE(in.dims(), 2);
-  CHECK_EQ(in.dims(), out->dims());
-  CHECK_EQ(in.dims(), perm.size());
-  CHECK_EQ(in.dtype(), out->dtype());
-  switch (in.dtype()) {
-    case DT_BOOL:
-    case DT_INT8:
-    case DT_QINT8:
-    case DT_QUINT8:
-    case DT_UINT8:
-      Transpose<Device, uint8>::run(d, in, perm, out);
-      break;
+Status DoTranspose(const CPUDevice& device, const Tensor& in,
+                   const gtl::ArraySlice<int32> perm, Tensor* out) {
+  return internal::DoTransposeImpl<CPUDevice>::run(device, in, perm,
+                                                   false /* conjugate */, out);
+}
 
-    case DT_BFLOAT16:
-    case DT_HALF:
-    case DT_INT16:
-    case DT_QINT16:
-    case DT_QUINT16:
-    case DT_UINT16:
-      Transpose<Device, uint16>::run(d, in, perm, out);
-      break;
-
-    case DT_FLOAT:
-    case DT_INT32:
-    case DT_QINT32:
-      Transpose<Device, uint32>::run(d, in, perm, out);
-      break;
-
-    case DT_COMPLEX64:
-    case DT_DOUBLE:
-    case DT_INT64:
-      Transpose<Device, uint64>::run(d, in, perm, out);
-      break;
-
-    case DT_COMPLEX128:
-      Transpose<Device, complex128>::run(d, in, perm, out);
-      break;
-
-    case DT_STRING:
-      Transpose<Device, string>::run(d, in, perm, out);
-      break;
-
-    default:
-      return errors::Unimplemented("Unsupported dtype on CPU: ", in.dtype());
-  }
-  return Status::OK();
+template <>
+Status DoConjugateTranspose(const CPUDevice& device, const Tensor& in,
+                            const gtl::ArraySlice<int32> perm, Tensor* out) {
+  return internal::DoTransposeImpl<CPUDevice>::run(device, in, perm,
+                                                   true /* conjugate */, out);
 }
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 
+namespace internal {
 template <typename Device, typename T>
 void TransposeSYCL(const Device& d, const Tensor& in,
-               const gtl::ArraySlice<int32> perm, Tensor* out) {
+                   const gtl::ArraySlice<int32> perm, bool conjugate,
+                   Tensor* out) {
   switch (in.dims()) {
     case 1:
-      internal::TransposeUsingEigen<Device, T, 1>(d, in, perm, out);
+      TransposeUsingEigen<SYCLDevice, T, 1>(d, in, perm, conjugate, out);
       break;
     case 2:
-      internal::TransposeUsingEigen<Device, T, 2>(d, in, perm, out);
+      TransposeUsingEigen<SYCLDevice, T, 2>(d, in, perm, conjugate, out);
       break;
     case 3:
-      internal::TransposeUsingEigen<Device, T, 3>(d, in, perm, out);
+      TransposeUsingEigen<SYCLDevice, T, 3>(d, in, perm, conjugate, out);
       break;
     case 4:
-      internal::TransposeUsingEigen<Device, T, 4>(d, in, perm, out);
+      TransposeUsingEigen<SYCLDevice, T, 4>(d, in, perm, conjugate, out);
       break;
     case 5:
-      internal::TransposeUsingEigen<Device, T, 5>(d, in, perm, out);
+      TransposeUsingEigen<SYCLDevice, T, 5>(d, in, perm, conjugate, out);
       break;
     case 6:
-      internal::TransposeUsingEigen<Device, T, 6>(d, in, perm, out);
+      TransposeUsingEigen<SYCLDevice, T, 6>(d, in, perm, conjugate, out);
       break;
     case 7:
-      internal::TransposeUsingEigen<Device, T, 7>(d, in, perm, out);
+      TransposeUsingEigen<SYCLDevice, T, 7>(d, in, perm, conjugate, out);
       break;
     case 8:
-      internal::TransposeUsingEigen<Device, T, 8>(d, in, perm, out);
+      TransposeUsingEigen<SYCLDevice, T, 8>(d, in, perm, conjugate, out);
       break;
     default:
       LOG(FATAL) << "Unsupported TransposeUsingEigen for: " << in.dims();
@@ -164,87 +134,38 @@ void TransposeSYCL(const Device& d, const Tensor& in,
   }
 }
 
-template <typename T>
-struct Transpose<SYCLDevice, T> {
+}  // namespace internal
+
+template <typename T, bool conjugate>
+struct Transpose<SYCLDevice, T, conjugate> {
   static void run(const SYCLDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-    switch (in.dims()) {
-      case 1:
-        internal::TransposeUsingEigen<SYCLDevice, T, 1>(d, in, perm, out);
-        break;
-      case 2:
-        internal::TransposeUsingEigen<SYCLDevice, T, 2>(d, in, perm, out);
-        break;
-      case 3:
-        internal::TransposeUsingEigen<SYCLDevice, T, 3>(d, in, perm, out);
-        break;
-      case 4:
-        internal::TransposeUsingEigen<SYCLDevice, T, 4>(d, in, perm, out);
-        break;
-      case 5:
-        internal::TransposeUsingEigen<SYCLDevice, T, 5>(d, in, perm, out);
-        break;
-      case 6:
-        internal::TransposeUsingEigen<SYCLDevice, T, 6>(d, in, perm, out);
-        break;
-      case 7:
-        internal::TransposeUsingEigen<SYCLDevice, T, 7>(d, in, perm, out);
-        break;
-      case 8:
-        internal::TransposeUsingEigen<SYCLDevice, T, 8>(d, in, perm, out);
-        break;
-      default:
-        LOG(FATAL) << "Unsupported TransposeUsingEigen for: " << in.dims();
-        break;
-    }
+    internal::TransposeSycl(d, in, perm, conjugate, out);
+  }
+};
+
+template <bool conjugate>
+struct Transpose<SYCLDevice, string, conjugate> {
+  static void run(const SYCLDevice& d, const Tensor& in,
+                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+    LOG(FATAL) << "DT_STRING not supported on SYCL device.";
   }
 };
 
 template <>
-Status DoTranspose<SYCLDevice>(const SYCLDevice& d, const Tensor& in,
-                           const gtl::ArraySlice<int32> perm, Tensor* out) {
-  CHECK_GE(in.dims(), 2);
-  CHECK_EQ(in.dims(), out->dims());
-  CHECK_EQ(in.dims(), perm.size());
-  CHECK_EQ(in.dtype(), out->dtype());
-  switch (in.dtype()) {
-    case DT_BOOL:
-    case DT_INT8:
-    case DT_QINT8:
-    case DT_QUINT8:
-    case DT_UINT8:
-      TransposeSYCL<SYCLDevice, uint8>(d, in, perm, out);
-      break;
-
-    case DT_BFLOAT16:
-    case DT_HALF:
-    case DT_INT16:
-    case DT_QINT16:
-    case DT_QUINT16:
-    case DT_UINT16:
-      TransposeSYCL<SYCLDevice, uint16>(d, in, perm, out);
-      break;
-    case DT_FLOAT:
-    case DT_INT32:
-    case DT_QINT32:
-      TransposeSYCL<SYCLDevice, uint32>(d, in, perm, out);
-      break;
-
-    case DT_COMPLEX64:
-    case DT_DOUBLE:
-    case DT_INT64:
-      TransposeSYCL<SYCLDevice, uint64>(d, in, perm, out);
-      break;
-
-    case DT_COMPLEX128:
-      TransposeSYCL<SYCLDevice, complex128>(d, in, perm, out);
-      break;
-
-    default:
-      return errors::Unimplemented("Unsupported dtype on SYCL: ", in.dtype());
-  }
-  return Status::OK();
+Status DoTranspose(const SYCLDevice& device, const Tensor& in,
+                   const gtl::ArraySlice<int32> perm, Tensor* out) {
+  return internal::DoTransposeImpl<SYCLDevice>::run(device, in, perm,
+                                                    false /* conjugate */, out);
 }
+
+template <>
+Status DoConjugateTranspose(const SYCLDevice& device, const Tensor& in,
+                            const gtl::ArraySlice<int32> perm, Tensor* out) {
+  return internal::DoTransposeImpl<SYCLDevice>::run(device, in, perm,
+                                                    true /* conjugate */, out);
+}
+
 #endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
