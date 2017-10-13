@@ -1838,7 +1838,6 @@ py_library(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:custom_gradient",
         "//tensorflow/python/eager:tape",
     ],
 )

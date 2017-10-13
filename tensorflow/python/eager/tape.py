@@ -22,8 +22,6 @@ import collections
 import contextlib
 import threading
 
-from tensorflow.python.util import tf_contextlib
-
 
 def tid(tensor):
   return tensor._id  # pylint: disable=protected-access
@@ -154,13 +152,6 @@ class _TapeStack(threading.local):
   def stack(self):
     return self._stack
 
-  @tf_contextlib.contextmanager
-  def replace_stack(self, new_stack):
-    old = self._stack
-    self._stack = new_stack
-    yield
-    self._stack = old
-
 
 # The global tape stack.
 _tape_stack = _TapeStack()
@@ -176,9 +167,6 @@ def watch(tensor):
 
   Args:
     tensor: tensor to be watched.
-
-  Returns:
-    The tensor, potentially wrapped by all tapes in the stack.
   """
   for t in _tape_stack.stack:
     t.watch(tensor)
@@ -189,9 +177,6 @@ def watch_variable(variable):
 
   Args:
     variable: variable to be watched.
-
-  Returns:
-    The tensor, potentially wrapped by all tapes in the stack.
   """
   for t in _tape_stack.stack:
     t.watch_variable(variable)
@@ -215,7 +200,7 @@ def stop_recording():
 
 
 def should_record(tensors):
-  """Returns true if any tape in the stach watches any of these tensors."""
+  """Returns true if any tape in the stack watches any of these tensors."""
   if not _tape_stack.stack:
     return False
   return any(x.should_record(tensors) for x in _tape_stack.stack)
