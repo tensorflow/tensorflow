@@ -109,7 +109,7 @@ def build_standardized_signature_def(input_tensors, output_tensors,
     classes = _get_classification_classes(output_tensors)
     scores = _get_classification_scores(output_tensors)
     if classes is None and scores is None:
-      items = output_tensors.items()
+      items = list(output_tensors.items())
       if items[0][1].dtype == dtypes.string:
         (_, classes), = items
       else:
