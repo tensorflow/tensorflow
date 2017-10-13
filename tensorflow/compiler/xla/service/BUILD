@@ -433,6 +433,7 @@ cc_library(
         ":hlo_evaluator",
         ":hlo_execution_profile",
         ":hlo_module_config",
+        ":hlo_verifier",
         ":platform_util",
         ":session_proto",
         ":transfer_manager",
@@ -716,6 +717,18 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "name_uniquer_test",
+    srcs = ["name_uniquer_test.cc"],
+    deps = [
+        ":name_uniquer",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 
