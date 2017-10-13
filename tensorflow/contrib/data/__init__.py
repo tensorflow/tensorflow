@@ -32,6 +32,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@rejection_resample
 @@sloppy_interleave
 
+@@get_single_element
 """
 
 from __future__ import absolute_import
@@ -44,6 +45,7 @@ from tensorflow.contrib.data.python.ops.batching import batch_and_drop_remainder
 from tensorflow.contrib.data.python.ops.batching import dense_to_sparse_batch
 from tensorflow.contrib.data.python.ops.batching import unbatch
 from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
+from tensorflow.contrib.data.python.ops.dataset_ops import get_single_element
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
 from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.grouping import group_by_window
