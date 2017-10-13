@@ -307,8 +307,8 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
-        "//learning/protonn/llgtm/...",
         "//tensorflow/...",
+        "//tensorflow_fold/llgtm/...",
     ],
 )
 
