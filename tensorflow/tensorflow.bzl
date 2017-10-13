@@ -647,7 +647,7 @@ def tf_cuda_only_cc_test(name,
           clean_dep("//tensorflow:darwin"): 1,
           "//conditions:default": 0,
       }),
-      tags=tags)
+      tags=tags + tf_cuda_tests_tags())
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
