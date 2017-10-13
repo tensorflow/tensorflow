@@ -73,10 +73,10 @@ def _prepare_backprop(vspace, target, tensor_to_op, op_to_entry, id_sources):
   while tensor_stack:
     t = tensor_stack.pop()
     op = tensor_to_op.get(t, None)
-    # op is None if the tensor is a source (i.e. was watched directly)
-    if op is None or op in o_to_e:
+    # op is None or -1 if the tensor is a source (i.e. was watched directly)
+    if op is None or op == -1 or op in o_to_e:
       continue
-    op_trace = op_to_entry[op]
+    op_trace = tape.TapeEntry(*op_to_entry[op])
     o_to_e[op] = op_trace
     for it in op_trace.input_ids:
       if it in tensor_usage_counts:

@@ -15,6 +15,7 @@ cc_library(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:tape",
         "//tensorflow/core:lib",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",

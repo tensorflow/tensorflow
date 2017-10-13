@@ -87,4 +87,22 @@ TFE_TensorHandle* EagerTensorHandle(const PyObject* o);
 // newly created type, or nullptr on error.
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
 
+PyObject* TFE_Py_NewTape();
+PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors);
+void TFE_Py_TapeWatch(PyObject* tape, tensorflow::int64 tensor_id);
+void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id);
+
+// Records an operation in the gradient tape. `tape` should point to an object
+// returned by TFE_Py_NewTape. op_type is a string for the operation type, used
+// in the backprop code. output_tensors should be a list of python ops.Tensor
+// objects. input_tensor_ids should be a list of python integers with the ids of
+// the input tensors of the recorded operation. backward_function should be the
+// function to be called during backprop to, given the gradients of the output
+// tensors, produce the gradients of the input tensors.
+void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
+                                PyObject* output_tensors,
+                                PyObject* input_tensor_ids,
+                                PyObject* backward_function);
+PyObject* TFE_Py_TapeExport(PyObject* tape);
+
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
