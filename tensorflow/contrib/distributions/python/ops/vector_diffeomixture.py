@@ -23,10 +23,6 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import AffineLinearOperator
 from tensorflow.contrib.linalg.python.ops import linear_operator_addition as linop_add_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_diag as linop_diag_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_full_matrix as linop_full_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_identity as linop_identity_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_tril as linop_tril_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -37,6 +33,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
+from tensorflow.python.ops.linalg import linear_operator_diag as linop_diag_lib
+from tensorflow.python.ops.linalg import linear_operator_full_matrix as linop_full_lib
+from tensorflow.python.ops.linalg import linear_operator_identity as linop_identity_lib
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular as linop_tril_lib
 
 static_value = distribution_util.static_value
 
@@ -185,7 +185,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
 
   ```python
   ds = tf.contrib.distributions
-  la = tf.contrib.linalg
+  la = tf.linalg
 
   # Create two batches of VectorDiffeomixtures, one with mix_loc=[0.] and
   # another with mix_loc=[1]. In both cases, `K=2` and the affine
@@ -772,8 +772,8 @@ def linop_scale(w, op):
           is_non_singular=op.is_non_singular,
           is_self_adjoint=op.is_self_adjoint,
           is_positive_definite=op.is_positive_definite)
-    if isinstance(op, linop_tril_lib.LinearOperatorTriL):
-      return linop_tril_lib.LinearOperatorTriL(
+    if isinstance(op, linop_tril_lib.LinearOperatorLowerTriangular):
+      return linop_tril_lib.LinearOperatorLowerTriangular(
           tril=w[..., array_ops.newaxis, array_ops.newaxis] * op.to_dense(),
           is_non_singular=op.is_non_singular,
           is_self_adjoint=op.is_self_adjoint,

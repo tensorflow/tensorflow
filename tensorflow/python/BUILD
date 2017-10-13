@@ -70,7 +70,6 @@ py_library(
         ":io_ops",
         ":layers",
         ":lib",
-        ":linalg_ns",
         ":math_ops",
         ":metrics",
         ":nn",
@@ -104,6 +103,7 @@ py_library(
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/linalg",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
     ] + if_not_windows([
@@ -1711,21 +1711,6 @@ py_library(
 )
 
 py_library(
-    name = "linalg_ns",
-    srcs = [
-        "ops/linalg_impl.py",
-        "ops/linalg_ns.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":linalg_ops",
-        ":math_ops",
-        ":special_math_ops",
-    ],
-)
-
-py_library(
     name = "linalg_grad",
     srcs = ["ops/linalg_grad.py"],
     srcs_version = "PY2AND3",
@@ -2223,6 +2208,7 @@ py_library(
         ":variable_scope",
         ":variables",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/linalg",
     ],
 )
 
