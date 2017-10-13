@@ -1328,9 +1328,8 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
     proj_size = args.get_shape()[-1]
     weights = vs.get_variable("kernel", [proj_size, out_size])
     out = math_ops.matmul(args, weights)
-    if not self._layer_norm:
-      bias = vs.get_variable("bias", [out_size])
-      out = nn_ops.bias_add(out, bias)
+    bias = vs.get_variable("bias", [out_size])
+    out = nn_ops.bias_add(out, bias)
     return out
 
   def call(self, inputs, state):
