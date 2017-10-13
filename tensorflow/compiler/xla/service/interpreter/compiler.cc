@@ -88,7 +88,7 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> /*hlo_modules*/,
-    std::vector<se::StreamExecutor*> /*stream_execs*/) {
+    std::vector<std::vector<se::StreamExecutor*>> /*stream_execs*/) {
   return tensorflow::errors::Unimplemented(
       "Compilation of multiple HLO modules is not supported on Interpreter.");
 }
