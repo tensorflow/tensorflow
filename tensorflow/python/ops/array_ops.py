@@ -2466,8 +2466,14 @@ def where(condition, x=None, y=None, name=None):
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:
-      condition = ops.convert_to_tensor(condition, dtype=dtypes.bool)
-      return gen_array_ops.where(input=condition, name=name)
+      # Temporarily create an old style WhereOp nodedef + Operation without the
+      # attribute "T".
+      # TODO(b/67720963): Roll this back when the issue is resolved.
+      condition = gen_math_ops.cast(condition, dtypes.bool)
+      output = gen_array_ops.where(input=condition, name=name)
+      if context.in_graph_mode():
+        output.op._node_def.attr.clear()
+      return output
   elif x is not None and y is not None:
     return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
   else:
