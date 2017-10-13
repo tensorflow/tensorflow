@@ -25,28 +25,55 @@ namespace poplarplugin {
 
 namespace {
 
-class FindAllInstructions : public DfsHloVisitorWithDefault {
+class DepthFinder {
 public:
-  FindAllInstructions() {}
-
-  ~FindAllInstructions() override = default;
-
-  Status DefaultAction(HloInstruction* hlo_instruction) override {
-    inst.push_back(hlo_instruction);
-    return Status::OK();
+  DepthFinder(const std::list<HloInstruction*> insts) {
+    for (auto i : insts) {
+      distance[i] = 0;
+    }
   }
 
-  std::list<HloInstruction*> inst;
+  int64 FindDepths(HloInstruction* inst) {
+    int64 cost = 0;
+    for (auto o : inst->operands()) {
+      int64 c = FindDepths(o);
+      cost = std::max(cost, c);
+    }
+    cost += 1;
+
+    distance[inst] = cost;
+    return cost;
+  }
+
+  bool Compare(const HloInstruction* a, const HloInstruction* b) const {
+    return distance.at(a) < distance.at(b);
+  }
+
+private:
+  std::map<const HloInstruction*, int64> distance;
+
 };
 
 }
 
-std::vector<const HloInstruction*> Scheduler::schedule(HloComputation* comp) {
-  FindAllInstructions all;
-  comp->Accept(&all);
+StatusOr<std::vector<const HloInstruction*>> Scheduler::schedule(HloComputation* comp) {
+  DepthFinder depths(comp->MakeInstructionPostOrder());
+  depths.FindDepths(comp->root_instruction());
 
-  std::vector<const HloInstruction*> out(all.inst.begin(), all.inst.end());
-  return out;
+  std::vector<const HloInstruction*> sequence;
+  FunctionVisitor visitor([&sequence](HloInstruction* hlo) {
+    sequence.push_back(hlo);
+    return Status::OK();
+  });
+  TF_RETURN_IF_ERROR(comp->AcceptWithOperandOrder(
+          &visitor,
+          [&depths](const HloInstruction* a,
+                    const HloInstruction* b) {
+            return depths.Compare(a, b);
+          }));
+
+  CHECK_EQ(sequence.size(), comp->instruction_count());
+  return sequence;
 }
 
 }

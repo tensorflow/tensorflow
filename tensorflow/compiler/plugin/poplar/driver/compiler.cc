@@ -323,8 +323,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   VLOG(1) << "Compiling main computation " << entry->name();
   XLA_VLOG_LINES(1, entry->ToString());
 
-  std::vector<const HloInstruction*> instruction_order =
-          Scheduler::schedule(entry);
+  std::vector<const HloInstruction*> instruction_order;
+  TF_ASSIGN_OR_RETURN(instruction_order, Scheduler::schedule(entry));
 
   EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {

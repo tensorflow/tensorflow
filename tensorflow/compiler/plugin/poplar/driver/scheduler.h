@@ -32,7 +32,7 @@ namespace poplarplugin {
  */
 namespace Scheduler {
 
-  std::vector<const HloInstruction*> schedule(HloComputation* comp);
+StatusOr<std::vector<const HloInstruction*>> schedule(HloComputation* comp);
 
 };
 
