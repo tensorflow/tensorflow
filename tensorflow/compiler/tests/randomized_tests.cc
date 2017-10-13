@@ -899,7 +899,7 @@ TEST_F(OpTest, ApproximateEqual) {
 
 TEST_F(OpTest, ArgMax) {
   Repeatedly([this]() {
-    std::vector<int64> dims = RandomDims(1, 5);
+    std::vector<int64> dims = RandomDims(1, 5, 1);
     int num_dims = dims.size();
     int reduce_dim =
         std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());

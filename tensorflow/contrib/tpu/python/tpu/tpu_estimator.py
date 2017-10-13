@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import copy
+import os
 import threading
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
@@ -278,7 +279,15 @@ class _InfeedThreadController(_InfeedOutfeedThreadBaseController):
       iterations = signal
       for i in range(iterations):
         logging.debug('Infeed enqueue for iteration (%d, %d)', count, i)
-        session.run(enqueue_ops)
+        try:
+          session.run(enqueue_ops)
+        except:  # pylint: disable=bare-except
+          # Hard exit from the interpreter.
+          #
+          # TODO(power) -- possibly communicate this to the main thread somehow.
+          logging.fatal('Infeed controller failed to enqueue ops.  Aborting.',
+                        exc_info=True)
+          os._exit(1)  # pylint: disable=protected-access
       count += 1
 
   def join(self):

@@ -338,7 +338,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     std::vector<VersionedComputationHandle> versioned_handles,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     Backend* backend,
-    std::vector<perftools::gputools::StreamExecutor*> executors) {
+    std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors) {
   VLOG(1) << Printf("BuildExecutable on service %p", this);
 
   // Dump computation proto state if flag is set.
@@ -615,31 +615,41 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   VLOG(1) << "running execute-parallel request: " << arg->ShortDebugString();
 
   std::vector<std::vector<se::DeviceMemoryBase>> all_arguments;
-  std::vector<perftools::gputools::StreamExecutor*> executors;
+  std::vector<std::vector<perftools::gputools::StreamExecutor*>> all_executors;
   std::vector<VersionedComputationHandle> versioned_handles;
   std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
   std::vector<string> computation_names;
   std::vector<DeviceHandle> device_handles;
 
-  if (arg->requests_size() * options_.number_of_replicas() >
+  int num_requested_devices =
+      std::accumulate(arg->requests().begin(), arg->requests().end(), 0,
+                      [](int a, const ExecuteRequest& r) -> int {
+                        return a + r.execution_options().device_handles_size();
+                      });
+  if (num_requested_devices * options_.number_of_replicas() >
       execute_backend_->device_count()) {
     return FailedPrecondition(
         "there are not enough stream executors to execute %d computations",
-        arg->requests_size());
+        num_requested_devices);
   }
 
   for (int64 i = 0; i < arg->requests_size(); ++i) {
     // Get the stream executor for the i'th computation. This stream executor
     // is one of the executors to run the replicated computation.
-    if (!arg->requests(i).has_device_handle()) {
+    const ExecutionOptions& execution_options =
+        arg->requests(i).execution_options();
+    if (execution_options.device_handles().empty()) {
       return FailedPrecondition(
           "device handles must be given to execute parallel computations");
     }
-    TF_ASSIGN_OR_RETURN(
-        auto replicas,
-        Replicas(*execute_backend_, arg->requests(i).device_handle()));
-    se::StreamExecutor* executor = replicas[0];
-    CHECK(executor != nullptr);
+    std::vector<perftools::gputools::StreamExecutor*> executors;
+    for (const auto& device_handle : execution_options.device_handles()) {
+      TF_ASSIGN_OR_RETURN(auto replicas,
+                          Replicas(*execute_backend_, device_handle));
+      se::StreamExecutor* executor = replicas[0];
+      CHECK(executor != nullptr);
+      executors.push_back(executor);
+    }
 
     // Resolve the UserComputation object associated with the requested
     // computation and compute the program shape.
@@ -658,10 +668,12 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
 
     // Resolve the allocations for the arguments of the computation, and create
     // a vector of device memory offsets for the arguments from the allocations.
+    // In the case of partitioned computations, assume all arguments go on the
+    // zeroth core.
     TF_ASSIGN_OR_RETURN(
         std::vector<const Allocation*> arg_allocations,
         ResolveAndValidateArguments(request.arguments(), execute_backend_.get(),
-                                    executor->device_ordinal()));
+                                    executors[0]->device_ordinal()));
     std::vector<se::DeviceMemoryBase> arguments;
     arguments.reserve(arg_allocations.size());
     for (const Allocation* allocation : arg_allocations) {
@@ -678,11 +690,15 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
 
     // Adds to the vectors to build and execute the computations after the loop.
     all_arguments.push_back(arguments);
+    all_arguments.insert(all_arguments.end(), executors.size() - 1, {});
     versioned_handles.push_back(versioned_handle);
     module_configs.push_back(std::move(module_config));
-    computation_names.push_back(user_computation->name());
-    executors.push_back(executor);
-    device_handles.push_back(arg->requests(i).device_handle());
+    computation_names.insert(computation_names.end(), executors.size(),
+                             user_computation->name());
+    all_executors.push_back(executors);
+    device_handles.insert(device_handles.end(),
+                          execution_options.device_handles().begin(),
+                          execution_options.device_handles().end());
   }
 
   // Build the user computations into HloModules and compile to generate the
@@ -690,7 +706,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       BuildExecutables(versioned_handles, std::move(module_configs),
-                       execute_backend_.get(), executors));
+                       execute_backend_.get(), all_executors));
   std::vector<Executable*> executable_ptrs;
   executable_ptrs.reserve(executables.size());
   for (const auto& executable : executables) {
@@ -750,6 +766,17 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
 
   if (user_computation->request_count(versioned_handle.version) == 0) {
     return InvalidArgument("computations may not be empty");
+  }
+
+  // If we received multiple device handles, we must partition the module.
+  if (arg->execution_options().device_handles_size() > 1) {
+    ExecuteParallelRequest parallel_arg;
+    *parallel_arg.add_requests() = *arg;
+    ExecuteParallelResponse parallel_result;
+    TF_RETURN_IF_ERROR(ExecuteParallel(&parallel_arg, &parallel_result));
+    TF_RET_CHECK(parallel_result.responses_size() > 0);
+    *result = parallel_result.responses(0);
+    return Status::OK();
   }
 
   TF_ASSIGN_OR_RETURN(

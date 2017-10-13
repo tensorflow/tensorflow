@@ -242,9 +242,6 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
     for (GlobalData* argument : computation.arguments) {
       *single_request.add_arguments() = argument->handle();
     }
-    if (computation.device_handle != nullptr) {
-      *single_request.mutable_device_handle() = *computation.device_handle;
-    }
     *single_request.mutable_execution_options() = computation.execution_options;
     *request.add_requests() = single_request;
   }

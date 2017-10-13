@@ -713,6 +713,10 @@ enum BinaryOperation {
   // Logical operators
   BINOP_AND = 18;
   BINOP_OR = 19;
+
+  BINOP_SHIFT_LEFT = 20;
+  BINOP_SHIFT_RIGHT_ARITHMETIC = 21;
+  BINOP_SHIFT_RIGHT_LOGICAL = 22;
 }
 
 message BinaryOpRequest {
