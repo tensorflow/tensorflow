@@ -2669,6 +2669,22 @@ tf_cc_tests(
 )
 
 tf_cc_test_mkl(
+    name = "mkl_runtime_tests",
+    size = "small",
+    srcs = ["common_runtime/mkl_cpu_allocator_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":framework",
+        ":framework_internal",
+        ":test",
+        ":test_main",
+        ":testlib",
+    ],
+)
+
+tf_cc_test_mkl(
     name = "mkl_related_tests",
     size = "small",
     srcs = [
