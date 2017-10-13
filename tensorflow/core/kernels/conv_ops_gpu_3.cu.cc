@@ -573,6 +573,7 @@ struct BatchNarrowMatrixTransposeDispatcher {
       LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
           d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
           output);
+      return;
     }
 
     // If the execution reaches here, then the kernel was not launched; we then
@@ -614,6 +615,7 @@ struct BatchNarrowMatrixTransposeDispatcher<
       LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
           d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
           output);
+      return;
     }
 
     // If the execution reaches here, then the kernel was not launched; since
