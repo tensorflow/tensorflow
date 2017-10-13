@@ -42,17 +42,16 @@ class TPUConfig(
       is invoked once on each host. To be precise, with a global batch size
       `train_batch_size` in `TPUEstimator` constructor, the batch size for each
       shard is `train_batch_size` // #hosts. With Per-Core input pipeline
-      deployment, the shard batch size is `train_batch_size` // #cores. Note:
-      This behavior is going to be default as `True` soon, so this flag will be
-      removed after that. Also note that this only works for single-host TPU
-      training now (tracked in b/67051042). For multi-host, please use Per-Core,
-      i.e., `False` for `per_host_input_for_training`.
+      deployment, the shard batch size is `train_batch_size` // #cores.  Note
+      that this only works for single-host TPU training now (tracked in
+      b/67051042). For multi-host, please use Per-Core, i.e., `False` for
+      `per_host_input_for_training`.
   """
 
   def __new__(cls,
               iterations_per_loop=2,
               num_shards=2,
-              per_host_input_for_training=False):
+              per_host_input_for_training=True):
 
     # Check iterations_per_loop.
     util_lib.check_positive_integer(iterations_per_loop,
