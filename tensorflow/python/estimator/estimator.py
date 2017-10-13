@@ -311,7 +311,7 @@ class Estimator(object):
       return []
 
   def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
-               name=None):
+               name=None, log_progress=True):
     """Evaluates the model given evaluation data input_fn.
 
     For each step, calls `input_fn`, which returns one batch of data.
@@ -335,6 +335,7 @@ class Estimator(object):
         different data sets, such as on training data vs test data. Metrics for
         different evaluations are saved in separate folders, and appear
         separately in tensorboard.
+      log_progress: Whether to log evaluation progress, defaults to True.
 
     Returns:
       A dict containing the evaluation metrics specified in `model_fn` keyed by
@@ -347,7 +348,7 @@ class Estimator(object):
         given `checkpoint_path` is empty.
     """
     hooks = _check_hooks_type(hooks)
-    hooks.extend(self._convert_eval_steps_to_hooks(steps))
+    hooks.extend(self._convert_eval_steps_to_hooks(steps, log_progress))
 
     return self._evaluate_model(
         input_fn=input_fn,
@@ -355,13 +356,14 @@ class Estimator(object):
         checkpoint_path=checkpoint_path,
         name=name)
 
-  def _convert_eval_steps_to_hooks(self, steps):
+  def _convert_eval_steps_to_hooks(self, steps, log_progress):
     if steps is None:
       return []
 
     if steps <= 0:
       raise ValueError('Must specify steps > 0, given: {}'.format(steps))
-    return [evaluation._StopAfterNEvalsHook(num_evals=steps)]  # pylint: disable=protected-access
+    return [evaluation._StopAfterNEvalsHook(num_evals=steps,  # pylint: disable=protected-access
+                                            log_progress=log_progress)]
 
   def predict(self,
               input_fn,
