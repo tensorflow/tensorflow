@@ -117,6 +117,12 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
       return BINOP_OR;
     case HloOpcode::kAnd:
       return BINOP_AND;
+    case HloOpcode::kShiftLeft:
+      return BINOP_SHIFT_LEFT;
+    case HloOpcode::kShiftRightArithmetic:
+      return BINOP_SHIFT_RIGHT_ARITHMETIC;
+    case HloOpcode::kShiftRightLogical:
+      return BINOP_SHIFT_RIGHT_LOGICAL;
     default:
       LOG(FATAL) << "unhandled opcode " << opcode;
   }
@@ -748,6 +754,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     case BINOP_DIV:
     case BINOP_REM:
     case BINOP_MUL:
+    case BINOP_SHIFT_LEFT:
+    case BINOP_SHIFT_RIGHT_ARITHMETIC:
+    case BINOP_SHIFT_RIGHT_LOGICAL:
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
 

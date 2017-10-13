@@ -163,6 +163,9 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case (HloOpcode::kSubtract):
     case (HloOpcode::kAnd):
     case (HloOpcode::kOr):
+    case (HloOpcode::kShiftLeft):
+    case (HloOpcode::kShiftRightArithmetic):
+    case (HloOpcode::kShiftRightLogical):
       break;
     default:
       LOG(FATAL) << "Invalid binary instruction opcode "
@@ -905,6 +908,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRemainder:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
       CHECK_EQ(new_operands.size(), 2);
       return CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
     // Ternary ops.
@@ -1293,6 +1299,9 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSelect:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSubtract:
@@ -1984,6 +1993,13 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleAnd(this, operands_[0], operands_[1]);
     case HloOpcode::kOr:
       return visitor->HandleOr(this, operands_[0], operands_[1]);
+    case HloOpcode::kShiftLeft:
+      return visitor->HandleShiftLeft(this, operands_[0], operands_[1]);
+    case HloOpcode::kShiftRightArithmetic:
+      return visitor->HandleShiftRightArithmetic(this, operands_[0],
+                                                 operands_[1]);
+    case HloOpcode::kShiftRightLogical:
+      return visitor->HandleShiftRightLogical(this, operands_[0], operands_[1]);
     case HloOpcode::kConcatenate:
       return visitor->HandleConcatenate(this, operands_);
     case HloOpcode::kConvert:
@@ -2344,6 +2360,9 @@ bool HloInstruction::IsElementwiseBinary() const {
     case HloOpcode::kSubtract:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
       return true;
     default:
       return false;
@@ -2393,6 +2412,9 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kSubtract:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
       return true;
 
     // Ternary elementwise operations.
