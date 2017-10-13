@@ -39,28 +39,60 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ void LiteralTestUtil::AssertEqualShapes(const Shape& expected,
-                                                     const Shape& actual) {
-  ASSERT_EQ(ShapeUtil::IsTuple(expected), ShapeUtil::IsTuple(actual));
+/* static */ ::testing::AssertionResult LiteralTestUtil::EqualShapes(
+    const Shape& expected, const Shape& actual) {
+  if (ShapeUtil::IsTuple(expected) != ShapeUtil::IsTuple(actual)) {
+    return ::testing::AssertionFailure()
+           << "tupleness-mismatch! want: " << ShapeUtil::HumanString(expected)
+           << " got: " << ShapeUtil::HumanString(actual);
+  }
   if (ShapeUtil::IsTuple(expected)) {
-    ASSERT_EQ(ShapeUtil::TupleElementCount(expected),
-              ShapeUtil::TupleElementCount(actual));
+    if (ShapeUtil::TupleElementCount(expected) !=
+        ShapeUtil::TupleElementCount(actual)) {
+      return ::testing::AssertionFailure()
+             << "want tuple element count: "
+             << ShapeUtil::TupleElementCount(expected)
+             << " got tuple element count: "
+             << ShapeUtil::TupleElementCount(actual);
+    }
     for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
-      AssertEqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+      ::testing::AssertionResult result =
+          EqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+      if (!result) {
+        return result;
+      }
     }
   } else {
-    ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual));
-    ASSERT_EQ(expected.element_type(), actual.element_type())
-        << PrimitiveType_Name(expected.element_type()) << " vs "
-        << PrimitiveType_Name(actual.element_type());
-    ASSERT_EQ(expected.dimensions_size(), actual.dimensions_size());
+    if (ShapeUtil::Rank(expected) != ShapeUtil::Rank(actual)) {
+      return ::testing::AssertionFailure()
+             << "want rank of: " << ShapeUtil::HumanString(expected)
+             << " got rank of: " << ShapeUtil::HumanString(actual);
+    }
+    if (expected.element_type() != actual.element_type()) {
+      return ::testing::AssertionFailure()
+             << PrimitiveType_Name(expected.element_type()) << " vs "
+             << PrimitiveType_Name(actual.element_type());
+    }
+    if (expected.dimensions_size() != actual.dimensions_size()) {
+      return ::testing::AssertionFailure()
+             << "want dimensions_size " << expected.dimensions_size()
+             << " got dimensions_size " << actual.dimensions_size();
+    }
     for (int i = 0; i < expected.dimensions_size(); ++i) {
-      ASSERT_EQ(expected.dimensions(i), actual.dimensions(i))
-          << "mismatch in dimension #" << i
-          << " expected: " << ShapeUtil::HumanString(expected)
-          << " actual: " << ShapeUtil::HumanString(actual);
+      if (expected.dimensions(i) != actual.dimensions(i)) {
+        return ::testing::AssertionFailure()
+               << "mismatch in dimension #" << i
+               << " expected: " << ShapeUtil::HumanString(expected)
+               << " actual: " << ShapeUtil::HumanString(actual);
+      }
     }
   }
+  return ::testing::AssertionSuccess();
+}
+
+/* static */ void LiteralTestUtil::AssertEqualShapes(const Shape& expected,
+                                                     const Shape& actual) {
+  ASSERT_TRUE(EqualShapes(expected, actual));
 }
 
 /* static */ void LiteralTestUtil::AssertEqualShapesAndLayouts(
@@ -263,7 +295,14 @@ class NearComparator {
     VLOG(1) << "actual:";
     XLA_VLOG_LINES(1, actual.ToString());
 
-    LiteralTestUtil::AssertEqualShapes(expected.shape(), actual.shape());
+    // If the shapes mismatch, we simply fail the expectation instead of
+    // printing out data, as it's a type error rather than a value error.
+    ::testing::AssertionResult equal_shapes =
+        LiteralTestUtil::EqualShapes(expected.shape(), actual.shape());
+    if (!equal_shapes) {
+      EXPECT_TRUE(equal_shapes);
+      return false;
+    }
 
     // Set up members used during the comparison.
     num_miscompares_ = 0;

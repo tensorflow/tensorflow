@@ -27,8 +27,21 @@ namespace tensorflow {
 class ProcessFunctionLibraryRuntime {
  public:
   // Creates FunctionLibraryRuntime objects for each device in the provided
-  // DeviceMgr. Caller needs to make sure that device_mgr and lib_def outlive
-  // this object.
+  // DeviceMgr. Caller needs to make sure that device_mgr, lib_def and parent
+  // (if provided) outlive this object.
+  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
+                                int graph_def_version,
+                                const FunctionLibraryDefinition* lib_def,
+                                const OptimizerOptions& optimizer_options,
+                                DistributedFunctionLibraryRuntime* parent);
+
+  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
+                                int graph_def_version,
+                                const FunctionLibraryDefinition* lib_def,
+                                const OptimizerOptions& optimizer_options,
+                                CustomKernelCreator custom_kernel_creator,
+                                DistributedFunctionLibraryRuntime* parent);
+
   ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
                                 int graph_def_version,
                                 const FunctionLibraryDefinition* lib_def,
@@ -45,13 +58,39 @@ class ProcessFunctionLibraryRuntime {
   // attribute, returns "". Canonicalizes the device name.
   static string ObtainFunctionTarget(const AttrSlice& attrs);
 
+  // Sends `tensors_to_send` from `source_device` to `target_device` using
+  // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
+  // Rendezvous. Method takes references on each of the `tensors_to_send`.
+  // Method doesn't block.
+  static Status SendTensors(const string& source_device,
+                            const string& target_device,
+                            const string& key_prefix, int64 src_incarnation,
+                            gtl::ArraySlice<Tensor> tensors_to_send,
+                            const Rendezvous::Args& args,
+                            Rendezvous* rendezvous);
+
+  typedef std::function<void(const Status&)> StatusCallback;
+
+  // Receives `received_tensors` from `target_device` (originally sent from
+  // `source_device`) using `rendezvous`. Uses `key_prefix` to construct the
+  // keys to be retrieved. Method doesn't block and calls `done` when
+  // `num_tensors` are fetched.
+  static void ReceiveTensorsAsync(
+      const string& source_device, const string& target_device,
+      const string& key_prefix, int64 src_incarnation, int64 num_tensors,
+      const Rendezvous::Args& args, Rendezvous* rendezvous,
+      std::vector<Tensor>* received_tensors, const StatusCallback& done);
+
   static const char kDefaultFLRDevice[];
   // Returns the FunctionLibraryRuntime for the corresponding device_name.
   FunctionLibraryRuntime* GetFLR(const string& device_name);
 
+  // Returns the device incarnation for the given device_name.
+  Status GetDeviceIncarnation(const string& device_name, int64* incarnation);
+
   // For a given canonicalized key signature of the function instantiated
   // on device `device_name` and a `local_handle`, creates a handle and returns
-  // that value. Use core/common_runtime/framework/function.h::Canonicalize
+  // that value. Uses core/common_runtime/framework/function.h::Canonicalize
   // to canonicalize the function signature.
   FunctionLibraryRuntime::Handle AddHandle(
       const string& function_key, const string& device_name,
@@ -85,14 +124,35 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::DoneCallback done);
 
  private:
+  // For a given device_name, returns a DeviceContext for copying
+  // tensors to/from the device.
+  Status GetDeviceContext(const string& device_name,
+                          DeviceContext** device_context);
+
+  // Looks up the information for the given `handle` and returns the name
+  // of the device where the function is registered.
+  string GetDeviceName(FunctionLibraryRuntime::Handle handle);
+
+  friend class FunctionLibraryRuntimeImpl;
+
   mutable mutex mu_;
 
+  struct FunctionData {
+    const string target_device;
+    const FunctionLibraryRuntime::LocalHandle local_handle;
+
+    FunctionData(const string& target_device,
+                 FunctionLibraryRuntime::LocalHandle local_handle)
+        : target_device(target_device), local_handle(local_handle) {}
+  };
+
+  const FunctionLibraryDefinition* lib_def_;
   // Holds all the function invocations here.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
       GUARDED_BY(mu_);
-  std::vector<std::pair<string, FunctionLibraryRuntime::LocalHandle>>
-      function_data_ GUARDED_BY(mu_);
+  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
   std::unordered_map<string, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
+  DistributedFunctionLibraryRuntime* const parent_;
 };
 
 }  // namespace tensorflow

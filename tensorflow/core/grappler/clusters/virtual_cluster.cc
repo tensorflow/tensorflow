@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
@@ -66,22 +65,21 @@ Status VirtualCluster::Run(const GraphDef& graph,
 
   Costs node_costs;
   do {
-    NodeInfo node_info = scheduler.GetCurrNodeInfo();
-    const auto& op_info = node_info.op_info;
-    node_costs = node_estimator_->PredictCosts(op_info);
+    OpContext op_context = scheduler.GetCurrNode();
+    node_costs = node_estimator_->PredictCosts(op_context);
     if (metadata) {
       CostGraphDef::Node* cost_node =
           metadata->mutable_cost_graph()->add_node();
-      const string& op_name = node_info.name;
+      const string& op_name = op_context.name;
       cost_node->set_name(op_name);
-      cost_node->set_device(node_info.device_name);
+      cost_node->set_device(op_context.device_name);
       cost_node->set_compute_cost(
           node_costs.execution_time.asMicroSeconds().count());
       cost_node->set_compute_time(
           node_costs.compute_time.asMicroSeconds().count());
       cost_node->set_memory_time(
           node_costs.memory_time.asMicroSeconds().count());
-      for (const auto& output : node_info.op_info.outputs()) {
+      for (const auto& output : op_context.op_info.outputs()) {
         auto output_info = cost_node->add_output_info();
         output_info->set_dtype(output.dtype());
         *output_info->mutable_shape() = output.shape();

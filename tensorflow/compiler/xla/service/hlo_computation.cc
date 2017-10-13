@@ -58,16 +58,16 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
   CHECK_NE(nullptr, root);
 
   return WrapUnique(new HloComputation(name_, parameter_count, &instructions_,
-                                       root, is_fusion_computation_));
+                                       root, fusion_instruction_));
 }
 
 HloComputation::HloComputation(
     const string& name, int parameter_count,
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
-    HloInstruction* root_instruction, bool is_fusion_computation)
+    HloInstruction* root_instruction, HloInstruction* fusion_instruction)
     : name_(name),
       root_instruction_(root_instruction),
-      is_fusion_computation_(is_fusion_computation) {
+      fusion_instruction_(fusion_instruction) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -112,11 +112,8 @@ HloInstruction* HloComputation::AddInstructionInternal(
 HloInstruction* HloComputation::AddParameter(
     std::unique_ptr<HloInstruction> instruction) {
   CHECK(instruction->opcode() == HloOpcode::kParameter);
-  CHECK(is_fusion_computation_);
-  CHECK(root_instruction_->fusion_instruction() != nullptr);
-  instruction->SetParentFusion(root_instruction_->fusion_instruction());
-  CHECK(root_instruction_->fusion_instruction()->operand_count() ==
-        param_instructions_.size());
+  CHECK(IsFusionComputation());
+  CHECK(fusion_instruction_->operand_count() == param_instructions_.size());
   instruction->set_parent(this);
   param_instructions_.push_back(instruction.get());
   AddInstructionInternal(std::move(instruction));
@@ -126,8 +123,7 @@ HloInstruction* HloComputation::AddParameter(
 Status HloComputation::RemoveParameter(int64 param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
-  CHECK(is_fusion_computation_);
-  CHECK(root_instruction_->fusion_instruction() != nullptr);
+  CHECK(IsFusionComputation());
   HloInstruction* param_instruction = param_instructions_[param_no];
   auto param_instruction_iterator = param_instructions_.begin() + param_no;
   param_instructions_.erase(param_instruction_iterator);
@@ -155,7 +151,6 @@ Status HloComputation::RemoveParameter(int64 param_no) {
         AddInstructionInternal(HloInstruction::CreateParameter(
             param_no, param_instruction->shape(), param_name));
     TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
-    new_instr->SetParentFusion(root_instruction_->fusion_instruction());
     param_instructions_[param_no] = new_instr;
     TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
     param_no++;
@@ -178,7 +173,7 @@ bool HloComputation::IsRemovable(const HloInstruction* instruction) {
   }
 
   if (instruction->opcode() == HloOpcode::kParameter &&
-      !is_fusion_computation_) {
+      !IsFusionComputation()) {
     return false;
   }
 
@@ -190,7 +185,7 @@ bool HloComputation::IsRemovable(const HloInstruction* instruction) {
 }
 
 bool HloComputation::HasSideEffect() const {
-  for (auto& instruction : instructions()) {
+  for (auto* instruction : instructions()) {
     if (instruction->HasSideEffect()) {
       return true;
     }
@@ -203,7 +198,8 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
-  TF_RET_CHECK(IsRemovable(instruction));
+  TF_RET_CHECK(IsRemovable(instruction))
+      << "Cannot remove instruction: " << instruction->ToString();
   std::unordered_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
   worklist.push(instruction);
@@ -250,20 +246,11 @@ Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   return Status::OK();
 }
 
-Status HloComputation::ReplaceUsesOfInstruction(
-    HloInstruction* instruction_to_replace, HloInstruction* instruction) {
-  TF_RETURN_IF_ERROR(instruction_to_replace->ReplaceAllUsesWith(instruction));
-  if (instruction_to_replace == root_instruction()) {
-    set_root_instruction(instruction);
-  }
-  return Status::OK();
-}
-
 void HloComputation::set_root_instruction(
     HloInstruction* new_root_instruction) {
   // The shape of the root (ignoring layout) is an invariant of the computation
   // for non-fusion cases.
-  if (!is_fusion_computation_) {
+  if (!IsFusionComputation()) {
     CHECK(ShapeUtil::Compatible(new_root_instruction->shape(),
                                 root_instruction_->shape()))
         << new_root_instruction->shape().ShortDebugString()
@@ -328,7 +315,7 @@ void ComputeComputationPostOrder(
     return;
   }
 
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     for (HloComputation* called_computation :
          instruction->called_computations()) {
       ComputeComputationPostOrder(called_computation, visited, post_order);
@@ -574,8 +561,7 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
-  TF_RETURN_IF_ERROR(
-      ReplaceUsesOfInstruction(old_instruction, new_instruction));
+  TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 
@@ -623,11 +609,11 @@ void HloComputation::UpdateReachabilityThroughInstruction(
 
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   std::vector<HloInstruction*> unreachable_roots;
-  for (auto& instruction : instructions()) {
+  for (auto* instruction : instructions()) {
     if (instruction->user_count() == 0 &&
         instruction->control_successors().empty() &&
-        instruction.get() != root_instruction()) {
-      unreachable_roots.push_back(instruction.get());
+        instruction != root_instruction()) {
+      unreachable_roots.push_back(instruction);
     }
   }
   VLOG(3) << "Unreachable roots:"

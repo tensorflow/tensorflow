@@ -268,6 +268,10 @@ const DeviceDescription &StreamExecutor::GetDeviceDescription() const {
   return *device_description_;
 }
 
+int64 StreamExecutor::GetDeviceLoad() const {
+  return implementation_->GetDeviceLoad();
+}
+
 int StreamExecutor::PlatformDeviceCount() const {
   return implementation_->PlatformDeviceCount();
 }
@@ -286,35 +290,41 @@ bool StreamExecutor::SupportsDnn() const {
 
 bool StreamExecutor::GetConvolveAlgorithms(
     bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused,
-                                            out_algorithms);
+  int cc_major, cc_minor;
+  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
+  return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused, cc_major,
+                                            cc_minor, out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
     bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveBackwardDataAlgorithms(with_winograd_nonfused,
-                                                        out_algorithms);
+  int cc_major, cc_minor;
+  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
+  return dnn_support->GetConvolveBackwardDataAlgorithms(
+      with_winograd_nonfused, cc_major, cc_minor, out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
     bool with_winograd_nonfused,
-    std::vector<dnn::AlgorithmType> *out_algorithms) {
+    std::vector<dnn::AlgorithmDesc> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
+  int cc_major, cc_minor;
+  GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
   return dnn_support->GetConvolveBackwardFilterAlgorithms(
-      with_winograd_nonfused, out_algorithms);
+      with_winograd_nonfused, cc_major, cc_minor, out_algorithms);
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(

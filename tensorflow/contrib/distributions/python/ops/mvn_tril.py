@@ -76,7 +76,7 @@ class MultivariateNormalTriL(
   ```
 
   Trainable (batch) lower-triangular matrices can be created with
-  `ds.matrix_diag_transform()` and/or `ds.fill_lower_triangular()`
+  `ds.matrix_diag_transform()` and/or `ds.fill_triangular()`
 
   #### Examples
 
@@ -188,9 +188,9 @@ class MultivariateNormalTriL(
               assert_proper_shapes=validate_args)
         else:
           # No need to validate that scale_tril is non-singular.
-          # LinearOperatorTriL has an assert_non_singular method that is called
-          # by the Bijector.
-          scale = linalg.LinearOperatorTriL(
+          # LinearOperatorLowerTriangular has an assert_non_singular
+          # method that is called by the Bijector.
+          scale = linalg.LinearOperatorLowerTriangular(
               scale_tril,
               is_non_singular=True,
               is_self_adjoint=False,

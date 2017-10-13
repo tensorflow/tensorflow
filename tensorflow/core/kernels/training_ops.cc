@@ -374,8 +374,8 @@ class ApplyGradientDescentOp : public OpKernel {
     auto locks =
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -415,8 +415,8 @@ class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
     auto locks =
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -526,14 +526,14 @@ class ApplyAdadeltaOp : public OpKernel {
 
   void DoValidate(OpKernelContext* ctx) {
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &accum));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
-                                                   &accum_update));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &accum_update));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -580,14 +580,14 @@ class ApplyAdadeltaOp : public OpKernel {
   void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &accum));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
-                                                   &accum_update));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &accum_update));
 
     const Tensor& lr = ctx->input(3);
     const Tensor& rho = ctx->input(4);
@@ -599,9 +599,6 @@ class ApplyAdadeltaOp : public OpKernel {
         lr.scalar<T>(), rho.scalar<T>(), epsilon.scalar<T>(), grad.flat<T>());
   }
 };
-
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
 #define REGISTER_KERNELS(D, T)                                         \
   REGISTER_KERNEL_BUILDER(                                             \
@@ -663,14 +660,14 @@ class SparseApplyAdadeltaOp : public OpKernel {
       mu_var->lock();
     }
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     Tensor accum_grad;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_,
-                                                   &accum_grad));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 1, use_exclusive_lock_, true, &accum_grad));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
-                                                   &accum_update));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 2, use_exclusive_lock_, true, &accum_update));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -808,8 +805,8 @@ class ApplyProximalGradientDescentOp : public OpKernel {
     auto locks =
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -875,10 +872,10 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
     auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(var.shape()),
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
@@ -1021,11 +1018,11 @@ class ApplyAdagradOp : public OpKernel {
     auto locks =
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1060,9 +1057,6 @@ class ApplyAdagradOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
 #define REGISTER_KERNELS(D, T)                                        \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -1114,11 +1108,11 @@ class ApplyProximalAdagradOp : public OpKernel {
     auto locks =
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1171,9 +1165,6 @@ class ApplyProximalAdagradOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("ApplyProximalAdagrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -1221,11 +1212,11 @@ class SparseApplyAdagradOp : public OpKernel {
     auto locks =
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 1, use_exclusive_lock_, true, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1355,11 +1346,11 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     auto locks =
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 1, use_exclusive_lock_, true, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1524,17 +1515,19 @@ class ApplyAdagradDAOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor gradient_accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_,
-                                                   &gradient_accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable<Device, T>(ctx, 1, use_exclusive_lock_,
+                                                   false, &gradient_accum));
     Tensor gradient_squared_accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
-                                                   &gradient_squared_accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable<Device, T>(
+                 ctx, 2, use_exclusive_lock_, false, &gradient_squared_accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1598,9 +1591,6 @@ class ApplyAdagradDAOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                            \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("ApplyAdagradDA").Device(DEVICE_##D).TypeConstraint<T>("T"),   \
@@ -1626,17 +1616,19 @@ class SparseApplyAdagradDAOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     Tensor gradient_accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_,
-                                                   &gradient_accum));
+    OP_REQUIRES_OK(ctx,
+                   GetInputTensorFromVariable<CPUDevice, T>(
+                       ctx, 1, use_exclusive_lock_, true, &gradient_accum));
     Tensor gradient_squared_accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
-                                                   &gradient_squared_accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                 ctx, 2, use_exclusive_lock_, true, &gradient_squared_accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1826,14 +1818,14 @@ class ApplyFtrlOp : public OpKernel {
                                                       {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &accum));
     Tensor linear;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &linear));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &linear));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1921,9 +1913,6 @@ class ApplyFtrlOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyFtrl").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -1978,14 +1967,14 @@ class SparseApplyFtrlOp : public OpKernel {
     auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
                                                       {0, 1, 2});
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, true, &accum));
     Tensor linear;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &linear));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, true, &linear));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2251,11 +2240,11 @@ class ApplyMomentumOp : public OpKernel {
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2296,9 +2285,6 @@ class ApplyMomentumOp : public OpKernel {
   bool use_exclusive_lock_;
   bool use_nesterov_;
 };
-
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
 #define REGISTER_KERNELS(D, T)                                         \
   REGISTER_KERNEL_BUILDER(                                             \
@@ -2354,11 +2340,11 @@ class SparseApplyMomentumOp : public OpKernel {
         MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     Tensor accum;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 1, use_exclusive_lock_, true, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2471,14 +2457,14 @@ class ApplyAdamOp : public OpKernel {
                                                       {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor m;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &m));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &m));
     Tensor v;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &v));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &v));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2561,14 +2547,14 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
                                                       {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor m;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &m));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
+                            ctx, 1, use_exclusive_lock_, false, &m));
     Tensor v;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &v));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
+                            ctx, 2, use_exclusive_lock_, false, &v));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2665,9 +2651,6 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
 };
 #endif  // TENSORFLOW_USE_SYCL
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
-
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -2733,14 +2716,14 @@ class ApplyRMSPropOp : public OpKernel {
                                                       {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor ms;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &ms));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &ms));
     Tensor mom;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &mom));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -2815,17 +2798,17 @@ class ApplyCenteredRMSPropOp : public OpKernel {
                                                       {0, 1, 2, 3});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor mg;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &mg));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 1, use_exclusive_lock_, false, &mg));
     Tensor ms;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &ms));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 2, use_exclusive_lock_, false, &ms));
     Tensor mom;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 3, use_exclusive_lock_, &mom));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
+                            ctx, 3, use_exclusive_lock_, false, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -2895,9 +2878,6 @@ class ApplyCenteredRMSPropOp : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
 
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -2976,14 +2956,14 @@ class SparseApplyRMSPropOp : public OpKernel {
                                                       {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     Tensor ms;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &ms));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 1, use_exclusive_lock_, true, &ms));
     Tensor mom;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &mom));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 2, use_exclusive_lock_, true, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -3105,17 +3085,17 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
                                                       {0, 1, 2, 3});
 
     Tensor var;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 0, use_exclusive_lock_, true, &var));
     Tensor mg;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &mg));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 1, use_exclusive_lock_, true, &mg));
     Tensor ms;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &ms));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 2, use_exclusive_lock_, true, &ms));
     Tensor mom;
-    OP_REQUIRES_OK(
-        ctx, GetInputTensorFromVariable(ctx, 3, use_exclusive_lock_, &mom));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+                            ctx, 3, use_exclusive_lock_, true, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),

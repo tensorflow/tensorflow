@@ -1066,7 +1066,10 @@ class TensorArrayTest(test.TestCase):
           infer_shape=True)
       w0 = ta1.split(value, [1, 2])
       r0 = w0.read(0)
-      self.assertAllEqual(r0.get_shape(), tensor_shape.unknown_shape())
+      self.assertEqual(r0.get_shape().ndims, None)
+      self.assertEqual(
+          tensor_shape.TensorShape(
+              ta1.handle.op.get_attr("element_shape")).ndims, None)
 
   def testWriteUnknownShape(self):
     with self.test_session(use_gpu=True):
@@ -1142,10 +1145,11 @@ class TensorArrayTest(test.TestCase):
       # Don't actually perform the pack.  This stores the static shape.
       ta.unstack(array_ops.zeros([0, 3, 5])).mark_used()
       packed = ta.stack()
+      concatenated = ta.concat()
       self.assertAllEqual([0, 3, 5], packed.eval().shape)
       # Concatenating zero tensors along their first dimension gives a
       # first dimension of zero
-      self.assertAllEqual([0, 5], ta.concat().eval().shape)
+      self.assertAllEqual([0, 5], concatenated.eval().shape)
 
   def testTensorArrayEvalEmptyWithDefault(self):
     self._testTensorArrayEvalEmptyWithDefault()
@@ -1305,7 +1309,7 @@ class TensorArrayTest(test.TestCase):
     dev_stats = {d.device: list(d.node_stats)
                  for d in run_metadata.step_stats.dev_stats}
     for d in dev_stats:
-      if "/task:0/" in d and "cpu" in d:  # Skip any GPU node stats
+      if "/task:0/" in d and "CPU" in d:  # Skip any GPU node stats
         self.assertTrue(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
       else:
@@ -1357,6 +1361,24 @@ class TensorArrayTest(test.TestCase):
       self.assertEqual(read1_v, 1)
       self.assertEqual(size0_v, 2)
       self.assertEqual(size1_v, 4)
+
+  def testTensorArrayGradYsInCorrectScope(self):
+    n_time = 1
+    n_dim = 1
+    x = constant_op.constant([[1.42]])
+    dy = constant_op.constant([[2.42]])
+
+    ta = tensor_array_ops.TensorArray(
+        dtypes.float32, size=n_time, element_shape=[n_dim])
+    for t in range(n_time):
+      ta = ta.write(index=t, value=x[t])
+      y = ta.stack()
+      # dy is outside of the gradients name scope; tf.gradients must
+      # wrap it in the correct name scope.
+      dx, = gradients_impl.gradients(ys=[y], xs=[x], grad_ys=[dy])
+      with self.test_session(use_gpu=True) as sess:
+        vdx, vdy = sess.run([dx, dy])
+      self.assertAllClose(vdx, vdy)
 
 
 if __name__ == "__main__":

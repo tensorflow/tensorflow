@@ -371,6 +371,18 @@ class FunctionalOpsTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllEqual(873.0, r.eval())
 
+  def testScanGradientWithPartStopGradient(self):
+    a = variables.Variable(0.0, name="a")
+    b = variables.Variable(0.0, name="b")
+    elems = array_ops.zeros(5)
+    l0, l1 = functional_ops.scan(
+        lambda elem_, input_: (a, b), elems, initializer=(0., 0.))
+    loss = l0 + array_ops.stop_gradient(l1)
+    grad = gradients_impl.gradients(ys=[loss], xs=[a, b])
+    with self.test_session(use_gpu=True) as sess:
+      variables.global_variables_initializer().run()
+      sess.run(grad)
+
   def testFoldShape(self):
     with self.test_session():
       x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
@@ -499,6 +511,77 @@ class FunctionalOpsTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       mul = sess.run(remote_op)
       self.assertEqual(mul, [6])
+
+  def testRemoteFunctionCPUGPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
+      a = variables.Variable(2, dtype=dtypes.float32)
+      b = variables.Variable(3, dtype=dtypes.float32)
+
+    with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a, b],
+          Tout=[dtypes.float32],
+          f=_remote_fn,
+          target="/job:localhost/replica:0/task:0/device:GPU:0")[0] + 3.0
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      mul = sess.run(remote_op)
+      self.assertEqual(mul, 9.0)
+
+  def testRemoteFunctionGPUCPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    with ops.device("/job:localhost/replica:0/task:0/device:GPU:0"):
+      a = variables.Variable(2, dtype=dtypes.float32)
+      b = variables.Variable(3, dtype=dtypes.float32)
+
+    with ops.device("/job:localhost/replica:0/task:0/device:GPU:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a, b],
+          Tout=[dtypes.float32],
+          f=_remote_fn,
+          target="/job:localhost/replica:0/task:0/cpu:0")[0] + 3.0
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      mul = sess.run(remote_op)
+      self.assertEqual(mul, 9.0)
+
+  def testRemoteFunctionCrossProcess(self):
+    workers, _ = test_util.create_local_cluster(2, 1)
+
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    with ops.device("/job:ps/task:0"):
+      a = variables.Variable(2, dtype=dtypes.float32)
+      b = variables.Variable(3, dtype=dtypes.float32)
+
+    with ops.device("/job:worker/replica:0/task:0/cpu:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a, b],
+          Tout=[dtypes.float32],
+          f=_remote_fn,
+          target="/job:worker/replica:0/task:1/cpu:0")[0] + 3.0
+
+    with session.Session(workers[0].target) as sess:
+      sess.run(variables.global_variables_initializer())
+      mul = sess.run(remote_op)
+      self.assertEqual(mul, 9)
 
 
 if __name__ == "__main__":

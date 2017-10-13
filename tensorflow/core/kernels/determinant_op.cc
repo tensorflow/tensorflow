@@ -38,6 +38,64 @@ limitations under the License.
 
 namespace tensorflow {
 
+// A helper function to compute the sign and absolute value of the
+// log of the determinant of inputs via a partially pivoted LU
+// factorization.
+//
+// Returns the sign in 'sign' and the log determinant in 'logdet'
+template <class Scalar>
+static void SLogDet(
+    const Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>& inputs,
+    Scalar* sign, Scalar* log_abs_det) {
+  *log_abs_det = 0;
+  *sign = 1;
+  // An empty matrix' determinant is defined to be 1.
+  // (https://en.wikipedia.org/wiki/Determinant)
+  if (inputs.size() > 0) {
+    // Compute the log determinant through a Partially Pivoted LU decomposition
+    using Eigen::Dynamic;
+    Eigen::PartialPivLU<Eigen::Matrix<Scalar, Dynamic, Dynamic>> lu(inputs);
+    Eigen::Matrix<Scalar, Dynamic, Dynamic> LU = lu.matrixLU();
+    *sign = lu.permutationP().determinant();
+    auto diag = LU.diagonal().array().eval();
+    auto abs_diag = diag.cwiseAbs().template cast<Scalar>().eval();
+    *log_abs_det += abs_diag.log().sum();
+    *sign *= (diag / abs_diag).prod();
+  }
+  if (!Eigen::numext::isfinite(*log_abs_det)) {
+    *sign = 0;
+    *log_abs_det = std::log(0.0);
+  }
+}
+
+template <class Scalar>
+class LogDeterminantOp : public LinearAlgebraOp<Scalar> {
+ public:
+  typedef LinearAlgebraOp<Scalar> Base;
+
+  explicit LogDeterminantOp(OpKernelConstruction* context) : Base(context) {}
+
+  using TensorShapes = typename Base::TensorShapes;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
+    return TensorShapes({TensorShape({}), TensorShape({})});
+  }
+
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    Scalar sign;
+    Scalar log_abs_det;
+    SLogDet(Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>(inputs[0]),
+            &sign, &log_abs_det);
+
+    outputs->at(0)(0, 0) = sign;
+    outputs->at(1)(0, 0) = log_abs_det;
+  }
+};
+
 template <class Scalar>
 class DeterminantOp : public LinearAlgebraOp<Scalar> {
  public:
@@ -56,13 +114,11 @@ class DeterminantOp : public LinearAlgebraOp<Scalar> {
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
-    Scalar determinant;
-    if (inputs[0].rows() == 0) {
-      // An empty matrix' determinant is defined to be 1.  See wikipedia.
-      determinant = 1;
-    } else {
-      determinant = inputs[0].determinant();
-    }
+    Scalar sign;
+    Scalar log_abs_det;
+    SLogDet(Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>(inputs[0]),
+            &sign, &log_abs_det);
+    Scalar determinant = sign * std::exp(log_abs_det);
     // TODO(rmlarsen): Don't fail on infinite determinants, since that could
     // be a valid result and the user should check for it instead.
     OP_REQUIRES(context, Eigen::numext::isfinite(determinant),
@@ -115,12 +171,15 @@ class DeterminantOpGpu : public AsyncOpKernel {
       return;
     }
 
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+
     // Reuse the input buffer or make a copy for the factorization step,
     // depending on whether this ops owns it exclusively.
     Tensor input_copy;
     OP_REQUIRES_OK_ASYNC(
         context,
-        context->forward_input_or_allocate_temp(
+        solver->forward_input_or_allocate_scoped_tensor(
             {0}, DataTypeToEnum<Scalar>::value, input.shape(), &input_copy),
         done);
     if (!input.SharesBufferWith(input_copy)) {
@@ -131,17 +190,23 @@ class DeterminantOpGpu : public AsyncOpKernel {
     const int64 batch_size = input_copy_reshaped.dimension(0);
 
     // Allocate pivots on the device.
-    ScratchSpace<int> pivots(context, n * batch_size, /* on_host */ false);
+    Tensor pivots;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        solver->allocate_scoped_tensor(DataTypeToEnum<int>::value,
+                                       TensorShape{batch_size, n}, &pivots),
+        done);
+    auto pivots_mat = pivots.template matrix<int>();
 
     // Prepare pointer arrays for cuBlas' batch interface.
     // TODO(rmlarsen): Find a way to encode pointer arrays in pinned host memory
     // without the ugly casting.
-    ScratchSpace<uint8> input_copy_ptrs(context, sizeof(Scalar*) * batch_size,
-                                        /* on_host */ true);
+    auto input_copy_ptrs = solver->GetScratchSpace<uint8>(
+        sizeof(Scalar*) * batch_size, "input_copy_ptrs",
+        /* on_host */ true);
     auto output_reshaped = out->template flat_inner_dims<Scalar, 1>();
 
     // Compute the partially pivoted LU factorization(s) of the matrix/matrices.
-    CudaSolver solver(context);
     std::vector<DeviceLapackInfo> dev_info;
     if (n / batch_size <= 128) {
       // For small matrices or large batch sizes, we use the batched interface
@@ -149,30 +214,25 @@ class DeterminantOpGpu : public AsyncOpKernel {
       const Scalar** input_copy_ptrs_base =
           reinterpret_cast<const Scalar**>(input_copy_ptrs.mutable_data());
       for (int batch = 0; batch < batch_size; ++batch) {
-        input_copy_ptrs_base[batch] =
-            input_copy_reshaped.data() + batch * n * n;
+        input_copy_ptrs_base[batch] = &input_copy_reshaped(batch, 0, 0);
       }
-      dev_info.emplace_back(context, batch_size, "getrfBatched");
+      dev_info.push_back(
+          solver->GetDeviceLapackInfo(batch_size, "getrfBatched"));
       OP_REQUIRES_OK_ASYNC(
           context,
-          solver.GetrfBatched(n, input_copy_ptrs_base, n, pivots.mutable_data(),
-                              &dev_info.back(), batch_size),
+          solver->GetrfBatched(n, input_copy_ptrs_base, n, pivots_mat.data(),
+                               &dev_info.back(), batch_size),
           done);
     } else {
       // For small batch sizes we use the non-batched interface from cuSolver,
       // which is much faster for large matrices.
-      dev_info.emplace_back(context, batch_size, "getrf");
-      int* dev_info_ptr = dev_info.back().mutable_data();
-      Scalar* input_copy_ptr = input_copy.flat<Scalar>().data();
-      int* pivots_ptr = pivots.mutable_data();
+      dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrf"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.Getrf(n, n, input_copy_ptr, n, pivots_ptr, dev_info_ptr),
+            solver->Getrf(n, n, &input_copy_reshaped(batch, 0, 0), n,
+                          &pivots_mat(batch, 0), &dev_info.back()(batch)),
             done);
-        input_copy_ptr += n * n;
-        pivots_ptr += n;
-        ++dev_info_ptr;
       }
     }
 
@@ -181,16 +241,15 @@ class DeterminantOpGpu : public AsyncOpKernel {
     // upper triangular factor of the LU factorization, which is written to
     // input_copy by the Getrf{Batched} kernel.
     functor::DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> functor;
-    functor(d, input_copy_reshaped, pivots.data(), output_reshaped,
-            dev_info.back().mutable_data());
+    functor(d,
+            const_cast<const Tensor*>(&input_copy)
+                ->template flat_inner_dims<Scalar, 3>(),
+            pivots_mat.data(), output_reshaped, dev_info.back().mutable_data());
 
-    // Register callback to check info after kernels finish. Also capture the
-    // temporary Tensors/ScratchSpace so they don't get deallocated before the
-    // kernels run. TODO(rmlarsen): Use move capture once C++14 becomes
-    // available.
-    auto info_checker = [context, dev_info, input_copy, pivots, input_copy_ptrs,
-                         done](const Status& status,
-                               const std::vector<HostLapackInfo>& host_infos) {
+    // Register callback to check info after kernels finish.
+    auto info_checker = [context, done](
+                            const Status& status,
+                            const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && errors::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         for (int i = 0; i < host_infos[0].size(); ++i) {
@@ -212,11 +271,8 @@ class DeterminantOpGpu : public AsyncOpKernel {
       }
       done();
     };
-
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
-        done);
+    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                    std::move(info_checker));
   }
 };
 
@@ -240,4 +296,10 @@ REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<complex64>),
 REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<complex128>),
                    complex128);
 
+REGISTER_LINALG_OP("LogMatrixDeterminant", (LogDeterminantOp<float>), float);
+REGISTER_LINALG_OP("LogMatrixDeterminant", (LogDeterminantOp<double>), double);
+REGISTER_LINALG_OP("LogMatrixDeterminant", (LogDeterminantOp<complex64>),
+                   complex64);
+REGISTER_LINALG_OP("LogMatrixDeterminant", (LogDeterminantOp<complex128>),
+                   complex128);
 }  // namespace tensorflow

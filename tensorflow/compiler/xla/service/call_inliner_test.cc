@@ -44,6 +44,8 @@ namespace {
 using CallInlinerTest = HloTestBase;
 
 TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
+  // "inner" computation just has a control dependency from the "zero" value to
+  // the "one" value.
   HloComputation::Builder inner(TestName() + ".inner");
   HloInstruction* zero = inner.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(24.0f)));
@@ -54,6 +56,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   HloComputation* inner_computation =
       module->AddEmbeddedComputation(inner.Build());
 
+  // "outer" computation just calls the "inner" computation.
   HloComputation::Builder outer(TestName() + ".outer");
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
   outer.AddInstruction(
@@ -71,6 +74,94 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   auto prior = computation->root_instruction()->control_predecessors()[0];
   EXPECT_THAT(prior, op::Constant());
   EXPECT_EQ(prior->literal().GetFirstElement<float>(), 24);
+}
+
+// Tests for referential transparency (a function that calls a function that
+// returns false should be identical to just returning false).
+TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
+  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  auto module = CreateNewModule();
+
+  // Create a lambda that calls a function that returns the false predicate.
+  // Note we also use this lambda twice by reference, just to make the test a
+  // little trickier.
+  HloComputation::Builder just_false(TestName() + ".false");
+  just_false.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(just_false.Build());
+
+  HloComputation::Builder call_false_builder(TestName() + ".call_false");
+  call_false_builder.AddInstruction(
+      HloInstruction::CreateCall(pred, {}, false_computation));
+  HloComputation* call_false =
+      module->AddEmbeddedComputation(call_false_builder.Build());
+
+  HloComputation::Builder outer(TestName() + ".outer");
+  HloInstruction* init_value = outer.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  outer.AddInstruction(
+      HloInstruction::CreateWhile(pred, call_false, call_false, init_value));
+
+  auto computation = module->AddEntryComputation(outer.Build());
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+  EXPECT_THAT(
+      computation->root_instruction()->while_condition()->root_instruction(),
+      op::Constant());
+  EXPECT_THAT(computation->root_instruction()->while_body()->root_instruction(),
+              op::Constant());
+}
+
+// Check CallInliner::Inline, which inlines a specific call without running the
+// whole pass.
+TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
+  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  auto module = CreateNewModule();
+
+  HloComputation::Builder just_false(TestName() + ".false");
+  auto* true_constant = just_false.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<bool>({true})));
+  auto* false_constant = just_false.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  TF_ASSERT_OK(false_constant->AddControlDependencyTo(true_constant));
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(just_false.Build());
+
+  HloComputation::Builder call_false_builder(TestName() + ".call_false");
+  HloInstruction* call = call_false_builder.AddInstruction(
+      HloInstruction::CreateCall(pred, {}, false_computation));
+  auto computation = module->AddEntryComputation(call_false_builder.Build());
+
+  TF_ASSERT_OK(CallInliner::Inline(call));
+  EXPECT_THAT(computation->root_instruction(), op::Constant());
+  EXPECT_THAT(computation->root_instruction()->control_successors(),
+              ElementsAre(op::Constant()));
+}
+
+TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
+  const Shape f32 = ShapeUtil::MakeShape(F32, {});
+  auto module = CreateNewModule();
+
+  HloComputation::Builder outfeeder(TestName() + ".outfeeder");
+  auto value = outfeeder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+  outfeeder.AddInstruction(
+      HloInstruction::CreateOutfeed(f32, value, /*outfeed_config=*/""));
+
+  auto outfeed_computation = module->AddEmbeddedComputation(outfeeder.Build());
+
+  HloComputation::Builder outer(TestName() + ".outer");
+  outer.AddInstruction(HloInstruction::CreateCall(
+      ShapeUtil::MakeNil(), /*operands=*/{}, outfeed_computation));
+
+  module->AddEntryComputation(outer.Build());
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
 }
 
 }  // namespace

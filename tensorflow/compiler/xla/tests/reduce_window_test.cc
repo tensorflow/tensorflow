@@ -28,9 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -72,6 +75,20 @@ class ReduceWindowTest : public ClientLibraryTestBase {
 
   ComputationBuilder builder_;
 };
+
+TEST_F(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
+  const auto input = builder_.ConstantR1<float>({1, 1, 1, 1});
+  const auto init_value = builder_.ConstantR0<float>(0);
+  TF_ASSERT_OK(builder_.first_error());
+  builder_.ReduceWindow(input, init_value,
+                        CreateScalarAddComputation(F32, &builder_),
+                        /*window_dimensions=*/{1, 2},
+                        /*window_strides=*/{1}, Padding::kValid);
+  ASSERT_EQ(builder_.first_error().code(), tensorflow::error::INVALID_ARGUMENT)
+      << builder_.first_error();
+  ASSERT_THAT(builder_.first_error().error_message(),
+              ::testing::HasSubstr("Want input dimensions size"));
+}
 
 TEST_F(ReduceWindowTest, Min3In5Stride2) {
   const auto input = builder_.ConstantR1<float>({10000, 1000, 100, 10, 1});
@@ -317,6 +334,143 @@ TEST_F(ReduceWindowTest, R4UnitWindow) {
                           client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
+}
+
+XLA_TEST_F(HloTestBase, R6AddMultipleStrides) {
+  auto b = HloComputation::Builder(TestName());
+
+  std::vector<int64> input_dims(6, 8);
+  auto shape = ShapeUtil::MakeShape(F32, input_dims);
+
+  std::unique_ptr<Literal> arg_literal = Literal::CreateFromShape(shape);
+  auto generator = [&](tensorflow::gtl::ArraySlice<int64> indexes) -> float {
+    return 1.0f;
+  };
+  TF_EXPECT_OK(arg_literal->Populate<float>(generator));
+
+  auto input =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+
+  auto module = CreateNewModule();
+  auto add_func = module->AddEmbeddedComputation(add_computation.Build());
+
+  WindowDimension trivial_dim;
+  trivial_dim.set_size(1);
+  trivial_dim.set_stride(1);
+  trivial_dim.set_padding_low(0);
+  trivial_dim.set_padding_high(0);
+  trivial_dim.set_window_dilation(1);
+  trivial_dim.set_base_dilation(1);
+
+  WindowDimension active_dim;
+  active_dim.set_size(3);
+  active_dim.set_stride(1);
+  active_dim.set_padding_low(0);
+  active_dim.set_padding_high(0);
+  active_dim.set_window_dilation(1);
+  active_dim.set_base_dilation(1);
+
+  Window window;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+
+  // Non-monotonic output layout with minor dims trivial.
+  std::vector<int64> output_layout = {1, 5, 3, 2, 0, 4};
+  std::vector<int64> output_dims = {6, 8, 6, 6, 8, 8};
+  Shape result_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, output_dims, output_layout);
+  b.AddInstruction(HloInstruction::CreateReduceWindow(
+      result_shape, input, init_value, window, add_func));
+
+  std::unique_ptr<Literal> expected = Literal::CreateFromShape(result_shape);
+  auto out_generator =
+      [&](tensorflow::gtl::ArraySlice<int64> indexes) -> float {
+    return 27.0f;
+  };
+  TF_EXPECT_OK(expected->Populate<float>(out_generator));
+
+  module->AddEntryComputation(b.Build());
+  auto actual = ExecuteAndTransfer(std::move(module), {});
+
+  LiteralTestUtil::ExpectNear(*actual, *expected, ErrorSpec(1e-3, 1e-3));
+}
+
+XLA_TEST_F(HloTestBase, R6Add) {
+  auto b = HloComputation::Builder(TestName());
+
+  std::vector<int64> input_dims(6, 8);
+  std::unique_ptr<Literal> arg_literal =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(input_dims, 1.0f);
+  auto input =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.f)));
+
+  HloComputation::Builder add_computation("add");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = add_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  add_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
+
+  auto module = CreateNewModule();
+  auto add_func = module->AddEmbeddedComputation(add_computation.Build());
+
+  WindowDimension trivial_dim;
+  trivial_dim.set_size(1);
+  trivial_dim.set_stride(1);
+  trivial_dim.set_padding_low(0);
+  trivial_dim.set_padding_high(0);
+  trivial_dim.set_window_dilation(1);
+  trivial_dim.set_base_dilation(1);
+
+  WindowDimension active_dim;
+  active_dim.set_size(3);
+  active_dim.set_stride(1);
+  active_dim.set_padding_low(0);
+  active_dim.set_padding_high(0);
+  active_dim.set_window_dilation(1);
+  active_dim.set_base_dilation(1);
+
+  Window window;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = active_dim;
+  *window.add_dimensions() = trivial_dim;
+  *window.add_dimensions() = trivial_dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {8, 8, 6, 6, 8, 8});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(shape, input, init_value,
+                                                      window, add_func));
+
+  std::vector<int64> output_dims = {8, 8, 6, 6, 8, 8};
+  std::unique_ptr<Literal> expected =
+      Literal::CreateFullWithMonotonicDim0MajorLayout<float>(output_dims, 9.0f);
+
+  module->AddEntryComputation(b.Build());
+  auto actual = ExecuteAndTransfer(std::move(module), {});
+
+  LiteralTestUtil::ExpectNear(*actual, *expected, ErrorSpec(1e-3, 1e-3));
 }
 
 XLA_TEST_F(ReduceWindowTest, R4SecondMinorStride) {

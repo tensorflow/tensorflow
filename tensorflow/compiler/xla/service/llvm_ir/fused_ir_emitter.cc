@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -56,7 +56,7 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
         VLOG(3) << "The cached generated value is reused.";
         return generated_value;
       }
-      VLOG(3) << "The cached generated value can't be reuse, because it is at "
+      VLOG(3) << "The cached generated value can't be reused, because it is in "
                  "a different BB ("
               << llvm_ir::AsString(generated_value_bb->getName())
               << ") from the current insertion block ("

@@ -24,14 +24,17 @@ tf_kernel_library(
         "conv_ops.cc",
         "cross_op.cc",
         "cwise_ops.cc",
+        "cwise_ops.h",
+        "depthtospace_op.cc",
         "diag_op.cc",
         "dynamic_stitch_op.cc",
         "elu_op.cc",
         "fill_op.cc",
         "function_ops.cc",
         "gather_op.cc",
+        "gather_op_helpers.h",
         "identity_op.cc",
-        "is_finite_op.cc",
+        "index_ops.cc",
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
@@ -41,8 +44,10 @@ tf_kernel_library(
         "pack_op.cc",
         "pad_op.cc",
         "pooling_ops.cc",
+        "quantize_and_dequantize_op.cc",
         "random_ops.cc",
         "reduction_ops.cc",
+        "reduction_ops.h",
         "reduction_ops_common.cc",
         "relu_op.cc",
         "reshape_op.cc",
@@ -56,6 +61,7 @@ tf_kernel_library(
         "slice_op.cc",
         "softmax_op.cc",
         "spacetobatch_op.cc",
+        "spacetodepth_op.cc",
         "split_op.cc",
         "stack_ops.cc",
         "strided_slice_op.cc",
@@ -68,10 +74,8 @@ tf_kernel_library(
         "variable_ops.cc",
     ],
     hdrs = [
-        "cwise_ops.h",
         "gather_op.h",
-        "gather_op_helpers.h",
-        "reduction_ops.h",
+        "index_ops.h",
     ],
     deps = [
         ":while_op",
@@ -87,15 +91,21 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:concat_lib",
+        "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
+        "//tensorflow/core/kernels:random_op",
+        "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
+        "//tensorflow/core/kernels:sparse_to_dense_op",
+        "//tensorflow/core/kernels:stack_ops",
+        "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:transpose_op",
     ],
 )
@@ -113,23 +123,15 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
     ],
 )
 
 # Kernels that only work on CPU, because they use XLA custom calls.
 # Only link this when using the CPU backend for XLA.
-#
-# TODO(cwhipkey): move into xla_ops when ops can be registered for
-# CPU compilation only (b/31363654).
 tf_kernel_library(
     name = "xla_cpu_only_ops",
-    srcs = [
-        "index_ops.cc",
-    ],
+    srcs = ["index_ops_cpu.cc"],
     deps = [
-        ":gather_op_kernel_float_int32",
-        ":gather_op_kernel_float_int64",
         ":index_ops_kernel_argmax_float_1d",
         ":index_ops_kernel_argmax_float_2d",
         "//tensorflow/compiler/tf2xla:common",
@@ -140,36 +142,12 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
+        "//tensorflow/core/kernels:argmax_op",
         "//tensorflow/core/kernels:bounds_check",
     ],
 )
 
-tf_kernel_library(
-    name = "gather_op_kernel_float_int32",
-    srcs = ["gather_op_kernel_float_int32.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:gather_functor",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_kernel_library(
-    name = "gather_op_kernel_float_int64",
-    srcs = ["gather_op_kernel_float_int64.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:gather_functor",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_kernel_library(
+cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
     visibility = ["//visibility:public"],
@@ -177,9 +155,10 @@ tf_kernel_library(
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
-tf_kernel_library(
+cc_library(
     name = "index_ops_kernel_argmax_float_2d",
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
     visibility = ["//visibility:public"],
@@ -187,6 +166,7 @@ tf_kernel_library(
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------

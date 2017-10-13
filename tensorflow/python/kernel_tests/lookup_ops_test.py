@@ -378,6 +378,27 @@ class IndexTableFromFile(test.TestCase):
     self.assertRaises(
         ValueError, lookup_ops.index_table_from_file, vocabulary_file=None)
 
+  def test_index_table_from_file_str_fails_with_zero_size_vocabulary(self):
+    vocabulary_file = self._createVocabFile("zero_vocab_str.txt")
+    self.assertRaisesRegexp(
+        ValueError,
+        "vocab_size must be greater than 0, got 0. "
+        "vocabulary_file: .*zero_vocab_str.txt",
+        lookup_ops.index_table_from_file,
+        vocabulary_file=vocabulary_file,
+        vocab_size=0)
+
+  def test_index_table_from_file_tensor_fails_with_zero_size_vocabulary(self):
+    vocabulary_file = constant_op.constant(
+        self._createVocabFile("zero_vocab_tensor.txt"))
+    self.assertRaisesRegexp(
+        ValueError,
+        "vocab_size must be greater than 0, got 0. "
+        "vocabulary_file: .*zero_vocab_tensor.txt",
+        lookup_ops.index_table_from_file,
+        vocabulary_file=vocabulary_file,
+        vocab_size=0)
+
   def test_index_table_from_file_with_vocab_size_too_small(self):
     vocabulary_file = self._createVocabFile("f2i_vocab6.txt")
     with self.test_session():

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -49,7 +50,7 @@ class WhileTest : public ClientLibraryTestBase {};
 // while (result < 5) {
 //   result = result + 1;
 // }
-TEST_F(WhileTest, WhileWithScalarResult) {
+TEST_F(WhileTest, WhileWithScalarS32Result) {
   auto result_shape = ShapeUtil::MakeShape(S32, {});
 
   // Create a computation for the condition: repeat for 5 iterations.
@@ -78,6 +79,43 @@ TEST_F(WhileTest, WhileWithScalarResult) {
   auto shape = builder.GetShape(result).ConsumeValueOrDie();
 
   ComputeAndCompareR0<int32>(&builder, 5, {});
+}
+
+// Tests a while node when the result type T is S64.
+//
+// int32 result = 0;
+// while (result < 5) {
+//   result = result + 1;
+// }
+TEST_F(WhileTest, WhileWithScalarS64Result) {
+  auto result_shape = ShapeUtil::MakeShape(S64, {});
+
+  // Create a computation for the condition: repeat for 5 iterations.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    builder.Gt(builder.ConstantR0<int64>(5), prev);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body: add 1 to the result variable.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto input = builder.ConstantR0<int64>(1);
+    auto result = builder.Add(input, prev);
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, TestName());
+  auto init = builder.ConstantR0<int64>(0);
+  auto result = builder.While(condition, body, init);
+  auto shape = builder.GetShape(result).ConsumeValueOrDie();
+
+  ComputeAndCompareR0<int64>(&builder, 5, {});
 }
 
 TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
@@ -131,7 +169,7 @@ TEST_F(WhileTest, WhileWithPredicateResult) {
   {
     ComputationBuilder builder(client_, "body");
     auto prev = builder.Parameter(0, result_shape, "prev");
-    auto result = builder.LogicalOr(prev, builder.ConstantR0<bool>(true));
+    auto result = builder.Or(prev, builder.ConstantR0<bool>(true));
     body = builder.Build().ConsumeValueOrDie();
   }
 
@@ -399,7 +437,7 @@ TEST_F(WhileTest, WhileWithPredicateTupleResult) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     auto pred = builder.GetTupleElement(prev, 1);
-    auto new_pred = builder.LogicalOr(pred, builder.ConstantR0<bool>(true));
+    auto new_pred = builder.Or(pred, builder.ConstantR0<bool>(true));
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_pred});
     body = builder.Build().ConsumeValueOrDie();
@@ -770,6 +808,97 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   }
 }
 
+// TODO(b/34969189) Fails with bad AtomicCmpSwap on GPU on 2017-09-11.
+TEST_F(WhileTest, DISABLED_ON_GPU(WhileThatSwapsParameterWithTupleElement)) {
+  auto element_shape = ShapeUtil::MakeShape(F32, {2});
+
+  ComputationBuilder outer(client_, "outer");
+  auto p = outer.Parameter(0, element_shape, "param");
+  auto t = outer.Tuple({p, outer.ConstantR1<float>({1, 1})});
+
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<Shape> tuple_shape,
+                          outer.GetShape(t));
+
+  ComputationBuilder cond(client_, "cond");
+  auto cond_t = cond.Parameter(0, *tuple_shape, "t");
+  TF_ASSERT_OK(Any(cond.Eq(cond.GetTupleElement(cond_t, 0),
+                           cond.ConstantR1<float>({42, 42})),
+                   &cond)
+                   .status());
+
+  ComputationBuilder body(client_, "body");
+  auto body_t = body.Parameter(0, *tuple_shape, "t");
+  auto e = body.GetTupleElement(body_t, 1);
+  body.Tuple({e, e});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  outer.While(cond_computation, body_computation, t);
+
+  auto expected_element = Literal::CreateR1<float>({1, 1});
+  auto expected =
+      Literal::MakeTuple({expected_element.get(), expected_element.get()});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> parameter_data,
+      client_->TransferToServer(*Literal::CreateR1<float>({42, 42})));
+  ComputeAndCompareTuple(&outer, *expected, {parameter_data.get()},
+                         ErrorSpec(1e-6));
+}
+
+// TODO(b/34969189) Fails with bad AtomicCmpSwap on GPU on 2017-09-11.
+TEST_F(WhileTest, DISABLED_ON_GPU(WhileThatSwapsParameterWithBroadcast)) {
+  auto element_shape = ShapeUtil::MakeShape(F32, {2});
+
+  ComputationBuilder outer(client_, "outer");
+  auto p = outer.Parameter(0, element_shape, "param");
+
+  ComputationBuilder cond(client_, "cond");
+  auto cond_t = cond.Parameter(0, element_shape, "t");
+  TF_ASSERT_OK(
+      Any(cond.Eq(cond_t, cond.ConstantR1<float>({42, 42})), &cond).status());
+
+  ComputationBuilder body(client_, "body");
+  auto body_t = body.Parameter(0, element_shape, "t");
+  auto e = body.Broadcast(body.ConstantR0<float>(1.0), {2});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  outer.While(cond_computation, body_computation, p);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> parameter_data,
+      client_->TransferToServer(*Literal::CreateR1<float>({42, 42})));
+  ComputeAndCompareR1<float>(&outer, {1.0f, 1.0f}, {parameter_data.get()},
+                             ErrorSpec(1e-6));
+}
+
+TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
+  auto element_shape = ShapeUtil::MakeShape(F32, {});
+
+  ComputationBuilder outer(client_, "outer");
+  auto p = outer.Parameter(0, element_shape, "param");
+
+  ComputationBuilder cond(client_, "cond");
+  auto cond_t = cond.Parameter(0, element_shape, "t");
+  cond.Eq(cond_t, cond.ConstantR0<float>(42));
+
+  ComputationBuilder body(client_, "body");
+  auto body_t = body.Parameter(0, element_shape, "t");
+  auto tuple =
+      body.Tuple({body_t, body.Add(body_t, body.ConstantR0<float>(1))});
+  auto e = body.GetTupleElement(tuple, 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto cond_computation, cond.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto body_computation, body.Build());
+  outer.While(cond_computation, body_computation, p);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> parameter_data,
+      client_->TransferToServer(*Literal::CreateR0<float>(42)));
+  ComputeAndCompareR0<float>(&outer, 43.0f, {parameter_data.get()},
+                             ErrorSpec(1e-6));
+}
+
 // Tests nested while loops.
 //
 // int32 result = 0;
@@ -836,6 +965,53 @@ XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
   auto shape = builder.GetShape(result).ConsumeValueOrDie();
 
   ComputeAndCompareR0<int32>(&builder, 42, {});
+}
+
+// Tests a while node when the result type T is S32.
+// f = lambda result: tuple({result < 5})
+// int32 result = 0;
+// while (f(result).get<0>()) {
+//   result = result + 1;
+// }
+TEST_F(WhileTest, WhileWithCallInsideCondition) {
+  auto result_shape = ShapeUtil::MakeShape(S32, {});
+
+  // Create a computation for the condition: repeat for 5 iterations.
+  Computation condition_callee;
+  {
+    ComputationBuilder builder(client_, "condition_callee");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    builder.Tuple({builder.Gt(builder.ConstantR0<int32>(5), prev)});
+
+    condition_callee = builder.Build().ConsumeValueOrDie();
+  }
+
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto result = builder.Call(condition_callee, {prev});
+    builder.GetTupleElement(result, 0);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body: add 1 to the result variable.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto input = builder.ConstantR0<int32>(1);
+    auto result = builder.Add(input, prev);
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, TestName());
+  auto init = builder.ConstantR0<int32>(0);
+  auto result = builder.While(condition, body, init);
+  auto shape = builder.GetShape(result).ConsumeValueOrDie();
+
+  ComputeAndCompareR0<int32>(&builder, 5, {});
 }
 
 void BM_WhileLoop(int num_iters) {

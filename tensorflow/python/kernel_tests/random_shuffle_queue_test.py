@@ -1029,19 +1029,21 @@ class RandomShuffleQueueTest(test.TestCase):
       def blocking_enqueue():
         # This will block until the dequeue after the close.
         sess.run(blocking_enqueue_op)
-        # At this point the close operation will become unblocked, so the
-        # next enqueue will fail.
-        with self.assertRaisesRegexp(errors_impl.CancelledError, "closed"):
-          sess.run(blocking_enqueue_op)
 
       thread1 = self.checkedThread(target=blocking_enqueue)
       thread1.start()
-      # The close_op should run after the blocking_enqueue_op has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
+
       # First blocking_enqueue_op of blocking_enqueue has enqueued 1 of 2
       # elements, and is blocked waiting for one more element to be dequeue.
-      self.assertEqual(size_t.eval(), 4)
+      for i in range(50):
+        queue_size = size_t.eval()
+        if queue_size == 4:
+          break
+        elif i == 49:
+          self.fail(
+              "Blocking enqueue op did not execute within the expected time.")
+
+        time.sleep(0.1)
 
       def blocking_close():
         sess.run(close_op)
@@ -1049,16 +1051,16 @@ class RandomShuffleQueueTest(test.TestCase):
       thread2 = self.checkedThread(target=blocking_close)
       thread2.start()
 
-      # The close_op should run before the second blocking_enqueue_op
-      # has started.
-      # TODO(mrry): Figure out how to do this without sleeping.
-      time.sleep(0.1)
-
       # Unblock the first blocking_enqueue_op in blocking_enqueue.
       q.dequeue().eval()
 
       thread2.join()
       thread1.join()
+
+      # At this point the close operation will complete, so the next enqueue
+      # will fail.
+      with self.assertRaisesRegexp(errors_impl.CancelledError, "closed"):
+        sess.run(blocking_enqueue_op)
 
   def testSharedQueueSameSession(self):
     with self.test_session():

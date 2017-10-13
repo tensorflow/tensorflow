@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -45,7 +46,6 @@ void SendOp::Compile(XlaOpKernelContext* ctx) {
   xla::ChannelHandle channel;
   OP_REQUIRES_OK(ctx, compiler->GetChannelHandle(tensor_name_, &channel));
   ctx->builder()->Send(ctx->Input(0), channel);
-  ctx->SetOpHasSideEffects();
 }
 
 REGISTER_XLA_OP(Name("_XLASend"), SendOp);

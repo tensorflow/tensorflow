@@ -920,6 +920,13 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
  public:
   explicit MaxPoolingGradWithArgmaxOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    string data_format_str;
+    auto status = context->GetAttr("data_format", &data_format_str);
+    if (status.ok()) {
+      OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
+                  errors::InvalidArgument("Invalid data format"));
+    }
+
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
@@ -959,6 +966,7 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+  TensorFormat data_format_;
 };
 
 template <typename Device, typename T>
@@ -1051,17 +1059,36 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
     TensorShape out_shape =
         ShapeFromFormat(data_format_, params.tensor_in_batch, params.out_height,
                         params.out_width, params.depth);
-    if (use_dnn_ && data_format_ == FORMAT_NCHW) {
+
+    // Assuming qint8 <--> NCHW_VECT_C (int8x4) here.
+    constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
+    OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
+                errors::InvalidArgument(
+                    "qint8 should be used with data_format NCHW_VECT_C."));
+
+    // These is_int8x4 checks avoid linker errors for missing qint8 kernels.
+    if (!is_int8x4 && use_dnn_ && data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(
           context, perftools::gputools::dnn::PoolingMode::kMaximum, ksize_,
           stride_, padding_, data_format_, tensor_in, out_shape);
     } else {
-      CHECK(data_format_ == FORMAT_NHWC)
-          << "Non-Cudnn MaxPool only supports NHWC format";
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
-      LaunchMaxPoolingNoMask<Device, T>::launch(context, params, tensor_in,
-                                                output);
+      if (is_int8x4) {
+        LaunchMaxPoolingNoMask_NCHW_VECT_C<Device>::launch(context, params,
+                                                           tensor_in, output);
+      } else if (data_format_ == FORMAT_NHWC) {
+        LaunchMaxPoolingNoMask<Device, T>::launch(context, params, tensor_in,
+                                                  output);
+      } else {
+        LOG(FATAL) << "MaxPool currently only supports the following (layout, "
+                      "type) combinations: (NHWC, non-qint8), "
+                      "(NCHW, non-qint8) or (NCHW_VECT_C, qint8). The "
+                      "requested combination ("
+                   << ToString(data_format_) << ", "
+                   << DataTypeString(DataTypeToEnum<T>::v())
+                   << ") is not supported.";
+      }
     }
   }
 
@@ -1346,6 +1373,29 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
                               .TypeConstraint<int64>("Targmax"),     \
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
+
+// TODO(b/65847473): Re-enable once the underlying build error is fixed.
+#if !defined(PLATFORM_WINDOWS)
+REGISTER_KERNEL_BUILDER(
+    Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
+    MaxPoolingNoMaskOp<GPUDevice, qint8>);
+
+REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("ksize")
+                            .HostMemory("strides")
+                            .TypeConstraint<qint8>("T"),
+                        MaxPoolingV2Op<GPUDevice, qint8>);
+
+REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("ksize")
+                            .HostMemory("strides")
+                            .TypeConstraint<qint8>("T")
+                            .Label("eigen_tensor"),
+                        MaxPoolingV2Op<GPUDevice, qint8>);
+#endif  // !defined(PLATFORM_WINDOWS)
+
 #undef REGISTER_GPU_ONLY_POOL_KERNELS
 
 #endif  // GOOGLE_CUDA

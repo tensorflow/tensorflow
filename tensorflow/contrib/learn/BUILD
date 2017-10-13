@@ -36,6 +36,7 @@ py_library(
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/session_bundle:exporter",
         "//tensorflow/contrib/session_bundle:gc",
+        "//tensorflow/contrib/tpu:tpu_estimator",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -116,18 +117,6 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
-)
-
-py_test(
-    name = "logit_fns_test",
-    size = "small",
-    srcs = ["python/learn/estimators/logit_fns_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/estimator:model_fn",
     ],
 )
 
@@ -251,7 +240,6 @@ py_test(
 
 py_test(
     name = "tensor_signature_test",
-    size = "small",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -411,33 +399,6 @@ py_test(
 )
 
 py_test(
-    name = "dnn_linear_combined_benchmark_test",
-    size = "medium",
-    srcs = ["python/learn/estimators/dnn_linear_combined_benchmark_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "guitar",
-        "local",
-        "manual",
-        "notap",
-    ],
-    visibility = [
-        "//learning/brain/google/guitar:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
-    deps = [
-        ":learn",
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/learn/python/learn/datasets",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
-    ],
-)
-
-py_test(
     name = "kmeans_test",
     size = "medium",
     srcs = ["python/learn/estimators/kmeans_test.py"],
@@ -459,35 +420,10 @@ py_test(
 )
 
 py_test(
-    name = "dnn_benchmark_test",
-    size = "medium",
-    srcs = ["python/learn/estimators/dnn_benchmark_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "guitar",
-        "local",
-        "manual",
-        "notap",
-    ],
-    visibility = [
-        "//learning/brain/google/guitar:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
-    deps = [
-        ":learn",
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "dynamic_rnn_estimator_test",
     size = "medium",
     srcs = ["python/learn/estimators/dynamic_rnn_estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -832,7 +768,7 @@ py_test(
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/session_bundle:exporter",
-        "//tensorflow/contrib/session_bundle:manifest_proto_py_pb2",
+        "//tensorflow/contrib/session_bundle:manifest_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -876,6 +812,22 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
+    ],
+)
+
+py_test(
+    name = "input_fn_utils_test",
+    size = "small",
+    srcs = ["python/learn/utils/input_fn_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 

@@ -44,12 +44,14 @@ class VariablesTestCase(test.TestCase):
     with self.test_session():
       var0 = variables.Variable(0.0)
       self.assertEqual("Variable:0", var0.name)
+      self.assertEqual("Variable", var0._shared_name)
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.shape)
 
       var1 = variables.Variable(1.1)
       self.assertEqual("Variable_1:0", var1.name)
+      self.assertEqual("Variable_1", var1._shared_name)
       self.assertEqual([], var1.get_shape())
       self.assertEqual([], var1.get_shape())
       self.assertEqual([], var1.shape)
@@ -502,7 +504,7 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(np.ones((5, 5), np.float32), var.eval())
 
   def testRepr(self):
-    var = variables.Variable(np.zeros((5, 5), np.float32), name='noop')
+    var = variables.Variable(np.zeros((5, 5), np.float32), name="noop")
     self.assertEqual(
         "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
         repr(var))

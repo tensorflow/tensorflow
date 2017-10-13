@@ -139,7 +139,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     features = {'x': np.array(((42.,),))}
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features=features,
           mode=model_fn.ModeKeys.EVAL,
@@ -276,6 +276,11 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
             logits_placeholder: values_2x3
         })
 
+  def test_name(self):
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes=3, name='foo')
+    self.assertEqual('foo', head.name)
+
   def test_predict(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
@@ -294,7 +299,8 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        ('', _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
+        (_DEFAULT_SERVING_KEY, 'predict', 'classification'),
+        spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
     with self.test_session() as sess:
@@ -387,6 +393,19 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
       self.assertAllClose(
           expected_unreduced_loss, unweighted_loss.eval(), rtol=1e-2, atol=1e-2)
 
+  def test_eval_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes=3)
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.EVAL,
+          logits=np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32),
+          labels=None)
+
   def test_eval(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
@@ -435,7 +454,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_eval_metric_ops_with_head_name(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, head_name='some_multiclass_head')
+        n_classes, name='some_multiclass_head')
     logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
     labels = np.array(((1,), (1,)), dtype=np.int64)
     features = {'x': np.array(((42,),), dtype=np.int32)}
@@ -576,6 +595,23 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
       self.assertAllClose(
           expected_unreduced_loss, unweighted_loss.eval(), rtol=1e-2, atol=1e-2)
 
+  def test_train_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes=3)
+    def _no_op_train_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32),
+          labels=None,
+          train_op_fn=_no_op_train_fn)
+
   def test_train(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
@@ -623,7 +659,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_train_summaries_with_head_name(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, head_name='some_multiclass_head')
+        n_classes, name='some_multiclass_head')
 
     logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
     labels = np.array(((1,), (1,)), dtype=np.int64)
@@ -889,7 +925,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     logits_2x1 = np.array(((45.,), (41.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': np.array(((42.,),))},
           mode=model_fn.ModeKeys.EVAL,
@@ -956,6 +992,11 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
             logits_placeholder: values_2x1
         })
 
+  def test_name(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        name='foo')
+    self.assertEqual('foo', head.name)
+
   def test_predict(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
     self.assertEqual(1, head.logits_dimension)
@@ -976,7 +1017,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertIsNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
-    self.assertItemsEqual(('', 'classification', 'regression',
+    self.assertItemsEqual(('classification', 'regression', 'predict',
                            _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
     _assert_no_hooks(self, spec)
 
@@ -1042,6 +1083,18 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       self.assertAllClose(
           expected_unreduced_loss, unweighted_loss.eval(), rtol=1e-2, atol=1e-2)
 
+  def test_eval_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.EVAL,
+          logits=np.array(((45,), (-41,),), dtype=np.float32),
+          labels=None)
+
   def test_eval(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
     logits = np.array(((45,), (-41,),), dtype=np.float32)
@@ -1090,7 +1143,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
 
   def test_eval_metric_ops_with_head_name(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        head_name='some_binary_head')
+        name='some_binary_head')
     logits = np.array(((45,), (-41,),), dtype=np.float32)
     labels = np.array(((1,), (1,),), dtype=np.int32)
     features = {'x': np.array(((42,),), dtype=np.int32)}
@@ -1246,6 +1299,22 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(expected_unreduced_loss, unweighted_loss.eval())
 
+  def test_train_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+    def _no_op_train_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array(((45,), (-41,),), dtype=np.float32),
+          labels=None,
+          train_op_fn=_no_op_train_fn)
+
   def test_train(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
 
@@ -1292,7 +1361,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
 
   def test_train_summaries_with_head_name(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        head_name='some_binary_head')
+        name='some_binary_head')
 
     logits = np.array(((45,), (-41,),), dtype=np.float32)
     labels = np.array(((1,), (1,),), dtype=np.float64)
@@ -1692,7 +1761,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     values_1d = np.array(((43.,), (44.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': values_1d},
           mode=model_fn.ModeKeys.EVAL,
@@ -1737,7 +1806,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     values_1d = np.array(((43.,), (44.,),))
 
     # Static shape.
-    with self.assertRaisesRegexp(ValueError, 'labels shape'):
+    with self.assertRaisesRegexp(ValueError, 'Mismatched label shape'):
       head.create_loss(
           features={'x': values_1d},
           mode=model_fn.ModeKeys.TRAIN,
@@ -1779,6 +1848,11 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
             logits_placeholder: values_3d
         })
 
+  def test_name(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        name='foo')
+    self.assertEqual('foo', head.name)
+
   def test_predict(self):
     head = head_lib._regression_head_with_mean_squared_error_loss()
     self.assertEqual(1, head.logits_dimension)
@@ -1798,7 +1872,9 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
     self.assertItemsEqual(
-        ('', signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY),
+        (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+         'predict',
+         'regression'),
         spec.export_outputs.keys())
     _assert_no_hooks(self, spec)
 
@@ -1822,6 +1898,18 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
       _initialize_variables(self, monitored_session.Scaffold())
       # loss = [(43-45)^2, (44-41)] = [4, 9]
       self.assertAllClose(np.array(((4.,), (9.,),)), unweighted_loss.eval())
+
+  def test_eval_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib._regression_head_with_mean_squared_error_loss()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.EVAL,
+          logits=np.array(((45,), (41,),), dtype=np.float32),
+          labels=None)
 
   def test_eval(self):
     head = head_lib._regression_head_with_mean_squared_error_loss()
@@ -1881,6 +1969,22 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
       # loss = [(43-45)^2, (44-41)] = [4, 9]
       self.assertAllClose(np.array(((4.,), (9.,),)), unweighted_loss.eval())
 
+  def test_train_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib._regression_head_with_mean_squared_error_loss()
+    def _no_op_train_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array(((45,), (41,),), dtype=np.float32),
+          labels=None,
+          train_op_fn=_no_op_train_fn)
+
   def test_train(self):
     head = head_lib._regression_head_with_mean_squared_error_loss()
     self.assertEqual(1, head.logits_dimension)
@@ -1933,7 +2037,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
 
   def test_train_summaries_with_head_name(self):
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        head_name='some_regression_head')
+        name='some_regression_head')
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.

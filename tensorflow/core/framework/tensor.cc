@@ -288,6 +288,7 @@ PROTO_TRAITS(double, double, double);
 PROTO_TRAITS(int32, int32, int);
 PROTO_TRAITS(uint8, int32, int);
 PROTO_TRAITS(uint16, int32, int);
+PROTO_TRAITS(uint32, uint32, uint32);
 PROTO_TRAITS(int16, int32, int);
 PROTO_TRAITS(int8, int32, int);
 PROTO_TRAITS(bool, bool, bool);
@@ -309,6 +310,20 @@ struct ProtoHelper<int64> {
   static void Fill(const int64* data, size_t n, TensorProto* proto) {
     protobuf::RepeatedField<protobuf_int64> copy(data, data + n);
     proto->mutable_int64_val()->Swap(&copy);
+  }
+};
+
+template <>
+struct ProtoHelper<uint64> {
+  static const uint64* Begin(const TensorProto& proto) {
+    return reinterpret_cast<const uint64*>(proto.uint64_val().begin());
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.uint64_val().size();
+  }
+  static void Fill(const uint64* data, size_t n, TensorProto* proto) {
+    protobuf::RepeatedField<protobuf_uint64> copy(data, data + n);
+    proto->mutable_uint64_val()->Swap(&copy);
   }
 };
 
@@ -451,7 +466,7 @@ Buffer<T>::~Buffer() {
 // default value for T.
 //
 // This routine is using the typed fields (float_val, etc.) in the
-// tenor proto as opposed to the untyped binary representation
+// tensor proto as opposed to the untyped binary representation
 // (tensor_content). This is used when we expect the TensorProto is
 // used by a client program which may not know how to encode a tensor
 // in the compact binary representation.
@@ -649,6 +664,8 @@ bool Tensor::RefCountIsOne() const {
     CASE(int32, SINGLE_ARG(STMTS))                             \
     CASE(uint8, SINGLE_ARG(STMTS))                             \
     CASE(uint16, SINGLE_ARG(STMTS))                            \
+    CASE(uint32, SINGLE_ARG(STMTS))                            \
+    CASE(uint64, SINGLE_ARG(STMTS))                            \
     CASE(int16, SINGLE_ARG(STMTS))                             \
     CASE(int8, SINGLE_ARG(STMTS))                              \
     CASE(string, SINGLE_ARG(STMTS))                            \
@@ -925,6 +942,9 @@ string Tensor::SummarizeValue(int64 max_entries) const {
     case DT_DOUBLE:
       return SummarizeArray<double>(limit, num_elts, shape_, data);
       break;
+    case DT_UINT32:
+      return SummarizeArray<uint32>(limit, num_elts, shape_, data);
+      break;
     case DT_INT32:
       return SummarizeArray<int32>(limit, num_elts, shape_, data);
       break;
@@ -943,6 +963,9 @@ string Tensor::SummarizeValue(int64 max_entries) const {
     case DT_INT8:
     case DT_QINT8:
       return SummarizeArray<int8>(limit, num_elts, shape_, data);
+      break;
+    case DT_UINT64:
+      return SummarizeArray<uint64>(limit, num_elts, shape_, data);
       break;
     case DT_INT64:
       return SummarizeArray<int64>(limit, num_elts, shape_, data);

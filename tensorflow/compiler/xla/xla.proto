@@ -22,19 +22,28 @@ package xla;
 
 // Options for the HLO insert-reduce-precision-operations pass.
 message HloReducePrecisionOptions {
-  // When and how the pass will be run.
-  enum PassTiming {
-    // Pass runs before operation fusion or other optimization occurs,
-    // selecting operations to suffix according to their type.
-    BEFORE_OP_FUSION = 0;
-    // Pass runs after the operation-fusion pass, selecting operations to
-    // suffix according to their type.
-    AFTER_OP_FUSION = 1;
-    // Pass runs after the operation-fusion pass, and selects fusion operations
-    // to suffix according to their contents.
-    FUSION_BY_CONTENT = 2;
+  // Where and when the reduce-precision operations will be added.
+  enum Location {
+    // Add reduce-precision operations to the inputs of selected instructions.
+    // This is done before any optimization occurs.
+    OP_INPUTS = 0;
+    // Add reduce-precision operations to the outputs of selected instructions.
+    // This is done before any optimization occurs.
+    OP_OUTPUTS = 1;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any selected instructions that have not been fused into
+    // fusion instructions.
+    UNFUSED_OP_OUTPUTS = 2;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any fusion instructions that contain operations matching the
+    // selection criteria.
+    FUSION_INPUTS_BY_CONTENT = 3;
+    // After operation-fusion occurs, add reduce-precision operations to the
+    // outputs of any fusion instructions that contain operations matching the
+    // selection criteria.
+    FUSION_OUTPUTS_BY_CONTENT = 4;
   }
-  PassTiming pass_timing = 1;
+  Location location = 1;
 
   // Exponent and mantissa bit counts for the reduced precision.
   uint32 exponent_bits = 2;
@@ -138,6 +147,9 @@ message DebugOptions {
   // the generated IR.
   bool xla_llvm_enable_invariant_load_metadata = 72;
 
+  // If true, a set of expensive LLVM optimization passes will not be run.
+  bool xla_llvm_disable_expensive_passes = 73;
+
   // Options for inserting reduce-precision operations for numerical
   // experimentation.  This is a repeated field, as we may want to have
   // multiple passes with different parameters.
@@ -179,6 +191,11 @@ message ExecutionOptions {
   uint64 seed = 3;
 
   DebugOptions debug_options = 4;
+
+  // This optional field specifies a particular set of devices to run the
+  // computation on. The computation will be partitioned across these devices.
+  // If not provided, the default device will be chosen.
+  repeated DeviceHandle device_handles = 5;
 }
 
 message SnapshotComputationRequest {
@@ -300,12 +317,8 @@ message ExecuteRequest {
   ComputationHandle computation = 1;
   repeated GlobalDataHandle arguments = 2;
 
-  // This optional field specifies a particular device to run the computation.
-  // If not provided, the default device will be chosen.
-  DeviceHandle device_handle = 5;
-
   // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 6;
+  ExecutionOptions execution_options = 5;
 }
 
 message ExecuteParallelRequest {

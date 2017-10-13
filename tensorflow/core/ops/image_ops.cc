@@ -25,6 +25,42 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
+const char kDecodeJpegCommonDocStr[] = R"doc(
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the JPEG-encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+
+If needed, the JPEG-encoded image is transformed to match the requested number
+of color channels.
+
+The attr `ratio` allows downscaling the image by an integer factor during
+decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+downscaling the image later.
+
+)doc";
+
+const char kDecodeJpegCommonParamsDocStr[] = R"doc(
+channels: Number of color channels for the decoded image.
+ratio: Downscaling ratio.
+fancy_upscaling: If true use a slower but nicer upscaling of the
+  chroma planes (yuv420/422 only).
+try_recover_truncated:  If true try to recover an image from truncated input.
+acceptable_fraction: The minimum required fraction of lines before a truncated
+  input is accepted.
+dct_method: string specifying a hint about the algorithm used for
+  decompression.  Defaults to "" which maps to a system-specific
+  default.  Currently valid values are ["INTEGER_FAST",
+  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+  jpeg library changes to a version that does not have that specific
+  option.)
+image: 3-D with shape `[height, width, channels]`..
+)doc";
+
 // Sets output[0] to shape [batch_dim,height,width,channel_dim], where
 // height and width come from the size_tensor.
 Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
@@ -159,6 +195,31 @@ align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
   by new_height / height. Treat similarly the width dimension.
 resized_images: 4-D with shape
   `[batch, new_height, new_width, channels]`.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ResizeBicubicGrad")
+    .Input("grads: float")
+    .Input("original_image: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("align_corners: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes the gradient of bicubic interpolation.
+
+grads: 4-D with shape `[batch, height, width, channels]`.
+original_image: 4-D with shape `[batch, orig_height, orig_width, channels]`,
+  The image tensor that was resized.
+align_corners: If true, rescale grads by (orig_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of grads and original_image. If false, rescale by
+  orig_height / height. Treat similarly the width dimension.
+output: 4-D with shape `[batch, orig_height, orig_width, channels]`.
+  Gradients with respect to the input image. Input image must have been
+  float or double.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -370,44 +431,40 @@ REGISTER_OP("DecodeJpeg")
     .Attr("dct_method: string = ''")
     .Output("image: uint8")
     .SetShapeFn(DecodeImageShapeFn)
-    .Doc(R"doc(
+    .Doc(strings::StrCat(R"doc(
 Decode a JPEG-encoded image to a uint8 tensor.
-
-The attr `channels` indicates the desired number of color channels for the
-decoded image.
-
-Accepted values are:
-
-*   0: Use the number of channels in the JPEG-encoded image.
-*   1: output a grayscale image.
-*   3: output an RGB image.
-
-If needed, the JPEG-encoded image is transformed to match the requested number
-of color channels.
-
-The attr `ratio` allows downscaling the image by an integer factor during
-decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
-downscaling the image later.
-
+)doc",
+                         kDecodeJpegCommonDocStr, R"doc(
 This op also supports decoding PNGs and non-animated GIFs since the interface is
 the same, though it is cleaner to use `tf.image.decode_image`.
 
 contents: 0-D.  The JPEG-encoded image.
-channels: Number of color channels for the decoded image.
-ratio: Downscaling ratio.
-fancy_upscaling: If true use a slower but nicer upscaling of the
-  chroma planes (yuv420/422 only).
-try_recover_truncated:  If true try to recover an image from truncated input.
-acceptable_fraction: The minimum required fraction of lines before a truncated
-  input is accepted.
-dct_method: string specifying a hint about the algorithm used for
-  decompression.  Defaults to "" which maps to a system-specific
-  default.  Currently valid values are ["INTEGER_FAST",
-  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
-  jpeg library changes to a version that does not have that specific
-  option.)
-image: 3-D with shape `[height, width, channels]`..
-)doc");
+)doc",
+                         kDecodeJpegCommonParamsDocStr));
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DecodeAndCropJpeg")
+    .Input("contents: string")
+    .Input("crop_window: int32")
+    .Attr("channels: int = 0")
+    .Attr("ratio: int = 1")
+    .Attr("fancy_upscaling: bool = true")
+    .Attr("try_recover_truncated: bool = false")
+    .Attr("acceptable_fraction: float = 1.0")
+    .Attr("dct_method: string = ''")
+    .Output("image: uint8")
+    .SetShapeFn(DecodeImageShapeFn)
+    .Doc(strings::StrCat(R"doc(
+Decode and Crop a JPEG-encoded image to a uint8 tensor.
+)doc",
+                         kDecodeJpegCommonDocStr, R"doc(
+It is equivalent to a combination of decode and crop, but much faster by only
+decoding partial jpeg image.
+
+contents: 0-D.  The JPEG-encoded image.
+crop_window: 1-D.  The crop window: [crop_y, crop_x, crop_height, crop_width].
+)doc",
+                         kDecodeJpegCommonParamsDocStr));
 
 // --------------------------------------------------------------------------
 REGISTER_OP("EncodeJpeg")
@@ -455,6 +512,28 @@ x_density: Horizontal pixels per density unit.
 y_density: Vertical pixels per density unit.
 xmp_metadata: If not empty, embed this XMP metadata in the image header.
 contents: 0-D. JPEG-encoded image.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ExtractJpegShape")
+    .Input("contents: string")
+    .Output("image_shape: output_type")
+    .Attr("output_type: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      c->set_output(0, c->Vector(3));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Extract the shape information of a JPEG-encoded image.
+
+This op only parses the image header, so it is much faster than DecodeJpeg.
+
+contents: 0-D. The JPEG-encoded image.
+image_shape: 1-D. The image shape with format [height, width, channels].
+output_type: (Optional) The output type of the operation (int32 or int64).
+    Defaults to int32.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1022,7 +1101,10 @@ slice from the input image and does not allow resizing or aspect ratio change.
 Returns a tensor with `crops` from the input `image` at positions defined at the
 bounding box locations in `boxes`. The cropped boxes are all resized (with
 bilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The
-result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`.
+result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`. The
+resizing is corner aligned. In particular, if `boxes = [[0, 0, 1, 1]]`, the
+method will give identical results to using `tf.image.resize_bilinear()`
+with `align_corners=True`.
 
 image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
   Both `image_height` and `image_width` need to be positive.

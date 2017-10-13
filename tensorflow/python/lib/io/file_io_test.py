@@ -35,6 +35,11 @@ class FileIoTest(test.TestCase):
   def tearDown(self):
     file_io.delete_recursively(self._base_dir)
 
+  def testEmptyFilename(self):
+    f = file_io.FileIO("", mode="r")
+    with self.assertRaises(errors.NotFoundError):
+      _ = f.read()
+
   def testFileDoesntExist(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     self.assertFalse(file_io.file_exists(file_path))

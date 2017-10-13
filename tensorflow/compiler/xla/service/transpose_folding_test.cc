@@ -30,12 +30,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
 
-class TransposeFoldingTest : public ::testing::Test {
+class TransposeFoldingTest : public HloTestBase {
  protected:
   void FoldTranspose(HloModule* module) {
     TransposeFolding transpose_folding(
@@ -72,10 +74,9 @@ TEST_F(TransposeFoldingTest, FoldDotTranspose) {
   FoldTranspose(&module);
 
   // Instructions after folding: x, y, and the fusion.
-  std::unordered_set<HloInstruction*> instruction_set;
-  for (auto& instruction : entry_computation->instructions()) {
-    instruction_set.insert(instruction.get());
-  }
+  std::unordered_set<HloInstruction*> instruction_set(
+      entry_computation->instructions().begin(),
+      entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
   CHECK_EQ(1, instruction_set.erase(y)) << "y is not in entry_computation.";
   CHECK_EQ(1, instruction_set.size())
@@ -85,7 +86,7 @@ TEST_F(TransposeFoldingTest, FoldDotTranspose) {
 
   // The fusion instruction should contain two parameters, one transpose and
   // one dot.
-  EXPECT_EQ(4, fusion->fused_instructions().size());
+  EXPECT_EQ(4, fusion->fused_instruction_count());
 }
 
 TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
@@ -112,7 +113,7 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
       module.AddEntryComputation(builder.Build(dot));
   FoldTranspose(&module);
 
-  for (auto& instruction : entry_computation->instructions()) {
+  for (auto* instruction : entry_computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kFusion) {
       CHECK_EQ(2, instruction->operand_count());
       EXPECT_EQ(const0, instruction->operand(0));
@@ -123,7 +124,7 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
   // The created fusion instruction should contain two parameters, two
   // transposes (one for each parameter) and one dot.
   EXPECT_EQ(5,
-            entry_computation->root_instruction()->fused_instructions().size());
+            entry_computation->root_instruction()->fused_instruction_count());
 }
 
 TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
@@ -154,7 +155,7 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
               ::testing::UnorderedElementsAre(const1, const2, const3));
 
   // The callee should contain 3 parameters and 3 binary operators.
-  EXPECT_EQ(6, callee_computation->instructions().size());
+  EXPECT_EQ(6, callee_computation->instruction_count());
 }
 
 TEST_F(TransposeFoldingTest, FoldDotTransposeInWhile) {
@@ -182,10 +183,9 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeInWhile) {
   FoldTranspose(&module);
 
   // Instructions after folding: x, y, and the fusion.
-  std::unordered_set<HloInstruction*> instruction_set;
-  for (auto& instruction : entry_computation->instructions()) {
-    instruction_set.insert(instruction.get());
-  }
+  std::unordered_set<HloInstruction*> instruction_set(
+      entry_computation->instructions().begin(),
+      entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
   CHECK_EQ(1, instruction_set.erase(y)) << "y is not in entry_computation.";
   CHECK_EQ(1, instruction_set.erase(call))
@@ -198,7 +198,7 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeInWhile) {
 
   // The fusion instruction should contain two parameters, one transpose and
   // one dot.
-  EXPECT_EQ(4, fusion->fused_instructions().size());
+  EXPECT_EQ(4, fusion->fused_instruction_count());
 }
 
 // Test that a two dimension swap of the kernel gets folded into convolution.
@@ -237,10 +237,9 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   FoldTranspose(&module);
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set;
-  for (auto& instruction : entry_computation->instructions()) {
-    instruction_set.insert(instruction.get());
-  }
+  std::unordered_set<HloInstruction*> instruction_set(
+      entry_computation->instructions().begin(),
+      entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
   CHECK_EQ(1, instruction_set.erase(y)) << "y is not in entry_computation.";
   CHECK_EQ(1, instruction_set.size())
@@ -291,10 +290,9 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   FoldTranspose(&module);
 
   // Instructions after folding: x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set;
-  for (auto& instruction : entry_computation->instructions()) {
-    instruction_set.insert(instruction.get());
-  }
+  std::unordered_set<HloInstruction*> instruction_set(
+      entry_computation->instructions().begin(),
+      entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
   CHECK_EQ(1, instruction_set.erase(y)) << "y is not in entry_computation.";
   CHECK_EQ(1, instruction_set.size())
@@ -351,10 +349,9 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   FoldTranspose(&module);
 
   // Instructions after folding: transpose_x, y, and the convolution.
-  std::unordered_set<HloInstruction*> instruction_set;
-  for (auto& instruction : entry_computation->instructions()) {
-    instruction_set.insert(instruction.get());
-  }
+  std::unordered_set<HloInstruction*> instruction_set(
+      entry_computation->instructions().begin(),
+      entry_computation->instructions().end());
   CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
   CHECK_EQ(1, instruction_set.erase(y)) << "y is not in entry_computation.";
   CHECK_EQ(1, instruction_set.erase(transpose_x))
@@ -365,4 +362,5 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
       << "entry_computation should contain exactly 4 instructions.";
 }
 
+}  // namespace
 }  // namespace xla

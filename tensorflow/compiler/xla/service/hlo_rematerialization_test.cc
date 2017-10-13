@@ -385,7 +385,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
 
   auto count_broadcasts = [](const HloComputation* computation) {
     int64 bcast_count = 0;
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kBroadcast) {
         bcast_count++;
       }
@@ -525,7 +525,3 @@ INSTANTIATE_TEST_CASE_P(IndirectUseTestInstantiation, IndirectUseTest,
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

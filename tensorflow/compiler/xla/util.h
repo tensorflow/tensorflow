@@ -274,6 +274,11 @@ string VectorString(const std::initializer_list<T>& c) {
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
 
+// Returns a PaddingConfig object where 'padding' contains
+// (low edge padding, high edge padding) pairs for each dimension.
+PaddingConfig MakeEdgePaddingConfig(
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding);
+
 // Returns true if the padding configuration has at least one dimension with
 // non-zero interior padding.
 bool HasInteriorPadding(const PaddingConfig& config);
@@ -355,6 +360,9 @@ int64 Product(tensorflow::gtl::ArraySlice<int64> xs);
 // possible such subsequences; else, returns `{(0, 0), (a.size, b.size)}`.
 std::vector<std::pair<int64, int64>> CommonFactors(
     tensorflow::gtl::ArraySlice<int64> a, tensorflow::gtl::ArraySlice<int64> b);
+
+// Removes illegal characters from filenames.
+string SanitizeFileName(string file_name);
 
 }  // namespace xla
 

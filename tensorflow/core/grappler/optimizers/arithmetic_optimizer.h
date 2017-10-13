@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_set>
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -40,6 +41,27 @@ class ArithmeticOptimizer : public GraphOptimizer {
  private:
   bool CanDedup(const NodeDef& node) const;
   void DedupComputations(GraphDef* optimized_graph) const;
+  // Runs peep-hole optimizations on `optimized_graph`, e.g., removing inverse
+  // transposes.
+  void SimplifyArithmeticOps(GraphDef* optimized_graph) const;
+  // Tries to simplify the expression that roots at `node` and replaces the uses
+  // of `node` to the simplified expression. Returns the name of the simplified
+  // tensor (e.g. "split:1") or an emtpy string if no simplification is
+  // performed.
+  //
+  // `node_map` stores the mapping from node names to NodeDef*, and will be
+  // updated according to the rewrite.
+  //
+  // `new_nodes` will be populated with the new nodes this function creates and
+  // updates. The caller can push these nodes into the simplification queue to
+  // optimize them further.
+  //
+  // TODO(jingyue): This interface is not suitable for optimizing nodes with
+  // multiple output tensors. We should pass in a tensor name instead of a
+  // NodeDef.
+  string TrySimplifyAndReplaceUses(
+      const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
+      std::vector<const NodeDef*>* new_nodes) const;
 
   std::unordered_set<string> nodes_to_preserve_;
 };

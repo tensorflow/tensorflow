@@ -24,6 +24,22 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 
+cc_library(
+    name = "all_ops",
+    deps = [
+        ":gru_ops_op_lib",
+        ":lstm_ops_op_lib",
+    ],
+)
+
+cc_library(
+    name = "all_kernels",
+    deps = [
+        ":gru_ops_kernels",
+        ":lstm_ops_kernels",
+    ],
+)
+
 tf_custom_op_py_library(
     name = "rnn_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + [
@@ -34,14 +50,13 @@ tf_custom_op_py_library(
         ":python/ops/_lstm_ops.so",
     ],
     kernels = [
-        ":gru_ops_kernels",
-        ":lstm_ops_kernels",
-        ":gru_ops_op_lib",
-        ":lstm_ops_op_lib",
+        ":all_ops",
+        ":all_kernels",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":benchmarking",
         ":gru_ops",
         ":lstm_ops",
         "//tensorflow/contrib/compiler:compiler_py",
@@ -85,10 +100,6 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = [
-        "noasan",  # times out b/63678675
-        "notsan",  # http://b/62135981
-    ],
     xla_enabled = True,
 )
 
@@ -128,6 +139,9 @@ cuda_py_tests(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+    tags = [
+        "optonly",
     ],
 )
 
@@ -388,5 +402,15 @@ py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "benchmarking",
+    srcs = ["python/kernel_tests/benchmarking.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//third_party/py/numpy",
     ],
 )

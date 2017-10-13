@@ -127,16 +127,15 @@ for arch in $archs; do
                         include dependfile
                 ';;
 
-        ios)    xcode=/Applications/Xcode.app/Contents/Developer/Platforms
-                arch_flags=
+        ios)    arch_flags=
                 case "$arch" in
                 i386|x86_64)
                         arch_flags="$arch_flags -mios-simulator-version-min=8.0"
-                        arch_flags="$arch_flags -isysroot $xcode/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator10.0.sdk"
+                        arch_flags="$arch_flags -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)"
                         ;;
                 *)
                         arch_flags="$arch_flags -miphoneos-version-min=8.0"
-                        arch_flags="$arch_flags -isysroot $xcode/iPhoneOS.platform/Developer/SDKs/iPhoneOS10.0.sdk"
+                        arch_flags="$arch_flags -isysroot $(xcrun --sdk iphoneos --show-sdk-path)"
                         ;;
                 esac
                 makefile='
@@ -215,12 +214,12 @@ for arch in $archs; do
                 armeabi-v7a)            toolchain="arm-linux-androideabi-4.9"
                                         sysroot_arch="arm"
                                         bin_prefix="arm-linux-androideabi"
-                                        march_option="-march=armv7-a"
+                                        march_option="-march=armv7-a -mfloat-abi=softfp -mfpu=neon"
                                         ;;
                 armeabi-v7a-hard)       toolchain="arm-linux-androideabi-4.9"
                                         sysroot_arch="arm"
                                         bin_prefix="arm-linux-androideabi"
-                                        march_option="-march=armv7-a"
+                                        march_option="-march=armv7-a -mfpu=neon"
                                         ;;
                 mips)                   toolchain="mipsel-linux-android-4.9"
                                         sysroot_arch="mips"
@@ -266,8 +265,7 @@ for arch in $archs; do
                                           -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/'"$arch"'/include \
                                           -I../../platform/c++11 -I../../platform/gcc \
                                           -I../../platform/posix -pthread
-                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' \
-                                        -mfloat-abi=softfp -mfpu=neon -fPIE
+                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE
                         PLATFORM_LDFLAGS=-pthread
                         MKDEP=${CC} -M -std=c++11
                         PLATFORM_C=../../platform/c++11/src/nsync_semaphore_mutex.cc \
@@ -288,7 +286,7 @@ for arch in $archs; do
 
         if [ ! -d "$nsync_platform_dir" ]; then
                 mkdir "$nsync_platform_dir"
-                echo "$makefile" | sed 's,^[ \t]*,,' > "$nsync_platform_dir/Makefile"
+                echo "$makefile" | sed $'s,^[ \t]*,,' > "$nsync_platform_dir/Makefile"
                 touch "$nsync_platform_dir/dependfile"
         fi
         if (cd "$nsync_platform_dir" && make depend nsync.a >&2); then

@@ -99,20 +99,17 @@ To install TensorFlow, you must install the following packages:
   * `pip`, which enables you to install and manage certain Python packages.
   * `wheel`, which enables you to manage Python compressed packages in
     the wheel (.whl) format.
-  * `autograd`, which is used internally for gradient computation.
 
 To install these packages for Python 2.7, issue the following command:
 
 <pre>
 $ <b>sudo apt-get install python-numpy python-dev python-pip python-wheel</b>
-$ <b>sudo pip install autograd</b>
 </pre>
 
 To install these packages for Python 3.n, issue the following command:
 
 <pre>
 $ <b>sudo apt-get install python3-numpy python3-dev python3-pip python3-wheel</b>
-$ <b>sudo pip3 install autograd</b>
 </pre>
 
 
@@ -140,8 +137,15 @@ The following NVIDIA <i>software</i> must be installed on your system:
     particularly the description of appending the appropriate pathname
     to your `LD_LIBRARY_PATH` environment variable.
 
-Finally, you must also install `libcupti-dev` by invoking the following
-command:
+Finally, you must also install `libcupti` which for Cuda Toolkit >= 8.0 you do via 
+
+<pre> $ <b>sudo apt-get install cuda-command-line-tools</b> </pre>
+
+and add its path to your `LD_LIBRARY_PATH` environment variable:
+
+<pre> $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b> </pre>
+
+For Cuda Toolkit <= 7.5, you install `libcupti-dev` by invoking the following command:
 
 <pre> $ <b>sudo apt-get install libcupti-dev</b> </pre>
 
@@ -176,7 +180,6 @@ To install TensorFlow, you must install the following packages:
   * numpy, which is a numerical processing package that TensorFlow requires.
   * wheel, which enables you to manage Python compressed packages
     in the wheel (.whl) format.
-  * autograd, for dynamic differentiation
 
 You may install the python dependencies using pip. If you don't have pip
 on your machine, we recommend using homebrew to install Python and pip as
@@ -185,7 +188,7 @@ If you follow these instructions, you will not need to disable SIP.
 
 After installing pip, invoke the following commands:
 
-<pre> $ <b>sudo pip install six numpy wheel autograd</b> </pre>
+<pre> $ <b>sudo pip install six numpy wheel</b> </pre>
 
 
 
@@ -346,10 +349,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.3.0 on Linux:
+for TensorFlow 1.4.0dev on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.3.0-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.4.0dev-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation
@@ -432,4 +435,42 @@ Stack Overflow and specify the `tensorflow` tag.
   <td>Invoking `python` or `ipython` generates the following error:
   <pre>ImportError: cannot import name pywrap_tensorflow</pre></td>
 </tr>
+</table>
+
+## Tested source configurations
+**Linux**
+<table>
+<tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.4.0rc0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.4.5</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.4.0rc0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.4.5</td><td>6</td><td>8</td></tr>
+<tr><td>tensorflow-1.2.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.4.5</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.2.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.4.5</td><td>5.1</td><td>8</td></tr>
+<tr><td>tensorflow-1.1.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.4.2</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.1.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.4.2</td><td>5.1</td><td>8</td></tr>
+<tr><td>tensorflow-1.0.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.4.2</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.0.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>GCC 4.8</td><td>Bazel 0.4.2</td><td>5.1</td><td>8</td></tr>
+</table>
+
+**Mac**
+<table>
+<tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.4.0rc0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.4.5</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>ttensorflow-1.2.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.4.5</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>ttensorflow-1.1.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.4.2</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>ttensorflow_gpu-1.1.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.4.2</td><td>5.1</td><td>8</td></tr>
+<tr><td>ttensorflow-1.0.0</td><td>CPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.4.2</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>ttensorflow_gpu-1.0.0</td><td>GPU</td><td>2.7, 3.3-3.6</td><td>Clang from xcode</td><td>Bazel 0.4.2</td><td>5.1</td><td>8</td></tr>
+</table>
+
+**Windows**
+<table>
+<tr><th>Version:</th><th>CPU/GPU:</th><th>Python Version:</th><th>Compiler:</th><th>Build Tools:</th><th>cuDNN:</th><th>CUDA:</th></tr>
+<tr><td>tensorflow-1.4.0rc0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.4.0rc0</td><td>GPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>6</td><td>8</td></tr>
+<tr><td>tensorflow-1.2.0</td><td>CPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.2.0</td><td>GPU</td><td>3.5-3.6</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>5.1</td><td>8</td></tr>
+<tr><td>tensorflow-1.1.0</td><td>CPU</td><td>3.5</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.1.0</td><td>GPU</td><td>3.5</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>5.1</td><td>8</td></tr>
+<tr><td>tensorflow-1.0.0</td><td>CPU</td><td>3.5</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>N/A</td><td>N/A</td></tr>
+<tr><td>tensorflow_gpu-1.0.0</td><td>GPU</td><td>3.5</td><td>MSVC 2015 update 3</td><td>Cmake v3.6.3</td><td>5.1</td><td>8</td></tr>
 </table>

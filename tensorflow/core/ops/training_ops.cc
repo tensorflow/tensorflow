@@ -377,7 +377,7 @@ static Status ApplyAdagradShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
@@ -442,9 +442,9 @@ static Status ApplyProximalAdagradShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // l1
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // l2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // l1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // l2
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 5 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
@@ -1137,7 +1137,7 @@ static Status ApplyMomentumShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));       // lr
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
   int idx = sparse ? 5 : 4;
@@ -1295,12 +1295,12 @@ static Status ApplyAdamShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // m
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // v
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // beta1_power
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // beta2_power
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // beta1
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // beta2
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // beta1_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // beta2_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));       // beta1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));       // beta2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));       // epsilon
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 9 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
@@ -1398,10 +1398,10 @@ static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // ms
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // mom
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // rho
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // momentum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // momentum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));       // epsilon
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 7 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
@@ -1416,10 +1416,10 @@ static Status ApplyCenteredRMSPropShapeFn(InferenceContext* c, bool sparse) {
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // ms
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // mg
   TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 3), &s));  // mom
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // rho
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // momentum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // epsilon
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));       // momentum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));       // epsilon
   TF_RETURN_IF_ERROR(
       HandleGradAndIndicesInputs(c, sparse, 8 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {

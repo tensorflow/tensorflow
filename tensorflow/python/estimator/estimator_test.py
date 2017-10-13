@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import glob
 import os
 import tempfile
 
@@ -28,9 +29,11 @@ import six
 from google.protobuf import text_format
 
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.export import export_output
 from tensorflow.python.estimator.inputs import numpy_io
@@ -54,6 +57,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
@@ -124,6 +128,12 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
         return input_fn()
 
       def _create_global_step(self, graph):
+        pass
+
+      def _convert_train_steps_to_hooks(self, steps, max_steps):
+        pass
+
+      def _convert_eval_steps_to_hooks(self, steps):
         pass
 
     _Estimator()
@@ -292,6 +302,26 @@ class EstimatorConstructorTest(test.TestCase):
         _, _, _ = features, labels, mode
 
     ModelFnClass()
+
+  def test_model_fn_property_binds_params(self):
+
+    def model_fn(features, labels, mode, config, params):
+      _, _, _, _, _ = features, labels, mode, config, params
+
+    est = estimator.Estimator(model_fn=model_fn)
+    model_fn_args = util.fn_args(est.model_fn)
+    self.assertEqual(
+        set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
+
+  def test_model_fn_property_returns_fixed_signature(self):
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(model_fn=model_fn)
+    model_fn_args = util.fn_args(est.model_fn)
+    self.assertEqual(
+        set(['features', 'labels', 'mode', 'config']), set(model_fn_args))
 
 
 def dummy_input_fn():
@@ -546,6 +576,31 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
+  def test_loss_summary(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer,
+                              config=run_config.RunConfig(save_summary_steps=1))
+    est.train(dummy_input_fn, steps=1)
+
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
+
+    # Get last Event written.
+    event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
+    last_event = None
+    for last_event in summary_iterator.summary_iterator(event_paths[-1]):
+      if last_event.summary is not None:
+        if last_event.summary.value:
+          if 'loss' == last_event.summary.value[0].tag:
+            return
+    self.fail('loss should be part of reported summaries.')
+
+  def test_latest_checkpoint(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    self.assertIsNone(est.latest_checkpoint())
+    est.train(dummy_input_fn, steps=5)
+    self.assertIsNotNone(est.latest_checkpoint())
+    self.assertTrue(est.latest_checkpoint().startswith(est.model_dir))
+
   def test_steps_and_saves_reloads(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
     est.train(dummy_input_fn, steps=5)
@@ -672,6 +727,31 @@ class EstimatorTrainTest(test.TestCase):
     self.assertTrue(chief_hook.begin.called)
     self.assertTrue(hook.begin.called)
 
+  def test_saving_listeners_are_used(self):
+    listener = test.mock.Mock(spec=training.CheckpointSaverListener)
+    est = estimator.Estimator(
+        model_fn=model_fn_global_step_incrementer,
+        config=run_config.RunConfig(save_checkpoints_steps=10))
+    est.train(dummy_input_fn, steps=26, saving_listeners=[listener])
+    self.assertEqual(4, listener.before_save.call_count)
+    self.assertEqual(4, listener.after_save.call_count)
+
+  def test_saver_hook_should_exist_to_use_saving_listeners(self):
+    listener = test.mock.Mock(spec=training.CheckpointSaverListener)
+    est = estimator.Estimator(
+        model_fn=model_fn_global_step_incrementer,
+        config=run_config.RunConfig(save_checkpoints_steps=None,
+                                    save_checkpoints_secs=None))
+    with self.assertRaisesRegexp(
+        ValueError, 'CheckpointSaverHook to use saving_listeners'):
+      est.train(dummy_input_fn, steps=1, saving_listeners=[listener])
+
+  def test_listeners_should_be_listeners(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    with self.assertRaisesRegexp(
+        TypeError, 'must be a list of CheckpointSaverListener'):
+      est.train(dummy_input_fn, steps=1, saving_listeners=['not-a-listener'])
+
   def test_chief_only_hook_should_not_be_called_on_non_chief(self):
     chief_hook = test.mock.MagicMock(
         wraps=training.SessionRunHook(), spec=training.SessionRunHook)
@@ -781,6 +861,43 @@ class _StepCounterHook(session_run_hook.SessionRunHook):
   @property
   def steps(self):
     return self._steps
+
+
+class EstimatorGetVariablesTest(test.TestCase):
+
+  def test_model_should_be_trained(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='one')
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    with self.assertRaisesRegexp(ValueError, 'not find trained model'):
+      est.get_variable_names()
+    with self.assertRaisesRegexp(ValueError, 'not find trained model'):
+      est.get_variable_value('one')
+
+  def test_get_variable_utils(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='one')
+      variables.Variable(3., name='three')
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    self.assertEqual(
+        set(['one', 'three', 'global_step']), set(est.get_variable_names()))
+    self.assertEqual(1., est.get_variable_value('one'))
+    self.assertEqual(3., est.get_variable_value('three'))
 
 
 class EstimatorEvaluateTest(test.TestCase):
@@ -943,9 +1060,7 @@ class EstimatorEvaluateTest(test.TestCase):
         model_fn=_model_fn_with_eval_metric_ops,
         params=params)
     scores = est2.evaluate(
-        dummy_input_fn,
-        steps=1,
-        checkpoint_path=saver.latest_checkpoint(est1.model_dir))
+        dummy_input_fn, steps=1, checkpoint_path=est1.latest_checkpoint())
     self.assertEqual(5, scores['global_step'])
 
   def test_scaffold_is_used(self):
@@ -1098,7 +1213,50 @@ class EstimatorPredictTest(test.TestCase):
       next(est.predict(dummy_input_fn))
       self.assertRegexpMatches(
           str(mock_log.call_args),
-          'Input graph does not contain a QueueRunner.')
+          'Input graph does not.*contain a QueueRunner.')
+
+  def test_skip_warn_if_dataset_returns_features(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]))
+
+    def _input_fn():
+      it = dataset_ops.Dataset.from_tensors([1]).make_one_shot_iterator()
+      return it.get_next()
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      next(est.predict(_input_fn))
+      # The warning should not have keyword QueueRunner.
+      self.assertRegexpMatches(str(mock_log.call_args), '^((?!QueueRunner).)*$')
+
+  def test_skip_warn_if_dataset_returns_features_dict(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]))
+
+    def _input_fn():
+      it = dataset_ops.Dataset.from_tensors([1]).make_one_shot_iterator()
+      features = {'age': it.get_next()}
+      return features
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      next(est.predict(_input_fn))
+      # The warning should not have keyword QueueRunner.
+      self.assertRegexpMatches(str(mock_log.call_args), '^((?!QueueRunner).)*$')
 
   def test_input_fn_can_return_just_features(self):
 
@@ -1287,12 +1445,11 @@ class EstimatorPredictTest(test.TestCase):
     est1 = estimator.Estimator(model_fn=_model_fn)
     est1.train(dummy_input_fn, steps=1)
     est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
-    self.assertEqual(
-        [32.],
-        next(
-            est2.predict(
-                dummy_input_fn,
-                checkpoint_path=saver.latest_checkpoint(est1.model_dir))))
+    self.assertEqual([32.],
+                     next(
+                         est2.predict(
+                             dummy_input_fn,
+                             checkpoint_path=est2.latest_checkpoint())))
 
   def test_scaffold_is_used(self):
 
@@ -1499,7 +1656,7 @@ class EstimatorExportTest(test.TestCase):
     # hack in an op that uses the asset, in order to test asset export.
     # this is not actually valid, of course.
     def serving_input_receiver_with_asset_fn():
-      features, receiver_tensor = serving_input_receiver_fn()
+      features, receiver_tensor, _ = serving_input_receiver_fn()
       filename = ops.convert_to_tensor(vocab_file_name,
                                        dtypes.string,
                                        name='asset_filepath')

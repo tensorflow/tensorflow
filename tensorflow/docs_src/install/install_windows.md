@@ -71,12 +71,14 @@ Use that package at your own risk.
 
 ## Installing with native pip
 
-If the following version of Python is not installed on your machine,
+If one of the following versions of Python is not installed on your machine,
 install it now:
 
   * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
+  * [Python 3.6.x 64-bit from python.org](https://www.python.org/downloads/release/python-362/)
 
-Note that Python 3.5.x comes with the pip3 package manager, which is the
+-TensorFlow supports Python 3.5.x and 3.6.x on Windows.
+Note that Python 3 comes with the pip3 package manager, which is the
 program you'll use to install TensorFlow.
 
 To install TensorFlow, start a terminal. Then issue the appropriate
@@ -103,7 +105,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
   2. Create a conda environment named <tt>tensorflow</tt>
      by invoking the following command:
 
-     <pre>C:\> <b>conda create -n tensorflow python=3.5</b> </pre>
+     <pre>C:\> <b>conda create -n tensorflow pip python=3.5</b> </pre>
 
   3. Activate the conda environment by issuing the following command:
 
@@ -150,6 +152,9 @@ TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
+
+There is also a helpful [script](https://gist.github.com/mrry/ee5dbcfdd045fa48a27d56664411d41c)
+for Windows TensorFlow installation issues.
 
 ## Common installation problems
 

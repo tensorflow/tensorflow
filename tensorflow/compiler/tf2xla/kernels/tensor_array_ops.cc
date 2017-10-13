@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -114,12 +115,7 @@ Status CheckTensorArrayIsInitialized(const string& op_name,
 Status GetTensorArrayShape(const XlaResource* resource,
                            xla::ComputationBuilder* builder,
                            TensorShape* shape) {
-  auto shape_or_status = builder->GetShape(resource->value);
-  if (!shape_or_status.ok()) {
-    return shape_or_status.status();
-  }
-  TF_RETURN_IF_ERROR(
-      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), shape));
+  TF_RETURN_IF_ERROR(resource->GetShape(builder, shape));
   if (shape->dims() < 1) {
     return errors::InvalidArgument("TensorArray rank must be >= 1");
   }
@@ -223,7 +219,9 @@ class TensorArrayWriteOp : public XlaOpKernel {
     xla::ComputationDataHandle flow = ctx->Input(3);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices = XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
+    auto start_indices =
+        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+               xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
@@ -266,7 +264,8 @@ class TensorArrayReadOp : public XlaOpKernel {
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
     auto start_indices =
-        XlaHelpers::PadWithZeros(b, index, ta_shape.dims() - 1);
+        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+               xla::MakeEdgePaddingConfig({{0, ta_shape.dims() - 1}}));
 
     auto slice_shape = ta_shape.dim_sizes();
     slice_shape[0] = 1LL;
@@ -308,11 +307,12 @@ class TensorArrayGatherOp : public XlaOpKernel {
     OP_REQUIRES(ctx, indices_shape.dims() == 1,
                 errors::InvalidArgument("indices must be rank 1"));
     auto indices = ctx->Input(1);
+    DataType index_type = ctx->input_type(1);
 
     xla::ComputationDataHandle ta = resource->value;
 
     xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-        ctx, ta, ta_shape, indices, indices_shape, dtype_, b);
+        ctx, ta, ta_shape, indices, indices_shape, 0, dtype_, index_type, b);
     ctx->SetOutput(0, gather);
   }
 
@@ -371,7 +371,8 @@ class TensorArrayScatterOp : public XlaOpKernel {
       // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
       auto index = b->Slice(indices, {i}, {i + 1}, {1});
       auto start_indices =
-          XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
+          b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
+                 xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
       ta = DynamicAddSlice(b, ta, slice, slice_dims, start_indices);
     }
 
@@ -528,19 +529,9 @@ class TensorArrayGradOp : public XlaOpKernel {
 
     // Finds or looks up the corresponding gradient TensorArray, which stores
     // gradients computed during backpropagation.
-    XlaResource*& gradient = resource->tensor_array_gradient[source_];
-    if (!gradient) {
-      xla::ComputationDataHandle zero = XlaHelpers::Zero(b, resource->type);
-      xla::ComputationDataHandle value =
-          b->Broadcast(zero, ta_shape.dim_sizes());
-
-      XlaContext& xc = XlaContext::Get(ctx);
-      string name = strings::StrCat("TensorArrayGrad: ", resource->name);
-      OP_REQUIRES_OK(
-          ctx, xc.CreateResource(XlaResource::kTensorArray, -1, std::move(name),
-                                 resource->type, value, &gradient));
-      gradient->tensor_array_size = resource->tensor_array_size;
-    }
+    XlaResource* gradient;
+    OP_REQUIRES_OK(
+        ctx, resource->GetOrCreateTensorArrayGradient(source_, b, &gradient));
 
     ctx->SetResourceOutput(0, gradient);
     ctx->SetConstantOutput(1, Tensor(DT_FLOAT));

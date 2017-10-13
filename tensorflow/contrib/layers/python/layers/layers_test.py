@@ -434,7 +434,7 @@ class ConvolutionTest(test.TestCase):
       conv = layers_lib.convolution2d(
           images, 32, [3, 3], outputs_collections='outputs', scope='Conv')
     output_collected = ops.get_collection('outputs')[0]
-    self.assertEqual(output_collected.aliases, ['fe/Conv'])
+    self.assertEqual(output_collected.aliases, ['Conv'])
     self.assertEqual(output_collected, conv)
 
   def testCreateConvWithoutActivation(self):
@@ -1399,7 +1399,7 @@ class FlattenTest(test.TestCase):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
       inputs.set_shape(tensor_shape.TensorShape((5,)))
       with self.assertRaisesRegexp(ValueError,
-                                   'must have a least 2 dimensions'):
+                                   'incompatible with the layer'):
         _layers.flatten(inputs)
 
   def testUnknownLastDim(self):
@@ -1589,7 +1589,7 @@ class FCTest(test.TestCase):
       fc = _layers.fully_connected(
           inputs, 7, outputs_collections='outputs', scope='fc')
     output_collected = ops.get_collection('outputs')[0]
-    self.assertEqual(output_collected.aliases, ['fe/fc'])
+    self.assertEqual(output_collected.aliases, ['fc'])
     self.assertEqual(output_collected, fc)
 
   def testCreateFcCreatesWeightsAndBiasesVars(self):
@@ -2636,6 +2636,13 @@ class BatchNormTest(test.TestCase):
             data_format='NCHW', shape=shape, is_training=True)
         self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
+  def testBatchNormBeta(self):
+    # Test case for 11673
+    with self.test_session() as sess:
+      a = array_ops.placeholder(dtypes.float32, shape=(10, 10, 10, 10))
+      b = _layers.batch_norm(a, center=False, data_format='NCHW',
+                                       zero_debias_moving_mean=True)
+      sess.run(variables_lib.global_variables_initializer())
 
 class LayerNormTest(test.TestCase):
 

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
-
 namespace {
 
 Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
@@ -88,6 +87,12 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       break;
     case NPY_UINT16:
       *out_tf_datatype = TF_UINT16;
+      break;
+    case NPY_UINT32:
+      *out_tf_datatype = TF_UINT32;
+      break;
+    case NPY_UINT64:
+      *out_tf_datatype = TF_UINT64;
       break;
     case NPY_INT8:
       *out_tf_datatype = TF_INT8;
@@ -432,14 +437,6 @@ Status TensorToNdarray(const Tensor& t, PyObject** ret) {
     return tf_status;
   }
   return TF_TensorToPyArray(std::move(tf_tensor), ret);
-}
-
-Safe_PyObjectPtr make_safe(PyObject* o) {
-  return Safe_PyObjectPtr(o, Py_DECREF_wrapper);
-}
-
-Safe_TF_TensorPtr make_safe(TF_Tensor* tensor) {
-  return Safe_TF_TensorPtr(tensor, TF_DeleteTensor);
 }
 
 }  // namespace tensorflow

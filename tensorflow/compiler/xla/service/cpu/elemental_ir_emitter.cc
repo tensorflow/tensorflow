@@ -64,5 +64,25 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
   }
 }
 
+llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
+    const HloInstruction* hlo,
+    const HloToElementGeneratorMap& operand_to_generator) const {
+  if (hlo->opcode() == HloOpcode::kMap) {
+    return [this, hlo, &operand_to_generator](
+               const llvm_ir::IrArray::Index& index) -> StatusOr<llvm::Value*> {
+      std::vector<llvm::Value*> operands;
+      for (int i = 0; i < hlo->operand_count(); i++) {
+        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                            operand_to_generator.at(hlo->operand(i))(
+                                ElementwiseSourceIndex(index, *hlo, 0)));
+        operands.push_back(operand_value);
+      }
+      return ir_emitter_->EmitScalarCall(hlo->shape().element_type(),
+                                         hlo->to_apply(), operands,
+                                         llvm_ir::IrName(hlo));
+    };
+  }
+  return ElementalIrEmitter::MakeElementGenerator(hlo, operand_to_generator);
+}
 }  // namespace cpu
 }  // namespace xla

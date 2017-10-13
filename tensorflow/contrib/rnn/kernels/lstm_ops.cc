@@ -39,6 +39,139 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+namespace functor {
+
+template <typename T>
+void LSTMBlockCellFpropWithEigen(
+    const LSTMBlockCell& cell, OpKernelContext* ctx, const CPUDevice& d,
+    const T forget_bias, const T cell_clip, bool use_peephole,
+    typename TTypes<T>::ConstMatrix x, typename TTypes<T>::ConstMatrix cs_prev,
+    typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
+    typename TTypes<T>::ConstVec wci, typename TTypes<T>::ConstVec wcf,
+    typename TTypes<T>::ConstVec wco, typename TTypes<T>::ConstVec b,
+    typename TTypes<T>::Matrix xh, typename TTypes<T>::Matrix i,
+    typename TTypes<T>::Matrix cs, typename TTypes<T>::Matrix f,
+    typename TTypes<T>::Matrix o, typename TTypes<T>::Matrix ci,
+    typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix icfo,
+    typename TTypes<T>::Matrix h) {
+  // Concat xh = [x, h].
+  xh.slice(cell.xh_x_offsets(), cell.xh_x_extents()).device(d) = x;
+  xh.slice(cell.xh_h_offsets(), cell.xh_h_extents()).device(d) = h_prev;
+
+  // states1 = xh * w + b
+  typename TTypes<T>::ConstMatrix const_xh(xh.data(), xh.dimensions());
+  TensorBlasGemm<CPUDevice, T, false /* USE_CUBLAS */>::compute(
+      ctx, d, false, false, T(1), const_xh, w, T(0), icfo);
+  Eigen::array<Eigen::DenseIndex, 2> b_shape({1, b.dimensions()[0]});
+  Eigen::array<Eigen::DenseIndex, 2> broadcast_shape({cell.batch_size(), 1});
+  icfo.device(d) += b.reshape(b_shape).broadcast(broadcast_shape);
+
+  Eigen::array<Eigen::DenseIndex, 2> p_shape({1, cell.cell_size()});
+  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape({cell.batch_size(), 1});
+
+  // Input gate.
+  if (use_peephole) {
+    auto i_peep = cs_prev * wci.reshape(p_shape).broadcast(p_broadcast_shape);
+    i.device(d) =
+        (icfo.slice(cell.icfo_i_offsets(), cell.cell_extents()) + i_peep)
+            .sigmoid();
+  } else {
+    i.device(d) =
+        icfo.slice(cell.icfo_i_offsets(), cell.cell_extents()).sigmoid();
+  }
+
+  // Cell input.
+  ci.device(d) = icfo.slice(cell.icfo_c_offsets(), cell.cell_extents()).tanh();
+
+  // Forget gate (w/ bias).
+  if (use_peephole) {
+    auto f_peep = cs_prev * wcf.reshape(p_shape).broadcast(p_broadcast_shape);
+    f.device(d) = (icfo.slice(cell.icfo_f_offsets(), cell.cell_extents()) +
+                   f.constant(forget_bias) + f_peep)
+                      .sigmoid();
+  } else {
+    f.device(d) = (icfo.slice(cell.icfo_f_offsets(), cell.cell_extents()) +
+                   f.constant(forget_bias))
+                      .sigmoid();
+  }
+
+  // cs = ci .* i + f .* cs_prev
+  cs.device(d) = i * ci + f * cs_prev;
+
+  if (cell_clip > 0.0f) {
+    cs.device(d) =
+        cs.binaryExpr(cs.constant(cell_clip), Eigen::scalar_clip_op<T>());
+  }
+
+  // co = tanh(cs)
+  co.device(d) = cs.tanh();
+
+  // Output gate.
+  if (use_peephole) {
+    auto o_peep = cs * wco.reshape(p_shape).broadcast(p_broadcast_shape);
+    o.device(d) =
+        (icfo.slice(cell.icfo_o_offsets(), cell.cell_extents()) + o_peep)
+            .sigmoid();
+  } else {
+    o.device(d) =
+        icfo.slice(cell.icfo_o_offsets(), cell.cell_extents()).sigmoid();
+  }
+
+  // h = o .* co
+  h.device(d) = o * co;
+}
+
+#define DEFINE_CPU_SPECS(T)                                                    \
+  template <>                                                                  \
+  void LSTMBlockCellFprop<CPUDevice, T, false /* USE_CUBLAS */>::operator()(   \
+      OpKernelContext* ctx, const CPUDevice& d, const T forget_bias,           \
+      const T cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x, \
+      typename TTypes<T>::ConstMatrix cs_prev,                                 \
+      typename TTypes<T>::ConstMatrix h_prev,                                  \
+      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,     \
+      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,      \
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,           \
+      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,             \
+      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,              \
+      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,            \
+      typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h) {         \
+    LSTMBlockCellFpropWithEigen<T>(                                            \
+        *this, ctx, d, forget_bias, cell_clip, use_peephole, x, cs_prev,       \
+        h_prev, w, wci, wcf, wco, b, xh, i, cs, f, o, ci, co, icfo, h);        \
+  }                                                                            \
+  template <>                                                                  \
+  void LSTMBlockCellBprop<CPUDevice, T, false /* USE_CUBLAS */>::operator()(   \
+      OpKernelContext* ctx, const CPUDevice& d, bool use_peephole,             \
+      typename TTypes<T>::ConstMatrix x,                                       \
+      typename TTypes<T>::ConstMatrix cs_prev,                                 \
+      typename TTypes<T>::ConstMatrix h_prev,                                  \
+      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,     \
+      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,      \
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::ConstMatrix i,       \
+      typename TTypes<T>::ConstMatrix cs, typename TTypes<T>::ConstMatrix f,   \
+      typename TTypes<T>::ConstMatrix o, typename TTypes<T>::ConstMatrix ci,   \
+      typename TTypes<T>::ConstMatrix co,                                      \
+      typename TTypes<T>::ConstMatrix cs_grad,                                 \
+      typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_,  \
+      typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,          \
+      typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,            \
+      typename TTypes<T>::Matrix dicfo,                                        \
+      typename TTypes<T>::Matrix cs_prev_grad,                                 \
+      typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,      \
+      typename TTypes<T>::Vec wco_grad) {                                      \
+    LSTMBlockCellBpropWithEigen<CPUDevice, T, false /* USE_CUBLAS */>(         \
+        *this, ctx, d, use_peephole, x, cs_prev, h_prev, w, wci, wcf, wco, b,  \
+        i, cs, f, o, ci, co, cs_grad, h_grad, do_, dcs, dci, df, di, dicfo,    \
+        cs_prev_grad, wci_grad, wcf_grad, wco_grad);                           \
+  }                                                                            \
+  template struct LSTMBlockCellFprop<CPUDevice, T, false /* USE_CUBLAS */>;    \
+  template struct LSTMBlockCellBprop<CPUDevice, T, false /* USE_CUBLAS */>;
+
+DEFINE_CPU_SPECS(float);
+#undef DEFINE_CPU_SPECS
+
+}  // namespace functor
+
 template <typename Device, typename T, bool USE_CUBLAS>
 class LSTMBlockCellOp : public OpKernel {
  public:
@@ -495,7 +628,8 @@ namespace functor {
       typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,     \
       typename TTypes<T>::Vec wco_grad);                                      \
                                                                               \
-  extern template struct LSTMBlockCellBprop<GPUDevice, T, true>;
+  extern template struct LSTMBlockCellBprop<GPUDevice, T,                     \
+                                            true /* USE_CUBLAS */>;
 
 DECLARE_GPU_SPEC(float);
 // DECLARE_GPU_SPEC(double);

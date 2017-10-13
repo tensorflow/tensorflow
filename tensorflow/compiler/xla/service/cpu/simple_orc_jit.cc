@@ -117,8 +117,20 @@ const JITSymbolTable& GetJITSymbolTable() {
 }
 
 // A simple SymbolResolver that delegates to the host dynamic linker.
-struct SimpleResolver : public llvm::JITSymbolResolver {
+class SimpleResolver : public llvm::JITSymbolResolver {
+ public:
+  explicit SimpleResolver(ExternalConstantPool* external_constant_pool)
+      : external_constant_pool_(external_constant_pool) {}
+
   llvm::JITSymbol findSymbol(const std::string& name) override {
+    string name_as_string(name);
+    if (const uint8* from_constant_pool =
+            external_constant_pool_->Find(string(name))) {
+      return llvm::JITEvaluatedSymbol(
+          reinterpret_cast<uint64_t>(from_constant_pool),
+          llvm::JITSymbolFlags::None);
+    }
+
     std::string canonical_name = CanonicalizeSymbol(name);
     const JITSymbolTable& jit_symbol_table = GetJITSymbolTable();
 
@@ -136,6 +148,9 @@ struct SimpleResolver : public llvm::JITSymbolResolver {
   llvm::JITSymbol findSymbolInLogicalDylib(const std::string& name) override {
     return nullptr;
   }
+
+ private:
+  ExternalConstantPool* external_constant_pool_;
 };
 
 llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
@@ -176,6 +191,7 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
                            bool optimize_for_size, bool enable_fast_math,
+                           bool disable_expensive_passes,
                            LLVMCompiler::ModuleHook pre_optimization_hook,
                            LLVMCompiler::ModuleHook post_optimization_hook)
     : target_machine_(
@@ -190,12 +206,13 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
       data_layout_(target_machine_->createDataLayout()),
       object_layer_(
           [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
-      compile_layer_(object_layer_,
-                     CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, optimize_for_size,
-                                     enable_fast_math, GetAvailableIntrinsics(),
-                                     std::move(pre_optimization_hook),
-                                     std::move(post_optimization_hook))) {
+      compile_layer_(
+          object_layer_,
+          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
+                          optimize_for_size, enable_fast_math,
+                          disable_expensive_passes, GetAvailableIntrinsics(),
+                          std::move(pre_optimization_hook),
+                          std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
@@ -203,7 +220,7 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
   auto handle = cantFail(compile_layer_.addModule(
-      std::move(module), MakeUnique<SimpleResolver>()));
+      std::move(module), MakeUnique<SimpleResolver>(external_constant_pool())));
   module_handles_.push_back(handle);
   return handle;
 }

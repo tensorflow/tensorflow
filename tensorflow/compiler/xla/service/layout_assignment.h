@@ -121,10 +121,11 @@ class ResultLayoutConstraint : public LayoutConstraint {
 class LayoutConstraints {
  public:
   LayoutConstraints(const TuplePointsToAnalysis& points_to_analysis,
-                    const HloComputation* computation);
+                    HloComputation* computation);
   ~LayoutConstraints() = default;
 
   const HloComputation* computation() const { return computation_; }
+  HloComputation* computation() { return computation_; }
   const TuplePointsToAnalysis& points_to_analysis() const {
     return points_to_analysis_;
   }
@@ -211,7 +212,7 @@ class LayoutConstraints {
   // Array-shaped buffers which have not yet been constrained.
   std::set<LogicalBuffer::Id> unconstrained_buffer_ids_;
 
-  const HloComputation* computation_;
+  HloComputation* computation_;
 };
 
 // HLO pass which assigns layouts to all instructions in the HLO module while

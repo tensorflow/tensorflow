@@ -15,6 +15,8 @@
 #include "tensorflow/contrib/boosted_trees/lib/trees/decision_tree.h"
 #include "tensorflow/core/platform/macros.h"
 
+#include <algorithm>
+
 namespace tensorflow {
 namespace boosted_trees {
 namespace trees {
@@ -90,7 +92,7 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
         break;
       }
       case TreeNode::NODE_NOT_SET: {
-        QCHECK(false) << "Invalid node in tree: " << current_node.DebugString();
+        LOG(QFATAL) << "Invalid node in tree: " << current_node.DebugString();
         break;
       }
     }
@@ -155,7 +157,7 @@ void DecisionTree::LinkChildren(const std::vector<int32>& children,
       break;
     }
     case TreeNode::NODE_NOT_SET: {
-      QCHECK(false) << "A non-set node cannot have children.";
+      LOG(QFATAL) << "A non-set node cannot have children.";
       break;
     }
   }

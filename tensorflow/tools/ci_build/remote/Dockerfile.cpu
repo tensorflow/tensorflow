@@ -1,4 +1,4 @@
-FROM debian8-clang:latest
+FROM launcher.gcr.io/google/clang-debian8:latest
 
 RUN apt-get update && apt-get --no-install-recommends install -y \
     binutils \
@@ -18,7 +18,7 @@ RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py
 
 # Set up grpc
-RUN pip install  --upgrade enum34 futures mock numpy six backports.weakref portpicker autograd && \
+RUN pip install  --upgrade enum34 futures mock numpy six backports.weakref portpicker && \
     pip install --pre 'protobuf>=3.0.0a3' && \
     pip install 'grpcio>=1.1.3'
 

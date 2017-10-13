@@ -205,7 +205,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           opts.step_container = step_container;
           opts.runner = ctx->runner();
           dataset()->captured_func_->RunAsync(
-              opts, input_element, &result->return_values, prefix(),
+              opts, input_element, &result->return_values,
               [result, step_container, result_index](Status ret_status) {
                 delete step_container;
                 result->status.Update(ret_status);
@@ -233,7 +233,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  const NameAttrList* func_;
+  NameAttrList func_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParallelMapDataset").Device(DEVICE_CPU),

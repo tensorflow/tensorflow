@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -56,10 +57,11 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(const string& name, bool is_fusion_computation = false)
+    explicit Builder(const string& name,
+                     HloInstruction* fusion_instruction = nullptr)
         : name_(name),
           last_added_instruction_(nullptr),
-          is_fusion_computation_(is_fusion_computation) {}
+          fusion_instruction_(fusion_instruction) {}
 
     // Build and return an HloComputation. The parameter root_instruction
     // specifies the already-added instruction to use as the root. If
@@ -78,7 +80,7 @@ class HloComputation {
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
-    bool is_fusion_computation_;
+    HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
   };
 
@@ -104,12 +106,6 @@ class HloComputation {
   // operand that has no users post removing an instruction. The instruction
   // must have no users. Instruction is deallocated with this call.
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
-
-  // Replace all uses of "instruction_to_replace" with "instruction". Also, if
-  // instruction_to_replace is the root of this computation then the root is set
-  // to "instruction". Does not remove "instruction_to_replace".
-  Status ReplaceUsesOfInstruction(HloInstruction* instruction_to_replace,
-                                  HloInstruction* instruction);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
@@ -147,8 +143,24 @@ class HloComputation {
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
-  const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
-    return instructions_;
+  // Gets the instructions in this computation.
+  //
+  // The returned type is a range of HloInstruction*s, so you can iterate over
+  // it using a range-based for loop in the natural way:
+  //
+  //   for (HloInstruction* instr : computation->instructions()) { ... }
+  //
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+  instructions() const {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
+  }
+  tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+  instructions() {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
   }
 
   // Compute and return a post-order of the instructions in the computation. In
@@ -274,13 +286,18 @@ class HloComputation {
   bool HasSideEffect() const;
 
   // Returns if this computation is a fusion computation.
-  bool IsFusionComputation() const { return is_fusion_computation_; }
+  bool IsFusionComputation() const { return fusion_instruction_ != nullptr; }
+
+  // Returns the owning fusion instruction, or nullptr if this is not a fusion
+  // computation.
+  HloInstruction* FusionInstruction() const { return fusion_instruction_; }
 
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, bool is_fusion_computation = false);
+      HloInstruction* root_instruction,
+      HloInstruction* fusion_instruction = nullptr);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -309,8 +326,9 @@ class HloComputation {
   string name_;
   HloInstruction* root_instruction_;
 
-  // A tag shows if this is a fusion computation.
-  bool is_fusion_computation_;
+  // If this computation is a fusion computation, this field points to the
+  // corresponding fusion instruction.  Otherwise, this is null.
+  HloInstruction* fusion_instruction_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

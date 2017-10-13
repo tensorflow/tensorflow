@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -121,7 +121,7 @@ Status GetWellKnownFileName(string* filename) {
 GoogleAuthProvider::GoogleAuthProvider()
     : GoogleAuthProvider(
           std::unique_ptr<OAuthClient>(new OAuthClient()),
-          std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory()),
+          std::unique_ptr<HttpRequest::Factory>(new CurlHttpRequest::Factory()),
           Env::Default(), kInitialRetryDelayUsec) {}
 
 GoogleAuthProvider::GoogleAuthProvider(

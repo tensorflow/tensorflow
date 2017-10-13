@@ -885,13 +885,16 @@ class BucketizeWithInputBoundariesOp : public OpKernel {
     VLOG(1) << "boundaries has shape: "
             << boundaries_tensor.shape().DebugString();
     auto boundaries = boundaries_tensor.flat<float>();
-    boundaries_.clear();
+    std::vector<T> boundaries_vector;
+    boundaries_vector.reserve(boundaries.size());
     for (size_t i = 0; i < boundaries.size(); i++) {
-      boundaries_.push_back(boundaries(i));
+      boundaries_vector.push_back(boundaries(i));
       VLOG(1) << "boundaries(" << i << ") : " << boundaries(i);
     }
-    OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
-                errors::InvalidArgument("Expected sorted boundaries"));
+    OP_REQUIRES(
+        context,
+        std::is_sorted(boundaries_vector.begin(), boundaries_vector.end()),
+        errors::InvalidArgument("Expected sorted boundaries"));
 
     const Tensor& input_tensor = context->input(0);
     VLOG(1) << "Inputs has shape: " << input_tensor.shape().DebugString()
@@ -901,20 +904,23 @@ class BucketizeWithInputBoundariesOp : public OpKernel {
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output = output_tensor->template flat<int64>();
+    auto output = output_tensor->template flat<int32>();
 
     for (size_t i = 0; i < input.size(); i++) {
-      output(i) = CalculateBucketIndex(input(i));
+      output(i) = CalculateBucketIndex(input(i), boundaries_vector);
     }
   }
 
  private:
-  int64 CalculateBucketIndex(const T value) {
-    auto first_bigger_it =
-        std::upper_bound(boundaries_.begin(), boundaries_.end(), value);
-    return first_bigger_it - boundaries_.begin();
+  int32 CalculateBucketIndex(const T value, std::vector<T>& boundaries_vector) {
+    auto first_bigger_it = std::upper_bound(boundaries_vector.begin(),
+                                            boundaries_vector.end(), value);
+    int32 index = first_bigger_it - boundaries_vector.begin();
+    CHECK(index >= 0 && index <= boundaries_vector.size())
+        << "Invalid bucket index: " << index
+        << " boundaries_vector.size(): " << boundaries_vector.size();
+    return index;
   }
-  std::vector<T> boundaries_;
 };
 
 #define REGISTER_KERNEL(T)                                     \

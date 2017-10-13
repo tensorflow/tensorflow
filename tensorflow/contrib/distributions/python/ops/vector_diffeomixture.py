@@ -23,21 +23,22 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import AffineLinearOperator
 from tensorflow.contrib.linalg.python.ops import linear_operator_addition as linop_add_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_composition as linop_composition_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_diag as linop_diag_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_full_matrix as linop_full_lib
-from tensorflow.contrib.linalg.python.ops import linear_operator_identity as linop_identity_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
+from tensorflow.python.ops.linalg import linear_operator_diag as linop_diag_lib
+from tensorflow.python.ops.linalg import linear_operator_full_matrix as linop_full_lib
+from tensorflow.python.ops.linalg import linear_operator_identity as linop_identity_lib
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular as linop_tril_lib
+
+static_value = distribution_util.static_value
 
 
 __all__ = [
@@ -184,7 +185,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
 
   ```python
   ds = tf.contrib.distributions
-  la = tf.contrib.linalg
+  la = tf.linalg
 
   # Create two batches of VectorDiffeomixtures, one with mix_loc=[0.] and
   # another with mix_loc=[1]. In both cases, `K=2` and the affine
@@ -231,7 +232,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         SoftmaxNormal used for selecting one of the `K` affine transformations.
       distribution: `tf.Distribution`-like instance. Distribution from which `d`
         iid samples are used as input to the selected affine transformation.
-        Must be a scalar batch, scalar event distribution.  Typically
+        Must be a scalar-batch, scalar-event distribution.  Typically
         `distribution.reparameterization_type = FULLY_REPARAMETERIZED` or it is
         a function of non-trainable parameters. WARNING: If you backprop through
         a VectorDiffeomixture sample and the `distribution` is not
@@ -266,6 +267,8 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       TypeError: if any scale.dtype != scale[0].dtype.
       TypeError: if any loc.dtype != scale[0].dtype.
       NotImplementedError: if `len(scale) != 2`.
+      ValueError: if `not distribution.is_scalar_batch`.
+      ValueError: if `not distribution.is_scalar_event`.
     """
     parameters = locals()
     with ops.name_scope(name, values=[mix_loc, mix_scale]):
@@ -323,6 +326,9 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       prob = prob.astype(dtype.as_numpy_dtype)
       prob /= np.linalg.norm(prob, ord=1)
 
+      # Note: by creating the logits as `log(prob)` we ensure that
+      # `self.mixture_distribution.logits` is equivalent to
+      # `math_ops.log(self.mixture_distribution.probs)`.
       self._mixture_distribution = categorical_lib.Categorical(
           logits=np.log(prob),
           validate_args=validate_args,
@@ -333,11 +339,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
       mix_scale = maybe_check_mix_param(
           mix_scale, "mix_scale", dtype, validate_args)
 
-      distribution_assertions = maybe_check_distribution(
+      asserts = distribution_util.maybe_check_scalar_distribution(
           distribution, dtype, validate_args)
-      if distribution_assertions:
-        mix_loc = control_flow_ops.with_dependencies(
-            distribution_assertions, mix_loc)
+      if asserts:
+        mix_loc = control_flow_ops.with_dependencies(asserts, mix_loc)
       self._distribution = distribution
 
       # shape: [B, deg]
@@ -428,22 +433,17 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     return tensor_shape.TensorShape(static_value(self._event_shape_))
 
   def _sample_n(self, n, seed=None):
-    batch_size = reduce_prod(self.batch_shape_tensor())
     x = self.distribution.sample(
         sample_shape=concat_vectors(
-            [n * batch_size],
-            self.event_shape_tensor()),
-        seed=seed)
-    x = [array_ops.reshape(
-        aff.forward(x),
-        shape=concat_vectors(
-            [-1],
+            [n],
             self.batch_shape_tensor(),
-            self.event_shape_tensor()))
-         for aff in self.endpoint_affine]
+            self.event_shape_tensor()),
+        seed=seed)   # shape: [n, B, e]
+    x = [aff.forward(x) for aff in self.endpoint_affine]
 
     # Get ids as a [n, batch_size]-shaped matrix, unless batch_shape=[] then get
     # ids as a [n]-shaped vector.
+    batch_size = reduce_prod(self.batch_shape_tensor())
     ids = self._mixture_distribution.sample(
         sample_shape=concat_vectors(
             [n],
@@ -464,6 +464,13 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         array_ops.reshape(self.interpolate_weight, shape=[-1]),
         ids + offset)
     weight = weight[..., array_ops.newaxis]
+
+    if len(x) != 2:
+      # We actually should have already triggered this exception. However as a
+      # policy we're putting this exception wherever we exploit the bimixture
+      # assumption.
+      raise NotImplementedError("Currently only bimixtures are supported; "
+                                "len(scale)={} is not 2.".format(len(x)))
 
     # Alternatively:
     # x = weight * x[0] + (1. - weight) * x[1]
@@ -490,9 +497,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     # slightly cheaper than `self.mixture_distribution.probs`.
     p = math_ops.exp(self.mixture_distribution.logits)
 
-    m = array_ops.tile(self.distribution.mean()[..., array_ops.newaxis],
-                       multiples=self.event_shape_tensor())
-    m = m[..., array_ops.newaxis, :]
+    m = self._expand_base_distribution_mean()
     mean = None
     for k, aff in enumerate(self.interpolated_affine):
       # aff.forward is going to do this:
@@ -603,9 +608,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     # slightly cheaper than `self.mixture_distribution.probs`.
     p = math_ops.exp(self.mixture_distribution.logits)
 
-    m = array_ops.tile(self.distribution.mean()[..., array_ops.newaxis],
-                       multiples=self.event_shape_tensor())
-    m = m[..., array_ops.newaxis, :]
+    m = self._expand_base_distribution_mean()
 
     cov_e_z_given_v = None
     e_z_given_v = self._mean()
@@ -615,6 +618,18 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                             p[..., k] * square(y - e_z_given_v))
 
     return cov_e_z_given_v
+
+  def _expand_base_distribution_mean(self):
+    """Ensures `self.distribution.mean()` has `[batch, event]` shape."""
+    single_draw_shape = concat_vectors(self.batch_shape_tensor(),
+                                       self.event_shape_tensor())
+    m = array_ops.reshape(
+        self.distribution.mean(),  # A scalar.
+        shape=array_ops.ones_like(single_draw_shape,
+                                  dtype=dtypes.int32))
+    m = array_ops.tile(m, multiples=single_draw_shape)
+    m.set_shape(self.batch_shape.concatenate(self.event_shape))
+    return m
 
 
 def maybe_check_mix_param(param, name, expected_base_dtype, validate_args):
@@ -655,43 +670,6 @@ def maybe_check_mix_param(param, name, expected_base_dtype, validate_args):
     if assertions:
       return control_flow_ops.with_dependencies(assertions, param)
     return param
-
-
-def maybe_check_distribution(distribution, expected_base_dtype, validate_args):
-  """Helper which checks validity of `distribution` init arg."""
-  if distribution.dtype != expected_base_dtype:
-    raise TypeError("dtype mismatch; "
-                    "distribution.dtype=\"{}\" is not \"{}\"".format(
-                        distribution.dtype.name, expected_base_dtype.name))
-
-  # Although `reparameterization_type` is a static property, we guard it by
-  # `validate_args`. This allows users to use a `distribution` which is not
-  # reparameterized itself. However, we tacitly assume that although the
-  # distribution is not reparameterized, it only depends on non-trainable
-  # variables.
-  if validate_args and (distribution.reparameterization_type
-                        != distribution_lib.FULLY_REPARAMETERIZED):
-    raise ValueError("Base distribution should be reparameterized or be "
-                     "a function of non-trainable variables; "
-                     "distribution.reparameterization_type = \"{}\" "
-                     "!= \"FULLY_REPARAMETERIZED\".".format(
-                         distribution.reparameterization_type))
-  with ops.name_scope(name="check_distribution"):
-    assertions = []
-    def check_is_scalar(is_scalar, name):
-      is_scalar_ = static_value(is_scalar)
-      if is_scalar_ is not None:
-        if not is_scalar_:
-          raise ValueError("distribution must be scalar; "
-                           "distribution.{}=False is not True".format(name))
-      elif validate_args:
-        assertions.append(check_ops.assert_equal(
-            is_scalar, True,
-            message=("distribution must be scalar; "
-                     "distribution.{}=False is not True".format(name))))
-    check_is_scalar(distribution.is_scalar_event(), "is_scalar_event")
-    check_is_scalar(distribution.is_scalar_batch(), "is_scalar_batch")
-    return assertions
 
 
 def determine_batch_event_shapes(mix_loc, mix_scale, endpoint_affine):
@@ -744,14 +722,17 @@ def interpolate_loc(deg, interpolate_weight, loc):
   with ops.name_scope("interpolate_loc", values=[interpolate_weight, loc]):
     if loc is None or loc[0] is None and loc[1] is None:
       return [None]*deg
+    w = interpolate_weight[..., array_ops.newaxis, :]  # shape: [B, 1, deg]
+    loc = [x[..., array_ops.newaxis]                   # shape: [B, e, 1]
+           if x is not None else None for x in loc]
     if loc[0] is None:
-      x = (1. - interpolate_weight[..., array_ops.newaxis]) * loc[1]
+      x = (1. - w) * loc[1]                            # shape: [B, e, deg]
     elif loc[1] is None:
-      x = interpolate_weight[..., array_ops.newaxis] * loc[0]
+      x = w * loc[0]                                   # shape: [B, e, deg]
     else:
       delta = loc[0] - loc[1]
-      x = interpolate_weight[..., array_ops.newaxis] * delta + loc[1]
-    return [x[..., k, :] for k in range(deg)]
+      x = w * delta + loc[1]                           # shape: [B, e, deg]
+    return [x[..., k] for k in range(deg)]             # list(shape:[B, e])
 
 
 def interpolate_scale(deg, interpolate_weight, scale):
@@ -769,6 +750,11 @@ def interpolate_scale(deg, interpolate_weight, scale):
 def linop_scale(w, op):
   # We assume w > 0. (This assumption only relates to the is_* attributes.)
   with ops.name_scope("linop_scale", values=[w]):
+    # TODO(b/35301104): LinearOperatorComposition doesn't combine operators, so
+    # special case combinations here. Once it does, this function can be
+    # replaced by:
+    #     return linop_composition_lib.LinearOperatorComposition([
+    #         scaled_identity(w), op])
     def scaled_identity(w):
       return linop_identity_lib.LinearOperatorScaledIdentity(
           num_rows=op.range_dimension_tensor(),
@@ -778,22 +764,22 @@ def linop_scale(w, op):
           is_positive_definite=op.is_positive_definite)
     if isinstance(op, linop_identity_lib.LinearOperatorIdentity):
       return scaled_identity(w)
-    elif isinstance(op, linop_identity_lib.LinearOperatorScaledIdentity):
+    if isinstance(op, linop_identity_lib.LinearOperatorScaledIdentity):
       return scaled_identity(w * op.multiplier)
-    elif isinstance(op, linop_diag_lib.LinearOperatorDiag):
+    if isinstance(op, linop_diag_lib.LinearOperatorDiag):
       return linop_diag_lib.LinearOperatorDiag(
           diag=w[..., array_ops.newaxis] * op.diag_part(),
           is_non_singular=op.is_non_singular,
           is_self_adjoint=op.is_self_adjoint,
           is_positive_definite=op.is_positive_definite)
-    else:
-      return linop_composition_lib.LinearOperatorComposition([
-          scaled_identity(w), op])
-
-
-def static_value(x):
-  """Returns the static value of a `Tensor` or `None`."""
-  return tensor_util.constant_value(ops.convert_to_tensor(x))
+    if isinstance(op, linop_tril_lib.LinearOperatorLowerTriangular):
+      return linop_tril_lib.LinearOperatorLowerTriangular(
+          tril=w[..., array_ops.newaxis, array_ops.newaxis] * op.to_dense(),
+          is_non_singular=op.is_non_singular,
+          is_self_adjoint=op.is_self_adjoint,
+          is_positive_definite=op.is_positive_definite)
+    raise NotImplementedError(
+        "Unsupported Linop type ({})".format(type(op).__name__))
 
 
 def concat_vectors(*args):

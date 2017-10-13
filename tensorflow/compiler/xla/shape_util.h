@@ -66,6 +66,8 @@ class ShapeIndex {
   std::vector<int64>::iterator begin() { return indices_.begin(); }
   std::vector<int64>::iterator end() { return indices_.end(); }
 
+  const int64* data() const { return indices_.data(); }
+
   const int64& operator[](size_t i) const { return indices_[i]; }
   int64& operator[](size_t i) { return indices_[i]; }
 
@@ -81,6 +83,50 @@ class ShapeIndex {
 
  private:
   std::vector<int64> indices_;
+};
+
+// A view into a ShapeIndex as above, with the cheap/easy ability to consume the
+// value at the front of the view.
+//
+// NB! ShapeIndexView does not own the memory backing the index array.
+// The memory backing the index array should be owned by an object
+// that lives longer than the ShapeIndexView instances pointing into
+// it.
+class ShapeIndexView {
+ public:
+  ShapeIndexView(const ShapeIndex& shape_index, int64 offset = 0)
+      : ShapeIndexView(shape_index.data() + offset,
+                       shape_index.data() + shape_index.size()) {
+    CHECK_LE(offset, shape_index.size());
+  }
+  ShapeIndexView(std::initializer_list<int64> indices)
+      : ShapeIndexView(indices.begin(), indices.end()) {}
+  ShapeIndexView(const ShapeIndexView& other) = default;
+
+  using iterator = const int64*;
+
+  iterator begin() const { return begin_; }
+  iterator end() const { return end_; }
+  int64 size() const { return std::distance(begin_, end_); }
+  bool empty() const { return begin_ == end_; }
+  int64 front() const {
+    CHECK(!empty());
+    return *begin_;
+  }
+  ShapeIndexView ConsumeFront() const {
+    CHECK(!empty());
+    auto new_begin = begin_;
+    ++new_begin;
+    return ShapeIndexView(new_begin, end_);
+  }
+
+  string ToString() const;
+
+ private:
+  ShapeIndexView(iterator begin, iterator end) : begin_(begin), end_(end) {}
+
+  iterator begin_;
+  iterator end_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
@@ -296,13 +342,15 @@ class ShapeUtil {
 
   // Shorthand for testing whether a shape is of a given element type and
   // sequence of dimensions.
+  //
+  // DEPRECATED: Use Equal() instead.
   static bool ShapeIs(const Shape& shape, PrimitiveType element_type,
                       std::initializer_list<int64> dimensions);
 
   // GetSubshape and GetMutableSubshape return a particular nested Shape within
   // the given Shape argument.
-  static const Shape& GetSubshape(const Shape& shape, const ShapeIndex& index);
-  static Shape* GetMutableSubshape(Shape* shape, const ShapeIndex& index);
+  static const Shape& GetSubshape(const Shape& shape, ShapeIndexView index);
+  static Shape* GetMutableSubshape(Shape* shape, ShapeIndexView index);
 
   // Returns whether the given index in the given shape is a leaf element of the
   // shape.

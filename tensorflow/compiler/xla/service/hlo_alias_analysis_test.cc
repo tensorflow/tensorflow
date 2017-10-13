@@ -20,8 +20,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -44,6 +46,7 @@ class HloAliasAnalysisTest : public HloTestBase {
   // Run alias analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
   HloAliasAnalysis& RunAnalysis() {
+    hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before alias analysis");
     analysis_ = HloAliasAnalysis::Run(module_.get()).ConsumeValueOrDie();
     return *analysis_;
   }
@@ -87,14 +90,14 @@ class HloAliasAnalysisTest : public HloTestBase {
   // constructed.
   bool AnyValuesInSameBufferInterfere() {
     DependencyHloOrdering ordering(module_.get());
-    for (const HloBuffer* buffer : analysis_->buffers()) {
-      for (const HloValue* value_a : buffer->values()) {
-        for (const HloValue* value_b : buffer->values()) {
+    for (const HloBuffer& buffer : analysis_->buffers()) {
+      for (const HloValue* value_a : buffer.values()) {
+        for (const HloValue* value_b : buffer.values()) {
           if (*value_a != *value_b &&
-              analysis_->dataflow_analysis().MayInterfere(*value_a, *value_b,
-                                                          ordering)) {
+              ordering.MayInterfere(*value_a, *value_b,
+                                    analysis_->dataflow_analysis())) {
             VLOG(1) << *value_a << " interferes with " << *value_b
-                    << " in buffer: " << *buffer;
+                    << " in buffer: " << buffer;
             return true;
           }
         }
@@ -384,10 +387,7 @@ TEST_F(HloAliasAnalysisTest, SingleWhile) {
 
   EXPECT_THAT(
       GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0})),
-      UnorderedElementsAre(GetValueDefinedAt(xla_while, /*index=*/{0}),
-                           GetValueDefinedAt(body_param, /*index=*/{0}),
-                           GetValueDefinedAt(cond_param, /*index=*/{0}),
-                           GetValueDefinedAt(constant1)));
+      UnorderedElementsAre(GetValueDefinedAt(constant1)));
   EXPECT_THAT(
       GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1})),
       UnorderedElementsAre(GetValueDefinedAt(constant2),
@@ -631,9 +631,9 @@ TEST_F(HloAliasAnalysisTest, SwizzlingWhile) {
   // HloBuffers.
   EXPECT_THAT(
       analysis.buffers(),
-      UnorderedElementsAre(&analysis.GetUniqueBufferAt(constant1),
-                           &analysis.GetUniqueBufferAt(tuple, /*index=*/{}),
-                           &analysis.GetUniqueBufferAt(cond_constant)));
+      UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1),
+                           analysis.GetUniqueBufferAt(tuple, /*index=*/{}),
+                           analysis.GetUniqueBufferAt(cond_constant)));
 
   // The tuple elements of the while and the three constant inputs should all be
   // smooshed into the same buffer.
@@ -820,127 +820,83 @@ TEST_F(HloAliasAnalysisTest, Bitcast) {
             analysis.GetUniqueBufferAt(bitcast));
 }
 
-TEST_F(HloAliasAnalysisTest, UpdateAnalysisForWhile) {
-  // Test updating alias analysis after modifying a module with an array shaped
-  // while:
-  //
-  // body(F32[]  %param):
-  //   %negate = Negate(%param)
-  //
-  // condition(F32[] %param):
-  //   return Constant(false)
-  //
-  // entry:
-  //   %constant = Constant(1.0)
-  //   %exp = Exp(%constant)
-  //   return While(%exp, body, condition)
-  //
-  auto body_builder = HloComputation::Builder("body");
-  auto body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
-  auto negate = body_builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kNegate, body_param));
-  HloComputation* body = module_->AddEmbeddedComputation(body_builder.Build());
+TEST_F(HloAliasAnalysisTest, BitcastInterference) {
+  // A bitcast value simultaneously live with its operand should not cause
+  // interference.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
+      scalar_shape_, HloOpcode::kBitcast, constant));
+  builder.AddInstruction(HloInstruction::CreateTuple({constant, bitcast}));
 
-  // Condition computation trivially returns a constant "false".
+  module_->AddEntryComputation(builder.Build());
+
+  const HloAliasAnalysis& analysis = RunAnalysis();
+
+  DependencyHloOrdering ordering(module_.get());
+  EXPECT_FALSE(analysis.HasLiveRangeInterference(ordering));
+}
+
+TEST_F(HloAliasAnalysisTest, WhileInterference) {
+  // Build a while loop which has a parallel use of the init value. Depending on
+  // ordering there may be interference between the update-in-place while and
+  // the other use of the init.
+  auto builder = HloComputation::Builder(TestName());
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+
   auto cond_builder = HloComputation::Builder("condition");
   auto cond_param = cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
-  cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, init->shape(), "param"));
+  auto cond_root = cond_builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   HloComputation* condition =
       module_->AddEmbeddedComputation(cond_builder.Build());
 
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
-  auto exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(scalar_shape_, HloOpcode::kExp, constant));
+  auto body_builder = HloComputation::Builder("body");
+  auto body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, init->shape(), "param"));
+  auto body_root = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(init->shape(), HloOpcode::kExp, body_param));
+  HloComputation* body = module_->AddEmbeddedComputation(body_builder.Build());
+
   auto xla_while = builder.AddInstruction(
-      HloInstruction::CreateWhile(scalar_shape_, condition, body, exp));
-  module_->AddEntryComputation(builder.Build());
+      HloInstruction::CreateWhile(init->shape(), condition, body, init));
 
-  HloAliasAnalysis& analysis = RunAnalysis();
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(init->shape(), HloOpcode::kNegate, init));
+  auto entry_root =
+      builder.AddInstruction(HloInstruction::CreateTuple({negate, xla_while}));
 
-  // Sanity check some alias information.
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(body_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(cond_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(negate));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(xla_while));
+  HloComputation* entry = module_->AddEntryComputation(builder.Build());
 
-  // Set the body root to the body_param. Previously it was Negate(body_param).
-  body->set_root_instruction(body_param);
+  const HloAliasAnalysis& analysis = RunAnalysis();
 
-  // Prior to updating, verify that the analysis is no longer valid.
-  Status verify_status = analysis.VerifyAgainstReference();
-  EXPECT_FALSE(verify_status.ok());
+  {
+    // Dependency ordering should interfere because the negate and while are
+    // unordered.
+    DependencyHloOrdering ordering(module_.get());
+    EXPECT_TRUE(analysis.HasLiveRangeInterference(ordering));
+  }
 
-  analysis.UpdateAfterChangingRoot(/*old_root=*/negate,
-                                   /*new_root*/ body_param);
+  // For a sequential order, if there is interference iff the negate is after
+  // the while.
+  SequentialHloOrdering::HloModuleSequence sequence;
+  sequence[body] = {body_param, body_root};
+  sequence[condition] = {cond_param, cond_root};
+  {
+    sequence[entry] = {init, xla_while, negate, entry_root};
+    SequentialHloOrdering ordering(module_.get(), sequence);
+    EXPECT_TRUE(analysis.HasLiveRangeInterference(ordering));
+  }
 
-  // Analysis should be valid after the update.
-  TF_ASSERT_OK(analysis.VerifyAgainstReference());
-
-  // The exponential should now pass through the body transparently.
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(body_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(cond_param));
-  EXPECT_NE(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(negate));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(exp),
-            analysis.GetUniqueBufferAt(xla_while));
-
-  // Now replace the operand of the while with %constant (was %exp).
-  TF_ASSERT_OK(exp->ReplaceUseWith(xla_while, constant));
-  analysis.UpdateAfterChangingOperand(xla_while, /*old_operand=*/exp,
-                                      /*new_operand=*/constant);
-
-  // Analysis should be valid after the update.
-  TF_ASSERT_OK(analysis.VerifyAgainstReference());
-
-  EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(body_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(cond_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(xla_while));
-  EXPECT_NE(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(exp));
-  EXPECT_NE(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(negate));
-
-  // And finally make the negate the root of the body again.
-  body->set_root_instruction(negate);
-  analysis.UpdateAfterChangingRoot(/*old_root=*/body_param,
-                                   /*new_root*/ negate);
-
-  // Analysis should be valid after the update.
-  TF_ASSERT_OK(analysis.VerifyAgainstReference());
-
-  EXPECT_EQ(analysis.GetUniqueBufferAt(negate),
-            analysis.GetUniqueBufferAt(body_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(negate),
-            analysis.GetUniqueBufferAt(cond_param));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(negate),
-            analysis.GetUniqueBufferAt(xla_while));
-  EXPECT_EQ(analysis.GetUniqueBufferAt(constant),
-            analysis.GetUniqueBufferAt(negate));
-
-  auto value_of = [&analysis](const HloInstruction* instruction) {
-    return &analysis.dataflow_analysis().GetValueDefinedAt(instruction);
-  };
-  EXPECT_THAT(analysis.GetUniqueBufferAt(negate).values(),
-              UnorderedElementsAre(value_of(body_param), value_of(cond_param),
-                                   value_of(negate), value_of(constant),
-                                   value_of(xla_while)));
+  {
+    sequence[entry] = {init, negate, xla_while, entry_root};
+    SequentialHloOrdering ordering(module_.get(), sequence);
+    EXPECT_FALSE(analysis.HasLiveRangeInterference(ordering));
+  }
 }
-
-// Test update tuple element.
 
 }  // namespace
 }  // namespace xla

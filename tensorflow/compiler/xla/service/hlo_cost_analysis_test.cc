@@ -169,7 +169,7 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
 TEST_F(HloCostAnalysisTest, Map) {
   ComputationBuilder builder(client_, "map");
   auto input = builder.Parameter(0, ShapeUtil::MakeShape(F32, {10}), "in");
-  auto result = builder.Map({input}, add_and_exp_);
+  auto result = builder.Map({input}, add_and_exp_, {0});
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
@@ -286,7 +286,7 @@ TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
   auto bias = builder.Parameter(2, ShapeUtil::MakeShape(F32, {20}), "bias");
   // sigmoid(input * weight + bias)
   auto result = builder.Map(
-      {builder.Add(builder.Dot(input, weight), bias, {1})}, sigmoid_);
+      {builder.Add(builder.Dot(input, weight), bias, {1})}, sigmoid_, {0, 1});
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);

@@ -106,16 +106,6 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
          for state_element
          in self._lstm_cell.zero_state(batch_size=1, dtype=self.dtype)])
 
-  def _transform(self, data):
-    """Normalize data based on input statistics to encourage stable training."""
-    mean, variance = self._input_statistics.overall_feature_moments
-    return (data - mean) / variance
-
-  def _de_transform(self, data):
-    """Transform data back to the input scale."""
-    mean, variance = self._input_statistics.overall_feature_moments
-    return data * variance + mean
-
   def _filtering_step(self, current_times, current_values, state, predictions):
     """Update model state based on observations.
 
@@ -140,7 +130,10 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
     state_from_time, prediction, lstm_state = state
     with tf.control_dependencies(
         [tf.assert_equal(current_times, state_from_time)]):
-      transformed_values = self._transform(current_values)
+      # Subtract the mean and divide by the variance of the series.  Slightly
+      # more efficient if done for a whole window (using the normalize_features
+      # argument to SequentialTimeSeriesModel).
+      transformed_values = self._scale_data(current_values)
       # Use mean squared error across features for the loss.
       predictions["loss"] = tf.reduce_mean(
           (prediction - transformed_values) ** 2, axis=-1)
@@ -156,7 +149,7 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
         inputs=previous_observation_or_prediction, state=lstm_state)
     next_prediction = self._predict_from_lstm_output(lstm_output)
     new_state_tuple = (current_times, next_prediction, new_lstm_state)
-    return new_state_tuple, {"mean": self._de_transform(next_prediction)}
+    return new_state_tuple, {"mean": self._scale_back_data(next_prediction)}
 
   def _imputation_step(self, current_times, state):
     """Advance model state across a gap."""

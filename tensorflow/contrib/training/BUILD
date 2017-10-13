@@ -23,7 +23,6 @@ py_library(
         "python/training/evaluation.py",
         "python/training/feeding_queue_runner.py",
         "python/training/hparam.py",
-        "python/training/python_input.py",
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
@@ -227,23 +226,6 @@ py_test(
 )
 
 py_test(
-    name = "python_input_test",
-    size = "medium",
-    srcs = ["python/training/python_input_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["manual"],
-    deps = [
-        ":training_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "evaluation_test",
     size = "small",
     srcs = ["python/training/evaluation_test.py"],
@@ -281,6 +263,7 @@ py_test(
     srcs = ["python/training/training_test.py"],
     shard_count = 3,
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":training_py",
         "//tensorflow/contrib/framework:framework_py",

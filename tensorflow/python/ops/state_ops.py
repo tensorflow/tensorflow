@@ -81,6 +81,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -123,7 +124,7 @@ def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
       with this shared_name. Otherwise, the node name is used instead.
 
   Returns:
-    A variable tensor.1;5A
+    A variable tensor.
   """
   return gen_state_ops._variable_v2(shape=shape,
                                     dtype=dtype,
@@ -183,7 +184,7 @@ def is_variable_initialized(ref, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.is_variable_initialized(ref=ref, name=name)
   # Handle resource variables.
-  if ref.op.type == "VarHandleOp":
+  if context.in_eager_mode() or ref.op.type == "VarHandleOp":
     return gen_resource_variable_ops.var_is_initialized_op(ref.handle,
                                                            name=name)
 

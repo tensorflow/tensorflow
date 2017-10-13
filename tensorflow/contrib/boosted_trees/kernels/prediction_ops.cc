@@ -59,8 +59,27 @@ const char* kApplyDropoutAttributeName = "apply_dropout";
 const char* kApplyAveragingAttributeName = "apply_averaging";
 const char* kDropoutInfoOutputTensorName = "drop_out_tree_indices_weights";
 const char* kPredictionsTensorName = "predictions";
-const char* kNoDropoutPredictionsTensorName = "no_dropout_predictions";
+
+void CalculateTreesToInclude(
+    const boosted_trees::trees::DecisionTreeEnsembleConfig& config,
+    const std::vector<int32>& trees_to_drop, const int32 num_trees,
+    const bool only_finalized, std::vector<int32>* trees_to_include) {
+  trees_to_include->reserve(num_trees - trees_to_drop.size());
+
+  int32 index = 0;
+  // This assumes that trees_to_drop is a sorted list of tree ids.
+  for (int32 tree = 0; tree < num_trees; ++tree) {
+    if ((!trees_to_drop.empty() && index < trees_to_drop.size() &&
+         trees_to_drop[index] == tree) ||
+        (only_finalized && config.tree_metadata_size() > 0 &&
+         !config.tree_metadata(tree).is_finalized())) {
+      ++index;
+      continue;
+    }
+    trees_to_include->push_back(tree);
+  }
 }
+}  // namespace
 
 class GradientTreesPredictionOp : public OpKernel {
  public:
@@ -128,7 +147,7 @@ class GradientTreesPredictionOp : public OpKernel {
           break;
         }
         case AveragingConfig::CONFIG_NOT_SET: {
-          QCHECK(false) << "We should never get here.";
+          LOG(QFATAL) << "We should never get here.";
           break;
         }
       }
@@ -136,24 +155,23 @@ class GradientTreesPredictionOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    DecisionTreeEnsembleResource* decision_tree_ensemble_resource;
+    DecisionTreeEnsembleResource* ensemble_resource;
     // Gets the resource. Grabs the mutex but releases it.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_ensemble_resource));
+                                           &ensemble_resource));
     // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(decision_tree_ensemble_resource);
+    core::ScopedUnref unref_me(ensemble_resource);
     if (use_locking_) {
-      mutex_lock l(*decision_tree_ensemble_resource->get_mutex());
-      DoCompute(context, decision_tree_ensemble_resource);
+      tf_shared_lock l(*ensemble_resource->get_mutex());
+      DoCompute(context, ensemble_resource);
     } else {
-      DoCompute(context, decision_tree_ensemble_resource);
+      DoCompute(context, ensemble_resource);
     }
   }
 
  private:
-  void DoCompute(
-      OpKernelContext* context,
-      DecisionTreeEnsembleResource* decision_tree_ensemble_resource) {
+  void DoCompute(OpKernelContext* context,
+                 DecisionTreeEnsembleResource* ensemble_resource) {
     // Read dense float features list;
     OpInputList dense_float_features_list;
     OP_REQUIRES_OK(context, TensorUtils::ReadDenseFloatFeatures(
@@ -205,40 +223,34 @@ class GradientTreesPredictionOp : public OpKernel {
 
     // Do dropout if needed.
     if (apply_dropout_ && has_dropout_) {
-      // Read in seed
+      // Read in seed and cast to uint64.
       const Tensor* seed_t;
       OP_REQUIRES_OK(context, context->input(kSeedTensorName, &seed_t));
       OP_REQUIRES(context, TensorShapeUtils::IsScalar(seed_t->shape()),
                   errors::InvalidArgument("Seed must be a scalar."));
-
-      // Cast seed to uint64.
       const uint64 seed = seed_t->scalar<int64>()();
-
-      std::vector<float> weights;
-      for (const float weight :
-           decision_tree_ensemble_resource->decision_tree_ensemble()
-               .tree_weights()) {
-        weights.push_back(weight);
-      }
 
       std::unordered_set<int32> trees_not_to_drop;
       if (center_bias_) {
         trees_not_to_drop.insert(0);
       }
-      if (decision_tree_ensemble_resource->decision_tree_ensemble()
-              .has_growing_metadata()) {
+      if (ensemble_resource->decision_tree_ensemble().has_growing_metadata()) {
         // We are in batch mode, the last tree is the tree that is being built,
         // we can't drop it during dropout.
-        const int32 current_tree =
-            decision_tree_ensemble_resource->decision_tree_ensemble()
-                .trees_size() -
-            1;
-        trees_not_to_drop.insert(current_tree);
+        trees_not_to_drop.insert(ensemble_resource->num_trees() - 1);
       }
+      const std::vector<float> weights = ensemble_resource->GetTreeWeights();
       OP_REQUIRES_OK(context, DropoutUtils::DropOutTrees(
                                   seed, dropout_config_, trees_not_to_drop,
                                   weights, &dropped_trees, &original_weights));
     }
+
+    // Prepare the list of trees to include in the prediction.
+    std::vector<int32> trees_to_include;
+    CalculateTreesToInclude(
+        ensemble_resource->decision_tree_ensemble(), dropped_trees,
+        ensemble_resource->decision_tree_ensemble().trees_size(),
+        only_finalized_trees_, &trees_to_include);
 
     // Allocate output predictions matrix.
     Tensor* output_predictions_t = nullptr;
@@ -248,22 +260,13 @@ class GradientTreesPredictionOp : public OpKernel {
                                           &output_predictions_t));
     auto output_predictions = output_predictions_t->matrix<float>();
 
-    Tensor* output_no_dropout_predictions_t = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(kNoDropoutPredictionsTensorName,
-                                          {batch_size, prediction_vector_size_},
-                                          &output_no_dropout_predictions_t));
-    auto output_no_dropout_predictions =
-        output_no_dropout_predictions_t->matrix<float>();
-
     // Run predictor.
     thread::ThreadPool* const worker_threads =
         context->device()->tensorflow_cpu_worker_threads()->workers;
 
     if (apply_averaging_) {
       DecisionTreeEnsembleConfig adjusted =
-          decision_tree_ensemble_resource->decision_tree_ensemble();
-
+          ensemble_resource->decision_tree_ensemble();
       const int start_averaging = std::max(
           0.0,
           averaging_config_.config_case() ==
@@ -271,21 +274,18 @@ class GradientTreesPredictionOp : public OpKernel {
               ? adjusted.trees_size() - averaging_config_.average_last_n_trees()
               : adjusted.trees_size() *
                     (1.0 - averaging_config_.average_last_percent_trees()));
-
       const int num_ensembles = adjusted.trees_size() - start_averaging;
       for (int i = start_averaging; i < adjusted.trees_size(); ++i) {
         float weight = adjusted.tree_weights(i);
         adjusted.mutable_tree_weights()->Set(
             i, weight * (num_ensembles - i + start_averaging) / num_ensembles);
       }
-      MultipleAdditiveTrees::Predict(
-          adjusted, only_finalized_trees_, dropped_trees, batch_features,
-          worker_threads, output_predictions, output_no_dropout_predictions);
+      MultipleAdditiveTrees::Predict(adjusted, trees_to_include, batch_features,
+                                     worker_threads, output_predictions);
     } else {
       MultipleAdditiveTrees::Predict(
-          decision_tree_ensemble_resource->decision_tree_ensemble(),
-          only_finalized_trees_, dropped_trees, batch_features, worker_threads,
-          output_predictions, output_no_dropout_predictions);
+          ensemble_resource->decision_tree_ensemble(), trees_to_include,
+          batch_features, worker_threads, output_predictions);
     }
 
     // Output dropped trees and original weights.
@@ -327,37 +327,32 @@ class GradientTreesPartitionExamplesOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    DecisionTreeEnsembleResource* decision_tree_ensemble_resource;
+    DecisionTreeEnsembleResource* ensemble_resource;
     // Gets the resource. Grabs the mutex but releases it.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_ensemble_resource));
+                                           &ensemble_resource));
     // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(decision_tree_ensemble_resource);
+    core::ScopedUnref unref_me(ensemble_resource);
     if (use_locking_) {
-      mutex_lock l(*decision_tree_ensemble_resource->get_mutex());
-      DoCompute(context, decision_tree_ensemble_resource);
+      tf_shared_lock l(*ensemble_resource->get_mutex());
+      DoCompute(context, ensemble_resource);
     } else {
-      DoCompute(context, decision_tree_ensemble_resource);
+      DoCompute(context, ensemble_resource);
     }
   }
 
  private:
-  void DoCompute(
-      OpKernelContext* context,
-      DecisionTreeEnsembleResource* decision_tree_ensemble_resource) {
+  void DoCompute(OpKernelContext* context,
+                 DecisionTreeEnsembleResource* ensemble_resource) {
     // The last non-finalized tree in the ensemble is by convention the
     // one to partition on. If no such tree exists, a nodeless tree is
     // created.
-    const auto& tree_ensemble =
-        decision_tree_ensemble_resource->decision_tree_ensemble();
-    boosted_trees::trees::DecisionTreeConfig empy_tree_config;
-    const boosted_trees::trees::DecisionTreeConfig* tree_config =
-        &empy_tree_config;
-    auto num_trees = tree_ensemble.trees_size();
-    if (num_trees > 0 &&
-        !tree_ensemble.tree_metadata(num_trees - 1).is_finalized()) {
-      tree_config = &tree_ensemble.trees(num_trees - 1);
-    }
+    boosted_trees::trees::DecisionTreeConfig empty_tree_config;
+    const boosted_trees::trees::DecisionTreeConfig& tree_config =
+        (ensemble_resource->num_trees() <= 0 ||
+         ensemble_resource->LastTreeMetadata()->is_finalized())
+            ? empty_tree_config
+            : *ensemble_resource->LastTree();
 
     // Read dense float features list;
     OpInputList dense_float_features_list;
@@ -412,7 +407,7 @@ class GradientTreesPartitionExamplesOp : public OpKernel {
     thread::ThreadPool* const worker_threads =
         context->device()->tensorflow_cpu_worker_threads()->workers;
     learner::ExamplePartitioner::PartitionExamples(
-        *tree_config, batch_features, worker_threads->NumThreads(),
+        tree_config, batch_features, worker_threads->NumThreads(),
         worker_threads, partition_ids_t->vec<int32>().data());
   }
 

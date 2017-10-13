@@ -33,6 +33,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -94,7 +95,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     else:
       cls._expected_partition_graph_count = 1
       cls._expected_num_devices = 1
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
   @classmethod
   def tearDownClass(cls):
@@ -242,7 +243,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       v_copy_node_def = None
       for partition_graph in run_metadata.partition_graphs:
         for node_def in partition_graph.node:
-          if debug_data.is_copy_node(node_def.name):
+          if debug_graphs.is_copy_node(node_def.name):
             if node_def.name == "__copy_u_0":
               u_copy_node_def = node_def
             elif node_def.name == "__copy_v_0":
