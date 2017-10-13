@@ -24,6 +24,7 @@ from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -44,6 +45,10 @@ class BinaryOpsTest(XLATestCase):
       if equality_test is None:
         equality_test = self.assertAllClose
       equality_test(result, expected, rtol=1e-3)
+
+  def _testSymmetricBinary(self, op, a, b, expected, equality_test=None):
+    self._testBinary(op, a, b, expected, equality_test)
+    self._testBinary(op, b, a, expected, equality_test)
 
   def ListsAreClose(self, result, expected, rtol):
     """Tests closeness of two lists of floats."""
@@ -193,6 +198,16 @@ class BinaryOpsTest(XLATestCase):
           np.array([3, 3, -1, -9, -8], dtype=dtype),
           np.array([2, -2, 7, 2, -4], dtype=dtype),
           expected=np.array([1, -1, 0, -4, 2], dtype=dtype))
+      self._testSymmetricBinary(
+          bitwise_ops.bitwise_and,
+          np.array([0b1, 0b101, 0b1000], dtype=dtype),
+          np.array([0b0, 0b101, 0b1001], dtype=dtype),
+          expected=np.array([0b0, 0b101, 0b1000], dtype=dtype))
+      self._testSymmetricBinary(
+          bitwise_ops.bitwise_or,
+          np.array([0b1, 0b101, 0b1000], dtype=dtype),
+          np.array([0b0, 0b101, 0b1001], dtype=dtype),
+          expected=np.array([0b1, 0b101, 0b1001], dtype=dtype))
 
   def testNumericOps(self):
     for dtype in self.numeric_types:

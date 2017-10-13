@@ -138,7 +138,7 @@ def _process_list_value(name, parse_fn, var_type, m_dict, values,
 
 
 def parse_values(values, type_map):
-  """Parses hyperparameter values from a string into a python map..
+  """Parses hyperparameter values from a string into a python map.
 
   `values` is a string containing comma-separated `name=value` pairs.
   For each pair, the value of the hyperparameter named `name` is set to

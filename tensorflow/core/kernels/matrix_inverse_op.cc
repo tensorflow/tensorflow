@@ -109,18 +109,19 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                                 input.dim_size(ndims - 2), " != ", n),
         done);
 
+    // By definition, an empty matrix's inverse is an empty matrix.
+    if (input.NumElements() == 0) {
+      context->set_output(0, input);
+      done();
+      return;
+    }
+
     // Allocate output.
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(context,
                          context->forward_input_or_allocate_output(
                              {0}, 0, input.shape(), &output),
                          done);
-
-    // By definition, an empty matrix's inverse is an empty matrix.
-    if (input.NumElements() == 0) {
-      done();
-      return;
-    }
 
     // TODO(rmlarsen): Convert to std::make_unique when available.
     std::unique_ptr<CudaSolver> solver(new CudaSolver(context));

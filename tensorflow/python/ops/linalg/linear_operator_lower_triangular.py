@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
 
@@ -198,7 +199,7 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
         math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
+    rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     return linalg_ops.matrix_triangular_solve(
         self._tril, rhs, lower=True, adjoint=adjoint)
 

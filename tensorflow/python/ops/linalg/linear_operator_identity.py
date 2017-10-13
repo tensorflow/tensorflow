@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
 
@@ -345,7 +346,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     # Note that adjoint has no effect since this matrix is self-adjoint.
-    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
+    x = linalg.adjoint(x) if adjoint_arg else x
     if self._assert_proper_shapes:
       aps = linear_operator_util.assert_compatible_matrix_dimensions(self, x)
       x = control_flow_ops.with_dependencies([aps], x)
@@ -644,7 +645,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         message="LinearOperator was not self-adjoint")
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
-    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
+    x = linalg.adjoint(x) if adjoint_arg else x
     if adjoint:
       matrix = self._multiplier_matrix_conj
     else:
@@ -662,7 +663,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         self._abs_multiplier)
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
+    rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     if adjoint:
       matrix = self._multiplier_matrix_conj
     else:

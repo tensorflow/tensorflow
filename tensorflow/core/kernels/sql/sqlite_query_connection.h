@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SQL_SQLITE_QUERY_CONNECTION_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SQL_SQLITE_QUERY_CONNECTION_H_
 
-#include "sqlite3.h"
+#include <memory>
+
 #include "tensorflow/core/kernels/sql/query_connection.h"
+#include "tensorflow/core/lib/db/sqlite.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -33,14 +36,14 @@ class SqliteQueryConnection : public QueryConnection {
                  bool* end_of_sequence) override;
 
  private:
-  // Executes the query string `query_`.
-  Status ExecuteQuery();
+  // Prepares the query string `query_`.
+  Status PrepareQuery();
   // Fills `tensor` with the column_index_th element of the current row of
   // `stmt_`.
   void FillTensorWithResultSetEntry(const DataType& data_type, int column_index,
                                     Tensor* tensor);
-  sqlite3* db_ = nullptr;
-  sqlite3_stmt* stmt_ = nullptr;
+  std::unique_ptr<db::Sqlite> db_ = nullptr;
+  std::unique_ptr<db::SqliteStatement> stmt_ = nullptr;
   int column_count_ = 0;
   string query_;
   DataTypeVector output_types_;

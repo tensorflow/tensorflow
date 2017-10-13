@@ -1720,6 +1720,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":linalg_ops",
         ":math_ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
     ],
 )
 
@@ -3395,6 +3396,7 @@ cuda_py_test(
         ":training",
         ":platform_test",
         ":client_testlib",
+        ":variable_scope",
         "//third_party/py/numpy",
     ],
 )

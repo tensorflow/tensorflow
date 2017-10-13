@@ -272,3 +272,79 @@ class _RestructuredDataset(dataset_ops.Dataset):
   @property
   def output_shapes(self):
     return self._output_shapes
+
+
+class _MapAndBatchDataset(dataset_ops.MapDataset):
+  """A `Dataset` that maps a function over a batch of elements."""
+
+  def __init__(self, input_dataset, map_func, batch_size, num_parallel_batches):
+    """See `Dataset.map()` for details."""
+    super(_MapAndBatchDataset, self).__init__(input_dataset, map_func)
+
+    self._batch_size = ops.convert_to_tensor(
+        batch_size, dtype=dtypes.int64, name="batch_size")
+    self._num_parallel_batches = ops.convert_to_tensor(
+        num_parallel_batches, dtype=dtypes.int64, name="num_parallel_batches")
+
+  def _as_variant_tensor(self):
+    # pylint: disable=protected-access
+    input_resource = self._input_dataset._as_variant_tensor()
+    return gen_dataset_ops.map_and_batch_dataset(
+        input_resource,
+        self._map_func.captured_inputs,
+        f=self._map_func,
+        batch_size=self._batch_size,
+        num_parallel_batches=self._num_parallel_batches,
+        output_types=nest.flatten(self.output_types),
+        output_shapes=nest.flatten(self.output_shapes))
+    # pylint: enable=protected-access
+
+  @property
+  def output_shapes(self):
+    return nest.pack_sequence_as(self._output_shapes, [
+        tensor_shape.vector(tensor_util.constant_value(
+            self._batch_size)).concatenate(s)
+        for s in nest.flatten(self._output_shapes)
+    ])
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+
+def map_and_batch(map_func, batch_size, num_parallel_batches=1):
+  """Fused implementation of `map` and `batch`.
+
+  Maps `map_func` across `batch_size` consecutive elements of this dataset
+  and then combines them into a batch. Similarly to `batch_and_drop_remainder`,
+  if the batch size does not evenly divide the input dataset size, this
+  transformation will drop the final smaller element.
+
+
+  Functionally, it is equivalent to `map` followed by
+  `batch_and_drop_remainder`. However, by fusing the two transformations
+  together, the implementation can be more efficient. This transformation is a
+  stop gap solution for performance critical workloads. Once automatic input
+  pipeline optimization are implemented, the fusing of map and batch will not
+  need to be exposed at the API level and this method will be removed.
+
+  Args:
+    map_func: A function mapping a nested structure of tensors to another
+      nested structure of tensors.
+    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      consecutive elements of this dataset to combine in a single batch.
+    num_parallel_batches: A `tf.int64` scalar `tf.Tensor`, representing the
+      number of batches to create in parallel. On one hand, higher values can
+      help mitigate the effect of stragglers. On the other hand, higher values
+      can increasing contention if CPU is scarce.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    @{tf.contrib.data.Dataset.apply}.
+  """
+
+  def _apply_fn(dataset):
+    return _MapAndBatchDataset(dataset, map_func, batch_size,
+                               num_parallel_batches)
+
+  return _apply_fn
