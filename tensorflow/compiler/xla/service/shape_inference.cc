@@ -323,10 +323,11 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       return arg;
 
     case UNOP_NOT:
-      if (arg.element_type() != PRED) {
+      if (arg.element_type() != PRED &&
+          !primitive_util::IsIntegralType(arg.element_type())) {
         return InvalidArgument(
-            "expected pred element type in argument to logical-not operation; "
-            "got %s",
+            "expected pred or an integral element type in argument to not "
+            "operation; got %s",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
@@ -752,15 +753,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
     case BINOP_AND:
     case BINOP_OR:
-      if (lhs.element_type() != PRED) {
+      if (lhs.element_type() != PRED &&
+          !primitive_util::IsIntegralType(lhs.element_type())) {
         return InvalidArgument(
-            "expected pred element type in argument to logical and/or "
-            "operation; got %s",
+            "expected pred or integral type in argument to and/or operation; "
+            "got %s",
             PrimitiveType_Name(lhs.element_type()).c_str());
       }
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
-
     case BINOP_EQ:
     case BINOP_GE:
     case BINOP_GT:

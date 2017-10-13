@@ -1168,6 +1168,28 @@ TEST_F(OpTest, BiasAddV1) {
   });
 }
 
+TEST_F(OpTest, BitwiseAnd) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BitwiseAnd")
+                                             .RandomInput(type, dims.first)
+                                             .RandomInput(type, dims.second)
+                                             .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, BitwiseOr) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BitwiseOr")
+                                             .RandomInput(type, dims.first)
+                                             .RandomInput(type, dims.second)
+                                             .Attr("T", type));
+  });
+}
+
 TEST_F(OpTest, BroadcastArgs) {
   Repeatedly([this]() {
     // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
@@ -1729,6 +1751,14 @@ TEST_F(OpTest, GreaterEqual) {
   });
 }
 
+TEST_F(OpTest, Invert) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Invert").RandomInput(type).Attr("T", type));
+  });
+}
+
 TEST_F(OpTest, L2Loss) {
   Repeatedly([this]() {
     DataType type = DT_FLOAT;
@@ -1791,28 +1821,28 @@ TEST_F(OpTest, Log1p) {
   });
 }
 
-TEST_F(OpTest, BooleanAnd) {
+TEST_F(OpTest, LogicalAnd) {
   Repeatedly([this]() {
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(
-        OpTestBuilder("BooleanAnd")
+        OpTestBuilder("LogicalAnd")
             .RandomInput(DT_BOOL, dims.first)
             .RandomInput(DT_BOOL, dims.second));
   });
 }
 
-TEST_F(OpTest, BooleanNot) {
+TEST_F(OpTest, LogicalNot) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
-        OpTestBuilder("BooleanNot").RandomInput(DT_BOOL));
+        OpTestBuilder("LogicalNot").RandomInput(DT_BOOL));
   });
 }
 
-TEST_F(OpTest, BooleanOr) {
+TEST_F(OpTest, LogicalOr) {
   Repeatedly([this]() {
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(
-        OpTestBuilder("BooleanOr")
+        OpTestBuilder("LogicalOr")
             .RandomInput(DT_BOOL, dims.first)
             .RandomInput(DT_BOOL, dims.second));
   });
