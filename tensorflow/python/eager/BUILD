@@ -322,6 +322,7 @@ py_test(
     srcs = ["graph_callable_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":backprop",
         ":graph_callable",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:function",

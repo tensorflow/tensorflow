@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import graph_callable
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -232,6 +233,17 @@ class GraphCallableTest(test.TestCase):
 
     self.assertTrue(([1, 2, 3] == my_function(
         constant_op.constant([1, 2, 3], dtype=dtypes.float32)).numpy()).all())
+
+  def testGradients(self):
+    @graph_callable.graph_callable([])
+    def my_function():
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.constant_initializer(3.), shape=())
+      return v * v
+
+    grad_fn = backprop.implicit_grad(my_function)
+    grads_and_vars = list(zip(*grad_fn()))
+    self.assertEqual(6., grads_and_vars[0][0].numpy())
 
 
 if __name__ == "__main__":
