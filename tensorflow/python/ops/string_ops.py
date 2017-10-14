@@ -92,7 +92,7 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
-def string_utf8_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
+def string_split_utf8(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each

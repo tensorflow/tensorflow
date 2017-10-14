@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
@@ -151,7 +150,7 @@ class StringSplitOpTest(test.TestCase):
     strings = [b"\xE6\x82\xA8\xE5\xA5\xBD", b"\xE4\xB8\x96\xE7\x95\x8C"]
 
     with self.test_session() as sess:
-      tokens = string_ops.string_utf8_split(strings, delimiter="")
+      tokens = string_ops.string_split_utf8(strings, delimiter="")
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
       self.assertAllEqual(values, [b"\xE6\x82\xA8", b"\xE5\xA5\xBD",
@@ -164,7 +163,7 @@ class StringSplitOpTest(test.TestCase):
                b"\xE4\xB8\x96\xE7\x95\x8C\xE6\x82\xA8\xE5\xA5\xBD"]
 
     with self.test_session() as sess:
-      tokens = string_ops.string_utf8_split(strings, delimiter=b"\xE6\x82\xA8")
+      tokens = string_ops.string_split_utf8(strings, delimiter=b"\xE6\x82\xA8")
       indices, values, shape = sess.run(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
       self.assertAllEqual(values,
@@ -175,24 +174,24 @@ class StringSplitOpTest(test.TestCase):
   def testStringSplitWithInvalidUtf8(self):
    # Invalid char
     strings1 = [b"\xE2\x28\xA1"]
-    tokens1 = string_ops.string_utf8_split(strings1, delimiter="")
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Invalid UTF8 encoding at position of 1"):
+    tokens1 = string_ops.string_split_utf8(strings1, delimiter="")
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                 "Invalid UTF8 encoding at byte of 1"):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens1)
 
     # Not enough char
     strings2 = [b"\xE6\x82"]
-    tokens2 = string_ops.string_utf8_split(strings2, delimiter="")
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+    tokens2 = string_ops.string_split_utf8(strings2, delimiter="")
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                  "Not enough characters for UTF8 encoding"):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens2)
 
     # Invalid delimiter
     strings3 = [b"\xE6\x82\xA8\xE5\xA5\xBD"]
-    tokens3 = string_ops.string_utf8_split(strings3, delimiter=b"\xE6")
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+    tokens3 = string_ops.string_split_utf8(strings3, delimiter=b"\xE6")
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                  "Not enough characters for UTF8 encoding"):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens3)

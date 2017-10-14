@@ -454,17 +454,17 @@ TEST(SplitUTF8, Basic) {
                           "\xE5\xA5\xBD", &result));
   EXPECT_EQ(result.size(), 2);
 
-  EXPECT_EQ(errors::InvalidArgument("Invalid UTF8 encoding at position of 1"),
+  EXPECT_EQ(errors::InvalidArgument("Invalid UTF8 encoding at byte of 1"),
             str_util::SplitUTF8("\xE2\x28\xA1", "", &result));
 
   EXPECT_EQ(errors::InvalidArgument("Not enough characters for UTF8 encoding"),
             str_util::SplitUTF8("\xE6\x82", "", &result));
 }
 
-TEST(ValidUTF8, Basic) {
-  EXPECT_EQ(Status::OK(), str_util::ValidUTF8("\xE6\x82\xA8"));
+TEST(ValidUTF8Character, Basic) {
+  EXPECT_EQ(Status::OK(), str_util::ValidUTF8Character("\xE6\x82\xA8"));
   EXPECT_EQ(errors::InvalidArgument("Not enough characters for UTF8 encoding"),
-            str_util::ValidUTF8("\xE6"));
+            str_util::ValidUTF8Character("\xE6"));
 }
 
 }  // namespace tensorflow

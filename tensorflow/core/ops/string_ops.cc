@@ -139,7 +139,7 @@ REGISTER_OP("StringStrip")
     .Output("output: string")
     .SetShapeFn(shape_inference::UnchangedShape);
 
-REGISTER_OP("StringUTF8Split")
+REGISTER_OP("StringSplitUTF8")
     .Input("input: string")
     .Input("delimiter: string")
     .Output("indices: int64")

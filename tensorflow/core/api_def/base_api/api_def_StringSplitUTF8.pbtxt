@@ -1,15 +1,15 @@
 op {
-  graph_op_name: "StringUTF8Split"
+  graph_op_name: "StringSplitUTF8"
   in_arg {
     name: "input"
     description: <<END
-1-D. Strings to split.
+1-D. UTF-8 encoded strings to split.
 END
   }
   in_arg {
     name: "delimiter"
     description: <<END
-1-D. Delimiter characters (bytes), or empty string.
+1-D. Empty string or a single UTF-8 encoded unicode character.
 END
   }
   out_arg {

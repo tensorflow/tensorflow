@@ -382,7 +382,7 @@ SparseTensorDenseMatMul
 
 # string_ops
 StringSplit
-StringUTF8Split
+StringSplitUTF8
 
 # user_ops
 Fact

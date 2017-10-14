@@ -448,7 +448,13 @@ Status SplitUTF8(StringPiece text, const string& delim,
   bool advance = true;
   for (size_t i = 0; i < text.size(); ++i) {
     if (off == i) {
-      if ((text[i] & 0x80) == 0x00) {
+      size_t num_bytes = 0;
+      Status s = UTF8CharNumBytes(text.substr(off, 4), &num_bytes);
+      if (!s.ok()) {
+        result->clear();
+        return s;
+      }
+      if (num_bytes == 1) {
         string entry = text.substr(off, 1).ToString();
         if (delim == "") {
           // If delim is "" then always advance
@@ -468,41 +474,29 @@ Status SplitUTF8(StringPiece text, const string& delim,
           advance = true;
         }
         off++;
-      } else if ((text[i] & 0xE0) == 0xC0) {
-        len = 2;
-      } else if ((text[i] & 0xF0) == 0xE0) {
-        len = 3;
-      } else if ((text[i] & 0xF8) == 0xF0) {
-        len = 4;
       } else {
-        result->clear();
-        return errors::InvalidArgument("Invalid UTF8 encoding at position of ",
-                                       i);
+        len = num_bytes;
       }
     } else {
       if (TF_PREDICT_FALSE((text[i] & 0xC0) != 0x80)) {
         result->clear();
-        return errors::InvalidArgument("Invalid UTF8 encoding at position of ",
-                                       i);
+        return errors::InvalidArgument("Invalid UTF8 encoding at byte of ", i);
       }
       if (off + len == i + 1) {
         string entry = text.substr(off, len).ToString();
         if (delim == "") {
           // If delim is "" then always advance
           result->emplace_back(entry);
-        } else if (delim != entry) {
-          // If delim is not the current char, then advance only once
-          if (advance) {
-            advance = false;
-            result->emplace_back(entry);
-          } else {
-            (*result)[result->size() - 1] =
-                (*result)[result->size() - 1] + entry;
-          }
-        } else {
+        } else if (delim == entry) {
           // If delim is the current char, then set the advance but
           // not append the string.
           advance = true;
+        } else if (advance) {
+          // If delim is not the current char, then advance only once
+          advance = false;
+          result->emplace_back(entry);
+        } else {
+          (*result)[result->size() - 1] = (*result)[result->size() - 1] + entry;
         }
         off += len;
       }
@@ -515,7 +509,22 @@ Status SplitUTF8(StringPiece text, const string& delim,
   return Status::OK();
 }
 
-Status ValidUTF8(StringPiece text) {
+Status UTF8CharNumBytes(StringPiece text, size_t* num_bytes) {
+  if ((text[0] & 0x80) == 0x00) {
+    *num_bytes = 1;
+  } else if ((text[0] & 0xE0) == 0xC0) {
+    *num_bytes = 2;
+  } else if ((text[0] & 0xF0) == 0xE0) {
+    *num_bytes = 3;
+  } else if ((text[0] & 0xF8) == 0xF0) {
+    *num_bytes = 4;
+  } else {
+    return errors::InvalidArgument("Invalid UTF8 encoding at position of 0");
+  }
+  return Status::OK();
+}
+
+Status ValidUTF8Character(StringPiece text) {
   // Bytes    Byte 1    Byte 2    Byte 3    Byte 4
   //   1     0xxxxxxx
   //   2     110xxxxx  10xxxxxx
@@ -525,17 +534,7 @@ Status ValidUTF8(StringPiece text) {
     return Status::OK();
   }
   size_t len = 0;
-  if ((text[0] & 0x80) == 0x00) {
-    len = 1;
-  } else if ((text[0] & 0xE0) == 0xC0) {
-    len = 2;
-  } else if ((text[0] & 0xF0) == 0xE0) {
-    len = 3;
-  } else if ((text[0] & 0xF8) == 0xF0) {
-    len = 4;
-  } else {
-    return errors::InvalidArgument("Invalid UTF8 encoding at position of 0");
-  }
+  TF_RETURN_IF_ERROR(UTF8CharNumBytes(text, &len));
   if (text.size() != len) {
     return errors::InvalidArgument("Not enough characters for UTF8 encoding");
   }

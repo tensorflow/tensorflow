@@ -133,8 +133,8 @@ template <typename Predicate>
 std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 
 // Split "text" into into a vector of strings where each string
-// in the array is a string of ASII or unicode chars. The `delim`
-// is a string with 0 or 1 chars.
+// in the array is a string of ASII or unicode chars. The delim
+// is a single UTF-8-encoded unicode character or the empty string.
 // If the delim is empty, then each string in the array consists of
 // one ASCII or one unicode char. If successful, the result
 // is passed to "*result" and returns OK. Otherwise returns error.
@@ -142,7 +142,10 @@ Status SplitUTF8(StringPiece text, const string& delim,
                  std::vector<string>* result);
 
 // Validate "text" as a UTF8 encoding
-Status ValidUTF8(StringPiece text);
+Status ValidUTF8Character(StringPiece text);
+
+// Check number of bytes for a UTF8 encoded unicode char
+Status UTF8CharNumBytes(StringPiece text, size_t* num_bytes);
 
 // Split "text" at "delim" characters, and parse each component as
 // an integer.  If successful, adds the individual numbers in order

@@ -28,8 +28,8 @@ namespace tensorflow {
 
 namespace {
 
-std::vector<string> Split(const string& str, const string& delimiter,
-                          const bool skipEmpty) {
+std::vector<string> SplitString(const string& str, const string& delimiter,
+                                const bool skipEmpty) {
   if (!delimiter.empty()) {
     if (skipEmpty) {
       return str_util::Split(str, delimiter, str_util::SkipEmpty());
@@ -45,19 +45,16 @@ std::vector<string> Split(const string& str, const string& delimiter,
 
 }  // namespace
 
-class StringSplitOp : public OpKernel {
+class StringSplitOpBase : public OpKernel {
  public:
-  explicit StringSplitOp(OpKernelConstruction* context)
-      : OpKernel(context), skip_empty_(true) {
-    bool skip_empty;
-    // By default skip_empty_ is true. We only get the value from attr if it is
-    // available, so that it is backward compatible.
-    if (context->GetAttr("skip_empty", &skip_empty).ok()) {
-      skip_empty_ = skip_empty;
-    }
-  }
+  explicit StringSplitOpBase(OpKernelConstruction* c) : OpKernel(c) {}
 
-  void Compute(OpKernelContext* ctx) override {
+  virtual Status ValidateDelimiter(const string& delimiter) = 0;
+
+  virtual Status Split(const string& input, const string& delimiter,
+                       std::vector<string>* parts) = 0;
+
+  void Compute(OpKernelContext* ctx) {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_tensor->shape()),
@@ -75,80 +72,7 @@ class StringSplitOp : public OpKernel {
                                 delimiter_tensor->shape().DebugString()));
     const auto delimiter_vec = delimiter_tensor->flat<string>();
     const string& delimiter = delimiter_vec(0);
-    // Empty delimiter means split the input character by character.
-    std::vector<string> tokens;
-    // Guess that we'll be unpacking a handful of tokens per example.
-    static constexpr int kReserveSize = 4;
-    tokens.reserve(batch_size * kReserveSize);
-
-    int64 output_size = 0;
-    int64 max_num_entries = 0;
-    std::vector<int64> num_indices(batch_size);
-    for (int64 i = 0; i < batch_size; ++i) {
-      std::vector<string> parts = Split(input_vec(i), delimiter, skip_empty_);
-      int64 n_entries = parts.size();
-      num_indices[i] = n_entries;
-      output_size += n_entries;
-      max_num_entries = std::max(max_num_entries, n_entries);
-      tokens.insert(tokens.end(), parts.begin(), parts.end());
-    }
-
-    Tensor* sp_indices_t;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({output_size, 2}),
-                                             &sp_indices_t));
-    Tensor* sp_tokens_t;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_output(1, TensorShape({output_size}), &sp_tokens_t));
-    Tensor* sp_shape_t;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({2}), &sp_shape_t));
-
-    auto sp_indices = sp_indices_t->matrix<int64>();
-    auto sp_tokens = sp_tokens_t->vec<string>();
-    auto sp_shape = sp_shape_t->vec<int64>();
-    sp_shape(0) = batch_size;
-    sp_shape(1) = max_num_entries;
-    size_t c = 0;
-    for (size_t i = 0; i < batch_size; ++i) {
-      for (size_t j = 0; j < num_indices[i]; ++j) {
-        sp_indices(c, 0) = i;
-        sp_indices(c, 1) = j;
-        sp_tokens(c) = tokens[c];
-        ++c;
-      }
-    }
-  }
-
- private:
-  bool skip_empty_;
-};
-
-class StringUTF8SplitOp : public OpKernel {
- public:
-  explicit StringUTF8SplitOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    // The skip_empty is not optional (unlike StringSplitOp)
-    OP_REQUIRES_OK(context, context->GetAttr("skip_empty", &skip_empty_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor* input_tensor;
-    OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_tensor->shape()),
-                errors::InvalidArgument("input must be a vector, got shape: ",
-                                        input_tensor->shape().DebugString()));
-
-    const auto input_vec = input_tensor->vec<string>();
-    const int64 batch_size = input_vec.dimension(0);
-
-    const Tensor* delimiter_tensor;
-    OP_REQUIRES_OK(ctx, ctx->input("delimiter", &delimiter_tensor));
-    OP_REQUIRES(ctx, delimiter_tensor->shape().dims() <= 1,
-                errors::InvalidArgument(
-                    "delimiter must be scalar or vector, got shape: ",
-                    delimiter_tensor->shape().DebugString()));
-    const auto delimiter_vec = delimiter_tensor->flat<string>();
-    const string& delimiter = delimiter_vec(0);
-    OP_REQUIRES_OK(ctx, str_util::ValidUTF8(delimiter));
+    OP_REQUIRES_OK(ctx, ValidateDelimiter(delimiter));
     // Empty delimiter means split the input character by character.
     std::vector<string> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
@@ -160,7 +84,7 @@ class StringUTF8SplitOp : public OpKernel {
     std::vector<int64> num_indices(batch_size);
     for (int64 i = 0; i < batch_size; ++i) {
       std::vector<string> parts;
-      OP_REQUIRES_OK(ctx, str_util::SplitUTF8(input_vec(i), delimiter, &parts));
+      OP_REQUIRES_OK(ctx, Split(input_vec(i), delimiter, &parts));
       int64 n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;
@@ -193,13 +117,50 @@ class StringUTF8SplitOp : public OpKernel {
     }
   }
 
- private:
+ protected:
   bool skip_empty_;
+};
+
+class StringSplitOp : public StringSplitOpBase {
+ public:
+  explicit StringSplitOp(OpKernelConstruction* context)
+      : StringSplitOpBase(context) {
+    skip_empty_ = true;
+    // By default skip_empty_ is true. We only get the value from attr if it is
+    // available, so that it is backward compatible.
+    context->GetAttr("skip_empty", &skip_empty_);
+  }
+
+  Status ValidateDelimiter(const string& delimiter) { return Status::OK(); }
+
+  Status Split(const string& input, const string& delimiter,
+               std::vector<string>* parts) {
+    *parts = SplitString(input, delimiter, skip_empty_);
+    return Status::OK();
+  }
+};
+
+class StringSplitUTF8Op : public StringSplitOpBase {
+ public:
+  explicit StringSplitUTF8Op(OpKernelConstruction* context)
+      : StringSplitOpBase(context) {
+    // The skip_empty is not optional (unlike StringSplitOp)
+    OP_REQUIRES_OK(context, context->GetAttr("skip_empty", &skip_empty_));
+  }
+
+  Status ValidateDelimiter(const string& delimiter) {
+    return str_util::ValidUTF8Character(delimiter);
+  }
+
+  Status Split(const string& input, const string& delimiter,
+               std::vector<string>* parts) {
+    return str_util::SplitUTF8(input, delimiter, parts);
+  }
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringSplit").Device(DEVICE_CPU), StringSplitOp);
 
-REGISTER_KERNEL_BUILDER(Name("StringUTF8Split").Device(DEVICE_CPU),
-                        StringUTF8SplitOp);
+REGISTER_KERNEL_BUILDER(Name("StringSplitUTF8").Device(DEVICE_CPU),
+                        StringSplitUTF8Op);
 
 }  // namespace tensorflow
