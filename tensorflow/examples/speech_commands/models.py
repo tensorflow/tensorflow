@@ -326,7 +326,7 @@ def create_low_latency_conv_model(fingerprint_input, model_settings,
   first_filter_height = input_time_size
   first_filter_count = 186
   first_filter_stride_x = 1
-  first_filter_stride_y = 4
+  first_filter_stride_y = 1
   first_weights = tf.Variable(
       tf.truncated_normal(
           [first_filter_height, first_filter_width, 1, first_filter_count],
