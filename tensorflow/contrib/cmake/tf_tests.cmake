@@ -199,7 +199,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
     # flaky tests
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"  # takes very long to run
     "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/internal/run_metadata_test.py"
     # Loading resources in contrib doesn't seem to work on Windows
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/random_forest_test.py"
@@ -225,11 +225,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/tensor_array_ops_test.py"  # Needs portpicker.
-      # Matrix_set_diag failing on GPU on windows.
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cholesky_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/init_ops_test.py"
       # Type error in testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/iterator_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/self_adjoint_eig_op_test.py"
@@ -251,7 +246,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/training/server_lib_test.py"  # Test occasionally deadlocks.
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_multi_gpu_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"  # numerical issues
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg_grad_test.py"  # cudaSolver handle creation fails.
 
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops     
       # Dataset tests
