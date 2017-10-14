@@ -2999,6 +2999,7 @@ cc_library(
         ":softsign_op",
         ":topk_op",
         ":xent_op",
+        ":nth_element_op",
     ],
 )
 
@@ -3077,6 +3078,12 @@ tf_kernel_library(
     name = "topk_op",
     prefix = "topk_op",
     deps = NN_DEPS + if_cuda(["@cub_archive//:cub"]),
+)
+
+tf_kernel_library(
+    name = "nth_element_op",
+    prefix = "nth_element_op",
+    deps = NN_DEPS,
 )
 
 tf_kernel_library(
