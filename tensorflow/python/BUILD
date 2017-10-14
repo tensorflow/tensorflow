@@ -70,6 +70,7 @@ py_library(
         ":io_ops",
         ":layers",
         ":lib",
+        ":manip_ops",
         ":math_ops",
         ":metrics",
         ":nn",
@@ -1303,6 +1304,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "manip_ops_gen",
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
     visibility = [
         "//learning/brain/google/python/ops:__pkg__",
@@ -1617,6 +1626,8 @@ py_library(
         ":linalg_grad",
         ":linalg_ops",
         ":logging_ops",
+        ":manip_grad",
+        ":manip_ops",
         ":math_grad",
         ":math_ops",
         ":platform",
@@ -1734,6 +1745,29 @@ py_library(
         ":framework_ops",
         ":linalg_ops_gen",
         ":math_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "manip_grad",
+    srcs = ["ops/manip_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":manip_ops",
+    ],
+)
+
+py_library(
+    name = "manip_ops",
+    srcs = ["ops/manip_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":manip_ops_gen",
         "//third_party/py/numpy",
     ],
 )
@@ -2187,6 +2221,8 @@ py_library(
         ":linalg_ops",
         ":logging_ops",
         ":lookup_ops",
+        ":manip_grad",
+        ":manip_ops",
         ":math_grad",
         ":math_ops",
         ":numerics",

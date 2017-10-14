@@ -243,6 +243,8 @@ tensorflow/core/ops/parsing_ops.cc
 tensorflow/core/ops/no_op.cc
 tensorflow/core/ops/nn_ops.cc
 tensorflow/core/ops/nn_grad.cc
+tensorflow/core/ops/manip_ops.cc
+tensorflow/core/ops/manip_grad.cc
 tensorflow/core/ops/math_ops.cc
 tensorflow/core/ops/math_grad.cc
 tensorflow/core/ops/logging_ops.cc
