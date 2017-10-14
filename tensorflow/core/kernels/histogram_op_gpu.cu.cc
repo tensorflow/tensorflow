@@ -18,8 +18,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/histogram_op.h"
-#include <cmath>
-#include <vector>
 #include "external/cub_archive/cub/device/device_histogram.cuh"
 #include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
 #include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
@@ -38,24 +36,16 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
+// TODO(yongtang) int64 of atomicAdd is not supported yet.
 template <typename T, typename Tout>
 struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<T, 1>::ConstTensor& values,
                         const typename TTypes<T, 1>::ConstTensor& value_range,
                         int32 nbins, typename TTypes<Tout, 1>::Tensor& out) {
-    // It seems int64 of atomicAdd is not supported yet.
-    // We use int32 and then cast to int64 for output
     tensorflow::AllocatorAttributes pinned_allocator;
     pinned_allocator.set_on_host(true);
     pinned_allocator.set_gpu_compatible(true);
-
-    Tensor histogram_tensor;
-    TF_RETURN_IF_ERROR(context->allocate_temp(
-        DataTypeToEnum<int32>::value, TensorShape({out.size()}),
-        &histogram_tensor, pinned_allocator));
-    auto histogram = histogram_tensor.flat<int32>();
-    histogram.setZero();
 
     Tensor levels_tensor;
     TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -75,7 +65,7 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
 
     size_t temp_storage_bytes = 0;
     const T* d_samples = values.data();
-    int32* d_histogram = histogram.data();
+    Tout* d_histogram = out.data();
     int num_levels = levels.size();
     T* d_levels = levels.data();
     int num_samples = values.size();
@@ -115,7 +105,6 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
       return errors::Internal("Could not launch HistogramFixedWidthKernel: ",
                               cudaGetErrorString(err), ".");
     }
-    out = histogram.template cast<Tout>();
 
     return Status::OK();
   }
@@ -123,9 +112,8 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
 
 }  // end namespace functor
 
-#define REGISTER_GPU_SPEC(type)                                                \
-  template struct functor::HistogramFixedWidthFunctor<GPUDevice, type, int32>; \
-  template struct functor::HistogramFixedWidthFunctor<GPUDevice, type, int64>;
+#define REGISTER_GPU_SPEC(type) \
+  template struct functor::HistogramFixedWidthFunctor<GPUDevice, type, int32>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SPEC);
 #undef REGISTER_GPU_SPEC

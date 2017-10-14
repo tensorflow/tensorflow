@@ -52,6 +52,7 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     // With [a, b]:
     //   step = (b - a) / nbins
     //   (x - a) / step
+    // , then the entries are mapped to output.
     temp.device(d) =
         ((values.cwiseMax(value_range(0)) - values.constant(value_range(0)))
              .template cast<double>() /
@@ -59,6 +60,7 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
             .template cast<int32>()
             .cwiseMin(nbins - 1);
 
+    out.setZero();
     for (int32 i = 0; i < temp.size(); i++) {
       out(temp(i)) += Tout(1);
     }
@@ -117,23 +119,14 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_KERNELS(type)                                           \
-  REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")                    \
-                              .Device(DEVICE_GPU)                        \
-                              .HostMemory("value_range")                 \
-                              .HostMemory("nbins")                       \
-                              .HostMemory("out")                         \
-                              .TypeConstraint<type>("T")                 \
-                              .TypeConstraint<int32>("Tout"),            \
-                          HistogramFixedWidthOp<GPUDevice, type, int32>) \
-  REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")                    \
-                              .Device(DEVICE_GPU)                        \
-                              .HostMemory("value_range")                 \
-                              .HostMemory("nbins")                       \
-                              .HostMemory("out")                         \
-                              .TypeConstraint<type>("T")                 \
-                              .TypeConstraint<int64>("Tout"),            \
-                          HistogramFixedWidthOp<GPUDevice, type, int64>)
+#define REGISTER_KERNELS(type)                                \
+  REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")         \
+                              .Device(DEVICE_GPU)             \
+                              .HostMemory("value_range")      \
+                              .HostMemory("nbins")            \
+                              .TypeConstraint<type>("T")      \
+                              .TypeConstraint<int32>("Tout"), \
+                          HistogramFixedWidthOp<GPUDevice, type, int32>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
