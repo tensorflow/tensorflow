@@ -2993,13 +2993,13 @@ cc_library(
         ":in_topk_op",
         ":l2loss_op",
         ":lrn_op",
+        ":nth_element_op",
         ":relu_op",
         ":softmax_op",
         ":softplus_op",
         ":softsign_op",
         ":topk_op",
         ":xent_op",
-        ":nth_element_op",
     ],
 )
 
