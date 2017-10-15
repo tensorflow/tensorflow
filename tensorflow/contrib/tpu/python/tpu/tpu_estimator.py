@@ -1321,10 +1321,11 @@ class TPUEstimator(estimator_lib.Estimator):
     return [_TPUStopAtStepHook(self._iterations_per_training_loop,
                                steps, max_steps)]
 
-  def _convert_eval_steps_to_hooks(self, steps):
+  def _convert_eval_steps_to_hooks(self, steps, log_progress):
     if _is_running_on_cpu(self._use_tpu, model_fn_lib.ModeKeys.EVAL,
                           self._eval_batch_size):
-      return super(TPUEstimator, self)._convert_eval_steps_to_hooks(steps)
+      return super(TPUEstimator, self)._convert_eval_steps_to_hooks(
+          steps, log_progress)
 
     if steps is None:
       raise ValueError('Evaluate `steps` must be set on TPU. Cannot be `None`.')
