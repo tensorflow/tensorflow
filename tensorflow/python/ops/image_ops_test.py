@@ -1672,8 +1672,8 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
              image_ops.ResizeMethod.BICUBIC,
              image_ops.ResizeMethod.AREA]
 
-  TYPES = [np.uint8, np.int8, np.int16, np.int32, np.int64,
-           np.float32, np.float64]
+  TYPES = [np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64,
+           np.float16, np.float32, np.float64]
 
   def _assertShapeInference(self, pre_shape, size, post_shape):
     # Try single image resize
