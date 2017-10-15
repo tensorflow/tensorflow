@@ -219,7 +219,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cast_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"  # numerical issues
+      # Numerical issues, calculations off.
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/wals_test.py"  
       # Float division by zero
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
       # Type error in testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU.
@@ -260,7 +262,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/conditional_distribution_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/conditional_transformed_distribution_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/estimator_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops     
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/depthtospace_op_test.py"  # QuantizeV2
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/spacetodepth_op_test.py"  # QuantizeV2
       # Windows Path
       "${tensorflow_source_dir}/tensorflow/contrib/framework/python/ops/checkpoint_ops_test.py" #TODO: Fix path
       # Numpy upgrade needed?
