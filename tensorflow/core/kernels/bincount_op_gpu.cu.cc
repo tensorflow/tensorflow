@@ -31,6 +31,32 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
+template <typename T>
+__global__ void BincountCustomKernel(const int32 size_in, const int32* key,
+                                     const T* value, const int32 size_out,
+                                     T* out) {
+  CUDA_1D_KERNEL_LOOP(i, size_in) {
+    const int32 k = key[i];
+    if (k < 0 || k >= size_out) {
+      continue;
+    }
+    CudaAtomicAdd(out + k, value[i]);
+  }
+}
+
+template <typename T>
+__global__ void BincountCustomKernel(const int32 size_in, const int32* key,
+                                     const T value, const int32 size_out,
+                                     T* out) {
+  CUDA_1D_KERNEL_LOOP(i, size_in) {
+    const int32 k = key[i];
+    if (k < 0 || k >= size_out) {
+      continue;
+    }
+    CudaAtomicAdd(out + k, value);
+  }
+}
+
 namespace functor {
 
 template <typename T>
@@ -46,6 +72,17 @@ struct BincountFunctor<GPUDevice, T> {
     SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
         output.size(), output.data());
 
+    config = GetCudaLaunchConfig(arr.size(), d);
+    if (weights.size() != 0) {
+      BincountCustomKernel<
+          T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          arr.size(), arr.data(), weights.data(), output.size(), output.data());
+    } else {
+      BincountCustomKernel<
+          T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          arr.size(), arr.data(), static_cast<T>(1), output.size(),
+          output.data());
+    }
     return Status::OK();
   }
 };
