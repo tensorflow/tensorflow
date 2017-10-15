@@ -33,6 +33,8 @@ else(tensorflow_BUILD_ALL_KERNELS)
      "${tensorflow_source_dir}/tensorflow/core/kernels/matmul_op.cc"
      "${tensorflow_source_dir}/tensorflow/core/kernels/no_op.h"
      "${tensorflow_source_dir}/tensorflow/core/kernels/no_op.cc"
+     "${tensorflow_source_dir}/tensorflow/core/kernels/ops_util.h"
+     "${tensorflow_source_dir}/tensorflow/core/kernels/ops_util.cc"
      "${tensorflow_source_dir}/tensorflow/core/kernels/sendrecv_ops.h"
      "${tensorflow_source_dir}/tensorflow/core/kernels/sendrecv_ops.cc"
   )
