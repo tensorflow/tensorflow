@@ -59,8 +59,8 @@
 * Fix `tf.contrib.distributions.Affine` incorrectly computing log-det-jacobian.
 * Fix `tf.random_gamma` incorrectly handling non-batch, scalar draws.
 * Resolved a race condition in TensorForest TreePredictionsV4Op.
-* Google Cloud Storage file system and Hadoop file system support are now
-  default build options.
+* Google Cloud Storage file system, Amazon S3 file system, and Hadoop file
+  system support are now default build options.
 * Custom op libraries must link against libtensorflow_framework.so
   (installed at `tf.sysconfig.get_lib()`).
 
