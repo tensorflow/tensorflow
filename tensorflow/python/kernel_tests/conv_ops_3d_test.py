@@ -48,12 +48,15 @@ def GetTestConfigs():
 class Conv3DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
-    if use_gpu and not test_util.CudaSupportsHalfMatMulAndConv():
-      return [dtypes.float32]
+    if use_gpu:
+      if not test_util.CudaSupportsHalfMatMulAndConv():
+        return [dtypes.float32]
+      else:
+        # It is important that float32 comes before float16 here,
+        # as we will be using its gradients as reference for fp16 gradients.
+        return [dtypes.float32, dtypes.float16]
     else:
-      # It is important that float32 comes before float16 here,
-      # as we will be using its gradients as reference for fp16 gradients.
-      return [dtypes.float32, dtypes.float16]
+      return [dtypes.float64, dtypes.float32, dtypes.float16]
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
                             padding, data_format, dtype, use_gpu):
@@ -359,10 +362,13 @@ class Conv3DTest(test.TestCase):
       # TODO(mjanusz): Modify gradient_checker to also provide max relative
       # error and synchronize the tolerance levels between the tests for forward
       # and backward computations.
-      if data_type == dtypes.float32:
+      if data_type == dtypes.float64:
+        tolerance = 1e-8
+      elif data_type == dtypes.float32:
         tolerance = 5e-3
-      else:
+      elif data_type == dtypes.float16:
         tolerance = 0.01
+
 
       with self.test_session(use_gpu=use_gpu):
         orig_input_tensor = constant_op.constant(
