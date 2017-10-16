@@ -727,6 +727,12 @@ class _EagerTensorBase(Tensor):
   def __nonzero__(self):
     return self.__bool__()
 
+  def set_shape(self, shape):
+    if not self.shape.is_compatible_with(shape):
+      raise ValueError(
+          "EagerTensor's shape %s is not compatible with supplied shape %s" %
+          (self.shape, shape))
+
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
@@ -739,9 +745,6 @@ class _EagerTensorBase(Tensor):
   @property
   def name(self):
     raise NotImplementedError("name not supported for Eager Tensors.")
-
-  def set_shape(self, shape):
-    raise NotImplementedError("set_shape not supported for Eager Tensors.")
 
   @property
   def value_index(self):

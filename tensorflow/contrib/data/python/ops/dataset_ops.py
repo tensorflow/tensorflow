@@ -24,11 +24,8 @@ from tensorflow.contrib.data.python.ops import grouping
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
-from tensorflow.python.ops import script_ops
 from tensorflow.python.util import deprecation
 
 
@@ -139,124 +136,8 @@ class Dataset(dataset_ops.Dataset):
     Returns:
       A `Dataset`.
     """
-    if not callable(generator):
-      raise TypeError("`generator` must be callable.")
-    if output_shapes is None:
-      output_shapes = nest.map_structure(
-          lambda _: tensor_shape.TensorShape(None), output_types)
-    else:
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
-
-    flattened_types = nest.flatten(output_types)
-    flattened_shapes = nest.flatten(output_shapes)
-
-    generator_state = dataset_ops.Dataset._GeneratorState(generator)
-
-    def get_iterator_id_map_fn(unused_dummy):
-      """Creates a unique `iterator_id` for each pass over the dataset.
-
-      The "iterator_id" disambiguates between multiple concurrently
-      existing iterators.
-
-      Args:
-        unused_dummy: Ignored value.
-
-      Returns:
-        A `tf.int64` tensor whose value uniquely identifies an iterator in
-        `generator_state`.
-      """
-      return script_ops.py_func(
-          generator_state.get_next_id, [], dtypes.int64, stateful=True)
-
-    def generator_map_fn(iterator_id_t):
-      """Generates the next element from iterator with ID `iterator_id_t`.
-
-      We map this function across an infinite repetition of the
-      `iterator_id_t`, and raise `StopIteration` to terminate the iteration.
-
-      Args:
-        iterator_id_t: A `tf.int64` tensor whose value uniquely identifies
-          the iterator in `generator_state` from which to generate an element.
-
-      Returns:
-        A nested structure of tensors representing an element from the iterator.
-      """
-
-      def generator_py_func(iterator_id):
-        """A `py_func` that will be called to invoke the iterator."""
-        try:
-          values = next(generator_state.get_iterator(iterator_id))
-        except StopIteration:
-          generator_state.iterator_completed(iterator_id)
-          raise StopIteration("Iteration finished.")
-
-        # Use the same _convert function from the py_func() implementation to
-        # convert the returned values to arrays early, so that we can inspect
-        # their values.
-        # pylint: disable=protected-access
-        ret_arrays = [
-            script_ops.FuncRegistry._convert(ret, dtype=dtype.as_numpy_dtype)
-            for ret, dtype in zip(nest.flatten_up_to(output_types, values),
-                                  flattened_types)
-        ]
-        # pylint: enable=protected-access
-
-        # Additional type and shape checking to ensure that the components
-        # of the generated element match the `output_types` and `output_shapes`
-        # arguments.
-        for (ret_array, expected_dtype, expected_shape) in zip(
-            ret_arrays, flattened_types, flattened_shapes):
-          if ret_array.dtype != expected_dtype.as_numpy_dtype:
-            raise TypeError(
-                "`generator` yielded an element of type %s where an element "
-                "of type %s was expected." % (ret_array.dtype,
-                                              expected_dtype.as_numpy_dtype))
-          if not expected_shape.is_compatible_with(ret_array.shape):
-            raise ValueError(
-                "`generator` yielded an element of shape %s where an element "
-                "of shape %s was expected." % (ret_array.shape, expected_shape))
-
-        return ret_arrays
-
-      flat_values = script_ops.py_func(
-          generator_py_func, [iterator_id_t], flattened_types, stateful=True)
-
-      # The `py_func()` op drops the inferred shapes, so we add them back in
-      # here.
-      if output_shapes is not None:
-        for ret_t, shape in zip(flat_values, flattened_shapes):
-          ret_t.set_shape(shape)
-
-      return nest.pack_sequence_as(output_types, flat_values)
-
-    # This function associates each traversal of `generator` with a unique
-    # iterator ID.
-    def flat_map_fn(iterator_id_t):
-      # First, generate an infinite dataset containing the iterator ID repeated
-      # forever.
-      repeated_id = Dataset.from_tensors(iterator_id_t).repeat(None)
-
-      # The `generator_map_fn` gets the next element from the iterator with the
-      # relevant ID, and raises StopIteration when that iterator contains no
-      # more elements.
-      return repeated_id.map(generator_map_fn)
-
-    # A single-element dataset that, each time it is evaluated, contains a
-    # freshly-generated and unique (for the returned dataset) int64
-    # ID that will be used to identify the appropriate Python state, which
-    # is encapsulated in `generator_state`, and captured in
-    # `get_iterator_id_map_fn`.
-    dummy = 0
-    id_dataset = Dataset.from_tensors(dummy).map(get_iterator_id_map_fn)
-
-    # A dataset that contains all of the elements generated by a
-    # single iterator created from `generator`, identified by the
-    # iterator ID contained in `id_dataset`. Lifting the iteration
-    # into a flat_map here enables multiple repetitions and/or nested
-    # versions of the returned dataset to be created, because it forces
-    # the generation of a new ID for each version.
-    return id_dataset.flat_map(flat_map_fn)
+    return Dataset(dataset_ops.Dataset.from_generator(
+        generator, output_types, output_shapes))
 
   @staticmethod
   @deprecation.deprecated(None, "Use `tf.data.Dataset.range()`.")

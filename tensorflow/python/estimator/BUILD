@@ -146,6 +146,7 @@ py_test(
     srcs = ["training_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":dnn",
         ":estimator",

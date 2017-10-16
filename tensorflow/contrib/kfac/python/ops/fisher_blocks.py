@@ -34,6 +34,14 @@ from tensorflow.python.ops import math_ops
 NORMALIZE_DAMPING_POWER = 1.0
 
 
+def set_global_constants(normalize_damping_power=None):
+  """Sets various global constants used by the classes in this module."""
+  global NORMALIZE_DAMPING_POWER
+
+  if normalize_damping_power is not None:
+    NORMALIZE_DAMPING_POWER = normalize_damping_power
+
+
 @six.add_metaclass(abc.ABCMeta)
 class FisherBlock(object):
   """Abstract base class for objects modeling approximate Fisher matrix blocks.
