@@ -92,8 +92,8 @@ static const std::vector<HloMatcherPattern> patterns = {
 
   // BiasAdd on convolution (explicit broadcast)
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},
-   {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}},
-   {HloOpcode::kBroadcast, true, nullptr, {-1}}},
+   {HloOpcode::kBroadcast, true, nullptr, {-1}},
+   {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}}},
 
   // BiasAdd on convolution (implicit broadcast)
   {{HloOpcode::kAdd, true, nullptr, {1, -1}},

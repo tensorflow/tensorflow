@@ -278,21 +278,35 @@ CreateBiasAddOp(poplar::Graph &graph,
                 const HloInstruction *inst,
                 const xla::Shape &output_shape,
                 TensorMap &tensor_map) {
-
-  // Find the activations tensor
   poplar::Tensor in;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
-  // Find the bias tensor
   poplar::Tensor bias;
   TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 1));
 
   poplar::program::Sequence prog;
-
   popconv::addBias(graph, in, bias, prog, inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in));
+  return prog;
+}
 
+port::StatusOr <poplar::program::Program>
+CreateBiasAddBcastOp(poplar::Graph &graph,
+                     CompilerResources& res,
+                     const HloInstruction *inst,
+                     const xla::Shape &output_shape,
+                     TensorMap &tensor_map) {
+  poplar::Tensor in;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 1));
+
+  poplar::Tensor bias;
+  TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 0));
+
+  poplar::program::Sequence prog;
+  popconv::addBias(graph, in, bias, prog, inst->name());
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in));
   return prog;
 }
 

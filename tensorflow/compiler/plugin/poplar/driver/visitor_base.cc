@@ -321,8 +321,7 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     }
-    else if (name == "biasadd_broadcast" ||
-             name == "biasadd") {
+    else if (name == "biasadd") {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(prog,
                           CreateBiasAddOp(*graph_,
@@ -332,7 +331,17 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
                                           tensor_map));
       sequence.add(prog);
       return Status::OK();
-
+    }
+    else if (name == "biasadd_broadcast") {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateBiasAddBcastOp(*graph_,
+                                               resources_,
+                                               inst,
+                                               GetOutputShape(inst),
+                                               tensor_map));
+      sequence.add(prog);
+      return Status::OK();
     }
     else if (name == "zero_pad") {
       const HloInstruction* root = inst->to_apply()->root_instruction();
