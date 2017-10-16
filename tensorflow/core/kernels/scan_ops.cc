@@ -51,7 +51,8 @@ class ScanOp : public OpKernel {
                 errors::InvalidArgument("ScanOp: axis must be a scalar, not ",
                                         tensor_axis.shape().DebugString()));
 
-    const Tidx axis_arg = internal::SubtleMustCopy(tensor_axis.scalar<Tidx>()());
+    const Tidx axis_arg =
+        internal::SubtleMustCopy(tensor_axis.scalar<Tidx>()());
     const Tidx axis = (axis_arg < 0) ? input.dims() + axis_arg : axis_arg;
     OP_REQUIRES(ctx, FastBoundsCheck(axis, input.dims()),
                 errors::InvalidArgument(
@@ -112,76 +113,75 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_ALL_REDUCERS);
 }  // namespace functor
 #endif  // GOOGLE_CUDA
 
-
 // Register Cumsum kernels
-#define REGISTER_CPU_KERNELS(type)        \
-  REGISTER_KERNEL_BUILDER(                \
-      Name("Cumsum")                      \
-          .Device(DEVICE_CPU)             \
-          .TypeConstraint<type>("T")      \
-          .TypeConstraint<int32>("Tidx"), \
-      ScanOp<CPUDevice, type, Eigen::internal::SumReducer<type>, int32>)\
-  REGISTER_KERNEL_BUILDER(                \
-      Name("Cumsum")                      \
-          .Device(DEVICE_CPU)             \
-          .TypeConstraint<type>("T")      \
-          .TypeConstraint<int64>("Tidx"), \
+#define REGISTER_CPU_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("Cumsum")                                                     \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<type>("T")                                     \
+          .TypeConstraint<int32>("Tidx"),                                \
+      ScanOp<CPUDevice, type, Eigen::internal::SumReducer<type>, int32>) \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("Cumsum")                                                     \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<type>("T")                                     \
+          .TypeConstraint<int64>("Tidx"),                                \
       ScanOp<CPUDevice, type, Eigen::internal::SumReducer<type>, int64>)
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_KERNELS(type)       \
-  REGISTER_KERNEL_BUILDER(               \
-      Name("Cumsum")                     \
-          .Device(DEVICE_GPU)            \
-          .TypeConstraint<type>("T")     \
-          .TypeConstraint<int32>("Tidx") \
-          .HostMemory("axis"),           \
+#define REGISTER_GPU_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("Cumsum")                                                     \
+          .Device(DEVICE_GPU)                                            \
+          .TypeConstraint<type>("T")                                     \
+          .TypeConstraint<int32>("Tidx")                                 \
+          .HostMemory("axis"),                                           \
       ScanOp<GPUDevice, type, Eigen::internal::SumReducer<type>, int32>) \
-  REGISTER_KERNEL_BUILDER(               \
-      Name("Cumsum")                     \
-          .Device(DEVICE_GPU)            \
-          .TypeConstraint<type>("T")     \
-          .TypeConstraint<int64>("Tidx") \
-          .HostMemory("axis"),           \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("Cumsum")                                                     \
+          .Device(DEVICE_GPU)                                            \
+          .TypeConstraint<type>("T")                                     \
+          .TypeConstraint<int64>("Tidx")                                 \
+          .HostMemory("axis"),                                           \
       ScanOp<GPUDevice, type, Eigen::internal::SumReducer<type>, int64>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
 // Register Cumprod kernels
-#define REGISTER_CPU_KERNELS(type)        \
-  REGISTER_KERNEL_BUILDER(                \
-      Name("Cumprod")                     \
-          .Device(DEVICE_CPU)             \
-          .TypeConstraint<type>("T")      \
-          .TypeConstraint<int32>("Tidx"), \
+#define REGISTER_CPU_KERNELS(type)                                        \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Cumprod")                                                     \
+          .Device(DEVICE_CPU)                                             \
+          .TypeConstraint<type>("T")                                      \
+          .TypeConstraint<int32>("Tidx"),                                 \
       ScanOp<CPUDevice, type, Eigen::internal::ProdReducer<type>, int32>) \
-  REGISTER_KERNEL_BUILDER(                \
-      Name("Cumprod")                     \
-          .Device(DEVICE_CPU)             \
-          .TypeConstraint<type>("T")      \
-          .TypeConstraint<int64>("Tidx"), \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Cumprod")                                                     \
+          .Device(DEVICE_CPU)                                             \
+          .TypeConstraint<type>("T")                                      \
+          .TypeConstraint<int64>("Tidx"),                                 \
       ScanOp<CPUDevice, type, Eigen::internal::ProdReducer<type>, int64>)
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_KERNELS(type)       \
-  REGISTER_KERNEL_BUILDER(               \
-      Name("Cumprod")                    \
-          .Device(DEVICE_GPU)            \
-          .TypeConstraint<type>("T")     \
-          .TypeConstraint<int32>("Tidx") \
-          .HostMemory("axis"),           \
+#define REGISTER_GPU_KERNELS(type)                                        \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Cumprod")                                                     \
+          .Device(DEVICE_GPU)                                             \
+          .TypeConstraint<type>("T")                                      \
+          .TypeConstraint<int32>("Tidx")                                  \
+          .HostMemory("axis"),                                            \
       ScanOp<GPUDevice, type, Eigen::internal::ProdReducer<type>, int32>) \
-  REGISTER_KERNEL_BUILDER(               \
-      Name("Cumprod")                    \
-          .Device(DEVICE_GPU)            \
-          .TypeConstraint<type>("T")     \
-          .TypeConstraint<int64>("Tidx") \
-          .HostMemory("axis"),           \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Cumprod")                                                     \
+          .Device(DEVICE_GPU)                                             \
+          .TypeConstraint<type>("T")                                      \
+          .TypeConstraint<int64>("Tidx")                                  \
+          .HostMemory("axis"),                                            \
       ScanOp<GPUDevice, type, Eigen::internal::ProdReducer<type>, int64>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
