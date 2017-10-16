@@ -13,9 +13,9 @@ natively on your system.
 
 ### Run TensorFlow CI Scripts using Docker
 
-1.	 Install Docker following the [instructions on the docker website](https://docs.docker.com/engine/installation/).
+1.  Install Docker following the [instructions on the docker website](https://docs.docker.com/engine/installation/).
 
-2.	 Start a container with one of the devel images here:
+2.  Start a container with one of the devel images here:
     https://hub.docker.com/r/tensorflow/tensorflow/tags/.
 
 3.  Based on your choice of the image, pick one of the scripts under
