@@ -738,11 +738,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "cub_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.3.zip",
-          # "https://github.com/NVlabs/cub/archive/1.7.3.zip",
+          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.4.zip",
+          "https://github.com/NVlabs/cub/archive/1.7.4.zip",
       ],
-      sha256 = "b7ead9e291d34ffa8074243541c1380d63be63f88de23de8ee548db573b72ebe",
-      strip_prefix = "cub-1.7.3",
+      sha256 = "20a1a39fd97e5da7f40f5f2e7fd73fd2ea59f9dc4bb8a6c5f228aa543e727e31",
+      strip_prefix = "cub-1.7.4",
       build_file = str(Label("//third_party:cub.BUILD")),
   )
 
