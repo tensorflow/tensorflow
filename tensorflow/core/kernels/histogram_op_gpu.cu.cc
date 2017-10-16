@@ -19,8 +19,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/histogram_op.h"
 #include "external/cub_archive/cub/device/device_histogram.cuh"
-#include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
-#include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,11 +53,10 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
 
     const double step = static_cast<double>(value_range(1) - value_range(0)) /
                         static_cast<double>(nbins);
-    double curr = static_cast<double>(value_range(0)) + step;
     levels(0) = std::numeric_limits<T>::lowest();
     for (int i = 1; i < nbins; i++) {
-      levels(i) = T(curr);
-      curr += step;
+      levels(i) =
+          static_cast<T>(static_cast<double>(value_range(0)) + step * i);
     }
     levels(nbins) = std::numeric_limits<T>::max();
 
@@ -71,6 +68,8 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
     int num_samples = values.size();
     const cudaStream_t& stream = GetCudaStream(context);
 
+    // The first HistogramRange is to obtain the temp storage size required
+    // with d_temp_storage = NULL passed to the call.
     auto err = cub::DeviceHistogram::HistogramRange(
         /* d_temp_storage */ NULL,
         /* temp_storage_bytes */ temp_storage_bytes,
@@ -81,8 +80,9 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != cudaSuccess) {
-      return errors::Internal("Could not launch HistogramFixedWidthKernel: ",
-                              cudaGetErrorString(err), ".");
+      return errors::Internal(
+          "Could not launch HistogramRange to get temp storage: ",
+          cudaGetErrorString(err), ".");
     }
 
     Tensor temp_storage;
@@ -92,6 +92,8 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
 
     void* d_temp_storage = temp_storage.flat<int8>().data();
 
+    // The second HistogramRange is to actual run with d_temp_storage
+    // allocated with temp_storage_bytes.
     err = cub::DeviceHistogram::HistogramRange(
         /* d_temp_storage */ d_temp_storage,
         /* temp_storage_bytes */ temp_storage_bytes,
@@ -102,7 +104,7 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != cudaSuccess) {
-      return errors::Internal("Could not launch HistogramFixedWidthKernel: ",
+      return errors::Internal("Could not launch HistogramRange: ",
                               cudaGetErrorString(err), ".");
     }
 

@@ -39,11 +39,12 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
                         int32 nbins, typename TTypes<Tout, 1>::Tensor& out) {
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
-    Tensor temp_tensor;
-    TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<int32>::value,
-                                              TensorShape({values.size()}),
-                                              &temp_tensor));
-    auto temp = temp_tensor.flat<int32>();
+    Tensor index_to_bin_tensor;
+
+    TF_RETURN_IF_ERROR(context->forward_input_or_allocate_temp(
+        {0}, DataTypeToEnum<int32>::value, TensorShape({values.size()}),
+        &index_to_bin_tensor));
+    auto index_to_bin = index_to_bin_tensor.flat<int32>();
 
     const double step = static_cast<double>(value_range(1) - value_range(0)) /
                         static_cast<double>(nbins);
@@ -53,7 +54,7 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
     //   step = (b - a) / nbins
     //   (x - a) / step
     // , then the entries are mapped to output.
-    temp.device(d) =
+    index_to_bin.device(d) =
         ((values.cwiseMax(value_range(0)) - values.constant(value_range(0)))
              .template cast<double>() /
          step)
@@ -61,8 +62,8 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
             .cwiseMin(nbins - 1);
 
     out.setZero();
-    for (int32 i = 0; i < temp.size(); i++) {
-      out(temp(i)) += Tout(1);
+    for (int32 i = 0; i < index_to_bin.size(); i++) {
+      out(index_to_bin(i)) += Tout(1);
     }
     return Status::OK();
   }
@@ -90,7 +91,17 @@ class HistogramFixedWidthOp : public OpKernel {
 
     const auto values = values_tensor.flat<T>();
     const auto value_range = value_range_tensor.flat<T>();
-    int32 nbins = nbins_tensor.scalar<int32>()();
+    const int32 nbins = nbins_tensor.scalar<int32>()();
+
+    OP_REQUIRES(
+        ctx, (value_range(0) < value_range(1)),
+        errors::InvalidArgument("value_range should satisfy value_range[0] < "
+                                "value_range[1], but got '[",
+                                value_range(0), ", ", value_range(1), "]'"));
+    OP_REQUIRES(
+        ctx, (nbins > 0),
+        errors::InvalidArgument("nbins should be a positive number, but got '",
+                                nbins, "'"));
 
     Tensor* out_tensor;
     OP_REQUIRES_OK(ctx,

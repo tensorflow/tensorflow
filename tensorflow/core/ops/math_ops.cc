@@ -2265,7 +2265,7 @@ REGISTER_OP("HistogramFixedWidth")
 Return histogram of values.
 
 Given the tensor `values`, this operation returns a rank 1 histogram counting
-the number of entries in `values` that fell into every bin.  The bins are
+the number of entries in `values` that fall into every bin.  The bins are
 equal width and determined by the arguments `value_range` and `nbins`.
 
 ```python

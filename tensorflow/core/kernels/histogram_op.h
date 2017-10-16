@@ -20,10 +20,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
-
 namespace functor {
 
 template <typename Device, typename T, typename Tout>
@@ -35,7 +33,6 @@ struct HistogramFixedWidthFunctor {
 };
 
 }  // end namespace functor
-
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_HISTOGRAM_OP_H_
