@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import tape as tape_module
 
 
 # Terminology:
@@ -73,10 +73,10 @@ def _prepare_backprop(vspace, target, tensor_to_op, op_to_entry, id_sources):
   while tensor_stack:
     t = tensor_stack.pop()
     op = tensor_to_op.get(t, None)
-    # op is None if the tensor is a source (i.e. was watched directly)
-    if op is None or op in o_to_e:
+    # op is None or -1 if the tensor is a source (i.e. was watched directly)
+    if op is None or op == -1 or op in o_to_e:
       continue
-    op_trace = op_to_entry[op]
+    op_trace = tape_module.TapeEntry(*op_to_entry[op])
     o_to_e[op] = op_trace
     for it in op_trace.input_ids:
       if it in tensor_usage_counts:
@@ -125,6 +125,7 @@ VSpace = collections.namedtuple(
 
 def imperative_grad(
     vspace,
+    tape,
     target,
     sources,
     output_gradients=None):
@@ -136,6 +137,7 @@ def imperative_grad(
 
   Args:
    vspace: the vector space in which to differentiate.
+   tape: the gradient tape which stores the trace.
    target: either a Tensor or list of Tensors to be differentiated.
    sources: list of Tensors for which we want gradients
    output_gradients: if not None, a list of gradient provided for each Target,
@@ -152,10 +154,7 @@ def imperative_grad(
      or if only non-differentiable functions of the source were used in the
      computation of target.
   """
-  if not tape._tape_stack.stack:  # pylint: disable=protected-access
-    raise RuntimeError("Computing a gradient with no tape present")
-  bp_tape = tape.pop_tape()
-  tensor_to_op, op_to_entry = bp_tape.export()
+  tensor_to_op, op_to_entry = tape.export()
   # This overwrites the op_to_entry variable, which will release all memory used
   # to keep traces that are irrelevant to the gradient computation we're doing
   # here.

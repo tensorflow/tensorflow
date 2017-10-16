@@ -151,6 +151,13 @@ py_library(
 )
 
 py_library(
+    name = "cli_config",
+    srcs = ["cli/cli_config.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debugger_cli_common"],
+)
+
+py_library(
     name = "command_parser",
     srcs = ["cli/command_parser.py"],
     srcs_version = "PY2AND3",
@@ -197,6 +204,7 @@ py_library(
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_config",
         ":cli_shared",
         ":command_parser",
         ":debug_graphs",
@@ -249,6 +257,7 @@ py_library(
     srcs = ["cli/base_ui.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_config",
         ":command_parser",
         ":debugger_cli_common",
     ],
@@ -583,6 +592,7 @@ py_test(
     srcs = ["cli/readline_ui_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cli_config",
         ":debugger_cli_common",
         ":readline_ui",
         ":ui_factory",
@@ -725,6 +735,19 @@ py_test(
 )
 
 py_test(
+    name = "cli_config_test",
+    size = "small",
+    srcs = ["cli/cli_config_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cli_config",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "command_parser_test",
     size = "small",
     srcs = ["cli/command_parser_test.py"],
@@ -791,6 +814,7 @@ cuda_py_test(
     srcs = ["cli/analyzer_cli_test.py"],
     additional_deps = [
         ":analyzer_cli",
+        ":cli_config",
         ":command_parser",
         ":debug_data",
         ":debug_utils",

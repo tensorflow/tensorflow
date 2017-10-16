@@ -22,6 +22,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 
@@ -68,8 +69,12 @@ def custom_gradient(f):
       return nest.pack_sequence_as(
           structure=result, flat_sequence=all_tensors[:len(flat_result)])
 
-    input_tensors = [x for x in args
-                     if isinstance(x, tf_ops.Tensor)]
+    input_tensors = []
+    for x in args:
+      if isinstance(x, tf_ops.Tensor):
+        input_tensors.append(x)
+      if isinstance(x, resource_variable_ops.ResourceVariable):
+        input_tensors.append(x.read_value())
 
     with tape.stop_recording():
       result, grad_fn = f(*args, **kwargs)

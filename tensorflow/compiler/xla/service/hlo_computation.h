@@ -143,6 +143,22 @@ class HloComputation {
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
+  // Creates a computation from the given proto. Arguments:
+  //
+  //   module: the module which will contain the computation. The newly created
+  //     computation is *not* added to the module, however.
+  //   proto: the proto to convert from.
+  //   computation_map: a map from computation name to HloComputation*. This map
+  //     must contain all computations which the newly constructed computation
+  //     calls.
+  //  fusion_instruction: if non-null then the newly created computation will be
+  //     constructed as a fused computation with this instruction as its fusion
+  //     parent.
+  static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
+      HloModule* module, const HloComputationProto& proto,
+      tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map,
+      HloInstruction* fusion_instruction = nullptr);
+
   // Gets the instructions in this computation.
   //
   // The returned type is a range of HloInstruction*s, so you can iterate over

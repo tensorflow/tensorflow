@@ -15,9 +15,16 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <complex>
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
@@ -25,30 +32,36 @@ namespace tensorflow {
 namespace internal {
 
 template <typename Device, typename T, bool conjugate>
-void TransposeSimple(const Device& d, const Tensor& in,
+void TransposeSimple(const Device& device, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   const int ndims = in.dims();
   gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
   gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
-  const int64 nelem = in.NumElements();
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-
-  // TODO(zhifengc): Shard by range.
-  // TODO(zhifengc): Avoids the division.
-  for (int64 o_idx = 0; o_idx < nelem; ++o_idx) {
-    int64 i_idx = 0;
-    int64 t = o_idx;
-    for (int i = 0; i < ndims; ++i) {
-      i_idx += (t / out_strides[i]) * in_strides[perm[i]];
-      t = t % out_strides[i];
+  auto transpose_fn = [=](int64 begin, int64 end) {
+    for (int64 o_idx = begin; o_idx < end; ++o_idx) {
+      int64 i_idx = 0;
+      int64 t = o_idx;
+      for (int i = 0; i < ndims; ++i) {
+        const int64 ratio = t / out_strides[i];
+        t -= ratio * out_strides[i];
+        i_idx += ratio * in_strides[perm[i]];
+      }
+      if (conjugate) {
+        q[o_idx] = Eigen::numext::conj(p[i_idx]);
+      } else {
+        q[o_idx] = p[i_idx];
+      }
     }
-    if (conjugate) {
-      q[o_idx] = Eigen::numext::conj(p[i_idx]);
-    } else {
-      q[o_idx] = p[i_idx];
-    }
-  }
+  };
+  double cycles_per_element =
+      (conjugate ? 1 : 0) + ndims * (Eigen::TensorOpCost::DivCost<int64>() +
+                                     2 * Eigen::TensorOpCost::MulCost<int64>() +
+                                     2 * Eigen::TensorOpCost::AddCost<int64>());
+  Eigen::TensorOpCost cost(/*bytes_loaded=*/sizeof(T),
+                           /*bytes_stored=*/sizeof(T), cycles_per_element);
+  device.parallelFor(in.NumElements(), cost, std::move(transpose_fn));
 }
 
 }  // end namespace internal
@@ -166,6 +179,6 @@ Status DoConjugateTranspose(const SYCLDevice& device, const Tensor& in,
                                                     true /* conjugate */, out);
 }
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

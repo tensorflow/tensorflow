@@ -88,7 +88,7 @@ Status GraphCompiler::Compile() {
   std::vector<Node*> topo_sorted_nodes;
   // XLA requires determinism, generate a stable ordering from DFS.
   GetReversePostOrder(*graph_, &topo_sorted_nodes,
-                      /*stable_comparator=*/NodeComparatorID());
+                      /*stable_comparator=*/NodeComparatorName());
 
   OpKernelContext::Params params;
   PartiallySetupParams(&params);

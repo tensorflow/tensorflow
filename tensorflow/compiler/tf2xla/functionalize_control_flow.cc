@@ -475,9 +475,11 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
           int dst_input = edge->dst_input();
           graph->RemoveEdge(edge);
 
-          int src_output =
-              dst_input == Graph::kControlSlot ? Graph::kControlSlot : i;
-          graph->AddEdge(while_node, src_output, dst, dst_input);
+          if (dst_input == Graph::kControlSlot) {
+            graph->AddControlEdge(while_node, dst);
+          } else {
+            graph->AddEdge(while_node, i, dst, dst_input);
+          }
         }
       }
     }

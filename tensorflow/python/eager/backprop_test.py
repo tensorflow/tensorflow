@@ -21,6 +21,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import custom_gradient
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -448,6 +449,31 @@ class BackpropTest(test.TestCase):
     backprop._MIN_AGGREGATE_BYTES = old_bytes
     # pylint: enable=protected-access
     context.context().clear_post_execution_callbacks()
+
+  def testImplicitGradientsCustomGradientAndCachedVariableValue(self):
+
+    @custom_gradient.custom_gradient
+    def my_square(x):
+      result = math_ops.square(x)
+
+      def grad(dr):
+        return 2 * dr * x + 1
+
+      return result, grad
+
+    x = resource_variable_ops.ResourceVariable(
+        initial_value=3, name='X.' + self.id())
+
+    def f():
+      return my_square(x)
+
+    g = backprop.implicit_grad(f)
+
+    grads_and_vars = g()
+    self.assertEqual(1, len(grads_and_vars))
+    grad, var = grads_and_vars[0]
+    self.assertEqual(7, grad.numpy())
+    self.assertEqual(x, var)
 
 
 if __name__ == '__main__':

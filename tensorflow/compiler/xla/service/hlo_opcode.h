@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <iosfwd>
 #include <string>
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -106,6 +107,9 @@ enum class HloOpcode {
 
 // Returns a string representation of the opcode.
 string HloOpcodeString(HloOpcode opcode);
+
+// Returns a string representation of the opcode.
+StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
   return os << HloOpcodeString(opcode);

@@ -186,6 +186,9 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `--tensor_dtype_filter <pattern>` | Execute the next `Session.run`, dumping only Tensors with data types (`dtype`s) matching the given regular-expression pattern. | `run --tensor_dtype_filter int.*` |
 | | `-p` | Execute the next `Session.run` call in profiling mode. | `run -p` |
 | **`ri`** | | **Display information about the run the current run, including fetches and feeds.** | `ri` |
+| **`config`** | | **Set or show persistent TFDBG UI configuration.** | |
+| | `set` | Set the value of a config item: {`graph_recursion_depth`, `mouse_mode`}. | `config set graph_recursion_depth 3` |
+| | `show` | Show current persistent UI configuration. | `config show` |
 | **`help`** | | **Print general help information** | `help` |
 | | `help <command>` | Print help for given command. | `help lt` |
 

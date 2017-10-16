@@ -28,9 +28,9 @@ from tensorflow.python.ops import variable_scope
 class Metric(object):
   """A metric holds state for aggregating statistics over an evaluation run.
 
-  Users will use Network.add_metric() to add Metric objects to their
-  evaluation network, call them in each step, and then use
-  Network.all_metric_results() at the end.
+  Users will use Evaluator.add_metric() to add Metric objects to their
+  evaluation, call them in each step, and then use
+  Evaluator.all_metric_results() at the end.
 
   Descendants will implement:
   * call(): Should follow this pattern:
@@ -54,7 +54,7 @@ class Metric(object):
     # a name/variable scope?
     # TODO(josh11b): self._in_graph_mode = context.in_graph_mode()
 
-  # ---- API for users ---
+  # ---- API for users ----
   def __call__(self, *args, **kwargs):
     # TODO(josh11b): If self._in_graph_mode is true, make self.call() into a
     # graph callable here, so that variable updates happen without requiring
@@ -65,6 +65,8 @@ class Metric(object):
     if not self.built:
       # TODO(ashankar): Set up container isolation so there is no chance
       # distinct metrics objects accidentally share variables.
+      # TODO(josh11b): Replace things like spaces in self._name to create
+      # a valid scope name.
       with variable_scope.variable_scope(
           self._name, use_resource=True, reuse=False):
         ret = self.call(*args, **kwargs)
@@ -96,7 +98,7 @@ class Metric(object):
   #   for the use case where they want to record the metric's state
   #   for each example and then later decide which examples they want
   #   to aggregate over. (Recommended -- not too much harder and adds
-  #   flexibilty over previous option.)
+  #   flexibility over previous option.)
   # I'm going with the second strategy since we can define a default
   # implementation of aggregate() that will work for most descendants.
   def aggregate(self, metrics):
@@ -121,7 +123,7 @@ class Metric(object):
       self._vars[i].assign_add(math_ops.add_n([m._vars[i] for m in metrics]))
     # pylint: enable=protected-access
 
-  def result(self):
+  def result(self):  # TODO(josh11b): Add an optional summary_writer parameter.
     """Computes and returns a final value for the metric."""
     raise NotImplementedError("Metrics must define a result() member function")
 

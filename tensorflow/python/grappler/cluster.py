@@ -72,3 +72,16 @@ class Cluster(object):
           op_performance_data_pb2.OpPerformance.FromString(op_perf_bytes))
     return (op_perfs, run_time,
             step_stats_pb2.StepStats.FromString(step_stats_bytes))
+
+  def DeterminePeakMemoryUsage(self, item):
+    """Returns a snapshot of the peak memory usage.
+
+    Args:
+      item: the item for which to measure the costs.
+    Returns: a hashtable indexed by device name.
+    """
+    with errors.raise_exception_on_not_ok_status() as status:
+      ret_from_swig = tf_cluster.TF_DeterminePeakMemoryUsage(
+          item.tf_item, self._tf_cluster, status)
+
+    return ret_from_swig

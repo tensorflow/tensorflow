@@ -98,11 +98,11 @@ bool ReshapeIsBitcast(
 HloComputation* CreateScalarBinaryComputation(HloModule* module,
                                               PrimitiveType primitive_type,
                                               HloOpcode opcode) {
-  HloComputation::Builder b("scalar computation");
+  HloComputation::Builder b("scalar_computation");
   auto scalar_lhs = b.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {}), "scalar lhs"));
+      0, ShapeUtil::MakeShape(F32, {}), "scalar_lhs"));
   auto scalar_rhs = b.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {}), "scalar rhs"));
+      1, ShapeUtil::MakeShape(F32, {}), "scalar_rhs"));
   auto scalar_op = b.AddInstruction(
       HloInstruction::CreateBinary(ShapeUtil::MakeShape(primitive_type, {}),
                                    opcode, scalar_lhs, scalar_rhs));
