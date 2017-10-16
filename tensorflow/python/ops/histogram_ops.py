@@ -17,7 +17,7 @@
 
 Please see @{$python/histogram_ops} guide.
 
-@@bin_values_fixed_width
+@@histogram_fixed_width_bins
 @@histogram_fixed_width
 """
 
@@ -32,11 +32,11 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 
 
-def bin_values_fixed_width(values,
-                           value_range,
-                           nbins=100,
-                           dtype=dtypes.int32,
-                           name=None):
+def histogram_fixed_width_bins(values,
+                               value_range,
+                               nbins=100,
+                               dtype=dtypes.int32,
+                               name=None):
   """Bins the given values for use in a histogram.
 
   Given the tensor `values`, this operation returns a rank 1 `Tensor`
@@ -66,12 +66,12 @@ def bin_values_fixed_width(values,
   new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
 
   with tf.get_default_session() as sess:
-    indices = tf.bin_values_fixed_width(new_values, value_range, nbins=5)
+    indices = tf.histogram_fixed_width_bins(new_values, value_range, nbins=5)
     variables.global_variables_initializer().run()
     sess.run(indices) => [0, 0, 1, 2, 4]
   ```
   """
-  with ops.name_scope(name, 'bin_values_fixed_width',
+  with ops.name_scope(name, 'histogram_fixed_width_bins',
                       [values, value_range, nbins]) as scope:
     values = ops.convert_to_tensor(values, name='values')
     shape = array_ops.shape(values)
@@ -135,7 +135,8 @@ def histogram_fixed_width(values,
   """
   with ops.name_scope(name, 'histogram_fixed_width', 
                       [values, value_range, nbins]) as scope:
-    indices = bin_values_fixed_width(values, value_range, nbins, dtype, scope)
+    indices = histogram_fixed_width_bins(
+        values, value_range, nbins, dtype, scope)
 
     # TODO(langmore) This creates an array of ones to add up and place in the
     # bins.  This is inefficient, so replace when a better Op is available.
