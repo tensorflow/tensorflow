@@ -23,8 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-constexpr char MklCPUAllocator::kMaxLimitStr[];
-
 TEST(MKLBFCAllocatorTest, TestMaxLimit) {
   AllocatorStats stats;
   setenv(MklCPUAllocator::kMaxLimitStr, "1000", 1);
