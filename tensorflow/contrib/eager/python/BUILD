@@ -12,6 +12,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":datasets",
+        ":evaluator",
         ":metrics",
         ":network",
         ":saver",
@@ -145,6 +146,31 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "evaluator",
+    srcs = [
+        "evaluator.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":datasets",
+        ":metrics",
+    ],
+)
+
+py_test(
+    name = "evaluator_test",
+    srcs = ["evaluator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":evaluator",
+        ":metrics",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
     ],
 )

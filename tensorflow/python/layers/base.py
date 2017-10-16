@@ -529,8 +529,22 @@ class Layer(object):
         # to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
-    with vs.variable_scope(
-        self._scope, reuse=(self.built or self._reuse)) as scope:
+    if self.built:
+      try:
+        # Some classes which inherit from Layer do not use its constructor, so
+        # rather than initializing to None we check for an AttributeError.
+        scope_context_manager = self._always_reuse_variable_scope
+      except AttributeError:
+        # From this point we will always set reuse=True, so create a "final"
+        # variable scope with this setting. We avoid re-creating variable scopes
+        # after this point as an optimization.
+        self._always_reuse_variable_scope = vs.variable_scope(
+            self._scope, reuse=True)
+        scope_context_manager = self._always_reuse_variable_scope
+    else:
+      scope_context_manager = vs.variable_scope(
+          self._scope, reuse=self._reuse)
+    with scope_context_manager as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
           if not in_graph_mode:
@@ -636,7 +650,7 @@ class Layer(object):
 
   def __deepcopy__(self, memo):
     no_copy = set(['_graph'])
-    shallow_copy = set(['_scope'])
+    shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)
     memo[id(self)] = result

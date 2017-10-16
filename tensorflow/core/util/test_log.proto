@@ -188,5 +188,9 @@ message TestResults {
   BenchmarkType benchmark_type = 10;
 
   // Used for differentiating between continuous and debug builds.
+  // Must be one of:
+  // * cbuild: results from continuous build.
+  // * presubmit: results from oneshot requests.
+  // * culprit: results from culprit finder rerun.
   string run_mode = 11;
 };

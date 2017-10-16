@@ -317,13 +317,22 @@ def classifier_score(images, classifier_fn, num_batches=1):
       name='RunClassifier')
   logits = array_ops.concat(array_ops.unstack(logits), 0)
   logits.shape.assert_has_rank(2)
+
+  # Use maximum precision for best results.
+  logits_dtype = logits.dtype
+  if logits_dtype != dtypes.float64:
+    logits = math_ops.cast(logits, dtypes.float64)
+
   p = nn_ops.softmax(logits)
   q = math_ops.reduce_mean(p, axis=0)
   kl = _kl_divergence(p, logits, q)
   kl.shape.assert_has_rank(1)
   log_score = math_ops.reduce_mean(kl)
+  final_score = math_ops.exp(log_score)
 
-  return math_ops.exp(log_score)
+  if logits_dtype != dtypes.float64:
+    final_score = math_ops.cast(final_score, dtypes.float64)
+  return final_score
 
 
 inception_score = functools.partial(

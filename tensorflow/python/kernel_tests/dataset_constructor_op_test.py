@@ -503,6 +503,24 @@ class DatasetConstructorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testFromGeneratorHeterogeneous(self):
+    def generator():
+      yield 1
+      yield [2, 3]
+
+    iterator = (
+        dataset_ops.Dataset.from_generator(
+            generator, output_types=dtypes.int64).make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual(1, sess.run(get_next))
+      self.assertAllEqual([2, 3], sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testSplitPipelineFailsWithPlacementError(self):
     with session.Session(
         target="",

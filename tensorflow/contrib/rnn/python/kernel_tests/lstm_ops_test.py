@@ -458,17 +458,16 @@ class BenchmarkLSTMBlock(test.Benchmark):
     print("batch_size,cell_size,input_size,time_steps,use_gpu,wall_time")
     iters = 10
     for config in benchmarking.dict_product({
-        "batch_size": [1, 32, 128],
-        "cell_size": [32, 128, 512],
-        "input_size": [128, 512],
-        "time_steps": [10, 25, 100],
+        "batch_size": [1, 8, 13, 32, 67, 128],
+        "cell_size": [128, 250, 512, 650, 1024, 1350],
+        "time_steps": [40],
         "use_gpu": [True, False]
     }):
       with ops.Graph().as_default():
         with benchmarking.device(use_gpu=config["use_gpu"]):
-          inputs = variable_scope.get_variable("x", [
-              config["time_steps"], config["batch_size"], config["input_size"]
-          ])
+          inputs = variable_scope.get_variable(
+              "x",
+              [config["time_steps"], config["batch_size"], config["cell_size"]])
           cell = lstm_ops.LSTMBlockCell(config["cell_size"])
           outputs = rnn.dynamic_rnn(
               cell, inputs, time_major=True, dtype=dtypes.float32)
@@ -482,12 +481,72 @@ class BenchmarkLSTMBlock(test.Benchmark):
         # is set, this will produce a copy-paste-able CSV file.
         print(",".join(
             map(str, [
-                config["batch_size"], config["cell_size"], config["input_size"],
+                config["batch_size"], config["cell_size"], config["cell_size"],
                 config["time_steps"], config["use_gpu"], wall_time
             ])))
         benchmark_name_template = "_".join([
             "LSTMBlockCell_fprop", "BS%(batch_size)i", "CS%(cell_size)i",
-            "IS%(input_size)i", "TS%(time_steps)i", "gpu_%(use_gpu)s"
+            "IS%(cell_size)i", "TS%(time_steps)i", "gpu_%(use_gpu)s"
+        ])
+
+        self.report_benchmark(
+            name=benchmark_name_template % config,
+            iters=iters,
+            wall_time=wall_time,
+            extras=config)
+
+  def benchmarkLSTMBlockCellBpropWithDynamicRNN(self):
+    print("BlockLSTMCell backward propagation via dynamic_rnn().")
+    print("--------------------------------------------------------------")
+    print("LSTMBlockCell Seconds per inference.")
+    print("batch_size,cell_size,input_size,time_steps,use_gpu,wall_time")
+    iters = 10
+    for config in benchmarking.dict_product({
+        "batch_size": [1, 8, 13, 32, 67, 128],
+        "cell_size": [128, 250, 512, 650, 1024, 1350],
+        "time_steps": [40],
+        "use_gpu": [True, False]
+    }):
+      with ops.Graph().as_default():
+        with benchmarking.device(use_gpu=config["use_gpu"]):
+          time_steps = config["time_steps"]
+          batch_size = config["batch_size"]
+          cell_size = input_size = config["cell_size"]
+          inputs = variable_scope.get_variable(
+              "x", [time_steps, batch_size, cell_size],
+              trainable=False,
+              dtype=dtypes.float32)
+          with variable_scope.variable_scope(
+              "rnn", reuse=variable_scope.AUTO_REUSE):
+            w = variable_scope.get_variable(
+                "rnn/lstm_cell/kernel",
+                shape=[input_size + cell_size, cell_size * 4],
+                dtype=dtypes.float32)
+            b = variable_scope.get_variable(
+                "rnn/lstm_cell/bias",
+                shape=[cell_size * 4],
+                dtype=dtypes.float32,
+                initializer=init_ops.zeros_initializer())
+            cell = lstm_ops.LSTMBlockCell(cell_size)
+            outputs = rnn.dynamic_rnn(
+                cell, inputs, time_major=True, dtype=dtypes.float32)
+          grads = gradients_impl.gradients(outputs, [inputs, w, b])
+          init_op = variables.global_variables_initializer()
+
+        with session.Session() as sess:
+          sess.run(init_op)
+          wall_time = benchmarking.seconds_per_run(grads, sess, iters)
+
+        # Print to stdout. If the TEST_REPORT_FILE_PREFIX environment variable
+        # is set, this will produce a copy-paste-able CSV file.
+        print(",".join(
+            map(str, [
+                batch_size, cell_size, cell_size, time_steps, config["use_gpu"],
+                wall_time
+            ])))
+        benchmark_name_template = "_".join([
+            "LSTMBlockCell_bprop", "BS%(batch_size)i", "CS%(cell_size)i",
+            "IS%(cell_size)i", "TS%(time_steps)i", "gpu_%(use_gpu)s"
         ])
 
         self.report_benchmark(

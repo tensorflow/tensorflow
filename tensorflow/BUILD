@@ -142,22 +142,6 @@ config_setting(
 )
 
 config_setting(
-    name = "linux_armhf",
-    values = {
-        "cpu": "armeabi-v7a",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "linux_arm64",
-    values = {
-        "cpu": "arm64-v8a",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
@@ -307,8 +291,8 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
-        "//learning/protonn/llgtm/...",
         "//tensorflow/...",
+        "//tensorflow_fold/llgtm/...",
     ],
 )
 

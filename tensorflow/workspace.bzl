@@ -595,11 +595,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   patched_http_archive(
       name = "boringssl",
       urls = [
-          "http://mirror.bazel.build/github.com/google/boringssl/archive/e3860009a091cd1bd2bc189cdbc3c6d095abde84.tar.gz",
-          # "https://github.com/google/boringssl/archive/e3860009a091cd1bd2bc189cdbc3c6d095abde84.tar.gz",  # 2017-07-07
+          "https://github.com/google/boringssl/archive/72cfd9f49ec5fbc2db368b76398c196dafe6a4bc.tar.gz",
       ],
-      sha256 = "02f5950f93c4fd3691771c07c9d04cf2999ab01383ff99da345249e93b0fcfb2",
-      strip_prefix = "boringssl-e3860009a091cd1bd2bc189cdbc3c6d095abde84",
+      sha256 = "5e6f7b72c74adeb902581271925ddb979e77b96327abd76604ce894d80680e51",
+      strip_prefix = "boringssl-72cfd9f49ec5fbc2db368b76398c196dafe6a4bc",
       # Add patch to boringssl code to support s390x
       patch_file = str(Label("//third_party/boringssl:add_boringssl_s390x.patch")),
   )
@@ -702,6 +701,31 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       repository = tf_repo_name,
   )
 
+  java_import_external(
+      name = "com_google_testing_compile",
+      jar_sha256 = "edc180fdcd9f740240da1a7a45673f46f59c5578d8cd3fbc912161f74b5aebb8",
+      jar_urls = [
+          "http://mirror.bazel.build/repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+          "http://repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+          "http://maven.ibiblio.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+      ],
+      licenses = ["notice"],  # New BSD License
+      testonly_ = True,
+      deps = ["@com_google_guava", "@com_google_truth"],
+  )
+
+  java_import_external(
+      name = "com_google_truth",
+      jar_sha256 = "032eddc69652b0a1f8d458f999b4a9534965c646b8b5de0eba48ee69407051df",
+      jar_urls = [
+          "http://mirror.bazel.build/repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
+          "http://repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
+      ],
+      licenses = ["notice"],  # Apache 2.0
+      testonly_ = True,
+      deps = ["@com_google_guava"],
+  )
+
   native.new_http_archive(
       name = "com_google_pprof",
       urls = [
@@ -716,11 +740,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "cub_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.3.zip",
-          # "https://github.com/NVlabs/cub/archive/1.7.3.zip",
+          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.4.zip",
+          "https://github.com/NVlabs/cub/archive/1.7.4.zip",
       ],
-      sha256 = "b7ead9e291d34ffa8074243541c1380d63be63f88de23de8ee548db573b72ebe",
-      strip_prefix = "cub-1.7.3",
+      sha256 = "20a1a39fd97e5da7f40f5f2e7fd73fd2ea59f9dc4bb8a6c5f228aa543e727e31",
+      strip_prefix = "cub-1.7.4",
       build_file = str(Label("//third_party:cub.BUILD")),
   )
 

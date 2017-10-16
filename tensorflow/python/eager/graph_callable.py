@@ -264,6 +264,9 @@ class _InitializingFunctionObject(object):
     initialized = [resource_variable_ops.var_is_initialized_op(
         v.handle).numpy() for v in self._call_fn.variables]
     if all(x for x in initialized):
+      for v in self._call_fn.variables:
+        if v._trainable:  # pylint: disable=protected-access
+          tape.watch_variable(v)
       return self._call_fn(*args)
     elif all(not x for x in initialized):
       return self._init_fn(*args)

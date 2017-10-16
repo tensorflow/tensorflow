@@ -191,6 +191,11 @@ message ExecutionOptions {
   uint64 seed = 3;
 
   DebugOptions debug_options = 4;
+
+  // This optional field specifies a particular set of devices to run the
+  // computation on. The computation will be partitioned across these devices.
+  // If not provided, the default device will be chosen.
+  repeated DeviceHandle device_handles = 5;
 }
 
 message SnapshotComputationRequest {
@@ -312,12 +317,8 @@ message ExecuteRequest {
   ComputationHandle computation = 1;
   repeated GlobalDataHandle arguments = 2;
 
-  // This optional field specifies a particular device to run the computation.
-  // If not provided, the default device will be chosen.
-  DeviceHandle device_handle = 5;
-
   // Options that affect how XLA compiles and runs code to service this request.
-  ExecutionOptions execution_options = 6;
+  ExecutionOptions execution_options = 5;
 }
 
 message ExecuteParallelRequest {
