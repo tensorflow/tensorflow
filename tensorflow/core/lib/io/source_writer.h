@@ -100,18 +100,21 @@ class SourceWriter {
   bool new_line;
 };
 
-// A writer outputing source code into a writable file.
+// A writer outputing source code into a file.
+//
+// Note: the writer does not acquire the ownership of the file being passed in
+// parameter.
 class SourceFileWriter : public SourceWriter {
  public:
-  explicit SourceFileWriter(const string& fname, Env* env = Env::Default());
-  virtual ~SourceFileWriter();
+  explicit SourceFileWriter(WritableFile* file) : file_(file) {}
+  virtual ~SourceFileWriter() = default;
 
  protected:
   void Append(const StringPiece& str) override {
     TF_CHECK_OK(file_->Append(str));
   }
  private:
-  std::unique_ptr<WritableFile> file_;
+  WritableFile* file_;
 };
 
 // A writer outputing source code into a string buffer.

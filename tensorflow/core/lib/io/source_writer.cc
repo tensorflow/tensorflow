@@ -49,13 +49,5 @@ SourceWriter* SourceWriter::Inline(const string& str) {
   return this;
 }
 
-SourceFileWriter::SourceFileWriter(const string& fname, Env* env) {
-  TF_CHECK_OK(env->NewWritableFile(fname, &file_));
-}
-
-SourceFileWriter::~SourceFileWriter() {
-  TF_CHECK_OK(file_->Close());
-}
-
 }  // namespace io
 }  // namespace tensorflow
