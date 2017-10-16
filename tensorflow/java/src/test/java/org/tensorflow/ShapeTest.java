@@ -22,8 +22,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import java.util.Arrays;
-
 /** Unit tests for {@link Shape}. */
 @RunWith(JUnit4.class)
 public class ShapeTest {
@@ -83,33 +81,22 @@ public class ShapeTest {
 
   @Test
   public void equalsWorksCorrectly() {
-    Shape s1 = Shape.make(-1, 2, 3);
-    Shape s2 = s1;
-    Shape s3 = Shape.make(-1, 2, 3);
-    Shape s4 = Shape.make(-1, 2, 4);
-    Shape s5 = Shape.make(-1, 2, 3, 4);
-    Shape s6 = Shape.make(-1, 2);
-    Object o = new Object();
+    assertEquals(Shape.make(-1, 2, 3), Shape.make(-1, 2, 3));
+    assertEquals(Shape.scalar(), Shape.scalar());
+    assertEquals(Shape.unknown(), Shape.unknown());
 
-    assertEquals(s1, s2);
-    assertEquals(s1, s3);
-    assertNotEquals(s1, s4);
-    assertNotEquals(s1, s5);
-    assertNotEquals(s1, s6);
-    assertNotEquals(s1, o);
-    assertNotEquals(s1, null);
+    assertNotEquals(Shape.make(1,2), null);
+    assertNotEquals(Shape.make(1,2), new Object());
+    assertNotEquals(Shape.make(-1, 2, 3), Shape.make(-1, 2, 4));
   }
 
   @Test
   public void hashCodeIsAsExpected() {
-    long[] d1 = new long[] {1, 2, 3, 4};
-    long[] d2 = new long[] {};
+    assertEquals(Shape.make(1, 2, 3, 4).hashCode(), Shape.make(1, 2, 3, 4).hashCode());
+    assertEquals(Shape.scalar().hashCode(), Shape.scalar().hashCode());
+    assertEquals(Shape.unknown().hashCode(), Shape.unknown().hashCode());
 
-    Shape s1 = Shape.make(1, 2, 3, 4);
-    Shape s2 = Shape.scalar();
-
-    assertEquals(Arrays.hashCode(d1), s1.hashCode());
-    assertEquals(Arrays.hashCode(d2), s2.hashCode());
+    assertNotEquals(Shape.make(1, 2).hashCode(), Shape.make(1, 3).hashCode());
   }
 }
 
