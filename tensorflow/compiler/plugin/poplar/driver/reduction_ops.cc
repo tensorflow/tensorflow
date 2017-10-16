@@ -247,7 +247,7 @@ CreateSimpleReduction(poplar::Graph &graph,
                                            op, seq, inst->name());
 
     // Apply initial value
-    Literal identity_literal = GetIdentityConstantTensor(inst);
+    Literal identity_literal = GetIdentityConstantTensor(root);
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
@@ -356,7 +356,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
     seq.add(poplar::program::Execute(cs));
 
     // Apply initial value
-    Literal identity_literal = GetIdentityConstantTensor(inst);
+    Literal identity_literal = GetIdentityConstantTensor(root);
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
