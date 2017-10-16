@@ -72,4 +72,4 @@ def histogram_fixed_width(values,
   with ops.name_scope(name, 'histogram_fixed_width',
                       [values, value_range, nbins]) as name:
     return gen_math_ops.histogram_fixed_width(values, value_range, nbins,
-                                              Tout=dtype, name=name)
+                                              dtype=dtype, name=name)

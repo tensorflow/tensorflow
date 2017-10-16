@@ -74,69 +74,69 @@ struct HistogramFixedWidthFunctor<CPUDevice, T, Tout> {
 template <typename Device, typename T, typename Tout>
 class HistogramFixedWidthOp : public OpKernel {
  public:
-  explicit HistogramFixedWidthOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit HistogramFixedWidthOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("nbins", &nbins_));
+    OP_REQUIRES(
+        ctx, (nbins_ > 0),
+        errors::InvalidArgument("nbins should be a positive number, but got '",
+                                nbins_, "'"));
+  }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& values_tensor = ctx->input(0);
     const Tensor& value_range_tensor = ctx->input(1);
-    const Tensor& nbins_tensor = ctx->input(2);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(value_range_tensor.shape()),
                 errors::InvalidArgument("value_range should be a vector."));
     OP_REQUIRES(ctx, (value_range_tensor.shape().num_elements() == 2),
                 errors::InvalidArgument(
                     "value_range should be a vector of 2 elements."));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(nbins_tensor.shape()),
-                errors::InvalidArgument("nbins should be a scalar."));
 
     const auto values = values_tensor.flat<T>();
     const auto value_range = value_range_tensor.flat<T>();
-    const int32 nbins = nbins_tensor.scalar<int32>()();
 
     OP_REQUIRES(
         ctx, (value_range(0) < value_range(1)),
         errors::InvalidArgument("value_range should satisfy value_range[0] < "
                                 "value_range[1], but got '[",
                                 value_range(0), ", ", value_range(1), "]'"));
-    OP_REQUIRES(
-        ctx, (nbins > 0),
-        errors::InvalidArgument("nbins should be a positive number, but got '",
-                                nbins, "'"));
 
     Tensor* out_tensor;
     OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(0, TensorShape({nbins}), &out_tensor));
+                   ctx->allocate_output(0, TensorShape({nbins_}), &out_tensor));
     auto out = out_tensor->flat<Tout>();
 
     OP_REQUIRES_OK(
         ctx, functor::HistogramFixedWidthFunctor<Device, T, Tout>::Compute(
-                 ctx, values, value_range, nbins, out));
+                 ctx, values, value_range, nbins_, out));
   }
+
+ private:
+  int nbins_;
 };
 
 #define REGISTER_KERNELS(type)                                           \
   REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")                    \
                               .Device(DEVICE_CPU)                        \
                               .TypeConstraint<type>("T")                 \
-                              .TypeConstraint<int32>("Tout"),            \
+                              .TypeConstraint<int32>("dtype"),           \
                           HistogramFixedWidthOp<CPUDevice, type, int32>) \
   REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")                    \
                               .Device(DEVICE_CPU)                        \
                               .TypeConstraint<type>("T")                 \
-                              .TypeConstraint<int64>("Tout"),            \
+                              .TypeConstraint<int64>("dtype"),           \
                           HistogramFixedWidthOp<CPUDevice, type, int64>)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_KERNELS(type)                                \
-  REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")         \
-                              .Device(DEVICE_GPU)             \
-                              .HostMemory("value_range")      \
-                              .HostMemory("nbins")            \
-                              .TypeConstraint<type>("T")      \
-                              .TypeConstraint<int32>("Tout"), \
+#define REGISTER_KERNELS(type)                                 \
+  REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")          \
+                              .Device(DEVICE_GPU)              \
+                              .HostMemory("value_range")       \
+                              .TypeConstraint<type>("T")       \
+                              .TypeConstraint<int32>("dtype"), \
                           HistogramFixedWidthOp<GPUDevice, type, int32>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
