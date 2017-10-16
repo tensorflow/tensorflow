@@ -67,11 +67,17 @@ struct BincountFunctor<GPUDevice, T> {
                         typename TTypes<T, 1>::Tensor& output) {
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
+    if (output.size() == 0) {
+      return Status::OK();
+    }
     // Set 'output' to zeros.
     CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
     SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
         output.size(), output.data());
 
+    if (arr.size() == 0) {
+      return Status::OK();
+    }
     config = GetCudaLaunchConfig(arr.size(), d);
     if (weights.size() != 0) {
       BincountCustomKernel<
