@@ -24,8 +24,8 @@ natively on your system.
 
 ### Run TF CI Scripts Natively on your Machine
 
-1.  Perform all the steps at https://www.tensorflow.org/install/
-    until building the pip package.
+1.  Follow all the instructions at https://www.tensorflow.org/install/install_sources
+    up to the section "Configure the installation".
 
 2.  Pick the appropriate OS and python version you have installed,
     and run the script under tensorflow/tools/ci_build/<OS>.
