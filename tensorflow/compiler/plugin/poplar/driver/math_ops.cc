@@ -85,6 +85,9 @@ LookupBinaryFn(const HloInstruction* inst) {
     case HloOpcode::kNe: return popstd::neq;
     case HloOpcode::kPower: return popstd::pow;
     case HloOpcode::kRemainder: return popstd::rem;
+    case HloOpcode::kShiftLeft: return popstd::shiftLeft;
+    case HloOpcode::kShiftRightArithmetic: return popstd::shiftRightSignExtend;
+    case HloOpcode::kShiftRightLogical: return popstd::shiftRight;
     case HloOpcode::kSubtract: return popstd::sub;
     default:
       break;

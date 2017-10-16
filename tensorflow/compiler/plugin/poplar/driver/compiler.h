@@ -45,7 +45,8 @@ class PoplarCompiler : public Compiler {
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
           std::vector<std::unique_ptr<HloModule>>,
-          std::vector<perftools::gputools::StreamExecutor*>) override;
+          std::vector<std::vector<perftools::gputools::StreamExecutor*>>)
+  override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>>,

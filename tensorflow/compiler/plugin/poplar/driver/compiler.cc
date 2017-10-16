@@ -381,7 +381,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::vector<perftools::gputools::StreamExecutor*>> execs) {
 
   return tensorflow::errors::Unimplemented(
           "Compilation of multiple HLO modules is not supported on Poplar.");
