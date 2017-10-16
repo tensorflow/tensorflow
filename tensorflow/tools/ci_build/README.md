@@ -22,10 +22,11 @@ natively on your system.
     https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build/linux
     and run them from the TensorFlow repository root.
 
-### Run TF CI Scripts Natively on your Machine
+### Run TensorFlow CI Scripts Natively on your Machine
 
-1.  Follow all the instructions at https://www.tensorflow.org/install/install_sources
-    up to the section "Configure the installation".
+1.  Follow the instructions at https://www.tensorflow.org/install/install_sources,
+    but stop when you get to the section "Configure the installation". You do not
+    need to configure the installation to run the CI scripts.
 
 2.  Pick the appropriate OS and python version you have installed,
     and run the script under tensorflow/tools/ci_build/<OS>.
