@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
@@ -301,6 +302,16 @@ class OpsTest(test_util.TensorFlowTestCase):
 
   def testIdentity(self):
     self.assertEqual(2, array_ops.identity(2).numpy())
+
+  def testIncompatibleSetShape(self):
+    x = constant_op.constant(1)
+    with self.assertRaises(ValueError):
+      x.set_shape((1, 2))
+
+  def testCompatibleSetShape(self):
+    x = constant_op.constant([[1, 2]])
+    x.set_shape(tensor_shape.TensorShape([None, 2]))
+    self.assertEqual(x.get_shape(), (1, 2))
 
 
 if __name__ == '__main__':
