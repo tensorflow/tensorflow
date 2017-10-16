@@ -590,8 +590,13 @@ class FunctionalizeCond {
   // id in the original graph.
   struct CondArgs {
     struct CondCmp {
-      bool operator()(const Node* a, const Node* b) const {
-        return a->id() < b->id();
+      bool operator()(const Node* lhs, const Node* rhs) const {
+        bool lhs_is_resource =
+            lhs->num_inputs() > 0 ? (lhs->input_type(0) == DT_RESOURCE) : false;
+        bool rhs_is_resource =
+            rhs->num_inputs() > 0 ? (rhs->input_type(0) == DT_RESOURCE) : false;
+        return std::tie(lhs_is_resource, lhs->name()) <
+               std::tie(rhs_is_resource, rhs->name());
       }
     };
     Node* conditional = nullptr;
@@ -710,7 +715,7 @@ std::ostream& operator<<(std::ostream& os,
 // between the nodes and the nodes in each cluster.
 string DebugString(const Graph& graph,
                    FunctionalizeCond::ClusterHandle::Vector* clusters) {
-  string ret = "digraph {\ncompound=true;labeljust=\"r\";\n";
+  string ret = "digraph {\ncompound=true;labeljust=\"r\";ranksep=0.24\n";
   std::map<FunctionalizeCond::ClusterHandle, string> subgraphs;
   for (Node* n : graph.nodes()) {
     if (n->IsOp()) {
@@ -720,8 +725,8 @@ string DebugString(const Graph& graph,
   }
   for (auto kv : subgraphs) {
     strings::StrAppend(&ret, "subgraph cluster_", kv.first.ToString(), " {\n",
-                       "label = \"", kv.first.ToString(), "\";\n", kv.second,
-                       "}\n");
+                       "style=filled; color=lightgrey;", "label = \"",
+                       kv.first.ToString(), "\";\n", kv.second, "}\n");
   }
   for (Node* n : graph.nodes()) {
     if (!n->IsOp()) {
@@ -1110,11 +1115,6 @@ Status FunctionalizeCond::ExtractBody(const CondArgs& cond_args,
     DataType dtype = arg->input_type(0);
     TF_ASSIGN_OR_RETURN(Node * arg_node,
                         BuildArgNode(body, dtype, arg_count++));
-    if (dtype == DT_RESOURCE) {
-      bool constant;
-      TF_RETURN_IF_ERROR(GetNodeAttr(arg->attrs(), "is_constant", &constant));
-      TF_RET_CHECK(constant);
-    }
     node_map.at(arg->id()) = arg_node;
     squash_src_outputs.at(arg->id()) = true;
   }
@@ -1247,9 +1247,7 @@ Status FunctionalizeCond::ConvertMergeToXlaIf(Cluster* merge_cluster) {
   // Sort the outputs by ID to produce more stable output.
   std::vector<Node*> outputs(merge_cluster->merge_nodes.begin(),
                              merge_cluster->merge_nodes.end());
-  std::sort(
-      outputs.begin(), outputs.end(),
-      [](const Node* lhs, const Node* rhs) { return lhs->id() < rhs->id(); });
+  std::sort(outputs.begin(), outputs.end(), CondArgs::CondCmp());
 
   // Extract bodies and builds a If operator.
   TF_ASSIGN_OR_RETURN(Node * if_node,
@@ -1370,7 +1368,7 @@ Status FunctionalizeCond::Functionalize(Graph* graph,
 // functional equivalents.
 Status FunctionalizeControlFlow(Graph* graph,
                                 FunctionLibraryDefinition* library) {
-  VLOG(2) << "FunctionalizeControlFlow: "
+  VLOG(2) << "FunctionalizeControlFlow (initial): "
           << dump_graph::DumpGraphToFile("functionalize_initial", *graph);
   // Note: BuildControlFlowInfo() requires that the graph's source node is
   // connected to all source nodes in the graph. Many graphs violate this
@@ -1448,7 +1446,11 @@ Status FunctionalizeControlFlow(Graph* graph,
   // FunctionalizeControlFlow is invoked for every function, so the loops's
   // bodies and conditionals that were extracted into functions will be handled
   // in successive invocations.
-  return FunctionalizeCond::Functionalize(graph, library);
+  TF_RETURN_IF_ERROR(FunctionalizeCond::Functionalize(graph, library));
+
+  VLOG(2) << "FunctionalizeControlFlow (final): "
+          << dump_graph::DumpGraphToFile("functionalize_final", *graph);
+  return Status::OK();
 }
 
 }  // namespace tensorflow
