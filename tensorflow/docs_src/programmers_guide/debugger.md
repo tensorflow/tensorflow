@@ -440,7 +440,7 @@ accuracy_score = classifier.evaluate(x=test_set.data,
 
 
 [debug_tflearn_iris.py](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py),
-based on {$tflearn$tf-learn's iris tutorial}, contains a full example of how to
+based on @{$tflearn$tf-learn's iris tutorial}, contains a full example of how to
 use the tfdbg with `Estimator`s. To run this example, do:
 
 ```none
