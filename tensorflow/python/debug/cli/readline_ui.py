@@ -26,8 +26,8 @@ from tensorflow.python.debug.cli import debugger_cli_common
 class ReadlineUI(base_ui.BaseUI):
   """Readline-based Command-line UI."""
 
-  def __init__(self, on_ui_exit=None):
-    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit)
+  def __init__(self, on_ui_exit=None, config=None):
+    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit, config=config)
     self._init_input()
 
   def _init_input(self):

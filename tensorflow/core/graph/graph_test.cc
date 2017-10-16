@@ -104,6 +104,20 @@ class GraphTest : public ::testing::Test {
     return node;
   }
 
+  void FromGraphDef(const string& gdef_ascii) {
+    GraphDef gdef;
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
+    GraphConstructorOptions opts;
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef, &graph_));
+  }
+
+  Node* FindNode(const string& name) {
+    for (Node* node : graph_.nodes()) {
+      if (node->name() == name) return node;
+    }
+    LOG(FATAL) << name;
+  }
+
   Graph graph_;
 
  private:
@@ -409,6 +423,58 @@ TEST_F(GraphTest, IsValidNode) {
   EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
                    "Does it belong to a different graph?"),
             s.error_message());
+}
+
+TEST_F(GraphTest, AddControlEdge) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } ");
+  Node* a = FindNode("A");
+  Node* b = FindNode("B");
+  Node* c = FindNode("C");
+
+  // Add a control edge.
+  const Edge* edge = graph_.AddControlEdge(c, a);
+  ASSERT_TRUE(edge != nullptr);
+  // Check newly-created edge.
+  EXPECT_EQ(edge->src(), c);
+  EXPECT_EQ(edge->src_output(), Graph::kControlSlot);
+  EXPECT_EQ(edge->dst(), a);
+  EXPECT_EQ(edge->dst_input(), Graph::kControlSlot);
+  // Check A's NodeDef.
+  ASSERT_EQ(a->def().input_size(), 1);
+  EXPECT_EQ(a->def().input(0), "^C");
+
+  // Can add control edge redundant with data edge.
+  edge = graph_.AddControlEdge(a, b);
+  EXPECT_TRUE(edge != nullptr);
+  ASSERT_EQ(b->def().input_size(), 2);
+  EXPECT_EQ(b->def().input(0), "A:0");
+  EXPECT_EQ(b->def().input(1), "^A");
+
+  // Doesn't add edge redundant with control edge.
+  edge = graph_.AddControlEdge(a, b);
+  EXPECT_TRUE(edge == nullptr);
+  EXPECT_EQ(b->def().input_size(), 2);
+
+  // Can add redundant control edge with create_duplicate.
+  edge = graph_.AddControlEdge(a, b, /*create_duplicate=*/true);
+  EXPECT_TRUE(edge != nullptr);
+  // create_duplicate causes the NodeDef not to be updated.
+  ASSERT_EQ(b->def().input_size(), 2);
+  EXPECT_EQ(b->def().input(0), "A:0");
+  EXPECT_EQ(b->def().input(1), "^A");
+
+  // Add control edge from source.
+  edge = graph_.AddControlEdge(graph_.source_node(), b);
+  EXPECT_TRUE(edge != nullptr);
+  // Check that we don't include source input in the NodeDef.
+  EXPECT_EQ(b->def().input_size(), 2);
+  // Doesn't add redundant edge.
+  edge = graph_.AddControlEdge(graph_.source_node(), b);
+  EXPECT_TRUE(edge == nullptr);
+  EXPECT_EQ(b->def().input_size(), 2);
 }
 
 TEST_F(GraphTest, UpdateEdge) {

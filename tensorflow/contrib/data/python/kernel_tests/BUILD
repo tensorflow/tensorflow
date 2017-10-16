@@ -11,7 +11,6 @@ py_test(
     size = "small",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
@@ -25,7 +24,6 @@ py_test(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )

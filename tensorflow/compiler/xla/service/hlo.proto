@@ -39,6 +39,8 @@ message HloInstructionProto {
   string name = 1;
   string opcode = 2;
   xla.Shape shape = 3;
+
+  // TODO(b/67782397): Replace instruction names with HloInstruction ids.
   repeated string operand_names = 4;
   repeated string control_predecessor_names = 5;
   repeated string called_computation_names = 6;
@@ -58,6 +60,64 @@ message HloInstructionProto {
 
   // Index for kGetTupleElement.
   int64 tuple_index = 13;
+
+  // Dimensions present for some operations that require reshaping or
+  // broadcasting, including Reshape, Reduce, ReduceWindow, and Reverse.
+  repeated int64 dimensions = 14;
+
+  // Describes the window in a windowed operation such as convolution.
+  xla.Window window = 15;
+
+  // Describes the dimension numbers used for a convolution.
+  xla.ConvolutionDimensionNumbers convolution_dimension_numbers = 16;
+
+  // Describes the [begin, end) index range and stride for slices.
+  message SliceDimensions {
+    int64 start = 1;
+    int64 limit = 2;
+    int64 stride = 3;
+  }
+  repeated SliceDimensions slice_dimensions = 17;
+
+  // The bit sizes for a reduce-precision operation.
+  int32 exponent_bits = 18;
+  int32 mantissa_bits = 19;
+
+  // Describes the [start, start + size) range size for a dynamic slice
+  // ('start' is specified dynamically in the second operand of the operation).
+  repeated int64 dynamic_slice_sizes = 20;
+
+  // The padding configuration that describes the edge padding and interior
+  // padding of this pad instruction. Only set for pad instructions.
+  xla.PaddingConfig padding_config = 21;
+
+  // Outfeed configuration information, only present for kOutfeed.
+  bytes outfeed_config = 22;
+
+  // The distribution requested for random number generation.
+  // Only present for kRng.
+  xla.RandomDistribution distribution = 23;
+
+  // A small float number added to the variance to avoid divide-by-zero error.
+  // Only present for kBatchNormTraining.
+  float epsilon = 24;
+
+  // An integer value representing the index of the feature dimension.
+  // Only present for kBatchNormTraining.
+  int64 feature_index = 25;
+
+  // Represents a unique identifier for each Send/Recv instruction pair.
+  // Only present for kSend or kRecv.
+  int64 channel_id = 26;
+
+  // The string representation of the infeed configuration.
+  bytes infeed_config = 27;
+
+  // Name of a global symbol to call, only present for kCustomCall.
+  string custom_call_target = 28;
+
+  // Shape of outfeed request.
+  xla.Shape outfeed_shape = 29;
 }
 
 // Serialization of HloComputation.
@@ -67,6 +127,9 @@ message HloComputationProto {
   // The array of instructions is always in a valid dependency order, where
   // operands appear before their users.
   repeated HloInstructionProto instructions = 2;
+
+  // The name of the root of the computation.
+  string root_name = 3;
 }
 
 // Serialization of HloModule.
@@ -186,4 +249,8 @@ message HloProto {
   HloModuleProto hlo_module = 1;
   HloOrderingProto hlo_ordering = 2;
   BufferAssignmentProto buffer_assignment = 3;
+}
+
+message HloProtos {
+  repeated HloProto hlo_protos = 1;
 }
