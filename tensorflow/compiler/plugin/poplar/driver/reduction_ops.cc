@@ -56,8 +56,8 @@ IsReducableArtithmetic(const HloComputation* computation) {
     case HloOpcode::kMultiply:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
-    case HloOpcode::kLogicalAnd:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
       return true;
     default:
       return false;
@@ -121,11 +121,11 @@ static Literal
 GetIdentityConstantTensor(const HloInstruction* root) {
   switch (root->opcode()) {
     case HloOpcode::kAdd:
-    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kAnd:
     default:
       return Literal::Zero(root->shape().element_type());
     case HloOpcode::kMultiply:
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kOr:
       return Literal::One(root->shape().element_type());
     case HloOpcode::kMaximum:
       return Literal::MinValue(root->shape().element_type());
@@ -145,9 +145,9 @@ PoplibsReductionOperation(const HloInstruction* inst) {
       return popreduce::Operation::MAX;
     case HloOpcode::kMinimum:
       return popreduce::Operation::MIN;
-    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kAnd:
       return popreduce::Operation::AND;
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kOr:
       return popreduce::Operation::OR;
     default:
       // Cannot reach here
@@ -166,9 +166,9 @@ ReductionVertexBaseName(const HloInstruction* inst) {
       return reduction_max;
     case HloOpcode::kMinimum:
       return reduction_min;
-    case HloOpcode::kLogicalAnd:
+    case HloOpcode::kAnd:
       return reduction_and;
-    case HloOpcode::kLogicalOr:
+    case HloOpcode::kOr:
       return reduction_or;
     default:
       // Cannot reach here
@@ -259,7 +259,7 @@ CreateSimpleReduction(poplar::Graph &graph,
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
       popstd_binary_fn fn;
-      TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root->opcode()));
+      TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root));
 
       out = fn(graph, out, init_val, seq, inst->name() + "_initval");
     }
@@ -368,7 +368,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
       popstd_binary_fn fn;
-      TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root->opcode()));
+      TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root));
 
       out = fn(graph, out, init_val, seq, inst->name() + "_initval");
     }
@@ -619,7 +619,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
     TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
     popstd_binary_fn fn;
-    TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(scatter_root->opcode()));
+    TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(scatter_root));
 
     out = fn(graph, out, init_val, program_seq, inst->name() + "_initval");
   }

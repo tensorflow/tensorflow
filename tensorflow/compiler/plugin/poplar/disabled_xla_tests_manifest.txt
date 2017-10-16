@@ -37,6 +37,9 @@ ScalarComputationsTest.RemU32s      POPLAR // U32
 ScalarComputationsTest.DivU32s      POPLAR // U32
 ScalarComputationsTest.DivideTwoScalarsU32   POPLAR // U32
 ScalarComputationsTest.MaxU32Above      POPLAR // U32
+ScalarComputationsTest.AndU32      POPLAR // U32
+ScalarComputationsTest.NotU32      POPLAR // U32
+ScalarComputationsTest.OrU32      POPLAR // U32
 ArrayElementwiseOpTest.MulTwoConstantU32s      POPLAR // U32
 ArrayElementwiseOpTest.CompareLeU32s      POPLAR // U32
 ArrayElementwiseOpTest.CompareLtU32s      POPLAR // U32
@@ -47,6 +50,11 @@ ArrayElementwiseOpTest.MaxU32s      POPLAR // U32
 ArrayElementwiseOpTest.CompareGeU32s      POPLAR // U32
 ArrayElementwiseOpTest.CompareNeU32s      POPLAR // U32
 ArrayElementwiseOpTest.CompareEqU32s      POPLAR // U32
+ArrayElementwiseOpTest.NotU32R2      POPLAR // U32
+ArrayElementwiseOpTest.NotU32R1      POPLAR // U32
+ArrayElementwiseOpTest.AndU32R2      POPLAR // U32
+ArrayElementwiseOpTest.OrU32R2      POPLAR // U32
+ArrayElementwiseOpTest.OrU32R1      POPLAR // U32
 VecOpsSimpleTest.NegateUint32Values      POPLAR // U32
 PrngTest.HundredValuesB10p5      POPLAR // U32
 PrngTest.HundredValuesB10p1      POPLAR // U32

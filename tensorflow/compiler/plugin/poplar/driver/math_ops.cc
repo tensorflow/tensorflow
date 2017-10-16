@@ -36,7 +36,8 @@ static const std::string out_conn("out");
 
 
 port::StatusOr<popstd_unary_fn>
-LookupUnaryFn(HloOpcode opcode) {
+LookupUnaryFn(const HloInstruction* inst) {
+  HloOpcode opcode = inst->opcode();
   switch (opcode) {
     case HloOpcode::kAbs: return popstd::abs;
     case HloOpcode::kCeil: return popstd::ceil;
@@ -44,24 +45,32 @@ LookupUnaryFn(HloOpcode opcode) {
     case HloOpcode::kExp: return popstd::exp;
     case HloOpcode::kFloor: return popstd::floor;
     case HloOpcode::kLog: return popstd::log;
-    case HloOpcode::kLogicalNot: return popstd::logicalNot;
     case HloOpcode::kNegate: return popstd::neg;
     case HloOpcode::kRoundNearestAfz: return popstd::round;
     case HloOpcode::kSign: return popstd::signum;
     case HloOpcode::kSin: return popstd::sin;
     case HloOpcode::kTanh: return popstd::tanh;
     case HloOpcode::kIsFinite: return popstd::isFinite;
-    
     default:
       break;
   }
+
+  if (opcode == HloOpcode::kNot) {
+    if (inst->shape().element_type() == PRED) {
+      return popstd::logicalNot;
+    } else {
+      return popstd::bitwiseNot;
+    }
+  }
+
   return port::Status(port::error::UNKNOWN,
                       port::StrCat("[Poplar] Invalid opcode lookup ",
                                    HloOpcodeString(opcode)));
 }
 
 port::StatusOr<popstd_binary_fn>
-LookupBinaryFn(HloOpcode opcode) {
+LookupBinaryFn(const HloInstruction* inst) {
+  HloOpcode opcode = inst->opcode();
   switch (opcode) {
     case HloOpcode::kAdd: return popstd::add;
     case HloOpcode::kDivide: return popstd::div;
@@ -70,8 +79,6 @@ LookupBinaryFn(HloOpcode opcode) {
     case HloOpcode::kGe: return popstd::gteq;
     case HloOpcode::kLt: return popstd::lt;
     case HloOpcode::kLe: return popstd::lteq;
-    case HloOpcode::kLogicalAnd: return popstd::logicalAnd;
-    case HloOpcode::kLogicalOr: return popstd::logicalOr;
     case HloOpcode::kMaximum: return popstd::max;
     case HloOpcode::kMinimum: return popstd::min;
     case HloOpcode::kMultiply: return popstd::mul;
@@ -82,13 +89,31 @@ LookupBinaryFn(HloOpcode opcode) {
     default:
       break;
   }
+
+  if (opcode == HloOpcode::kAnd) {
+    if (inst->shape().element_type() == PRED) {
+      return popstd::logicalAnd;
+    } else {
+      return popstd::bitwiseAnd;
+    }
+  }
+
+  if (opcode == HloOpcode::kOr) {
+    if (inst->shape().element_type() == PRED) {
+      return popstd::logicalOr;
+    } else {
+      return popstd::bitwiseOr;
+    }
+  }
+
   return port::Status(port::error::UNKNOWN,
                       port::StrCat("[Poplar] Invalid opcode lookup ",
                                    HloOpcodeString(opcode)));
 }
 
 port::StatusOr<popstd_inplace_fn>
-LookupBinaryInPlaceFn(HloOpcode opcode) {
+LookupBinaryInPlaceFn(const HloInstruction* inst) {
+  HloOpcode opcode = inst->opcode();
   switch (opcode) {
     case HloOpcode::kAdd: return popstd::addTo;
     case HloOpcode::kMultiply: return popstd::hadamardProduct;
@@ -113,7 +138,7 @@ CreateUnaryElementwiseOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
   popstd_unary_fn fn;
-  TF_ASSIGN_OR_RETURN(fn, LookupUnaryFn(inst->opcode()));
+  TF_ASSIGN_OR_RETURN(fn, LookupUnaryFn(inst));
 
   poplar::program::Sequence seq;
   poplar::Tensor out = fn(graph, in, seq, inst->name());
@@ -144,7 +169,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
       in0.isParallelWriteable()) {
 
     popstd_inplace_fn fn;
-    TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst->opcode()));
+    TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst));
 
     poplar::program::Sequence seq;
     fn(graph, in0, in1, seq, inst->name());
@@ -177,7 +202,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
     }
 
     popstd_binary_fn fn;
-    TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(inst->opcode()));
+    TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(inst));
 
     poplar::program::Sequence seq;
     poplar::Tensor out = fn(graph, in0, in1, seq, inst->name());

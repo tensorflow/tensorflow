@@ -44,9 +44,9 @@ typedef void (*popstd_inplace_fn)(poplar::Graph &graph,
                                   poplar::program::Sequence &prog,
                                   const std::string &debugPrefix);
 
-port::StatusOr<popstd_unary_fn>  LookupUnaryFn(HloOpcode opcode);
-port::StatusOr<popstd_binary_fn> LookupBinaryFn(HloOpcode opcode);
-port::StatusOr<popstd_inplace_fn> LookupBinaryInPlaceFn(HloOpcode opcode);
+port::StatusOr<popstd_unary_fn>  LookupUnaryFn(const HloInstruction*);
+port::StatusOr<popstd_binary_fn> LookupBinaryFn(const HloInstruction*);
+port::StatusOr<popstd_inplace_fn> LookupBinaryInPlaceFn(const HloInstruction*);
 
 template<typename To, typename From>
 To convert_array(const From& from) {

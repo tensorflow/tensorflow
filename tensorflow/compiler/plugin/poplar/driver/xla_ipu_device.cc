@@ -72,16 +72,6 @@ REGISTER_XLA_BACKEND(DEVICE_IPU_XLA_JIT, kIpuAllTypes, OpFilter);
 
 // Additional ops not explicitly defined by standard JIT
 
-REGISTER_XLA_OP(Name("Gather")
-        .TypeConstraint("Tparams", DT_FLOAT)
-        .Device(DEVICE_IPU_XLA_JIT),
-        GatherOpDynamicSlice);
-
-REGISTER_XLA_OP(Name("GatherV2")
-        .TypeConstraint("Tparams", DT_FLOAT)
-        .Device(DEVICE_IPU_XLA_JIT),
-        GatherOpDynamicSlice);
-
 REGISTER_XLA_OP(Name("ArgMax")
         .Device(DEVICE_IPU_XLA_JIT),
         XlaArgMaxOp);
