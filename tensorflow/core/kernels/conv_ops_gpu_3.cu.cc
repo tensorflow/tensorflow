@@ -394,7 +394,7 @@ __global__ void SwapDimension1And2InTensor3SmallDim(const T* input,
     int output_block_idx = SmallDim2 ? block_offset : block_offset * small_dim;
     int output_block_origin_idx = output_block_offset + output_block_idx;
 
-    // Store the tranposed memory region in shared memory to device.
+    // Store the transposed memory region in shared memory to device.
     if (x < tile_height) {
       for (int y = 0; y < small_dim; y++) {
         int output_idx = output_block_origin_idx + x +
