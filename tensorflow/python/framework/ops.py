@@ -1798,15 +1798,19 @@ class Operation(object):
       TypeError: if ops is not a list of Operations.
       ValueError: if any op in ops is from a different graph.
     """
-    assert not self._c_op, (
-        "Operation._add_control_inputs doesn't work with C API")
-    if ops:
+    if self._c_op:
       for op in ops:
         if not isinstance(op, Operation):
           raise TypeError("op must be an Operation: %s" % op)
-        _assert_same_graph(self, op)
-        self._control_inputs.append(op)
-      self._recompute_node_def()
+        c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
+    else:
+      if ops:
+        for op in ops:
+          if not isinstance(op, Operation):
+            raise TypeError("op must be an Operation: %s" % op)
+          _assert_same_graph(self, op)
+          self._control_inputs.append(op)
+        self._recompute_node_def()
 
   def _add_control_input(self, op):
     """Add a new control input to this operation.
@@ -1819,6 +1823,8 @@ class Operation(object):
       ValueError: if op is from a different graph.
     """
     if self._c_op:
+      if not isinstance(op, Operation):
+        raise TypeError("op must be an Operation: %s" % op)
       c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
     else:
       self._add_control_inputs([op])

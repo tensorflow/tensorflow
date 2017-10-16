@@ -22,7 +22,7 @@ import math
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import batching
-from tensorflow.python.data.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors

@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -27,7 +28,9 @@ namespace grappler {
 // run a model.
 class ArithmeticOptimizer : public GraphOptimizer {
  public:
-  ArithmeticOptimizer() {}
+  ArithmeticOptimizer() : opt_level_(RewriterConfig::ON) {}
+  explicit ArithmeticOptimizer(RewriterConfig::Toggle opt_level)
+      : opt_level_(opt_level) {}
   ~ArithmeticOptimizer() override {}
 
   string name() const override { return "arithmetic_optimizer"; };
@@ -64,6 +67,8 @@ class ArithmeticOptimizer : public GraphOptimizer {
       std::vector<const NodeDef*>* new_nodes) const;
 
   std::unordered_set<string> nodes_to_preserve_;
+
+  RewriterConfig::Toggle opt_level_;
 };
 
 }  // end namespace grappler

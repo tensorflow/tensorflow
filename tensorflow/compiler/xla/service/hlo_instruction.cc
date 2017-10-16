@@ -47,6 +47,101 @@ using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
+/* static */
+StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
+    HloModule* module, const HloInstructionProto& proto,
+    const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
+    tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map) {
+  TF_RET_CHECK(!proto.opcode().empty());
+  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
+  TF_RET_CHECK(proto.has_shape());
+
+  auto instruction = WrapUnique(new HloInstruction(opcode, proto.shape()));
+  for (const string& operand_name : proto.operand_names()) {
+    TF_RET_CHECK(ContainsKey(instruction_map, operand_name))
+        << "No instruction named " << operand_name;
+    instruction->AppendOperand(instruction_map.at(operand_name));
+  }
+  for (const string& predecessor_name : proto.control_predecessor_names()) {
+    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_name))
+        << "No instruction named " << predecessor_name;
+    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_name)
+                           ->AddControlDependencyTo(instruction.get()));
+  }
+
+  // In the proto, fused computations are held exclusively within the
+  // HloInstructionProto and do not appear as an HloComputationProto within the
+  // HloModuleProto.
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    TF_RET_CHECK(proto.has_fused_instructions_computation());
+    TF_RET_CHECK(!proto.fusion_kind().empty());
+    TF_ASSIGN_OR_RETURN(instruction->fusion_kind_,
+                        StringToFusionKind(proto.fusion_kind()));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloComputation> fused_computation,
+        HloComputation::CreateFromProto(
+            module, proto.fused_instructions_computation(), computation_map,
+            /*fusion_instruction=*/instruction.get()));
+    instruction->called_computations_.push_back(
+        module->AddEmbeddedComputation(std::move(fused_computation)));
+  } else {
+    for (const string& computation_name : proto.called_computation_names()) {
+      TF_RET_CHECK(ContainsKey(*computation_map, computation_name))
+          << "No computation named " << computation_name;
+      instruction->called_computations_.push_back(
+          computation_map->at(computation_name));
+    }
+  }
+
+  TF_RET_CHECK(!proto.name().empty());
+  instruction->name_ = proto.name();
+
+  instruction->metadata_ = proto.metadata();
+  if (proto.has_literal()) {
+    instruction->literal_ = MakeUnique<Literal>(proto.literal());
+  }
+  instruction->parameter_number_ = proto.parameter_number();
+  instruction->parameter_name_ = proto.parameter_name();
+
+  instruction->tuple_index_ = proto.tuple_index();
+  for (int64 dimension : proto.dimensions()) {
+    instruction->dimensions_.push_back(dimension);
+  }
+  if (proto.has_window()) {
+    instruction->window_ = MakeUnique<Window>(proto.window());
+  }
+  if (proto.has_convolution_dimension_numbers()) {
+    instruction->convolution_dimension_numbers_ =
+        MakeUnique<ConvolutionDimensionNumbers>(
+            proto.convolution_dimension_numbers());
+  }
+  for (const HloInstructionProto::SliceDimensions& slice_dimensions :
+       proto.slice_dimensions()) {
+    instruction->slice_starts_.push_back(slice_dimensions.start());
+    instruction->slice_limits_.push_back(slice_dimensions.limit());
+    instruction->slice_strides_.push_back(slice_dimensions.stride());
+  }
+  instruction->exponent_bits_ = proto.exponent_bits();
+  instruction->mantissa_bits_ = proto.mantissa_bits();
+  for (int64 dynamic_slice_size : proto.dynamic_slice_sizes()) {
+    instruction->dynamic_slice_sizes_.push_back(dynamic_slice_size);
+  }
+  if (proto.has_padding_config()) {
+    instruction->padding_config_ =
+        MakeUnique<PaddingConfig>(proto.padding_config());
+  }
+  instruction->outfeed_config_ = proto.outfeed_config();
+  instruction->distribution_ = proto.distribution();
+  instruction->epsilon_ = proto.epsilon();
+  instruction->feature_index_ = proto.feature_index();
+  instruction->channel_id_ = proto.channel_id();
+  instruction->infeed_config_ = proto.infeed_config();
+  instruction->custom_call_target_ = proto.custom_call_target();
+  instruction->outfeed_shape_ = proto.outfeed_shape();
+
+  return std::move(instruction);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
     int64 parameter_number, const Shape& shape, const string& name) {
   auto instruction =
@@ -987,8 +1082,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTranspose:
       CHECK_EQ(new_operands.size(), 1);
       return CreateTranspose(shape, new_operands[0], dimensions_);
-    case HloOpcode::kTuple:
-      return CreateTuple(new_operands);
+    case HloOpcode::kTuple: {
+      auto new_tuple = CreateTuple(new_operands);
+      *new_tuple->mutable_shape() = shape;
+      return new_tuple;
+    }
     case HloOpcode::kWhile:
       CHECK_EQ(new_operands.size(), 1);
       return CreateWhile(shape, while_condition(), while_body(),
@@ -1771,37 +1869,59 @@ HloInstructionProto HloInstruction::ToProto() const {
   for (const HloInstruction* control : control_predecessors_) {
     *proto.add_control_predecessor_names() = control->name();
   }
-  for (const HloComputation* computation : called_computations_) {
-    *proto.add_called_computation_names() = computation->name();
-  }
-  *proto.mutable_metadata() = metadata_;
-  switch (opcode_) {
-    case HloOpcode::kConstant:
-      *proto.mutable_literal() = literal_->ToProto();
-      break;
-    case HloOpcode::kParameter:
-      proto.set_parameter_number(parameter_number_);
-      proto.set_parameter_name(parameter_name_);
-      break;
-    case HloOpcode::kFusion: {
-      HloComputationProto* proto_fused_computation =
-          proto.mutable_fused_instructions_computation();
-      proto_fused_computation->set_name(name());
 
-      // Fill in fused instructions in post order.
-      auto fused_instructions =
-          fused_instructions_computation()->MakeInstructionPostOrder();
-      for (auto fused_instruction : fused_instructions) {
-        HloInstructionProto fused_proto = fused_instruction->ToProto();
-        proto_fused_computation->add_instructions()->Swap(&fused_proto);
-      }
-      break;
-    }
-    case HloOpcode::kGetTupleElement:
-      proto.set_tuple_index(tuple_index_);
-      break;
-    default: {}  // Nothing to do
+  *proto.mutable_metadata() = metadata_;
+  if (literal_ != nullptr) {
+    *proto.mutable_literal() = literal_->ToProto();
   }
+  proto.set_parameter_number(parameter_number_);
+  proto.set_parameter_name(parameter_name_);
+  if (opcode() == HloOpcode::kFusion) {
+    proto.set_fusion_kind(xla::ToString(fusion_kind()));
+    *proto.mutable_fused_instructions_computation() =
+        fused_instructions_computation()->ToProto();
+  } else {
+    for (const HloComputation* computation : called_computations_) {
+      *proto.add_called_computation_names() = computation->name();
+    }
+  }
+
+  proto.set_tuple_index(tuple_index_);
+  for (int64 dimension : dimensions_) {
+    proto.add_dimensions(dimension);
+  }
+  if (window_ != nullptr) {
+    *proto.mutable_window() = *window_;
+  }
+  if (convolution_dimension_numbers_ != nullptr) {
+    *proto.mutable_convolution_dimension_numbers() =
+        *convolution_dimension_numbers_;
+  }
+  for (int i = 0; i < slice_starts_.size(); ++i) {
+    auto* slice_dimension = proto.add_slice_dimensions();
+    slice_dimension->set_start(slice_starts_[i]);
+    slice_dimension->set_limit(slice_limits_[i]);
+    slice_dimension->set_stride(slice_strides_[i]);
+  }
+  proto.set_exponent_bits(exponent_bits_);
+  proto.set_mantissa_bits(mantissa_bits_);
+  for (int64 slice_size : dynamic_slice_sizes_) {
+    proto.add_dynamic_slice_sizes(slice_size);
+  }
+  if (padding_config_ != nullptr) {
+    *proto.mutable_padding_config() = *padding_config_;
+  }
+  proto.set_outfeed_config(outfeed_config_);
+  if (opcode() == HloOpcode::kRng) {
+    proto.set_distribution(distribution_);
+  }
+  proto.set_epsilon(epsilon_);
+  proto.set_feature_index(feature_index_);
+  proto.set_channel_id(channel_id_);
+  proto.set_infeed_config(infeed_config_);
+  proto.set_custom_call_target(custom_call_target_);
+  *proto.mutable_outfeed_shape() = outfeed_shape_;
+
   return proto;
 }
 
@@ -2631,6 +2751,32 @@ string ToString(HloInstruction::FusionKind kind) {
     case HloInstruction::FusionKind::kCustom:
       return "kCustom";
   }
+}
+
+StatusOr<HloInstruction::FusionKind> StringToFusionKind(
+    const string& kind_name) {
+  if (kind_name == "kLoop") {
+    return HloInstruction::FusionKind::kLoop;
+  }
+  if (kind_name == "kInput") {
+    return HloInstruction::FusionKind::kInput;
+  }
+  if (kind_name == "kOutput") {
+    return HloInstruction::FusionKind::kOutput;
+  }
+  if (kind_name == "kTransposeDot") {
+    return HloInstruction::FusionKind::kTransposeDot;
+  }
+  if (kind_name == "kConvBackwardFilter") {
+    return HloInstruction::FusionKind::kConvBackwardFilter;
+  }
+  if (kind_name == "kConvBackwardInput") {
+    return HloInstruction::FusionKind::kConvBackwardInput;
+  }
+  if (kind_name == "kCustom") {
+    return HloInstruction::FusionKind::kCustom;
+  }
+  return InvalidArgument("Unknown fusion kind: %s", kind_name.c_str());
 }
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {

@@ -1357,9 +1357,9 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         ":conv_ops",
-        ":cwise_op",
         ":ops_util",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
     ],

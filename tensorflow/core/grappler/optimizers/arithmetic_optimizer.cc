@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -333,6 +334,54 @@ static bool IsNumberType(DataType dtype) {
          number_types.end();
 }
 
+const char kOutputShapesAttr[] = "_output_shapes";
+
+// Returns whether `reshape` is an identity op. The tensor that `reshape`
+// reshapes is the `output_pos`-th output of node `input`.
+static bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
+                              const int output_pos) {
+  if (!reshape.attr().count(kOutputShapesAttr) ||
+      !input.attr().count(kOutputShapesAttr)) {
+    return false;
+  }
+
+  PartialTensorShape src_shape(
+      input.attr().at(kOutputShapesAttr).list().shape(output_pos));
+  PartialTensorShape dst_shape(
+      reshape.attr().at(kOutputShapesAttr).list().shape(0));
+  if (src_shape.unknown_rank() || dst_shape.unknown_rank()) {
+    return false;
+  }
+
+  if (!dst_shape.IsCompatibleWith(src_shape)) {
+    return false;
+  }
+
+  // Returns false when src_shape or dst_shape has >=2 dimensions with unknown
+  // sizes.
+  auto num_unknown_dim_sizes = [](const PartialTensorShape& partial_shape) {
+    auto dim_sizes = partial_shape.dim_sizes();
+    return std::count(dim_sizes.begin(), dim_sizes.end(), -1);
+  };
+  int src_num_unknown_dim_sizes = num_unknown_dim_sizes(src_shape);
+  int dst_num_unknown_dim_sizes = num_unknown_dim_sizes(dst_shape);
+  if (src_num_unknown_dim_sizes > 1 || dst_num_unknown_dim_sizes > 1) {
+    return false;
+  }
+
+  // Now, src_shape and dst_shape have at most one dimension with unknown
+  // sizes, and are compatible. Therefore, the reshape is a no-op when
+  //
+  // 1. at least one of them is fully-defined, or
+  // 2. both are partially defined and the -1 appears on the same dimension,
+  //    i.e., IsIdenticalTo returns true.
+  if (src_num_unknown_dim_sizes == 1 && dst_num_unknown_dim_sizes == 1) {
+    return dst_shape.IsIdenticalTo(src_shape);
+  }
+
+  return true;
+}
+
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
     std::vector<const NodeDef*>* new_nodes) const {
@@ -370,12 +419,24 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     //      |      |
     //    input ---+
     NodeDef* reshape = node_map->GetNode(node->name());
-    const NodeDef* input = node_map->GetNode(node->input(0));
+    int output_pos = 0;
+    string input_node_name = ParseNodeName(node->input(0), &output_pos);
+    const NodeDef* input = node_map->GetNode(input_node_name);
     if (input->op() == "Reshape") {
       reshape->set_input(0, input->input(0));
       node_map->UpdateInput(reshape->name(), input->name(), input->input(0));
       new_nodes->push_back(reshape);
       return reshape->name();
+    }
+
+    // If the reshape is a no-op, forward its input to its consumers. This is
+    // considered aggressive and turned off by default, because users may state
+    // that the placeholder outputs tensors of shape [M, N] while feeding it
+    // with tensors of shape [M*N] (or worse). The reshape nodes are then
+    // necessary to update the tensor metadata to the required shape.
+    if (opt_level_ == RewriterConfig::AGGRESSIVE &&
+        ReshapeIsIdentity(*reshape, *input, output_pos)) {
+      return reshape->input(0);
     }
   }
 
@@ -652,8 +713,17 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   *optimized_graph = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
 
+  GraphProperties graph_properties(item);
+  TF_RETURN_IF_ERROR(graph_properties.InferStatically());
+  TF_RETURN_IF_ERROR(graph_properties.AnnotateOutputShapes(optimized_graph));
+
   DedupComputations(optimized_graph);
   SimplifyArithmeticOps(optimized_graph);
+
+  // Clear output shapes.
+  for (int i = 0; i < optimized_graph->node_size(); ++i) {
+    optimized_graph->mutable_node(i)->mutable_attr()->erase(kOutputShapesAttr);
+  }
 
   return Status::OK();
 }
