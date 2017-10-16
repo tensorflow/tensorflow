@@ -475,6 +475,31 @@ class BackpropTest(test.TestCase):
     self.assertEqual(7, grad.numpy())
     self.assertEqual(x, var)
 
+  def testCustomGradient(self):
+
+    @custom_gradient.custom_gradient
+    def my_mul(x, y):
+      result = x*y
+
+      def grad(dr):
+        return [dr*y, dr*x]
+      return result, grad
+
+    lr = 0.25
+    x = resource_variable_ops.ResourceVariable(2., name='x')
+
+    def loss(x):
+      return my_mul(2., x.read_value())
+
+    loss_grads_fn = backprop.implicit_val_and_grad(loss)
+
+    losses = []
+    for _ in range(5):
+      loss, grads_and_vars = loss_grads_fn(x)
+      losses.append(loss.numpy())
+      for (grad, var) in grads_and_vars:
+        var.assign_sub(lr*grad)
+    self.assertAllEqual(losses, [4.0, 3., 2., 1., 0.])
 
 if __name__ == '__main__':
   test.main()
