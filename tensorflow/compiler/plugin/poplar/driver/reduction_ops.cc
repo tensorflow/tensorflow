@@ -118,7 +118,7 @@ IsPoplibsPool(const HloInstruction* inst,
 }
 
 static Literal
-GetIdentityConstantTensor(const HloInstruction* root) {
+GetIdentityConstantLiteral(const HloInstruction* root) {
   switch (root->opcode()) {
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
@@ -247,7 +247,7 @@ CreateSimpleReduction(poplar::Graph &graph,
                                            op, seq, inst->name());
 
     // Apply initial value
-    Literal identity_literal = GetIdentityConstantTensor(root);
+    Literal identity_literal = GetIdentityConstantLiteral(root);
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
@@ -356,7 +356,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
     seq.add(poplar::program::Execute(cs));
 
     // Apply initial value
-    Literal identity_literal = GetIdentityConstantTensor(root);
+    Literal identity_literal = GetIdentityConstantLiteral(root);
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
@@ -478,27 +478,20 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
 
   xla::Shape partial_shape(output_shape);
   partial_shape.add_dimensions(overlap_count);
+  LayoutUtil::ClearLayout(&partial_shape);
 
   poplar::Tensor partial;
-  TF_ASSIGN_OR_RETURN(partial,
-                      AddPlainTensor(graph, inst, partial_shape));
+  TF_ASSIGN_OR_RETURN(partial, AddPlainTensor(graph, inst, partial_shape));
 
-  auto identity_shape =
-          ShapeUtil::MakeShape(scatter_root->shape().element_type(), {});
-
-  Literal identity_literal = GetIdentityConstantTensor(scatter_root);
+  Literal identity_literal = GetIdentityConstantLiteral(scatter_root);
 
   poplar::Tensor identity_val;
   TF_ASSIGN_OR_RETURN(identity_val,
                       AddConstantTensor(graph,
-                                        identity_shape,
+                                        partial_shape,
                                         identity_literal,
                                         res));
-
-  poplar::Tensor init;
-  TF_ASSIGN_OR_RETURN(init, BroadcastTensor(identity_val, partial_shape));
-
-  program_seq.add(poplar::program::Copy(init, partial));
+  program_seq.add(poplar::program::Copy(identity_val, partial));
 
   // Find the number of windows in each dimension
   std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));
@@ -513,7 +506,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
                                       window.dimensions(d).stride());
   }
 
-  auto select_cs = graph.addComputeSet(inst->name());
+  auto select_cs = graph.addComputeSet(inst->name() + "_select");
   program_seq.add(poplar::program::Execute(select_cs));
 
   const unsigned long num_windows = source.numElements();
@@ -577,33 +570,13 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   /*
    * Reduction
    */
+  popreduce::Operation op = PoplibsReductionOperation(scatter_root);
 
-  std::string scatter_vertex_name =
-          templateVertex(ReductionVertexBaseName(scatter_root),
-                         operand.elementType());
+  std::vector<std::size_t> reduction_dims;
+  reduction_dims.push_back(partial.rank() - 1);
 
-  std::vector<size_t> reshaped(2);
-  reshaped[0] = partial.numElements() / overlap_count;
-  reshaped[1] = overlap_count;
-  partial = partial.reshape(reshaped);
-
-  // Allocate the output tensor
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
-  poplar::Tensor out_flat = out.flatten();
-
-  // One vertex per non-reduced element
-  auto scatter_cs = graph.addComputeSet(inst->name());
-  program_seq.add(poplar::program::Execute(scatter_cs));
-
-  const unsigned long num_reductions = out_flat.dim(0);
-
-  for (unsigned i = 0; i < num_reductions; ++i) {
-    auto v = graph.addVertex(scatter_cs, scatter_vertex_name,
-                             {{"a", partial[i]},
-                              {"out", out_flat.slice(i, i+1)}});
-    graph.setTileMapping(v, (i / device_info.numWorkerContexts)
-                            % device_info.getNumTiles());
-  }
+  out = popreduce::reduce(graph, partial, reduction_dims, op, program_seq,
+                          inst->name() + "_reduce");
 
   /*
    * Initial value application
