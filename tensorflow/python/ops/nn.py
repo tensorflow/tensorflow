@@ -88,7 +88,6 @@ See the @{$python/nn} guide.
 @@ctc_beam_search_decoder
 @@top_k
 @@in_top_k
-@@nth_element
 @@nce_loss
 @@sampled_softmax_loss
 @@uniform_candidate_sampler
