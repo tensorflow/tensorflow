@@ -312,17 +312,25 @@ class _InfeedThreadController(_InfeedOutfeedThreadBaseController):
 
   def _input_thread_fn_for_loading(self, session, enqueue_ops):
     count = 0
-    while True:
-      signal = self._signal_queue.get()
-      if signal == _SIGNAL.STOP:
-        logging.info('Stop Infeed input thread.')
-        return
+    try:
+      while True:
+        signal = self._signal_queue.get()
+        if signal == _SIGNAL.STOP:
+          logging.info('Stop Infeed input thread.')
+          return
 
-      iterations = signal
-      for i in range(iterations):
-        logging.debug('Infeed enqueue for iteration (%d, %d)', count, i)
-        session.run(enqueue_ops)
-      count += 1
+        iterations = signal
+        for i in range(iterations):
+          logging.debug('Infeed enqueue for iteration (%d, %d)', count, i)
+          session.run(enqueue_ops)
+        count += 1
+    except Exception:  # pylint: disable=broad-except
+      logging.error(
+          'Failed running infeed, closing session.\n'
+          'You may see an exception from your main session after this.',
+          exc_info=1
+      )
+      session.close()
 
   def join(self):
     logging.info('Waiting for Infeed Thread to exit.')
