@@ -338,6 +338,7 @@ def implicit_val_and_grad(f):
     variables = tape.top_tape_watched_variables()
     sources = [x.handle for x in variables]
     grad = imperative_grad.imperative_grad(_default_vspace,
+                                           tape.pop_tape(),
                                            nest.flatten(end_node),
                                            sources)
     return end_node, list(zip(grad, variables))
@@ -574,7 +575,7 @@ def val_and_grad_function(f, params=None):
       tape.watch(args[i])
     result = f(*args)
     return result, imperative_grad.imperative_grad(
-        _default_vspace, nest.flatten(result), sources,
+        _default_vspace, tape.pop_tape(), nest.flatten(result), sources,
         output_gradients=nest.flatten(dy) if dy is not None else None)
 
   return decorated

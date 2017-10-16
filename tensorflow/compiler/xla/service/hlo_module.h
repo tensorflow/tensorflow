@@ -140,7 +140,13 @@ class HloModule {
   const HloModuleConfig& config() const { return config_; }
 
   string ToString() const;
+
+  // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
+  static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
+      const HloModuleProto& proto,
+      const VersionedComputationHandle& entry_computation_handle,
+      const HloModuleConfig& config);
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.

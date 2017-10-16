@@ -18,7 +18,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
@@ -41,9 +40,10 @@ __global__ void TransposeKernel(int nthreads, const T* src, const int32* buf,
   CUDA_1D_KERNEL_LOOP(o_idx, nthreads) {
     int32 i_idx = 0;
     int32 t = o_idx;
-    for (int i = 0; i < ndims; ++i) {
-      i_idx += (t / out_strides[i]) * in_strides[perm[i]];
-      t = t % out_strides[i];
+    for (int32 i = 0; i < ndims; ++i) {
+      const int32 ratio = t / out_strides[i];
+      t -= ratio * out_strides[i];
+      i_idx += ratio * in_strides[perm[i]];
     }
     if (conjugate) {
       dst[o_idx] = Eigen::numext::conj(ldg(src + i_idx));
@@ -112,18 +112,21 @@ struct TransposeUsingTile {
         if (new_perm[0] == 1 && new_perm[1] == 0) {
           // Add the first dimension size as 1.
           new_dims.insert(new_dims.begin(), 1);
-          tensorflow::functor::SwapDimension1And2InTensor3<GPUDevice, T>()(
+          tensorflow::functor::SwapDimension1And2InTensor3<GPUDevice, T,
+                                                           conjugate>()(
               d, in_data, new_dims, out_data);
           return true;
         }
         break;
       case 3:
         if (new_perm == TransposePermsVec({0, 2, 1})) {
-          tensorflow::functor::SwapDimension1And2InTensor3<GPUDevice, T>()(
+          tensorflow::functor::SwapDimension1And2InTensor3<GPUDevice, T,
+                                                           conjugate>()(
               d, in_data, new_dims, out_data);
           return true;
         } else if (new_perm == TransposePermsVec({2, 1, 0})) {
-          tensorflow::functor::SwapDimension0And2InTensor3<GPUDevice, T>()(
+          tensorflow::functor::SwapDimension0And2InTensor3<GPUDevice, T,
+                                                           conjugate>()(
               d, in_data, new_dims, out_data);
           return true;
         } else {
@@ -142,17 +145,11 @@ template <bool conjugate>
 struct TransposeUsingTile<complex64, conjugate> {
   static bool run(const Eigen::GpuDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-    if (!TransposeUsingTile<uint64>::run(d, in, perm, out)) {
-      return false;
+    if (!conjugate) {
+      return TransposeUsingTile<uint64>::run(d, in, perm, out);
+    } else {
+      return TransposeUsingTile<float2, true>::run(d, in, perm, out);
     }
-    if (conjugate) {
-      // TODO(rmlarsen): Get rid of this call and conjugate on-the-fly in the
-      // transposition kernels so we only touch the memory once.
-      functor::UnaryFunctor<GPUDevice, functor::conj<complex64>> conj;
-      conj(d, out->flat<complex64>() /*out*/,
-           const_cast<const Tensor*>(out)->flat<complex64>() /*in*/);
-    }
-    return true;
   }
 };
 
@@ -160,17 +157,11 @@ template <bool conjugate>
 struct TransposeUsingTile<complex128, conjugate> {
   static bool run(const Eigen::GpuDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-    if (!TransposeUsingTile<float4>::run(d, in, perm, out)) {
-      return false;
+    if (!conjugate) {
+      return TransposeUsingTile<float4>::run(d, in, perm, out);
+    } else {
+      return TransposeUsingTile<double2, true>::run(d, in, perm, out);
     }
-    if (conjugate) {
-      // TODO(rmlarsen): Get rid of this call and conjugate on-the-fly in the
-      // transposition kernels so we only touch the memory once.
-      functor::UnaryFunctor<GPUDevice, functor::conj<complex128>> conj;
-      conj(d, out->flat<complex128>() /*out*/,
-           const_cast<const Tensor*>(out)->flat<complex128>() /*in*/);
-    }
-    return true;
   }
 };
 
