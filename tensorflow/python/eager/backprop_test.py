@@ -168,6 +168,16 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(second, [0])(f)[0]
     self.assertAllEqual([[0.0]], grad.numpy())
 
+  def testMakeVJP(self):
+
+    def f(x):
+      return x * x
+
+    wrapped_fn = backprop.make_vjp(f)
+    result, vjp = wrapped_fn(constant_op.constant(3.0))
+    self.assertEqual(result.numpy(), 9.0)
+    self.assertEqual(vjp(2.0)[0].numpy(), 12.0)
+
   def testGradGrad(self):
 
     def sq(x):
