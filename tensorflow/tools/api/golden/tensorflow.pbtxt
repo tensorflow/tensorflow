@@ -293,6 +293,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
   }
   member {
+    name: "data"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "distributions"
     mtype: "<type \'module\'>"
   }
@@ -387,6 +391,10 @@ tf_module {
   member {
     name: "metrics"
     mtype: "<type \'module\'>"
+  }
+  member {
+    name: "name_scope"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "newaxis"
@@ -493,6 +501,14 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "uint32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "uint8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -503,6 +519,10 @@ tf_module {
   member {
     name: "user_ops"
     mtype: "<type \'module\'>"
+  }
+  member {
+    name: "variable_scope"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "variance_scaling_initializer"
@@ -862,7 +882,7 @@ tf_module {
   }
   member_method {
     name: "decode_csv"
-    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\'], varargs=None, keywords=None, defaults=[\',\', \'True\', \'None\'], "
+    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\', \'na_value\'], varargs=None, keywords=None, defaults=[\',\', \'True\', \'None\', \'\'], "
   }
   member_method {
     name: "decode_json_example"
@@ -878,7 +898,7 @@ tf_module {
   }
   member_method {
     name: "depth_to_space"
-    argspec: "args=[\'input\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
   }
   member_method {
     name: "dequantize"
@@ -1334,7 +1354,7 @@ tf_module {
   }
   member_method {
     name: "matrix_transpose"
-    argspec: "args=[\'a\', \'name\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\'], "
+    argspec: "args=[\'a\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\', \'False\'], "
   }
   member_method {
     name: "matrix_triangular_solve"
@@ -1375,10 +1395,6 @@ tf_module {
   member_method {
     name: "multiply"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "name_scope"
-    argspec: "args=[\'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "negative"
@@ -1742,7 +1758,7 @@ tf_module {
   }
   member_method {
     name: "space_to_depth"
-    argspec: "args=[\'input\', \'block_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
   }
   member_method {
     name: "sparse_add"
@@ -1974,7 +1990,7 @@ tf_module {
   }
   member_method {
     name: "transpose"
-    argspec: "args=[\'a\', \'perm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'transpose\'], "
+    argspec: "args=[\'a\', \'perm\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'None\', \'transpose\', \'False\'], "
   }
   member_method {
     name: "truediv"
@@ -2023,10 +2039,6 @@ tf_module {
   member_method {
     name: "variable_op_scope"
     argspec: "args=[\'values\', \'name_or_scope\', \'default_name\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "variable_scope"
-    argspec: "args=[\'name_or_scope\', \'default_name\', \'values\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "variables_initializer"

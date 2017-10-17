@@ -188,10 +188,10 @@ TEST(CollectMetricsTest, Sampler) {
   auto sampler_with_labels = std::unique_ptr<Sampler<2>>(
       Sampler<2>::New({"/tensorflow/test/sampler_with_labels",
                        "Sampler with labels.", "MyLabel0", "MyLabel1"},
-                      {1.0, 2.0}));
+                      Buckets::Explicit({1.0, 2.0})));
   auto sampler_without_labels = std::unique_ptr<Sampler<0>>(Sampler<0>::New(
       {"/tensorflow/test/sampler_without_labels", "Sampler without labels."},
-      {0.0}));
+      Buckets::Explicit({0.0})));
 
   Histogram with_labels0({1.0, 2.0, DBL_MAX});
   sampler_with_labels->GetCell("Label00", "Label10")->Add(0.7);

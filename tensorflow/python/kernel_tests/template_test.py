@@ -50,6 +50,13 @@ def function_with_create(trainable):
       "dummy", shape=[1], initializer=init_ops.zeros_initializer())
 
 
+def variable_scoped_function_with_local_variable():
+  variable_scope.get_local_variable(
+      "local", shape=[1], initializer=init_ops.zeros_initializer())
+  return variable_scope.get_variable(
+      "dummy", shape=[1], initializer=init_ops.zeros_initializer())
+
+
 class TemplateTest(test.TestCase):
 
   def test_end_to_end(self):
@@ -388,6 +395,58 @@ class TemplateTest(test.TestCase):
     self.assertEquals("foo_1_2/add:0", outputs_d.name,
                       "Second application of template should also get "
                       "a freshly uniquified name scope.")
+
+  def test_global_variables(self):
+    # Make sure global_variables are created.
+    with variable_scope.variable_scope("foo"):
+      # Create two templates with the same name, ensure scopes are made unique.
+      ta = template.make_template("bar", variable_scoped_function, True)
+      tb = template.make_template("s", function_with_create, trainable=False)
+
+    # Initially there are not variables created.
+    self.assertEqual([], ta.global_variables)
+    self.assertEqual([], tb.global_variables)
+    # After calling there are variables created.
+    ta()
+    tb()
+    # Ensure we can get the scopes before either template is actually called.
+    self.assertEqual(1, len(ta.global_variables))
+    self.assertEqual(2, len(tb.global_variables))
+
+  def test_trainable_variables(self):
+    # Make sure trainable_variables are created.
+    with variable_scope.variable_scope("foo2"):
+      # Create two templates with the same name, ensure scopes are made unique.
+      ta = template.make_template("bar", variable_scoped_function, True)
+      tb = template.make_template("bar", variable_scoped_function, True)
+
+    # Initially there are not variables created.
+    self.assertEqual([], ta.trainable_variables)
+    self.assertEqual([], tb.trainable_variables)
+    # After calling there are variables created.
+    ta()
+    tb()
+    # Ensure we can get the scopes before either template is actually called.
+    self.assertEqual(1, len(ta.trainable_variables))
+    self.assertEqual(1, len(tb.trainable_variables))
+
+  def test_local_variables(self):
+    # Make sure trainable_variables are created.
+    with variable_scope.variable_scope("foo3"):
+      # Create two templates with the same name, ensure scopes are made unique.
+      ta = template.make_template("bar", variable_scoped_function, True)
+      tb = template.make_template("bar",
+                                  variable_scoped_function_with_local_variable)
+
+    # Initially there are not variables created.
+    self.assertEqual([], ta.local_variables)
+    self.assertEqual([], tb.local_variables)
+    # After calling there are variables created.
+    ta()
+    tb()
+    # Ensure we can get the scopes before either template is actually called.
+    self.assertEqual(0, len(ta.local_variables))
+    self.assertEqual(1, len(tb.local_variables))
 
 
 if __name__ == "__main__":

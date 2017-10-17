@@ -103,9 +103,10 @@ Status CapturedFunction::Create(
       new FunctionLibraryDefinition(
           *ctx->function_library()->GetFunctionLibraryDefinition()));
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(
-          device_mgr.get(), ctx->env(), graph_def_version, flib_def.get(),
-          {} /* TODO(mrry): OptimizerOptions? */));
+      new ProcessFunctionLibraryRuntime(device_mgr.get(), ctx->env(),
+                                        graph_def_version, flib_def.get(),
+                                        {} /* TODO(mrry): OptimizerOptions? */,
+                                        nullptr /* TODO(mrry): ClusterFLR */));
 
   FunctionLibraryRuntime* lib = pflr->GetFLR(device->name());
 

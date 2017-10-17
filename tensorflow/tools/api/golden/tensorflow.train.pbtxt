@@ -129,6 +129,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ProfilerHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ProximalAdagradOptimizer"
     mtype: "<type \'type\'>"
   }

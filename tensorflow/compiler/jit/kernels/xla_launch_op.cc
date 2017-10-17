@@ -46,11 +46,16 @@ namespace tensorflow {
 // see comment on `AllowsAsynchronousDeallocation()`.
 class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
-  XlaAllocator(const gpu::Platform* platform, OpKernelContext* op_context);
+  XlaAllocator(gpu::Platform* platform, OpKernelContext* op_context);
   ~XlaAllocator() override;
   xla::StatusOr<gpu::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
                                                 bool retry_on_failure) override;
   Status Deallocate(int device_ordinal, gpu::DeviceMemoryBase* mem) override;
+
+  // Register an Tensor (input or resource variable) with the allocator. If
+  // the operation returns an alias to one of its inputs, then the allocator
+  // needs to be able to handle it.
+  Status RegisterArgument(const Tensor* t);
 
   // Makes 'tensor' a wrapper around the data buffer at 'ptr'. The buffer is
   // interpreted as having data type 'dtype' and shape 'shape'.
@@ -75,8 +80,7 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
   std::unordered_map<void*, Tensor> tensors_;
 };
 
-XlaAllocator::XlaAllocator(const gpu::Platform* platform,
-                           OpKernelContext* op_context)
+XlaAllocator::XlaAllocator(gpu::Platform* platform, OpKernelContext* op_context)
     : xla::DeviceMemoryAllocator(platform), op_context_(op_context) {}
 
 XlaAllocator::~XlaAllocator() = default;
@@ -102,6 +106,14 @@ xla::StatusOr<gpu::DeviceMemoryBase> XlaAllocator::Allocate(
   TF_RET_CHECK(data != nullptr);
   tensors_[data] = t;
   return gpu::DeviceMemoryBase(data, size);
+}
+
+Status XlaAllocator::RegisterArgument(const Tensor* t) {
+  void* data =
+      reinterpret_cast<void*>(const_cast<char*>(t->tensor_data().data()));
+  TF_RET_CHECK(data != nullptr);
+  tensors_[data] = *t;
+  return Status::OK();
 }
 
 Status XlaAllocator::Deallocate(int device_ordinal,
@@ -285,6 +297,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
             shape, client->platform(), client->default_device_ordinal(), dmem)
             .ConsumeValueOrDie();
     arg_ptrs[i] = arg_buffers[i].get();
+
+    OP_REQUIRES_OK(ctx, xla_allocator.RegisterArgument(t));
   }
 
   // Make the final parameter point at local_runtime_context.
@@ -316,7 +330,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     return;
   }
 
-  output = std::move(run_result.ValueOrDie());
+  output = run_result.ConsumeValueOrDie()->release();
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time: " << elapsed << "us";
 

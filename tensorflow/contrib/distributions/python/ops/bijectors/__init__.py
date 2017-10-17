@@ -14,6 +14,7 @@
 # ==============================================================================
 """Bijector Ops.
 
+@@AbsoluteValue
 @@Affine
 @@AffineLinearOperator
 @@Bijector
@@ -24,6 +25,7 @@
 @@Identity
 @@Inline
 @@Invert
+@@Permute
 @@PowerTransform
 @@Sigmoid
 @@SigmoidCentered
@@ -39,6 +41,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+from tensorflow.contrib.distributions.python.ops.bijectors.absolute_value import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine import *
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import *
 from tensorflow.contrib.distributions.python.ops.bijectors.chain import *
@@ -47,6 +50,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.conditional_bijector 
 from tensorflow.contrib.distributions.python.ops.bijectors.exp import *
 from tensorflow.contrib.distributions.python.ops.bijectors.inline import *
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
+from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid_centered import *

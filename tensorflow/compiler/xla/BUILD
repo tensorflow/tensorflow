@@ -163,6 +163,7 @@ cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = [
+        "iterator_util.h",
         "map_util.h",
         "ptr_util.h",
         "util.h",
@@ -198,6 +199,16 @@ tf_cc_test(
     deps = [
         ":test",
         ":types",
+        ":util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "iterator_util_test",
+    srcs = ["iterator_util_test.cc"],
+    deps = [
+        ":test",
         ":util",
         "//tensorflow/core:test_main",
     ],

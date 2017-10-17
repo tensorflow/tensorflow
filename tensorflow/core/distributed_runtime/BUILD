@@ -98,14 +98,41 @@ tf_cc_test(
 
 cc_library(
     name = "worker_session",
-    srcs = ["worker_session.cc"],
+    srcs = [
+        "cluster_function_library_runtime.cc",
+        "worker_session.cc",
+    ],
     hdrs = [
+        "cluster_function_library_runtime.h",
         "worker_session.h",
     ],
     deps = [
         ":graph_mgr",
         ":worker_cache",
+        ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "cluster_function_library_runtime_test",
+    srcs = ["cluster_function_library_runtime_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":worker_session",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:cwise_op",
     ],
 )
 

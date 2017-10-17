@@ -312,7 +312,6 @@ Status XlaCompilationCache::Compile(
   *compilation_result = &entry->compilation_result;
   if (entry->compilation_status.ok() && executable) {
     if (entry->executable == nullptr) {
-      XlaCompiler compiler(options);
       entry->compilation_status = BuildExecutable(
           options, entry->compilation_result, &entry->executable);
     }

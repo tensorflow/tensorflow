@@ -412,7 +412,7 @@ string GenEagerPythonOp::Code() {
                          "    if not _result:\n"
                          "      return _op\n");
     }
-    strings::StrAppend(&result_, "    _inputs_flat = ", inputs, "\n");
+    strings::StrAppend(&result_, "    _inputs_flat = _op.inputs\n");
 
     // Compute graph-mode attrs.
     if (op_def_.attr_size() > 0) {
@@ -480,11 +480,18 @@ string GenEagerPythonOp::Code() {
   }
 
   bool eager_allowed = true;
+  string ref_arg;
   for (const auto& arg : op_def_.input_arg()) {
-    if (arg.is_ref()) eager_allowed = false;
+    if (arg.is_ref()) {
+      eager_allowed = false;
+      ref_arg = arg.name();
+    }
   }
   for (const auto& arg : op_def_.output_arg()) {
-    if (arg.is_ref()) eager_allowed = false;
+    if (arg.is_ref()) {
+      eager_allowed = false;
+      ref_arg = arg.name();
+    }
   }
 
   if (eager_allowed) {
@@ -497,13 +504,14 @@ string GenEagerPythonOp::Code() {
     strings::StrAppend(&result_,
                        "    raise RuntimeError(\n"
                        "        \"",
-                       op_name_, " op does not support eager execution.\")\n");
+                       op_name_, " op does not support eager execution. ",
+                       "Arg '", ref_arg, "'' is a ref.\")\n");
   }
 
   if (num_outs_ > 0) {
     strings::StrAppend(&result_, "  _execute.record_gradient(\n", "      \"",
                        op_def_.name(),
-                       "\", _inputs_flat, _attrs, _result, _ctx, name)\n");
+                       "\", _inputs_flat, _attrs, _result, name)\n");
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
       // Single list result.
     } else if (num_outs_ == 1) {

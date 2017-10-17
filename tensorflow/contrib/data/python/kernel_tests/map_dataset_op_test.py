@@ -24,6 +24,7 @@ from collections import namedtuple
 
 import numpy as np
 
+from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -181,7 +182,9 @@ class MapDatasetTest(test.TestCase):
           (1, 1), (1, 2), (2, 2), (2, 4), (8, 8), (8, 16)]:
         do_test(num_threads_val, output_buffer_size_val)
 
-  def _testDisposeParallelMapDataset(self, explicit_dispose):
+  def testImplicitDisposeParallelMapDataset(self):
+    # Tests whether a parallel map dataset will be cleaned up correctly when
+    # the pipeline does not run it until exhaustion.
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(1000).
     components = (np.arange(1000),
@@ -194,21 +197,11 @@ class MapDatasetTest(test.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    if explicit_dispose:
-      dispose_op = iterator.dispose_op()
 
     with self.test_session() as sess:
       sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
-      if explicit_dispose:
-        sess.run(dispose_op)
-
-  def testExplicitDisposeParallelMapDataset(self):
-    self._testDisposeParallelMapDataset(True)
-
-  def testImplicitDisposeParallelMapDataset(self):
-    self._testDisposeParallelMapDataset(False)
 
   def testParallelMapUnspecifiedOutputSize(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
@@ -272,7 +265,7 @@ class MapDatasetTest(test.TestCase):
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message")).apply(
-                   dataset_ops.ignore_errors()))
+                   error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -290,7 +283,7 @@ class MapDatasetTest(test.TestCase):
     dataset = (dataset_ops.Dataset.from_tensor_slices(components).map(
         lambda x: array_ops.check_numerics(x, "message"),
         num_threads=2,
-        output_buffer_size=2).apply(dataset_ops.ignore_errors()))
+        output_buffer_size=2).apply(error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -313,7 +306,7 @@ class MapDatasetTest(test.TestCase):
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(filenames).map(
         io_ops.read_file, num_threads=2, output_buffer_size=2).apply(
-            dataset_ops.ignore_errors()))
+            error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()

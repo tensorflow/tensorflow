@@ -231,7 +231,7 @@ int main(int argc, char* argv[]) {
   }
 
   const int64 clip_duration_samples = (clip_duration_ms * sample_rate) / 1000;
-  const int64 sample_stride_samples = (clip_stride_ms * sample_rate) / 1000;
+  const int64 clip_stride_samples = (clip_stride_ms * sample_rate) / 1000;
   Tensor audio_data_tensor(tensorflow::DT_FLOAT,
                            tensorflow::TensorShape({clip_duration_samples, 1}));
 
@@ -246,7 +246,7 @@ int main(int argc, char* argv[]) {
 
   const int64 audio_data_end = (sample_count - clip_duration_ms);
   for (int64 audio_data_offset = 0; audio_data_offset < audio_data_end;
-       audio_data_offset += sample_stride_samples) {
+       audio_data_offset += clip_stride_samples) {
     const float* input_start = &(audio_data[audio_data_offset]);
     const float* input_end = input_start + clip_duration_samples;
     std::copy(input_start, input_end, audio_data_tensor.flat<float>().data());

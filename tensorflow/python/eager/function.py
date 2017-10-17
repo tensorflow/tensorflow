@@ -35,6 +35,7 @@ from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 
 # Thread-local storage for tfe Tensors which are referenced while evaluating a
 # graph-mode function.
@@ -44,6 +45,28 @@ _scoped_captures = threading.local()
 # argument. The value should be None unless we're in function definition
 # context.
 _scoped_captures.tensors = None
+
+
+def make_function_def(graph, operations, inputs, outputs):
+  """Makes function def where accesses to resources are serialized."""
+  last_op_using_resource_tensor = {}
+
+  # TODO(apassos) probably control flow has to be handled delicately here as in
+  # if a resource is accessed inside a control flow context we need the control
+  # dependency to point to something outside the context which is guaranteed to
+  # happen after the access.
+  #
+  # TODO(apassos) this should do some form of alias analysis as ops which
+  # forward the resources such as Identity and Switch can cause serialization to
+  # fail.
+  for op in operations:
+    for t in op.inputs:
+      if t.dtype == dtypes.resource:
+        if t.name in last_op_using_resource_tensor:
+          op._add_control_input(last_op_using_resource_tensor[t.name])  # pylint: disable=protected-access
+        last_op_using_resource_tensor[t.name] = op
+  return graph_to_function_def.graph_to_function_def(
+      graph, operations, inputs, outputs)
 
 
 @contextlib.contextmanager
@@ -86,8 +109,8 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
     captured_value = captured_value[1]
-  tape.record_operation("captured_value", [captured_value], [value], [],
-                        lambda x: x)
+  tape.record_operation("captured_value", [captured_value], [value],
+                        lambda x: [x])
   return captured_value
 
 
@@ -216,14 +239,14 @@ class _GraphModeFunction(object):
             grad_ys=self._out_grad_placeholders)
         shapes = [x.shape for x in in_gradients if x is not None]
     captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
-    forward_function_def = graph_to_function_def.graph_to_function_def(
+    forward_function_def = make_function_def(
         self._graph, self._ops, self._input_placeholders,
         filtered_outputs + captures)
     self._forward_fdef = _DefinedFunction(forward_function_def)
     _register_with_name(_forward_name(self._func_name), forward_function_def)
     backward_outputs = [x for x in in_gradients if x is not None]
     all_inputs = self._out_grad_placeholders + captures
-    backward_function_def = graph_to_function_def.graph_to_function_def(
+    backward_function_def = make_function_def(
         self._graph, [x.op for x in self._out_grad_placeholders
                      ] + list(sorted(c.known_ops, key=lambda x: x.name)),
         all_inputs, backward_outputs)
@@ -265,12 +288,14 @@ class _GraphModeFunction(object):
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
 
+    def backward_function(*args):
+      return self._backward_function(*(list(args) + side_outputs))
+
     tape.record_operation(
         signature.name,
         real_outputs,
         (args + self._extra_inputs),
-        side_outputs,
-        self._backward_function)
+        backward_function)
 
     return self._build_call_outputs(self._returns, real_outputs)
 
@@ -385,7 +410,7 @@ def _defun_internal(name, func, args, kwds):
   all_inputs = flat_inputs + list(extra_placeholders)
 
   func_def_outputs = [x for x in outputs_list if x is not None]
-  inference_function_def = graph_to_function_def.graph_to_function_def(
+  inference_function_def = make_function_def(
       tmp_graph, tmp_graph.get_operations(), all_inputs, func_def_outputs)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.
@@ -507,4 +532,4 @@ def defun(func):
      or more Tensor objects).
   """
   # TODO(apassos): deal with captured global state. Deal with control flow.
-  return named_defun(func, func.__name__)
+  return tf_decorator.make_decorator(func, named_defun(func, func.__name__))

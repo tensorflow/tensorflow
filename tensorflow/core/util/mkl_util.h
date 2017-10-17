@@ -26,13 +26,19 @@ limitations under the License.
 #include "mkl_trans.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
+
+#ifdef INTEL_MKL_DNN
+#include "mkldnn.hpp"
+#endif
 
 // The file contains a number of utility classes and functions used by MKL
 // enabled kernels
@@ -219,19 +225,18 @@ class MklShape {
 // Location from start of buffer where isMklTensor_ is serialized
 #define DIMS_OFFSET \
   (IS_MKL_TENSOR_OFFSET + sizeof(size_t))  // Location of dimension_
-#define SIZES_OFFSET(dims) \
-  (DIMS_OFFSET +           \
-   sizeof(size_t))  // Location of sizes. Note dim is not used here, left here
-                    // to make macros consistent.
+// Location of sizes. Note dim is not used here, left here
+// to make macros consistent.
+#define SIZES_OFFSET(dims) (DIMS_OFFSET + sizeof(size_t))
 #define STRIDES_OFFSET(dims) \
   (SIZES_OFFSET(dims) + dims * sizeof(size_t))  // Location of strides
 #define MKL_LAYOUT_OFFSET(dims) \
   (STRIDES_OFFSET(dims) + dims * sizeof(size_t))  // Location of mklLayout_
 #define TF_LAYOUT_OFFSET(dims) \
   (MKL_LAYOUT_OFFSET(dims) + SIZE_OF_MKL_DNN_BUF)  // Location of tfLayout_
+// Location of tf_to_mkl_dim_map_
 #define TF_TO_MKL_DIM_MAP_OFFSET(dims) \
-  (TF_LAYOUT_OFFSET(dims) +            \
-   SIZE_OF_MKL_DNN_BUF)  // Location of tf_to_mkl_dim_map_
+  (TF_LAYOUT_OFFSET(dims) + SIZE_OF_MKL_DNN_BUF)
 
   // TODO(agramesh1) make sure to create a const to share with rewrite pass
   // for min size of MKL metadata tensor.
@@ -342,58 +347,6 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
   return output_tensor;
 }
 
-// Since our ops are going to produce and also consume N addition tensors
-// (Mkl) for N Tensorflow tensors, we can have following different
-// orderings among these 2N tensors.
-//
-// E.g., for Tensorflow tensors A, B, and C, our ops will produce and
-// consume A_m, B_m, and C_m additionally.
-//
-// INTERLEAVED: in this case 2N tensors are interleaved. So for above
-//              example, the ordering looks like: A, A_m, B, B_m, C, C_m.
-//
-// CONTIGUOUS: in thi case N Tensorflow tensors are contiguous followed
-//             by N Mkl tensors. So for above example, the ordering looks
-//             like: A, B, C, A_m, B_m, C_m
-//
-// Following APIs map index of original Tensorflow tensors to their appropriate
-// position based on selected ordering. For contiguous ordering, we need to know
-// the total number of tensors (parameter total).
-//
-typedef enum { TENSORS_INTERLEAVED, TENSORS_CONTIGUOUS } MklTfTensorOrdering;
-// NOTE: Currently, we use contiguous ordering. If you change this, then you
-// would need to change Mkl op definitions in nn_ops.cc.
-static MklTfTensorOrdering kTensorOrdering = TENSORS_CONTIGUOUS;
-
-// Get index of MetaData tensor from index 'n' of Data tensor.
-inline int DataIndexToMetaDataIndex(int n, int total_tensors) {
-  if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
-    // For interleaved ordering, Mkl tensor follows immediately after
-    // Tensorflow tensor.
-    return n + 1;
-  } else {
-    CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
-    // For contiguous ordering, Mkl tensor is n+total_tensors / 2 away.
-    return n + total_tensors / 2;
-  }
-}
-
-int inline GetTensorDataIndex(int n, int total_tensors) {
-  if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
-    return 2 * n;  // index corresponding to nth input/output tensor
-  } else {
-    CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
-    return n;
-  }
-}
-
-int inline GetTensorMetaDataIndex(int n, int total_tensors) {
-  // Get index for TensorData first and then use mapping function
-  // to get TensorMetaData index from TensorData index.
-  int tidx = GetTensorDataIndex(n, total_tensors);
-  return DataIndexToMetaDataIndex(tidx, total_tensors);
-}
-
 // Get the MKL shape from the second string tensor
 inline void GetMklShape(OpKernelContext* ctext, int n, MklShape* mklshape) {
   mklshape->DeSerializeMklShape(
@@ -478,6 +431,13 @@ inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
   OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<float>::v(),
                                                  tf_shape, tensor_out));
   *buf_out = static_cast<void*>(tensor_out->flat<float>().data());
+}
+
+template <typename T>
+inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
+                           TensorShape tf_shape) {
+  OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::v(),
+                                                 tf_shape, tensor_out));
 }
 
 inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
@@ -743,56 +703,299 @@ inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
   }
 }
 
-namespace mkl_op_registry {
-static const char* kMklOpLabel = "MklOp";
-static const char* kMklOpLabelPattern = "label='MklOp'";
+// -------------------------------------------------------------------
 
-// Get the name of Mkl op from original TensorFlow op
-// We prefix 'Mkl' to the original op to get Mkl op.
-inline string GetMklOpName(const string& name) {
-  // Prefix that we add to Tensorflow op name to construct Mkl op name.
-  const char* const kMklOpPrefix = "_Mkl";
-  return string(kMklOpPrefix) + name;
+#ifdef INTEL_MKL_DNN
+
+using mkldnn::engine;
+using mkldnn::memory;
+using mkldnn::padding_kind;
+using mkldnn::primitive;
+using mkldnn::reorder;
+
+/// Return MKL-DNN data type (memory::data_type) for input type T
+///
+/// @input None
+/// @return memory::data_type corresponding to type T
+template <typename T>
+static memory::data_type MklDnnType();
+
+/// Instantiation for float type. Add similar instantiations for other
+/// type if needed.
+template <>
+memory::data_type MklDnnType<float>() {
+  return memory::data_type::f32;
 }
 
-// Check whether opname with type T is registered as MKL-compliant.
-//
-// @input: name of the op
-// @input: T datatype to be used for checking op
-// @return: true if opname is registered as Mkl op; false otherwise
-static inline bool IsMklOp(const std::string& op_name, DataType T) {
-  string kernel = KernelsRegisteredForOp(op_name);
-  bool result =
-      kernel.find(kMklOpLabelPattern) != string::npos && (T == DT_FLOAT);
-  if (result) {
-    VLOG(1) << "mkl_op_registry::" << op_name << " is " << kMklOpLabel;
+/// Map TensorFlow's data format into MKL-DNN data format
+///
+/// @input: TensorFlow data format
+/// @return: memory::format corresponding to TensorFlow data format;
+///          Fails with an error if invalid data format.
+inline memory::format TFDataFormatToMklDnnDataFormat(TensorFormat format) {
+  if (format == FORMAT_NHWC)
+    return memory::format::nhwc;
+  else if (format == FORMAT_NCHW)
+    return memory::format::nchw;
+  TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT, "Unsupported data format"));
+  // Return to get rid of compiler warning
+  return memory::format::format_undef;
+}
+
+/// Map TensorShape object into memory::dims required by MKL-DNN
+///
+/// This function will simply map input TensorShape into MKL-DNN dims
+/// naively. So it will preserve the order of dimensions. E.g., if
+/// input tensor is in NHWC format, then dims will be in NHWC format
+/// also.
+///
+/// @input TensorShape object in shape
+/// @return memory::dims corresponding to TensorShape
+inline memory::dims TFShapeToMklDnnDims(const TensorShape& shape) {
+  memory::dims dims(shape.dims());
+  for (unsigned int d = 0; d < shape.dims(); ++d) {
+    dims[d] = shape.dim_size(d);
   }
-  return result;
+  return dims;
 }
 
-// Check whether opname with type T is registered as MKL-compliant and
-// is element-wise.
-//
-// @input: name of the op
-// @input: T datatype to be used for checking op
-// @return: true if opname is registered as element-wise Mkl op; false otherwise
-static inline bool IsMklElementWiseOp(const std::string& op_name, DataType T) {
-  if (!IsMklOp(op_name, T)) {
+/// Map TensorShape object into memory::dims in NCHW format required by MKL-DNN
+///
+/// This function is a specific one than above function. It will map input
+/// TensorShape into MKL-DNN dims in NCHW format. So it may not preserve the
+/// order of dimensions. E.g., if input tensor is in NHWC format, then dims
+/// will be in NCHW format, and not in NHWC format.
+///
+/// @input TensorShape object in shape
+/// @return memory::dims in MKL-DNN required NCHW format
+inline memory::dims TFShapeToMklDnnDimsInNCHW(const TensorShape& shape,
+                                              TensorFormat format) {
+  // Check validity of format.
+  CHECK_NE(TFDataFormatToMklDnnDataFormat(format),
+           memory::format::format_undef);
+
+  int n = shape.dim_size(GetTensorDimIndex(format, 'N'));
+  int c = shape.dim_size(GetTensorDimIndex(format, 'C'));
+  int h = shape.dim_size(GetTensorDimIndex(format, 'H'));
+  int w = shape.dim_size(GetTensorDimIndex(format, 'W'));
+
+  // MKL-DNN requires dimensions in NCHW format.
+  return memory::dims({n, c, h, w});
+}
+
+inline padding_kind TFPaddingToMklDnnPadding(Padding pad) {
+  // MKL-DNN only supports zero padding.
+  return padding_kind::zero;
+}
+
+/*
+ * Class to represent all the resources corresponding to a tensor in TensorFlow
+ * that are required to execute an operation (such as Convolution).
+ */
+template <typename T>
+class MklDnnData {
+ private:
+  /// MKL-DNN memory primitive for input user memory
+  memory* user_memory_;
+
+  /// MKL-DNN memory primitive in case input or output reorder is needed.
+  memory* reorder_memory_;
+
+  /// Operations memory descriptor
+  memory::desc* op_md_;
+
+  /// CPU engine on which operation will be executed
+  const engine* cpu_engine_;
+
+ public:
+  explicit MklDnnData(const engine* e)
+      : user_memory_(nullptr),
+        reorder_memory_(nullptr),
+        op_md_(nullptr),
+        cpu_engine_(e) {}
+
+  ~MklDnnData() {
+    cpu_engine_ = nullptr;  // We don't own this.
+    delete (user_memory_);
+    delete (reorder_memory_);
+    delete (op_md_);
+  }
+
+  void* GetTensorBuffer(const Tensor* tensor) {
+    CHECK_NOTNULL(tensor);
+    return const_cast<void*>(
+        static_cast<const void*>(tensor->flat<T>().data()));
+  }
+
+  /// Set user memory primitive using specified dimensions, memory format and
+  /// data_buffer. Function automatically uses element data type by using
+  /// input type T used for creating call object.
+  ///
+  /// In a nutshell, function allows user to describe the input tensor to
+  /// an operation. E.g., filter of Conv2D is of shape {1, 2, 3, 4}, and
+  /// memory format HWIO, and the buffer that contains actual values is
+  /// pointed by data_buffer.
+  void SetUsrMem(memory::dims dim, memory::format fm, void* data_buffer) {
+    CHECK_NOTNULL(data_buffer);
+    CHECK_NOTNULL(cpu_engine_);
+    // TODO(nhasabni): can we remove dynamic memory allocation?
+    user_memory_ =
+        new memory(memory::primitive_desc(
+                       memory::desc(dim, MklDnnType<T>(), fm), *cpu_engine_),
+                   data_buffer);
+  }
+
+  void SetUsrMem(memory::dims dim, memory::format fm, const Tensor* tensor) {
+    CHECK_NOTNULL(tensor);
+    SetUsrMem(dim, fm, GetTensorBuffer(tensor));
+  }
+
+  /// A version of function to set user memory primitive that accepts memory
+  /// descriptor directly, instead of accepting dimensions and format. This
+  /// function is more generic that the one above, but the function above is
+  /// sufficient in most cases.
+  void SetUsrMem(memory::desc md, void* data_buffer) {
+    CHECK_NOTNULL(data_buffer);
+    CHECK_NOTNULL(cpu_engine_);
+    // TODO(nhasabni): can we remove dynamic memory allocation?
+    user_memory_ =
+        new memory(memory::primitive_desc(md, *cpu_engine_), data_buffer);
+  }
+
+  /// A version of SetUsrMem with memory descriptor and tensor
+  void SetUsrMem(memory::desc md, const Tensor* tensor) {
+    CHECK_NOTNULL(tensor);
+    SetUsrMem(md, GetTensorBuffer(tensor));
+  }
+
+  /// A version of function to set user memory primitive that accepts primitive
+  /// descriptor directly, instead of accepting dimensions and format. This
+  /// function is more generic that the one above, but the function above is
+  /// sufficient in most cases.
+  void SetUsrMem(memory::primitive_desc pd, void* data_buffer) {
+    CHECK_NOTNULL(data_buffer);
+    CHECK_NOTNULL(cpu_engine_);
+    // TODO(nhasabni): can we remove dynamic memory allocation?
+    user_memory_ = new memory(pd, data_buffer);
+  }
+
+  /// A version of SetUsrMem with primitive descriptor and tensor
+  void SetUsrMem(memory::primitive_desc pd, const Tensor* tensor) {
+    CHECK_NOTNULL(tensor);
+    SetUsrMem(pd, GetTensorBuffer(tensor));
+  }
+
+  /// Get function for user memory primitive.
+  const memory* GetUsrMem() const { return user_memory_; }
+
+  /// Get function for primitive descriptor of user memory primitive.
+  const memory::primitive_desc GetUsrMemPrimDesc() const {
+    CHECK_NOTNULL(user_memory_);
+    return user_memory_->get_primitive_desc();
+  }
+
+  /// Get function for descriptor of user memory.
+  memory::desc GetUsrMemDesc() {
+    // This is ugly. Why MKL-DNN does not provide desc() method of const type??
+    const memory::primitive_desc pd = GetUsrMemPrimDesc();
+    return const_cast<memory::primitive_desc*>(&pd)->desc();
+  }
+
+  /// Get function for data buffer of user memory primitive.
+  void* GetUsrMemDataHandle() const {
+    CHECK_NOTNULL(user_memory_);
+    return user_memory_->get_data_handle();
+  }
+
+  /// Get the memory primitive for input and output of an op. If inputs
+  /// to an op require reorders, then this function returns memory primitive
+  /// for reorder. Otherwise, it will return memory primitive for user memory.
+  ///
+  /// E.g., Conv2D(I, F) is a primitive with I and F being inputs. Then to
+  /// execute Conv2D, we need memory primitive for I and F. Buf if reorder is
+  /// required for I and F (say I_r is reorder primitive for I; F_r is reorder
+  /// primitive for F), then we need I_r and F_r to perform Conv2D.
+  const memory& GetOpMem() const {
+    return reorder_memory_ ? *reorder_memory_ : *user_memory_;
+  }
+
+  /// Set memory descriptor of an operation in terms of dimensions and memory
+  /// format. E.g., For Conv2D, the dimensions would be same as user dimensions
+  /// but memory::format would be mkldnn::any because we want MKL-DNN to choose
+  /// best layout/format for given input dimensions.
+  void SetOpMemDesc(const memory::dims& dim, memory::format fm) {
+    // TODO(nhasabni): can we remove dynamic memory allocation?
+    op_md_ = new memory::desc(dim, MklDnnType<T>(), fm);
+  }
+
+  /// Get function for memory descriptor for an operation
+  const memory::desc& GetOpMemDesc() const { return *op_md_; }
+
+  /// Function to handle input reordering
+  ///
+  /// Check if we need to reorder this input of an operation.
+  /// Return true and allocate reorder memory primitive if reorder is needed.
+  /// Otherwise, return false and do not allocate reorder memory primitive.
+  ///
+  /// To check if reorder is needed, this function compares memory primitive
+  /// descriptor of an operation (op_pd) for the given input with the
+  /// user-specified memory primitive descriptor.
+  ///
+  /// @input: op_pd - memory primitive descriptor of the given input of an
+  ///               operation
+  /// @input: net - net to which to add reorder primitive in case it is needed.
+  /// @return: true in case reorder of input is needed; false, otherwise.
+  bool CheckReorderToOpMem(const memory::primitive_desc& op_pd,
+                           std::vector<primitive>* net) {
+    CHECK_NOTNULL(net);
+    CHECK_NOTNULL(user_memory_);
+    if (op_pd != user_memory_->get_primitive_desc()) {
+      // TODO(nhasabni): can we remove dynamic memory allocation?
+      reorder_memory_ = new memory(op_pd);
+      net->push_back(reorder(*user_memory_, *reorder_memory_));
+      return true;
+    }
     return false;
   }
 
-  bool result = (0 == op_name.compare(GetMklOpName("Add")) ||
-                 0 == op_name.compare(GetMklOpName("Sub")) ||
-                 0 == op_name.compare(GetMklOpName("Mul")) ||
-                 0 == op_name.compare(GetMklOpName("Maximum")) ||
-                 0 == op_name.compare(GetMklOpName("SquaredDifference")));
+  /// Function to handle output reorder
+  ///
+  /// This function performs very similar functionality as input reordering
+  /// function above. The only difference is that this function does not add
+  /// reorder primitive to the net. The reason for this is: the reorder
+  /// primitive for output needs to be added to the list only after operation
+  /// has executed. But we need to prepare a temporary buffer in case output
+  /// reorder is needed. And this temporary buffer will hold the output of
+  /// an operation before it is fed to reorder primitive.
+  ///
+  /// @input memory primitive descriptor for the given output of an operation
+  /// @return: true in case reorder of output is needed; false, otherwise.
+  bool PrepareReorderToUserMemIfReq(const memory::primitive_desc& op_pd) {
+    CHECK_NOTNULL(user_memory_);
+    if (op_pd != user_memory_->get_primitive_desc()) {
+      // TODO(nhasabni): can we remove dynamic memory allocation?
+      reorder_memory_ = new memory(op_pd);
+      return true;
+    }
+    return false;
+  }
 
-  VLOG(1) << "mkl_op_registry::" << op_name
-          << " is elementwise MKL op: " << result;
-  return result;
-}
+  /// Function to actually insert reorder primitive in the net
+  ///
+  /// This function completes remaining part of output reordering. It inserts
+  /// a reordering primitive from the temporary buffer that holds the output
+  /// to the user-specified output buffer.
+  ///
+  /// @input: net - net to which to add reorder primitive
+  void InsertReorderToUserMem(std::vector<primitive>* net) {
+    CHECK_NOTNULL(net);
+    CHECK_NOTNULL(user_memory_);
+    CHECK_NOTNULL(reorder_memory_);
+    net->push_back(reorder(*reorder_memory_, *user_memory_));
+  }
+};
 
-}  // namespace mkl_op_registry
+#endif  // INTEL_MKL_DNN
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

@@ -36,7 +36,7 @@ the difference in examples per second for the full model and the trivial model
 is minimal then the input pipeline is likely a bottleneck. Below are some other
 approaches to identifying issues:
 
-*   Check if a GPU is underutilized by running `watch -n 2 nvidia-smi`. If GPU
+*   Check if a GPU is underutilized by running `nvidia-smi -l 2`. If GPU
     utilization is not approaching 80-100%, then the input pipeline may be the
     bottleneck.
 *   Generate a timeline and look for large blocks of white space (waiting). An
@@ -93,7 +93,7 @@ Reading large numbers of small files significantly impacts I/O performance.
 One approach to get maximum I/O throughput is to preprocess input data into
 larger (~100MB) `TFRecord` files. For smaller data sets (200MB-1GB), the best
 approach is often to load the entire data set into memory. The document
-[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/slim#Data)
+[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/research/slim#Data)
 includes information and scripts for creating `TFRecords` and this
 [script](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10_estimator/generate_cifar10_tfrecords.py)
 converts the CIFAR-10 data set into `TFRecords`.

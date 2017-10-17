@@ -1672,8 +1672,8 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
              image_ops.ResizeMethod.BICUBIC,
              image_ops.ResizeMethod.AREA]
 
-  TYPES = [np.uint8, np.int8, np.int16, np.int32, np.int64,
-           np.float32, np.float64]
+  TYPES = [np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64,
+           np.float16, np.float32, np.float64]
 
   def _assertShapeInference(self, pre_shape, size, post_shape):
     # Try single image resize
@@ -1794,6 +1794,21 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       _ = image_ops.resize_images(image, [6, None],
                                   image_ops.ResizeMethod.BILINEAR)
+
+  def testReturnDtype(self):
+    target_shapes = [[6, 4], [3, 2], [array_ops.placeholder(dtypes.int32),
+                                      array_ops.placeholder(dtypes.int32)]]
+    for nptype in self.TYPES:
+      image = array_ops.placeholder(nptype, shape=[1, 6, 4, 1])
+      for opt in self.OPTIONS:
+        for target_shape in target_shapes:
+          y = image_ops.resize_images(image, target_shape, opt)
+          if (opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR or
+              target_shape == image.shape[1:3]):
+            expected_dtype = image.dtype
+          else:
+            expected_dtype = dtypes.float32
+          self.assertEqual(y.dtype, expected_dtype)
 
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]

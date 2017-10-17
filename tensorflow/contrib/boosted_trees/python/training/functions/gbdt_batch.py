@@ -56,7 +56,6 @@ PREDICTIONS = "predictions"
 PARTITION_IDS = "partition_ids"
 NUM_LAYERS_ATTEMPTED = "num_layers"
 NUM_TREES_ATTEMPTED = "num_trees"
-PREDICTIONS_NO_DROPOUT = "predictions_no_dropout"
 _FEATURE_NAME_TEMPLATE = "%s_%d"
 
 
@@ -70,15 +69,13 @@ def _get_column_by_index(tensor, indices):
   return array_ops.reshape(array_ops.gather(p_flat, i_flat), [shape[0], -1])
 
 
-def _make_predictions_dict(stamp, logits, logits_no_dropout, partition_ids,
-                           ensemble_stats):
+def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats):
   """Returns predictions for the given logits and n_classes.
 
   Args:
     stamp: The ensemble stamp.
     logits: A rank 2 `Tensor` with shape [batch_size, n_classes - 1].
-    logits_no_dropout: A rank 2 `Tensor` with shape [batch_size, n_classes - 1]
-    that contains predictions when no dropout was applied.
+        that contains predictions when no dropout was applied.
     partition_ids: A rank 1 `Tensor` with shape [batch_size].
     ensemble_stats: A TreeEnsembleStatsOp result tuple.
 
@@ -88,9 +85,7 @@ def _make_predictions_dict(stamp, logits, logits_no_dropout, partition_ids,
   result = {}
   result[ENSEMBLE_STAMP] = stamp
   result[PREDICTIONS] = logits
-  result[PREDICTIONS_NO_DROPOUT] = logits_no_dropout
   result[PARTITION_IDS] = partition_ids
-
   result[NUM_LAYERS_ATTEMPTED] = ensemble_stats.attempted_layers
   result[NUM_TREES_ATTEMPTED] = ensemble_stats.attempted_trees
   return result
@@ -348,6 +343,57 @@ class GradientBoostedDecisionTreeModel(object):
                         learner_pb2.LearnerConfig.TREE_PER_CLASS and
                         learner_config.num_classes == 2)
 
+  def _predict_and_return_dict(self, ensemble_handle, ensemble_stamp, mode):
+    """Runs prediciton and returns a dictionary of the prediction results.
+
+    Args:
+      ensemble_handle: ensemble resource handle.
+      ensemble_stamp: stamp of ensemble resource.
+      mode: learn.ModeKeys.TRAIN or EVAL or INFER.
+
+    Returns:
+      a dictionary of prediction results -
+        ENSEMBLE_STAMP, PREDICTION, PARTITION_IDS,
+        NUM_LAYER_ATTEMPTED, NUM_TREES_ATTEMPED.
+    """
+    ensemble_stats = training_ops.tree_ensemble_stats(ensemble_handle,
+                                                      ensemble_stamp)
+    # We don't need dropout info - we can always restore it based on the
+    # seed.
+    apply_dropout, seed = _dropout_params(mode, ensemble_stats)
+    # Make sure ensemble stats run. This will check that the ensemble has
+    # the right stamp.
+    with ops.control_dependencies(ensemble_stats):
+      predictions, _ = prediction_ops.gradient_trees_prediction(
+          ensemble_handle,
+          seed,
+          self._dense_floats,
+          self._sparse_float_indices,
+          self._sparse_float_values,
+          self._sparse_float_shapes,
+          self._sparse_int_indices,
+          self._sparse_int_values,
+          self._sparse_int_shapes,
+          learner_config=self._learner_config_serialized,
+          apply_dropout=apply_dropout,
+          apply_averaging=mode != learn.ModeKeys.TRAIN,
+          use_locking=True,
+          center_bias=self._center_bias,
+          reduce_dim=self._reduce_dim)
+      partition_ids = prediction_ops.gradient_trees_partition_examples(
+          ensemble_handle,
+          self._dense_floats,
+          self._sparse_float_indices,
+          self._sparse_float_values,
+          self._sparse_float_shapes,
+          self._sparse_int_indices,
+          self._sparse_int_values,
+          self._sparse_int_shapes,
+          use_locking=True)
+
+    return _make_predictions_dict(ensemble_stamp, predictions, partition_ids,
+                                  ensemble_stats)
+
   def predict(self, mode):
     """Returns predictions given the features and mode.
 
@@ -360,7 +406,6 @@ class GradientBoostedDecisionTreeModel(object):
     Raises:
       ValueError: if features is not valid.
     """
-    apply_averaging = mode != learn.ModeKeys.TRAIN
 
     # Use the current ensemble to predict on the current batch of input.
     # For faster prediction we check if the inputs are on the same device
@@ -409,83 +454,13 @@ class GradientBoostedDecisionTreeModel(object):
 
       # Once updated, use the local model for prediction.
       with ops.control_dependencies([refresh_local_ensemble]):
-        ensemble_stats = training_ops.tree_ensemble_stats(
-            local_ensemble_handle, ensemble_stamp)
-        # We don't need dropout info - we can always restore it based on the
-        # seed.
-        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
-        # Make sure ensemble stats run. This will check that the ensemble has
-        # the right stamp.
-        with ops.control_dependencies(ensemble_stats):
-          predictions, predictions_no_dropout, _ = (
-              prediction_ops.gradient_trees_prediction(
-                  local_ensemble_handle,
-                  seed,
-                  self._dense_floats,
-                  self._sparse_float_indices,
-                  self._sparse_float_values,
-                  self._sparse_float_shapes,
-                  self._sparse_int_indices,
-                  self._sparse_int_values,
-                  self._sparse_int_shapes,
-                  learner_config=self._learner_config_serialized,
-                  apply_dropout=apply_dropout,
-                  apply_averaging=apply_averaging,
-                  use_locking=True,
-                  center_bias=self._center_bias,
-                  reduce_dim=self._reduce_dim))
-          partition_ids = prediction_ops.gradient_trees_partition_examples(
-              local_ensemble_handle,
-              self._dense_floats,
-              self._sparse_float_indices,
-              self._sparse_float_values,
-              self._sparse_float_shapes,
-              self._sparse_int_indices,
-              self._sparse_int_values,
-              self._sparse_int_shapes,
-              use_locking=True)
-
+        return self._predict_and_return_dict(local_ensemble_handle,
+                                             ensemble_stamp, mode)
     else:
+      # Use ensemble_handle directly, if colocated.
       with ops.device(self._ensemble_handle.device):
-        ensemble_stats = training_ops.tree_ensemble_stats(
-            self._ensemble_handle, ensemble_stamp)
-        # We don't need dropout info - we can always restore it based on the
-        # seed.
-        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
-        # Make sure ensemble stats run. This will check that the ensemble has
-        # the right stamp.
-        with ops.control_dependencies(ensemble_stats):
-          predictions, predictions_no_dropout, _ = (
-              prediction_ops.gradient_trees_prediction(
-                  self._ensemble_handle,
-                  seed,
-                  self._dense_floats,
-                  self._sparse_float_indices,
-                  self._sparse_float_values,
-                  self._sparse_float_shapes,
-                  self._sparse_int_indices,
-                  self._sparse_int_values,
-                  self._sparse_int_shapes,
-                  learner_config=self._learner_config_serialized,
-                  apply_dropout=apply_dropout,
-                  apply_averaging=apply_averaging,
-                  use_locking=True,
-                  center_bias=self._center_bias,
-                  reduce_dim=self._reduce_dim))
-          partition_ids = prediction_ops.gradient_trees_partition_examples(
-              self._ensemble_handle,
-              self._dense_floats,
-              self._sparse_float_indices,
-              self._sparse_float_values,
-              self._sparse_float_shapes,
-              self._sparse_int_indices,
-              self._sparse_int_values,
-              self._sparse_int_shapes,
-              use_locking=True)
-
-    return _make_predictions_dict(ensemble_stamp, predictions,
-                                  predictions_no_dropout, partition_ids,
-                                  ensemble_stats)
+        return self._predict_and_return_dict(self._ensemble_handle,
+                                             ensemble_stamp, mode)
 
   def train(self, loss, predictions_dict, labels):
     """Grows a new tree and adds it to the ensemble.
@@ -546,8 +521,8 @@ class GradientBoostedDecisionTreeModel(object):
         hessians = array_ops.stack(hessian_list, axis=1)
 
         # Choose the class for which the tree is built (one vs rest).
-        class_id = predictions_dict[NUM_TREES_ATTEMPTED] % num_classes
-        class_id = math_ops.to_int32(class_id)
+        class_id = math_ops.to_int32(
+            predictions_dict[NUM_TREES_ATTEMPTED] % num_classes)
 
         # Use class id tensor to get the column with that index from gradients
         # and hessians.
@@ -711,7 +686,7 @@ class GradientBoostedDecisionTreeModel(object):
     handler_results = batch_ops_utils.run_handler_scheduled_ops(
         handler_reads, ensemble_stamp, worker_device)
     per_handler_updates = {}
-    # Two values per handler. First one is if the the handler is active for the
+    # Two values per handler. First one is if the handler is active for the
     # current layer. The second one is if the handler is going to be active
     # for the next layer.
     subsampling_type = self._learner_config.WhichOneof("feature_fraction")
@@ -803,7 +778,10 @@ class GradientBoostedDecisionTreeModel(object):
                     active_tree, active_layer, dropout_seed, class_id),
                 control_flow_ops.no_op))
 
-    # Calculate the loss to be reported - use the predictions without dropout.
+    # Calculate the loss to be reported.
+    # Note, the loss is calculated from the prediction considering dropouts, so
+    # that the value might look staggering over steps when the dropout ratio is
+    # high. eval_loss might be referred instead in the aspect of convergence.
     return control_flow_ops.group(*ensemble_update_ops)
 
   def _get_weights(self, hessian_shape, hessians):

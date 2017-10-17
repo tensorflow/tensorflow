@@ -114,10 +114,10 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
     static constexpr float kBackpedalFactor = 0.9;
 
     // Try allocating less memory.
-    bytes = RoundedBytes(bytes * kBackpedalFactor);
-    while (mem_addr == nullptr && bytes > rounded_bytes) {
-      mem_addr = suballocator_->Alloc(32, bytes);
+    while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
+      if (bytes < rounded_bytes) break;
+      mem_addr = suballocator_->Alloc(32, bytes);
     }
   }
 
@@ -617,39 +617,22 @@ string BFCAllocator::RenderOccupancy() {
 }
 
 void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
-  // For each bin: tally up the total number of chunks and bytes.
-  // Note that bins hold only free chunks.
+  const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
   for (BinNum bin_num = 0; bin_num < kNumBins; bin_num++) {
     Bin* b = BinFromIndex(bin_num);
-
-    size_t total_bytes_in_use = 0;
-    size_t total_bytes_in_bin = 0;
-    size_t total_requested_bytes_in_use = 0;
-    size_t total_requested_bytes_in_bin = 0;
-    size_t total_chunks_in_use = 0;
-    size_t total_chunks_in_bin = 0;
-    for (ChunkHandle h : b->free_chunks) {
-      Chunk* c = ChunkFromHandle(h);
-      total_bytes_in_bin += c->size;
-      total_requested_bytes_in_bin += c->requested_size;
-      ++total_chunks_in_bin;
-      if (c->in_use()) {
-        total_bytes_in_use += c->size;
-        total_requested_bytes_in_use += c->requested_size;
-        ++total_chunks_in_use;
-      }
-    }
+    const BinDebugInfo& bin_info = bin_infos[bin_num];
+    CHECK_EQ(b->free_chunks.size(),
+             bin_info.total_chunks_in_bin - bin_info.total_chunks_in_use);
 
     LOG(INFO) << "Bin (" << b->bin_size
-              << "): \tTotal Chunks: " << total_chunks_in_bin
-              << ", Chunks in use: " << total_chunks_in_use << " "
-              << strings::HumanReadableNumBytes(total_bytes_in_bin)
+              << "): \tTotal Chunks: " << bin_info.total_chunks_in_bin
+              << ", Chunks in use: " << bin_info.total_chunks_in_use << ". "
+              << strings::HumanReadableNumBytes(bin_info.total_bytes_in_bin)
               << " allocated for chunks. "
-              << strings::HumanReadableNumBytes(total_requested_bytes_in_bin)
-              << " client-requested for chunks. "
-              << strings::HumanReadableNumBytes(total_bytes_in_use)
+              << strings::HumanReadableNumBytes(bin_info.total_bytes_in_use)
               << " in use in bin. "
-              << strings::HumanReadableNumBytes(total_requested_bytes_in_use)
+              << strings::HumanReadableNumBytes(
+                     bin_info.total_requested_bytes_in_use)
               << " client-requested in use in bin.";
   }
 
@@ -705,6 +688,32 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
 void BFCAllocator::GetStats(AllocatorStats* stats) {
   mutex_lock l(lock_);
   *stats = stats_;
+}
+
+std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins>
+BFCAllocator::get_bin_debug_info() {
+  std::array<BinDebugInfo, kNumBins> bin_infos;
+  for (const auto& region : region_manager_.regions()) {
+    ChunkHandle h = region_manager_.get_handle(region.ptr());
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      BinNum bin_num = BinNumForSize(c->size);
+      BinDebugInfo& bin_info = bin_infos[bin_num];
+      bin_info.total_bytes_in_bin += c->size;
+      bin_info.total_chunks_in_bin++;
+      if (c->in_use()) {
+        bin_info.total_bytes_in_use += c->size;
+        bin_info.total_requested_bytes_in_use += c->requested_size;
+        bin_info.total_chunks_in_use++;
+      } else {
+        Bin* bin = BinFromIndex(bin_num);
+        CHECK_EQ(bin->free_chunks.count(h), 1);
+        CHECK_EQ(c->bin_num, bin_num);
+      }
+      h = c->next;
+    }
+  }
+  return bin_infos;
 }
 
 }  // namespace tensorflow

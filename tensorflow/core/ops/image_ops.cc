@@ -151,7 +151,7 @@ REGISTER_OP("ResizeArea")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn)
     .Doc(R"doc(
@@ -179,7 +179,7 @@ REGISTER_OP("ResizeBicubic")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn)
     .Doc(R"doc(
@@ -227,7 +227,7 @@ REGISTER_OP("ResizeBilinear")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn)
     .Doc(R"doc(
@@ -311,7 +311,7 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: T")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn)
     .Doc(R"doc(
@@ -1101,7 +1101,10 @@ slice from the input image and does not allow resizing or aspect ratio change.
 Returns a tensor with `crops` from the input `image` at positions defined at the
 bounding box locations in `boxes`. The cropped boxes are all resized (with
 bilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The
-result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`.
+result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`. The
+resizing is corner aligned. In particular, if `boxes = [[0, 0, 1, 1]]`, the
+method will give identical results to using `tf.image.resize_bilinear()`
+with `align_corners=True`.
 
 image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
   Both `image_height` and `image_width` need to be positive.

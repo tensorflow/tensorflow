@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -46,6 +47,23 @@ class QrOpTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "Shape must be at least rank 2 but is rank 1"):
       linalg_ops.qr(vector)
+
+  def testConcurrentExecutesWithoutError(self):
+    with self.test_session(use_gpu=True) as sess:
+      all_ops = []
+      for full_matrices_ in True, False:
+        for rows_ in 4, 5:
+          for cols_ in 4, 5:
+            matrix1 = random_ops.random_normal([rows_, cols_], seed=42)
+            matrix2 = random_ops.random_normal([rows_, cols_], seed=42)
+            q1, r1 = linalg_ops.qr(matrix1, full_matrices=full_matrices_)
+            q2, r2 = linalg_ops.qr(matrix2, full_matrices=full_matrices_)
+            all_ops += [q1, r1, q2, r2]
+      val = sess.run(all_ops)
+      for i in range(8):
+        q = 4 * i
+        self.assertAllEqual(val[q], val[q + 2])  # q1 == q2
+        self.assertAllEqual(val[q + 1], val[q + 3])  # r1 == r2
 
 
 def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
@@ -85,7 +103,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
-    xx = math_ops.matmul(math_ops.conj(x), x, transpose_a=True)
+    xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
     if is_single:
       tol = 1e-5

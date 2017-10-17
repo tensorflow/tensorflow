@@ -27,6 +27,13 @@ to implement regression in Estimators:
         regression model on discrete data with a deep neural network.</td>
   </tr>
 
+  <tr>
+    <td><a href="https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/custom_regression.py">custom_regression.py</a></td>
+    <td>[imports85](https://archive.ics.uci.edu/ml/datasets/automobile)</td>
+    <td>Use @{tf.estimator.Estimator} to train a customized dnn
+        regression model.</td>
+  </tr>
+
 </table>
 
 The preceding examples rely on the following data set utility:
@@ -207,3 +214,23 @@ in a deep neural network.
 
 After printing loss values, the program outputs the Mean Square Error
 on a test set.
+
+
+<a name="dnn"></a>
+## custom_regression.py
+
+The `custom_regression.py` example also trains a model that predicts the price
+of a car based on mixed real-valued and categorical input features, described by
+feature_columns. Unlike `linear_regression_categorical.py`, and
+`dnn_regression.py` this example does not use a pre-made estimator, but defines
+a custom model using the base @{tf.estimator.Estimator$`Estimator`} class. The
+custom model is quite similar to the model defined by `dnn_regression.py`.
+
+The custom model is defined by the `model_fn` argument to the constructor. The
+customization is made more reusable through `params` dictionary, which is later
+passed through to the `model_fn` when the `model_fn` is called.
+
+The `model_fn` returns an
+@{tf.estimator.EstimatorSpec$`EstimatorSpec`} which is a simple structure
+indicating to the `Estimator` which operations should be run to accomplish
+varions tasks.

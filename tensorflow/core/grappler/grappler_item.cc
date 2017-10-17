@@ -32,6 +32,9 @@ GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef) {
   fetch = other.fetch;
   init_ops = other.init_ops;
   expected_init_time = other.expected_init_time;
+  save_op = other.save_op;
+  restore_op = other.restore_op;
+  save_restore_loc_tensor = other.save_restore_loc_tensor;
   queue_runners = other.queue_runners;
   graph.Swap(&graphDef);
 }

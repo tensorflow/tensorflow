@@ -481,6 +481,21 @@ class Conv2DTest(test.TestCase):
           err=1e-5)
 
   @test_util.run_in_graph_and_eager_modes()
+  def testConv2DEmptyBackpropInput(self):
+    expected_output = []
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropInput(
+          input_sizes=[0, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[0, 1, 2, 1],
+          strides=[1, 1],
+          padding="VALID",
+          expected=expected_output,
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Depth3ValidBackpropInput(self):
     expected_output = [
         14.0, 32.0, 50.0, 100.0, 163.0, 226.0, 167.0, 212.0, 257.0, 122.0,
@@ -628,6 +643,20 @@ class Conv2DTest(test.TestCase):
           input_sizes=[1, 2, 3, 1],
           filter_sizes=[2, 2, 1, 1],
           output_sizes=[1, 1, 2, 1],
+          strides=[1, 1],
+          padding="VALID",
+          expected=expected,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testConv2DEmptyBackpropFilter(self):
+    expected = []
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(
+          input_sizes=[1, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 0],
+          output_sizes=[1, 1, 2, 0],
           strides=[1, 1],
           padding="VALID",
           expected=expected,

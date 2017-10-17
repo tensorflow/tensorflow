@@ -9,6 +9,7 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
     "tf_cc_test",
 )
 
@@ -24,7 +25,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "s3_file_system.so",
     srcs = [
         "s3_crypto.cc",
