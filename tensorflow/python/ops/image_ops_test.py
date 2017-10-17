@@ -2434,8 +2434,12 @@ class JpegTest(test_util.TensorFlowTestCase):
         y, x, h, w = crop_window
         image1_crop = image_ops.crop_to_bounding_box(image1, y, x, h, w)
 
-        # Combined crop+decode.
+        # Combined decode+crop.
         image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+
+        # Combined decode+crop should have the same shape inference
+        self.assertAllEqual(image1_crop.get_shape().as_list(),
+                            image2.get_shape().as_list())
 
         # CropAndDecode should be equal to DecodeJpeg+Crop.
         image1_crop, image2 = sess.run([image1_crop, image2])
