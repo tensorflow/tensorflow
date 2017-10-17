@@ -30,11 +30,11 @@ namespace {
 
 class RangeOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType variable_ref_type) {
+  void MakeOp(DataType input_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", "Range")
-                     .Input(FakeInput(variable_ref_type))
-                     .Input(FakeInput(variable_ref_type))
-                     .Input(FakeInput(variable_ref_type))
+                     .Input(FakeInput(input_type))
+                     .Input(FakeInput(input_type))
+                     .Input(FakeInput(input_type))
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
@@ -42,11 +42,11 @@ class RangeOpTest : public OpsTestBase {
 
 class LinSpaceOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType variable_ref_type, DataType num_type) {
+  void MakeOp(DataType input_type, DataType index_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", "LinSpace")
-                     .Input(FakeInput(variable_ref_type))
-                     .Input(FakeInput(variable_ref_type))
-                     .Input(FakeInput(num_type))
+                     .Input(FakeInput(input_type))
+                     .Input(FakeInput(input_type))
+                     .Input(FakeInput(index_type))
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
