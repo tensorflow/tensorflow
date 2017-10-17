@@ -23,6 +23,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
@@ -769,6 +770,10 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   Returns:
     A `TensorShape` based on the constant value of the given `tensor`.
   """
+  if context.in_eager_mode():
+    return tensor_shape.as_shape(
+        [dim if dim != -1 else None for dim in tensor.numpy()])
+
   shape = tensor.get_shape().with_rank(1)
   if tensor.get_shape() == [0]:
     return tensor_shape.scalar()
