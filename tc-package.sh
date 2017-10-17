@@ -8,6 +8,8 @@ mkdir -p ${TASKCLUSTER_ARTIFACTS} || true
 
 cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/libtensorflow_cc.so ${TASKCLUSTER_ARTIFACTS}
 cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/graph_transforms/transform_graph ${TASKCLUSTER_ARTIFACTS}
+cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/graph_transforms/summarize_graph ${TASKCLUSTER_ARTIFACTS}
+cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/benchmark/benchmark_model ${TASKCLUSTER_ARTIFACTS}
 
 # It seems that bsdtar and gnutar are behaving a bit differently on the way
 # they deal with --exclude="./public/*" ; this caused ./DeepSpeech/tensorflow/core/public/

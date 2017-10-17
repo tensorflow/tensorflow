@@ -20,17 +20,17 @@ pushd ${DS_ROOT_TASK}/DeepSpeech/tf/
     BAZEL_BUILD="bazel ${BAZEL_OUTPUT_USER_ROOT} build"
     # Pure amd64 CPU-only build
     if [ "${build_gpu}" = "no" -a "${build_arm}" = "no" ]; then
-        echo "" | TF_NEED_CUDA=0 ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_OPT_FLAGS} ${BUILD_TARGET_PIP} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} && ./tensorflow/tools/pip_package/build_pip_package.sh ${TASKCLUSTER_ARTIFACTS}
+        echo "" | TF_NEED_CUDA=0 ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_OPT_FLAGS} ${BUILD_TARGET_PIP} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} ${BUILD_TARGET_GRAPH_SUMMARIZE} ${BUILD_TARGET_GRAPH_BENCHMARK} ${BUILD_TARGET_AOT_DEPS} && ./tensorflow/tools/pip_package/build_pip_package.sh ${TASKCLUSTER_ARTIFACTS}
     fi
 
     # Cross RPi3 CPU-only build
     if [ "${build_gpu}" = "no" -a "${build_arm}" = "yes" ]; then
-        echo "" | TF_NEED_CUDA=0 ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_ARM_FLAGS} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS}
+        echo "" | TF_NEED_CUDA=0 ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_ARM_FLAGS} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} ${BUILD_TARGET_GRAPH_SUMMARIZE} ${BUILD_TARGET_GRAPH_BENCHMARK} ${BUILD_TARGET_AOT_DEPS}
     fi
 
     # Pure amd64 GPU-enabled build
     if [ "${build_gpu}" = "yes" -a "${build_arm}" = "no" ]; then
-        eval "export ${TF_CUDA_FLAGS}" && (echo "" | TF_NEED_CUDA=1 ./configure) && ${BAZEL_BUILD} -c opt ${BAZEL_CUDA_FLAGS} ${BAZEL_OPT_FLAGS} ${BUILD_TARGET_PIP} ${BUILD_TARGET_LIB_CPP_API}  ${BUILD_TARGET_GRAPH_TRANSFORMS} && ./tensorflow/tools/pip_package/build_pip_package.sh ${TASKCLUSTER_ARTIFACTS} --gpu
+        eval "export ${TF_CUDA_FLAGS}" && (echo "" | TF_NEED_CUDA=1 ./configure) && ${BAZEL_BUILD} -c opt ${BAZEL_CUDA_FLAGS} ${BAZEL_OPT_FLAGS} ${BUILD_TARGET_PIP} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} ${BUILD_TARGET_GRAPH_SUMMARIZE} ${BUILD_TARGET_GRAPH_BENCHMARK} && ./tensorflow/tools/pip_package/build_pip_package.sh ${TASKCLUSTER_ARTIFACTS} --gpu
     fi
 
     if [ $? -ne 0 ]; then
