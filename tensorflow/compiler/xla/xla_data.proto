@@ -392,13 +392,17 @@ message DynamicUpdateSliceRequest {
 }
 
 message ConvolutionDimensionNumbers {
-  // The number of the dimension that represents batch in the input
-  // (lhs) and output.
-  int64 batch_dimension = 1;
+  // The number of the dimension that represents batch in the input.
+  int64 input_batch_dimension = 7;
 
-  // The number of the dimension that represents features in the input
-  // (lhs) and output.
-  int64 feature_dimension = 2;
+  // The number of the dimension that represents features in the input.
+  int64 input_feature_dimension = 8;
+
+  // The number of the dimension that represents batch in the output.
+  int64 output_batch_dimension = 9;
+
+  // The number of the dimension that represents features in the output.
+  int64 output_feature_dimension = 10;
 
   // The dimension numbers for the spatial dimensions that the window
   // moves through in the input (lhs) and output.
@@ -617,8 +621,8 @@ message WhileRequest {
 enum UnaryOperation {
   UNOP_INVALID = 0;
 
-  // Elementwise, logical negation
-  UNOP_LOGICAL_NOT = 1;
+  // Elementwise, logical negation on booleans and bitwise negation on ints.
+  UNOP_NOT = 1;
 
   // Elementwise, computes e^x.
   UNOP_EXP = 2;
@@ -706,9 +710,13 @@ enum BinaryOperation {
   // Remainder operation.
   BINOP_REM = 17;
 
-  // Logical operators
-  BINOP_LOGICAL_AND = 18;
-  BINOP_LOGICAL_OR = 19;
+  // Element-wise, logical operators on booleans and bitwise operators on ints.
+  BINOP_AND = 18;
+  BINOP_OR = 19;
+
+  BINOP_SHIFT_LEFT = 20;
+  BINOP_SHIFT_RIGHT_ARITHMETIC = 21;
+  BINOP_SHIFT_RIGHT_LOGICAL = 22;
 }
 
 message BinaryOpRequest {

@@ -43,6 +43,7 @@ limitations under the License.
 %{
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
+#include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/costs/measuring_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/utils.h"
@@ -143,6 +144,53 @@ static PyObject* TF_MeasureCosts(
   return ret;
 }
 
+
+static PyObject* TF_DeterminePeakMemoryUsage(
+    const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
+    TF_Status* out_status) {
+  if (!item || !cluster) {
+    tensorflow::Status status(tensorflow::error::Code::INTERNAL,
+                              "You need both a cluster and an item to determine peak memory usage");
+    tensorflow::Set_TF_Status_from_Status(out_status, status);
+    Py_RETURN_NONE;
+  }
+  tensorflow::grappler::GraphMemory memory(*item);
+
+  tensorflow::Status status;
+  if (cluster->DetailedStatsEnabled()) {
+    status = memory.InferDynamically(cluster);
+  } else {
+    status = memory.InferStatically(cluster->GetDevices());
+  }
+  if (!status.ok()) {
+    tensorflow::Set_TF_Status_from_Status(out_status, status);
+    Py_RETURN_NONE;
+  }
+
+  PyObject* result = PyDict_New();
+  for (const auto& device : cluster->GetDevices()) {
+    const tensorflow::grappler::GraphMemory::MemoryUsage& usage =
+        memory.GetPeakMemoryUsage(device.first);
+    PyObject* per_device = PyList_New(usage.live_tensors.size());
+    for (int i = 0; i < usage.live_tensors.size(); ++i) {
+      const auto& live_tensor = usage.live_tensors[i];
+      PyObject* live = PyTuple_New(5);
+      PyTuple_SetItem(live, 0, PyString_FromString(live_tensor.node.c_str()));
+      PyTuple_SetItem(live, 1, PyInt_FromLong(live_tensor.output_id));
+      PyTuple_SetItem(live, 2, PyLong_FromLong(live_tensor.memory_used));
+      PyTuple_SetItem(live, 3, PyLong_FromLong(live_tensor.allocation_time.count()));
+      PyTuple_SetItem(live, 4, PyLong_FromLong(live_tensor.deallocation_time.count()));
+      PyList_SetItem(per_device, i, live);
+
+    }
+    PyObject* ret = PyTuple_New(2);
+    PyTuple_SetItem(ret, 0, PyLong_FromLong(usage.used_memory));
+    PyTuple_SetItem(ret, 1, per_device);
+    PyDict_SetItem(result, PyString_FromString(device.first.c_str()), ret);
+  }
+  return result;
+}
+
 %}
 
 // Wrap these functions.
@@ -153,3 +201,6 @@ static void TF_DeleteCluster(tensorflow::grappler::Cluster* cluster);
 static PyObject* TF_MeasureCosts(
     const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
     bool generate_timeline, TF_Status* out_status);
+static PyObject* TF_DeterminePeakMemoryUsage(
+    const tensorflow::grappler::GrapplerItem* item, tensorflow::grappler::Cluster* cluster,
+    TF_Status* out_status);

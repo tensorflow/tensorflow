@@ -82,6 +82,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -157,6 +159,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -334,6 +338,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_VARIANT
       }
     }
@@ -738,6 +744,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -801,6 +809,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -885,6 +895,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -978,6 +990,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1075,6 +1089,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1159,6 +1175,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1247,6 +1265,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1304,6 +1324,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1371,6 +1393,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1452,6 +1476,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1519,6 +1545,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1602,6 +1630,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1649,6 +1679,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1696,6 +1728,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -1762,6 +1796,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -2025,6 +2061,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -2038,6 +2076,27 @@ op {
   }
   summary: "Update \'ref\' by adding \'value\' to it."
   description: "This operation outputs \"ref\" after the update is done.\nThis makes it easier to chain operations that need to use the reset value."
+}
+op {
+  name: "AssignAddVariableOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource in which to store the variable."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    description: "the value by which the variable will be incremented."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the dtype of the value."
+  }
+  summary: "Adds a value to the current value of a variable."
+  description: "Any ReadVariableOp which depends directly or indirectly on this assign is\nguaranteed to see the incremented value or a subsequent newer one.\n\nOutputs the incremented value, which can be used to totally order the\nincrements to this variable."
+  is_stateful: true
 }
 op {
   name: "AssignSub"
@@ -2077,6 +2136,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -2090,6 +2151,48 @@ op {
   }
   summary: "Update \'ref\' by subtracting \'value\' from it."
   description: "This operation outputs \"ref\" after the update is done.\nThis makes it easier to chain operations that need to use the reset value."
+}
+op {
+  name: "AssignSubVariableOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource in which to store the variable."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    description: "the value by which the variable will be incremented."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the dtype of the value."
+  }
+  summary: "Subtracts a value from the current value of a variable."
+  description: "Any ReadVariableOp which depends directly or indirectly on this assign is\nguaranteed to see the incremented value or a subsequent newer one.\n\nOutputs the incremented value, which can be used to totally order the\nincrements to this variable."
+  is_stateful: true
+}
+op {
+  name: "AssignVariableOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource in which to store the variable."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    description: "the value to set the new tensor to use."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the dtype of the value."
+  }
+  summary: "Assigns a new value to a variable."
+  description: "Any ReadVariableOp with a control dependency on this op is guaranteed to return\nthis value or a subsequent newer value of the variable."
+  is_stateful: true
 }
 op {
   name: "Atan"
@@ -3274,6 +3377,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -3365,6 +3470,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -3659,6 +3766,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -3710,6 +3819,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -3766,6 +3877,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -4710,6 +4823,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -4764,6 +4879,40 @@ op {
   }
   summary: "Returns the complex conjugate of a complex number."
   description: "Given a tensor `input` of complex numbers, this operation returns a tensor of\ncomplex numbers that are the complex conjugate of each element in `input`. The\ncomplex numbers in `input` must be of the form \\\\(a + bj\\\\), where *a* is the\nreal part and *b* is the imaginary part.\n\nThe complex conjugate returned by this operation is of the form \\\\(a - bj\\\\).\n\nFor example:\n\n```\n# tensor \'input\' is [-2.25 + 4.75j, 3.25 + 5.75j]\ntf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]\n```"
+}
+op {
+  name: "ConjugateTranspose"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "perm"
+    type_attr: "Tperm"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tperm"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Shuffle dimensions of x according to a permutation and conjugate the result."
+  description: "The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:\n  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`\n  `y[i,j,k,...,s,t,u] == conj(x[perm[i], perm[j], perm[k],...,perm[s], perm[t], perm[u]])`"
 }
 op {
   name: "Const"
@@ -5516,7 +5665,7 @@ op {
     description: "Value used for extrapolation, when applicable."
   }
   summary: "Extracts crops from the input image tensor and bilinearly resizes them (possibly"
-  description: "with aspect ratio change) to a common output size specified by `crop_size`. This\nis more general than the `crop_to_bounding_box` op which extracts a fixed size\nslice from the input image and does not allow resizing or aspect ratio change.\n\nReturns a tensor with `crops` from the input `image` at positions defined at the\nbounding box locations in `boxes`. The cropped boxes are all resized (with\nbilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The\nresult is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`."
+  description: "with aspect ratio change) to a common output size specified by `crop_size`. This\nis more general than the `crop_to_bounding_box` op which extracts a fixed size\nslice from the input image and does not allow resizing or aspect ratio change.\n\nReturns a tensor with `crops` from the input `image` at positions defined at the\nbounding box locations in `boxes`. The cropped boxes are all resized (with\nbilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The\nresult is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`. The\nresizing is corner aligned. In particular, if `boxes = [[0, 0, 1, 1]]`, the\nmethod will give identical results to using `tf.image.resize_bilinear()`\nwith `align_corners=True`."
 }
 op {
   name: "CropAndResizeGradBoxes"
@@ -5660,6 +5809,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -5717,6 +5868,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -5787,6 +5940,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -5805,6 +5960,32 @@ op {
   }
   summary: "Compute the cumulative sum of the tensor `x` along `axis`."
   description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
+}
+op {
+  name: "DatasetToSingleElement"
+  input_arg {
+    name: "dataset"
+    description: "A handle to a dataset that contains a single element."
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    description: "The components of the single element of `input`."
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Outputs the single element from the given dataset."
 }
 op {
   name: "DebugGradientIdentity"
@@ -6156,6 +6337,14 @@ op {
     }
     description: "If false, treats double quotation marks as regular\ncharacters inside of the string fields (ignoring RFC 4180, Section 2,\nBullet 5)."
   }
+  attr {
+    name: "na_value"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Additional string to recognize as NA/NaN."
+  }
   summary: "Convert CSV records to tensors. Each column maps to one tensor."
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
 }
@@ -6442,7 +6631,7 @@ op {
   }
   input_arg {
     name: "row_shape"
-    description: "A vector representing the dense shape of each row in the produced\nSparseTensor."
+    description: "A vector representing the dense shape of each row in the produced\nSparseTensor. The shape may be partially specified, using `-1` to indicate\nthat a particular dimension should use the maximum size of all batch elements."
     type: DT_INT64
   }
   output_arg {
@@ -6830,6 +7019,25 @@ op {
   description: "The input `serialized_sparse` must be a string matrix of shape `[N x 3]` where\n`N` is the minibatch size and the rows correspond to packed outputs of\n`SerializeSparse`.  The ranks of the original `SparseTensor` objects\nmust all match.  When the final `SparseTensor` is created, it has rank one\nhigher than the ranks of the incoming `SparseTensor` objects\n(they have been concatenated along a new row dimension).\n\nThe output `SparseTensor` object\'s shape values for all dimensions but the\nfirst are the max across the input `SparseTensor` objects\' shape values\nfor the corresponding dimensions.  Its first shape value is `N`, the minibatch\nsize.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the serialized input is a `[2 x 3]` matrix representing two\noriginal `SparseTensor` objects:\n\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n\nand\n\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n\nthen the final deserialized `SparseTensor` will be:\n\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]"
 }
 op {
+  name: "DestroyResourceOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource to delete."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "ignore_lookup_error"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "whether to ignore the error when the resource\ndoesn\'t exist."
+  }
+  summary: "Deletes the resource specified by the handle."
+  description: "All subsequent operations using the resource will result in a NotFound\nerror status."
+  is_stateful: true
+}
+op {
   name: "DestroyTemporaryVariable"
   input_arg {
     name: "ref"
@@ -6965,6 +7173,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -7032,6 +7242,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -7098,6 +7310,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -7870,6 +8084,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -9835,6 +10051,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -9869,6 +10087,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -10093,6 +10313,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -11019,15 +11241,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "IteratorDispose"
-  input_arg {
-    name: "iterator"
-    type: DT_RESOURCE
-  }
-  summary: "Releases any resources used by the given iterator."
-  is_stateful: true
-}
-op {
   name: "IteratorFromStringHandle"
   input_arg {
     name: "string_handle"
@@ -11379,6 +11592,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -11413,6 +11628,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -11640,6 +11857,38 @@ op {
   }
   summary: "Computes natural logarithm of (1 + x) element-wise."
   description: "I.e., \\\\(y = \\log_e (1 + x)\\\\)."
+}
+op {
+  name: "LogMatrixDeterminant"
+  input_arg {
+    name: "input"
+    description: "Shape is `[N, M, M]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sign"
+    description: "The signs of the log determinants of the inputs. Shape is `[N]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "log_abs_determinant"
+    description: "The logs of the absolute values of the determinants\nof the N input matrices.  Shape is `[N]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the sign and the log of the absolute value of the determinant of"
+  description: "one or more square matrices.\n\nThe input is a tensor of shape `[N, M, M]` whose inner-most 2 dimensions\nform square matrices. The outputs are two tensors containing the signs and\nabsolute values of the log determinants for all N input submatrices\n`[..., :, :]` such that the determinant = sign*exp(log_abs_determinant).\nThe log_abs_determinant is computed as det(P)*sum(log(diag(LU))) where LU\nis the LU decomposition of the input and P is the corresponding\npermutation matrix."
 }
 op {
   name: "LogSoftmax"
@@ -12079,6 +12328,54 @@ op {
   summary: "Makes a new iterator from the given `dataset` and stores it in `iterator`."
   description: "This operation may be executed multiple times. Each execution will reset the\niterator in `iterator` to the first element of `dataset`."
   is_stateful: true
+}
+op {
+  name: "MapAndBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "batch_size"
+    description: "A scalar representing the number of elements to accumulate in a\nbatch. It determines the number of concurrent invocations of `f` that process\nelements from `input_dataset` in parallel."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_parallel_batches"
+    description: "A scalar representing the number of batches to create in\nparallel. Processing multiple batches in parallel benefits workloads prone to\nstragglers."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset` and then"
+  description: "batches `batch_size` of them.\n\nUnlike a \"MapDataset\", which applies `f` sequentially, this dataset invokes up\nto `batch_size * num_parallel_batches` copies of `f` in parallel."
 }
 op {
   name: "MapClear"
@@ -12856,6 +13153,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13248,6 +13547,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13328,6 +13629,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13404,6 +13707,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13480,6 +13785,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13559,6 +13866,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13635,6 +13944,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13780,6 +14091,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -13861,6 +14174,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -14052,6 +14367,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -14225,7 +14542,7 @@ op {
     }
   }
   summary: "Returns element-wise remainder of division. This emulates C semantics in that"
-  description: "the result here is consistent with a truncating divide. E.g. `truncate(x / y) *\ny + truncate_mod(x, y) = x`.\n\n*NOTE*: `Mod` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+  description: "the result here is consistent with a truncating divide. E.g.\n`tf.truncatediv(x, y) * y + truncate_mod(x, y) = x`.\n\n*NOTE*: `Mod` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
   name: "Mul"
@@ -14311,6 +14628,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -16499,6 +16818,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -18788,6 +19109,85 @@ op {
   is_stateful: true
 }
 op {
+  name: "RandomPoissonV2"
+  input_arg {
+    name: "shape"
+    description: "1-D integer tensor. Shape of independent samples to draw from each\ndistribution described by the shape parameters given in rate."
+    type_attr: "S"
+  }
+  input_arg {
+    name: "rate"
+    description: "A tensor in which each scalar is a \"rate\" parameter describing the\nassociated poisson distribution."
+    type_attr: "R"
+  }
+  output_arg {
+    name: "output"
+    description: "A tensor with shape `shape + shape(rate)`. Each slice\n`[:, ..., :, i0, i1, ...iN]` contains the samples drawn for\n`rate[i0, i1, ...iN]`."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
+  }
+  attr {
+    name: "S"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "R"
+    type: "type"
+    default_value {
+      type: DT_DOUBLE
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Outputs random values from the Poisson distribution(s) described by rate."
+  description: "This op uses two algorithms, depending on rate. If rate >= 10, then\nthe algorithm by Hormann is used to acquire samples via\ntransformation-rejection.\nSee http://www.sciencedirect.com/science/article/pii/0167668793909974.\n\nOtherwise, Knuth\'s algorithm is used to acquire samples via multiplying uniform\nrandom variables.\nSee Donald E. Knuth (1969). Seminumerical Algorithms. The Art of Computer\nProgramming, Volume 2. Addison Wesley"
+  is_stateful: true
+}
+op {
   name: "RandomShuffle"
   input_arg {
     name: "value"
@@ -19248,6 +19648,26 @@ op {
     type: DT_STRING
   }
   summary: "Reads and outputs the entire contents of the input filename."
+}
+op {
+  name: "ReadVariableOp"
+  input_arg {
+    name: "resource"
+    description: "handle to the resource in which to store the variable."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the dtype of the value."
+  }
+  summary: "Reads the value of a variable."
+  description: "The tensor returned by this operation is immutable.\n\nThe value returned by this operation is guaranteed to be influenced by all the\nwrites on which this operation depends directly or indirectly, and to not be\ninfluenced by any of the writes which depend directly or indirectly on this\noperation."
+  is_stateful: true
 }
 op {
   name: "ReaderNumRecordsProduced"
@@ -19953,6 +20373,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -19982,6 +20404,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -19996,7 +20420,7 @@ op {
   }
   input_arg {
     name: "features"
-    description: "The features passed as input to the corresponding Relu6 operation."
+    description: "The features passed as input to the corresponding Relu6 operation, or\nits output; using either one produces the same result."
     type_attr: "T"
   }
   output_arg {
@@ -20018,6 +20442,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -20054,6 +20480,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -20652,6 +21080,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -20708,6 +21138,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -20784,6 +21216,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -20869,6 +21303,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -20957,6 +21393,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21033,6 +21471,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21113,6 +21553,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21164,6 +21606,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21224,6 +21668,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21298,6 +21744,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21359,6 +21807,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21434,6 +21884,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21447,6 +21899,100 @@ op {
   }
   summary: "Update \'*var\' according to the RMSProp algorithm."
   description: "Note that in dense implementation of this algorithm, ms and mom will\nupdate even if the grad is zero, but in this sparse implementation, ms\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon)\n\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)\nvar <- var - mom"
+  is_stateful: true
+}
+op {
+  name: "ResourceGather"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "validate_indices"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Gather slices from the variable pointed to by `resource` according to `indices`."
+  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n```python\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n```"
+  is_stateful: true
+}
+op {
+  name: "ResourceScatterAdd"
+  input_arg {
+    name: "resource"
+    description: "Should be from a `Variable` node."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "indices"
+    description: "A tensor of indices into the first dimension of `ref`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A tensor of updated values to add to `ref`."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Adds sparse updates to the variable referenced by `resource`."
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/ScatterAdd.png\" alt>\n</div>"
   is_stateful: true
 }
 op {
@@ -21509,6 +22055,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21579,6 +22127,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21670,6 +22220,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21764,6 +22316,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21855,6 +22409,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -21950,6 +22506,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -22026,6 +22584,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -22115,6 +22675,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -22191,6 +22753,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -22281,6 +22845,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23097,11 +23663,60 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
   summary: "Outputs a `Summary` protocol buffer with scalar values."
   description: "The input `tags` and `values` must have the same shape.  The generated summary\nhas a summary value for each tag-value pair in `tags` and `values`."
+}
+op {
+  name: "ScanDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "initial_state"
+    type_list_attr: "Tstate"
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Tstate"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset successively reduces `f` over the elements of `input_dataset`."
 }
 op {
   name: "ScatterAdd"
@@ -23146,6 +23761,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23213,6 +23830,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23280,6 +23899,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23386,6 +24007,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23451,6 +24074,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23510,6 +24135,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23626,6 +24253,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23912,6 +24541,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -23958,6 +24589,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -24004,6 +24637,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -24055,6 +24690,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -24106,6 +24743,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -24987,6 +25626,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25023,6 +25664,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25052,6 +25695,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25088,6 +25733,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25275,6 +25922,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25334,6 +25983,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25408,6 +26059,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25425,6 +26078,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25482,6 +26137,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25557,6 +26214,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25634,6 +26293,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25733,6 +26394,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25836,6 +26499,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25935,6 +26600,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26038,6 +26705,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26121,6 +26790,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26217,6 +26888,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26299,6 +26972,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26397,6 +27072,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26502,6 +27179,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26681,6 +27360,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26733,6 +27414,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26785,6 +27468,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -26988,6 +27673,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -27050,6 +27737,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -27110,6 +27799,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -27177,6 +27868,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -27480,6 +28173,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -27687,6 +28382,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -27754,6 +28451,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -27858,6 +28557,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -29381,6 +30082,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -31149,6 +31852,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -31203,6 +31908,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -31576,6 +32283,8 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -31631,6 +32340,8 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -31694,6 +32405,56 @@ op {
   is_stateful: true
 }
 op {
+  name: "VarHandleOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "the container this variable is placed in."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "the name by which this variable is referred to."
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "the type of this variable. Must agree with the dtypes\nof all ops using this variable."
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The (possibly partially specified) shape of this variable."
+  }
+  summary: "Creates a handle to a Variable resource."
+  is_stateful: true
+}
+op {
+  name: "VarIsInitializedOp"
+  input_arg {
+    name: "resource"
+    description: "the input resource handle."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    description: "a scalar boolean which is true if the variable has been\ninitialized."
+    type: DT_BOOL
+  }
+  summary: "Checks whether a resource handle-based variable has been initialized."
+  is_stateful: true
+}
+op {
   name: "Variable"
   output_arg {
     name: "ref"
@@ -31723,6 +32484,33 @@ op {
     }
   }
   summary: "Use VariableV2 instead."
+  is_stateful: true
+}
+op {
+  name: "VariableShape"
+  input_arg {
+    name: "input"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Returns the shape of the variable pointed to by `resource`."
+  description: "This operation returns a 1-D integer tensor representing the shape of `input`.\n\nFor example:\n\n```\n# \'t\' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]\nshape(t) ==> [2, 2, 3]\n```"
   is_stateful: true
 }
 op {
@@ -31767,14 +32555,42 @@ op {
   name: "Where"
   input_arg {
     name: "input"
-    type: DT_BOOL
+    type_attr: "T"
   }
   output_arg {
     name: "index"
     type: DT_INT64
   }
-  summary: "Returns locations of true values in a boolean tensor."
-  description: "This operation returns the coordinates of true elements in `input`. The\ncoordinates are returned in a 2-D tensor where the first dimension (rows)\nrepresents the number of true elements, and the second dimension (columns)\nrepresents the coordinates of the true elements. Keep in mind, the shape of\nthe output tensor can vary depending on how many true values there are in\n`input`. Indices are output in row-major order.\n\nFor example:\n\n```\n# \'input\' tensor is [[True, False]\n#                    [True, False]]\n# \'input\' has two true values, so output has two coordinates.\n# \'input\' has rank of 2, so coordinates have two indices.\nwhere(input) ==> [[0, 0],\n                  [1, 0]]\n\n# `input` tensor is [[[True, False]\n#                     [True, False]]\n#                    [[False, True]\n#                     [False, True]]\n#                    [[False, False]\n#                     [False, True]]]\n# \'input\' has 5 true values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n```"
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_BOOL
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+        type: DT_BOOL
+      }
+    }
+  }
+  summary: "Returns locations of nonzero / true values in a tensor."
+  description: "This operation returns the coordinates of true elements in `input`. The\ncoordinates are returned in a 2-D tensor where the first dimension (rows)\nrepresents the number of true elements, and the second dimension (columns)\nrepresents the coordinates of the true elements. Keep in mind, the shape of\nthe output tensor can vary depending on how many true values there are in\n`input`. Indices are output in row-major order.\n\nFor example:\n\n```\n# \'input\' tensor is [[True, False]\n#                    [True, False]]\n# \'input\' has two true values, so output has two coordinates.\n# \'input\' has rank of 2, so coordinates have two indices.\nwhere(input) ==> [[0, 0],\n                  [1, 0]]\n\n# `input` tensor is [[[True, False]\n#                     [True, False]]\n#                    [[False, True]\n#                     [False, True]]\n#                    [[False, False]\n#                     [False, True]]]\n# \'input\' has 5 true values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n\n# `input` tensor is [[[1.5,  0.0]\n#                     [-0.5, 0.0]]\n#                    [[0.0,  0.25]\n#                     [0.0,  0.75]]\n#                    [[0.0,  0.0]\n#                     [0.0,  0.01]]]\n# \'input\' has 5 nonzero values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n\n# `input` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]\n#                     [0.0 + 0.5j, 0.0  + 0.0j]]\n#                    [[0.0 + 0.0j, 0.25 + 1.5j]\n#                     [0.0 + 0.0j, 0.75 + 0.0j]]\n#                    [[0.0 + 0.0j, 0.0  + 0.0j]\n#                     [0.0 + 0.0j, 0.01 + 0.0j]]]\n# \'input\' has 5 nonzero magnitude values, so output has 5 coordinates.\n# \'input\' has rank of 3, so coordinates have three indices.\nwhere(input) ==> [[0, 0, 0],\n                  [0, 1, 0],\n                  [1, 0, 1],\n                  [1, 1, 1],\n                  [2, 1, 1]]\n```"
 }
 op {
   name: "WholeFileReader"

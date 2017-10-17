@@ -49,9 +49,14 @@ class BatchNormalization(base.Layer):
   Sergey Ioffe, Christian Szegedy
 
   Arguments:
-    axis: An `int`, the axis that should be normalized (typically the features
-      axis). For instance, after a `Conv2D` layer with
-      `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
+    axis: An `int` or list of `int`, the axis or axes that should be
+        normalized, typically the features axis/axes. For instance, after a
+        `Conv2D` layer with `data_format="channels_first"`, set `axis=1`. If a
+        list of axes is provided, each axis in `axis` will be normalized
+        simultaneously. Default is `-1` which takes uses last axis. Note: when
+        using multi-axis batch norm, the `beta`, `gamma`, `moving_mean`, and
+        `moving_variance` variables are the same rank as the input Tensor, with
+        dimension size 1 in all reduced (non-axis) dimensions).
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
     center: If True, add offset of `beta` to normalized tensor. If False, `beta`
@@ -90,11 +95,12 @@ class BatchNormalization(base.Layer):
       If `None`, use the system recommended implementation.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    num_virtual_batches: An `int`, specifies the number of virtual batches to
-      operate over. If not greater than 1, will perform "ghost batch
-      normalization", which creates virtual sub-batches to operate over for
-      batch norm. Default is 1 virtual batch, in which no virtual batching is
-      performed. Must divide the actual batch size during graph execution.
+    virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
+      which means batch normalization is performed across the whole batch. When
+      `virtual_batch_size` is not `None`, instead perform "Ghost Batch
+      Normalization", which creates virtual sub-batches which are each
+      normalized separately (with shared gamma, beta, and moving statistics).
+      Must divide the actual batch size during execution.
     name: A string, the name of the layer.
   """
 
@@ -117,7 +123,7 @@ class BatchNormalization(base.Layer):
                renorm_momentum=0.99,
                fused=None,
                trainable=True,
-               num_virtual_batches=1,
+               virtual_batch_size=None,
                name=None,
                **kwargs):
     super(BatchNormalization, self).__init__(
@@ -136,15 +142,12 @@ class BatchNormalization(base.Layer):
     self.beta_constraint = beta_constraint
     self.gamma_constraint = gamma_constraint
     self.renorm = renorm
+    self.virtual_batch_size = virtual_batch_size
     if fused is None:
       fused = True
 
     self.fused = fused
     self._bessels_correction_test_only = True
-
-    if num_virtual_batches < 1:
-      raise ValueError('num_virtual_batches must be a positive integer')
-    self.num_virtual_batches = num_virtual_batches
 
     if renorm:
       renorm_clipping = renorm_clipping or {}
@@ -159,14 +162,36 @@ class BatchNormalization(base.Layer):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not input_shape.ndims:
       raise ValueError('Input has undefined rank:', input_shape)
-    ndim = len(input_shape)
-    if self.axis < 0:
-      axis = ndim + self.axis
-    else:
-      axis = self.axis
-    if axis < 0 or axis >= ndim:
-      raise ValueError('Value of `axis` argument ' + str(self.axis) +
-                       ' is out of range for input with rank ' + str(ndim))
+    ndims = len(input_shape)
+
+    # Convert axis to list and resolve negatives
+    if isinstance(self.axis, int):
+      self.axis = [self.axis]
+
+    if not isinstance(self.axis, list):
+      raise TypeError('axis must be int or list, type given: %s'
+                      % type(self.axis))
+
+    for idx, x in enumerate(self.axis):
+      if x < 0:
+        self.axis[idx] = ndims + x
+
+    # Validate axes
+    for x in self.axis:
+      if x < 0 or x >= ndims:
+        raise ValueError('Invalid axis: %d' % x)
+    if len(self.axis) != len(set(self.axis)):
+      raise ValueError('Duplicate axis: %s' % self.axis)
+
+    if self.virtual_batch_size is not None:
+      if self.virtual_batch_size <= 0:
+        raise ValueError('virtual_batch_size must be a positive integer that '
+                         'divides the true batch size of the input Tensor')
+      # If using virtual batches, the first dimension must be the batch
+      # dimension and cannot be the batch norm axis
+      if 0 in self.axis:
+        raise ValueError('When using virtual_batch_size, the batch dimension '
+                         'must be 0 and thus axis cannot include 0')
 
     if self.fused:
       # Currently fused batch norm doesn't support renorm and beta/gamma
@@ -174,30 +199,51 @@ class BatchNormalization(base.Layer):
       # dimension on axis 1 and 3.
       # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
       # output back to its original shape accordingly.
-      self.fused = not self.renorm and ndim == 4 and axis in [
-          1, 3
-      ] and self.beta_regularizer is None and self.gamma_regularizer is None
+      self.fused = (not self.renorm and
+                    ndims == 4 and
+                    self.axis in [[1], [3]] and
+                    self.beta_regularizer is None and
+                    self.gamma_regularizer is None and
+                    self.virtual_batch_size is None)
+      # TODO(chrisying): fused batch norm is currently not supported for
+      # multi-axis batch norm and by extension virtual batches. In some cases,
+      # it might be possible to use fused batch norm but would require reshaping
+      # the Tensor to 4D with the axis in 1 or 3 (preferred 1) which is
+      # particularly tricky. A compromise might be to just support the most
+      # common use case (turning 5D w/ virtual batch to NCHW)
 
     if self.fused:
-      if axis == 1:
+      if self.axis == [1]:
         self._data_format = 'NCHW'
-      else:
+      elif self.axis == [3]:
         self._data_format = 'NHWC'
+      else:
+        raise ValueError('Unsupported axis, fused batch norm only supports '
+                         'axis == [1] or axis == [3]')
 
-    param_dim = input_shape[axis]
-    if not param_dim.value:
-      raise ValueError('Input has undefined `axis` dimension. Input shape: ',
-                       input_shape)
-    self.input_spec = base.InputSpec(ndim=ndim,
-                                     axes={self.axis: param_dim.value})
+    axis_to_dim = {x: input_shape[x].value for x in self.axis}
+    for x in axis_to_dim:
+      if axis_to_dim[x] is None:
+        raise ValueError('Input has undefined `axis` dimension. Input shape: ',
+                         input_shape)
+    self.input_spec = base.InputSpec(ndim=ndims, axes=axis_to_dim)
 
-    if self.num_virtual_batches > 1:
-      # the axis dim is combined with num_virtual_batches
-      param_dim = input_shape[axis] * self.num_virtual_batches
+    if len(axis_to_dim) == 1 and self.virtual_batch_size is None:
+      # Single axis batch norm (most common/default use-case)
+      param_shape = (list(axis_to_dim.values())[0],)
+    else:
+      # Parameter shape is the original shape but with 1 in all non-axis dims
+      param_shape = [axis_to_dim[i] if i in axis_to_dim
+                     else 1 for i in range(ndims)]
+      if self.virtual_batch_size is not None:
+        # When using virtual batches, add an extra dim at index 1
+        param_shape.insert(1, 1)
+        for idx, x in enumerate(self.axis):
+          self.axis[idx] = x + 1      # Account for added dimension
 
     if self.scale:
       self.gamma = self.add_variable(name='gamma',
-                                     shape=(param_dim,),
+                                     shape=param_shape,
                                      initializer=self.gamma_initializer,
                                      regularizer=self.gamma_regularizer,
                                      constraint=self.gamma_constraint,
@@ -205,11 +251,11 @@ class BatchNormalization(base.Layer):
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = array_ops.constant(1.0, shape=(param_dim,))
+        self._gamma_const = array_ops.constant(1.0, shape=param_shape)
 
     if self.center:
       self.beta = self.add_variable(name='beta',
-                                    shape=(param_dim,),
+                                    shape=param_shape,
                                     initializer=self.beta_initializer,
                                     regularizer=self.beta_regularizer,
                                     constraint=self.beta_constraint,
@@ -217,7 +263,7 @@ class BatchNormalization(base.Layer):
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = array_ops.constant(0.0, shape=(param_dim,))
+        self._beta_const = array_ops.constant(0.0, shape=param_shape)
 
     # Disable variable partitioning when creating the moving mean and variance
     try:
@@ -228,14 +274,16 @@ class BatchNormalization(base.Layer):
         partitioner = None
       self.moving_mean = self.add_variable(
           name='moving_mean',
-          shape=(param_dim,),
+          shape=param_shape,
           initializer=self.moving_mean_initializer,
           trainable=False)
+
       self.moving_variance = self.add_variable(
           name='moving_variance',
-          shape=(param_dim,),
+          shape=param_shape,
           initializer=self.moving_variance_initializer,
           trainable=False)
+
       self._one_minus_decay = 1.0 - self.momentum
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
@@ -256,7 +304,7 @@ class BatchNormalization(base.Layer):
           device = ((lambda _: self.moving_mean.device)
                     if context.in_graph_mode() else self.moving_mean.device)
           with ops.device(device):
-            self.renorm_mean = _renorm_variable('renorm_mean', (param_dim,))
+            self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
             self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
           # We initialize renorm_stddev to 0, and maintain the (0-initialized)
           # renorm_stddev_weight. This allows us to (1) mix the average
@@ -265,7 +313,7 @@ class BatchNormalization(base.Layer):
           device = ((lambda _: self.moving_variance.device)
                     if context.in_graph_mode() else self.moving_variance.device)
           with ops.device(device):
-            self.renorm_stddev = _renorm_variable('renorm_stddev', (param_dim,))
+            self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
             self.renorm_stddev_weight = _renorm_variable(
                 'renorm_stddev_weight', ())
     finally:
@@ -277,7 +325,9 @@ class BatchNormalization(base.Layer):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, one_minus_decay]) as scope:
       with ops.colocate_with(variable):
-        update_delta = (variable.read_value() - value) * one_minus_decay
+        update_delta = math_ops.multiply(
+            math_ops.subtract(variable.read_value(), value),
+            one_minus_decay)
         if isinstance(variable, resource_variable_ops.ResourceVariable):
           # state_ops.assign_sub does an extra read_variable_op after the
           # assign. We avoid that here.
@@ -324,11 +374,11 @@ class BatchNormalization(base.Layer):
 
     training_value = utils.constant_value(training)
     if training_value is None:
-      one_minus_decay = _smart_select(training,
-                                      lambda: self._one_minus_decay,
-                                      lambda: 0.)
+      one_minus_decay = utils.smart_cond(training,
+                                         lambda: self._one_minus_decay,
+                                         lambda: 0.)
     else:
-      one_minus_decay = self._one_minus_decay
+      one_minus_decay = ops.convert_to_tensor(self._one_minus_decay)
     if training_value or training_value is None:
       mean_update = self._assign_moving_average(self.moving_mean, mean,
                                                 one_minus_decay)
@@ -369,9 +419,9 @@ class BatchNormalization(base.Layer):
       d = math_ops.maximum(d, -dmax)
       d = math_ops.minimum(d, dmax)
     # When not training, use r=1, d=0, and decay=1 meaning no updates.
-    r = _smart_select(training, lambda: r, lambda: array_ops.ones_like(r))
-    d = _smart_select(training, lambda: d, lambda: array_ops.zeros_like(d))
-    decay = _smart_select(training, lambda: self.renorm_momentum, lambda: 1.)
+    r = utils.smart_cond(training, lambda: r, lambda: array_ops.ones_like(r))
+    d = utils.smart_cond(training, lambda: d, lambda: array_ops.zeros_like(d))
+    decay = utils.smart_cond(training, lambda: self.renorm_momentum, lambda: 1.)
 
     def _update_renorm_variable(var, weight, value):
       """Updates a moving average and weight, returns the unbiased value."""
@@ -404,65 +454,33 @@ class BatchNormalization(base.Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
-    if self.num_virtual_batches > 1:
-      # Virtual batches (aka ghost batches) can be simulated by using some
-      # reshape/transpose tricks on top of base batch normalization.
+    if self.virtual_batch_size is not None:
+      # Virtual batches (aka ghost batches) can be simulated by reshaping the
+      # Tensor and reusing the existing batch norm implementation
       original_shape = [-1] + inputs.shape.as_list()[1:]
-      expanded_shape = [-1, self.num_virtual_batches] + original_shape[1:]
+      expanded_shape = [self.virtual_batch_size, -1] + original_shape[1:]
 
-      # Will cause errors if num_virtual_batches does not divide the batch size
+      # Will cause errors if virtual_batch_size does not divide the batch size
       inputs = array_ops.reshape(inputs, expanded_shape)
 
-      ndims = len(expanded_shape)
-      if self.axis < 0:
-        axis = ndims + self.axis
-      else:
-        axis = self.axis + 1      # Account for the added dimension
-
-      # Permute the num_virtual_batch dimension (dim 1) to be adjacent to axis
-      # TODO(b/66257056): when multi-axis batch normalization is implemented,
-      # this permutation trick and the combined_dim reshape are no longer
-      # necessary and can be reworked to simply use broadcasting.
-      permutation = ([0] + list(range(2, axis)) + [1, axis] +
-                     list(range(axis + 1, ndims)))
-      inverse_permutation = [x[1] for x in
-                             sorted(zip(permutation, range(ndims)))]
-      inputs = array_ops.transpose(inputs, perm=permutation)
-
-      # Combine the axis and num_virtual_batch dimension in order to take
-      # advantage of fused batch normalization
-      combined_dim = expanded_shape[1] * expanded_shape[axis]
-      perm_shape = [-1] + inputs.shape.as_list()[1:]
-      combined_shape = (perm_shape[:axis - 1] +
-                        [combined_dim] +
-                        perm_shape[axis + 1:])
-      inputs = array_ops.reshape(inputs, combined_shape)
-      # After the above reshape, the batch norm axis is the original self.axis
-
-      # Undoes the reshaping and transposing tricks done above
       def undo_virtual_batching(outputs):
-        outputs = array_ops.reshape(outputs, perm_shape)
-        outputs = array_ops.transpose(outputs, perm=inverse_permutation)
         outputs = array_ops.reshape(outputs, original_shape)
         return outputs
 
     if self.fused:
       outputs = self._fused_batch_norm(inputs, training=training)
-      if self.num_virtual_batches > 1:
+      if self.virtual_batch_size is not None:
+        # Currently never reaches here since fused_batch_norm does not support
+        # virtual batching
         return undo_virtual_batching(outputs)
       return outputs
 
-    # First, compute the axes along which to reduce the mean / variance,
-    # as well as the broadcast shape to be used for all parameters.
+    # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.get_shape()
-    ndim = len(input_shape)
-    reduction_axes = list(range(len(input_shape)))
-    del reduction_axes[self.axis]
-    broadcast_shape = [1] * len(input_shape)
-    broadcast_shape[self.axis] = input_shape[self.axis].value
-
-    # Determines whether broadcasting is needed.
-    needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
+    ndims = len(input_shape)
+    reduction_axes = [i for i in range(ndims) if i not in self.axis]
+    if self.virtual_batch_size is not None:
+      del reduction_axes[1]     # Do not reduce along virtual batch dim
 
     scale, offset = self.gamma, self.beta
 
@@ -471,13 +489,18 @@ class BatchNormalization(base.Layer):
     if training_value is not False:
       # Some of the computations here are not necessary when training==False
       # but not a constant. However, this makes the code simpler.
-      mean, variance = nn.moments(inputs, reduction_axes)
-      mean = _smart_select(training,
-                           lambda: mean,
-                           lambda: self.moving_mean)
-      variance = _smart_select(training,
-                               lambda: variance,
-                               lambda: self.moving_variance)
+      keep_dims = self.virtual_batch_size is not None or len(self.axis) > 1
+      mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
+
+      moving_mean = self.moving_mean
+      moving_variance = self.moving_variance
+
+      mean = utils.smart_cond(training,
+                              lambda: mean,
+                              lambda: moving_mean)
+      variance = utils.smart_cond(training,
+                                  lambda: variance,
+                                  lambda: moving_variance)
 
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
@@ -496,7 +519,18 @@ class BatchNormalization(base.Layer):
         new_mean, new_variance = mean, variance
 
       # Update moving averages when training, and prevent updates otherwise.
-      decay = _smart_select(training, lambda: self.momentum, lambda: 1.)
+      decay = utils.smart_cond(training, lambda: self.momentum, lambda: 1.)
+      if self.virtual_batch_size is not None:
+        # This isn't strictly correct since in ghost batch norm, you are
+        # supposed to sequentially update the moving_mean and moving_variance
+        # with each sub-batch. However, since the moving statistics are only
+        # used during evaluation, it is more efficient to just update in one
+        # step and should not make a significant difference in the result.
+        new_mean = math_ops.reduce_mean(new_mean,
+                                        axis=1, keep_dims=True)
+        new_variance = math_ops.reduce_mean(new_variance,
+                                            axis=1, keep_dims=True)
+
       mean_update = moving_averages.assign_moving_average(
           self.moving_mean, new_mean, decay, zero_debias=False)
       variance_update = moving_averages.assign_moving_average(
@@ -508,9 +542,15 @@ class BatchNormalization(base.Layer):
     else:
       mean, variance = self.moving_mean, self.moving_variance
 
+    # Broadcasting only necessary for single-axis batch norm where the axis is
+    # not the last dimension
+    broadcast_shape = [1] * ndims
+    broadcast_shape[self.axis[0]] = input_shape[self.axis[0]].value
+    rank = len(inputs.get_shape())
     def _broadcast(v):
-      if needs_broadcasting and v is not None:
-        # In this case we must explicitly broadcast all parameters.
+      if (v is not None and
+          len(v.get_shape()) != rank and
+          reduction_axes != list(range(ndims))[:-1]):
         return array_ops.reshape(v, broadcast_shape)
       return v
 
@@ -521,7 +561,7 @@ class BatchNormalization(base.Layer):
                                      _broadcast(scale),
                                      self.epsilon)
 
-    if self.num_virtual_batches > 1:
+    if self.virtual_batch_size is not None:
       return undo_virtual_batching(outputs)
 
     return outputs
@@ -549,7 +589,7 @@ def batch_normalization(inputs,
                         renorm_clipping=None,
                         renorm_momentum=0.99,
                         fused=None,
-                        num_virtual_batches=1):
+                        virtual_batch_size=None):
   """Functional interface for the batch normalization layer.
 
   Reference: http://arxiv.org/abs/1502.03167
@@ -621,11 +661,12 @@ def batch_normalization(inputs,
       to get the means and variances for inference.
     fused: if `True`, use a faster, fused implementation if possible.
       If `None`, use the system recommended implementation.
-    num_virtual_batches: An `int`, specifies the number of virtual batches to
-      operate over. If greater than 1, will perform "ghost batch
-      normalization", which creates virtual sub-batches to operate over for
-      batch norm. Default is 1 virtual batch, in which no virtual batching is
-      performed. Must divide the actual batch size during graph execution.
+    virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
+      which means batch normalization is performed across the whole batch. When
+      `virtual_batch_size` is not `None`, instead perform "Ghost Batch
+      Normalization", which creates virtual sub-batches which are each
+      normalized separately (with shared gamma, beta, and moving statistics).
+      Must divide the actual batch size during execution.
 
   Returns:
     Output tensor.
@@ -649,7 +690,7 @@ def batch_normalization(inputs,
       renorm_momentum=renorm_momentum,
       fused=fused,
       trainable=trainable,
-      num_virtual_batches=num_virtual_batches,
+      virtual_batch_size=virtual_batch_size,
       name=name,
       _reuse=reuse,
       _scope=name)
@@ -661,37 +702,3 @@ def batch_normalization(inputs,
 BatchNorm = BatchNormalization
 batch_norm = batch_normalization
 
-# Helper function
-
-
-def _smart_select(pred, fn_then, fn_else):
-  """Selects fn_then() or fn_else() based on the value of pred.
-
-  The purpose of this function is the same as `utils.smart_cond`. However, at
-  the moment there is a bug (b/36297356) that seems to kick in only when
-  `smart_cond` delegates to `tf.cond`, which sometimes results in the training
-  hanging when using parameter servers. This function will output the result
-  of `fn_then` or `fn_else` if `pred` is known at graph construction time.
-  Otherwise, it will use `tf.where` which will result in some redundant work
-  (both branches will be computed but only one selected). However, the tensors
-  involved will usually be small (means and variances in batchnorm), so the
-  cost will be small and will not be incurred at all if `pred` is a constant.
-
-  Args:
-    pred: A boolean scalar `Tensor`.
-    fn_then: A callable to use when pred==True.
-    fn_else: A callable to use when pred==False.
-
-  Returns:
-    A `Tensor` whose value is fn_then() or fn_else() based on the value of pred.
-  """
-  pred_value = utils.constant_value(pred)
-  if pred_value:
-    return fn_then()
-  elif pred_value is False:
-    return fn_else()
-  t_then = array_ops.expand_dims(fn_then(), 0)
-  t_else = array_ops.expand_dims(fn_else(), 0)
-  pred = array_ops.reshape(pred, [1])
-  result = array_ops.where(pred, t_then, t_else)
-  return array_ops.squeeze(result, [0])

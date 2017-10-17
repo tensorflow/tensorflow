@@ -87,6 +87,17 @@ class CpuExecutable : public Executable {
 
   std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
 
+  // Type of the computation function we expect in the JIT.
+  using ComputeFunctionType = void (*)(
+      void* /*result*/, const ExecutableRunOptions* /*run_options*/,
+      const void** /*args*/, void** /*temps*/, uint64* /*profile_counters*/);
+
+  const ComputeFunctionType& compute_function() const {
+    return compute_function_;
+  }
+
+  const BufferAssignment& buffer_assignment() const { return *assignment_; }
+
  private:
   // Allocate buffers required for execution and assign them to the elements of
   // "buffers". "buffers" should be sized to the number of buffers in buffer
@@ -129,11 +140,6 @@ class CpuExecutable : public Executable {
   // positives.
   string ir_module_string_;
 
-  // Type of the computation function we expect in the JIT.
-  //    void function(void* result, const void* run_options,
-  //                  const void** args_array, void** temps_array)
-  using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
-                                       uint64*);
   ComputeFunctionType compute_function_;
 
   // Entry function name for the computation.

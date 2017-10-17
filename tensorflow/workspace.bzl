@@ -171,6 +171,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "and will be removed in the future.")
 
   native.new_http_archive(
+      name = "mkl_dnn",
+      urls = [
+          "https://github.com/01org/mkl-dnn/archive/b01e3a55a07be62172e713bcd2644c5176360212.tar.gz",
+          "http://mirror.bazel.build/github.com/01org/mkl-dnn/archive/b01e3a55a07be62172e713bcd2644c5176360212.tar.gz",
+      ],
+      sha256 = "0d529ad4c49dc799e6df07c2b88b115d0668735da15fb3b3862d28d33fa68165",
+      strip_prefix = "mkl-dnn-b01e3a55a07be62172e713bcd2644c5176360212",
+      build_file = str(Label("//third_party/mkl_dnn:mkldnn.BUILD")),
+  )
+
+  native.new_http_archive(
       name = "eigen_archive",
       urls = [
           "https://bitbucket.org/eigen/eigen/get/429aa5254200.tar.gz",
@@ -302,7 +313,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   native.new_http_archive(
       name = "sqlite_archive",
-      urls = ["http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip"],
+      urls = [
+          "http://mirror.bazel.build/www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
+          "http://www.sqlite.org/2017/sqlite-amalgamation-3200000.zip",
+      ],
       sha256 = "208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4",
       strip_prefix = "sqlite-amalgamation-3200000",
       build_file = str(Label("//third_party:sqlite.BUILD"))
@@ -579,11 +593,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   patched_http_archive(
       name = "boringssl",
       urls = [
-          "http://mirror.bazel.build/github.com/google/boringssl/archive/e3860009a091cd1bd2bc189cdbc3c6d095abde84.tar.gz",
-          # "https://github.com/google/boringssl/archive/e3860009a091cd1bd2bc189cdbc3c6d095abde84.tar.gz",  # 2017-07-07
+          "https://github.com/google/boringssl/archive/72cfd9f49ec5fbc2db368b76398c196dafe6a4bc.tar.gz",
       ],
-      sha256 = "02f5950f93c4fd3691771c07c9d04cf2999ab01383ff99da345249e93b0fcfb2",
-      strip_prefix = "boringssl-e3860009a091cd1bd2bc189cdbc3c6d095abde84",
+      sha256 = "5e6f7b72c74adeb902581271925ddb979e77b96327abd76604ce894d80680e51",
+      strip_prefix = "boringssl-72cfd9f49ec5fbc2db368b76398c196dafe6a4bc",
       # Add patch to boringssl code to support s390x
       patch_file = str(Label("//third_party/boringssl:add_boringssl_s390x.patch")),
   )
@@ -686,6 +699,31 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       repository = tf_repo_name,
   )
 
+  java_import_external(
+      name = "com_google_testing_compile",
+      jar_sha256 = "edc180fdcd9f740240da1a7a45673f46f59c5578d8cd3fbc912161f74b5aebb8",
+      jar_urls = [
+          "http://mirror.bazel.build/repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+          "http://repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+          "http://maven.ibiblio.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+      ],
+      licenses = ["notice"],  # New BSD License
+      testonly_ = True,
+      deps = ["@com_google_guava", "@com_google_truth"],
+  )
+
+  java_import_external(
+      name = "com_google_truth",
+      jar_sha256 = "032eddc69652b0a1f8d458f999b4a9534965c646b8b5de0eba48ee69407051df",
+      jar_urls = [
+          "http://mirror.bazel.build/repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
+          "http://repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
+      ],
+      licenses = ["notice"],  # Apache 2.0
+      testonly_ = True,
+      deps = ["@com_google_guava"],
+  )
+
   native.new_http_archive(
       name = "com_google_pprof",
       urls = [
@@ -700,11 +738,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "cub_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.3.zip",
-          # "https://github.com/NVlabs/cub/archive/1.7.3.zip",
+          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.7.4.zip",
+          "https://github.com/NVlabs/cub/archive/1.7.4.zip",
       ],
-      sha256 = "b7ead9e291d34ffa8074243541c1380d63be63f88de23de8ee548db573b72ebe",
-      strip_prefix = "cub-1.7.3",
+      sha256 = "20a1a39fd97e5da7f40f5f2e7fd73fd2ea59f9dc4bb8a6c5f228aa543e727e31",
+      strip_prefix = "cub-1.7.4",
       build_file = str(Label("//third_party:cub.BUILD")),
   )
 
@@ -713,12 +751,23 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@cub_archive//:cub",
   )
 
+  native.new_http_archive(
+      name = "cython",
+      sha256 = "6dcd30b5ceb887b2b965ee7ceb82ea3acb5f0642fe2206c7636b45acea4798e5",
+      urls = [
+          "http://mirror.bazel.build/github.com/cython/cython/archive/3732784c45cfb040a5b0936951d196f83a12ea17.tar.gz",
+          "https://github.com/cython/cython/archive/3732784c45cfb040a5b0936951d196f83a12ea17.tar.gz",
+      ],
+      strip_prefix = "cython-3732784c45cfb040a5b0936951d196f83a12ea17",
+      build_file = str(Label("//third_party:cython.BUILD")),
+  )
+
   native.http_archive(
       name = "bazel_toolchains",
       urls = [
-          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/9dbd803ad3b9447430a296810197b09b3a710956.tar.gz",
-          # "https://github.com/bazelbuild/bazel-toolchains/archive/9dbd803ad3b9447430a296810197b09b3a710956.tar.gz",
+          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/b2b4b38433bf2d1159360855ea4004378308711b.tar.gz",
+          # "https://github.com/bazelbuild/bazel-toolchains/archive/b2b4b38433bf2d1159360855ea4004378308711b.tar.gz",
       ],
-      sha256 = "0799aa12db5260a499beb40f81744e760c59d055bfc5d271dd2c2ed4d5419faa",
-      strip_prefix = "bazel-toolchains-9dbd803ad3b9447430a296810197b09b3a710956",
+      sha256 = "46187270ca04ff8109980f45c3438fabfe48695e163789096eb82ee097ffe685",
+      strip_prefix = "bazel-toolchains-b2b4b38433bf2d1159360855ea4004378308711b",
   )

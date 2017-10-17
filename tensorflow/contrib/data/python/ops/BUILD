@@ -16,7 +16,6 @@ py_library(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -50,6 +49,7 @@ py_library(
         "error_ops.py",
         "grouping.py",
         "resampling.py",
+        "scan_ops.py",
         "sloppy_ops.py",
     ],
     srcs_version = "PY2AND3",

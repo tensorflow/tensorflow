@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/graph/mkl_layout_pass.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -543,7 +543,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string reason;
 
     // Substring that should be checked for in device name for CPU device.
-    const char* const kCPUDeviceSubStr = "cpu";
+    const char* const kCPUDeviceSubStr = "CPU";
 
     // If Op has been specifically assigned to a non-CPU device, then No.
     if (!n->assigned_device_name().empty() &&

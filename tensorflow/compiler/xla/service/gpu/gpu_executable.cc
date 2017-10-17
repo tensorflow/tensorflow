@@ -184,9 +184,6 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteOnStream(
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  // This ExecuteOnStream overload should only be called if has_hybrid_result is
-  // false.
-  TF_RET_CHECK(!module_config().has_hybrid_result());
 
   BufferAllocations::Builder buffer_allocations_builder;
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
@@ -264,9 +261,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  // This ExecuteOnStream overload should only be called by the LocalService
-  // which sets has_hybrid_result to true.
-  TF_RET_CHECK(module_config().has_hybrid_result());
 
   if (GetRootPointsToSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");

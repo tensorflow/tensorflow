@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
+#include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -86,10 +87,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
 
 namespace se = ::perftools::gputools;
 
@@ -250,7 +249,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 };
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* module) {
+Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
   pipeline.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
@@ -271,6 +270,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
+    pass.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
+
     pass.AddPass<BatchNormRewriter>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -316,6 +317,14 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   if (options::CpuParallelBackendRequested(module->config())) {
     pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
                                                  ShapeSizeBytesFunction());
+  } else if (!is_aot_compile) {
+    // Run ParallelTaskAssigner to assign parallel tasks to HLOs in module.
+    // Note this is not run for AOT because it would bring in thread pool
+    // and thread synchronization dependencies which would likely increase
+    // binary size (and most AOT applications are single-threaded).
+    // TODO(29630486) Support multi-threaded AOT.
+    pipeline.AddPass<ParallelTaskAssigner>(max_parallelism,
+                                           ShapeSizeBytesFunction(), module);
   }
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -367,68 +376,50 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
   }
 }
 
-Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
-  std::unique_ptr<tensorflow::WritableFile> f;
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(ir_module_string));
-  TF_RETURN_IF_ERROR(f->Close());
-  return Status::OK();
-}
-
 Status InitializeModuleHooks(
-    const HloModule& module,
+    const HloModule& hlo_module,
     const LLVMCompiler::ModuleHook& user_pre_optimization_hook,
     const LLVMCompiler::ModuleHook& user_post_optimization_hook,
     LLVMCompiler::ModuleHook* pre_optimization_ir_hook,
     LLVMCompiler::ModuleHook* post_optimization_ir_hook) {
-  const string& dump_ir_to = module.config().debug_options().xla_dump_ir_to();
-  if (dump_ir_to.empty()) {
+  const string& ir_dump_directory =
+      hlo_module.config().debug_options().xla_dump_ir_to();
+  if (ir_dump_directory.empty()) {
     *pre_optimization_ir_hook = user_pre_optimization_hook;
     *post_optimization_ir_hook = user_post_optimization_hook;
     return Status::OK();
   }
 
-  // Initialize the output directory and create the output file names.
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->RecursivelyCreateDir(dump_ir_to));
-  string safe_file_name_base = module.name();
-  std::replace_if(safe_file_name_base.begin(), safe_file_name_base.end(),
-                  [](char c) { return c == '/' || c == '\\'; }, '_');
-
-  string unoptimized_ir_file_name = tensorflow::io::JoinPath(
-      dump_ir_to,
-      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-no-opt.ll"));
-  string optimized_ir_file_name = tensorflow::io::JoinPath(
-      dump_ir_to,
-      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-opt.ll"));
+  const string& hlo_module_name = hlo_module.name();
 
   // Create the IR hooks. If applicable, each IR hook does the following:
-  // * Call the user supplied module hook.
-  // * Write to the output directory. Files will be appended to. We still want
-  //   to append to avoid overwriting possibly important information due to
-  //   operator error.
+  //
+  //  * Calls the user supplied module hook.
+  //  * Writes out the IR to a file in the output directory designated by
+  //    --xla_dump_ir_to
 
   *pre_optimization_ir_hook =
-      [user_pre_optimization_hook,
-       unoptimized_ir_file_name](const llvm::Module& module) {
+      [user_pre_optimization_hook, ir_dump_directory,
+       hlo_module_name](const llvm::Module& llvm_module) {
         if (user_pre_optimization_hook) {
-          TF_RETURN_IF_ERROR(user_pre_optimization_hook(module));
+          TF_RETURN_IF_ERROR(user_pre_optimization_hook(llvm_module));
         }
-        TF_RETURN_IF_ERROR(AppendIRToFile(unoptimized_ir_file_name,
-                                          llvm_ir::DumpModuleToString(module)));
-        return Status::OK();
+        return llvm_ir::DumpIRToDirectory(/*directory_name=*/ir_dump_directory,
+                                          /*hlo_module_name=*/hlo_module_name,
+                                          llvm_module,
+                                          /*optimized=*/false);
       };
 
   *post_optimization_ir_hook =
-      [user_post_optimization_hook,
-       optimized_ir_file_name](const llvm::Module& module) {
+      [user_post_optimization_hook, ir_dump_directory,
+       hlo_module_name](const llvm::Module& llvm_module) {
         if (user_post_optimization_hook) {
-          TF_RETURN_IF_ERROR(user_post_optimization_hook(module));
+          TF_RETURN_IF_ERROR(user_post_optimization_hook(llvm_module));
         }
-        TF_RETURN_IF_ERROR(AppendIRToFile(optimized_ir_file_name,
-                                          llvm_ir::DumpModuleToString(module)));
-        return Status::OK();
+        return llvm_ir::DumpIRToDirectory(/*directory_name=*/ir_dump_directory,
+                                          /*hlo_module_name=*/hlo_module_name,
+                                          llvm_module,
+                                          /*optimized=*/true);
       };
 
   return Status::OK();
@@ -468,7 +459,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
-  TF_RETURN_IF_ERROR(RunHloPasses(module.get()));
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
@@ -542,7 +533,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
 
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx, jit->target_machine());
+                         &hlo_to_profile_idx, jit->target_machine(),
+                         jit->external_constant_pool());
 
     std::unique_ptr<std::map<HloInstruction*, string>> function_names(
         new std::map<HloInstruction*, string>());
@@ -622,7 +614,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx, jit->target_machine());
+                         &hlo_to_profile_idx, jit->target_machine(),
+                         jit->external_constant_pool());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -669,7 +662,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on CPU.");
 }
@@ -765,7 +758,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     HloModule* module = modules[i].get();
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
-    TF_RETURN_IF_ERROR(RunHloPasses(module));
+    TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true));
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
@@ -791,7 +784,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
-                         /*hlo_to_profile_idx=*/nullptr, target_machine.get());
+                         /*hlo_to_profile_idx=*/nullptr, target_machine.get(),
+                         /*external_constant_pool=*/nullptr);
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {

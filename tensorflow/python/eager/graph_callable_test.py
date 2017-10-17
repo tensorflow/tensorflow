@@ -17,11 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import graph_callable
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -45,6 +47,45 @@ class GraphCallableTest(test.TestCase):
     self.assertEqual(
         3, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
 
+  def testFunctionWithoutReturnValue(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      v.assign(x)
+
+    my_function(constant_op.constant(4, dtype=dtypes.float32))
+    self.assertEqual(4, my_function.variables[0].read_value().numpy())
+
+  def testFunctionWithoutReturnValueAndArgs(self):
+
+    @graph_callable.graph_callable([])
+    def my_function():
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      v.assign(4)
+
+    my_function()
+    self.assertEqual(4, my_function.variables[0].read_value().numpy())
+
+  def testVariableAPI(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      return v.read_value() + x
+
+    self.assertEqual(
+        2, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
+
+    my_function.variables[0].assign(1.)
+    self.assertEqual(
+        3, my_function(constant_op.constant(2, dtype=dtypes.float32)).numpy())
+
   def testTensorShape(self):
 
     @graph_callable.graph_callable(
@@ -53,7 +94,34 @@ class GraphCallableTest(test.TestCase):
       _ = x.get_shape()
       v = variable_scope.get_variable(
           "v", initializer=init_ops.zeros_initializer(), shape=[x.shape[0]])
+      self.assertEqual(v.shape[0], x.shape[0])
       return v + x
+
+    self.assertEqual([2.],
+                     my_function(
+                         constant_op.constant([2.],
+                                              dtype=dtypes.float32)).numpy())
+
+  def testUpdatesAreOrdered(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      v.assign(x + 1)
+      v.assign(v * x)
+      return v.read_value()
+
+    self.assertEqual(my_function(constant_op.constant(2.0)).numpy(), 6.0)
+
+  def testEmptyInitializer(self):
+
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(1), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable("v", shape=[1])
+      return x + 0 * v
 
     self.assertEqual([2.],
                      my_function(
@@ -142,6 +210,40 @@ class GraphCallableTest(test.TestCase):
     my_op.variables[0].assign(1.)
     ret = my_op(inputs)
     self.assertEqual(ret[1].numpy(), 11.)
+
+  def testVariableShapeIsTensorShape(self):
+    @graph_callable.graph_callable([])
+    def my_function():
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      self.assertIsInstance(v.get_shape(), tensor_shape.TensorShape)
+
+    my_function()
+
+  def testIncorrectlyShapedInputs(self):
+    @graph_callable.graph_callable(
+        [graph_callable.ShapeAndDtype(shape=(3), dtype=dtypes.float32)])
+    def my_function(x):
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.zeros_initializer(), shape=())
+      return v + x
+
+    with self.assertRaises(ValueError):
+      my_function([1, 2])
+
+    self.assertTrue(([1, 2, 3] == my_function(
+        constant_op.constant([1, 2, 3], dtype=dtypes.float32)).numpy()).all())
+
+  def testGradients(self):
+    @graph_callable.graph_callable([])
+    def my_function():
+      v = variable_scope.get_variable(
+          "v", initializer=init_ops.constant_initializer(3.), shape=())
+      return v * v
+
+    grad_fn = backprop.implicit_grad(my_function)
+    grads_and_vars = list(zip(*grad_fn()))
+    self.assertEqual(6., grads_and_vars[0][0].numpy())
 
 
 if __name__ == "__main__":

@@ -201,6 +201,16 @@ class ComputationBuilder {
   // {x=1024, y=32} by collapsing dims {0, 1, 2}. Collapsing dimensions must
   // be a consecutive, in-order subsequence of the operand dimensions.
   //
+  // Note that collapsing a single dimension does nothing:
+  //
+  //    {256} collapsing {0} => {256}
+  //    {1} collapsing {0} => {1}
+  //
+  // Collapsing multiple dimensions produces a single result dimension:
+  //
+  //    {256, 2} collapsing {0,1} => {512}
+  //    {256, 2, 3} collapsing {0,1} => {512, 3}
+  //
   // This could potentially cause data to be moved -- it provides a more
   // structured form of reshaping than an arbitrary Reshape operation.
   ComputationDataHandle Collapse(const ComputationDataHandle& operand,
@@ -344,7 +354,8 @@ class ComputationBuilder {
   // Creates a ConvolutionDimensionNumbers with the given arguments. Returns an
   // error if either the input or the weight dimension numbers have conflicts.
   static StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
-      int64 batch, int64 feature, int64 first_spatial, int64 second_spatial,
+      int64 input_batch, int64 input_feature, int64 output_batch,
+      int64 output_feature, int64 first_spatial, int64 second_spatial,
       int64 kernel_output_feature, int64 kernel_input_feature,
       int64 kernel_first_spatial, int64 kernel_second_spatial);
 
@@ -451,15 +462,25 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Element-wise logical operators
-  ComputationDataHandle LogicalAnd(
+  ComputationDataHandle And(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
-  ComputationDataHandle LogicalOr(
+  ComputationDataHandle Or(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
-  ComputationDataHandle LogicalNot(const ComputationDataHandle& lhs);
+  ComputationDataHandle Not(const ComputationDataHandle& operand);
+
+  ComputationDataHandle ShiftLeft(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+  ComputationDataHandle ShiftRightArithmetic(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+  ComputationDataHandle ShiftRightLogical(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Reduces an array among the provided dimensions, given "computation" as a
   // reduction operator.

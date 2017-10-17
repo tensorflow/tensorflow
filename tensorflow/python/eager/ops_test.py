@@ -26,14 +26,16 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 
 
-class TargetTest(test_util.TensorFlowTestCase):
+class OpsTest(test_util.TensorFlowTestCase):
 
   def testExecuteBasic(self):
     three = constant_op.constant(3)
@@ -291,6 +293,25 @@ class TargetTest(test_util.TensorFlowTestCase):
         [['string', 'arg']], ctx, dtypes.int32)
     self.assertEquals(t, dtypes.string)
     self.assertEquals(r[0].dtype, dtypes.string)
+
+  def testFlattenLayer(self):
+    flatten_layer = core.Flatten()
+    x = constant_op.constant([[[-10, -20], [-30, -40]], [[10, 20], [30, 40]]])
+    y = flatten_layer(x)
+    self.assertAllEqual([[-10, -20, -30, -40], [10, 20, 30, 40]], y.numpy())
+
+  def testIdentity(self):
+    self.assertEqual(2, array_ops.identity(2).numpy())
+
+  def testIncompatibleSetShape(self):
+    x = constant_op.constant(1)
+    with self.assertRaises(ValueError):
+      x.set_shape((1, 2))
+
+  def testCompatibleSetShape(self):
+    x = constant_op.constant([[1, 2]])
+    x.set_shape(tensor_shape.TensorShape([None, 2]))
+    self.assertEqual(x.get_shape(), (1, 2))
 
 
 if __name__ == '__main__':

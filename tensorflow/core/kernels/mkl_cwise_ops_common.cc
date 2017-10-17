@@ -48,7 +48,7 @@ class MklBinaryOp : public BinaryOp<Device, Functor> {
     auto out = context->mutable_output(0);
     VLOG(1) << "Shapes (output): " << out->shape().DebugString();
 
-    // Pass input shape through to ouput shape
+    // Pass input shape through to output shape
     ForwardMklMetaDataInToOut(context, 0, 0);
 
     out = context->mutable_output(0);

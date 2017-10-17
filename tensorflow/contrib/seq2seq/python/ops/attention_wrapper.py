@@ -342,7 +342,7 @@ class LuongAttention(_BaseAttentionMechanism):
       num_units: The depth of the attention mechanism.
       memory: The memory to query; usually the output of an RNN encoder.  This
         tensor should be shaped `[batch_size, max_time, ...]`.
-      memory_sequence_length (optional): Sequence lengths for the batch entries
+      memory_sequence_length: (optional) Sequence lengths for the batch entries
         in memory.  If provided, the memory tensor rows are masked with zeros
         for values past the respective sequence lengths.
       scale: Python boolean.  Whether to scale the energy term.
@@ -350,7 +350,7 @@ class LuongAttention(_BaseAttentionMechanism):
         probabilities.  The default is @{tf.nn.softmax}. Other options include
         @{tf.contrib.seq2seq.hardmax} and @{tf.contrib.sparsemax.sparsemax}.
         Its signature should be: `probabilities = probability_fn(score)`.
-      score_mask_value: (optional): The mask value for score before passing into
+      score_mask_value: (optional) The mask value for score before passing into
         `probability_fn`. The default is -inf. Only used if
         `memory_sequence_length` is not None.
       name: Name to use when creating ops.

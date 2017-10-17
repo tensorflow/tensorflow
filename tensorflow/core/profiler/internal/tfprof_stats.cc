@@ -81,9 +81,12 @@ TFStats::TFStats(const string& filename,
     fprintf(stderr, "Failed to parse profile\n");
     return;
   }
-
+  for (const auto& entry : profile.id_to_string()) {
+    id_to_string_[entry.first] = entry.second;
+  }
   for (const auto& node_pb : profile.nodes()) {
-    std::unique_ptr<TFGraphNode> node(new TFGraphNode(node_pb.second, profile));
+    std::unique_ptr<TFGraphNode> node(
+        new TFGraphNode(node_pb.second, profile, &id_to_string_));
     nodes_map_.insert(std::pair<string, std::unique_ptr<TFGraphNode>>(
         node_pb.second.name(), std::move(node)));
   }
@@ -216,6 +219,11 @@ void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
   if (!op_log) {
     return;
   }
+  for (const auto& entry : op_log->id_to_string()) {
+    if (id_to_string_.find(entry.first) == id_to_string_.end()) {
+      id_to_string_[entry.first] = entry.second;
+    }
+  }
   for (const OpLogEntry& entry : op_log->log_entries()) {
     auto node = nodes_map_.find(entry.name());
     if (node == nodes_map_.end()) continue;
@@ -227,9 +235,7 @@ void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
     }
     if (entry.has_code_def()) {
       has_code_traces_ = true;
-      if (node->second->code().traces_size() == 0) {
-        node->second->AddCode(entry.code_def());
-      }
+      node->second->AddCode(entry.code_def(), &id_to_string_);
     }
   }
 }
@@ -269,6 +275,9 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
 
 void TFStats::WriteProfile(const string& filename) {
   ProfileProto profile;
+  for (const auto& entry : id_to_string_) {
+    (*profile.mutable_id_to_string())[entry.first] = entry.second;
+  }
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     if (it->second->id() < 0) {
       continue;

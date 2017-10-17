@@ -42,9 +42,9 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Interpreter", DEVICE_XLA_INTERPRETER, 0,
-                                       DEVICE_INTERPRETER_XLA_JIT, options,
-                                       name_prefix, &device));
+  TF_RETURN_IF_ERROR(XlaDevice::Create(
+      "Interpreter", DEVICE_XLA_INTERPRETER, 0, DEVICE_INTERPRETER_XLA_JIT,
+      options, name_prefix, /*register_device_for_compilation=*/true, &device));
   devices->push_back(device.release());
   return Status::OK();
 }

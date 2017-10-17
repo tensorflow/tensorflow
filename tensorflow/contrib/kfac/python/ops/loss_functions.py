@@ -104,7 +104,7 @@ class LossFunction(object):
 
   @abc.abstractmethod
   def multiply_hessian_factor_transpose(self, vector):
-    """Right-multiply a vector by the tranpose of a factor B of the Hessian.
+    """Right-multiply a vector by the transpose of a factor B of the Hessian.
 
     Here the 'Hessian' is the Hessian matrix (i.e. matrix of 2nd-derivatives)
     of the loss function with respect to its inputs.  Typically this will be
@@ -218,7 +218,7 @@ class NegativeLogProbLoss(LossFunction):
 
   @abc.abstractmethod
   def multiply_fisher_factor_transpose(self, vector):
-    """Right-multiply a vector by the tranpose of a factor B of the Fisher.
+    """Right-multiply a vector by the transpose of a factor B of the Fisher.
 
     Here the 'Fisher' is the Fisher information matrix (i.e. expected outer-
     product of gradients) with respect to the parameters of the underlying
@@ -397,7 +397,7 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
 
   This class parameterizes a multivariate normal distribution with n independent
   dimensions. Unlike `NormalMeanNegativeLogProbLoss`, this class does not
-  assume the variance is held constant. The Fisher Information for for n = 1
+  assume the variance is held constant. The Fisher Information for n = 1
   is given by,
 
   F = [[1 / variance,                0],

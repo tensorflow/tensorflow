@@ -77,9 +77,9 @@ class Relu6GradOp : public XlaOpKernel {
         b->Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
     const auto six = b->Broadcast(
         XlaHelpers::IntegerLiteral(b, input_type(0), 6), shape.dim_sizes());
-    auto out = b->Select(
-        b->LogicalAnd(b->Lt(ctx->Input(1), six), b->Gt(ctx->Input(1), zero)),
-        ctx->Input(0), zero);
+    auto out =
+        b->Select(b->And(b->Lt(ctx->Input(1), six), b->Gt(ctx->Input(1), zero)),
+                  ctx->Input(0), zero);
     ctx->SetOutput(0, out);
   }
 };

@@ -89,8 +89,6 @@ class ARModel(model.TimeSeriesModel):
     self.hidden_layer_sizes = hidden_layer_sizes
     self.window_size = self.input_window_size + self.output_window_size
     self.loss = loss
-    self.stats_means = None
-    self.stats_sigmas = None
     super(ARModel, self).__init__(
         num_features=num_features)
     assert num_time_buckets > 0
@@ -105,32 +103,6 @@ class ARModel(model.TimeSeriesModel):
       assert p > 0
     assert len(self._periods) or self.input_window_size
     assert output_window_size > 0
-
-  def scale_data(self, data):
-    """Scale data according to stats."""
-    if self._input_statistics is not None:
-      return (data - self.stats_means) / self.stats_sigmas
-    else:
-      return data
-
-  def scale_back_data(self, data):
-    if self._input_statistics is not None:
-      return (data * self.stats_sigmas) + self.stats_means
-    else:
-      return data
-
-  def scale_back_variance(self, var):
-    if self._input_statistics is not None:
-      return var * self.stats_sigmas * self.stats_sigmas
-    else:
-      return var
-
-  def initialize_graph(self, input_statistics=None):
-    super(ARModel, self).initialize_graph(input_statistics=input_statistics)
-    if self._input_statistics:
-      self.stats_means, variances = (
-          self._input_statistics.overall_feature_moments)
-      self.stats_sigmas = math_ops.sqrt(variances)
 
   def get_start_state(self):
     # State which matches the format we'll return later. Typically this will not
@@ -388,8 +360,8 @@ class ARModel(model.TimeSeriesModel):
       predicted_covariance = array_ops.ones_like(predicted_mean)
 
     # Transform and scale the mean and covariance appropriately.
-    predicted_mean = self.scale_back_data(predicted_mean)
-    predicted_covariance = self.scale_back_variance(predicted_covariance)
+    predicted_mean = self._scale_back_data(predicted_mean)
+    predicted_covariance = self._scale_back_variance(predicted_covariance)
 
     return {"mean": predicted_mean,
             "covariance": predicted_covariance}
@@ -418,7 +390,7 @@ class ARModel(model.TimeSeriesModel):
                times_feature=TrainEvalFeatures.TIMES,
                window_size=self.window_size,
                times_shape=times.get_shape()))
-    values = self.scale_data(values)
+    values = self._scale_data(values)
     if self.input_window_size > 0:
       input_values = values[:, :self.input_window_size, :]
     else:
@@ -435,14 +407,14 @@ class ARModel(model.TimeSeriesModel):
       #  (observed - predicted) ** 2.
       # Note that this affects only evaluation; the training loss is unaffected.
       loss = self.loss_op(
-          self.scale_back_data(targets),
-          {"mean": self.scale_back_data(prediction_ops["mean"])})
+          self._scale_back_data(targets),
+          {"mean": self._scale_back_data(prediction_ops["mean"])})
     else:
       loss = self.loss_op(targets, prediction_ops)
 
     # Scale back the prediction.
-    prediction = self.scale_back_data(prediction)
-    covariance = self.scale_back_variance(covariance)
+    prediction = self._scale_back_data(prediction)
+    covariance = self._scale_back_variance(covariance)
 
     return model.ModelOutputs(
         loss=loss,
@@ -565,7 +537,7 @@ class ARModel(model.TimeSeriesModel):
         new_state_times.set_shape((None, self.input_window_size))
         new_state_values = array_ops.concat(
             [previous_state_values,
-             self.scale_data(values)], axis=1)[:, -self.input_window_size:, :]
+             self._scale_data(values)], axis=1)[:, -self.input_window_size:, :]
         new_state_values.set_shape((None, self.input_window_size,
                                     self.num_features))
       else:

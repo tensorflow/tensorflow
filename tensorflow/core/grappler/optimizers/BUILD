@@ -169,6 +169,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
     ],
 )
 
@@ -178,6 +179,7 @@ tf_cc_test(
     srcs = ["arithmetic_optimizer_test.cc"],
     deps = [
         ":arithmetic_optimizer",
+        ":constant_folding",
         ":model_pruner",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:protos_all_cc",

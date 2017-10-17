@@ -188,6 +188,9 @@ class DeviceBase {
   // by GPU devices to return a derived type.
   virtual PerOpGpuDevice* MakeGpuDevice() { return nullptr; }
 
+  virtual DeviceBase* UnderlyingDevice() { return this; }
+  virtual const DeviceBase* UnderlyingDevice() const { return this; }
+
   // This is overridden by GPU devices to reinitialize the derived
   // type returned by MakeGpuDevice.
   virtual void ReinitializeGpuDevice(OpKernelContext* /*context*/,

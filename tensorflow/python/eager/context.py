@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import contextlib
 import copy
+import random
 import threading
 
 from tensorflow.python import pywrap_tensorflow
@@ -41,6 +42,8 @@ _default_mode = GRAPH_MODE
 # Note that we do not protect this with a lock and instead rely on python's GIL
 # and the idempotent nature of writes to provide thread safety.
 _device_parsing_cache = {}
+
+_MAXINT32 = 2**31 - 1
 
 
 # TODO(agarwal): better name ?
@@ -76,7 +79,25 @@ class Context(object):
     self._summary_writer_resource = None
     self._post_execution_callbacks = []
     self._config = config
+    self._seed = None
     self._initialize_lock = threading.Lock()
+
+  def _set_global_seed(self, seed):
+    """Set a global eager mode seed for random ops."""
+    self._seed = seed
+    self._rng = random.Random(self._seed)
+
+  def _internal_operation_seed(self):
+    """Returns a fake operation seed.
+
+      In eager mode, user shouldn't set or depend on operation seed.
+      Here, we generate a random seed based on global seed to make
+      operation's randomness different and depend on the global seed.
+
+    Returns:
+      A fake operation seed based on global seed.
+    """
+    return self._rng.randint(0, _MAXINT32)
 
   def _initialize_handle_and_devices(self):
     """Initialize handle and devices."""
@@ -95,11 +116,18 @@ class Context(object):
         device_list = pywrap_tensorflow.TFE_ContextListDevices(
             self._context_handle, status)
       try:
+        self._num_gpus = 0
         for i in range(pywrap_tensorflow.TF_DeviceListCount(device_list)):
           with errors.raise_exception_on_not_ok_status() as status:
             dev_name = pywrap_tensorflow.TF_DeviceListName(
                 device_list, i, status)
           self._context_devices.append(pydev.canonical_name(dev_name))
+          with errors.raise_exception_on_not_ok_status() as status:
+            dev_type = pywrap_tensorflow.TF_DeviceListType(
+                device_list, i, status)
+          if dev_type == "GPU":
+            self._num_gpus += 1
+
       finally:
         pywrap_tensorflow.TF_DeleteDeviceList(device_list)
 
@@ -120,16 +148,6 @@ class Context(object):
       return self._context_devices
     else:
       return devices
-
-  def __del__(self):
-    try:
-      if self._context_handle is not None:
-        with errors.raise_exception_on_not_ok_status() as status:
-          pywrap_tensorflow.TFE_DeleteContext(self._context_handle, status)
-    except (AttributeError, TypeError):
-      # Sometimes deletion during program shutdown throws exception as other
-      # modules are no longer available.
-      pass
 
   def __str__(self):
     if self._context_handle is None:
@@ -248,8 +266,8 @@ class Context(object):
 
   def num_gpus(self):
     """The number of GPUs available to execute operations."""
-    # TODO(ashankar): Use TF_DeviceListType to count GPU devices.
-    return len(self._devices) - 1
+    self._initialize_handle_and_devices()
+    return self._num_gpus
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -327,6 +345,21 @@ def get_default_context():
   if _context is None:
     _initialize_context()
   return _context
+
+
+def set_global_seed(seed):
+  """Sets the eager mode seed."""
+  context()._set_global_seed(seed)  # pylint: disable=protected-access
+
+
+def global_seed():
+  """Returns the eager mode seed."""
+  return context()._seed  # pylint: disable=protected-access
+
+
+def internal_operation_seed():
+  """Returns the operation seed generated based on global seed."""
+  return context()._internal_operation_seed()  # pylint: disable=protected-access
 
 
 def in_graph_mode():

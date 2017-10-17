@@ -21,7 +21,6 @@ from __future__ import print_function
 import abc
 import collections
 
-import collections
 import six
 
 from tensorflow.python.estimator import model_fn
@@ -152,7 +151,7 @@ class _Head(object):
       features: Input `dict` of `Tensor` objects.
       mode: Estimator's `ModeKeys`.
       logits: logits `Tensor` to be used for loss construction.
-      labels: Labels `Tensor`.
+      labels: Labels `Tensor`, or `dict` of same.
 
     Returns:
       A LossAndLabels that contains the `Tensor` representing the loss and
@@ -189,9 +188,6 @@ class _Head(object):
 def _maybe_expand_dim(tensor):
   """Expand the dim of `tensor` with static rank 1."""
   with ops.name_scope(None, 'maybe_expand_dim', (tensor,)):
-    tensor = sparse_tensor.convert_to_tensor_or_sparse_tensor(tensor)
-    if isinstance(tensor, sparse_tensor.SparseTensor):
-      raise ValueError('SparseTensor labels are not supported.')
     static_shape = tensor.shape
     if static_shape is None:
       return tensor
@@ -200,12 +196,27 @@ def _maybe_expand_dim(tensor):
             else tensor)
 
 
-def _check_labels(labels, expected_labels_dimension):
-  """Check labels type and shape."""
+def _check_and_reshape_dense_labels(labels, expected_labels_dimension):
+  """Checks dense labels type and shape and reshapes to 2D Tensor."""
+  if labels is None:
+    raise ValueError(
+        'You must provide a labels Tensor. Given: None. '
+        'Suggested troubleshooting steps: Check that your data contain '
+        'your label feature. Check that your input_fn properly parses and '
+        'returns labels.')
   with ops.name_scope(None, 'labels', (labels,)) as scope:
     labels = sparse_tensor.convert_to_tensor_or_sparse_tensor(labels)
     if isinstance(labels, sparse_tensor.SparseTensor):
-      raise ValueError('SparseTensor labels are not supported.')
+      raise ValueError(
+          'SparseTensor labels are not supported. '
+          'labels must be a Tensor of shape [batch_size, %s]. '
+          'Suggested Fix (1): Check the label feature in your data. '
+          'Each example must contain %s value(s). If not, your choice of label '
+          'was probably incorrect. '
+          'Suggested Fix (2): In your input_fn, use '
+          'tf.sparse_tensor_to_dense() to turn labels into a Tensor.'
+          '' % (expected_labels_dimension, expected_labels_dimension))
+    labels = _maybe_expand_dim(labels)
     labels_shape = array_ops.shape(labels)
     err_msg = 'labels shape must be [batch_size, {}]'.format(
         expected_labels_dimension)
@@ -350,7 +361,7 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for multi class classification.
@@ -431,7 +442,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode, features  # Unused for this head.
-    label_ids = self._label_ids(_check_labels(_maybe_expand_dim(labels), 1))
+    label_ids = self._label_ids(_check_and_reshape_dense_labels(labels, 1))
     unweighted_loss = losses.sparse_softmax_cross_entropy(
         labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
     # Restore the squeezed dim, so unweighted_loss matches the weights shape.
@@ -442,7 +453,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       logits = _check_logits(logits, self.logits_dimension)
 
       # Predict.
@@ -551,7 +562,7 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `Head` for binary classification.
@@ -675,7 +686,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode, features  # Unused for this head.
-    labels = _check_labels(_maybe_expand_dim(labels), self.logits_dimension)
+    labels = _check_and_reshape_dense_labels(labels, self.logits_dimension)
     if self._label_vocabulary is not None:
       labels = lookup_ops.index_table_from_tensor(
           vocabulary_list=tuple(self._label_vocabulary),
@@ -691,7 +702,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
     # Predict.
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       with ops.name_scope(None, 'predictions', (logits,)):
         pred_keys = prediction_keys.PredictionKeys
         logits = _check_logits(logits, self.logits_dimension)
@@ -791,7 +802,7 @@ def _regression_head_with_mean_squared_error_loss(weight_column=None,
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for linear regression.
@@ -824,8 +835,8 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode, features  # Unused for this head.
-    labels = _check_labels(
-        _maybe_expand_dim(math_ops.to_float(labels)), self._logits_dimension)
+    labels = _check_and_reshape_dense_labels(labels, self._logits_dimension)
+    labels = math_ops.to_float(labels)
     return LossAndLabels(
         unweighted_loss=losses.mean_squared_error(
             labels=labels, predictions=logits, reduction=losses.Reduction.NONE),
@@ -835,7 +846,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
     # Predict.
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       logits = _check_logits(logits, self._logits_dimension)
       predictions = {prediction_keys.PredictionKeys.PREDICTIONS: logits}
       if mode == model_fn.ModeKeys.PREDICT:

@@ -94,6 +94,8 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_object,
                                        StringPiece(obj.data(), obj.size())));
   HeaderOpts header_opts;
+  header_opts.gen_name_to_index = flags.gen_name_to_index;
+  header_opts.gen_program_shape = flags.gen_program_shape;
   if (flags.cpp_class.empty()) {
     return errors::InvalidArgument("Must specify --cpp_class");
   }

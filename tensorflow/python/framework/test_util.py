@@ -519,7 +519,7 @@ class TensorFlowTestCase(googletest.TestCase):
     # cleared first.
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
-    ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
+    random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
 
   def tearDown(self):
     for thread in self._threads:

@@ -114,7 +114,8 @@ class Compiler {
   // sequence of executable objects.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::vector<std::unique_ptr<HloModule>> modules,
-      std::vector<perftools::gputools::StreamExecutor*> stream_exec) = 0;
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+          stream_exec) = 0;
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.

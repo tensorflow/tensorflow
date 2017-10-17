@@ -132,6 +132,7 @@ tf_library(
     cpp_class = "MatMulAndAddComp",
     graph = "test_graph_tfmatmulandadd.pb",
     tags = ["manual"],
+    tfcompile_flags = "--gen_name_to_index --gen_program_shape",
 )
 
 tf_library(
@@ -156,6 +157,8 @@ tf_cc_test(
         ":test_graph_tfmatmul",
         ":test_graph_tfmatmulandadd",
         ":test_graph_tfsplits",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",

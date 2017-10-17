@@ -27,7 +27,7 @@ extern "C" {
  *  Method:    version
  *  Signature: ()Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv*,
+JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv *,
                                                                  jclass);
 
 /*
@@ -36,7 +36,33 @@ JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv*,
  * Signature: ()[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_tensorflow_TensorFlow_registeredOpList(JNIEnv*, jclass);
+Java_org_tensorflow_TensorFlow_registeredOpList(JNIEnv *, jclass);
+
+/*
+ * Class:     org_tensorflow_TensorFlow
+ * Method:    libraryLoad
+ * Signature: (Ljava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_TensorFlow_libraryLoad(JNIEnv *,
+                                                                   jclass,
+                                                                   jstring);
+
+/*
+ * Class:     org_tensorflow_TensorFlow
+ * Method:    libraryDelete
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_TensorFlow_libraryDelete(JNIEnv *,
+                                                                    jclass,
+                                                                    jlong);
+
+/*
+ * Class:     org_tensorflow_TensorFlow
+ * Method:    libraryOpList
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_tensorflow_TensorFlow_libraryOpList(JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }  // extern "C"

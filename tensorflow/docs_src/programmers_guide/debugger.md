@@ -141,7 +141,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | **`lt`** | | **List dumped tensors.** | `lt` |
 | | `-n <name_pattern>` | List dumped tensors with names matching given regular-expression pattern. | `lt -n Softmax.*` |
 | | `-t <op_pattern>` | List dumped tensors with op types matching given regular-expression pattern. | `lt -t MatMul` |
-| | `s <sort_key>` | Sort the output by given `sort_key`, whose possible values are `timestamp` (default), `dump_size`, `op_type` and `tensor_name`. | `lt -s dump_size` |
+| | `-s <sort_key>` | Sort the output by given `sort_key`, whose possible values are `timestamp` (default), `dump_size`, `op_type` and `tensor_name`. | `lt -s dump_size` |
 | | `-r` | Sort in reverse order. | `lt -r -s dump_size` |
 | **`pt`** | | **Print value of a dumped tensor.** | |
 | | `pt <tensor>` | Print tensor value. | `pt hidden/Relu:0` |
@@ -186,6 +186,9 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `--tensor_dtype_filter <pattern>` | Execute the next `Session.run`, dumping only Tensors with data types (`dtype`s) matching the given regular-expression pattern. | `run --tensor_dtype_filter int.*` |
 | | `-p` | Execute the next `Session.run` call in profiling mode. | `run -p` |
 | **`ri`** | | **Display information about the run the current run, including fetches and feeds.** | `ri` |
+| **`config`** | | **Set or show persistent TFDBG UI configuration.** | |
+| | `set` | Set the value of a config item: {`graph_recursion_depth`, `mouse_mode`}. | `config set graph_recursion_depth 3` |
+| | `show` | Show current persistent UI configuration. | `config show` |
 | **`help`** | | **Print general help information** | `help` |
 | | `help <command>` | Print help for given command. | `help lt` |
 
