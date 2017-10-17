@@ -134,7 +134,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
   REGISTER_KERNEL_BUILDER(Name("HistogramFixedWidth")          \
                               .Device(DEVICE_GPU)              \
                               .HostMemory("value_range")       \
-                              .HostMemory("nbins")       \
+                              .HostMemory("nbins")             \
                               .TypeConstraint<type>("T")       \
                               .TypeConstraint<int32>("dtype"), \
                           HistogramFixedWidthOp<GPUDevice, type, int32>)
