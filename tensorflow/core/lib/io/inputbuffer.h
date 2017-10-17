@@ -60,6 +60,9 @@ class InputBuffer {
   // Reads a single varint32.
   Status ReadVarint32(uint32* result);
 
+  // Reads a single varint64.
+  Status ReadVarint64(uint64* result);
+
   // Like ReadNBytes() without returning the bytes read.
   Status SkipNBytes(int64 bytes_to_skip);
 
@@ -81,6 +84,15 @@ class InputBuffer {
 
   // Internal slow-path routine used by ReadVarint32().
   Status ReadVarint32Fallback(uint32* result);
+
+  // Internal slow-path routine used by ReadVarint64().
+  Status ReadVarint64Fallback(uint64* result);
+
+  // Helper method for reading a varint which can span at max `max_bytes`.
+  // If the varint is longer, a DataLoss error status is returned.
+  // If end of file is reached while reading, OutOfRange error is returned.
+  template <typename T>
+  Status ReadVarintFallback(T* result, int max_bytes);
 
   RandomAccessFile* file_;  // Not owned
   int64 file_pos_;          // Next position to read from in "file_"
@@ -106,6 +118,20 @@ inline Status InputBuffer::ReadVarint32(uint32* result) {
     return Status::OK();
   } else {
     return ReadVarint32Fallback(result);
+  }
+}
+
+// Inlined for performance.
+inline Status InputBuffer::ReadVarint64(uint64* result) {
+  if (pos_ + core::kMaxVarint64Bytes <= limit_) {
+    // Fast path: directly parse from buffered data.
+    // Reads strictly from the range [pos_, limit_).
+    const char* offset = core::GetVarint64Ptr(pos_, limit_, result);
+    if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
+    pos_ = const_cast<char*>(offset);
+    return Status::OK();
+  } else {
+    return ReadVarint64Fallback(result);
   }
 }
 

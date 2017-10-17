@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -83,6 +84,8 @@ namespace gpu {
     "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 namespace {
+
+using tensorflow::strings::StrCat;
 
 // Any address of a variable residing in global memory or returned by one of the
 // memory allocation routines from the driver or runtime API is always aligned
@@ -223,7 +226,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
 }
 
 // Invokes the ptxas tool on the given PTX string, and dumps its output.
-void DumpPtxasInfo(const string& ptx) {
+void DumpPtxasInfo(const string& ptx, int cc_major, int cc_minor) {
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin/ptxas");
   // Do not log PTX stats if ptxas is not found at the given path.
@@ -245,17 +248,22 @@ void DumpPtxasInfo(const string& ptx) {
 
   // Invoke ptxas and collect its output.
   tensorflow::SubProcess ptxas_info_dumper;
-  ptxas_info_dumper.SetProgram(ptxas_path, {ptxas_path, ptx_path, "-o",
-                                            "/dev/null", "-v", "-arch=sm_35"});
+  ptxas_info_dumper.SetProgram(ptxas_path,
+                               {ptxas_path, ptx_path, "-o", "/dev/null", "-v",
+                                StrCat("-arch=sm_", cc_major, cc_minor)});
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);
-  CHECK(ptxas_info_dumper.Start());
+  if (!ptxas_info_dumper.Start()) {
+    LOG(ERROR) << "Failed to launch ptxas.";
+    return;
+  }
   string stderr_output;
   int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   XLA_LOG_LINES(tensorflow::INFO, stderr_output);
   if (exit_status != 0) {
-    LOG(FATAL) << "Invalid PTX. See the error message above for reasons.";
+    LOG(ERROR) << "ptxas exited with non-zero error code " << exit_status
+               << ".";
   }
 }
 
@@ -387,7 +395,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   VLOG(2) << "PTX:";
   XLA_VLOG_LINES(2, *ptx);
   if (VLOG_IS_ON(2)) {
-    DumpPtxasInfo(*ptx);
+    DumpPtxasInfo(*ptx, cc_major, cc_minor);
   }
 
   auto thunk_schedule = MakeUnique<ThunkSchedule>(

@@ -59,7 +59,7 @@ def multi_class_head(n_classes,
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for multi class classification.
@@ -98,7 +98,7 @@ def binary_classification_head(
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for binary classification.
@@ -129,7 +129,7 @@ def regression_head(weight_column=None,
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for linear regression.
@@ -172,7 +172,7 @@ def multi_label_head(n_classes,
       string type and have any value in `label_vocabulary`. Also there will be
       errors if vocabulary is not provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for multi-label classification.
@@ -272,7 +272,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       logits = head_lib._check_logits(logits, self.logits_dimension)  # pylint:disable=protected-access
 
       # Predict.

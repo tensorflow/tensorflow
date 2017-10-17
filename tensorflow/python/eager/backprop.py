@@ -337,6 +337,10 @@ def implicit_val_and_grad(f):
     end_node = f(*args)
     variables = tape.top_tape_watched_variables()
     sources = [x.handle for x in variables]
+
+    if not sources:
+      raise ValueError("no trainable variables were accessed while the "
+                       "function was being computed.")
     grad = imperative_grad.imperative_grad(_default_vspace,
                                            tape.pop_tape(),
                                            nest.flatten(end_node),
@@ -577,6 +581,62 @@ def val_and_grad_function(f, params=None):
     return result, imperative_grad.imperative_grad(
         _default_vspace, tape.pop_tape(), nest.flatten(result), sources,
         output_gradients=nest.flatten(dy) if dy is not None else None)
+
+  return decorated
+
+
+def make_vjp(f, params=None):
+  """Returns a function that computes f and is vjp w.r.t. params.
+
+  The term "vjp" here is an abbreviation for vector-jacobian product.
+
+  Args:
+    f: the function to be differentiated.
+    params: the parameters (numbers or names) to differentiate with respect to.
+       A value of None will differentiate with respect to all parameters.
+
+  Returns:
+    A function, which when called, returns a tuple (value, vjp), where:
+    - value is the result of calling f.
+    - vjp is a function, which takes a vector as an argument and
+      returns the product of that vector with the Jacobian of f.
+      Providing no argument to vjp is equivalent to providing a
+      vector of ones.
+
+    For example,
+    ```python
+    def f(x):
+      return x * x
+
+    wrapped_fn = tfe.make_vjp(f)
+    result, vjp = wrapped_fn(tf.constant(3.0))
+    # result is 9.0
+    vjp()  # the vjp function rturns 6.0
+
+  """
+
+  parameter_positions = _get_arg_spec(f, params)
+
+  def decorated(*args, **kwds):
+    """Computes the value and gradient of the decorated function."""
+    assert not kwds, "The gradient function can't take keyword arguments."
+    tape.push_new_tape()
+    sources = []
+    args = [
+        ops.convert_to_tensor(args[i]) if i in parameter_positions else args[i]
+        for i in range(len(args))
+    ]
+    args = _ensure_unique_tensor_objects(parameter_positions, args)
+    for i in parameter_positions:
+      sources.append(args[i])
+      tape.watch(args[i])
+    result = f(*args)
+    t = tape.pop_tape()
+    def vjp(dy=None):
+      return imperative_grad.imperative_grad(
+          _default_vspace, t, nest.flatten(result), sources,
+          output_gradients=nest.flatten(dy) if dy is not None else None)
+    return result, vjp
 
   return decorated
 

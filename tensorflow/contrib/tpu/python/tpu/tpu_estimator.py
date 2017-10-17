@@ -122,12 +122,55 @@ def _increase_eval_step_op(iterations_per_loop):
       use_locking=True)
 
 
+_DEFAULT_JOB_NAME = 'tpu_worker'
+_DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
+_LOCAL_MASTERS = ('', 'local')
+
+
 def _tpu_job(run_config, mode):
+  """Returns the job name to use to place TPU computations on.
+
+  Args:
+    run_config: The tpu_config.RunConfig used for this custom estimator.
+    mode: A model_fn_lib.ModeKeys value.
+
+  Returns:
+    A string containing the job name, or None if no job should be specified.
+
+  Raises:
+    ValueError: If the user needs to specify a tpu_job_name, because we are
+      unable to infer the job name automatically, or if the user-specified job
+      names are inappropriate.
+  """
+  # If the user specifies the tpu_job_name, use that.
+  if run_config.tpu_config.tpu_job_name:
+    return run_config.tpu_config.tpu_job_name
+
   # The tpu job is determined by the run_config. Right now, this method is
   # required as tpu_config is not part of the RunConfig.
   master = (run_config.evaluation_master if mode == model_fn_lib.ModeKeys.EVAL
             else run_config.master)
-  return None if master in ['', 'local'] else 'tpu_worker'
+  if master in _LOCAL_MASTERS:
+    return None
+
+  if (not run_config.session_config or
+      not run_config.session_config.cluster_def.job):
+    return _DEFAULT_JOB_NAME
+  cluster_def = run_config.session_config.cluster_def
+  job_names = set([job.name for job in cluster_def.job])
+  if _DEFAULT_JOB_NAME in job_names:
+    # b/37868888 tracks allowing ClusterSpec propagation to reuse job names.
+    raise ValueError('Currently, tpu_worker is not an allowed job name.')
+  if len(job_names) == 1:
+    return cluster_def.job[0].name
+  if len(job_names) == 2:
+    if _DEFAULT_COORDINATOR_JOB_NAME in job_names:
+      job_names.remove(_DEFAULT_COORDINATOR_JOB_NAME)
+      return job_names.pop()
+    # TODO(b/67716447): Include more sophisticated heuristics.
+  raise ValueError(
+      'Could not infer TPU job name. Please specify a tpu_job_name as part of '
+      'your TPUConfig.')
 
 
 def _is_running_on_cpu(use_tpu, mode, eval_batch_size):
@@ -269,17 +312,25 @@ class _InfeedThreadController(_InfeedOutfeedThreadBaseController):
 
   def _input_thread_fn_for_loading(self, session, enqueue_ops):
     count = 0
-    while True:
-      signal = self._signal_queue.get()
-      if signal == _SIGNAL.STOP:
-        logging.info('Stop Infeed input thread.')
-        return
+    try:
+      while True:
+        signal = self._signal_queue.get()
+        if signal == _SIGNAL.STOP:
+          logging.info('Stop Infeed input thread.')
+          return
 
-      iterations = signal
-      for i in range(iterations):
-        logging.debug('Infeed enqueue for iteration (%d, %d)', count, i)
-        session.run(enqueue_ops)
-      count += 1
+        iterations = signal
+        for i in range(iterations):
+          logging.debug('Infeed enqueue for iteration (%d, %d)', count, i)
+          session.run(enqueue_ops)
+        count += 1
+    except Exception:  # pylint: disable=broad-except
+      logging.error(
+          'Failed running infeed, closing session.\n'
+          'You may see an exception from your main session after this.',
+          exc_info=1
+      )
+      session.close()
 
   def join(self):
     logging.info('Waiting for Infeed Thread to exit.')

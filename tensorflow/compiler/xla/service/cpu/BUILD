@@ -87,6 +87,7 @@ cc_library(
         ":ir_emitter",
         ":layout_assignment",
         ":parallel_cpu_executable",
+        ":parallel_task_assignment",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -155,6 +156,7 @@ cc_library(
         ":disassembler",
         ":external_constant_pool",
         ":runtime_conv2d",
+        ":runtime_fork_join",
         ":runtime_matmul",
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_matmul",
@@ -243,6 +245,7 @@ cc_library(
         ":dot_op_emitter",
         ":external_constant_pool",
         ":ir_emission_utils",
+        ":shape_partition",
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -505,6 +508,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "runtime_fork_join",
+    srcs = ["runtime_fork_join.cc"],
+    hdrs = ["runtime_fork_join.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_cc_test(
     name = "cpu_runtime_test",
     srcs = ["cpu_runtime_test.cc"],
@@ -688,6 +705,7 @@ cc_library(
         ":shape_partition",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/service:hlo_pass",
     ],
 )
 

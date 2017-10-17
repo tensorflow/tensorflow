@@ -52,7 +52,7 @@ def get_input_fn(data,
   ids = np.where((data.labels == 4) | (data.labels == 9))
   images = data.images[ids]
   labels = data.labels[ids]
-  # Make digit 4 label 0, 9 is 1.
+  # Make digit 4 label 1, 9 is 0.
   labels = labels == 4
 
   def _input_fn():
