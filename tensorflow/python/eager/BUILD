@@ -408,6 +408,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:tensor_shape",
         "//third_party/py/numpy",
     ],
 )

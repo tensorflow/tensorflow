@@ -137,7 +137,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
         "//tensorflow/compiler/xla/service/gpu:partition_assignment",
-        "@llvm//:core",
     ],
 )
 

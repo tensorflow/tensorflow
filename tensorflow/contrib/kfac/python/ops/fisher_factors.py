@@ -33,9 +33,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
 
-# TODO(someone): come up with a better mechanism to set these constants
-# externally. See b/67084987
-
 # Whether to initialize covariance estimators at a zero matrix (or the identity
 # matrix).
 INIT_COVARIANCES_AT_ZERO = False
@@ -51,6 +48,25 @@ EIGENVALUE_DECOMPOSITION_THRESHOLD = 2
 # be at least as large as this value before they are used to compute inverses or
 # matrix powers. Must be nonnegative.
 EIGENVALUE_CLIPPING_THRESHOLD = 0.0
+
+
+def set_global_constants(init_covariances_at_zero=None, zero_debias=None,
+                         eigenvalue_decomposition_threshold=None,
+                         eigenvalue_clipping_threshold=None):
+  """Sets various global constants used by the classes in this module."""
+  global INIT_COVARIANCES_AT_ZERO
+  global ZERO_DEBIAS
+  global EIGENVALUE_DECOMPOSITION_THRESHOLD
+  global EIGENVALUE_CLIPPING_THRESHOLD
+
+  if init_covariances_at_zero is not None:
+    INIT_COVARIANCES_AT_ZERO = init_covariances_at_zero
+  if zero_debias is not None:
+    ZERO_DEBIAS = zero_debias
+  if eigenvalue_decomposition_threshold is not None:
+    EIGENVALUE_DECOMPOSITION_THRESHOLD = eigenvalue_decomposition_threshold
+  if eigenvalue_clipping_threshold is not None:
+    EIGENVALUE_CLIPPING_THRESHOLD = eigenvalue_clipping_threshold
 
 
 def inverse_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument

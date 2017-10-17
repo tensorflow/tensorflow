@@ -178,8 +178,13 @@ class RNNCell(base_layer.Layer):
                              custom_getter=self._rnn_get_variable) as scope:
         return super(RNNCell, self).__call__(inputs, state, scope=scope)
     else:
-      with vs.variable_scope(vs.get_variable_scope(),
-                             custom_getter=self._rnn_get_variable):
+      scope_attrname = "rnncell_scope"
+      scope = getattr(self, scope_attrname, None)
+      if scope is None:
+        scope = vs.variable_scope(vs.get_variable_scope(),
+                                  custom_getter=self._rnn_get_variable)
+        setattr(self, scope_attrname, scope)
+      with scope:
         return super(RNNCell, self).__call__(inputs, state)
 
   def _rnn_get_variable(self, getter, *args, **kwargs):
@@ -230,9 +235,20 @@ class RNNCell(base_layer.Layer):
       a nested list or tuple (of the same structure) of `2-D` tensors with
       the shapes `[batch_size x s]` for each s in `state_size`.
     """
+    # Try to use the last cached zero_state. This is done to avoid recreating
+    # zeros, especially when eager execution is enabled.
+    state_size = self.state_size
+    if hasattr(self, "_last_zero_state"):
+      (last_state_size, last_batch_size, last_dtype,
+       last_output) = getattr(self, "_last_zero_state")
+      if (last_batch_size == batch_size and
+          last_dtype == dtype and
+          last_state_size == state_size):
+        return last_output
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      state_size = self.state_size
-      return _zero_state_tensors(state_size, batch_size, dtype)
+      output = _zero_state_tensors(state_size, batch_size, dtype)
+    self._last_zero_state = (state_size, batch_size, dtype, output)
+    return output
 
 
 class BasicRNNCell(RNNCell):
@@ -428,21 +444,27 @@ class BasicLSTMCell(RNNCell):
         `state_is_tuple`).
     """
     sigmoid = math_ops.sigmoid
+    one = constant_op.constant(1, dtype=dtypes.int32)
     # Parameters of gates are concatenated into one multiply for efficiency.
     if self._state_is_tuple:
       c, h = state
     else:
-      c, h = array_ops.split(value=state, num_or_size_splits=2, axis=1)
+      c, h = array_ops.split(value=state, num_or_size_splits=2, axis=one)
 
     if self._linear is None:
       self._linear = _Linear([inputs, h], 4 * self._num_units, True)
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
     i, j, f, o = array_ops.split(
-        value=self._linear([inputs, h]), num_or_size_splits=4, axis=1)
+        value=self._linear([inputs, h]), num_or_size_splits=4, axis=one)
 
-    new_c = (
-        c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
-    new_h = self._activation(new_c) * sigmoid(o)
+    forget_bias_tensor = constant_op.constant(self._forget_bias, dtype=f.dtype)
+    # Note that using `add` and `multiply` instead of `+` and `*` gives a
+    # performance improvement. So using those at the cost of readability.
+    add = math_ops.add
+    multiply = math_ops.multiply
+    new_c = add(multiply(c, sigmoid(add(f, forget_bias_tensor))),
+                multiply(sigmoid(i), self._activation(j)))
+    new_h = multiply(self._activation(new_c), sigmoid(o))
 
     if self._state_is_tuple:
       new_state = LSTMStateTuple(new_c, new_h)
@@ -1186,7 +1208,9 @@ class _Linear(object):
     if len(args) == 1:
       res = math_ops.matmul(args[0], self._weights)
     else:
-      res = math_ops.matmul(array_ops.concat(args, 1), self._weights)
+      # Explicitly creating a one for a minor performance improvement.
+      one = constant_op.constant(1, dtype=dtypes.int32)
+      res = math_ops.matmul(array_ops.concat(args, one), self._weights)
     if self._build_bias:
       res = nn_ops.bias_add(res, self._biases)
     return res
