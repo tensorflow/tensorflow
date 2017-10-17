@@ -700,10 +700,26 @@ def _AddNGrad(op, grad):
   return [grad] * len(op.inputs)
 
 
+def _ShapesFullySpecifiedAndEqual(x, y, grad):
+  # pylint: disable=protected-access
+  x_shape = x._shape_tuple()
+  y_shape = y._shape_tuple()
+  grad_shape = grad._shape_tuple()
+  # pylint: enable=protected-access
+  return (x_shape == y_shape and
+          x_shape == grad_shape and
+          x_shape is not None and
+          None not in x_shape)
+
+
 @ops.RegisterGradient("Add")
 def _AddGrad(op, grad):
+  """Gradient for Add."""
   x = op.inputs[0]
   y = op.inputs[1]
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad)):
+    return grad, grad
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   # pylint: disable=protected-access
@@ -731,10 +747,14 @@ def _MulGrad(op, grad):
   """The gradient of scalar multiplication."""
   x = op.inputs[0]
   y = op.inputs[1]
+  # pylint: disable=protected-access
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad) and
+      grad.dtype in (dtypes.int32, dtypes.float32)):
+    return gen_math_ops._mul(grad, y), gen_math_ops._mul(grad, x)
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  # pylint: disable=protected-access
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
   # pylint: enable=protected-access
   x = math_ops.conj(x)
