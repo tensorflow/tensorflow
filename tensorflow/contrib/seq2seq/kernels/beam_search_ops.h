@@ -31,8 +31,8 @@ struct GatherTree {
   void operator()(OpKernelContext* ctx, const Device& d,
                   typename TTypes<T, 3>::ConstTensor step_ids,
                   typename TTypes<T, 3>::ConstTensor parent_ids,
-                  typename TTypes<T>::ConstMatrix sequence_length,
-                  typename TTypes<T, 3>::Tensor beams);
+                  TTypes<int32>::ConstVec max_sequence_lengths,
+                  const T end_token, typename TTypes<T, 3>::Tensor beams);
 };
 
 }  // namespace functor
