@@ -661,6 +661,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "f599b57aec4f03ad696044dd430b2d201864113937353adc346f53ad47991319",
       strip_prefix = "aws-sdk-cpp-1.0.90",
       build_file = str(Label("//third_party:aws.BUILD")),
+      repository = tf_repo_name
   )
 
   java_import_external(
