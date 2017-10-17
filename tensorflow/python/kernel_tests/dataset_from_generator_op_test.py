@@ -135,7 +135,8 @@ class DatasetConstructorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  def testFromGeneratorsRunningInParallel(self):
+  # TODO(b/67868766): Reenable this when the source of flakiness is discovered.
+  def _testFromGeneratorsRunningInParallel(self):
     num_parallel_iterators = 3
 
     # Define shared state that multiple iterator instances will access to
