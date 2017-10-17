@@ -5,6 +5,7 @@ BroadcastGradientArgs
 ConcatOffset
 Concat
 ConcatV2
+ConjugateTranspose
 Const
 DebugGradientIdentity
 EditDistance

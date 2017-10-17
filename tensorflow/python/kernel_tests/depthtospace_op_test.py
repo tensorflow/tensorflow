@@ -26,9 +26,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
 class DepthToSpaceTest(test.TestCase):
@@ -201,7 +203,8 @@ class DepthToSpaceTest(test.TestCase):
       _ = array_ops.space_to_depth(x_np, block_size)
 
   def testUnknownShape(self):
-    t = array_ops.depth_to_space(array_ops.placeholder(dtypes.float32), block_size=4)
+    t = array_ops.depth_to_space(
+        array_ops.placeholder(dtypes.float32), block_size=4)
     self.assertEqual(4, t.get_shape().ndims)
 
   def depthToSpaceUsingTranspose(self, tensor, block_size, data_format):
@@ -224,49 +227,58 @@ class DepthToSpaceTest(test.TestCase):
       tensor = array_ops.reshape(tensor, [b, oc, oh, ow])
     return tensor
 
-  def compareToTranspose(self, data_format, batch_size, in_height, in_width,
-                         out_channels, block_size, use_gpu):
-    if use_gpu and not test.is_gpu_available():
-      print("gpu not available")
-      return
-
-    dtype = dtypes.float32
+  def compareToTranspose(self, batch_size, in_height, in_width, out_channels,
+                         block_size, data_format, use_gpu):
     in_channels = out_channels * block_size * block_size
+    nhwc_input_shape = [batch_size, in_height, in_width, in_channels]
+    nchw_input_shape = [batch_size, in_channels, in_height, in_width]
+    total_size = np.prod(nhwc_input_shape)
 
-    if data_format == "NHWC":
-      input_shape = [batch_size, in_height, in_width, in_channels]
-    elif data_format == "NCHW":
-      input_shape = [batch_size, in_channels, in_height, in_width]
+    if data_format == "NCHW_VECT_C":
+      # Initialize the input tensor with qint8 values that circle -127..127.
+      x = [((f + 128) % 255) - 127 for f in range(total_size)]
+      t = constant_op.constant(x, shape=nhwc_input_shape, dtype=dtypes.float32)
+      expected = self.depthToSpaceUsingTranspose(t, block_size, "NHWC")
+      t = test_util.NHWCToNCHW_VECT_C(t)
+      t, _, _ = gen_array_ops.quantize_v2(t, -128.0, 127.0, dtypes.qint8)
+      t = array_ops.depth_to_space(t, block_size, data_format="NCHW_VECT_C")
+      t = gen_array_ops.dequantize(t, -128, 127)
+      actual = test_util.NCHW_VECT_CToNHWC(t)
     else:
-      assert False, "unsupported format"
-
-    # Initialize the input tensor with ascending whole numbers.
-    total_size = 1
-    for dim_size in input_shape:
-      total_size *= dim_size
-    x = [f for f in range(total_size)]
-    inputs = constant_op.constant(x, shape=input_shape, dtype=dtype)
-
-    expected = self.depthToSpaceUsingTranspose(inputs, block_size, data_format)
-    actual = array_ops.depth_to_space(
-        inputs, block_size, data_format=data_format)
+      # Initialize the input tensor with ascending whole numbers as floats.
+      x = [f * 1.0 for f in range(total_size)]
+      shape = nchw_input_shape if data_format == "NCHW" else nhwc_input_shape
+      t = constant_op.constant(x, shape=shape, dtype=dtypes.float32)
+      expected = self.depthToSpaceUsingTranspose(t, block_size, data_format)
+      actual = array_ops.depth_to_space(t, block_size, data_format=data_format)
 
     with self.test_session(use_gpu=use_gpu) as sess:
       actual_vals, expected_vals = sess.run([actual, expected])
       self.assertTrue(np.array_equal(actual_vals, expected_vals))
 
   def testAgainstTranspose(self):
-    self.compareToTranspose("NHWC", 3, 2, 3, 1, 2, False)
-    self.compareToTranspose("NHWC", 3, 2, 3, 2, 2, False)
-    self.compareToTranspose("NHWC", 3, 2, 3, 1, 2, True)
-    self.compareToTranspose("NHWC", 3, 2, 3, 2, 2, True)
+    self.compareToTranspose(3, 2, 3, 1, 2, "NHWC", False)
+    self.compareToTranspose(3, 2, 3, 2, 2, "NHWC", False)
+    self.compareToTranspose(1, 2, 3, 2, 3, "NHWC", False)
 
-    self.compareToTranspose("NCHW", 3, 2, 3, 1, 2, True)
-    self.compareToTranspose("NCHW", 3, 2, 3, 2, 2, True)
-    self.compareToTranspose("NCHW", 3, 2, 3, 1, 3, True)
-    self.compareToTranspose("NCHW", 3, 2, 3, 2, 3, True)
-    self.compareToTranspose("NCHW", 5, 7, 11, 3, 2, True)
-    self.compareToTranspose("NCHW", 3, 200, 300, 32, 2, True)
+    if not test.is_gpu_available():
+      tf_logging.info("skipping gpu tests since gpu not available")
+      return
+
+    self.compareToTranspose(3, 2, 3, 1, 2, "NHWC", True)
+    self.compareToTranspose(3, 2, 3, 2, 2, "NHWC", True)
+    self.compareToTranspose(3, 2, 3, 1, 2, "NCHW", True)
+    self.compareToTranspose(3, 2, 3, 2, 2, "NCHW", True)
+    self.compareToTranspose(3, 2, 3, 1, 3, "NCHW", True)
+    self.compareToTranspose(3, 2, 3, 2, 3, "NCHW", True)
+    self.compareToTranspose(5, 7, 11, 3, 2, "NCHW", True)
+    self.compareToTranspose(3, 200, 300, 32, 2, "NCHW", True)
+
+    self.compareToTranspose(3, 2, 3, 8, 2, "NCHW_VECT_C", True)
+    self.compareToTranspose(3, 2, 3, 4, 3, "NCHW_VECT_C", True)
+    self.compareToTranspose(3, 2, 3, 8, 3, "NCHW_VECT_C", True)
+    self.compareToTranspose(5, 7, 11, 12, 2, "NCHW_VECT_C", True)
+    self.compareToTranspose(3, 200, 300, 32, 2, "NCHW_VECT_C", True)
 
 
 class DepthToSpaceGradientTest(test.TestCase):

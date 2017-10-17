@@ -242,7 +242,7 @@ class Layer(object):
       return
     self._updates += updates
     if inputs is not None:
-      inputs = _to_list(inputs)
+      inputs = nest.flatten(inputs)
     if not inputs:
       inputs = None
     if inputs is not None:
@@ -273,7 +273,7 @@ class Layer(object):
     if context.in_eager_mode():
       raise RuntimeError('Layer.get_updates_for not supported in Eager mode.')
     if inputs is not None:
-      inputs = _to_list(inputs)
+      inputs = nest.flatten(inputs)
     if not inputs:
       inputs = None
     if inputs is not None:
@@ -318,7 +318,7 @@ class Layer(object):
       return
     self._losses += losses
     if inputs is not None:
-      inputs = _to_list(inputs)
+      inputs = nest.flatten(inputs)
     if not inputs:
       inputs = None
     if inputs is not None:
@@ -351,7 +351,7 @@ class Layer(object):
     if context.in_eager_mode():
       raise RuntimeError('Layer.get_losses_for not supported in Eager mode.')
     if inputs is not None:
-      inputs = _to_list(inputs)
+      inputs = nest.flatten(inputs)
     if not inputs:
       inputs = None
     if inputs is not None:
@@ -505,13 +505,14 @@ class Layer(object):
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
     self._set_scope(kwargs.pop('scope', None))
+    input_list = nest.flatten(inputs)
 
     in_graph_mode = context.in_graph_mode()
     # Ensure the Layer, if being reused, is working with inputs from
     # the same graph as where it was created.
     if in_graph_mode:
       try:
-        ops._get_graph_from_inputs(nest.flatten(inputs), graph=self.graph)  # pylint: disable=protected-access
+        ops._get_graph_from_inputs(input_list, graph=self.graph)  # pylint: disable=protected-access
       except ValueError as e:
         raise ValueError('Input graph and Layer graph are not the same: %s' % e)
       user_kwargs = copy.copy(kwargs)
@@ -528,8 +529,22 @@ class Layer(object):
         # to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
-    with vs.variable_scope(
-        self._scope, reuse=(self.built or self._reuse)) as scope:
+    if self.built:
+      try:
+        # Some classes which inherit from Layer do not use its constructor, so
+        # rather than initializing to None we check for an AttributeError.
+        scope_context_manager = self._always_reuse_variable_scope
+      except AttributeError:
+        # From this point we will always set reuse=True, so create a "final"
+        # variable scope with this setting. We avoid re-creating variable scopes
+        # after this point as an optimization.
+        self._always_reuse_variable_scope = vs.variable_scope(
+            self._scope, reuse=True)
+        scope_context_manager = self._always_reuse_variable_scope
+    else:
+      scope_context_manager = vs.variable_scope(
+          self._scope, reuse=self._reuse)
+    with scope_context_manager as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
           if not in_graph_mode:
@@ -539,7 +554,7 @@ class Layer(object):
                                'Eager mode. Found an activity_regularizer in '
                                '%s(%s).' % (self.__class__.__name__, self))
             # TODO(agarwal): support _keras_history in Eager mode.
-            for x in _to_list(inputs):
+            for x in input_list:
               if hasattr(x, '_keras_history'):
                 raise ValueError('_keras_history currently unsupported in '
                                  'Eager mode. Found _keras_history in %s while '
@@ -548,17 +563,13 @@ class Layer(object):
 
           # Check input assumptions set before layer building, e.g. input rank.
           self._assert_input_compatibility(inputs)
-          input_list = nest.flatten(inputs)
           if input_list and self._dtype is None:
             try:
               self._dtype = input_list[0].dtype.name
             except AttributeError:
               pass
-          input_shapes = [x.get_shape() for x in input_list]
-          if len(input_shapes) == 1:
-            self.build(input_shapes[0])
-          else:
-            self.build(input_shapes)
+          input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
+          self.build(input_shapes)
         try:
           # Note: not all sub-classes of Layer call Layer.__init__ (especially
           # the ones under tensorflow/python/keras). Hence we recompute this
@@ -583,7 +594,7 @@ class Layer(object):
           # Note that it should be applied every time the layer creates a new
           # output, since it is output-specific.
           if self._activity_regularizer:
-            output_list = _to_list(outputs)
+            output_list = nest.flatten(outputs)
             for output in output_list:
               with ops.name_scope('ActivityRegularizer'):
                 activity_regularization = self._activity_regularizer(output)
@@ -608,11 +619,10 @@ class Layer(object):
       if _have_all_keras_metadata(inputs):
         # If the layer returns tensors from its inputs, unmodified,
         # we copy them to avoid loss of tensor metadata.
-        output_ls = _to_list(outputs)
-        inputs_ls = _to_list(inputs)
+        output_ls = nest.flatten(outputs)
         output_ls_copy = []
         for x in output_ls:
-          if x in inputs_ls:
+          if x in input_list:
             with ops.name_scope(scope.original_name_scope):
               x = array_ops.identity(x)
           output_ls_copy.append(x)
@@ -640,7 +650,7 @@ class Layer(object):
 
   def __deepcopy__(self, memo):
     no_copy = set(['_graph'])
-    shallow_copy = set(['_scope'])
+    shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)
     memo[id(self)] = result
@@ -683,8 +693,8 @@ class Layer(object):
             `call` method of the layer at the call that created the node.
     """
     assert context.in_graph_mode()
-    input_tensors = _to_list(input_tensors)
-    output_tensors = _to_list(output_tensors)
+    input_tensors = nest.flatten(input_tensors)
+    output_tensors = nest.flatten(output_tensors)
 
     # Collect input tensor(s) coordinates.
     inbound_layers = []
@@ -1011,10 +1021,10 @@ class Layer(object):
     if not self.input_spec:
       return
     if not isinstance(self.input_spec, (list, tuple)):
-      input_spec = _to_list(self.input_spec)
+      input_spec = nest.flatten(self.input_spec)
     else:
       input_spec = self.input_spec
-    inputs = _to_list(inputs)
+    inputs = nest.flatten(inputs)
     if len(inputs) != len(input_spec):
       raise ValueError('Layer ' + self.name + ' expects ' +
                        str(len(input_spec)) + ' inputs, '
@@ -1904,11 +1914,11 @@ class Network(Layer):
         A tensor if there is a single output, or
         a list of tensors if there are more than one outputs.
     """
-    inputs = _to_list(inputs)
+    inputs = nest.flatten(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
-      masks = _to_list(mask)
+      masks = nest.flatten(mask)
     # Try to retrieve cached outputs if the layer has already been called
     # on these exact inputs.
     cache_key = _object_list_uid(inputs) + '_' + _object_list_uid(masks)
@@ -2081,9 +2091,10 @@ class Network(Layer):
               if 'mask' in estimator_util.fn_args(layer.call):
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_mask
-              output_tensors = _to_list(layer.call(computed_tensor, **kwargs))
+              output_tensors = nest.flatten(
+                  layer.call(computed_tensor, **kwargs))
               if hasattr(layer, 'compute_mask'):
-                output_masks = _to_list(
+                output_masks = nest.flatten(
                     layer.compute_mask(computed_tensor, computed_mask))
               else:
                 output_masks = [None for _ in range(len(output_tensors))]
@@ -2095,9 +2106,10 @@ class Network(Layer):
               if 'mask' in estimator_util.fn_args(layer.call):
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_masks
-              output_tensors = _to_list(layer.call(computed_tensors, **kwargs))
+              output_tensors = nest.flatten(
+                  layer.call(computed_tensors, **kwargs))
               if hasattr(layer, 'compute_mask'):
-                output_masks = _to_list(
+                output_masks = nest.flatten(
                     layer.compute_mask(computed_tensors, computed_masks))
               else:
                 output_masks = [None for _ in range(len(output_tensors))]
@@ -2204,8 +2216,8 @@ def _add_elements_to_collection(elements, collection_list):
     raise RuntimeError('Using collections from Layers not supported in Eager '
                        'mode. Tried to add %s to %s' % (elements,
                                                         collection_list))
-  elements = _to_list(elements)
-  collection_list = _to_list(collection_list)
+  elements = nest.flatten(elements)
+  collection_list = nest.flatten(collection_list)
   for name in collection_list:
     collection = ops.get_collection_ref(name)
     collection_set = set(collection)
@@ -2215,7 +2227,7 @@ def _add_elements_to_collection(elements, collection_list):
 
 
 def _object_list_uid(object_list):
-  object_list = _to_list(object_list)
+  object_list = nest.flatten(object_list)
   return ', '.join([str(abs(id(x))) for x in object_list])
 
 
@@ -2261,7 +2273,7 @@ def _collect_previous_mask(input_tensors):
   Returns:
       A mask tensor or list of mask tensors.
   """
-  input_tensors = _to_list(input_tensors)
+  input_tensors = nest.flatten(input_tensors)
   masks = []
   for x in input_tensors:
     if hasattr(x, '_keras_mask'):

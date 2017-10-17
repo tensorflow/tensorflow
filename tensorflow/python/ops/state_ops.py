@@ -124,7 +124,7 @@ def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
       with this shared_name. Otherwise, the node name is used instead.
 
   Returns:
-    A variable tensor.1;5A
+    A variable tensor.
   """
   return gen_state_ops._variable_v2(shape=shape,
                                     dtype=dtype,

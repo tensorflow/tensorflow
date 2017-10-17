@@ -408,7 +408,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }

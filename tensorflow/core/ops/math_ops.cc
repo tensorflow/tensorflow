@@ -623,7 +623,7 @@ REGISTER_OP("TruncateDiv")
 Returns x / y element-wise for integer types.
 
 Truncation designates that negative numbers will round fractional quantities
-toward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different
+toward zero. I.e. -7 / 5 = -1. This matches C semantics but it is different
 than Python semantics. See `FloorDiv` for a division function that matches
 Python Semantics.
 

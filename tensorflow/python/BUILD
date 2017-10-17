@@ -1720,6 +1720,7 @@ py_library(
         ":framework_for_generated_wrappers",
         ":linalg_ops",
         ":math_ops",
+        "//tensorflow/python/ops/linalg:linalg_impl",
     ],
 )
 
@@ -1837,7 +1838,6 @@ py_library(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:custom_gradient",
         "//tensorflow/python/eager:tape",
     ],
 )
@@ -3004,6 +3004,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/costs:graph_memory",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core:lib",
         "//tensorflow/core:reader_base",
@@ -3395,6 +3396,7 @@ cuda_py_test(
         ":training",
         ":platform_test",
         ":client_testlib",
+        ":variable_scope",
         "//third_party/py/numpy",
     ],
 )

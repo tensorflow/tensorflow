@@ -96,20 +96,16 @@ def _MinGrad(op, grad):
 def _MeanGrad(op, grad):
   """Gradient for Mean."""
   sum_grad = _SumGrad(op, grad)[0]
-  input_shape = array_ops.shape(op.inputs[0])
-  output_shape = array_ops.shape(op.outputs[0])
-  # TODO(apassos) remove this device hackery as eager copy to device becomes
-  # more seamless.
-  with ops.colocate_with(input_shape):
+  input_size = op.inputs[0].get_shape().num_elements()
+  output_size = op.outputs[0].get_shape().num_elements()
+  if input_size is not None and output_size is not None:
+    factor = input_size // max(output_size, 1)
+    factor = constant_op.constant(factor, dtype=sum_grad.dtype)
+  else:
+    input_shape = array_ops.shape(op.inputs[0])
+    output_shape = array_ops.shape(op.outputs[0])
     factor = _safe_shape_div(
         math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
-  if context.in_eager_mode():
-    # Note that we go through numpy here just so we use the eager per-device
-    # scalar cache. We know the factor is a host memory tensor because it's a
-    # shape, and we also know that converting a scalar into a tensor triggers a
-    # per-device cache.
-    factor = factor.numpy()
-    factor = constant_op.constant(factor, dtype=sum_grad.dtype)
   return sum_grad / math_ops.cast(factor, sum_grad.dtype), None
 
 

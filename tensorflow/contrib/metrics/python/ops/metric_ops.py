@@ -565,6 +565,213 @@ def streaming_recall(predictions, labels, weights=None,
       updates_collections=updates_collections, name=name)
 
 
+def _true_negatives(labels, predictions, weights=None,
+                    metrics_collections=None,
+                    updates_collections=None,
+                    name=None):
+  """Sum the weights of true negatives.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that the metric
+      value variable should be added to.
+    updates_collections: An optional list of collections that the metric update
+      ops should be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    value_tensor: A `Tensor` representing the current value of the metric.
+    update_op: An operation that accumulates the error from a batch of data.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(
+      name, 'true_negatives', (predictions, labels, weights)):
+
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+    is_true_negative = math_ops.logical_and(math_ops.equal(labels, False),
+                                            math_ops.equal(predictions, False))
+    return _count_condition(is_true_negative, weights, metrics_collections,
+                            updates_collections)
+
+
+def streaming_false_positive_rate(predictions, labels, weights=None,
+                                  metrics_collections=None,
+                                  updates_collections=None,
+                                  name=None):
+  """Computes the false positive rate of predictions with respect to labels.
+
+  The `false_positive_rate` function creates two local variables,
+  `false_positives` and `true_negatives`, that are used to compute the
+  false positive rate. This value is ultimately returned as
+  `false_positive_rate`, an idempotent operation that simply divides
+  `false_positives` by the sum of `false_positives` and `true_negatives`.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `false_positive_rate`. `update_op` weights each prediction by the
+  corresponding value in `weights`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+     `false_positive_rate` should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_positive_rate: Scalar float `Tensor` with the value of
+      `false_positives` divided by the sum of `false_positives` and
+      `true_negatives`.
+    update_op: `Operation` that increments `false_positives` and
+      `true_negatives` variables appropriately and whose value matches
+      `false_positive_rate`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(
+      name, 'false_positive_rate', (predictions, labels, weights)):
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+
+    false_p, false_positives_update_op = metrics.false_positives(
+        labels, predictions, weights, metrics_collections=None,
+        updates_collections=None, name=None)
+    true_n, true_negatives_update_op = _true_negatives(
+        labels, predictions, weights, metrics_collections=None,
+        updates_collections=None, name=None)
+
+    def compute_fpr(fp, tn, name):
+      return array_ops.where(
+          math_ops.greater(fp + tn, 0),
+          math_ops.div(fp, fp + tn),
+          0,
+          name)
+
+    fpr = compute_fpr(false_p, true_n, 'value')
+    update_op = compute_fpr(
+        false_positives_update_op, true_negatives_update_op, 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, fpr)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return fpr, update_op
+
+
+def streaming_false_negative_rate(predictions, labels, weights=None,
+                                  metrics_collections=None,
+                                  updates_collections=None,
+                                  name=None):
+  """Computes the false negative rate of predictions with respect to labels.
+
+  The `false_negative_rate` function creates two local variables,
+  `false_negatives` and `true_positives`, that are used to compute the
+  false positive rate. This value is ultimately returned as
+  `false_negative_rate`, an idempotent operation that simply divides
+  `false_negatives` by the sum of `false_negatives` and `true_positives`.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `false_negative_rate`. `update_op` weights each prediction by the
+  corresponding value in `weights`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+      `false_negative_rate` should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_negative_rate: Scalar float `Tensor` with the value of
+      `false_negatives` divided by the sum of `false_negatives` and
+      `true_positives`.
+    update_op: `Operation` that increments `false_negatives` and
+      `true_positives` variables appropriately and whose value matches
+      `false_negative_rate`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(
+      name, 'false_negative_rate', (predictions, labels, weights)):
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+
+    false_n, false_negatives_update_op = metrics.false_negatives(
+        labels, predictions, weights, metrics_collections=None,
+        updates_collections=None, name=None)
+    true_p, true_positives_update_op = metrics.true_positives(
+        labels, predictions, weights, metrics_collections=None,
+        updates_collections=None, name=None)
+
+    def compute_fnr(fn, tp, name):
+      return array_ops.where(
+          math_ops.greater(fn + tp, 0),
+          math_ops.div(fn, fn + tp),
+          0,
+          name)
+
+    fnr = compute_fnr(false_n, true_p, 'value')
+    update_op = compute_fnr(
+        false_negatives_update_op, true_positives_update_op, 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, fnr)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return fnr, update_op
+
+
 def _streaming_confusion_matrix_at_thresholds(
     predictions, labels, thresholds, weights=None, includes=None):
   """Computes true_positives, false_negatives, true_negatives, false_positives.
@@ -1112,6 +1319,142 @@ def streaming_recall_at_thresholds(predictions, labels, thresholds,
       predictions=predictions, labels=labels, weights=weights,
       metrics_collections=metrics_collections,
       updates_collections=updates_collections, name=name)
+
+
+def streaming_false_positive_rate_at_thresholds(
+    predictions, labels, thresholds, weights=None, metrics_collections=None,
+    updates_collections=None, name=None):
+  """Computes various fpr values for different `thresholds` on `predictions`.
+
+  The `streaming_false_positive_rate_at_thresholds` function creates two
+  local variables, `false_positives`, `true_negatives`, for various values of
+  thresholds. `false_positive_rate[i]` is defined as the total weight
+  of values in `predictions` above `thresholds[i]` whose corresponding entry in
+  `labels` is `False`, divided by the total weight of `False` values in `labels`
+  (`false_positives[i] / (false_positives[i] + true_negatives[i])`).
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `false_positive_rate`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    weights: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+      must be broadcastable to `labels` (i.e., all dimensions must be either
+      `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+      `false_positive_rate` should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_positive_rate: A float `Tensor` of shape `[len(thresholds)]`.
+    update_op: An operation that increments the `false_positives` and
+      `true_negatives` variables that are used in the computation of
+      `false_positive_rate`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(
+      name, 'false_positive_rate_at_thresholds',
+      (predictions, labels, weights)):
+    values, update_ops = _streaming_confusion_matrix_at_thresholds(
+        predictions, labels, thresholds, weights, includes=('fp', 'tn'))
+
+    # Avoid division by zero.
+    epsilon = 1e-7
+    def compute_fpr(fp, tn, name):
+      return math_ops.div(fp, epsilon + fp + tn, name='fpr_' + name)
+
+    fpr = compute_fpr(values['fp'], values['tn'], 'value')
+    update_op = compute_fpr(
+        update_ops['fp'], update_ops['tn'], 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, fpr)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return fpr, update_op
+
+
+def streaming_false_negative_rate_at_thresholds(
+    predictions, labels, thresholds, weights=None, metrics_collections=None,
+    updates_collections=None, name=None):
+  """Computes various fnr values for different `thresholds` on `predictions`.
+
+  The `streaming_false_negative_rate_at_thresholds` function creates two
+  local variables, `false_negatives`, `true_positives`, for various values of
+  thresholds. `false_negative_rate[i]` is defined as the total weight
+  of values in `predictions` above `thresholds[i]` whose corresponding entry in
+  `labels` is `False`, divided by the total weight of `True` values in `labels`
+  (`false_negatives[i] / (false_negatives[i] + true_positives[i])`).
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `false_positive_rate`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    weights: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+      must be broadcastable to `labels` (i.e., all dimensions must be either
+      `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+      `false_negative_rate` should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_negative_rate: A float `Tensor` of shape `[len(thresholds)]`.
+    update_op: An operation that increments the `false_negatives` and
+      `true_positives` variables that are used in the computation of
+      `false_negative_rate`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(
+      name, 'false_negative_rate_at_thresholds',
+      (predictions, labels, weights)):
+    values, update_ops = _streaming_confusion_matrix_at_thresholds(
+        predictions, labels, thresholds, weights, includes=('fn', 'tp'))
+
+    # Avoid division by zero.
+    epsilon = 1e-7
+    def compute_fnr(fn, tp, name):
+      return math_ops.div(fn, epsilon + fn + tp, name='fnr_' + name)
+
+    fnr = compute_fnr(values['fn'], values['tp'], 'value')
+    update_op = compute_fnr(
+        update_ops['fn'], update_ops['tp'], 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, fnr)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return fnr, update_op
 
 
 def _at_k_name(name, k=None, class_id=None):
@@ -2479,8 +2822,12 @@ __all__ = [
     'streaming_accuracy',
     'streaming_auc',
     'streaming_curve_points',
+    'streaming_false_negative_rate',
+    'streaming_false_negative_rate_at_thresholds',
     'streaming_false_negatives',
     'streaming_false_negatives_at_thresholds',
+    'streaming_false_positive_rate',
+    'streaming_false_positive_rate_at_thresholds',
     'streaming_false_positives',
     'streaming_false_positives_at_thresholds',
     'streaming_mean',

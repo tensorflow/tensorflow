@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -224,6 +225,18 @@ Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
   return Status::OK();
 }
 
+// For forward compatibility, remove new default attributes from the graph def
+// that were not present in the consumer (e.g. If graph was exported using
+// code that's newer than the server and a new default attr was added).
+Status RemoveNewDefaultAttrsFromMetaGraphDef(MetaGraphDef* meta_graph_def) {
+  OpListOpRegistry producer_op_registry(
+      &meta_graph_def->meta_info_def().stripped_op_list());
+  OpRegistry* consumer_op_registry = OpRegistry::Global();
+  return RemoveNewDefaultAttrsFromGraphDef(meta_graph_def->mutable_graph_def(),
+                                           *consumer_op_registry,
+                                           producer_op_registry, nullptr);
+}
+
 Status LoadSavedModelInternal(const SessionOptions& session_options,
                               const RunOptions& run_options,
                               const string& export_dir,
@@ -240,6 +253,9 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
 
   TF_RETURN_IF_ERROR(
       FindMetaGraphDefToLoad(saved_model_proto, tags, &bundle->meta_graph_def));
+
+  TF_RETURN_IF_ERROR(
+      RemoveNewDefaultAttrsFromMetaGraphDef(&bundle->meta_graph_def));
 
   TF_RETURN_IF_ERROR(LoadMetaGraphIntoSession(
       bundle->meta_graph_def, session_options, &bundle->session));

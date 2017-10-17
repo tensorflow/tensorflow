@@ -77,6 +77,93 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ("c1", new_add.input(1));
 }
 
+TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
+  Output inputs_shape = ops::Shape(s, inputs);
+  // The target shape of the reshape is the concatenation of `batch_size` and
+  // [3,28,28].
+  Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
+                                 ops::Const(s, {1}, {1}));
+  Output target_shape = ops::Concat(
+      s.WithOpName("target_shape"),
+      {batch_size, ops::Const(s, {3, 28, 28}, {3})}, ops::Const(s, {0}, {}));
+  Output reshape = ops::Reshape(s, inputs, target_shape);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
+                   .Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  for (const auto& node : output.node()) {
+    LOG(INFO) << node.DebugString();
+  }
+
+  EXPECT_EQ(0, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+}
+
+TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
+  // Reshape from [-1,3,28,28] to [8,-1,28,28] is not identity, because it can
+  // be from [4,3,28,28] to [8,6,28,28].
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
+  Output reshape = ops::Reshape(s, inputs, ops::Const(s, {8, -1, 28, 28}, {4}));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
+                   .Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  for (const auto& node : output.node()) {
+    LOG(INFO) << node.DebugString();
+  }
+
+  EXPECT_EQ(1, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+}
+
+TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({4, 3}));
+  Output reshape = ops::Reshape(s, inputs, ops::Const(s, {-1, -1}, {2}));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
+                   .Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(1, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+}
+
 TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
   // Converts an NCHW_VECT_C tensor to NHWC and then flattens it to 2D. The two
   // reshapes should be combined.

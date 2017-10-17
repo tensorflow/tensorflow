@@ -12,7 +12,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":datasets",
+        ":evaluator",
         ":metrics",
+        ":network",
         ":saver",
         ":summary_writer",
         "//tensorflow/python:framework_ops",
@@ -144,6 +146,55 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "evaluator",
+    srcs = [
+        "evaluator.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":datasets",
+        ":metrics",
+    ],
+)
+
+py_test(
+    name = "evaluator_test",
+    srcs = ["evaluator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":evaluator",
+        ":metrics",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "network",
+    srcs = ["network.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_test(
+    name = "network_test",
+    srcs = ["network_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":network",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:layers",
         "//tensorflow/python/eager:test",
     ],
 )

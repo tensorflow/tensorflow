@@ -90,8 +90,12 @@ Status InlinerVisitor::HandleMap(
     // different than the map shape. Hence, a broadcast is needed, else the
     // cloned operand with new shape and operands work.
     if (root.opcode() != HloOpcode::kConstant) {
+      std::vector<HloInstruction*> params;
+      for (int64 o = 0; o < root.operands().size(); o++) {
+        params.push_back(operands[root.operand(o)->parameter_number()]);
+      }
       HloInstruction* placed_instruction = computation_->AddInstruction(
-          root.CloneWithNewOperands(map->shape(), operands));
+          root.CloneWithNewOperands(map->shape(), params));
       TF_RETURN_IF_ERROR(
           computation_->ReplaceInstruction(map, placed_instruction));
     } else {

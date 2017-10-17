@@ -154,15 +154,11 @@ struct CudaLaunchConfig {
 // Calculate the Cuda launch config we should use for a kernel launch.
 // This is assuming the kernel is quite simple and will largely be
 // memory-limited.
+// REQUIRES: work_element_count > 0.
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const GPUDevice& d) {
+  CHECK_GT(work_element_count, 0);
   CudaLaunchConfig config;
-
-  // in case of invalid input, return the default value config, which has all -1
-  if (work_element_count <= 0) {
-    return config;
-  }
-
   const int virtual_thread_count = work_element_count;
   const int physical_thread_count = std::min(
       d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor(),
@@ -180,17 +176,14 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
 
 // Calculate the Cuda launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
+// REQUIRES: work_element_count > 0.
 template <typename DeviceFunc>
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const GPUDevice& d, DeviceFunc func,
                                             size_t dynamic_shared_memory_size,
                                             int block_size_limit) {
+  CHECK_GT(work_element_count, 0);
   CudaLaunchConfig config;
-
-  if (work_element_count <= 0) {
-    return config;
-  }
-
   int block_count = 0;
   int thread_per_block = 0;
 

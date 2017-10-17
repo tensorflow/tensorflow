@@ -110,32 +110,32 @@ class SaverTest(test.TestCase):
     # Start a second session.  In that session the parameter nodes
     # have not been initialized either.
     with self.test_session(graph=ops_lib.Graph()) as sess:
-      v0 = variable_op(-1.0, name="v0")
-      v1 = variable_op(-1.0, name="v1")
-      v2 = saver_test_utils.CheckpointedOp(name="v2")
+      v0_2 = variable_op(-1.0, name="v0")
+      v1_2 = variable_op(-1.0, name="v1")
+      v2_2 = saver_test_utils.CheckpointedOp(name="v2")
 
       # Assert that the variables are not initialized.
       if context.in_graph_mode():
         self.assertEqual(
             len(variables.report_uninitialized_variables().eval()), 2)
-        self.assertEqual(0, len(v2.keys().eval()))
-        self.assertEqual(0, len(v2.values().eval()))
+        self.assertEqual(0, len(v2_2.keys().eval()))
+        self.assertEqual(0, len(v2_2.values().eval()))
       # Restore the saved values in the parameter nodes.
-      save = saver_module.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
+      save = saver_module.Saver({"v0": v0_2, "v1": v1_2, "v2": v2_2.saveable})
       save.restore(sess, save_path)
       # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, self.evaluate(v0))
-      self.assertEqual(20.0, self.evaluate(v1))
-      self.assertEqual(b"k1", self.evaluate(v2.keys()))
-      self.assertEqual(30.0, self.evaluate(v2.values()))
+      self.assertEqual(10.0, self.evaluate(v0_2))
+      self.assertEqual(20.0, self.evaluate(v1_2))
+      self.assertEqual(b"k1", self.evaluate(v2_2.keys()))
+      self.assertEqual(30.0, self.evaluate(v2_2.values()))
 
     # Build another graph with 2 nodes, initialized
     # differently, and a Restore node for them.
     with self.test_session(graph=ops_lib.Graph()) as sess:
-      v0_2 = variable_op(1000.0, name="v0")
-      v1_2 = variable_op(2000.0, name="v1")
-      v2_2 = saver_test_utils.CheckpointedOp(name="v2")
-      v2_init = v2_2.insert("k1000", 3000.0)
+      v0_3 = variable_op(1000.0, name="v0")
+      v1_3 = variable_op(2000.0, name="v1")
+      v2_3 = saver_test_utils.CheckpointedOp(name="v2")
+      v2_init = v2_3.insert("k1000", 3000.0)
 
       # Check that the parameter nodes have been initialized.
       if context.in_graph_mode():
@@ -143,19 +143,19 @@ class SaverTest(test.TestCase):
         self.evaluate(init_all_op)
         # TODO(xpan): Why _mutable_hash_table_v2 doesn't create empty
         # table as it claims in eager mode?
-        self.assertEqual(b"k1000", self.evaluate(v2_2.keys()))
-        self.assertEqual(3000.0, self.evaluate(v2_2.values()))
-      self.assertEqual(1000.0, self.evaluate(v0_2))
-      self.assertEqual(2000.0, self.evaluate(v1_2))
+        self.assertEqual(b"k1000", self.evaluate(v2_3.keys()))
+        self.assertEqual(3000.0, self.evaluate(v2_3.values()))
+      self.assertEqual(1000.0, self.evaluate(v0_3))
+      self.assertEqual(2000.0, self.evaluate(v1_3))
 
       # Restore the values saved earlier in the parameter nodes.
-      save2 = saver_module.Saver({"v0": v0_2, "v1": v1_2, "v2": v2_2.saveable})
+      save2 = saver_module.Saver({"v0": v0_3, "v1": v1_3, "v2": v2_3.saveable})
       save2.restore(sess, save_path)
       # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, self.evaluate(v0_2))
-      self.assertEqual(20.0, self.evaluate(v1_2))
-      self.assertEqual(b"k1", self.evaluate(v2_2.keys()))
-      self.assertEqual(30.0, self.evaluate(v2_2.values()))
+      self.assertEqual(10.0, self.evaluate(v0_3))
+      self.assertEqual(20.0, self.evaluate(v1_3))
+      self.assertEqual(b"k1", self.evaluate(v2_3.keys()))
+      self.assertEqual(30.0, self.evaluate(v2_3.values()))
 
   def testBasic(self):
     self.basicSaveRestore(variables.Variable)
@@ -487,10 +487,10 @@ class SaverTest(test.TestCase):
       val = save.save(sess, save_path)
       self.assertEqual(save_path, val)
     with self.test_session() as sess:
-      var = resource_variable_ops.ResourceVariable(other_value, name=var_name)
-      save = saver_module.Saver({var_name: var})
+      var2 = resource_variable_ops.ResourceVariable(other_value, name=var_name)
+      save = saver_module.Saver({var_name: var2})
       save.restore(sess, save_path)
-      self.assertAllClose(var_value, self.evaluate(var))
+      self.assertAllClose(var_value, self.evaluate(var2))
 
   def testCacheRereadsFile(self):
     save_path = os.path.join(self.get_temp_dir(), "cache_rereads")
@@ -618,28 +618,29 @@ class SaverTest(test.TestCase):
     global_step_int = 5
     # Save and reload one Variable named "var0".
     self._SaveAndLoad("var0", 0.0, 1.0, save_path)
-    for use_tensor in [True, False]:
-      var = resource_variable_ops.ResourceVariable(1.0, name="var0")
-      save = saver_module.Saver(
-          {
-              var._shared_name: var
-          }, pad_step_number=pad_step_number)
-      if context.in_graph_mode():
-        self.evaluate(var.initializer)
-        sess = ops_lib.get_default_session()
-      else:
-        sess = None
-      if use_tensor:
-        global_step = constant_op.constant(global_step_int)
-        val = save.save(sess, save_path, global_step=global_step)
-      else:
-        val = save.save(sess, save_path, global_step=global_step_int)
-      if pad_step_number:
-        expected_save_path = "%s-%s" % (save_path,
-                                        "{:08d}".format(global_step_int))
-      else:
-        expected_save_path = "%s-%d" % (save_path, global_step_int)
-      self.assertEqual(expected_save_path, val)
+    for i, use_tensor in enumerate([True, False]):
+      with variable_scope.variable_scope("%d" % i):
+        var = resource_variable_ops.ResourceVariable(1.0, name="var0")
+        save = saver_module.Saver(
+            {
+                var._shared_name: var
+            }, pad_step_number=pad_step_number)
+        if context.in_graph_mode():
+          self.evaluate(var.initializer)
+          sess = ops_lib.get_default_session()
+        else:
+          sess = None
+        if use_tensor:
+          global_step = constant_op.constant(global_step_int)
+          val = save.save(sess, save_path, global_step=global_step)
+        else:
+          val = save.save(sess, save_path, global_step=global_step_int)
+        if pad_step_number:
+          expected_save_path = "%s-%s" % (save_path,
+                                          "{:08d}".format(global_step_int))
+        else:
+          expected_save_path = "%s-%d" % (save_path, global_step_int)
+        self.assertEqual(expected_save_path, val)
 
   def testSaveWithGlobalStepWithPadding(self):
     self.testSaveWithGlobalStep(pad_step_number=True)

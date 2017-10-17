@@ -24,6 +24,22 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 
+cc_library(
+    name = "all_ops",
+    deps = [
+        ":gru_ops_op_lib",
+        ":lstm_ops_op_lib",
+    ],
+)
+
+cc_library(
+    name = "all_kernels",
+    deps = [
+        ":gru_ops_kernels",
+        ":lstm_ops_kernels",
+    ],
+)
+
 tf_custom_op_py_library(
     name = "rnn_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + [
@@ -34,10 +50,8 @@ tf_custom_op_py_library(
         ":python/ops/_lstm_ops.so",
     ],
     kernels = [
-        ":gru_ops_kernels",
-        ":lstm_ops_kernels",
-        ":gru_ops_op_lib",
-        ":lstm_ops_op_lib",
+        ":all_ops",
+        ":all_kernels",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -125,6 +139,9 @@ cuda_py_tests(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+    tags = [
+        "optonly",
     ],
 )
 

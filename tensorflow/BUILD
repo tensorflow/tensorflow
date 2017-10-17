@@ -121,6 +121,15 @@ config_setting(
 )
 
 config_setting(
+    name = "ios_x86_64",
+    values = {
+        "cc_target_os": "apple",
+        "cpu": "ios_x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -282,8 +291,8 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
-        "//learning/protonn/llgtm/...",
         "//tensorflow/...",
+        "//tensorflow_fold/llgtm/...",
     ],
 )
 
@@ -461,6 +470,7 @@ filegroup(
         "//tensorflow/core/kernels/fuzzing:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/kernels/neon:all_files",
+        "//tensorflow/core/lib/db:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
