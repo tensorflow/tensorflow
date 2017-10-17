@@ -15,7 +15,9 @@ load(
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["**/*"],
+        include = [
+            "**/*",
+        ],
         exclude = [
             "**/METADATA",
             "**/OWNERS",
@@ -41,12 +43,8 @@ cc_library(
 
 cc_library(
     name = "gcs_file_system",
-    srcs = [
-        "gcs_file_system.cc",
-    ],
-    hdrs = [
-        "gcs_file_system.h",
-    ],
+    srcs = ["gcs_file_system.cc"],
+    hdrs = ["gcs_file_system.h"],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
@@ -106,9 +104,7 @@ cc_library(
 
 cc_library(
     name = "google_auth_provider",
-    srcs = [
-        "google_auth_provider.cc",
-    ],
+    srcs = ["google_auth_provider.cc"],
     hdrs = [
         "auth_provider.h",
         "google_auth_provider.h",
@@ -116,7 +112,6 @@ cc_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
-        ":http_request",
         ":oauth_client",
         ":retrying_utils",
         "//tensorflow/core:lib",

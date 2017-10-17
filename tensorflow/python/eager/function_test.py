@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 
 
 class FunctionTest(test.TestCase):
@@ -98,6 +99,16 @@ class FunctionTest(test.TestCase):
       return backprop.gradients_function(f, [0])(x)[0]
 
     self.assertAllEqual(2, g(constant_op.constant(2)).numpy())
+
+  def testGraphModeEagerGradError(self):
+    with context.graph_mode():
+      def f():
+        x = variable_scope.get_variable(
+            'v', initializer=constant_op.constant(1.0))
+        return x * constant_op.constant(2.0)
+      with self.assertRaisesRegexp(ValueError,
+                                   'no trainable variables were accessed'):
+        backprop.implicit_val_and_grad(f)()
 
   def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):
 

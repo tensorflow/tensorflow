@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import contextlib
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
@@ -64,7 +65,12 @@ def restore_variables_on_create(save_path):
 
   Raises:
     NotFoundError: If the variable is not found in checkpoint.
+    ValueError: If not used in eager mode.
   """
+  if context.in_graph_mode():
+    raise ValueError(
+        "Currently, restore_variables_on_create can only be used with "
+        "eager execution enabled.")
   if save_path:
     ckpt_var_cache = dict()
     reader = checkpoint_utils.load_checkpoint(save_path)
@@ -102,6 +108,10 @@ class Saver(object):
   """
 
   def __init__(self, var_list):
+    if context.in_graph_mode():
+      raise ValueError("Currently, tfe.Saver can only be used when eager "
+                       "execution is enabled. Use tf.train.Saver when "
+                       "building graphs.")
     self._saver = _saver.Saver(var_list=var_list)
 
   def save(self, save_path, global_step=None):

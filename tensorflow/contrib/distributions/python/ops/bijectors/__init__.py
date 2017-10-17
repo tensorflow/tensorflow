@@ -22,6 +22,7 @@
 @@CholeskyOuterProduct
 @@ConditionalBijector
 @@Exp
+@@Gumbel
 @@Identity
 @@Inline
 @@Invert
@@ -48,6 +49,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.chain import *
 from tensorflow.contrib.distributions.python.ops.bijectors.cholesky_outer_product import *
 from tensorflow.contrib.distributions.python.ops.bijectors.conditional_bijector import *
 from tensorflow.contrib.distributions.python.ops.bijectors.exp import *
+from tensorflow.contrib.distributions.python.ops.bijectors.gumbel import *
 from tensorflow.contrib.distributions.python.ops.bijectors.inline import *
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
 from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
