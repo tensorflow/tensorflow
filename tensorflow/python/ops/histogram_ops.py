@@ -134,15 +134,8 @@ def histogram_fixed_width(values,
     sess.run(hist) => [2, 1, 1, 0, 2]
   ```
   """
-  with ops.name_scope(name, 'histogram_fixed_width', 
-                      [values, value_range, nbins]) as scope:
-    indices = histogram_fixed_width_bins(
-        values, value_range, nbins, dtype, scope)
+  with ops.name_scope(name, 'histogram_fixed_width',
+                      [values, value_range, nbins]) as name:
+    return gen_math_ops.histogram_fixed_width(values, value_range, nbins,
+                                              dtype=dtype, name=name)
 
-    # TODO(langmore) This creates an array of ones to add up and place in the
-    # bins.  This is inefficient, so replace when a better Op is available.
-    return math_ops.unsorted_segment_sum(
-        array_ops.ones_like(indices, dtype=dtype),
-        indices,
-        nbins,
-        name=scope)
