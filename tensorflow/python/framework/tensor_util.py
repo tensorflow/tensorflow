@@ -61,6 +61,8 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.int64: fast_tensor_util.AppendInt64ArrayToTensorProto,
       np.uint8: fast_tensor_util.AppendUInt8ArrayToTensorProto,
       np.uint16: fast_tensor_util.AppendUInt16ArrayToTensorProto,
+      np.uint32: fast_tensor_util.AppendUInt32ArrayToTensorProto,
+      np.uint64: fast_tensor_util.AppendUInt64ArrayToTensorProto,
       np.int8: fast_tensor_util.AppendInt8ArrayToTensorProto,
       np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.complex64: fast_tensor_util.AppendComplex64ArrayToTensorProto,
@@ -90,11 +92,17 @@ else:
   def SlowAppendIntArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int_val.extend([np.asscalar(x) for x in proto_values])
 
+  def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
+
   def SlowAppendQIntArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.int_val.extend([np.asscalar(x[0]) for x in proto_values])
 
-  def SlowAppendInt64ArrayToTensorProto(tensor_proto, proto_values):
-    tensor_proto.int64_val.extend([np.asscalar(x) for x in proto_values])
+  def SlowAppendUInt32ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.uint32_val.extend([np.asscalar(x) for x in proto_values])
+
+  def SlowAppendUInt64ArrayToTensorProto(tensor_proto, proto_values):
+    tensor_proto.uint64_val.extend([np.asscalar(x) for x in proto_values])
 
   def SlowAppendComplex64ArrayToTensorProto(tensor_proto, proto_values):
     tensor_proto.scomplex_val.extend([np.asscalar(v)
@@ -120,6 +128,8 @@ else:
       np.int64: SlowAppendInt64ArrayToTensorProto,
       np.uint8: SlowAppendIntArrayToTensorProto,
       np.uint16: SlowAppendIntArrayToTensorProto,
+      np.uint32: SlowAppendUInt32ArrayToTensorProto,
+      np.uint64: SlowAppendUInt64ArrayToTensorProto,
       np.int8: SlowAppendIntArrayToTensorProto,
       np.int16: SlowAppendIntArrayToTensorProto,
       np.complex64: SlowAppendComplex64ArrayToTensorProto,
@@ -190,7 +200,7 @@ def _FlattenToStrings(nested_strings):
 _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
     dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32,
+    dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
 ])
 
 

@@ -227,6 +227,9 @@ bool DataTypeIsQuantized(DataType dt);
 // Is the dtype nonquantized integral?
 bool DataTypeIsInteger(DataType dt);
 
+// Is the dtype an unsigned integral type?
+bool DataTypeIsUnsigned(DataType dt);
+
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);
 
