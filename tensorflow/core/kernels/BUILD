@@ -2499,6 +2499,7 @@ cc_library(
         ":cross_op",
         ":cwise_op",
         ":fft_ops",
+        ":histogram_op",
         ":matmul_op",
         ":population_count_op",
         ":reduction_ops",
@@ -3094,6 +3095,17 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
     ],
+)
+
+tf_kernel_library(
+    name = "histogram_op",
+    prefix = "histogram_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
