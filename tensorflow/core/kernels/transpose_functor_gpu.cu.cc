@@ -53,8 +53,8 @@ __global__ void TransposeKernel(int nthreads, const T* src, const int32* buf,
   }
 }
 
-template <typename Device, typename T, bool conjugate>
-void TransposeSimple(const Device& d, const Tensor& in,
+template <typename T, bool conjugate>
+void TransposeSimple(const GPUDevice& d, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   // Ensures we can use 32-bit index.
   const int64 nelem = in.NumElements();
@@ -165,23 +165,9 @@ struct TransposeUsingTile<complex128, conjugate> {
   }
 };
 
-}  // end namespace internal
+}  // namespace internal
 
-template <>
-Status DoTranspose(const GPUDevice& device, const Tensor& in,
-                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-  return internal::DoTransposeImpl<GPUDevice>::run(device, in, perm,
-                                                   false /* conjugate */, out);
-}
-
-template <>
-Status DoConjugateTranspose(const GPUDevice& device, const Tensor& in,
-                            const gtl::ArraySlice<int32> perm, Tensor* out) {
-  return internal::DoTransposeImpl<GPUDevice>::run(device, in, perm,
-                                                   true /* conjugate */, out);
-}
-
-// Transpose kernel specialized for CPU Device.
+// Transpose kernel specialized for GPU Device.
 template <typename T, bool conjugate>
 struct Transpose<GPUDevice, T, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
@@ -216,19 +202,43 @@ struct Transpose<GPUDevice, T, conjugate> {
         }
         break;
       default:
-        internal::TransposeSimple<GPUDevice, T, conjugate>(d, in, perm, out);
+        internal::TransposeSimple<T, conjugate>(d, in, perm, out);
         break;
     }
   }
 };
 
-template <>
-struct Transpose<GPUDevice, string> {
+template <bool conjugate>
+struct Transpose<GPUDevice, string, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
     LOG(FATAL) << "Transpose of DT_STRING tensor not supported on GPU.";
   }
 };
+
+// Explicit instantiation.
+template struct Transpose<GPUDevice, string, false>;
+
+template <>
+Status DoTranspose(const GPUDevice& device, const Tensor& in,
+                   const gtl::ArraySlice<int32> perm, Tensor* out) {
+  return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/false, out);
+}
+template <>
+Status DoConjugateTranspose(const GPUDevice& device, const Tensor& in,
+                            const gtl::ArraySlice<int32> perm, Tensor* out) {
+  return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/true, out);
+}
+template <>
+Status DoMatrixTranspose(const GPUDevice& device, const Tensor& in,
+                         Tensor* out) {
+  return internal::DoMatrixTransposeImpl(device, in, /*conjugate=*/false, out);
+}
+template <>
+Status DoConjugateMatrixTranspose(const GPUDevice& device, const Tensor& in,
+                                  Tensor* out) {
+  return internal::DoMatrixTransposeImpl(device, in, /*conjugate=*/true, out);
+}
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA
