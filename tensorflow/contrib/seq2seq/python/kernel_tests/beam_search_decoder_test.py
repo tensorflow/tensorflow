@@ -80,8 +80,7 @@ class TestEosMasking(test.TestCase):
     ])
 
     eos_token = 0
-    previously_finished = constant_op.constant(
-        [[0, 1, 0], [0, 1, 1]], dtype=dtypes.float32)
+    previously_finished = np.array([[0, 1, 0], [0, 1, 1]], dtype=bool)
     masked = beam_search_decoder._mask_probs(probs, eos_token,
                                              previously_finished)
 

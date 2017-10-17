@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
@@ -104,6 +105,7 @@ class JITSymbolTable {
     ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedConvF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedMatMulF32);
     ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedMatMulF64);
+    ADD_JIT_SYMBOL_TO_TABLE(ParallelForkJoin);
 
 #undef ADD_JIT_SYMBOL_TO_TABLE
   }

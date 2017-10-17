@@ -3396,7 +3396,6 @@ cuda_py_test(
         ":training",
         ":platform_test",
         ":client_testlib",
-        ":variable_scope",
         "//third_party/py/numpy",
     ],
 )

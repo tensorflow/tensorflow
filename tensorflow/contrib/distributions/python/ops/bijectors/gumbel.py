@@ -12,35 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""FisherFactor definitions."""
+"""Gumbel bijector."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,line-too-long,wildcard-import
-from tensorflow.contrib.kfac.python.ops.fisher_factors import *
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
+from tensorflow.contrib.distributions.python.ops.bijectors.gumbel_impl import *
+# pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import remove_undocumented
-# pylint: enable=unused-import,line-too-long,wildcard-import
 
-_allowed_symbols = [
-    "inverse_initializer",
-    "covariance_initializer",
-    "diagonal_covariance_initializer",
-    "scope_string_from_params",
-    "scope_string_from_name",
-    "scalar_or_tensor_to_string",
-    "FisherFactor",
-    "InverseProvidingFactor",
-    "FullFactor",
-    "DiagonalFactor",
-    "NaiveDiagonalFactor",
-    "FullyConnectedDiagonalFactor",
-    "FullyConnectedKroneckerFactor",
-    "ConvInputKroneckerFactor",
-    "ConvOutputKroneckerFactor",
-    "ConvDiagonalFactor",
-    "set_global_constants",
-]
+_allowed_symbols = ["Gumbel"]
 
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
+remove_undocumented(__name__, _allowed_symbols)
