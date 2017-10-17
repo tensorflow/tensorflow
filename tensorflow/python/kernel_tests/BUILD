@@ -3152,7 +3152,10 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_oss",  # Test flaky due to port collisions.
+        "no_windows",
+    ],
 )
 
 filegroup(

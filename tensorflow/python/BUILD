@@ -3197,7 +3197,10 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
-    tags = ["oss_serial"],
+    tags = [
+        "no_oss",  # Test flaky due to port collisions.
+        "oss_serial",
+    ],
 )
 
 tf_py_test(
@@ -3213,6 +3216,7 @@ tf_py_test(
         ":variables",
     ],
     tags = [
+        "no_oss",  # Test flaky due to port collisions.
         "notsan",  # data race due to b/62910646
         "oss_serial",
     ],
