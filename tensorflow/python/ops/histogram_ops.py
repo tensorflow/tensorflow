@@ -138,4 +138,3 @@ def histogram_fixed_width(values,
                       [values, value_range, nbins]) as name:
     return gen_math_ops.histogram_fixed_width(values, value_range, nbins,
                                               dtype=dtype, name=name)
-
