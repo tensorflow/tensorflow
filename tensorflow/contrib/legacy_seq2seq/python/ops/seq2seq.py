@@ -311,10 +311,10 @@ def embedding_rnn_seq2seq(encoder_inputs,
   """Embedding RNN sequence-to-sequence model.
 
   This model first embeds encoder_inputs by a newly created embedding (of shape
-  [num_encoder_symbols x input_size]). Then it runs an RNN to encode
+  [num_encoder_symbols x embedding_size]). Then it runs an RNN to encode
   embedded encoder_inputs into a state vector. Next, it embeds decoder_inputs
   by another newly created embedding (of shape [num_decoder_symbols x
-  input_size]). Then it runs RNN decoder, initialized with the last
+  embedding_size]). Then it runs RNN decoder, initialized with the last
   encoder state, on embedded decoder_inputs.
 
   Args:
