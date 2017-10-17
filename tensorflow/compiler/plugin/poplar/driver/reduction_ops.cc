@@ -476,12 +476,20 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   int64 overlap_count(std::accumulate(overlap.begin(), overlap.end(), 1,
                                       [](int64 a, int64 b) { return a * b; }));
 
+  // Create a partials tensor for reduction
+  std::vector<std::size_t> poplar_shape = operand.shape();
+  poplar_shape.push_back(1);
+
+  poplar::Tensor extended_operand = operand.reshape(poplar_shape);
+  poplar::Tensor partial = graph.clone(extended_operand);
+
+  for (int64 i=1; i<overlap_count; i++) {
+    partial = poplar::concat(partial, graph.clone(extended_operand), partial.rank() - 1);
+  }
+
   xla::Shape partial_shape(output_shape);
   partial_shape.add_dimensions(overlap_count);
   LayoutUtil::ClearLayout(&partial_shape);
-
-  poplar::Tensor partial;
-  TF_ASSIGN_OR_RETURN(partial, AddPlainTensor(graph, inst, partial_shape));
 
   Literal identity_literal = GetIdentityConstantLiteral(scatter_root);
 
