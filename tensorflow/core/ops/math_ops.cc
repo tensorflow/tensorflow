@@ -2253,8 +2253,8 @@ product: Pairwise cross product of the vectors in `a` and `b`.
 REGISTER_OP("HistogramFixedWidth")
     .Input("values: T")
     .Input("value_range: T")
+    .Input("nbins: int32")
     .Output("out: dtype")
-    .Attr("nbins: int = 100")
     .Attr("T: {int32, int64, float32, float64}")
     .Attr("dtype: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
