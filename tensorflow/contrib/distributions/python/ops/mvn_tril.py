@@ -121,6 +121,14 @@ class MultivariateNormalTriL(
        [-10, 0, 9]]     # shape: [2, 3]
   mvn.prob(x).eval()    # shape: [2]
 
+  # Instantiate a "learnable" MVN.
+  dims = 4
+  with tf.variable_scope("model"):
+    mvn = ds.MultivariateNormalTriL(
+        loc=tf.get_variable(shape=[dims], dtype=tf.float32, name="mu"),
+        scale_tril=ds.fill_triangular(
+            tf.get_variable(shape=[dims * (dims + 1) / 2],
+                            dtype=tf.float32, name="chol_Sigma")))
   ```
 
   """
