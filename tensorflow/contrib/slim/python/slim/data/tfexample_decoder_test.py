@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
@@ -811,6 +812,36 @@ class TFExampleDecoderTest(test.TestCase):
       self.assertAllEqual(np.squeeze(output_image[0, :, :, :]), image)
       self.assertAllEqual(np.squeeze(output_image[1, :, :, :]), image)
 
+  def testDecodeExampleWithLookup(self):
+
+    example = example_pb2.Example(features=feature_pb2.Features(feature={
+        'image/object/class/text': self._BytesFeature(
+            np.array(['cat', 'dog', 'guinea pig'])),
+    }))
+    serialized_example = example.SerializeToString()
+    # 'dog' -> 0, 'guinea pig' -> 1, 'cat' -> 2
+    table = lookup_ops.index_table_from_tensor(
+        constant_op.constant(['dog', 'guinea pig', 'cat']))
+
+    with self.test_session() as sess:
+      sess.run(lookup_ops.tables_initializer())
+
+      serialized_example = array_ops.reshape(serialized_example, shape=[])
+
+      keys_to_features = {
+          'image/object/class/text': parsing_ops.VarLenFeature(dtypes.string),
+      }
+
+      items_to_handlers = {
+          'labels':
+              tfexample_decoder.LookupTensor('image/object/class/text', table),
+      }
+
+      decoder = tfexample_decoder.TFExampleDecoder(keys_to_features,
+                                                   items_to_handlers)
+      obtained_class_ids = decoder.decode(serialized_example)[0].eval()
+
+    self.assertAllClose([2, 0, 1], obtained_class_ids)
 
 if __name__ == '__main__':
   test.main()
