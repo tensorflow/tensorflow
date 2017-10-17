@@ -35,18 +35,13 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import functools
 import sys
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib import metrics as metrics_lib
-from tensorflow.contrib.boosted_trees.estimator_batch import custom_loss_head
-from tensorflow.contrib.boosted_trees.estimator_batch.estimator import GradientBoostedDecisionTreeEstimator
+from tensorflow.contrib.boosted_trees.estimator_batch.estimator import GradientBoostedDecisionTreeClassifier
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
-from tensorflow.contrib.boosted_trees.python.utils import losses
 from tensorflow.contrib.learn import learn_runner
-from tensorflow.python.ops import math_ops
 
 
 def get_input_fn(dataset_split,
@@ -88,36 +83,13 @@ def _get_tfbt(output_dir):
   learner_config.growing_mode = growing_mode
   run_config = tf.contrib.learn.RunConfig(save_checkpoints_secs=300)
 
-  # Use Cross Entropy loss (the impl in losses is twice differentiable).
-  loss_fn = functools.partial(
-      losses.per_example_maxent_loss, num_classes=num_classes)
-  logit_dim = num_classes
   learner_config.multi_class_strategy = (
       learner_pb2.LearnerConfig.DIAGONAL_HESSIAN)
 
-  # Since we use custom head, we need to tell how accuracy is calculated.
-  def _multiclass_metrics(predictions, labels, weights):
-    """Prepares eval metrics for multiclass eval."""
-    metrics = dict()
-    logits = predictions["scores"]
-    classes = math_ops.argmax(logits, 1)
-    metrics["accuracy"] = metrics_lib.streaming_accuracy(
-        classes, labels, weights)
-    return metrics
-
-  metrics_fn = _multiclass_metrics
-  # Use custom loss head so we can provide our loss (cross entropy for
-  # multiclass).
-  head = custom_loss_head.CustomLossHead(
-      loss_fn=loss_fn,
-      link_fn=tf.identity,
-      logit_dimension=logit_dim,
-      metrics_fn=metrics_fn)
-
   # Create a TF Boosted trees estimator that can take in custom loss.
-  estimator = GradientBoostedDecisionTreeEstimator(
+  estimator = GradientBoostedDecisionTreeClassifier(
       learner_config=learner_config,
-      head=head,
+      n_classes=num_classes,
       examples_per_layer=FLAGS.examples_per_layer,
       model_dir=output_dir,
       num_trees=FLAGS.num_trees,
