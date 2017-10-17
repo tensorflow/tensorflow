@@ -18,6 +18,14 @@
   (with GPU and gradient support).
 * Add a self-check on `import tensorflow` for Windows DLL issues.
 * Add NCHW support to `tf.depth_to_space` on GPU.
+* TensorFlow Debugger (tfdbg):
+  * Add `eval` command to allow evaluation of arbitrary Python/numpy expressions
+    in tfdbg command-line interface. See
+    [Debugging TensorFlow Programs](https://www.tensorflow.org/programmers_guide/debugger)
+    for more details.
+  * Usability improvement: The frequently used tensor filter `has_inf_or_nan` is
+    now added to `Session` wrappers and hooks by default. So there is no need
+    for clients to call `.add_tensor_filter(tf_debug.has_inf_or_nan)` anymore.
 * SinhArcsinh (scalar) distribution added to `contrib.distributions`.
 * Make `GANEstimator` opensource.
 * `Estimator.export_savedmodel()` now includes all valid serving signatures
