@@ -361,7 +361,7 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for multi class classification.
@@ -453,7 +453,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       logits = _check_logits(logits, self.logits_dimension)
 
       # Predict.
@@ -562,7 +562,7 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `Head` for binary classification.
@@ -702,7 +702,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
     # Predict.
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       with ops.name_scope(None, 'predictions', (logits,)):
         pred_keys = prediction_keys.PredictionKeys
         logits = _check_logits(logits, self.logits_dimension)
@@ -802,7 +802,7 @@ def _regression_head_with_mean_squared_error_loss(weight_column=None,
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for linear regression.
@@ -846,7 +846,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
     # Predict.
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       logits = _check_logits(logits, self._logits_dimension)
       predictions = {prediction_keys.PredictionKeys.PREDICTIONS: logits}
       if mode == model_fn.ModeKeys.PREDICT:

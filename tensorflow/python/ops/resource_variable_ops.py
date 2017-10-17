@@ -427,11 +427,6 @@ class ResourceVariable(variables.Variable):
     self._constraint = None
   # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
-  def __del__(self):
-    if context.in_eager_mode():
-      gen_resource_variable_ops.destroy_resource_op(self._handle,
-                                                    ignore_lookup_error=False)
-
   @property
   def dtype(self):
     """The dtype of this variable."""

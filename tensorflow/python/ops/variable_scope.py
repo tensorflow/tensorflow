@@ -1927,11 +1927,17 @@ def variable(initial_value=None,
              caching_device=None,
              name=None,
              dtype=None):
-  if get_variable_scope().use_resource:
+  use_resource = get_variable_scope().use_resource
+  if use_resource or (use_resource is None and context.in_eager_mode()):
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,
         collections=collections, validate_shape=validate_shape,
         caching_device=caching_device, name=name, dtype=dtype)
+  elif not use_resource and context.in_eager_mode():
+    raise RuntimeError(
+        "VariableScope should use resource variable in Eager mode, but "
+        "use_resource is False."
+    )
   else:
     return variables.Variable(
         initial_value=initial_value, trainable=trainable,
