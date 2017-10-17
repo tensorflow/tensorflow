@@ -102,6 +102,17 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
   strictly obeys), producing an element from a different underlying
   dataset instead.
 
+  Example usage:
+
+  ```python
+  # Preprocess 4 files concurrently.
+  filenames = tf.data.Dataset.list_files("/path/to/data/train*.tfrecords")
+  dataset = filenames.apply(
+      tf.contrib.data.sloppy_interleave(
+          lambda filename: tf.data.TFRecordDataset(filename),
+          cycle_length=4))
+  ```
+
   WARNING: The order of elements in the resulting dataset is not
   deterministic. Use `Dataset.interleave()` if you want the elements to have a
   deterministic order.
@@ -118,7 +129,7 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
     return SloppyInterleaveDataset(

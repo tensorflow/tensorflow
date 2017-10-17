@@ -43,6 +43,12 @@ class ReffedStatusCallback : public core::RefCounted {
     return status_.ok();
   }
 
+  // Returns a copy of the current status.
+  Status status() {
+    mutex_lock lock(mu_);
+    return status_;
+  }
+
   ~ReffedStatusCallback() { done_(status_); }
 
  private:

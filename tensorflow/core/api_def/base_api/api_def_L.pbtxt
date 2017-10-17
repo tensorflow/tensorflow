@@ -1,0 +1,392 @@
+op {
+  graph_op_name: "L2Loss"
+  endpoint {
+    name: "L2Loss"
+  }
+  summary: "L2 Loss."
+  description: <<END
+Computes half the L2 norm of a tensor without the `sqrt`:
+
+    output = sum(t ** 2) / 2
+END
+}
+op {
+  graph_op_name: "LMDBReader"
+  endpoint {
+    name: "LMDBReader"
+  }
+  summary: "A Reader that outputs the records from a LMDB file."
+}
+op {
+  graph_op_name: "LRN"
+  endpoint {
+    name: "LRN"
+  }
+  summary: "Local Response Normalization."
+  description: <<END
+The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last
+dimension), and each vector is normalized independently.  Within a given vector,
+each component is divided by the weighted, squared sum of inputs within
+`depth_radius`.  In detail,
+
+    sqr_sum[a, b, c, d] =
+        sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)
+    output = input / (bias + alpha * sqr_sum) ** beta
+
+For details, see [Krizhevsky et al., ImageNet classification with deep
+convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
+END
+}
+op {
+  graph_op_name: "LRNGrad"
+  endpoint {
+    name: "LRNGrad"
+  }
+  summary: "Gradients for Local Response Normalization."
+}
+op {
+  graph_op_name: "LearnedUnigramCandidateSampler"
+  endpoint {
+    name: "LearnedUnigramCandidateSampler"
+  }
+  summary: "Generates labels for candidate sampling with a learned unigram distribution."
+  description: <<END
+See explanations of candidate sampling and the data formats at
+go/candidate-sampling.
+
+For each batch, this op picks a single set of sampled candidate labels.
+
+The advantages of sampling candidates per-batch are simplicity and the
+possibility of efficient dense matrix multiplication. The disadvantage is that
+the sampled candidates must be chosen independently of the context and of the
+true labels.
+END
+}
+op {
+  graph_op_name: "Less"
+  endpoint {
+    name: "Less"
+  }
+  summary: "Returns the truth value of (x < y) element-wise."
+  description: <<END
+*NOTE*: `Less` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "LessEqual"
+  endpoint {
+    name: "LessEqual"
+  }
+  summary: "Returns the truth value of (x <= y) element-wise."
+  description: <<END
+*NOTE*: `LessEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "Lgamma"
+  endpoint {
+    name: "Lgamma"
+  }
+  summary: "Computes the log of the absolute value of `Gamma(x)` element-wise."
+}
+op {
+  graph_op_name: "LinSpace"
+  endpoint {
+    name: "LinSpace"
+  }
+  summary: "Generates values in an interval."
+  description: <<END
+A sequence of `num` evenly-spaced values are generated beginning at `start`.
+If `num > 1`, the values in the sequence increase by `stop - start / num - 1`,
+so that the last one is exactly `stop`.
+
+For example:
+
+```
+tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+```
+END
+}
+op {
+  graph_op_name: "ListDiff"
+  endpoint {
+    name: "ListDiff"
+  }
+  summary: "Computes the difference between two lists of numbers or strings."
+  description: <<END
+Given a list `x` and a list `y`, this operation returns a list `out` that
+represents all values that are in `x` but not in `y`. The returned list `out`
+is sorted in the same order that the numbers appear in `x` (duplicates are
+preserved). This operation also returns a list `idx` that represents the
+position of each `out` element in `x`. In other words:
+
+`out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]`
+
+For example, given this input:
+
+```
+x = [1, 2, 3, 4, 5, 6]
+y = [1, 3, 5]
+```
+
+This operation would return:
+
+```
+out ==> [2, 4, 6]
+idx ==> [1, 3, 5]
+```
+END
+}
+op {
+  graph_op_name: "LoadAndRemapMatrix"
+  endpoint {
+    name: "LoadAndRemapMatrix"
+  }
+  summary: "Loads a 2-D (matrix) `Tensor` with name `old_tensor_name` from the checkpoint"
+  description: <<END
+at `ckpt_path` and potentially reorders its rows and columns using the
+specified remappings.
+
+Most users should use one of the wrapper initializers (such as
+`tf.contrib.framework.load_and_remap_matrix_initializer`) instead of this
+function directly.
+
+The remappings are 1-D tensors with the following properties:
+
+* `row_remapping` must have exactly `num_rows` entries. Row `i` of the output
+  matrix will be initialized from the row corresponding to index
+  `row_remapping[i]` in the old `Tensor` from the checkpoint.
+* `col_remapping` must have either 0 entries (indicating that no column
+  reordering is needed) or `num_cols` entries. If specified, column `j` of the
+  output matrix will be initialized from the column corresponding to index
+  `col_remapping[j]` in the old `Tensor` from the checkpoint.
+* A value of -1 in either of the remappings signifies a "missing" entry. In that
+  case, values from the `initializing_values` tensor will be used to fill that
+  missing row or column. If `row_remapping` has `r` missing entries and
+  `col_remapping` has `c` missing entries, then the following condition must be
+  true:
+
+`(r * num_cols) + (c * num_rows) - (r * c) == len(initializing_values)`
+
+The remapping tensors can be generated using the GenerateVocabRemapping op.
+
+As an example, with row_remapping = [1, 0, -1], col_remapping = [0, 2, -1],
+initializing_values = [0.5, -0.5, 0.25, -0.25, 42], and w(i, j) representing
+the value from row i, column j of the old tensor in the checkpoint, the output
+matrix will look like the following:
+
+[[w(1, 0),  w(1, 2),  0.5],
+ [w(0, 0),  w(0, 2), -0.5],
+ [0.25,    -0.25,      42]]
+END
+}
+op {
+  graph_op_name: "Log"
+  endpoint {
+    name: "Log"
+  }
+  summary: "Computes natural logarithm of x element-wise."
+  description: <<END
+I.e., \\(y = \log_e x\\).
+END
+}
+op {
+  graph_op_name: "Log1p"
+  endpoint {
+    name: "Log1p"
+  }
+  summary: "Computes natural logarithm of (1 + x) element-wise."
+  description: <<END
+I.e., \\(y = \log_e (1 + x)\\).
+END
+}
+op {
+  graph_op_name: "LogMatrixDeterminant"
+  endpoint {
+    name: "LogMatrixDeterminant"
+  }
+  summary: "Computes the sign and the log of the absolute value of the determinant of"
+  description: <<END
+one or more square matrices.
+
+The input is a tensor of shape `[N, M, M]` whose inner-most 2 dimensions
+form square matrices. The outputs are two tensors containing the signs and
+absolute values of the log determinants for all N input submatrices
+`[..., :, :]` such that the determinant = sign*exp(log_abs_determinant).
+The log_abs_determinant is computed as det(P)*sum(log(diag(LU))) where LU
+is the LU decomposition of the input and P is the corresponding
+permutation matrix.
+END
+}
+op {
+  graph_op_name: "LogSoftmax"
+  endpoint {
+    name: "LogSoftmax"
+  }
+  summary: "Computes log softmax activations."
+  description: <<END
+For each batch `i` and class `j` we have
+
+    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))
+END
+}
+op {
+  graph_op_name: "LogUniformCandidateSampler"
+  endpoint {
+    name: "LogUniformCandidateSampler"
+  }
+  summary: "Generates labels for candidate sampling with a log-uniform distribution."
+  description: <<END
+See explanations of candidate sampling and the data formats at
+go/candidate-sampling.
+
+For each batch, this op picks a single set of sampled candidate labels.
+
+The advantages of sampling candidates per-batch are simplicity and the
+possibility of efficient dense matrix multiplication. The disadvantage is that
+the sampled candidates must be chosen independently of the context and of the
+true labels.
+END
+}
+op {
+  graph_op_name: "LogicalAnd"
+  endpoint {
+    name: "LogicalAnd"
+  }
+  summary: "Returns the truth value of x AND y element-wise."
+  description: <<END
+*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "LogicalNot"
+  endpoint {
+    name: "LogicalNot"
+  }
+  summary: "Returns the truth value of NOT x element-wise."
+}
+op {
+  graph_op_name: "LogicalOr"
+  endpoint {
+    name: "LogicalOr"
+  }
+  summary: "Returns the truth value of x OR y element-wise."
+  description: <<END
+*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "LookupTableExport"
+  endpoint {
+    name: "LookupTableExport"
+  }
+  summary: "Outputs all keys and values in the table."
+}
+op {
+  graph_op_name: "LookupTableExportV2"
+  endpoint {
+    name: "LookupTableExportV2"
+  }
+  summary: "Outputs all keys and values in the table."
+}
+op {
+  graph_op_name: "LookupTableFind"
+  endpoint {
+    name: "LookupTableFind"
+  }
+  summary: "Looks up keys in a table, outputs the corresponding values."
+  description: <<END
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
+
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
+END
+}
+op {
+  graph_op_name: "LookupTableFindV2"
+  endpoint {
+    name: "LookupTableFindV2"
+  }
+  summary: "Looks up keys in a table, outputs the corresponding values."
+  description: <<END
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
+
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
+END
+}
+op {
+  graph_op_name: "LookupTableImport"
+  endpoint {
+    name: "LookupTableImport"
+  }
+  summary: "Replaces the contents of the table with the specified keys and values."
+  description: <<END
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+END
+}
+op {
+  graph_op_name: "LookupTableImportV2"
+  endpoint {
+    name: "LookupTableImportV2"
+  }
+  summary: "Replaces the contents of the table with the specified keys and values."
+  description: <<END
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+END
+}
+op {
+  graph_op_name: "LookupTableInsert"
+  endpoint {
+    name: "LookupTableInsert"
+  }
+  summary: "Updates the table to associates keys with values."
+  description: <<END
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+END
+}
+op {
+  graph_op_name: "LookupTableInsertV2"
+  endpoint {
+    name: "LookupTableInsertV2"
+  }
+  summary: "Updates the table to associates keys with values."
+  description: <<END
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+END
+}
+op {
+  graph_op_name: "LookupTableSize"
+  endpoint {
+    name: "LookupTableSize"
+  }
+  summary: "Computes the number of elements in the given table."
+}
+op {
+  graph_op_name: "LookupTableSizeV2"
+  endpoint {
+    name: "LookupTableSizeV2"
+  }
+  summary: "Computes the number of elements in the given table."
+}
+op {
+  graph_op_name: "LoopCond"
+  endpoint {
+    name: "LoopCond"
+  }
+  summary: "Forwards the input to the output."
+  description: <<END
+This operator represents the loop termination condition used by the
+"pivot" switches of a loop.
+END
+}

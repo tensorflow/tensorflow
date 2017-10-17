@@ -14,7 +14,17 @@
 # ==============================================================================
 """The TFGAN project provides a lightweight GAN training/testing framework.
 
-See examples in `tensorflow_models` for details on how to use.
+This file contains the core helper functions to create and train a GAN model.
+See the README or examples in `tensorflow_models` for details on how to use.
+
+TFGAN training occurs in four steps:
+1) Create a model
+2) Add a loss
+3) Create train ops
+4) Run the train ops
+
+The functions in this file are organized around these four steps. Each function
+corresponds to one of the steps.
 """
 
 from __future__ import absolute_import
@@ -49,16 +59,6 @@ __all__ = [
     'get_joint_train_hooks',
     'get_sequential_train_steps',
 ]
-
-
-def _convert_tensor_or_l_or_d(tensor_or_l_or_d):
-  """Convert input, list of inputs, or dictionary of inputs to Tensors."""
-  if isinstance(tensor_or_l_or_d, (list, tuple)):
-    return [ops.convert_to_tensor(x) for x in tensor_or_l_or_d]
-  elif isinstance(tensor_or_l_or_d, dict):
-    return {k: ops.convert_to_tensor(v) for k, v in tensor_or_l_or_d.items()}
-  else:
-    return ops.convert_to_tensor(tensor_or_l_or_d)
 
 
 def gan_model(
@@ -131,20 +131,6 @@ def gan_model(
       discriminator_variables,
       dis_scope,
       discriminator_fn)
-
-
-def _validate_distributions(distributions_l, noise_l):
-  if not isinstance(distributions_l, (tuple, list)):
-    raise ValueError('`predicted_distributions` must be a list. Instead, found '
-                     '%s.' % type(distributions_l))
-  for dist in distributions_l:
-    if not isinstance(dist, ds.Distribution):
-      raise ValueError('Every element in `predicted_distributions` must be a '
-                       '`tf.Distribution`. Instead, found %s.' % type(dist))
-  if len(distributions_l) != len(noise_l):
-    raise ValueError('Length of `predicted_distributions` %i must be the same '
-                     'as the length of structured noise %i.' %
-                     (len(distributions_l), len(noise_l)))
 
 
 def infogan_model(
@@ -231,16 +217,6 @@ def infogan_model(
       predicted_distributions)
 
 
-def _validate_acgan_discriminator_outputs(discriminator_output):
-  try:
-    a, b = discriminator_output
-  except (TypeError, ValueError):
-    raise TypeError(
-        'A discriminator function for ACGAN must output a tuple '
-        'consisting of (discrimination logits, classification logits).')
-  return a, b
-
-
 def acgan_model(
     # Lambdas defining models.
     generator_fn,
@@ -252,6 +228,7 @@ def acgan_model(
     # Optional scopes.
     generator_scope='Generator',
     discriminator_scope='Discriminator',
+    # Options.
     check_shapes=True):
   """Returns an ACGANModel contains all the pieces needed for ACGAN training.
 
@@ -497,11 +474,10 @@ def _get_update_ops(kwargs, gen_scope, dis_scope, check_for_unused_ops=True):
 
 
 def gan_train_ops(
-    model,  # GANModel
-    loss,  # GANLoss
+    model,
+    loss,
     generator_optimizer,
     discriminator_optimizer,
-    # Optional check flags.
     check_for_unused_update_ops=True,
     # Optional args to pass directly to the `create_train_op`.
     **kwargs):
@@ -801,3 +777,40 @@ def get_sequential_train_steps(
     return gen_loss + dis_loss, should_stop
 
   return sequential_train_steps
+
+
+# Helpers
+
+
+def _convert_tensor_or_l_or_d(tensor_or_l_or_d):
+  """Convert input, list of inputs, or dictionary of inputs to Tensors."""
+  if isinstance(tensor_or_l_or_d, (list, tuple)):
+    return [ops.convert_to_tensor(x) for x in tensor_or_l_or_d]
+  elif isinstance(tensor_or_l_or_d, dict):
+    return {k: ops.convert_to_tensor(v) for k, v in tensor_or_l_or_d.items()}
+  else:
+    return ops.convert_to_tensor(tensor_or_l_or_d)
+
+
+def _validate_distributions(distributions_l, noise_l):
+  if not isinstance(distributions_l, (tuple, list)):
+    raise ValueError('`predicted_distributions` must be a list. Instead, found '
+                     '%s.' % type(distributions_l))
+  for dist in distributions_l:
+    if not isinstance(dist, ds.Distribution):
+      raise ValueError('Every element in `predicted_distributions` must be a '
+                       '`tf.Distribution`. Instead, found %s.' % type(dist))
+  if len(distributions_l) != len(noise_l):
+    raise ValueError('Length of `predicted_distributions` %i must be the same '
+                     'as the length of structured noise %i.' %
+                     (len(distributions_l), len(noise_l)))
+
+
+def _validate_acgan_discriminator_outputs(discriminator_output):
+  try:
+    a, b = discriminator_output
+  except (TypeError, ValueError):
+    raise TypeError(
+        'A discriminator function for ACGAN must output a tuple '
+        'consisting of (discrimination logits, classification logits).')
+  return a, b

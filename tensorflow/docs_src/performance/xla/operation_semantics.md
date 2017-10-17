@@ -1020,6 +1020,41 @@ the 1D array `| 20 28 36 |`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
 
+## ReducePrecision
+
+See also
+[`ComputationBuilder::ReducePrecision`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Models the effect of converting floating-point values to a lower-precision
+format (such as IEEE-FP16) and back to the original format.  The number of
+exponent and mantissa bits in the lower-precision format can be specified
+arbitrarily, although all bit sizes may not be supported on all hardware
+implementations.
+
+<b> `ReducePrecision(operand, mantissa_bits, exponent_bits)` </b>
+
+| Arguments           | Type                    | Semantics                    |
+| ------------------- | ----------------------- | ---------------------------- |
+| `operand`           | `ComputationDataHandle` | array of floating-point type |
+:                     :                         : `T`.                         :
+| `exponent_bits`     | `int32`                 | number of exponent bits in   |
+:                     :                         : lower-precision format       :
+| `mantissa_bits`     | `int32`                 | number of mantissa bits in   |
+:                     :                         : lower-precision format       :
+
+The result is an array of type `T`.  The input values are rounded to the nearest
+value representable with the given number of mantissa bits (using "ties to even"
+semantics), and any values that exceed the range specified by the number of
+exponent bits are clamped to positive or negative infinity.  `NaN` values are
+retained, although they may be converted to canonical `NaN` values.
+
+The lower-precision format must have at least one exponent bit (in order to
+distinguish a zero value from an infinity, since both have a zero mantissa), and
+must have a non-negative number of mantissa bits.  The number of exponent or
+mantissa bits may exceed the corresponding value for type `T`; the corresponding
+portion of the conversion is then simply a no-op.
+
+
 ## ReduceWindow
 
 See also

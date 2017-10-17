@@ -21,6 +21,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import custom_gradient
 from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -167,6 +168,16 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(second, [0])(f)[0]
     self.assertAllEqual([[0.0]], grad.numpy())
 
+  def testMakeVJP(self):
+
+    def f(x):
+      return x * x
+
+    wrapped_fn = backprop.make_vjp(f)
+    result, vjp = wrapped_fn(constant_op.constant(3.0))
+    self.assertEqual(result.numpy(), 9.0)
+    self.assertEqual(vjp(2.0)[0].numpy(), 12.0)
+
   def testGradGrad(self):
 
     def sq(x):
@@ -254,6 +265,16 @@ class BackpropTest(test.TestCase):
     dx, dy = backprop.gradients_function(fn)(x, y)
     self.assertAllEqual(dx.numpy(), y.numpy())
     self.assertAllEqual(dy.numpy(), x.numpy())
+
+  def testUnconnectedNone(self):
+    v = resource_variable_ops.ResourceVariable(
+        1.0, name='testUnconnectedNone')
+
+    def f():
+      v.read_value()
+      return constant_op.constant(1.0)
+
+    self.assertEqual(backprop.implicit_grad(f)()[0][0], None)
 
   def testEmptyParamsForValueAndGradFunction(self):
     def fn(a, b):
@@ -439,6 +460,56 @@ class BackpropTest(test.TestCase):
     # pylint: enable=protected-access
     context.context().clear_post_execution_callbacks()
 
+  def testImplicitGradientsCustomGradientAndCachedVariableValue(self):
+
+    @custom_gradient.custom_gradient
+    def my_square(x):
+      result = math_ops.square(x)
+
+      def grad(dr):
+        return 2 * dr * x + 1
+
+      return result, grad
+
+    x = resource_variable_ops.ResourceVariable(
+        initial_value=3, name='X.' + self.id())
+
+    def f():
+      return my_square(x)
+
+    g = backprop.implicit_grad(f)
+
+    grads_and_vars = g()
+    self.assertEqual(1, len(grads_and_vars))
+    grad, var = grads_and_vars[0]
+    self.assertEqual(7, grad.numpy())
+    self.assertEqual(x, var)
+
+  def testCustomGradient(self):
+
+    @custom_gradient.custom_gradient
+    def my_mul(x, y):
+      result = x*y
+
+      def grad(dr):
+        return [dr*y, dr*x]
+      return result, grad
+
+    lr = 0.25
+    x = resource_variable_ops.ResourceVariable(2., name='x')
+
+    def loss(x):
+      return my_mul(2., x.read_value())
+
+    loss_grads_fn = backprop.implicit_val_and_grad(loss)
+
+    losses = []
+    for _ in range(5):
+      loss, grads_and_vars = loss_grads_fn(x)
+      losses.append(loss.numpy())
+      for (grad, var) in grads_and_vars:
+        var.assign_sub(lr*grad)
+    self.assertAllEqual(losses, [4.0, 3., 2., 1., 0.])
 
 if __name__ == '__main__':
   test.main()

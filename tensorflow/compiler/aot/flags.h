@@ -37,6 +37,10 @@ struct MainFlags {
   string cpp_class;
   string out_object;
   string out_header;
+
+  // C++ codegen options
+  bool gen_name_to_index = false;
+  bool gen_program_shape = false;
 };
 
 // Appends to flag_list a tensorflow::Flag for each field in MainFlags.

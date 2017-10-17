@@ -59,7 +59,7 @@ __all__ = [
 
 INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v3_2017_09_13.tar.gz'
 INCEPTION_FROZEN_GRAPH = 'frozen_inception_v3.pb'
-INCEPTION_V3_INPUT = 'inputs'
+INCEPTION_V3_INPUT = 'input'
 INCEPTION_V3_OUTPUT = 'InceptionV3/Logits/SpatialSqueeze:0'
 INCEPTION_V3_FINAL_POOL = 'InceptionV3/Logits/AvgPool_1a_8x8/AvgPool:0'
 _INCEPTION_V3_NUM_CLASSES = 1001
@@ -317,13 +317,22 @@ def classifier_score(images, classifier_fn, num_batches=1):
       name='RunClassifier')
   logits = array_ops.concat(array_ops.unstack(logits), 0)
   logits.shape.assert_has_rank(2)
+
+  # Use maximum precision for best results.
+  logits_dtype = logits.dtype
+  if logits_dtype != dtypes.float64:
+    logits = math_ops.cast(logits, dtypes.float64)
+
   p = nn_ops.softmax(logits)
   q = math_ops.reduce_mean(p, axis=0)
   kl = _kl_divergence(p, logits, q)
   kl.shape.assert_has_rank(1)
   log_score = math_ops.reduce_mean(kl)
+  final_score = math_ops.exp(log_score)
 
-  return math_ops.exp(log_score)
+  if logits_dtype != dtypes.float64:
+    final_score = math_ops.cast(final_score, dtypes.float64)
+  return final_score
 
 
 inception_score = functools.partial(

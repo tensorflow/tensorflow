@@ -6,16 +6,22 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 cc_library(
     name = "pywrap_tfe_lib",
-    srcs = ["pywrap_tfe_src.cc"],
+    srcs = [
+        "pywrap_tensor.cc",
+        "pywrap_tfe_src.cc",
+    ],
     hdrs = ["pywrap_tfe.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:tape",
         "//tensorflow/core:lib",
         "//tensorflow/python:ndarray_tensor",
+        "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_seq_tensor",
+        "//tensorflow/python:safe_ptr",
         "//util/python:python_headers",
     ],
 )
@@ -71,10 +77,6 @@ py_library(
     srcs = ["tape.py"],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:util",
-    ],
 )
 
 py_library(
@@ -101,6 +103,7 @@ cuda_py_test(
     additional_deps = [
         ":backprop",
         ":context",
+        ":custom_gradient",
         ":test",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:array_ops",
@@ -108,7 +111,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:nn_grad",
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
     ],
 )
@@ -228,9 +230,11 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":core",
+        ":context",
         ":tape",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
     ],
 )
@@ -303,7 +307,6 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -318,6 +321,7 @@ py_test(
     srcs = ["graph_callable_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":backprop",
         ":graph_callable",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:function",
@@ -334,7 +338,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":imperative_grad",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -398,9 +404,11 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:tensor_shape",
         "//third_party/py/numpy",
     ],
 )
@@ -418,4 +426,10 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+py_library(
+    name = "imperative_grad",
+    srcs = ["imperative_grad.py"],
+    srcs_version = "PY2AND3",
 )

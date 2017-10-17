@@ -21,6 +21,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "inbound_nodes"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "input"
     mtype: "<type \'property\'>"
   }
@@ -37,11 +41,19 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "non_trainable_variables"
     mtype: "<type \'property\'>"
   }
   member {
     name: "non_trainable_weights"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "outbound_nodes"
     mtype: "<type \'property\'>"
   }
   member {

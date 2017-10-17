@@ -2548,7 +2548,7 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, false & var));
+                            ctx, 0, use_exclusive_lock_, false, &var));
     Tensor m;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
                             ctx, 1, use_exclusive_lock_, false, &m));

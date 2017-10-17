@@ -27,8 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
-# TODO(opensource): Add support for pyx_library in the open-source build.
-# For now, we use the slow versions that fast_tensor_util replaces.
+# Fallback in case fast_tensor_util is not properly compiled.
 # pylint: disable=g-import-not-at-top
 try:
   from tensorflow.python.framework import fast_tensor_util
@@ -363,10 +362,15 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
-  elif callable(getattr(values, "__array__", None)):
-    # If a class has the __array__ method, then it is possible to convert
-    # to numpy array.
+  elif callable(getattr(values, "__array__", None)) or isinstance(
+      getattr(values, "__array_interface__", None), dict):
+    # If a class has the __array__ method, or __array_interface__ dict, then it
+    # is possible to convert to numpy array.
     nparray = np.asarray(values, dtype=dtype)
+
+    # This is the preferred way to create an array from the object, so replace
+    # the `values` with the array so that _FlattenToStrings is not run.
+    values = nparray
   else:
     if values is None:
       raise ValueError("None values not supported.")

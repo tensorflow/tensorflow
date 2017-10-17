@@ -64,6 +64,29 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     }
   }
 
+  // Now DCE HloComputations.  First, collect the computations that are
+  // referenced by some remaining instruction.
+  std::unordered_set<HloComputation*> live_computations;
+  if (HloComputation* entry_computation = module->entry_computation()) {
+    live_computations.insert(entry_computation);
+  }
+  for (auto* computation : module->MakeComputationPostOrder()) {
+    for (auto* instruction : computation->instructions()) {
+      for (auto* subcomp : instruction->called_computations()) {
+        live_computations.insert(subcomp);
+      }
+    }
+  }
+
+  // Remove dead computations.
+  std::list<HloComputation*> computations = module->MakeComputationPostOrder();
+  for (auto* computation : computations) {
+    if (live_computations.count(computation) == 0) {
+      TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
+      changed = true;
+    }
+  }
+
   return changed;
 }
 

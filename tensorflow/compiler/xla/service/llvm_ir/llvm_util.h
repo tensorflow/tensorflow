@@ -227,12 +227,6 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 void EmitLogging(const char* tag, llvm::Value* value,
                  llvm::IRBuilder<>* ir_builder);
 
-// Adds TBAA metadata to a load or store instruction using the given shape as
-// it's type.  The is_pointer_to parameter is used to indicate whether or not
-// this instruction loads or stores a pointer to an array.
-void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
-                           bool is_pointer_to);
-
 // Adds alignment metadata to a load instruction using the given alignment.
 // The alignment refers to the result of the load, not the load itself.
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment);
@@ -272,6 +266,15 @@ void SetTargetOptions(bool fast_math_enabled,
 std::map<int, llvm::MDNode*> MergeMetadata(
     llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
     const std::map<int, llvm::MDNode*>& b);
+
+// Dumps out `llvm_module` to a file in the directory named `directory_name`,
+// creating the directory if necessary.  A sanitized version of
+// `hlo_module_name` is incorporated into the file name.  If `optimized` is true
+// then a suffix of "-with-opt.ll" is used, else a suffix of "-no-opt.ll" is
+// used.
+Status DumpIRToDirectory(const string& directory_name,
+                         const string& hlo_module_name,
+                         const llvm::Module& llvm_module, bool optimized);
 
 }  // namespace llvm_ir
 }  // namespace xla

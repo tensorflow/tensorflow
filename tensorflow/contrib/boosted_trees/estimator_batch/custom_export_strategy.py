@@ -96,7 +96,8 @@ def make_custom_export_strategy(name,
 
 def convert_to_universal_format(dtec, sorted_feature_names,
                                 num_dense, num_sparse_float,
-                                num_sparse_int):
+                                num_sparse_int,
+                                feature_name_to_proto=None):
   """Convert GTFlow trees to universal format."""
   del num_sparse_int  # unused.
   model_and_features = generic_tree_model_pb2.ModelAndFeatures()
@@ -104,7 +105,11 @@ def convert_to_universal_format(dtec, sorted_feature_names,
   # feature is processed before it's fed to the model (e.g. bucketing
   # information). As of now, this serves as a list of features the model uses.
   for feature_name in sorted_feature_names:
-    model_and_features.features[feature_name].SetInParent()
+    if not feature_name_to_proto:
+      model_and_features.features[feature_name].SetInParent()
+    else:
+      model_and_features.features[feature_name].CopyFrom(
+          feature_name_to_proto[feature_name])
   model = model_and_features.model
   model.ensemble.summation_combination_technique.SetInParent()
   for tree_idx in range(len(dtec.trees)):

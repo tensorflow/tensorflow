@@ -211,6 +211,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":image_py",
+        ":single_image_random_dot_stereograms_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",

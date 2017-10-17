@@ -51,6 +51,7 @@ from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.sinh_arcsinh import *
 from tensorflow.contrib.distributions.python.ops.test_util import *
 from tensorflow.contrib.distributions.python.ops.vector_diffeomixture import *
 from tensorflow.contrib.distributions.python.ops.vector_exponential_diag import *
@@ -83,19 +84,6 @@ _allowed_symbols = [
     'ConditionalTransformedDistribution',
     'FULLY_REPARAMETERIZED',
     'NOT_REPARAMETERIZED',
-    'Affine',
-    'AffineLinearOperator',
-    'Bijector',
-    'Chain',
-    'CholeskyOuterProduct',
-    'Exp',
-    'Identity',
-    'Inline',
-    'Invert',
-    'PowerTransform',
-    'SigmoidCentered',
-    'SoftmaxCentered',
-    'Softplus',
     'ReparameterizationType',
     'Distribution',
     'Binomial',
@@ -125,6 +113,7 @@ _allowed_symbols = [
     'NormalWithSoftplusScale',
     'Poisson',
     'PoissonLogNormalQuadratureCompound',
+    'SinhArcsinh',
     'StudentT',
     'StudentTWithAbsDfSoftplusScale',
     'Uniform',

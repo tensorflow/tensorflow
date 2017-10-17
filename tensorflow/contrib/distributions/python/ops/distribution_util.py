@@ -160,7 +160,7 @@ def make_tril_scale(
 
     scale_tril = array_ops.matrix_set_diag(scale_tril, tril_diag)
 
-    return linalg.LinearOperatorTriL(
+    return linalg.LinearOperatorLowerTriangular(
         tril=_maybe_attach_assertion(scale_tril),
         is_non_singular=True,
         is_self_adjoint=False,
@@ -376,6 +376,30 @@ def prefer_static_broadcast_shape(
     shape1_ = get_shape_tensor(shape1)
     shape2_ = get_shape_tensor(shape2)
     return array_ops.broadcast_dynamic_shape(shape1_, shape2_)
+
+
+def get_broadcast_shape(*tensors):
+  """Get broadcast shape as a Python list of integers (preferred) or `Tensor`.
+
+  Args:
+    *tensors:  One or more `Tensor` objects (already converted!).
+
+  Returns:
+    broadcast shape:  Python list (if shapes determined statically), otherwise
+      an `int32` `Tensor`.
+  """
+  # Try static.
+  s_shape = tensors[0].shape
+  for t in tensors[1:]:
+    s_shape = array_ops.broadcast_static_shape(s_shape, t.shape)
+  if s_shape.is_fully_defined():
+    return s_shape.as_list()
+
+  # Fallback on dynamic.
+  d_shape = array_ops.shape(tensors[0])
+  for t in tensors[1:]:
+    d_shape = array_ops.broadcast_dynamic_shape(d_shape, array_ops.shape(t))
+  return d_shape
 
 
 def is_diagonal_scale(scale):

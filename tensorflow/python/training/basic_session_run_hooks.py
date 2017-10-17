@@ -22,7 +22,7 @@
 @@NanTensorHook
 @@SummarySaverHook
 @@GlobalStepWaiterHook
-
+@@ProfilerHook
 """
 
 from __future__ import absolute_import
@@ -36,9 +36,12 @@ import numpy as np
 import six
 
 from tensorflow.core.framework.summary_pb2 import Summary
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.client import timeline
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
@@ -440,22 +443,23 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     return SessionRunArgs(self._global_step_tensor)
 
   def after_run(self, run_context, run_values):
-    global_step = run_values.results + 1
-    if self._timer.should_trigger_for_step(global_step):
-      self._timer.update_last_triggered_step(global_step)
-      self._save(run_context.session)
+    stale_global_step = run_values.results
+    if self._timer.should_trigger_for_step(stale_global_step+1):
+      # get the real value after train op.
+      global_step = run_context.session.run(self._global_step_tensor)
+      if self._timer.should_trigger_for_step(global_step):
+        self._timer.update_last_triggered_step(global_step)
+        self._save(run_context.session, global_step)
 
   def end(self, session):
     last_step = session.run(self._global_step_tensor)
     if last_step != self._timer.last_triggered_step():
-      self._save(session)
+      self._save(session, last_step)
     for l in self._listeners:
       l.end(session, last_step)
 
-  def _save(self, session):
+  def _save(self, session, step):
     """Saves the latest checkpoint."""
-    # get latest global_step
-    step = session.run(self._global_step_tensor)
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
 
     for l in self._listeners:
@@ -526,17 +530,20 @@ class StepCounterHook(session_run_hook.SessionRunHook):
   def after_run(self, run_context, run_values):
     _ = run_context
 
-    global_step = run_values.results + 1
-    if self._timer.should_trigger_for_step(global_step):
-      elapsed_time, elapsed_steps = self._timer.update_last_triggered_step(
-          global_step)
-      if elapsed_time is not None:
-        steps_per_sec = elapsed_steps / elapsed_time
-        if self._summary_writer is not None:
-          summary = Summary(value=[Summary.Value(
-              tag=self._summary_tag, simple_value=steps_per_sec)])
-          self._summary_writer.add_summary(summary, global_step)
-        logging.info("%s: %g", self._summary_tag, steps_per_sec)
+    stale_global_step = run_values.results
+    if self._timer.should_trigger_for_step(stale_global_step+1):
+      # get the real value after train op.
+      global_step = run_context.session.run(self._global_step_tensor)
+      if self._timer.should_trigger_for_step(global_step):
+        elapsed_time, elapsed_steps = self._timer.update_last_triggered_step(
+            global_step)
+        if elapsed_time is not None:
+          steps_per_sec = elapsed_steps / elapsed_time
+          if self._summary_writer is not None:
+            summary = Summary(value=[Summary.Value(
+                tag=self._summary_tag, simple_value=steps_per_sec)])
+            self._summary_writer.add_summary(summary, global_step)
+          logging.info("%s: %g", self._summary_tag, steps_per_sec)
 
 
 class NanLossDuringTrainingError(RuntimeError):
@@ -643,7 +650,10 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     if not self._summary_writer:
       return
 
-    global_step = run_values.results["global_step"] + 1
+    stale_global_step = run_values.results["global_step"]
+    global_step = stale_global_step + 1
+    if self._next_step is None or self._request_summary:
+      global_step = run_context.session.run(self._global_step_tensor)
 
     if self._next_step is None:
       self._summary_writer.add_session_log(
@@ -769,6 +779,83 @@ class FeedFnHook(session_run_hook.SessionRunHook):
   def before_run(self, run_context):  # pylint: disable=unused-argument
     return session_run_hook.SessionRunArgs(
         fetches=None, feed_dict=self.feed_fn())
+
+
+class ProfilerHook(session_run_hook.SessionRunHook):
+  """Captures CPU/GPU profiling information every N steps or seconds.
+
+  This produces files called "timeline-<step>.json", which are in Chrome
+  Trace format.
+
+  For more information see:
+  https://github.com/catapult-project/catapult/blob/master/tracing/README.md
+  """
+
+  def __init__(self,
+               save_steps=None,
+               save_secs=None,
+               output_dir="",
+               show_dataflow=True,
+               show_memory=False):
+    """Initializes a hook that takes periodic profiling snapshots.
+
+    `options.run_metadata` argument of `tf.Session.Run` is used to collect
+    metadata about execution. This hook sets the metadata and dumps it in Chrome
+    Trace format.
+
+
+    Args:
+      save_steps: `int`, save profile traces every N steps. Exactly one of
+          `save_secs` and `save_steps` should be set.
+      save_secs: `int` or `float`, save profile traces every N seconds.
+      output_dir: `string`, the directory to save the profile traces to.
+          Defaults to the current directory.
+      show_dataflow: `bool`, if True, add flow events to the trace connecting
+          producers and consumers of tensors.
+      show_memory: `bool`, if True, add object snapshot events to the trace
+          showing the sizes and lifetimes of tensors.
+    """
+    self._output_file = os.path.join(output_dir, "timeline-{}.json")
+    self._show_dataflow = show_dataflow
+    self._show_memory = show_memory
+    self._timer = SecondOrStepTimer(
+        every_secs=save_secs, every_steps=save_steps)
+
+  def begin(self):
+    self._next_step = None
+    self._global_step_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
+    if self._global_step_tensor is None:
+      raise RuntimeError("Global step should be created to use ProfilerHook.")
+
+  def before_run(self, run_context):
+    self._request_summary = (
+        self._next_step is None or
+        self._timer.should_trigger_for_step(self._next_step))
+    requests = {"global_step": self._global_step_tensor}
+    opts = (config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
+            if self._request_summary else None)
+
+    return SessionRunArgs(requests, options=opts)
+
+  def after_run(self, run_context, run_values):
+    stale_global_step = run_values.results["global_step"]
+    global_step = stale_global_step + 1
+    if self._request_summary:
+      global_step = run_context.session.run(self._global_step_tensor)
+      self._timer.update_last_triggered_step(global_step)
+      self._save(global_step,
+                 self._output_file.format(global_step),
+                 run_values.run_metadata.step_stats)
+
+    self._next_step = global_step + 1
+
+  def _save(self, step, save_path, step_stats):
+    logging.info("Saving timeline for %d into '%s'.", step, save_path)
+    with gfile.Open(save_path, "w") as f:
+      trace = timeline.Timeline(step_stats)
+      f.write(
+          trace.generate_chrome_trace_format(
+              show_dataflow=self._show_dataflow, show_memory=self._show_memory))
 
 
 def _as_graph_element(obj):

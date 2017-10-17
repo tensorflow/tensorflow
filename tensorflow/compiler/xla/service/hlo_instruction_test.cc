@@ -729,6 +729,23 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
   EXPECT_TRUE(ShapeUtil::Equal(clone10->outfeed_shape(), shape10));
 }
 
+TEST_F(HloInstructionTest, PreserveTupleShapeThroughClone) {
+  HloComputation::Builder builder(TestName());
+  auto* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  auto* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
+  *ShapeUtil::GetMutableSubshape(tuple->mutable_shape(), {0})
+       ->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
+  *ShapeUtil::GetMutableSubshape(tuple->mutable_shape(), {1})
+       ->mutable_layout() = LayoutUtil::MakeLayout({1, 0});
+  auto tuple_clone = tuple->Clone();
+  EXPECT_TRUE(ShapeUtil::Equal(tuple_clone->shape(), tuple->shape()));
+}
+
 TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   // Create a fusion instruction containing a single unary operation.
   const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});

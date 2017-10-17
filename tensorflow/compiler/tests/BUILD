@@ -97,9 +97,13 @@ tf_xla_py_test(
     size = "small",
     srcs = ["binary_ops_test.py"],
     shard_count = 5,
+    tags = [
+        "optonly",  # Times out frequently in fastbuild mode.
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:bitwise_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
@@ -179,6 +183,7 @@ tf_xla_py_test(
         "noasan",
         "nomsan",
         "notsan",
+        "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
         ":xla_test",
@@ -208,11 +213,6 @@ tf_xla_py_test(
     name = "slice_ops_test",
     size = "small",
     srcs = ["slice_ops_test.py"],
-    # TODO(b/62962492): Test fails with assertion error.
-    tags = [
-        "manual",
-        "notap",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -509,12 +509,8 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "gather_test",
-    size = "small",
+    size = "medium",
     srcs = ["gather_test.py"],
-    # Gather needs CustomCall on CPU, which is not available in normal
-    # (not precompiled) TensorFlow. The flag below excludes the CPU
-    # backend.
-    disabled_backends = "cpu",
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -576,6 +572,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",

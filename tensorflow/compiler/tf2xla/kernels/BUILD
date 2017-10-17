@@ -132,8 +132,6 @@ tf_kernel_library(
     name = "xla_cpu_only_ops",
     srcs = ["index_ops_cpu.cc"],
     deps = [
-        ":gather_op_kernel_float_int32",
-        ":gather_op_kernel_float_int64",
         ":index_ops_kernel_argmax_float_1d",
         ":index_ops_kernel_argmax_float_2d",
         "//tensorflow/compiler/tf2xla:common",
@@ -147,34 +145,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:argmax_op",
         "//tensorflow/core/kernels:bounds_check",
     ],
-)
-
-cc_library(
-    name = "gather_op_kernel_float_int32",
-    srcs = ["gather_op_kernel_float_int32.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/kernels:gather_functor_hdr",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "gather_op_kernel_float_int64",
-    srcs = ["gather_op_kernel_float_int64.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/kernels:gather_functor_hdr",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(

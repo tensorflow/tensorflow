@@ -1656,7 +1656,8 @@ class SessionTest(test_util.TensorFlowTestCase):
       with CaptureStderr() as log:
         sess.run(c)
       # Ensure that we did log device placement.
-      self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log), str(log))
+      self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in str(log),
+                      str(log))
 
   def testLocalMasterSessionTimeout(self):
     # Test that the timeout passed in a config to the session works correctly.

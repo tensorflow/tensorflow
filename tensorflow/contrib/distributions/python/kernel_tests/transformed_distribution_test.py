@@ -80,6 +80,42 @@ class TransformedDistributionTest(test.TestCase):
         with self.test_session(graph=g):
           self.assertAllClose(expected, actual.eval(), atol=0, rtol=0.01)
 
+  def testNonInjectiveTransformedDistribution(self):
+    g = ops.Graph()
+    with g.as_default():
+      mu = 1.
+      sigma = 2.0
+      abs_normal = self._cls()(
+          distribution=ds.Normal(loc=mu, scale=sigma),
+          bijector=bs.AbsoluteValue(event_ndims=0))
+      sp_normal = stats.norm(mu, sigma)
+
+      # sample
+      sample = abs_normal.sample(100000, seed=235)
+      self.assertAllEqual([], abs_normal.event_shape)
+      with self.test_session(graph=g):
+        sample_ = sample.eval()
+        self.assertAllEqual([], abs_normal.event_shape_tensor().eval())
+
+        # Abs > 0, duh!
+        np.testing.assert_array_less(0, sample_)
+
+        # Let X ~ Normal(mu, sigma), Y := |X|, then
+        # P[Y < 0.77] = P[-0.77 < X < 0.77]
+        self.assertAllClose(
+            sp_normal.cdf(0.77) - sp_normal.cdf(-0.77),
+            (sample_ < 0.77).mean(), rtol=0.01)
+
+        # p_Y(y) = p_X(-y) + p_X(y),
+        self.assertAllClose(
+            sp_normal.pdf(1.13) + sp_normal.pdf(-1.13),
+            abs_normal.prob(1.13).eval())
+
+        # Log[p_Y(y)] = Log[p_X(-y) + p_X(y)]
+        self.assertAllClose(
+            np.log(sp_normal.pdf(2.13) + sp_normal.pdf(-2.13)),
+            abs_normal.log_prob(2.13).eval())
+
   def testCachedSamples(self):
     exp_forward_only = bs.Exp(event_ndims=0)
     exp_forward_only._inverse = self._make_unimplemented(
@@ -171,6 +207,19 @@ class TransformedDistributionTest(test.TestCase):
           validate_args=True)
       self.assertAllClose(actual_mvn_entropy,
                           fake_mvn.entropy().eval())
+
+  def testScalarBatchScalarEventIdentityScale(self):
+    with self.test_session() as sess:
+      exp2 = self._cls()(
+          ds.Exponential(rate=0.25),
+          bijector=ds.bijectors.Affine(
+              scale_identity_multiplier=2.,
+              event_ndims=0))
+      log_prob = exp2.log_prob(1.)
+      log_prob_ = sess.run(log_prob)
+      base_log_prob = -0.5 * 0.25 + np.log(0.25)
+      ildj = np.log(2.)
+      self.assertAllClose(base_log_prob - ildj, log_prob_, rtol=1e-6, atol=0.)
 
 
 class ScalarToMultiTest(test.TestCase):
