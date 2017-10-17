@@ -2250,6 +2250,44 @@ product: Pairwise cross product of the vectors in `a` and `b`.
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("HistogramFixedWidth")
+    .Input("values: T")
+    .Input("value_range: T")
+    .Output("out: dtype")
+    .Attr("nbins: int = 100")
+    .Attr("T: {int32, int64, float32, float64}")
+    .Attr("dtype: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->UnknownShapeOfRank(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Return histogram of values.
+
+Given the tensor `values`, this operation returns a rank 1 histogram counting
+the number of entries in `values` that fall into every bin.  The bins are
+equal width and determined by the arguments `value_range` and `nbins`.
+
+```python
+# Bins will be:  (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+nbins = 5
+value_range = [0.0, 5.0]
+new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+
+with tf.get_default_session() as sess:
+  hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
+  variables.global_variables_initializer().run()
+  sess.run(hist) => [2, 1, 1, 0, 2]
+```
+
+values:  Numeric `Tensor`.
+value_range:  Shape [2] `Tensor` of same `dtype` as `values`.
+  values <= value_range[0] will be mapped to hist[0],
+  values >= value_range[1] will be mapped to hist[-1].
+nbins:  Scalar `int32 Tensor`.  Number of histogram bins.
+out: A 1-D `Tensor` holding histogram of values.
+)doc");
+
 REGISTER_OP("Bincount")
     .Input("arr: int32")
     .Input("size: int32")
