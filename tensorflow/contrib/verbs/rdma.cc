@@ -146,9 +146,8 @@ ibv_device* set_device() {
     }
     // check validity of input device
     CHECK(false) << "The device " << env_p_rdma_device << " wasn't found";
-  }
+  } else {
   // set default device
-  else {
     str_port_num = get_env_var("RDMA_DEVICE_PORT");
     CHECK(str_port_num.empty())
         << "RDMA_DEVICE should be provided if RDMA_DEVICE_PORT is set by user";
@@ -178,7 +177,7 @@ ibv_device* set_device() {
 // Returns:
 //   port to use
 uint8_t set_port(ibv_context* context) {
-  uint8_t port_num = 1;
+  uint8_t port_num = 0; //0 is illegal port number
   string str_port_num;
   ibv_device_attr device_att;
   ibv_port_attr port_attr;
@@ -207,10 +206,11 @@ uint8_t set_port(ibv_context* context) {
       rc = ibv_query_port(context, port_index, &port_attr);
       CHECK(!rc) << "Failed to query the port" << port_index;
       if (port_attr.state == IBV_PORT_ACTIVE) {
-        return port_index;
+        port_num = port_index;
+        break;
       }
     }
-    CHECK(port_index != device_att.phys_port_cnt) << "No active ports";
+    CHECK_GT(port_num, 0) << "No active ports";
   }
   return port_num;
 }
