@@ -69,19 +69,22 @@ class GraphCompiler {
   Status Compile();
 
  private:
-  // NodeBinding is a wrapper on a `Node` that also contains computed
-  // TensorValue.
-  struct NodeBinding {
-    const Node* node;
-    // Kernel for this node, to be filled by CreateKernel.
-    // TODO(yunxing): Switching this to unique_ptr and understand why it crashes
-    // on GPU devices.
-    OpKernel* op_kernel;
+  // NodeOutputs is a wrapper over TensorValues that represents outputs of a
+  // node.
+  struct NodeOutputs {
+    ~NodeOutputs() {
+      for (auto& v : values) {
+        CHECK(!v.is_ref());
+        delete v.tensor;
+      }
+    }
+
     // Output values of this node.
-    std::vector<TensorValue> tensor_values;
-    // Attributes of the outputs.
-    gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
+    std::vector<TensorValue> values;
   };
+
+  // A mapping from node id to node output.
+  using OutputRegistry = std::vector<NodeOutputs>;
 
   // Partially sets params. This partially set params can be reused
   // across multple nodes visit.

@@ -84,7 +84,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
 }
 }  // namespace
 Status GraphCompiler::Compile() {
-  std::vector<NodeBinding> bindings(graph_->num_node_ids());
+  OutputRegistry output_registry(graph_->num_node_ids());
   std::vector<Node*> topo_sorted_nodes;
   // XLA requires determinism, generate a stable ordering from DFS.
   GetReversePostOrder(*graph_, &topo_sorted_nodes,
@@ -94,30 +94,23 @@ Status GraphCompiler::Compile() {
   PartiallySetupParams(&params);
 
   for (Node* n : topo_sorted_nodes) {
-    // Set up bindings.
-    NodeBinding& binding = bindings[n->id()];
-    binding.node = n;
-    Status s = flib_->CreateKernel(n->def(), &binding.op_kernel);
-    binding.output_attrs.resize(n->num_outputs());
+    NodeOutputs node_outputs;
+    OpKernel* op_kernel_raw = nullptr;
+    Status s = flib_->CreateKernel(n->def(), &op_kernel_raw);
+    // Transfer ownership of the kernel to a local smart pointer.
+    std::unique_ptr<OpKernel> op_kernel(op_kernel_raw);
+
     if (!s.ok()) {
-      binding.op_kernel = nullptr;
       s = AttachDef(s, *n);
       LOG(ERROR) << "Executor failed to create kernel. " << s;
       return s;
     }
-  }
 
-  // Bindings are initialized by the size of graph_->num_node_ids. However, the
-  // graph may contain dead nodes that still hold a valid node id. Thus
-  // graph_->num_node_ids could be larger than number of topo sorted nodes.
-  TF_RET_CHECK(bindings.size() >= topo_sorted_nodes.size());
-
-  for (Node* n : topo_sorted_nodes) {
     TF_RET_CHECK(!n->IsRecv() && !n->IsSend() && !n->IsSwitch())
         << "Not supported node: " << n->DebugString();
-    NodeBinding& binding = bindings[n->id()];
-    params.op_kernel = binding.op_kernel;
-    params.output_attr_array = binding.output_attrs.data();
+    params.op_kernel = op_kernel.get();
+    gtl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
+    params.output_attr_array = output_attr.data();
 
     // tensor_inputs_ is a buffer reused across graph traversal. We clean up and
     // reinitialize the buffer before we visit a new node.
@@ -128,8 +121,10 @@ Status GraphCompiler::Compile() {
     for (auto* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
       Node* src = e->src();
-      tensor_inputs_[e->dst_input()] =
-          bindings[src->id()].tensor_values[e->src_output()];
+      TF_RET_CHECK(src->id() < output_registry.size());
+      const NodeOutputs& outputs = output_registry[src->id()];
+
+      tensor_inputs_[e->dst_input()] = outputs.values[e->src_output()];
     }
 
     OpKernelContext op_context(&params, n->num_outputs());
@@ -150,17 +145,8 @@ Status GraphCompiler::Compile() {
                                 (*op_context.is_output_dead() ? "(dead)" : ""),
                                 SummarizeNode(*n));
       }
-      binding.tensor_values.push_back(tensor_val);
-    }
-  }
-
-  // Clean up tensor data and op kernels.
-  for (NodeBinding& binding : bindings) {
-    delete binding.op_kernel;
-    for (auto& t : binding.tensor_values) {
-      if (!t.is_ref()) {
-        delete t.tensor;
-      }
+      // Set up outputs
+      output_registry[n->id()].values.push_back(tensor_val);
     }
   }
   return Status::OK();
