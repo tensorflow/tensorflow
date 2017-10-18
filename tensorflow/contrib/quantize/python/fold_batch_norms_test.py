@@ -57,6 +57,34 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     for parameters in parameters_list:
       test_fn(parameters[0], parameters[1], parameters[2])
 
+  def testFailsWithFusedBatchNorm(self):
+    self._RunTestOverParameters(self._TestFailsWithFusedBatchNorm)
+
+  def _TestFailsWithFusedBatchNorm(self, relu, relu_op_name, with_bypass):
+    """Tests that batch norm fails when fused batch norm ops are present."""
+    g = ops.Graph()
+    with g.as_default():
+      batch_size, height, width = 5, 128, 128
+      inputs = array_ops.zeros((batch_size, height, width, 3))
+      out_depth = 3 if with_bypass else 32
+      stride = 1 if with_bypass else 2
+      activation_fn = None if with_bypass else relu
+      batch_norm_params = _DEFAULT_BATCH_NORM_PARAMS.copy()
+      batch_norm_params['fused'] = True
+      scope = 'test/test2' if with_bypass else 'test'
+      node = conv2d(inputs, out_depth, [5, 5], stride=stride, padding='SAME',
+                    weights_initializer=self._WeightInit(0.09),
+                    activation_fn=activation_fn,
+                    normalizer_fn=batch_norm,
+                    normalizer_params=batch_norm_params,
+                    scope=scope)
+      if with_bypass:
+        node = math_ops.add(inputs, node, name='test/Add')
+        relu(node, name='test/' + relu_op_name)
+
+      with self.assertRaises(ValueError):
+        fold_batch_norms.FoldBatchNorms(g)
+
   def _TestFoldConv2d(self, relu, relu_op_name, with_bypass):
     """Tests folding cases: inputs -> Conv2d with batch norm -> Relu*.
 

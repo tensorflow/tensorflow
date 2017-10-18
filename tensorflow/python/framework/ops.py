@@ -25,6 +25,7 @@ import re
 import sys
 import threading
 
+import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -172,6 +173,17 @@ def register_dense_tensor_like_type(tensor_type):
 def uid():
   """A unique (within this program execution) integer."""
   return c_api.TFE_Py_UID()
+
+
+def numpy_text(tensor, is_repr=False):
+  """Human readable representation of a tensor's numpy value."""
+  if tensor.dtype.is_numpy_compatible:
+    text = repr(tensor.numpy()) if is_repr else str(tensor.numpy())
+  else:
+    text = "<unprintable>"
+  if "\n" in text:
+    text = "\n" + text
+  return text
 
 
 # NOTE(ebrevdo): Do not subclass this.  If you do, I will break you on purpose.
@@ -404,6 +416,7 @@ class Tensor(_TensorLike):
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
+    # TODO(skyewm): call C API
     self._shape = self._shape.merge_with(shape)
 
   @property
@@ -590,15 +603,6 @@ class _EagerTensorBase(Tensor):
     # performance-sensitive in some models.
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
-  def _numpy_text(self, is_repr=False):
-    if self.dtype.is_numpy_compatible:
-      numpy_text = repr(self.numpy()) if is_repr else str(self.numpy())
-    else:
-      numpy_text = "<unprintable>"
-    if "\n" in numpy_text:
-      numpy_text = "\n" + numpy_text
-    return numpy_text
-
   def numpy(self):
     """Returns a numpy array with the same contents as the Tensor.
 
@@ -614,6 +618,9 @@ class _EagerTensorBase(Tensor):
       to one may be reflected in the other.
     """
     return self.as_cpu_tensor()._numpy()  # pylint: disable=protected-access
+
+  def __array__(self):
+    return np.array(self.numpy())
 
   def _numpy(self):
     raise NotImplementedError()
@@ -640,13 +647,13 @@ class _EagerTensorBase(Tensor):
     raise NotImplementedError()
 
   def __str__(self):
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (self._numpy_text(),
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self),
                                                   self.shape,
                                                   self.dtype.name)
 
   def __repr__(self):
     return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
-        self._id, self.shape, self.dtype.name, self._numpy_text(is_repr=True))
+        self._id, self.shape, self.dtype.name, numpy_text(self, is_repr=True))
 
   @staticmethod
   def _override_operator(name, func):
@@ -676,7 +683,7 @@ class _EagerTensorBase(Tensor):
       self_device = self.device
       def grad_fun(dresult):
         return [dresult._copy(device_name=self_device)]
-      tape.record_operation("_copy", [new_tensor], [self], [], grad_fun)
+      tape.record_operation("_copy", [new_tensor], [self], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
 
@@ -724,6 +731,12 @@ class _EagerTensorBase(Tensor):
   def __nonzero__(self):
     return self.__bool__()
 
+  def set_shape(self, shape):
+    if not self.shape.is_compatible_with(shape):
+      raise ValueError(
+          "EagerTensor's shape %s is not compatible with supplied shape %s" %
+          (self.shape, shape))
+
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
@@ -736,9 +749,6 @@ class _EagerTensorBase(Tensor):
   @property
   def name(self):
     raise NotImplementedError("name not supported for Eager Tensors.")
-
-  def set_shape(self, shape):
-    raise NotImplementedError("set_shape not supported for Eager Tensors.")
 
   @property
   def value_index(self):
@@ -1799,15 +1809,15 @@ class Operation(object):
       for op in ops:
         if not isinstance(op, Operation):
           raise TypeError("op must be an Operation: %s" % op)
-        _assert_same_graph(self, op)
         c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
     else:
-      for op in ops:
-        if not isinstance(op, Operation):
-          raise TypeError("op must be an Operation: %s" % op)
-        _assert_same_graph(self, op)
-        self._control_inputs.append(op)
-      self._recompute_node_def()
+      if ops:
+        for op in ops:
+          if not isinstance(op, Operation):
+            raise TypeError("op must be an Operation: %s" % op)
+          _assert_same_graph(self, op)
+          self._control_inputs.append(op)
+        self._recompute_node_def()
 
   def _add_control_input(self, op):
     """Add a new control input to this operation.
@@ -1877,6 +1887,7 @@ class Operation(object):
     """The list of `Tensor` objects representing the data inputs of this op."""
     if self._c_op:
       tf_outputs = c_api.GetOperationInputs(self._c_op)
+      # TODO(skyewm): return Operation._InputList
       # pylint: disable=protected-access
       return [self.graph._get_tensor_by_tf_output(tf_output)
               for tf_output in tf_outputs]
@@ -4344,14 +4355,17 @@ class _DefaultStack(threading.local):
       self.stack.append(default)
       yield default
     finally:
-      if self._enforce_nesting:
-        if self.stack[-1] is not default:
-          raise AssertionError(
-              "Nesting violated for default stack of %s objects" %
-              type(default))
-        self.stack.pop()
-      else:
-        self.stack.remove(default)
+      # stack may be empty if reset() was called
+      if self.stack:
+        if self._enforce_nesting:
+          if self.stack[-1] is not default:
+            raise AssertionError(
+                "Nesting violated for default stack of %s objects" %
+                type(default))
+          self.stack.pop()
+        else:
+          self.stack.remove(default)
+
 
 _default_session_stack = _DefaultStack()  # pylint: disable=protected-access
 

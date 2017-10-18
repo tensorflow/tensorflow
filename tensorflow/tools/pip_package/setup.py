@@ -29,7 +29,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.3.0'
+_VERSION = '1.4.0-rc0'
 
 REQUIRED_PACKAGES = [
     'enum34 >= 1.1.6',
@@ -67,6 +67,7 @@ if sys.version_info < (3, 4):
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
+    'freeze_graph = tensorflow.python.tools.freeze_graph:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the

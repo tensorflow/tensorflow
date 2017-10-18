@@ -548,6 +548,30 @@ class BaseLayerTest(test.TestCase):
     with self.assertRaises(ValueError):
       dense.count_params()
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testDictInputOutput(self):
+
+    class DictLayer(base_layers.Layer):
+
+      def call(self, inputs):
+        return {'l' + key: inputs[key] for key in inputs}
+
+    layer = DictLayer()
+    if context.in_graph_mode():
+      i1 = array_ops.placeholder('int32')
+      i2 = array_ops.placeholder('float32')
+      result = layer.apply({'abel': i1, 'ogits': i2})
+      self.assertTrue(isinstance(result, dict))
+      self.assertEqual(set(['label', 'logits']), set(result.keys()))
+    else:
+      i1 = constant_op.constant(3)
+      i2 = constant_op.constant(4.0)
+      result = layer.apply({'abel': i1, 'ogits': i2})
+      self.assertTrue(isinstance(result, dict))
+      self.assertEqual(set(['label', 'logits']), set(result.keys()))
+      self.assertEqual(3, result['label'].numpy())
+      self.assertEqual(4.0, result['logits'].numpy())
+
 
 class NetworkTest(test.TestCase):
 

@@ -293,7 +293,7 @@ class Service : public ServiceInterface {
       std::vector<VersionedComputationHandle> versioned_handles,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend,
-      std::vector<perftools::gputools::StreamExecutor*> executors);
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors);
 
   // Similar to BuildExecutable, but look in the compilation cache for the
   // executable first. If the executable is not in the cache, it is built and

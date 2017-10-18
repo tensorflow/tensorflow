@@ -206,6 +206,7 @@ py_test(
     size = "medium",
     srcs = ["python/ops/kmeans_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67512932
     deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
@@ -245,7 +246,6 @@ tf_py_test(
         "manual",
         "noasan",  # times out b/63678675
         "nomsan",
-        "notsan",
     ],
 )
 

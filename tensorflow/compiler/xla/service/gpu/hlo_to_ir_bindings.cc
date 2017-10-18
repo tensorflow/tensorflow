@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -67,7 +67,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
         // Lookup allocation GetTupleElement operand.
         const BufferAllocation::Slice slice =
             buffer_assignment_
-                ->GetUniqueTopLevelSlice(LatestNonGteAncestor(non_io_hlo))
+                ->GetUniqueTopLevelSlice(non_io_hlo->LatestNonGteAncestor())
                 .ConsumeValueOrDie();
         // We are not in a nested context, so check non-thread-local allocation.
         CHECK(!slice.allocation()->is_thread_local());

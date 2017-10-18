@@ -120,10 +120,10 @@ class ReduceTest : public ClientLibraryTestBase {
     Computation reduce;
     if (and_reduce) {
       init_value = builder.ConstantR0<bool>(true);
-      reduce = CreateScalarLogicalAndComputation(&builder);
+      reduce = CreateScalarAndComputation(&builder);
     } else {
       init_value = builder.ConstantR0<bool>(false);
-      reduce = CreateScalarLogicalOrComputation(&builder);
+      reduce = CreateScalarOrComputation(&builder);
     }
     builder.Reduce(pred_values, init_value, reduce,
                    /*dimensions_to_reduce=*/{0});
@@ -729,16 +729,14 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
                           std::numeric_limits<uint32>::max());
 }
 
-XLA_TEST_F(ReduceTest, VectorizedReduce_LogicalAnd) {
-  RunVectorizedReduceTestForType<bool>(CreateScalarLogicalAndComputation,
-                                       [](bool a, bool b) { return a && b; },
-                                       true);
+XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanAnd) {
+  RunVectorizedReduceTestForType<bool>(
+      CreateScalarAndComputation, [](bool a, bool b) { return a && b; }, true);
 }
 
-XLA_TEST_F(ReduceTest, VectorizedReduce_LogicalOr) {
-  RunVectorizedReduceTestForType<bool>(CreateScalarLogicalOrComputation,
-                                       [](bool a, bool b) { return a || b; },
-                                       false);
+XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanOr) {
+  RunVectorizedReduceTestForType<bool>(
+      CreateScalarOrComputation, [](bool a, bool b) { return a || b; }, false);
 }
 
 class ReduceR3ToR2Test : public ReduceTest,

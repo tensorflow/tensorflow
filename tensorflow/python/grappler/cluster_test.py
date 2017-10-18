@@ -62,6 +62,26 @@ class ClusterTest(test.TestCase):
       self.assertEqual(len(op_perfs), 0)
       self.assertEqual(len(step_stats.dev_stats), 0)
 
+  def testMemoryEstimates(self):
+    with ops.Graph().as_default() as g:
+      with ops.device('/job:localhost/replica:0/task:0/cpu:0'):
+        a = random_ops.random_uniform(shape=())
+        b = random_ops.random_uniform(shape=())
+        c = a + b
+        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+        train_op.append(c)
+        mg = meta_graph.create_meta_graph_def(graph=g)
+        grappler_item = item.Item(mg)
+        grappler_cluster = cluster.Cluster(
+            disable_detailed_stats=True, disable_timeline=True)
+        peak_mem = grappler_cluster.DeterminePeakMemoryUsage(grappler_item)
+        self.assertLessEqual(1, len(peak_mem))
+        snapshot = peak_mem['/job:localhost/replica:0/task:0/cpu:0']
+        peak_usage = snapshot[0]
+        self.assertEqual(52, peak_usage)
+        live_tensors = snapshot[1]
+        self.assertEqual(15, len(live_tensors))
+
 
 if __name__ == '__main__':
   test.main()
