@@ -25,6 +25,7 @@ import re
 import sys
 import threading
 
+import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -617,6 +618,9 @@ class _EagerTensorBase(Tensor):
       to one may be reflected in the other.
     """
     return self.as_cpu_tensor()._numpy()  # pylint: disable=protected-access
+
+  def __array__(self):
+    return np.array(self.numpy())
 
   def _numpy(self):
     raise NotImplementedError()
