@@ -1141,6 +1141,7 @@ py_test(
         ":client_testlib",
         ":framework",
         ":framework_for_generated_wrappers",
+        ":framework_test_lib",
         ":math_ops",
         ":state_ops_gen",
         "//third_party/py/numpy",
@@ -3197,7 +3198,10 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
-    tags = ["oss_serial"],
+    tags = [
+        "no_oss",  # Test flaky due to port collisions.
+        "oss_serial",
+    ],
 )
 
 tf_py_test(
@@ -3213,6 +3217,7 @@ tf_py_test(
         ":variables",
     ],
     tags = [
+        "no_oss",  # Test flaky due to port collisions.
         "notsan",  # data race due to b/62910646
         "oss_serial",
     ],

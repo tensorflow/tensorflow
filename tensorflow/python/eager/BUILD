@@ -93,7 +93,6 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -123,10 +122,12 @@ cuda_py_test(
         ":core",
         ":execute",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
