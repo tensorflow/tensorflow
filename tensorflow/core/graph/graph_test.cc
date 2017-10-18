@@ -118,18 +118,22 @@ class GraphTest : public ::testing::Test {
     LOG(FATAL) << name;
   }
 
-  const Edge* FindInputControlEdge(const Node* node, const Edge* edge) {
-    const Edge* found_edge = nullptr;
-    for (const Edge *e : node->in_edges()) {
+  bool ControlEdgeExistsInGraphOrNodeDef(const Node* src,
+                                         const Node* dst) {
+    for (const Edge *e : dst->in_edges()) {
       if (e->IsControlEdge() &&
-          e->src() == edge->src() &&
+          e->src() == src &&
           e->src_output() == Graph::kControlSlot &&
           e->dst_input() == Graph::kControlSlot) {
-        found_edge = e;
-        break;
+        return true;
       }
     }
-    return found_edge;
+    for (int i = 0; i < dst->def().input_size(); ++i) {
+      if (dst->def().input(i) == strings::StrCat("^", src->name())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Graph graph_;
@@ -506,27 +510,25 @@ TEST_F(GraphTest, RemoveControlEdge) {
   ASSERT_TRUE(edge_1 != nullptr);
   ASSERT_TRUE(edge_2 != nullptr);
 
-  const Edge* edge_1_obtained = FindInputControlEdge(a, edge_1);
-  ASSERT_TRUE(edge_1_obtained != nullptr);
-  EXPECT_EQ(edge_1_obtained->src(), edge_1->src());
-  EXPECT_EQ(edge_1_obtained->src_output(), Graph::kControlSlot);
-  EXPECT_EQ(edge_1_obtained->dst(), edge_1->dst());
-  EXPECT_EQ(edge_1_obtained->dst_input(), Graph::kControlSlot);
-
-  const Edge* edge_2_obtained = FindInputControlEdge(b, edge_2);
-  ASSERT_TRUE(edge_2_obtained != nullptr);
-  EXPECT_EQ(edge_2_obtained->src(), edge_2->src());
-  EXPECT_EQ(edge_2_obtained->src_output(), Graph::kControlSlot);
-  EXPECT_EQ(edge_2_obtained->dst(), edge_2->dst());
-  EXPECT_EQ(edge_2_obtained->dst_input(), Graph::kControlSlot);
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(a, b));
 
   graph_.RemoveControlEdge(edge_1);
-  ASSERT_TRUE(FindInputControlEdge(a, edge_1) == nullptr);
-  ASSERT_TRUE(FindInputControlEdge(b, edge_2) != nullptr);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(ControlEdgeExistsInGraphOrNodeDef(a, b));
 
   graph_.RemoveControlEdge(edge_2);
-  ASSERT_TRUE(FindInputControlEdge(a, edge_1) == nullptr);
-  ASSERT_TRUE(FindInputControlEdge(b, edge_2) == nullptr);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(a, b));
+
+  // Test removing a duplicate control edge.
+  const Edge* edge_3 = graph_.AddControlEdge(c, a);
+  const Edge* edge_4 = graph_.AddControlEdge(c, a);
+  ASSERT_TRUE(edge_3 != nullptr);
+  ASSERT_TRUE(edge_4 == nullptr);
+
+  graph_.RemoveControlEdge(edge_3);
+  ASSERT_TRUE(!ControlEdgeExistsInGraphOrNodeDef(c, a));
 }
 
 TEST_F(GraphTest, UpdateEdge) {
