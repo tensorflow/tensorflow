@@ -513,6 +513,12 @@ class ResourceVariable(variables.Variable):
       raise RuntimeError("Trying to eval in EAGER mode")
     return self._graph_element.eval(session=session)
 
+  def numpy(self):
+    if context.in_graph_mode():
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+    return self.read_value().numpy()
+
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `ResourceVariable`.
 

@@ -53,7 +53,7 @@ class FunctionTest(test.TestCase):
 
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     out = sq(t)
-    self.assertAllEqual(out.numpy(), math_ops.matmul(t, t).numpy())
+    self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testGraphModeWithGradients(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -66,7 +66,7 @@ class FunctionTest(test.TestCase):
 
       return backprop.implicit_grad(inner)()[0][0]
 
-    self.assertAllEqual(step().numpy(), 2.0)
+    self.assertAllEqual(step(), 2.0)
 
   def testTensorConversionWithDefun(self):
 
@@ -74,7 +74,7 @@ class FunctionTest(test.TestCase):
     def f(x):
       return math_ops.add(x, constant_op.constant(3))
 
-    self.assertAllEqual(5, f(constant_op.constant(2)).numpy())
+    self.assertAllEqual(5, f(constant_op.constant(2)))
 
   def testTensorConversionCall(self):
 
@@ -86,7 +86,7 @@ class FunctionTest(test.TestCase):
     def g(x):
       return f(f(x))
 
-    self.assertAllEqual(8, g(constant_op.constant(2)).numpy())
+    self.assertAllEqual(8, g(constant_op.constant(2)))
 
   def testDefunCallBackprop(self):
 
@@ -98,7 +98,7 @@ class FunctionTest(test.TestCase):
     def g(x):
       return backprop.gradients_function(f, [0])(x)[0]
 
-    self.assertAllEqual(2, g(constant_op.constant(2)).numpy())
+    self.assertAllEqual(2, g(constant_op.constant(2)))
 
   def testGraphModeEagerGradError(self):
     with context.graph_mode():
@@ -149,7 +149,7 @@ class FunctionTest(test.TestCase):
       return f(x)
 
     g = backprop.implicit_grad(g)(constant_op.constant(1.0))[0][0]
-    self.assertEqual(g.numpy(), 1.0)
+    self.assertAllEqual(g, 1.0)
 
   def testGradient(self):
     matmul = function.defun(math_ops.matmul)
@@ -159,7 +159,7 @@ class FunctionTest(test.TestCase):
 
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     grad_t, = backprop.gradients_function(sq, [0])(t)
-    self.assertAllEqual(grad_t.numpy(), [[6, 6], [14, 14]])
+    self.assertAllEqual(grad_t, [[6, 6], [14, 14]])
 
   def testGradientInFunction(self):
 
@@ -167,7 +167,7 @@ class FunctionTest(test.TestCase):
     def f(x):
       return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
 
-    self.assertEqual(f(constant_op.constant(1.0)).numpy(), 2.0)
+    self.assertAllEqual(f(constant_op.constant(1.0)), 2.0)
 
   def testFunctionOnDevice(self):
     if not context.context().num_gpus():
@@ -176,7 +176,7 @@ class FunctionTest(test.TestCase):
     x = constant_op.constant([1.]).as_gpu_tensor()
     f = function.defun(math_ops.add)
     y = f(x, x).as_cpu_tensor()
-    self.assertAllEqual(y.numpy(), [2.])
+    self.assertAllEqual(y, [2.])
 
   def testFunctionHandlesInputsOnDifferentDevices(self):
     if not context.context().num_gpus():
@@ -187,7 +187,7 @@ class FunctionTest(test.TestCase):
     value = constant_op.constant([1., 2.]).as_gpu_tensor()
     shape = constant_op.constant([2, 1])
     reshaped = reshape(value, shape).as_cpu_tensor()
-    self.assertAllEqual(reshaped.numpy(), [[1], [2]])
+    self.assertAllEqual(reshaped, [[1], [2]])
 
   def testFunctionHandlesInputsPlacedOnTheWrongDeviceGracefully(self):
     if not context.context().num_gpus():
@@ -210,7 +210,7 @@ class FunctionTest(test.TestCase):
       return my_function(x)[0]
 
     g = backprop.gradients_function(wrapper, [0])(constant_op.constant(0.0))
-    self.assertAllEqual(g[0].numpy(), 1.)
+    self.assertAllEqual(g[0], 1.)
 
   def testNoneOutput(self):
 
@@ -231,7 +231,7 @@ class FunctionTest(test.TestCase):
     def add_one(x):
       return add(x, 1)
 
-    self.assertAllEqual(3, add_one(constant_op.constant(2)).numpy())
+    self.assertAllEqual(3, add_one(constant_op.constant(2)))
 
   def testSequenceInputs(self):
     clip_by_global_norm = function.defun(clip_ops.clip_by_global_norm)
@@ -258,13 +258,13 @@ class FunctionTest(test.TestCase):
         constant_op.constant(5)
     ])
     self.assertEqual(len(ret), 2)
-    self.assertEqual(ret[0][0].numpy(), 2)
-    self.assertEqual(ret[0][1][0][0].numpy(), 8)
-    self.assertEqual(ret[0][1][0][1].numpy(), 4)
+    self.assertAllEqual(ret[0][0], 2)
+    self.assertAllEqual(ret[0][1][0][0], 8)
+    self.assertAllEqual(ret[0][1][0][1], 4)
     self.assertTrue(isinstance(ret[0][1][0], tuple))
-    self.assertEqual(ret[0][1][1].numpy(), 6)
-    self.assertEqual(ret[0][2].numpy(), 10)
-    self.assertEqual(ret[1].numpy(), 15)
+    self.assertAllEqual(ret[0][1][1], 6)
+    self.assertAllEqual(ret[0][2], 10)
+    self.assertAllEqual(ret[1], 15)
 
 
 if __name__ == '__main__':

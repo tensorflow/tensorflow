@@ -66,10 +66,6 @@ __global__ void S2D_NCHW(const int32 nthreads,
                          const int block_size, const int output_width,
                          const int input_depth_by_output_height,
                          dtype* __restrict__ output_ptr) {
-  // TODO(pauldonnelly): This kernel gets input coalescing, but not output
-  // coalescing. We could use shared memory to get both. It may also help
-  // to amortize the address calculations via an inner loop over block_size.
-  // A template parameter for the block_size is another potential optimization.
   CUDA_1D_KERNEL_LOOP(input_idx, nthreads) {
     // We assume both the input and output are packed NCHW tensors.
     // input_idx represents an index within the flattened input tensor.
@@ -97,6 +93,48 @@ __global__ void S2D_NCHW(const int32 nthreads,
                                     output_width;
 
     *(output_ptr + output_idx) = ldg(input_ptr + input_idx);
+  }
+}
+
+// Space2Depth kernel for FORMAT_NCHW using a loop over block area.
+// See 'spacetodepth_op.h' for functional specification.
+template <typename dtype, int block_size>
+__global__ void S2D_NCHW_LOOP(const int32 nthreads,
+                              const dtype* __restrict__ input,
+                              const int output_width, const int input_width,
+                              const int input_depth_by_output_area,
+                              const int output_depth_by_output_area,
+                              dtype* __restrict__ output) {
+  CUDA_1D_KERNEL_LOOP(thread_idx, nthreads) {
+    // We will be converting the image from ordering:
+    // n, iC, oY, bY, oX, bX   (== input index) to
+    // n, bY, bX, iC, oY, oX   (== output index)
+
+    // We assume thread_idx encodes n_iC_oY_oX, and use an unrolled loop over
+    // bY and bX coordinates within the block. This kernel gets a small
+    // performance improvement compared with S2D_NCHW due to a denser access
+    // pattern on the input side. (Note: the equivalent D2S kernel gets a larger
+    // improvement as a denser pattern on the output side makes more
+    // difference).
+
+    const int n_iC_oY = thread_idx / output_width;
+    const int oX = thread_idx - n_iC_oY * output_width;
+    const int n = thread_idx / input_depth_by_output_area;
+    const int iC_oY_oX = thread_idx - n * input_depth_by_output_area;
+
+    // Recombine the components and apply to the input and output pointers.
+    auto input_ptr = input + (n_iC_oY * input_width + oX) * block_size;
+    auto output_ptr = output + n * output_depth_by_output_area + iC_oY_oX;
+
+#pragma unroll
+    // Copy a patch of data to the output batch image.
+    for (int bY = 0; bY < block_size; ++bY) {
+#pragma unroll
+      for (int bX = 0; bX < block_size; ++bX) {
+        output_ptr[(bY * block_size + bX) * input_depth_by_output_area] =
+            ldg(input_ptr + bY * input_width + bX);
+      }
+    }
   }
 }
 
@@ -137,9 +175,40 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     const int output_depth = output.dimension(1);
     const int output_height = output.dimension(2);
     const int output_width = output.dimension(3);
+    const int output_area = output_width * output_height;
+    const int output_depth_by_output_area = output_depth * output_area;
 
-    const int total_count =
-        batch_size * output_height * output_width * output_depth;
+    // We improve performance by generating instantiations of the loop kernel
+    // for the most common block sizes.
+    if (block_size <= 4) {
+      const int input_width = input.dimension(3);
+      const int input_depth_by_output_area = input_depth * output_area;
+      const int total_count = batch_size * input_depth_by_output_area;
+      CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+      switch (block_size) {
+        case 2:
+          return S2D_NCHW_LOOP<T, 2>
+              <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+                  total_count, input.data(), output_width, input_width,
+                  input_depth_by_output_area, output_depth_by_output_area,
+                  output.data());
+        case 3:
+          return S2D_NCHW_LOOP<T, 3>
+              <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+                  total_count, input.data(), output_width, input_width,
+                  input_depth_by_output_area, output_depth_by_output_area,
+                  output.data());
+        case 4:
+          return S2D_NCHW_LOOP<T, 4>
+              <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+                  total_count, input.data(), output_width, input_width,
+                  input_depth_by_output_area, output_depth_by_output_area,
+                  output.data());
+      }
+    }
+
+    // Other block sizes are processed by the generic kernel.
+    const int total_count = batch_size * output_depth_by_output_area;
     CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
     S2D_NCHW<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
         config.virtual_thread_count, input.data(), block_size, output_width,

@@ -81,9 +81,6 @@ py_test(
     size = "small",
     srcs = ["python/utils/losses_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":losses",
         "//tensorflow/python:array_ops",
@@ -135,7 +132,6 @@ py_test(
     srcs = ["python/training/functions/gbdt_batch_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "nomac",  # b/63258195
         "notsan",  # b/62863147
     ],
     deps = [
@@ -164,9 +160,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/model_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":model_ops_py",
         ":prediction_ops_py",
@@ -187,9 +180,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/prediction_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":model_ops_py",
         ":prediction_ops_py",
@@ -207,9 +197,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/quantile_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":quantile_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
@@ -247,9 +234,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/stats_accumulator_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":stats_accumulator_ops_py",
         "//tensorflow/python:framework_ops",
@@ -264,9 +248,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/training_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":model_ops_py",
         ":training_ops_py",
