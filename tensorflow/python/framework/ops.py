@@ -741,19 +741,19 @@ class _EagerTensorBase(Tensor):
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
-    raise NotImplementedError("op not supported for Eager Tensors.")
+    raise AttributeError("op not supported for Eager Tensors.")
 
   @property
   def graph(self):
-    raise NotImplementedError("graph not supported for Eager Tensors.")
+    raise AttributeError("graph not supported for Eager Tensors.")
 
   @property
   def name(self):
-    raise NotImplementedError("name not supported for Eager Tensors.")
+    raise AttributeError("name not supported for Eager Tensors.")
 
   @property
   def value_index(self):
-    raise NotImplementedError("value_index not supported for Eager Tensors.")
+    raise AttributeError("value_index not supported for Eager Tensors.")
 
   def consumers(self):
     raise NotImplementedError("consumers not supported for Eager Tensors.")
