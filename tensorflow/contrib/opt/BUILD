@@ -145,6 +145,9 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "no_oss",  # Flaky due to port collisions
+    ],
 )
 
 filegroup(

@@ -336,11 +336,32 @@ cc_library(
 )
 
 cc_library(
+    name = "array",
+    hdrs = ["array.h"],
+    deps = [
+        ":types",
+        ":util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "array_test",
+    srcs = ["array_test.cc"],
+    deps = [
+        ":array",
+        ":test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "array2d",
     srcs = ["array2d.cc"],
     hdrs = ["array2d.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":array",
         ":types",
         ":util",
         "//tensorflow/core:lib",
@@ -362,6 +383,7 @@ cc_library(
     hdrs = ["array3d.h"],
     visibility = [":friends"],
     deps = [
+        ":array",
         ":types",
         "//tensorflow/core:lib",
     ],
@@ -383,6 +405,7 @@ cc_library(
     hdrs = ["array4d.h"],
     visibility = [":friends"],
     deps = [
+        ":array",
         ":array2d",
         ":types",
         "//tensorflow/core:lib",

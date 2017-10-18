@@ -209,6 +209,22 @@ class BinaryOpsTest(XLATestCase):
           np.array([0b0, 0b101, 0b1001], dtype=dtype),
           expected=np.array([0b1, 0b101, 0b1001], dtype=dtype))
 
+      lhs = np.array([0, 5, 3, 14], dtype=dtype)
+      rhs = np.array([5, 0, 7, 11], dtype=dtype)
+      self._testBinary(
+          bitwise_ops.left_shift, lhs, rhs,
+          expected=np.left_shift(lhs, rhs))
+      self._testBinary(
+          bitwise_ops.right_shift, lhs, rhs,
+          expected=np.right_shift(lhs, rhs))
+
+      if dtype in [np.int8, np.int16, np.int32, np.int64]:
+        lhs = np.array([-1, -5, -3, -14], dtype=dtype)
+        rhs = np.array([5, 0, 1, 11], dtype=dtype)
+        self._testBinary(
+            bitwise_ops.right_shift, lhs, rhs,
+            expected=np.right_shift(lhs, rhs))
+
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._testBinary(
