@@ -47,7 +47,7 @@ class DiagOp : public OpKernel {
     const Tensor& diagonal = context->input(0);
     const int num_dims = diagonal.dims();
     OP_REQUIRES(context, 0 != num_dims, errors::InvalidArgument(
-          "Input must be at least rank 1, got 0"));
+        "Input must be at least rank 1, got 0"));
     TensorShape out_shape;
     for (int i = 0; i < num_dims; ++i) {
       out_shape.AddDim(diagonal.dim_size(i));
