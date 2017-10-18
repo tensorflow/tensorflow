@@ -21,6 +21,5 @@ apt-get -qq -y install \
 	zlib1g-dev \
 	unzip
 
-echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections
-add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update
-DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer
+add-apt-repository --yes ppa:openjdk-r/ppa && apt-get -qq update
+DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes install openjdk-8-jdk
