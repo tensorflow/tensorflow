@@ -1097,7 +1097,7 @@ REGISTER_OP("CropAndResize")
     .Input("box_ind: int32")
     .Input("crop_size: int32")
     .Output("crops: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .Attr("extrapolation_value: float = 0")
     .SetShapeFn([](InferenceContext* c) {
@@ -1204,7 +1204,7 @@ REGISTER_OP("CropAndResizeGradBoxes")
     .Input("boxes: float")
     .Input("box_ind: int32")
     .Output("output: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(2));
