@@ -26,14 +26,14 @@ namespace functor {
 
 template <typename Device, typename T>
 struct DiagFunctor {
-  Status operator() (const Device& device, const int64 size,
-                   const T* in, T* out);
+  Status operator() (OpKernelContext* context, const int64 size,
+                     const T* in, T* out);
 };
 
 template <typename Device, typename T>
 struct DiagPartFunctor {
-  Status operator() (const Device& device, const int64 size,
-                   const T* in, T* out);
+  Status operator() (OpKernelContext* context, const int64 size,
+                     const T* in, T* out);
 };
 
 }  // namespace functor

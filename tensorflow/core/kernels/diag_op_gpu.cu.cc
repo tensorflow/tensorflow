@@ -48,8 +48,8 @@ __global__ void ZeroCudaKernel(const int num_threads,
 template <typename T>
 struct DiagFunctor<GPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status
-  operator() (const GPUDevice& device, const int64 size,
-                      const T* in, T* out) {
+  operator() (OpKernelContext* context, const int64 size,
+              const T* in, T* out) {
     // CudaLaunchConfig uses an int for virtual_thread_count,
     // so this may overflow in extreme cases.
     if (size && (size * size / size) != size) {
@@ -61,6 +61,7 @@ struct DiagFunctor<GPUDevice, T> {
     if (size == 0) {
       return Status::OK();
     }
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
 
     // Set output memory with zero elements.
     CudaLaunchConfig zero_config = GetCudaLaunchConfig(size*size, device);
@@ -112,12 +113,13 @@ __global__ void DiagPartCudaKernel(const int num_threads,
 template <typename T>
 struct DiagPartFunctor<GPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status
-  operator() (const GPUDevice& device, const int64 size,
-                      const T* in, T* out) {
+  operator() (OpKernelContext* context, const int64 size,
+              const T* in, T* out) {
     // Empty tensor couldn't launch the kernel.
     if (size == 0) {
       return Status::OK();
     }
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
 
     // Extract the diagonal elements.
     CudaLaunchConfig diag_config = GetCudaLaunchConfig(size, device);

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
@@ -59,7 +60,7 @@ class DiagOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, out_shape, &output_tensor));
     functor::DiagFunctor<Device, T> diagFunc;
-    Status s = diagFunc(context->eigen_device<Device>(),
+    Status s = diagFunc(context,
                         diagonal.NumElements(),
                         diagonal.flat<T>().data(),
                         output_tensor->flat<T>().data());
@@ -98,7 +99,7 @@ class DiagPartOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, out_shape, &output));
     functor::DiagPartFunctor<Device, T> diagPartFunc;
-    Status s = diagPartFunc(context->eigen_device<Device>(),
+    Status s = diagPartFunc(context,
                             out_shape.num_elements(),
                             tensor.flat<T>().data(),
                             output->flat<T>().data());
@@ -129,12 +130,19 @@ namespace functor {
 template <typename T>
 struct DiagFunctor<CPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status
-  operator() (const CPUDevice& device, const int64 size,
-                   const T* in, T* out) {
-    std::fill(out, out + size * size, T());
-    for (int64 index = 0; index < size; index++) {
-      out[(1 + size) * index] = in[index];
-    }
+  operator() (OpKernelContext* context, const int64 size,
+              const T* in, T* out) {
+    auto subDiag = [in, out, size](int64 start, int64 limit) {
+      std::fill(out + size * start, out + size * limit, T());
+      for (int64 index = start; index < limit; ++index) {
+        out[(1 + size) * index] = in[index];
+      }
+    };
+
+    // Here, 5 is a empirical factor of cost_per_unit.
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, size,
+        5 * size, subDiag);
     return Status::OK();
   }
 };
@@ -142,11 +150,18 @@ struct DiagFunctor<CPUDevice, T> {
 template <typename T>
 struct DiagPartFunctor<CPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status
-  operator() (const CPUDevice& device, const int64 size,
-                   const T* in, T* out) {
-    for (int64 index = 0; index < size; index++) {
-      out[index] = in[(1 + size) * index];
-    }
+  operator() (OpKernelContext* context, const int64 size,
+              const T* in, T* out) {
+    auto subDiagPart = [in, out, size](int64 start, int64 limit) {
+      for (int64 index = start; index < limit; ++index) {
+        out[index] = in[(1 + size) * index];
+      }
+    };
+
+    // Here, 5 is a empirical factor of cost_per_unit.
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, size,
+        5, subDiagPart);
     return Status::OK();
   }
 };
