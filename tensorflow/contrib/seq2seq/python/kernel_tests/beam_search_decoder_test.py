@@ -54,15 +54,18 @@ class TestGatherTree(test.TestCase):
          [[0, 0, 0], [1, 2, 0], [2, 1, 1]]],
         dtype=np.int32).transpose([1, 0, 2])
 
-    # sequence_lengths is shaped (batch_size = 2, beam_width = 3)
-    sequence_lengths = [[3, 3, 3], [3, 3, 3]]
+    # sequence_lengths is shaped (batch_size = 3)
+    max_sequence_lengths = [3, 3]
 
     expected_result = np.array(
         [[[2, 2, 2], [6, 5, 6], [7, 8, 9]],
          [[2, 4, 4], [7, 6, 6], [8, 9, 10]]]).transpose([1, 0, 2])
 
     res = beam_search_ops.gather_tree(
-        predicted_ids, parent_ids, sequence_lengths)
+        predicted_ids,
+        parent_ids,
+        max_sequence_lengths=max_sequence_lengths,
+        end_token=11)
 
     with self.test_session() as sess:
       res_ = sess.run(res)

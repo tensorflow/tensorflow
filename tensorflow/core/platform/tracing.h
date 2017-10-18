@@ -169,10 +169,10 @@ class Tracing::Engine {
   // Start tracing under the specified label. Caller should delete the result
   // to stop tracing.
   // May return nullptr if tracing is not supported.
-  virtual Tracer* StartTracing(StringPiece label) = 0;
+  virtual Tracer* StartTracing(StringPiece label, bool is_expensive) = 0;
   // Same as above, but implementations can avoid copying the string.
-  virtual Tracer* StartTracing(string&& label) {
-    return StartTracing(StringPiece(label));
+  virtual Tracer* StartTracing(string&& label, bool is_expensive) {
+    return StartTracing(StringPiece(label), is_expensive);
   }
 };
 
@@ -218,12 +218,14 @@ class Tracing::ScopedAnnotation {
 class Tracing::TraceMe {
  public:
   explicit TraceMe(StringPiece name);
+  TraceMe(StringPiece name, bool is_expensive);
 
   // If tracing is enabled, set up a traceMe with a label of
   // "<name_part1>:<name_part2>".  This can be cheaper than the
   // single-argument constructor because the concatenation of the
   // label string is only done if tracing is enabled.
   TraceMe(StringPiece name_part1, StringPiece name_part2);
+  TraceMe(StringPiece name_part1, StringPiece name_part2, bool is_expensive);
 
  private:
   std::unique_ptr<Engine::Tracer> tracer_;
@@ -245,19 +247,24 @@ inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
   }
 }
 
-inline Tracing::TraceMe::TraceMe(StringPiece name) {
+inline Tracing::TraceMe::TraceMe(StringPiece name) : TraceMe(name, true) {}
+
+inline Tracing::TraceMe::TraceMe(StringPiece name, bool is_expensive) {
   auto e = Tracing::engine();
   if (e && e->IsEnabled()) {
-    tracer_.reset(e->StartTracing(name));
+    tracer_.reset(e->StartTracing(name, is_expensive));
   }
 }
 
-inline Tracing::TraceMe::TraceMe(StringPiece name_part1,
-                                 StringPiece name_part2) {
+inline Tracing::TraceMe::TraceMe(StringPiece name_part1, StringPiece name_part2)
+    : TraceMe(name_part1, name_part2, true) {}
+
+inline Tracing::TraceMe::TraceMe(StringPiece name_part1, StringPiece name_part2,
+                                 bool is_expensive) {
   auto e = Tracing::engine();
   if (e && e->IsEnabled()) {
-    tracer_.reset(
-        e->StartTracing(strings::StrCat(name_part1, ":", name_part2)));
+    tracer_.reset(e->StartTracing(strings::StrCat(name_part1, ":", name_part2),
+                                  is_expensive));
   }
 }
 

@@ -29,17 +29,18 @@ limitations under the License.
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 namespace tensorflow {
-namespace internal {
+namespace {
 
-template <typename Device, typename T, bool conjugate>
-void TransposeSimple(const Device& device, const Tensor& in,
+template <typename T, bool conjugate>
+void TransposeSimple(const CPUDevice& device, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   const int ndims = in.dims();
   gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
   gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-  auto transpose_fn = [=](int64 begin, int64 end) {
+  auto transpose_fn = [=, &in_strides, &out_strides, &perm](int64 begin,
+                                                            int64 end) {
     for (int64 o_idx = begin; o_idx < end; ++o_idx) {
       int64 i_idx = 0;
       int64 t = o_idx;
@@ -64,7 +65,7 @@ void TransposeSimple(const Device& device, const Tensor& in,
   device.parallelFor(in.NumElements(), cost, std::move(transpose_fn));
 }
 
-}  // end namespace internal
+}  // namespace
 
 template <typename T, bool conjugate>
 struct Transpose<CPUDevice, T, conjugate> {
@@ -88,32 +89,47 @@ struct Transpose<CPUDevice, T, conjugate> {
                                                        out);
         break;
       default:
-        internal::TransposeSimple<CPUDevice, T, conjugate>(d, in, perm, out);
+        TransposeSimple<T, conjugate>(d, in, perm, out);
         break;
     }
   }
 };
 
-template <>
-Status DoTranspose(const CPUDevice& device, const Tensor& in,
-                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-  return internal::DoTransposeImpl<CPUDevice>::run(device, in, perm,
-                                                   false /* conjugate */, out);
-}
+#define INSTANTIATE(DEVICE)                                                 \
+  template <>                                                               \
+  Status DoTranspose(const DEVICE& device, const Tensor& in,                \
+                     const gtl::ArraySlice<int32> perm, Tensor* out) {      \
+    return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/false, \
+                                     out);                                  \
+  }                                                                         \
+  template <>                                                               \
+  Status DoConjugateTranspose(const DEVICE& device, const Tensor& in,       \
+                              const gtl::ArraySlice<int32> perm,            \
+                              Tensor* out) {                                \
+    return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/true,  \
+                                     out);                                  \
+  }                                                                         \
+  template <>                                                               \
+  Status DoMatrixTranspose(const DEVICE& device, const Tensor& in,          \
+                           Tensor* out) {                                   \
+    return internal::DoMatrixTransposeImpl(device, in, /*conjugate=*/false, \
+                                           out);                            \
+  }                                                                         \
+  template <>                                                               \
+  Status DoConjugateMatrixTranspose(const DEVICE& device, const Tensor& in, \
+                                    Tensor* out) {                          \
+    return internal::DoMatrixTransposeImpl(device, in, /*conjugate=*/true,  \
+                                           out);                            \
+  }
 
-template <>
-Status DoConjugateTranspose(const CPUDevice& device, const Tensor& in,
-                            const gtl::ArraySlice<int32> perm, Tensor* out) {
-  return internal::DoTransposeImpl<CPUDevice>::run(device, in, perm,
-                                                   true /* conjugate */, out);
-}
+INSTANTIATE(CPUDevice)
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 
 namespace internal {
-template <typename Device, typename T>
-void TransposeSYCL(const Device& d, const Tensor& in,
+template <typename T>
+void TransposeSYCL(const SYCLDevice& d, const Tensor& in,
                    const gtl::ArraySlice<int32> perm, bool conjugate,
                    Tensor* out) {
   switch (in.dims()) {
@@ -165,19 +181,11 @@ struct Transpose<SYCLDevice, string, conjugate> {
   }
 };
 
-template <>
-Status DoTranspose(const SYCLDevice& device, const Tensor& in,
-                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-  return internal::DoTransposeImpl<SYCLDevice>::run(device, in, perm,
-                                                    false /* conjugate */, out);
-}
+// Explicit instantiation.
+template struct Transpose<SYCLDevice, string, false>;
 
-template <>
-Status DoConjugateTranspose(const SYCLDevice& device, const Tensor& in,
-                            const gtl::ArraySlice<int32> perm, Tensor* out) {
-  return internal::DoTransposeImpl<SYCLDevice>::run(device, in, perm,
-                                                    true /* conjugate */, out);
-}
+INSTANTIATE(SYCLDevice)
+#undef INSTANTIATE
 
 #endif  // TENSORFLOW_USE_SYCL
 

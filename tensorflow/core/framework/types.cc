@@ -335,6 +335,18 @@ bool DataTypeIsInteger(DataType dt) {
   }
 }
 
+bool DataTypeIsUnsigned(DataType dt) {
+  switch (dt) {
+    case DT_UINT8:
+    case DT_UINT16:
+    case DT_UINT32:
+    case DT_UINT64:
+      return true;
+    default:
+      return false;
+  }
+}
+
 int DataTypeSize(DataType dt) {
 #define CASE(T)                  \
   case DataTypeToEnum<T>::value: \

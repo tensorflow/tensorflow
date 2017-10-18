@@ -62,6 +62,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                    "Expected float got int32."):
         _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
 
+  def testEagerInitializedValue(self):
+    with context.eager_mode():
+      variable = resource_variable_ops.ResourceVariable(1.0, name="eager-init")
+      self.assertAllEqual(variable.numpy(), 1.0)
+      self.assertAllEqual(variable.initialized_value().numpy(), 1.0)
+
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(

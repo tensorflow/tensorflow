@@ -962,6 +962,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     VLOG(3) << "    " << new_operand->name();
   }
 
+  std::unique_ptr<HloInstruction> clone;
+
   // Explicitly call the factory for the instruction type. This is more robust
   // in the face of code changes than copying fields explicitly. This also
   // properly sets the user fields of the operands.
@@ -984,7 +986,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateUnary(shape, opcode_, new_operands[0]);
+      clone = CreateUnary(shape, opcode_, new_operands[0]);
+      break;
     // Binary ops.
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
@@ -1007,118 +1010,148 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
       CHECK_EQ(new_operands.size(), 2);
-      return CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
+      clone = CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
+      break;
     // Ternary ops.
     case HloOpcode::kClamp:
     case HloOpcode::kSelect:
       CHECK_EQ(new_operands.size(), 3);
-      return CreateTernary(shape, opcode_, new_operands[0], new_operands[1],
-                           new_operands[2]);
+      clone = CreateTernary(shape, opcode_, new_operands[0], new_operands[1],
+                            new_operands[2]);
+      break;
     // Other supported ops.
     case HloOpcode::kBroadcast:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateBroadcast(shape, new_operands[0], dimensions_);
+      clone = CreateBroadcast(shape, new_operands[0], dimensions_);
+      break;
     case HloOpcode::kCall:
-      return CreateCall(shape, new_operands, to_apply());
+      clone = CreateCall(shape, new_operands, to_apply());
+      break;
     case HloOpcode::kCustomCall:
-      return CreateCustomCall(shape, new_operands, custom_call_target_);
+      clone = CreateCustomCall(shape, new_operands, custom_call_target_);
+      break;
     case HloOpcode::kConcatenate:
-      return CreateConcatenate(shape, new_operands, dimensions(0));
+      clone = CreateConcatenate(shape, new_operands, dimensions(0));
+      break;
     case HloOpcode::kConvert:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateConvert(shape, new_operands[0]);
+      clone = CreateConvert(shape, new_operands[0]);
+      break;
     case HloOpcode::kReducePrecision:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateReducePrecision(shape, new_operands[0], exponent_bits_,
-                                   mantissa_bits_);
+      clone = CreateReducePrecision(shape, new_operands[0], exponent_bits_,
+                                    mantissa_bits_);
+      break;
     case HloOpcode::kConvolution:
       CHECK_EQ(new_operands.size(), 2);
-      return CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
-                            *convolution_dimension_numbers_);
+      clone = CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
+                             *convolution_dimension_numbers_);
+      break;
     case HloOpcode::kCrossReplicaSum:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateCrossReplicaSum(shape, new_operands[0]);
+      clone = CreateCrossReplicaSum(shape, new_operands[0]);
+      break;
     case HloOpcode::kGetTupleElement:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateGetTupleElement(shape, new_operands[0], tuple_index());
+      clone = CreateGetTupleElement(shape, new_operands[0], tuple_index());
+      break;
     case HloOpcode::kMap:
-      return CreateMap(shape, new_operands, to_apply());
+      clone = CreateMap(shape, new_operands, to_apply());
+      break;
     case HloOpcode::kPad:
       CHECK_EQ(new_operands.size(), 2);
-      return CreatePad(shape, new_operands[0], new_operands[1],
-                       *padding_config_);
+      clone =
+          CreatePad(shape, new_operands[0], new_operands[1], *padding_config_);
+      break;
     case HloOpcode::kReduce:
       CHECK_EQ(new_operands.size(), 2);
-      return CreateReduce(shape, new_operands[0], new_operands[1], dimensions_,
-                          to_apply());
+      clone = CreateReduce(shape, new_operands[0], new_operands[1], dimensions_,
+                           to_apply());
+      break;
     case HloOpcode::kReduceWindow:
       CHECK_EQ(new_operands.size(), 2);
-      return CreateReduceWindow(shape, new_operands[0], new_operands[1],
-                                *window_, to_apply());
+      clone = CreateReduceWindow(shape, new_operands[0], new_operands[1],
+                                 *window_, to_apply());
+      break;
     case HloOpcode::kSelectAndScatter:
       CHECK_EQ(new_operands.size(), 3);
-      return CreateSelectAndScatter(shape, new_operands[0], select(), *window_,
-                                    new_operands[1], new_operands[2],
-                                    scatter());
+      clone =
+          CreateSelectAndScatter(shape, new_operands[0], select(), *window_,
+                                 new_operands[1], new_operands[2], scatter());
+      break;
     case HloOpcode::kReverse:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateReverse(shape, new_operands[0], dimensions_);
+      clone = CreateReverse(shape, new_operands[0], dimensions_);
+      break;
     case HloOpcode::kRng:
-      return CreateRng(shape, distribution_, new_operands);
+      clone = CreateRng(shape, distribution_, new_operands);
+      break;
     case HloOpcode::kReshape:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateReshape(shape, new_operands[0]);
+      clone = CreateReshape(shape, new_operands[0]);
+      break;
     case HloOpcode::kSlice:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_,
-                         slice_strides_);
+      clone = CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_,
+                          slice_strides_);
+      break;
     case HloOpcode::kDynamicSlice:
-      return CreateDynamicSlice(shape, new_operands[0], new_operands[1],
-                                dynamic_slice_sizes_);
+      clone = CreateDynamicSlice(shape, new_operands[0], new_operands[1],
+                                 dynamic_slice_sizes_);
+      break;
     case HloOpcode::kDynamicUpdateSlice:
       CHECK_EQ(new_operands.size(), 3);
-      return CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],
-                                      new_operands[2]);
+      clone = CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],
+                                       new_operands[2]);
+      break;
     case HloOpcode::kTranspose:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateTranspose(shape, new_operands[0], dimensions_);
-    case HloOpcode::kTuple: {
-      auto new_tuple = CreateTuple(new_operands);
-      *new_tuple->mutable_shape() = shape;
-      return new_tuple;
-    }
+      clone = CreateTranspose(shape, new_operands[0], dimensions_);
+      break;
+    case HloOpcode::kTuple:
+      clone = CreateTuple(new_operands);
+      *clone->mutable_shape() = shape;
+      break;
     case HloOpcode::kWhile:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateWhile(shape, while_condition(), while_body(),
-                         new_operands[0]);
+      clone =
+          CreateWhile(shape, while_condition(), while_body(), new_operands[0]);
+      break;
     case HloOpcode::kConstant:
-      return CreateConstant(literal_->CloneToUnique());
+      clone = CreateConstant(literal_->CloneToUnique());
+      break;
     case HloOpcode::kFusion:
-      return CloneFusionWithNewOperands(shape, new_operands);
+      clone = CloneFusionWithNewOperands(shape, new_operands);
+      break;
     case HloOpcode::kParameter:
-      return CreateParameter(parameter_number_, shape, parameter_name_);
+      clone = CreateParameter(parameter_number_, shape, parameter_name_);
+      break;
     case HloOpcode::kBatchNormTraining:
       CHECK_EQ(new_operands.size(), 3);
-      return CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
-                                     new_operands[2], epsilon(),
-                                     feature_index());
-
+      clone =
+          CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
+                                  new_operands[2], epsilon(), feature_index());
+      break;
     case HloOpcode::kBatchNormInference:
       CHECK_EQ(new_operands.size(), 5);
-      return CreateBatchNormInference(
+      clone = CreateBatchNormInference(
           shape, new_operands[0], new_operands[1], new_operands[2],
           new_operands[3], new_operands[4], epsilon(), feature_index());
+      break;
     case HloOpcode::kInfeed:
       CHECK_EQ(new_operands.size(), 0);
-      return CreateInfeed(shape, infeed_config());
+      clone = CreateInfeed(shape, infeed_config());
+      break;
     case HloOpcode::kOutfeed:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateOutfeed(outfeed_shape_, new_operands[0], outfeed_config());
+      clone = CreateOutfeed(outfeed_shape_, new_operands[0], outfeed_config());
+      break;
     case HloOpcode::kBatchNormGrad:
       CHECK_EQ(new_operands.size(), 5);
-      return CreateBatchNormGrad(shape, new_operands[0], new_operands[1],
-                                 new_operands[2], new_operands[3],
-                                 new_operands[4], epsilon(), feature_index());
+      clone = CreateBatchNormGrad(shape, new_operands[0], new_operands[1],
+                                  new_operands[2], new_operands[3],
+                                  new_operands[4], epsilon(), feature_index());
+      break;
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:
@@ -1126,6 +1159,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
+  clone->set_metadata(metadata_);
+  return clone;
 }
 
 HloInstruction::~HloInstruction() {}
@@ -1168,7 +1203,6 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(
     }
   }
   clone->set_parent(parent_);
-  clone->set_metadata(metadata_);
   return clone;
 }
 
