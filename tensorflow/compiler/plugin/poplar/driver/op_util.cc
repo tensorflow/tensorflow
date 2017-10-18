@@ -92,5 +92,38 @@ AddOutputTensor(TensorMap& map,
   return Status::OK();
 }
 
+template<typename TYPE>
+static void SetVertexField(poplar::Graph& graph,
+                           const poplar::FieldRef &field,
+                           const Literal& literal) {
+  const TYPE* value(static_cast<const TYPE*>(literal.InternalData()));
+  graph.setInitialValue<TYPE>(field, *value);
+}
+
+port::Status SetVertexField(poplar::Graph &graph,
+                            const poplar::FieldRef &field,
+                            const Literal &literal) {
+  switch (literal.shape().element_type()) {
+    case PRED:
+      SetVertexField<bool>(graph, field, literal);
+      break;
+    case S32:
+    case U32:
+      SetVertexField<int>(graph, field, literal);
+      break;
+    case F16:
+      SetVertexField<poplar::IeeeHalf>(graph, field, literal);
+      break;
+    case F32:
+      SetVertexField<float>(graph, field, literal);
+      break;
+    default:
+      return port::Status(port::error::FAILED_PRECONDITION,
+                          port::StrCat("Unrecognised type in SetVertexField: ",
+                                       literal.shape().element_type()));
+  }
+  return Status::OK();
+}
+
 }
 }

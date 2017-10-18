@@ -74,16 +74,19 @@ class NAME : public Vertex { \
 public: \
   Input<Vector<T>> a; \
   Input<Vector<T>> b; \
-  InOut<Vector<T>> out; \
+  Output<Vector<T>> out; \
+  T initval; \
 \
   bool compute() { \
     unsigned selected = 0; \
     for (unsigned i = 1; i < a.size(); ++i) { \
       if (a[i] OP a[selected]) { \
         selected = i; \
-      }; \
+      } \
     } \
-    out[selected] = b[0]; \
+    for (unsigned i = 0; i < out.size(); ++i) { \
+      out[i] = (i == selected) ? b[0] : initval; \
+    } \
     return true; \
   } \
 \

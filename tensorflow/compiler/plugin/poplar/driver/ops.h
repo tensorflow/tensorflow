@@ -22,6 +22,7 @@ namespace port = ::perftools::gputools::port;
 namespace xla {
 class HloInstruction;
 class HloComputation;
+class Literal;
 
 namespace poplarplugin {
 
@@ -47,6 +48,10 @@ typedef void (*popstd_inplace_fn)(poplar::Graph &graph,
 port::StatusOr<popstd_unary_fn>  LookupUnaryFn(const HloInstruction*);
 port::StatusOr<popstd_binary_fn> LookupBinaryFn(const HloInstruction*);
 port::StatusOr<popstd_inplace_fn> LookupBinaryInPlaceFn(const HloInstruction*);
+
+port::Status SetVertexField(poplar::Graph &graph,
+                            const poplar::FieldRef &field,
+                            const Literal &literal);
 
 template<typename To, typename From>
 To convert_array(const From& from) {

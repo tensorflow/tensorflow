@@ -128,8 +128,12 @@ GetIdentityConstantLiteral(const HloInstruction* root) {
     case HloOpcode::kOr:
       return Literal::One(root->shape().element_type());
     case HloOpcode::kMaximum:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
       return Literal::MinValue(root->shape().element_type());
     case HloOpcode::kMinimum:
+    case HloOpcode::kLe:
+    case HloOpcode::kLt:
       return Literal::MaxValue(root->shape().element_type());
   }
 }
@@ -563,6 +567,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
                              {{"a", w_in},
                               {"b", s},
                               {"out", w_par}});
+    TF_RETURN_IF_ERROR(SetVertexField(graph, v["initval"], identity_literal));
     graph.setTileMapping(v,
                          (i / device_info.numWorkerContexts) %
                          device_info.getNumTiles());
