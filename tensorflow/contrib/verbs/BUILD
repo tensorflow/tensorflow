@@ -144,6 +144,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",

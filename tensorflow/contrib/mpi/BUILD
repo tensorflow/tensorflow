@@ -73,6 +73,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core:stream_executor",
         "//third_party/mpi",
     ],
 )
