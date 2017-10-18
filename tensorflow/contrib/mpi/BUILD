@@ -69,11 +69,11 @@ cc_library(
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_cc",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core:stream_executor",
         "//third_party/mpi",
     ],
 )
