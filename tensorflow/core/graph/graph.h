@@ -451,8 +451,7 @@ class Graph {
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 
-  // Removes control edge `edge` from the graph. If `update_node_def` is true,
-  // updates dest's NodeDef.
+  // Removes control edge `edge` from the graph.
   // REQUIRES: The control edge must exist.
   void RemoveControlEdge(const Edge* e);
   
