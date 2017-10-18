@@ -196,6 +196,15 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 
+  Status LRN(const Scope& scope, const Operation& op,
+             const std::vector<Output>& grad_inputs,
+             std::vector<Output>* grad_outputs){
+    //TODO: get good at C++
+    return scope.status();
+  }
+REGISTER_GRADIENT_OP("LRN", LRN);
+
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow
