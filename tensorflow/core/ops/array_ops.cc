@@ -709,7 +709,7 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
                        [0, 0, 0, 4]]
 ```
 
--diagonal: Rank k tensor where k is at most 1.
+diagonal: Rank k tensor where k is at most 1.
 )doc");
 
 // --------------------------------------------------------------------------
