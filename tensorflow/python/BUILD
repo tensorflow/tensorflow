@@ -3685,7 +3685,10 @@ py_test(
     size = "medium",
     srcs = ["training/monitored_session_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "notsan",  # b/67945581
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
