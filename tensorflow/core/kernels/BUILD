@@ -2994,6 +2994,7 @@ cc_library(
         ":in_topk_op",
         ":l2loss_op",
         ":lrn_op",
+        ":nth_element_op",
         ":relu_op",
         ":softmax_op",
         ":softplus_op",
@@ -3078,6 +3079,12 @@ tf_kernel_library(
     name = "topk_op",
     prefix = "topk_op",
     deps = NN_DEPS + if_cuda(["@cub_archive//:cub"]),
+)
+
+tf_kernel_library(
+    name = "nth_element_op",
+    prefix = "nth_element_op",
+    deps = NN_DEPS,
 )
 
 tf_kernel_library(
