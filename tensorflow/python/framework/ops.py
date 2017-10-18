@@ -607,9 +607,6 @@ class _EagerTensorBase(Tensor):
   def numpy(self):
     """Returns a numpy array with the same contents as the Tensor.
 
-    The contents of the Tensor must be backed by host memory. The
-    as_cpu_tensor() method can be used ensure that this is true.
-
     TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
     buffer but instead always explicitly copy? Note that currently it may or may
     not copy based on whether the numpy data is properly aligned or not.
@@ -618,7 +615,7 @@ class _EagerTensorBase(Tensor):
       A numpy array that may share memory with the Tensor object. Any changes
       to one may be reflected in the other.
     """
-    return self.as_cpu_tensor()._numpy()  # pylint: disable=protected-access
+    return self.cpu()._numpy()  # pylint: disable=protected-access
 
   def __array__(self):
     return np.array(self.numpy())
@@ -703,11 +700,11 @@ class _EagerTensorBase(Tensor):
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
 
-  def as_cpu_tensor(self):
+  def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
 
-  def as_gpu_tensor(self, gpu_index=0):
+  def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
     Arguments:
@@ -727,7 +724,7 @@ class _EagerTensorBase(Tensor):
     if self.dtype != dtypes.bool:
       raise ValueError(
           "Non-boolean tensor %s cannot be converted to boolean." % repr(self))
-    return bool(self.as_cpu_tensor().numpy())
+    return bool(self.cpu().numpy())
 
   def __nonzero__(self):
     return self.__bool__()

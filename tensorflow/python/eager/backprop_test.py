@@ -209,10 +209,10 @@ class BackpropTest(test.TestCase):
     def fn(x):
       with context.device('/gpu:0'):
         b = constant_op.constant(2.0)
-        c = math_ops.add(x.as_gpu_tensor(), b)
-        # TODO(apassos): remove as_cpu_tensor below by making TensorVSPace aware
+        c = math_ops.add(x.gpu(), b)
+        # TODO(apassos): remove cpu below by making TensorVSPace aware
         # of devices.
-        return math_ops.add(c, constant_op.constant(3.0)).as_cpu_tensor()
+        return math_ops.add(c, constant_op.constant(3.0)).cpu()
 
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
@@ -230,7 +230,7 @@ class BackpropTest(test.TestCase):
         return v.read_value()
 
     self.assertEqual(
-        backprop.implicit_grad(f)()[0][0].as_cpu_tensor().numpy(), 1.0)
+        backprop.implicit_grad(f)()[0][0].cpu().numpy(), 1.0)
 
   def testCPU(self):
 
@@ -247,7 +247,7 @@ class BackpropTest(test.TestCase):
       self.skipTest('No GPUs found')
 
     def f(a, b):
-      return a.as_cpu_tensor() + b.as_cpu_tensor()
+      return a.cpu() + b.cpu()
 
     with context.device('/gpu:0'):
       a = constant_op.constant(1.0)
@@ -309,8 +309,8 @@ class BackpropTest(test.TestCase):
     # back: e (cpu) -> add (cpu) -> c (cpu->gpu) -> add (gpu) -> grad (gpu->cpu)
     def f(a, b):
       with context.device('/gpu:0'):
-        c = math_ops.add(a.as_gpu_tensor(0), b.as_gpu_tensor(0))
-      return math_ops.add(c.as_cpu_tensor(), constant_op.constant(3.0))
+        c = math_ops.add(a.gpu(0), b.gpu(0))
+      return math_ops.add(c.cpu(), constant_op.constant(3.0))
 
     with context.device('/cpu:0'):
       a = constant_op.constant(1.0)
