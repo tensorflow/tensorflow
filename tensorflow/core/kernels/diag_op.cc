@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/diag_op.h"
 
+#include <algorithm>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/platform/logging.h"
-#include <algorithm>
 
 namespace tensorflow {
 
@@ -59,11 +59,11 @@ class DiagOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, out_shape, &output_tensor));
     functor::DiagFunctor<Device, T> diagFunc;
-    diagFunc(context->eigen_device<Device>(),
-             diagonal.NumElements(),
-             diagonal.flat<T>().data(),
-             output_tensor->flat<T>().data());
-    return;
+    Status s = diagFunc(context->eigen_device<Device>(),
+                        diagonal.NumElements(),
+                        diagonal.flat<T>().data(),
+                        output_tensor->flat<T>().data());
+    OP_REQUIRES_OK(context, s);
   }
 };
 
@@ -98,11 +98,11 @@ class DiagPartOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, out_shape, &output));
     functor::DiagPartFunctor<Device, T> diagPartFunc;
-    diagPartFunc(context->eigen_device<Device>(),
-                 out_shape.num_elements(),
-                 tensor.flat<T>().data(),
-                 output->flat<T>().data());
-    return;
+    Status s = diagPartFunc(context->eigen_device<Device>(),
+                            out_shape.num_elements(),
+                            tensor.flat<T>().data(),
+                            output->flat<T>().data());
+    OP_REQUIRES_OK(context, s);
   }
 };
 
@@ -128,22 +128,26 @@ class DiagPartOp : public OpKernel {
 namespace functor {
 template <typename T>
 struct DiagFunctor<CPUDevice, T> {
-  void operator() (const CPUDevice& device, const int64 size,
+  EIGEN_ALWAYS_INLINE Status
+  operator() (const CPUDevice& device, const int64 size,
                    const T* in, T* out) {
     std::fill(out, out + size * size, T());
     for (int64 index = 0; index < size; index++) {
       out[(1 + size) * index] = in[index];
     }
+    return Status::OK();
   }
 };
 
 template <typename T>
 struct DiagPartFunctor<CPUDevice, T> {
-  void operator() (const CPUDevice& device, const int64 size,
+  EIGEN_ALWAYS_INLINE Status
+  operator() (const CPUDevice& device, const int64 size,
                    const T* in, T* out) {
     for (int64 index = 0; index < size; index++) {
       out[index] = in[(1 + size) * index];
     }
+    return Status::OK();
   }
 };
 }  // namespace functor
@@ -155,12 +159,12 @@ struct DiagPartFunctor<CPUDevice, T> {
       Name("Diag").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DiagOp<CPUDevice, T>)
 
-REGISTER_DIAGOP(double);
-REGISTER_DIAGOP(float);
-REGISTER_DIAGOP(int32);
-REGISTER_DIAGOP(int64);
-REGISTER_DIAGOP(complex64);
-REGISTER_DIAGOP(complex128);
+TF_CALL_double(REGISTER_DIAGOP);
+TF_CALL_float(REGISTER_DIAGOP);
+TF_CALL_int32(REGISTER_DIAGOP);
+TF_CALL_int64(REGISTER_DIAGOP);
+TF_CALL_complex64(REGISTER_DIAGOP);
+TF_CALL_complex128(REGISTER_DIAGOP);
 #undef REGISTER_DIAGOP
 
 #define REGISTER_DIAGPARTOP(T)                                    \
@@ -168,12 +172,12 @@ REGISTER_DIAGOP(complex128);
       Name("DiagPart").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DiagPartOp<CPUDevice, T>)
 
-REGISTER_DIAGPARTOP(double);
-REGISTER_DIAGPARTOP(float);
-REGISTER_DIAGPARTOP(int32);
-REGISTER_DIAGPARTOP(int64);
-REGISTER_DIAGPARTOP(complex64);
-REGISTER_DIAGPARTOP(complex128);
+TF_CALL_double(REGISTER_DIAGPARTOP);
+TF_CALL_float(REGISTER_DIAGPARTOP);
+TF_CALL_int32(REGISTER_DIAGPARTOP);
+TF_CALL_int64(REGISTER_DIAGPARTOP);
+TF_CALL_complex64(REGISTER_DIAGPARTOP);
+TF_CALL_complex128(REGISTER_DIAGPARTOP);
 #undef REGISTER_DIAGPARTOP
 
 // Register the GPU kernels.
@@ -192,15 +196,14 @@ extern template struct DiagFunctor<GPUDevice, complex128>;
 #define REGISTER_DIAGOP_GPU(T)                                \
   REGISTER_KERNEL_BUILDER(                                    \
       Name("Diag").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      DiagOp<GPUDevice, T>);
+      DiagOp<GPUDevice, T>)
 
-REGISTER_DIAGOP_GPU(double);
-REGISTER_DIAGOP_GPU(float);
-REGISTER_DIAGOP_GPU(int32);
-REGISTER_DIAGOP_GPU(int64);
-REGISTER_DIAGOP_GPU(complex64);
-REGISTER_DIAGOP_GPU(complex128);
-
+TF_CALL_double(REGISTER_DIAGOP_GPU);
+TF_CALL_float(REGISTER_DIAGOP_GPU);
+TF_CALL_int32(REGISTER_DIAGOP_GPU);
+TF_CALL_int64(REGISTER_DIAGOP_GPU);
+TF_CALL_complex64(REGISTER_DIAGOP_GPU);
+TF_CALL_complex128(REGISTER_DIAGOP_GPU);
 #undef REGISTER_DIAGOP_GPU
 
 // Forward declarations of the functor specializations for GPU.
@@ -216,15 +219,14 @@ extern template struct DiagPartFunctor<GPUDevice, complex128>;
 #define REGISTER_DIAGPARTOP_GPU(T)                                \
   REGISTER_KERNEL_BUILDER(                                        \
       Name("DiagPart").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      DiagPartOp<GPUDevice, T>);
+      DiagPartOp<GPUDevice, T>)
 
-REGISTER_DIAGPARTOP_GPU(double);
-REGISTER_DIAGPARTOP_GPU(float);
-REGISTER_DIAGPARTOP_GPU(int32);
-REGISTER_DIAGPARTOP_GPU(int64);
-REGISTER_DIAGPARTOP_GPU(complex64);
-REGISTER_DIAGPARTOP_GPU(complex128);
-
+TF_CALL_double(REGISTER_DIAGPARTOP_GPU);
+TF_CALL_float(REGISTER_DIAGPARTOP_GPU);
+TF_CALL_int32(REGISTER_DIAGPARTOP_GPU);
+TF_CALL_int64(REGISTER_DIAGPARTOP_GPU);
+TF_CALL_complex64(REGISTER_DIAGPARTOP_GPU);
+TF_CALL_complex128(REGISTER_DIAGPARTOP_GPU);
 #undef REGISTER_DIAGPARTOP_GPU
 
 #endif  // GOOGLE_CUDA

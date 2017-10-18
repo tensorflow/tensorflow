@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DIAG_OP_H_
-#define TENSORFLOW_DIAG_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DIAG_OP_H_
+#define TENSORFLOW_CORE_KERNELS_DIAG_OP_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -26,13 +26,13 @@ namespace functor {
 
 template <typename Device, typename T>
 struct DiagFunctor {
-  void operator() (const Device& device, const int64 size,
+  Status operator() (const Device& device, const int64 size,
                    const T* in, T* out);
 };
 
 template <typename Device, typename T>
 struct DiagPartFunctor {
-  void operator() (const Device& device, const int64 size,
+  Status operator() (const Device& device, const int64 size,
                    const T* in, T* out);
 };
 
@@ -40,4 +40,4 @@ struct DiagPartFunctor {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_DIAG_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DIAG_OP_H_

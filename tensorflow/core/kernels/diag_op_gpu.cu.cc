@@ -47,19 +47,47 @@ __global__ void ZeroCudaKernel(const int num_threads,
 
 template <typename T>
 struct DiagFunctor<GPUDevice, T> {
-  void operator() (const GPUDevice& device, const int64 size,
+  EIGEN_ALWAYS_INLINE Status
+  operator() (const GPUDevice& device, const int64 size,
                       const T* in, T* out) {
+    // CudaLaunchConfig uses an int for virtual_thread_count,
+    // so this may overflow in extreme cases.
+    if (size && (size * size / size) != size) {
+      return errors::Internal(
+          "DiagOp got input size too large.");
+    }
+
+    // Empty tensor couldn't launch the kernel.
+    if (size == 0) {
+      return Status::OK();
+    }
+
+    // Set output memory with zero elements.
     CudaLaunchConfig zero_config = GetCudaLaunchConfig(size*size, device);
     ZeroCudaKernel<<<zero_config.block_count,
                      zero_config.thread_per_block,
                      0, device.stream()>>>(
         zero_config.virtual_thread_count, out);
+    auto err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      return errors::Internal(
+          "Could not launch DiagOp kernel: ",
+          cudaGetErrorString(err), ".");
+    }
 
+    // Fill the diagonal elements
     CudaLaunchConfig diag_config = GetCudaLaunchConfig(size, device);
     DiagCudaKernel<<<diag_config.block_count,
                      diag_config.thread_per_block,
                      0, device.stream()>>>(
         diag_config.virtual_thread_count, size, in, out);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      return errors::Internal(
+          "Could not launch DiagOp kernel: ",
+          cudaGetErrorString(err), ".");
+    }
+    return Status::OK();
   }
 };
 
@@ -83,13 +111,27 @@ __global__ void DiagPartCudaKernel(const int num_threads,
 
 template <typename T>
 struct DiagPartFunctor<GPUDevice, T> {
-  void operator() (const GPUDevice& device, const int64 size,
+  EIGEN_ALWAYS_INLINE Status
+  operator() (const GPUDevice& device, const int64 size,
                       const T* in, T* out) {
+    // Empty tensor couldn't launch the kernel.
+    if (size == 0) {
+      return Status::OK();
+    }
+
+    // Extract the diagonal elements.
     CudaLaunchConfig diag_config = GetCudaLaunchConfig(size, device);
     DiagPartCudaKernel<<<diag_config.block_count,
                      diag_config.thread_per_block,
                      0, device.stream()>>>(
         diag_config.virtual_thread_count, size, in, out);
+    auto err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      return errors::Internal(
+          "Could not launch DiagPartOp kernel: ",
+          cudaGetErrorString(err), ".");
+    }
+    return Status::OK();
   }
 };
 
