@@ -391,14 +391,14 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "ops_test",
     srcs = ["ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":context",
         ":execute",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -410,7 +410,6 @@ py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
-        "//third_party/py/numpy",
     ],
 )
 

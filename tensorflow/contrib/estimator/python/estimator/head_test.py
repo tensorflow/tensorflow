@@ -80,9 +80,13 @@ def _sigmoid(logits):
 
 
 def _sigmoid_cross_entropy(labels, logits):
+  """Returns sigmoid cross entropy averaged over classes."""
   sigmoid_logits = _sigmoid(logits)
-  return (-labels * np.log(sigmoid_logits)
-          -(1 - labels) * np.log(1 - sigmoid_logits))
+  unreduced_result = (
+      -labels * np.log(sigmoid_logits)
+      -(1 - labels) * np.log(1 - sigmoid_logits))
+  # Mean over classes
+  return np.mean(unreduced_result, axis=-1, keepdims=True)
 
 
 class MultiLabelHead(test.TestCase):
@@ -226,7 +230,7 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits
     expected_unweighted_loss = np.array(
-        [[10., 10.], [15., 0.]], dtype=np.float32)
+        [[(10. + 10.) / 2.], [(15. + 0.) / 2.]], dtype=np.float32)
     actual_unweighted_loss, _ = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
@@ -311,10 +315,8 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
-    expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
-    )
+    # Sum over examples.
+    expected_loss = np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits))
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # Average loss over examples.
@@ -343,10 +345,9 @@ class MultiLabelHead(test.TestCase):
     labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits)) /
-        n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
     )
     keys = metric_keys.MetricKeys
     expected_metrics = {
@@ -377,10 +378,9 @@ class MultiLabelHead(test.TestCase):
     labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits)) /
-        n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
     )
     keys = metric_keys.MetricKeys
     expected_metrics = {
@@ -407,9 +407,9 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits))
     )
 
     keys = metric_keys.MetricKeys
@@ -506,7 +506,7 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits
     expected_unweighted_loss = np.array(
-        [[10., 10.], [15., 0.]], dtype=np.float32)
+        [[(10. + 10.) / 2.], [(15. + 0.) / 2.]], dtype=np.float32)
     actual_unweighted_loss, _ = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.TRAIN,

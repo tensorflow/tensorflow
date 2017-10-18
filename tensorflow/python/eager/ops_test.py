@@ -49,7 +49,7 @@ class OpsTest(test_util.TensorFlowTestCase):
     three = constant_op.constant([[3.]]).as_gpu_tensor()
     five = constant_op.constant([[5.]]).as_gpu_tensor()
     product = math_ops.matmul(three, five)
-    self.assertEqual([[15.0]], product)
+    self.assertEqual([[15.0]], product.numpy())
 
   def testExecuteStringAttr(self):
     three = constant_op.constant(3.0)
@@ -97,7 +97,7 @@ class OpsTest(test_util.TensorFlowTestCase):
       self.skipTest('No GPUs found')
     with context.device('/gpu:0'):
       r = constant_op.constant(1) + constant_op.constant(2)
-    self.assertEqual(r, 3)
+    self.assertAllEqual(r, 3)
 
   def testExecuteListOutputLen1(self):
     split_dim = constant_op.constant(1)
@@ -264,7 +264,7 @@ class OpsTest(test_util.TensorFlowTestCase):
     # The Shape op kernel on GPU places the output in host memory.
     value = constant_op.constant([1.]).as_gpu_tensor()
     shape = array_ops.shape(value)
-    self.assertEquals([1], shape)
+    self.assertEqual([1], shape.numpy())
 
   def testRandomUniform(self):
     scalar_shape = constant_op.constant([], dtype=dtypes.int32)
