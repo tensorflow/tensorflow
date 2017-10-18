@@ -21,8 +21,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
+#endif  // GOOGLE_CUDA
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -98,6 +100,7 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
       if (can_memcpy) {
         if (dst_dev->tensorflow_gpu_device_info() &&
             (!recv_args.alloc_attrs.on_host())) {
+#if GOOGLE_CUDA
           CHECK(recv_args.device_context)
               << "send dev name: " << src_dev->name()
               << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
@@ -118,6 +121,7 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
                 RecvPostCopyOps(key, key_with_step_id, recv_args, done, rm, rc,
                                 val, s);
               });
+#endif  // GOOGLE_CUDA
           return;
         } else {
           AllocatorAttributes host_alloc_attrs;

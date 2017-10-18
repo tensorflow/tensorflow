@@ -21,8 +21,10 @@ limitations under the License.
 #include "tensorflow/contrib/verbs/verbs_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
+#endif
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 
@@ -1063,6 +1066,7 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
     TensorProto proto;
     if (src_dev->tensorflow_gpu_device_info() &&
         (!send_args.alloc_attrs.on_host())) {
+#if GOOGLE_CUDA
       CHECK(send_args.device_context) << "send dev name: " << src_dev->name()
                                       << " gpu_info: "
                                       << src_dev->tensorflow_gpu_device_info();
@@ -1101,6 +1105,7 @@ Rendezvous::DoneCallback RdmaTensorBuffer::getRecvTensorCallback(
                                  &proto, NULL, send_args, recv_args);
             });
       }
+#endif  // GOOGLE_CUDA
     } else {
       // tensor is in CPU memory.
       StringPiece copy_buf;
