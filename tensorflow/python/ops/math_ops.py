@@ -50,6 +50,7 @@ See the @{$python/math_ops} guide.
 @@asinh
 @@acosh
 @@atanh
+@@swish
 @@ceil
 @@floor
 @@maximum
@@ -2111,6 +2112,24 @@ def sigmoid(x, name=None):
   with ops.name_scope(name, "Sigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops._sigmoid(x, name=name)
+
+
+def swish(x, name=None):
+  """Computes swish of `x` element-wise.
+
+  Specifically, `y = x * sigmoid(x)`.
+
+  Args:
+    x: A Tensor with type `float16`, `float32`, `float64`, `complex64`,
+      or `complex128`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x`.
+  """
+  with ops.name_scope(name, "Swish", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._mul(x, gen_math_ops._sigmoid(x), name=name)
 
 
 def log_sigmoid(x, name=None):
