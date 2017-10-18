@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TRANSPOSE_FUNCTOR_H_
 #define TENSORFLOW_CORE_KERNELS_TRANSPOSE_FUNCTOR_H_
 
+#include <numeric>
 #include <string>
 #include <vector>
 #include "tensorflow/core/framework/tensor.h"
