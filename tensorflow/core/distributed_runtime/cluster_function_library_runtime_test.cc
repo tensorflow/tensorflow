@@ -214,7 +214,11 @@ node {
   TF_EXPECT_GRAPH_EQ(expected, actual);
 }
 
-TEST_F(ClusterFunctionLibraryRuntimeTest, InstantiateAndRun) {
+// Disabling the following two tests since there seem to be some issues with
+// GRPC bringing up multiple processes as sub-processes.
+// More info at: https://github.com/grpc/grpc/issues/10142.
+// TODO(rohanj): Enable tests when the grpc bug is fixed.
+TEST_F(ClusterFunctionLibraryRuntimeTest, DISABLED_InstantiateAndRun) {
   FunctionDefLibrary proto;
   *(proto.add_function()) = test::function::XTimesTwoInt32();
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
@@ -227,7 +231,8 @@ TEST_F(ClusterFunctionLibraryRuntimeTest, InstantiateAndRun) {
   test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({2, 4, 6, 8}));
 }
 
-TEST_F(ClusterFunctionLibraryRuntimeTest, InstantiateAndRunAttrSubstitution) {
+TEST_F(ClusterFunctionLibraryRuntimeTest,
+       DISABLED_InstantiateAndRunAttrSubstitution) {
   FunctionDefLibrary proto;
   *(proto.add_function()) = test::function::XTimesTwo();
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);

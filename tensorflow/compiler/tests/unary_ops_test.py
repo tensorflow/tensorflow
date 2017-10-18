@@ -26,6 +26,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -327,6 +328,13 @@ class UnaryOpsTest(XLATestCase):
           np.array([-1, -0.5, 0, 0.3], dtype=dtype),
           expected=np.array([-1, -64.0 / 127, 0, 38.0 / 127], dtype=dtype))
 
+  def testIntOps(self):
+    for dtype in self.int_types:
+      self._assertOpOutputMatchesExpected(
+          bitwise_ops.invert,
+          np.array([0, -1, 1, 16, 42], dtype=dtype),
+          expected=np.array([-1, 0, -2, -17, -43], dtype=dtype))
+
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -557,6 +565,7 @@ class UnaryOpsTest(XLATestCase):
           log_eps, log_eps - one, log_eps + one, log_eps - ten,
           log_eps + ten, -log_eps, -log_eps - one, -log_eps + one,
           -log_eps - ten, -log_eps + ten], dtype)
+
 
 if __name__ == "__main__":
   googletest.main()

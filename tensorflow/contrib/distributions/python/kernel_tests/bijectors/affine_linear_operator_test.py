@@ -72,7 +72,7 @@ class AffineLinearOperatorTest(test.TestCase):
                         [3, -2, 0],
                         [4, 3, 2]]],
                       dtype=np.float32)
-      scale = linalg.LinearOperatorTriL(tril, is_non_singular=True)
+      scale = linalg.LinearOperatorLowerTriangular(tril, is_non_singular=True)
       affine = AffineLinearOperator(
           shift=shift, scale=scale, validate_args=True)
 

@@ -167,10 +167,43 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_name(name_);
   proto.set_entry_computation_name(entry_computation_->name());
   for (const HloComputation* computation : MakeComputationPostOrder()) {
+    // Fusion computations are added when the fusion instructions are created by
+    // HloInstruction::CreateFromProto.
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     HloComputationProto computation_proto = computation->ToProto();
     proto.add_computations()->Swap(&computation_proto);
   }
   return proto;
+}
+
+/* static */
+StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
+    const HloModuleProto& proto,
+    const VersionedComputationHandle& entry_computation_handle,
+    const HloModuleConfig& config) {
+  auto module =
+      MakeUnique<HloModule>(proto.name(), entry_computation_handle, config);
+  tensorflow::gtl::FlatMap<string, HloComputation*> computation_map;
+  for (const HloComputationProto& computation_proto : proto.computations()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> computation,
+                        HloComputation::CreateFromProto(
+                            module.get(), computation_proto, &computation_map));
+    CHECK_NE(computation.get(), nullptr);
+    TF_RET_CHECK(!ContainsKey(computation_map, computation->name()));
+    string computation_name = computation->name();
+    if (proto.entry_computation_name() == computation_name) {
+      computation_map[computation_name] =
+          module->AddEntryComputation(std::move(computation));
+    } else {
+      computation_map[computation_name] =
+          module->AddEmbeddedComputation(std::move(computation));
+    }
+  }
+  TF_RET_CHECK(module->entry_computation_ != nullptr);
+
+  return std::move(module);
 }
 
 namespace {

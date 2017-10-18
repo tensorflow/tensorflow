@@ -1,5 +1,12 @@
 # Adding a New Op
 
+Note: By default [tensorflow.org](http://tensorflow.org) shows docs for the
+most recent stable version. The instructions in this doc require building from
+source. You will probably want to build from the `master` version of tensorflow.
+You should, as a result, be sure you are following the
+[`master` version of this doc](https://www.tensorflow.org/versions/master/extend/adding_an_op),
+in case there have been any changes.
+
 If you'd like to create an op that isn't covered by the existing TensorFlow
 library, we recommend that you first try writing the op in Python as
 a composition of existing Python ops or functions. If that isn't possible, you

@@ -93,5 +93,47 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
           expected = [dtype.max - x for x in inputs]
           self.assertAllEqual(inverted, expected)
 
+  def testShiftsWithPositiveLHS(self):
+    dtype_list = [np.int8, np.int16, np.int32, np.int64,
+                  np.uint8, np.uint16, np.uint32, np.uint64]
+
+    with self.test_session(use_gpu=True) as sess:
+      for dtype in dtype_list:
+        lhs = np.array([0, 5, 3, 14], dtype=dtype)
+        rhs = np.array([5, 0, 7, 3], dtype=dtype)
+        left_shift_result, right_shift_result = sess.run(
+            [bitwise_ops.left_shift(lhs, rhs),
+             bitwise_ops.right_shift(lhs, rhs)])
+        self.assertAllEqual(left_shift_result, np.left_shift(lhs, rhs))
+        self.assertAllEqual(right_shift_result, np.right_shift(lhs, rhs))
+
+  def testShiftsWithNegativeLHS(self):
+    dtype_list = [np.int8, np.int16, np.int32, np.int64]
+
+    with self.test_session(use_gpu=True) as sess:
+      for dtype in dtype_list:
+        lhs = np.array([-1, -5, -3, -14], dtype=dtype)
+        rhs = np.array([5, 0, 7, 11], dtype=dtype)
+        left_shift_result, right_shift_result = sess.run(
+            [bitwise_ops.left_shift(lhs, rhs),
+             bitwise_ops.right_shift(lhs, rhs)])
+        self.assertAllEqual(left_shift_result, np.left_shift(lhs, rhs))
+        self.assertAllEqual(right_shift_result, np.right_shift(lhs, rhs))
+
+  def testImplementationDefinedShiftsDoNotCrash(self):
+    dtype_list = [np.int8, np.int16, np.int32, np.int64]
+
+    with self.test_session(use_gpu=True) as sess:
+      for dtype in dtype_list:
+        lhs = np.array([-1, -5, -3, -14], dtype=dtype)
+        rhs = np.array([-2, 64, 101, 32], dtype=dtype)
+        # We intentionally do not test for specific values here since the exact
+        # outputs are implementation-defined. However, we should not crash or
+        # trigger an undefined-behavior error from tools such as
+        # AddressSanitizer.
+        sess.run([bitwise_ops.left_shift(lhs, rhs),
+                  bitwise_ops.right_shift(lhs, rhs)])
+
+
 if __name__ == "__main__":
   googletest.main()

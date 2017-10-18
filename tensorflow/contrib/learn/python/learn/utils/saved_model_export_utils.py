@@ -109,7 +109,11 @@ def build_standardized_signature_def(input_tensors, output_tensors,
     classes = _get_classification_classes(output_tensors)
     scores = _get_classification_scores(output_tensors)
     if classes is None and scores is None:
-      (_, classes), = output_tensors.items()
+      items = list(output_tensors.items())
+      if items[0][1].dtype == dtypes.string:
+        (_, classes), = items
+      else:
+        (_, scores), = items
     return signature_def_utils.classification_signature_def(
         examples, classes, scores)
   elif _is_regression_problem(problem_type, input_tensors, output_tensors):

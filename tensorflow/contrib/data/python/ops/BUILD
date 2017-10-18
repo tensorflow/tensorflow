@@ -49,6 +49,7 @@ py_library(
         "error_ops.py",
         "grouping.py",
         "resampling.py",
+        "scan_ops.py",
         "sloppy_ops.py",
     ],
     srcs_version = "PY2AND3",

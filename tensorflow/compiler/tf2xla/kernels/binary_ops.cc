@@ -96,8 +96,17 @@ static xla::ComputationDataHandle FloorModImpl(xla::ComputationBuilder* b,
 XLA_MAKE_BINARY(FloorMod,
                 FloorModImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
-XLA_MAKE_BINARY(LogicalAnd, b->LogicalAnd(lhs, rhs, extend_dimensions));
-XLA_MAKE_BINARY(LogicalOr, b->LogicalOr(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(BitwiseAnd, b->And(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(BitwiseOr, b->Or(lhs, rhs, extend_dimensions));
+
+XLA_MAKE_BINARY(LeftShift, b->ShiftLeft(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(RightShift,
+                (DataTypeIsUnsigned(ctx->input_type(0))
+                     ? b->ShiftRightLogical(lhs, rhs, extend_dimensions)
+                     : b->ShiftRightArithmetic(lhs, rhs, extend_dimensions)));
+
+XLA_MAKE_BINARY(LogicalAnd, b->And(lhs, rhs, extend_dimensions));
+XLA_MAKE_BINARY(LogicalOr, b->Or(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Mod, b->Rem(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Maximum, b->Max(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Minimum, b->Min(lhs, rhs, extend_dimensions));

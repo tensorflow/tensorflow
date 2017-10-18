@@ -1844,7 +1844,7 @@ def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=
 
   Raises:
     ValueError: If logits are scalars (need to have rank >= 1) or if the rank
-      of the labels is not equal to the rank of the labels minus one.
+      of the labels is not equal to the rank of the logits minus one.
   """
   _ensure_xent_args("sparse_softmax_cross_entropy_with_logits", _sentinel,
                     labels, logits)

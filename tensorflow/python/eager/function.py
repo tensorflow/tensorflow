@@ -109,7 +109,7 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
     tensor_map[ops.tensor_id(value)] = (value, captured_value)
   else:
     captured_value = captured_value[1]
-  tape.record_operation("captured_value", [captured_value], [value], [],
+  tape.record_operation("captured_value", [captured_value], [value],
                         lambda x: [x])
   return captured_value
 
@@ -288,12 +288,14 @@ class _GraphModeFunction(object):
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
 
+    def backward_function(*args):
+      return self._backward_function(*(list(args) + side_outputs))
+
     tape.record_operation(
         signature.name,
         real_outputs,
         (args + self._extra_inputs),
-        side_outputs,
-        self._backward_function)
+        backward_function)
 
     return self._build_call_outputs(self._returns, real_outputs)
 

@@ -253,7 +253,9 @@ void StepStatsCollector::Save(const string& device,
   VLOG(1) << "Save dev " << device << " nt " << stats->stats();
   {
     mutex_lock l(mu_);
-    CHECK(!finalized_);
+    if (finalized_) {
+      LOG(WARNING) << "stats saved after finalize will not be collected.";
+    }
     if (!step_stats_ || collectedNodes >= kMaxCollectedNodes) {
       VLOG(1) << "step_stats_ nullptr or already collected too many nodes.";
       delete stats;

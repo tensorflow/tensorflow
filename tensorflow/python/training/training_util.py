@@ -212,13 +212,14 @@ def _get_or_create_global_step_read(graph=None):
     return None
   # add 'zero' so that it will create a copy of variable as Tensor.
   with graph.as_default() as g, g.name_scope(None):
-    # using initialized_value to ensure that global_step is initialized before
-    # this run. This is needed for example Estimator makes all model_fn build
-    # under global_step_read_tensor dependency.
-    global_step_value = global_step_tensor.initialized_value() if isinstance(
-        global_step_tensor, variables.Variable) else global_step_tensor
-    global_step_read_tensor = global_step_value + 0
-    ops.add_to_collection(GLOBAL_STEP_READ_KEY, global_step_read_tensor)
+    with g.name_scope(global_step_tensor.op.name + '/'):
+      # using initialized_value to ensure that global_step is initialized before
+      # this run. This is needed for example Estimator makes all model_fn build
+      # under global_step_read_tensor dependency.
+      global_step_value = global_step_tensor.initialized_value() if isinstance(
+          global_step_tensor, variables.Variable) else global_step_tensor
+      global_step_read_tensor = global_step_value + 0
+      ops.add_to_collection(GLOBAL_STEP_READ_KEY, global_step_read_tensor)
   return _get_global_step_read(graph)
 
 
@@ -231,5 +232,6 @@ def _increment_global_step(increment, graph=None):
         'tf.train.get_or_create_global_step before calling increment.')
   global_step_read_tensor = _get_or_create_global_step_read(graph)
   with graph.as_default() as g, g.name_scope(None):
-    with ops.control_dependencies([global_step_read_tensor]):
-      return state_ops.assign_add(global_step_tensor, increment)
+    with g.name_scope(global_step_tensor.op.name + '/'):
+      with ops.control_dependencies([global_step_read_tensor]):
+        return state_ops.assign_add(global_step_tensor, increment)
