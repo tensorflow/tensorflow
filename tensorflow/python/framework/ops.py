@@ -25,6 +25,7 @@ import re
 import sys
 import threading
 
+import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -618,6 +619,9 @@ class _EagerTensorBase(Tensor):
     """
     return self.as_cpu_tensor()._numpy()  # pylint: disable=protected-access
 
+  def __array__(self):
+    return np.array(self.numpy())
+
   def _numpy(self):
     raise NotImplementedError()
 
@@ -727,6 +731,12 @@ class _EagerTensorBase(Tensor):
   def __nonzero__(self):
     return self.__bool__()
 
+  def set_shape(self, shape):
+    if not self.shape.is_compatible_with(shape):
+      raise ValueError(
+          "EagerTensor's shape %s is not compatible with supplied shape %s" %
+          (self.shape, shape))
+
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
@@ -739,9 +749,6 @@ class _EagerTensorBase(Tensor):
   @property
   def name(self):
     raise NotImplementedError("name not supported for Eager Tensors.")
-
-  def set_shape(self, shape):
-    raise NotImplementedError("set_shape not supported for Eager Tensors.")
 
   @property
   def value_index(self):

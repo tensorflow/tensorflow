@@ -706,6 +706,9 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
       metadata, fusion->fused_expression_root()->metadata()));
   EXPECT_TRUE(protobuf_util::ProtobufEquals(
       metadata, fusion->fused_expression_root()->operand(0)->metadata()));
+
+  auto cloned = fusion->CloneWithNewOperands(fusion->shape(), {});
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
 }
 
 TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {

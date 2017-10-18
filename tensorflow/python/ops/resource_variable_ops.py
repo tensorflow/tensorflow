@@ -427,11 +427,6 @@ class ResourceVariable(variables.Variable):
     self._constraint = None
   # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
-  def __del__(self):
-    if context.in_eager_mode():
-      gen_resource_variable_ops.destroy_resource_op(self._handle,
-                                                    ignore_lookup_error=False)
-
   @property
   def dtype(self):
     """The dtype of this variable."""
@@ -517,6 +512,12 @@ class ResourceVariable(variables.Variable):
     if context.in_eager_mode():
       raise RuntimeError("Trying to eval in EAGER mode")
     return self._graph_element.eval(session=session)
+
+  def numpy(self):
+    if context.in_graph_mode():
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+    return self.read_value().numpy()
 
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `ResourceVariable`.

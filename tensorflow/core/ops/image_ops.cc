@@ -453,7 +453,36 @@ REGISTER_OP("DecodeAndCropJpeg")
     .Attr("acceptable_fraction: float = 1.0")
     .Attr("dct_method: string = ''")
     .Output("image: uint8")
-    .SetShapeFn(DecodeImageShapeFn)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      DimensionHandle channels_dim = c->UnknownDim();
+      DimensionHandle h = c->UnknownDim();
+      DimensionHandle w = c->UnknownDim();
+
+      int32 channels;
+      TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
+      if (channels != 0) {
+        if (channels < 0) {
+          return errors::InvalidArgument("channels must be non-negative, got ",
+                                         channels);
+        }
+        channels_dim = c->MakeDim(channels);
+      }
+
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(unused, 0), 4, &unused_dim));
+
+      const Tensor* crop_window = c->input_tensor(1);
+      if (crop_window != nullptr) {
+        auto crop_window_vec = crop_window->vec<int32>();
+        h = c->MakeDim(crop_window_vec(2));
+        w = c->MakeDim(crop_window_vec(3));
+      }
+      c->set_output(0, c->MakeShape({h, w, channels_dim}));
+      return Status::OK();
+    })
     .Doc(strings::StrCat(R"doc(
 Decode and Crop a JPEG-encoded image to a uint8 tensor.
 )doc",
