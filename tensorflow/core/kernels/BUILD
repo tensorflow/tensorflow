@@ -2903,9 +2903,9 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["diag_op_test.cc"],
     deps = [
+        ":diag_op",
         ":ops_testutil",
         ":ops_util",
-        ":diag_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
