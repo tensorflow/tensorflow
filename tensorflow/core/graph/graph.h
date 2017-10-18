@@ -454,7 +454,7 @@ class Graph {
   // Removes control edge `edge` from the graph. If `update_node_def` is true,
   // updates dest's NodeDef.
   // REQUIRES: The control edge must exist.
-  void RemoveControlEdge(const Edge* e, bool update_node_def = true);
+  void RemoveControlEdge(const Edge* e);
   
   // Updates the input to a node.  The existing edge to `dst` is removed and an
   // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`

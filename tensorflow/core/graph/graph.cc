@@ -453,8 +453,8 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
   return AddEdge(source, kControlSlot, dest, kControlSlot);
 }
 
-void Graph::RemoveControlEdge(const Edge* e, bool update_node_def) {
-  if (update_node_def && !e->src_->IsSource() && !e->dst_->IsSink()) {
+void Graph::RemoveControlEdge(const Edge* e) {
+  if (!e->src_->IsSource() && !e->dst_->IsSink()) {
     e->dst_->MaybeCopyOnWrite();
     auto* inputs = e->dst_->props_->node_def.mutable_input();
     for (auto it = inputs->begin(); it != inputs->end(); ++it) {
