@@ -59,6 +59,14 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
 )
 list(REMOVE_ITEM tf_core_cpu_srcs ${tf_core_cpu_exclude_srcs})
 
+if (NOT tensorflow_ENABLE_GRPC_SUPPORT)
+  file(GLOB_RECURSE tf_core_debug_srcs
+    "${tensorflow_source_dir}/tensorflow/core/debug/*.h"
+    "${tensorflow_source_dir}/tensorflow/core/debug/*.cc"
+  )
+  list(REMOVE_ITEM tf_core_cpu_srcs ${tf_core_debug_srcs})
+endif()
+
 if (tensorflow_ENABLE_GPU)
   file(GLOB_RECURSE tf_core_gpu_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/*.cc"

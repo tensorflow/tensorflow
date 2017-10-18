@@ -14,48 +14,61 @@
 # ==============================================================================
 include (ExternalProject)
 
-set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
-set(GRPC_URL https://github.com/grpc/grpc.git)
-set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 54e8f37e537794c2d814c1604c1282125f64f093)
+if (tensorflow_GRPC_PROVIDER STREQUAL module)
+  set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
+  set(GRPC_URL https://github.com/grpc/grpc.git)
+  set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
+  set(GRPC_TAG 54e8f37e537794c2d814c1604c1282125f64f093)
+  set(GRPC_CPP_PLUGIN ${GRPC_BUILD}/grpc_cpp_plugin)
 
-if(WIN32)
-  set(grpc_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc_unsecure.lib
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/gpr.lib)
+  if(WIN32)
+    set(GRPC_LIBRARIES
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc++_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/grpc_unsecure.lib
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/Release/gpr.lib)
+  else()
+    set(GRPC_LIBRARIES
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
+        ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
+  endif()
+
+  add_definitions(-DGRPC_ARES=0)
+
+  set(GRPC_DEPENDENCIES)
+  if(tensorflow_PROTOBUF_PROVIDER STREQUAL module)
+    list(APPEND GRPC_DEPENDENCIES protobuf)
+  endif()
+  if(tensorflow_ZLIB_PROVIDER STREQUAL module)
+    list(APPEND GRPC_DEPENDENCIES zlib)
+  endif()
+
+  ExternalProject_Add(grpc
+      PREFIX grpc
+      DEPENDS ${GRPC_DEPENDENCIES}
+      GIT_REPOSITORY ${GRPC_URL}
+      GIT_TAG ${GRPC_TAG}
+      DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
+      BUILD_IN_SOURCE 1
+      BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
+      COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
+      INSTALL_COMMAND ""
+      CMAKE_CACHE_ARGS
+          -DCMAKE_BUILD_TYPE:STRING=Release
+          -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+          -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
+          -DPROTOBUF_LIBRARIES:STRING=${PROTOBUF_LIBRARIES}
+          -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
+          -DgRPC_SSL_PROVIDER:STRING=NONE
+  )
+
+  # grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.
+  ExternalProject_Add_Step(grpc copy_rand
+      COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_SOURCE_DIR}/patches/grpc/rand.h ${GRPC_BUILD}/include/openssl/rand.h
+      DEPENDEES patch
+      DEPENDERS build
+  )
 else()
-  set(grpc_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
+  find_package(GRPC REQUIRED)
 endif()
-
-add_definitions(-DGRPC_ARES=0)
-
-ExternalProject_Add(grpc
-    PREFIX grpc
-    DEPENDS protobuf zlib
-    GIT_REPOSITORY ${GRPC_URL}
-    GIT_TAG ${GRPC_TAG}
-    DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
-    BUILD_IN_SOURCE 1
-    BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
-    COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
-    INSTALL_COMMAND ""
-    CMAKE_CACHE_ARGS
-        -DCMAKE_BUILD_TYPE:STRING=Release
-        -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-        -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
-        -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
-        -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
-	-DgRPC_SSL_PROVIDER:STRING=NONE
-)
-
-# grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.
-ExternalProject_Add_Step(grpc copy_rand
-    COMMAND ${CMAKE_COMMAND} -E copy
-    ${CMAKE_SOURCE_DIR}/patches/grpc/rand.h ${GRPC_BUILD}/include/openssl/rand.h
-    DEPENDEES patch
-    DEPENDERS build
-)

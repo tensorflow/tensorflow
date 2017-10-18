@@ -40,6 +40,13 @@ else(tensorflow_BUILD_ALL_KERNELS)
   )
 endif(tensorflow_BUILD_ALL_KERNELS)
 
+if (NOT tensorflow_ENABLE_GRPC_SUPPORT)
+  list(REMOVE_ITEM tf_core_kernels_srcs
+    "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.h"
+    "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.cc"
+  )
+endif()
+
 if(tensorflow_BUILD_CONTRIB_KERNELS)
   set(tf_contrib_kernels_srcs
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/model_ops.cc"
