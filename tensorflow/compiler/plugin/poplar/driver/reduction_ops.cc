@@ -522,7 +522,6 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   program_seq.add(poplar::program::Execute(select_cs));
 
   const unsigned long num_windows = source.numElements();
-  const auto &device_info = graph.getDevice().getDeviceInfo();
 
   unsigned dim_count(operand.rank());
 
@@ -556,15 +555,27 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
     poplar::Tensor w_par = partial.slice(start_par, end_par).flatten();
     poplar::Tensor s = source.index(pos);
 
+    auto m = graph.getTileMapping(w_in);
+    unsigned int tile_with_max_elements = 0;
+    std::size_t max_elements = 0;
+    for (unsigned int t = 0; t<m.size(); t++) {
+      std::size_t element_count = 0;
+      for (auto interval : m[t]) {
+        element_count += interval.size();
+      }
+      if (element_count > max_elements) {
+        max_elements = element_count;
+        tile_with_max_elements = t;
+      }
+    }
+
     // Create the vertex
     auto v = graph.addVertex(select_cs, select_vertex_name,
                              {{"a", w_in},
                               {"b", s},
                               {"out", w_par}});
     TF_RETURN_IF_ERROR(SetVertexField(graph, v["initval"], identity_literal));
-    graph.setTileMapping(v,
-                         (i / device_info.numWorkerContexts) %
-                         device_info.getNumTiles());
+    graph.setTileMapping(v, tile_with_max_elements);
 
     // Advance the window
     for (int d=dim_count-1; d>=0; d--) {
