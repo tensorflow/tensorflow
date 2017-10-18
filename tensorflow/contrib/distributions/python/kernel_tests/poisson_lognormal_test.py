@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.distributions.python.ops import poisson_lognormal
 from tensorflow.contrib.distributions.python.ops import test_util
 from tensorflow.python.platform import test
@@ -32,7 +34,8 @@ class PoissonLogNormalQuadratureCompoundTest(
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=-2.,
           scale=1.1,
-          quadrature_polynomial_degree=10,
+          quadrature_grid_and_probs=(
+              np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_log_prob(
           sess, pln, rtol=0.1)
@@ -42,7 +45,8 @@ class PoissonLogNormalQuadratureCompoundTest(
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=0.,
           scale=1.,
-          quadrature_polynomial_degree=10,
+          quadrature_grid_and_probs=(
+              np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_mean_variance(
           sess, pln, rtol=0.02)
@@ -52,7 +56,8 @@ class PoissonLogNormalQuadratureCompoundTest(
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=[0., -0.5],
           scale=1.,
-          quadrature_polynomial_degree=10,
+          quadrature_grid_and_probs=(
+              np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_log_prob(
           sess, pln, rtol=0.1, atol=0.01)
@@ -62,7 +67,8 @@ class PoissonLogNormalQuadratureCompoundTest(
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=[0., -0.5],
           scale=1.,
-          quadrature_polynomial_degree=10,
+          quadrature_grid_and_probs=(
+              np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_mean_variance(
           sess, pln, rtol=0.1, atol=0.01)
@@ -72,7 +78,8 @@ class PoissonLogNormalQuadratureCompoundTest(
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=[[0.], [-0.5]],
           scale=[[1., 0.9]],
-          quadrature_polynomial_degree=10,
+          quadrature_grid_and_probs=(
+              np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_log_prob(
           sess, pln, rtol=0.1, atol=0.08)
@@ -82,7 +89,8 @@ class PoissonLogNormalQuadratureCompoundTest(
       pln = poisson_lognormal.PoissonLogNormalQuadratureCompound(
           loc=[[0.], [-0.5]],
           scale=[[1., 0.9]],
-          quadrature_polynomial_degree=10,
+          quadrature_grid_and_probs=(
+              np.polynomial.hermite.hermgauss(deg=10)),
           validate_args=True)
       self.run_test_sample_consistent_mean_variance(
           sess, pln, rtol=0.1, atol=0.01)

@@ -707,12 +707,11 @@ class Estimator(object):
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      global_step_read_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
+      training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
       features, labels = self._get_features_and_labels_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.TRAIN)
-      with ops.control_dependencies([global_step_read_tensor]):
-        estimator_spec = self._call_model_fn(
-            features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
+      estimator_spec = self._call_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
       # Check if the user created a loss summary, and add one if they didn't.
       # We assume here that the summary is called 'loss'. If it is not, we will
       # make another one with the name 'loss' to ensure it shows up in the right

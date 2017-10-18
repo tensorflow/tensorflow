@@ -33,6 +33,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import context
@@ -1985,7 +1986,19 @@ class Operation(object):
       protocol buffer.
     """
     # pylint: enable=line-too-long
-    return self._op_def
+    if self._c_op:
+      with errors.raise_exception_on_not_ok_status() as status:
+        with c_api_util.tf_buffer() as buf:
+          # pylint: disable=protected-access
+          c_api.TF_GraphGetOpDef(self._graph._c_graph,
+                                 compat.as_bytes(self.type), buf, status)
+          # pylint: enable=protected-access
+          data = c_api.TF_GetBuffer(buf)
+      op_def = op_def_pb2.OpDef()
+      op_def.ParseFromString(compat.as_bytes(data))
+      return op_def
+    else:
+      return self._op_def
 
   @property
   def traceback(self):
@@ -2504,7 +2517,14 @@ class Graph(object):
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
     # Resource container.
-    self._container = ""
+    if context.in_graph_mode():
+      self._container_prefix = ""
+    else:
+      # In Eager mode, isolate resources (particularly ResourceVariables) in
+      # Graphs by default. This prevents unintended variable sharing. Graph mode
+      # gets this kind of isolation from Sessions.
+      self._container_prefix = "eager-execution-%d/" % (uid(),)
+    self._container = self._container_prefix
     self._registered_ops = op_def_registry.get_registered_ops()
 
     # TODO(skyewm): fold as much of the above as possible into the C
@@ -3816,7 +3836,7 @@ class Graph(object):
     """
     original_container = self._container
     try:
-      self._container = container_name
+      self._container = self._container_prefix + container_name
       yield self._container
     finally:
       self._container = original_container

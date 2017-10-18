@@ -265,6 +265,9 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
     unweighted_loss = losses.sigmoid_cross_entropy(
         multi_class_labels=processed_labels, logits=logits,
         reduction=losses.Reduction.NONE)
+    # Averages loss over classes.
+    unweighted_loss = math_ops.reduce_mean(
+        unweighted_loss, axis=-1, keep_dims=True)
     return head_lib.LossAndLabels(
         unweighted_loss=unweighted_loss,
         processed_labels=processed_labels)
@@ -294,12 +297,9 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
       # Eval.
       unweighted_loss, processed_labels = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
-      # Averages loss over classes.
-      per_example_loss = math_ops.reduce_mean(
-          unweighted_loss, axis=-1, keep_dims=True)
       weights = head_lib._weights(features, self._weight_column)  # pylint:disable=protected-access
       training_loss = losses.compute_weighted_loss(
-          per_example_loss, weights=weights, reduction=losses.Reduction.SUM)
+          unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
@@ -309,7 +309,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                 labels=processed_labels,
                 probabilities=probabilities,
                 weights=weights,
-                per_example_loss=per_example_loss))
+                unweighted_loss=unweighted_loss))
 
       # Train.
       if train_op_fn is None:
@@ -330,16 +330,16 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         loss=training_loss,
         train_op=train_op_fn(training_loss))
 
-  def _eval_metric_ops(self, labels, probabilities, weights, per_example_loss):
+  def _eval_metric_ops(self, labels, probabilities, weights, unweighted_loss):
     """Returns a dict of metrics for eval_metric_ops."""
     with ops.name_scope(
-        None, 'metrics', [labels, probabilities, weights, per_example_loss]):
+        None, 'metrics', [labels, probabilities, weights, unweighted_loss]):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
           head_lib._summary_key(self._name, keys.LOSS_MEAN):  # pylint:disable=protected-access
               metrics_lib.mean(
-                  per_example_loss, weights=weights, name=keys.LOSS_MEAN),
+                  unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
           head_lib._summary_key(self._name, keys.AUC):  # pylint:disable=protected-access
               metrics_lib.auc(
                   labels=labels, predictions=probabilities, weights=weights,
