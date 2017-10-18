@@ -864,6 +864,13 @@ TF_CAPI_EXPORT extern void TF_GraphToGraphDef(TF_Graph* graph,
                                               TF_Buffer* output_graph_def,
                                               TF_Status* status);
 
+// Returns the serialized OpDef proto with name `op_name`, or a bad status if no
+// such op exists. This can return OpDefs of functions copied into the graph.
+TF_CAPI_EXPORT extern void TF_GraphGetOpDef(TF_Graph* graph,
+                                            const char* op_name,
+                                            TF_Buffer* output_op_def,
+                                            TF_Status* status);
+
 // TF_ImportGraphDefOptions holds options that can be passed to
 // TF_GraphImportGraphDef.
 typedef struct TF_ImportGraphDefOptions TF_ImportGraphDefOptions;
