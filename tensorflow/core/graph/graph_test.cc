@@ -118,6 +118,20 @@ class GraphTest : public ::testing::Test {
     LOG(FATAL) << name;
   }
 
+  const Edge* FindInputControlEdge(const Node* node, const Edge* edge) {
+    const Edge* found_edge = nullptr;
+    for (const Edge *e : node->in_edges()) {
+      if (e->IsControlEdge() &&
+          e->src() == edge->src() &&
+          e->src_output() == Graph::kControlSlot &&
+          e->dst_input() == Graph::kControlSlot) {
+        found_edge = e;
+        break;
+      }
+    }
+    return found_edge;
+  }
+
   Graph graph_;
 
  private:
@@ -475,6 +489,44 @@ TEST_F(GraphTest, AddControlEdge) {
   edge = graph_.AddControlEdge(graph_.source_node(), b);
   EXPECT_TRUE(edge == nullptr);
   EXPECT_EQ(b->def().input_size(), 2);
+}
+
+TEST_F(GraphTest, RemoveControlEdge) {
+  FromGraphDef(
+      "node { name: 'A' op: 'OneOutput' }"
+      "node { name: 'B' op: 'OneInputTwoOutputs' input: [ 'A:0' ] }"
+      "node { name: 'C' op: 'NoOp' } ");
+  Node* a = FindNode("A");
+  Node* b = FindNode("B");
+  Node* c = FindNode("C");
+
+  // Add a control edge.
+  const Edge* edge_1 = graph_.AddControlEdge(c, a);
+  const Edge* edge_2 = graph_.AddControlEdge(a, b);
+  ASSERT_TRUE(edge_1 != nullptr);
+  ASSERT_TRUE(edge_2 != nullptr);
+
+  const Edge* edge_1_obtained = FindInputControlEdge(a, edge_1);
+  ASSERT_TRUE(edge_1_obtained != nullptr);
+  EXPECT_EQ(edge_1_obtained->src(), edge_1->src());
+  EXPECT_EQ(edge_1_obtained->src_output(), Graph::kControlSlot);
+  EXPECT_EQ(edge_1_obtained->dst(), edge_1->dst());
+  EXPECT_EQ(edge_1_obtained->dst_input(), Graph::kControlSlot);
+
+  const Edge* edge_2_obtained = FindInputControlEdge(b, edge_2);
+  ASSERT_TRUE(edge_2_obtained != nullptr);
+  EXPECT_EQ(edge_2_obtained->src(), edge_2->src());
+  EXPECT_EQ(edge_2_obtained->src_output(), Graph::kControlSlot);
+  EXPECT_EQ(edge_2_obtained->dst(), edge_2->dst());
+  EXPECT_EQ(edge_2_obtained->dst_input(), Graph::kControlSlot);
+
+  graph_.RemoveControlEdge(edge_1);
+  ASSERT_TRUE(FindInputControlEdge(a, edge_1) == nullptr);
+  ASSERT_TRUE(FindInputControlEdge(b, edge_2) != nullptr);
+
+  graph_.RemoveControlEdge(edge_2);
+  ASSERT_TRUE(FindInputControlEdge(a, edge_1) == nullptr);
+  ASSERT_TRUE(FindInputControlEdge(b, edge_2) == nullptr);
 }
 
 TEST_F(GraphTest, UpdateEdge) {
