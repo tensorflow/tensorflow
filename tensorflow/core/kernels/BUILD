@@ -2636,6 +2636,24 @@ tf_kernel_library(
     deps = MATH_DEPS,
 )
 
+tf_cc_test(
+    name = "sequence_ops_test",
+    size = "small",
+    srcs = ["sequence_ops_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sequence_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "cast_op_test",
     size = "small",
