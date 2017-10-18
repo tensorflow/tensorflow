@@ -181,9 +181,6 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // false, try to reuse the input buffer if this op owns it exclusively.
     Tensor input_copy;
     const GPUDevice& device = context->eigen_device<GPUDevice>();
-    std::vector<int> perm(ndims);
-    std::iota(perm.begin(), perm.end(), 0);
-    std::swap(perm[ndims - 2], perm[ndims - 1]);
     if (adjoint_) {
       // For the adjoint case, it is simpler to always make a transposed copy up
       // front.
@@ -193,7 +190,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
                                          input.shape(), &input_copy),
           done);
       OP_REQUIRES_OK_ASYNC(context,
-                           DoTranspose(device, input, perm, &input_copy), done);
+                           DoMatrixTranspose(device, input, &input_copy), done);
     } else {
       OP_REQUIRES_OK_ASYNC(
           context,
@@ -267,7 +264,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
         done);
     if (nrhs > 1) {
       OP_REQUIRES_OK_ASYNC(
-          context, DoTranspose(device, rhs, perm, &transposed_rhs), done);
+          context, DoMatrixTranspose(device, rhs, &transposed_rhs), done);
     } else {
       device.memcpy(transposed_rhs.flat<Scalar>().data(),
                     rhs.flat<Scalar>().data(),
@@ -327,7 +324,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // 4. Transpose X to get the final result in row-major form.
     if (nrhs > 1) {
       OP_REQUIRES_OK_ASYNC(
-          context, DoTranspose(device, transposed_rhs, perm, output), done);
+          context, DoMatrixTranspose(device, transposed_rhs, output), done);
     } else {
       device.memcpy(output->flat<Scalar>().data(),
                     transposed_rhs.flat<Scalar>().data(),

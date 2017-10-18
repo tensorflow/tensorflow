@@ -462,6 +462,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
@@ -3152,7 +3153,10 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_oss",  # Test flaky due to port collisions.
+        "no_windows",
+    ],
 )
 
 filegroup(

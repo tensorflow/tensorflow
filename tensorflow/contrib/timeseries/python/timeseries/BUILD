@@ -105,6 +105,7 @@ py_test(
     tags = [
         "no_pip_gpu",  # b/63391119
         "nomsan",  # Takes too long to run.
+        "notsan",  # b/67865658
     ],
     deps = [
         ":ar_model",

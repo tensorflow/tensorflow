@@ -681,48 +681,17 @@ def _aggregate_grads(gradients):
     return ops.IndexedSlices(values, indices, dense_shape)
 
 
-# If over MIN_AGGREGATE_COUNT gradients are accumulated and the total
-# memory consumption is over MIN_AGGREGATE_BYTES, do an early aggregation
-# so as to release the gradient tensor to save memory.
-_MIN_AGGREGATE_COUNT = 4
-_MIN_AGGREGATE_BYTES = 128 * 1024 * 1024
-
-
-def _add_new_grads(gradients, gradients_size, tid, grad):
-  """Adds a new gradient and maybe aggregate the gradients.
-
-  Args:
-    gradients: A dict map from tensor id to list of gradients.
-    gradients_size: A dict map from tensor id to its total units. Might
-       not be initialized.
-    tid: Tensor id.
-    grad: New gradient for the `tid`, either a Tensor or IndexedSlices.
-
-  Raises:
-    ValueError: if `grad` is neight Tensor nor IndexedSlices.
-  """
-  tensor_grads = gradients[tid]
-  tensor_grads.append(grad)
-  if len(tensor_grads) < _MIN_AGGREGATE_COUNT:
-    return
-  elif tid not in gradients_size:
-    if isinstance(grad, ops.Tensor):
-      size = functools.reduce(operator.mul, grad._shape_tuple(), 1)  # pylint: disable=protected-access
-    elif isinstance(grad, ops.IndexedSlices):
-      size = functools.reduce(operator.mul, grad.values._shape_tuple(), 1)  # pylint: disable=protected-access
-    else:
-      raise ValueError("Unexpected gradient type: %s" % type(grad))
-    gradients_size[tid] = size
-  else:
-    size = gradients_size[tid]
-
-  # For simplicity, assume each element to be 4 bytes now.
-  if len(tensor_grads) * size * 4 > _MIN_AGGREGATE_BYTES:
-    gradients[tid] = [_aggregate_grads(tensor_grads)]
+def _num_elements(grad):
+  """The number of elements in the `grad` tensor."""
+  if isinstance(grad, ops.Tensor):
+    return functools.reduce(operator.mul, grad._shape_tuple(), 1)  # pylint: disable=protected-access
+  if isinstance(grad, ops.IndexedSlices):
+    return functools.reduce(operator.mul, grad.values._shape_tuple(), 1)  # pylint: disable=protected-access
+  raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
 _default_vspace = imperative_grad.VSpace(
-    add_new_grads_fn=_add_new_grads,
+    num_elements_fn=_num_elements,
     aggregate_fn=_aggregate_grads,
     tensor_id=ops.tensor_id,
     zeros=array_ops.zeros,

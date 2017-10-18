@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cmath>
 #include <functional>
+#include <type_traits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -809,6 +811,50 @@ struct bitwise_or : base<T, bitwise_or_op<T>> {};
 
 template <typename T>
 struct bitwise_xor : base<T, Eigen::internal::bitwise_xor_op<T>> {};
+
+template <typename T>
+struct left_shift_op {
+  EIGEN_EMPTY_STRUCT_CTOR(left_shift_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    // Avoids UB: don't shift by larger than the bitwidth of T, and
+    // performs left shifts as unsigned shifts.
+    T y_clamped = y;
+    if (y_clamped < 0) {
+      y_clamped = 0;
+    } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
+      y_clamped = sizeof(T) * CHAR_BIT - 1;
+    }
+    using U = typename std::make_unsigned<T>::type;
+    return static_cast<T>(static_cast<U>(x) << static_cast<U>(y_clamped));
+  }
+};
+
+template <typename T>
+struct right_shift_op {
+  EIGEN_EMPTY_STRUCT_CTOR(right_shift_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    // Avoids UB: don't shift by larger than the bitwidth of T.
+    T y_clamped = y;
+    if (y_clamped < 0) {
+      y_clamped = 0;
+    } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
+      y_clamped = sizeof(T) * CHAR_BIT - 1;
+    }
+    // Technically right shifts of signed integers are not necessarily
+    // arithmetic shifts according to the C++ standard. However in practice most
+    // implementations are arithmetic shifts. If this proves to be a problem in
+    // practice, we may need to use an alternative implementation.
+    return x >> y_clamped;
+  }
+};
+
+template <typename T>
+struct left_shift : base<T, left_shift_op<T>> {};
+
+template <typename T>
+struct right_shift : base<T, right_shift_op<T>> {};
 
 template <typename T>
 struct make_complex_func {
