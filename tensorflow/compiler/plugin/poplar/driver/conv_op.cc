@@ -156,6 +156,14 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
   return params;
 }
 
+static popconv::Pass GetConvolutionPass(const HloInstruction* inst) {
+  const ConvolutionDimensionNumbers& dims(inst->convolution_dimension_numbers());
+  if (dims.kernel_input_feature_dimension() == 0) {
+    return popconv::Pass::TRAINING_WU;
+  }
+  return popconv::Pass::TRAINING_FWD;
+}
+
 static bool is_identity_shuffle(const std::vector<unsigned int> shuffle) {
   for (unsigned int i=0; i<4; i++) {
     if (shuffle[i] != i) return false;
@@ -216,6 +224,7 @@ CreateConv2D(poplar::Graph &graph,
 
   popconv::ConvOptions opts;
   opts.cache = &res.convolution_cache;
+  opts.pass = GetConvolutionPass(inst);
 
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
 
@@ -316,6 +325,7 @@ ConvBiasApply(poplar::Graph &graph,
               const HloInstruction *inst,
               const xla::Shape& output_shape,
               TensorMap& tensor_map) {
+
   const HloInstruction* root =
           inst->to_apply()->root_instruction();
 
@@ -363,6 +373,7 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
 
   popconv::ConvOptions opts;
   opts.cache = &res.convolution_cache;
+  opts.pass = GetConvolutionPass(root);
 
   const ConvolutionDimensionNumbers& d(root->convolution_dimension_numbers());
 
@@ -440,6 +451,7 @@ Create2DConvWithReverse(poplar::Graph &graph,
 
   popconv::ConvOptions opts;
   opts.cache = &res.convolution_cache;
+  opts.pass = popconv::Pass::TRAINING_BWD;
 
   const ConvolutionDimensionNumbers& d(conv->convolution_dimension_numbers());
 
