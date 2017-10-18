@@ -918,6 +918,21 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "nth_element_op_test",
+    size = "small",
+    srcs = ["nth_element_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
 tf_py_test(
     name = "unique_op_test",
     size = "small",
