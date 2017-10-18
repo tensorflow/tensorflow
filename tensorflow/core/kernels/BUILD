@@ -2916,7 +2916,6 @@ tf_cuda_cc_test(
     ],
 )
 
-
 # conv_grad_ops currently has to be built with conv_ops*.
 # TODO(josh11b, zhengxq): put these a separate libraries in ":nn" below once
 # conv_ops_gpu.h has be separated into its own library.
