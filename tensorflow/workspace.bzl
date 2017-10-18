@@ -590,15 +590,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@jsoncpp_git//:jsoncpp",
   )
 
-  patched_http_archive(
+  native.http_archive(
       name = "boringssl",
       urls = [
-          "https://github.com/google/boringssl/archive/72cfd9f49ec5fbc2db368b76398c196dafe6a4bc.tar.gz",
+          "https://github.com/google/boringssl/archive/a0fb951d2a26a8ee746b52f3ba81ab011a0af778.tar.gz",
       ],
-      sha256 = "5e6f7b72c74adeb902581271925ddb979e77b96327abd76604ce894d80680e51",
-      strip_prefix = "boringssl-72cfd9f49ec5fbc2db368b76398c196dafe6a4bc",
-      # Add patch to boringssl code to support s390x
-      patch_file = str(Label("//third_party/boringssl:add_boringssl_s390x.patch")),
+      sha256 = "524ba98a56300149696481b4cb9ddebd0c7b7ac9b9f6edee81da2d2d7e5d2bb3",
+      strip_prefix = "boringssl-a0fb951d2a26a8ee746b52f3ba81ab011a0af778",
   )
 
   native.new_http_archive(
