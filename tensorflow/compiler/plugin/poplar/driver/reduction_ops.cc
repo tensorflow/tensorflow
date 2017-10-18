@@ -552,15 +552,9 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
     start_par[dim_count] = GetOverlapLayerNum(pos, overlap);
     end_par[dim_count] = start_par[dim_count] + 1;
 
-    // TODO - move this into poplar
-    std::vector<std::size_t> pos_plus_one(dim_count);
-    for (unsigned d=0; d<dim_count; d++) {
-      pos_plus_one[d] = pos[d] + 1;
-    }
-
     poplar::Tensor w_in = operand.slice(start_in, end_in).flatten();
     poplar::Tensor w_par = partial.slice(start_par, end_par).flatten();
-    poplar::Tensor s = source.slice(pos, pos_plus_one).flatten();
+    poplar::Tensor s = source.index(pos);
 
     // Create the vertex
     auto v = graph.addVertex(select_cs, select_vertex_name,
