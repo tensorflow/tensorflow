@@ -475,7 +475,8 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   // When TraceMe profiling is off (which is the default), the
   // following TraceMe constructor is simply a conditional test of
   // false value. Measurements show that its overhead is negligible.
-  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string());
+  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string(),
+                                  op_kernel->IsExpensive());
   gpu::cuda::ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, done);
 }

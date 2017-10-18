@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import threading
 
+import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
@@ -29,6 +31,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 
 
@@ -459,6 +462,15 @@ class TFETest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       with context.device('pu:0'):
         _ = constant_op.constant(1)
+
+  def testConvertMixedEagerTensors(self):
+    array = np.zeros((), dtype=np.float32)
+    tensor = constant_op.constant(0., dtype=dtypes.float32)
+    types, tensors = execute_lib.convert_to_mixed_eager_tensors(
+        [array, tensor], context.context())
+    for typ, t in zip(types, tensors):
+      self.assertEquals(typ, dtypes.float32)
+      self.assertIsInstance(t, ops.EagerTensor)
 
 
 if __name__ == '__main__':
