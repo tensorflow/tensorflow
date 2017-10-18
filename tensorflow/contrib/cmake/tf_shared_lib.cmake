@@ -84,6 +84,11 @@ target_link_libraries(tensorflow PRIVATE
     tf_protos_cc
 )
 
+if(CMAKE_COMPILER_IS_GNUCC)
+  set_target_properties(tensorflow PROPERTIES
+          LINK_FLAGS "-Wl,-version-script,\"${tensorflow_source_dir}/tensorflow/tf_version_script.lds\"")
+endif()
+
 # There is a bug in GCC 5 resulting in undefined reference to a __cpu_model function when
 # linking to the tensorflow library. Adding the following libraries fixes it.
 # See issue on github: https://github.com/tensorflow/tensorflow/issues/9593
