@@ -501,6 +501,7 @@ filegroup(
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/kernel_tests/distributions:all_files",
         "//tensorflow/python/kernel_tests/linalg:all_files",
+        "//tensorflow/python/kernel_tests/random:all_files",
         "//tensorflow/python/ops/distributions:all_files",
         "//tensorflow/python/ops/linalg:all_files",
         "//tensorflow/python/profiler:all_files",
