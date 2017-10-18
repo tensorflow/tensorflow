@@ -132,6 +132,8 @@ struct DiagFunctor<CPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status
   operator() (OpKernelContext* context, const int64 size,
               const T* in, T* out) {
+    // This subprocess is responsible for writing values in index range
+    // [start*size, limit*size)
     auto subDiag = [in, out, size](int64 start, int64 limit) {
       std::fill(out + size * start, out + size * limit, T());
       for (int64 index = start; index < limit; ++index) {
@@ -152,6 +154,8 @@ struct DiagPartFunctor<CPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status
   operator() (OpKernelContext* context, const int64 size,
               const T* in, T* out) {
+    // This subprocess is responsible for extracting values in index range
+    // [start, limit)
     auto subDiagPart = [in, out, size](int64 start, int64 limit) {
       for (int64 index = start; index < limit; ++index) {
         out[index] = in[(1 + size) * index];
