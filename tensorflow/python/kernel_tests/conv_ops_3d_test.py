@@ -67,8 +67,9 @@ class Conv3DTest(test.TestCase):
     for s in filter_in_sizes:
       total_size_2 *= s
 
-    # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
+    # Initializes the input tensor with array containing numbers from 0 to 1.
+    # We keep the input tensor values fairly small to avoid overflowing a float16 
+    # tensor during the conv3d and to keep absolute errors small
     x1 = [f * 1.0 / total_size_1 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 / total_size_2 for f in range(1, total_size_2 + 1)]
     with self.test_session(use_gpu=use_gpu):
@@ -106,8 +107,7 @@ class Conv3DTest(test.TestCase):
         results.append(result)
 
       with self.test_session() as sess:
-        tensor_results = [result[0] for result in results]
-        values = sess.run(tensor_results)
+        values = sess.run(results)
         for value in values:
           print("expected = ", expected)
           print("actual = ", value)
