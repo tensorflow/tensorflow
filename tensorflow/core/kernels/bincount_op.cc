@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -109,12 +110,25 @@ class BincountOp : public OpKernel {
     const auto arr = arr_t.flat<int32>();
     const auto weights = weights_t.flat<T>();
 
-    Tensor* output_t;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(0, TensorShape({size}), &output_t));
-    auto output = output_t->flat<T>();
-    OP_REQUIRES_OK(ctx, functor::BincountFunctor<Device, T>::Compute(
-                            ctx, arr, weights, output));
+    if (weights.size() == 0) {
+      Tensor* output_t;
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_output(0, TensorShape({size}), &output_t));
+      auto output = output_t->flat<T>();
+      OP_REQUIRES_OK(ctx, functor::BincountFunctor<Device, T>::Compute(
+                              ctx, arr, weights, output));
+    } else {
+      TensorShape output_shape;
+      output_shape.AddDim(size);
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
+      auto output_flat = output->flat_outer_dims<T>();
+
+      functor::UnsortedSegmentSumFunctor<Device, T, int32>()(
+          ctx, ctx->template eigen_device<Device>(), size, arr_t.shape(), arr,
+          weights.size(), weights.data(), output_flat);
+    }
   }
 };
 
