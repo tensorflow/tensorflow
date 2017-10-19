@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
@@ -85,20 +84,9 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
 }
 }  // namespace
 Status GraphCompiler::Compile() {
-  // Maintain a mapping from node id to node outputs.
-  using NodeOutputs = std::vector<TensorValue>;
-  std::vector<NodeOutputs> output_registry(graph_->num_node_ids());
-  auto output_registry_cleanup = gtl::MakeCleanup([&output_registry] {
-    for (const NodeOutputs& outputs : output_registry) {
-      for (const TensorValue& value : outputs) {
-        CHECK(!value.is_ref());
-        delete value.tensor;
-      }
-    }
-  });
-
-  // XLA requires determinism, generate a stable ordering from DFS.
+  OutputRegistry output_registry(graph_->num_node_ids());
   std::vector<Node*> topo_sorted_nodes;
+  // XLA requires determinism, generate a stable ordering from DFS.
   GetReversePostOrder(*graph_, &topo_sorted_nodes,
                       /*stable_comparator=*/NodeComparatorName());
 
@@ -106,6 +94,7 @@ Status GraphCompiler::Compile() {
   PartiallySetupParams(&params);
 
   for (Node* n : topo_sorted_nodes) {
+    NodeOutputs node_outputs;
     OpKernel* op_kernel_raw = nullptr;
     Status s = flib_->CreateKernel(n->def(), &op_kernel_raw);
     // Transfer ownership of the kernel to a local smart pointer.
@@ -133,9 +122,9 @@ Status GraphCompiler::Compile() {
       if (e->IsControlEdge()) continue;
       Node* src = e->src();
       TF_RET_CHECK(src->id() < output_registry.size());
-      const NodeOutputs& src_outputs = output_registry[src->id()];
+      const NodeOutputs& outputs = output_registry[src->id()];
 
-      tensor_inputs_[e->dst_input()] = src_outputs[e->src_output()];
+      tensor_inputs_[e->dst_input()] = outputs.values[e->src_output()];
     }
 
     OpKernelContext op_context(&params, n->num_outputs());
@@ -149,15 +138,15 @@ Status GraphCompiler::Compile() {
 
     // Set up outputs. Also check if outputs from the previous computation is
     // valid.
-    NodeOutputs& outputs = output_registry[n->id()];
-    outputs.resize(n->num_outputs());
     for (int o = 0; o < n->num_outputs(); ++o) {
-      outputs[o] = op_context.release_output(o);
-      if (*op_context.is_output_dead() || outputs[o].tensor == nullptr) {
+      const auto tensor_val = op_context.release_output(o);
+      if (*op_context.is_output_dead() || tensor_val.tensor == nullptr) {
         return errors::Internal("Missing xla_context ", o, "-th output from ",
                                 (*op_context.is_output_dead() ? "(dead)" : ""),
                                 SummarizeNode(*n));
       }
+      // Set up outputs
+      output_registry[n->id()].values.push_back(tensor_val);
     }
   }
   return Status::OK();
