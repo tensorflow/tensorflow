@@ -216,6 +216,26 @@ class DatasetConstructorTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
+  def testFromGeneratorString(self):
+    def generator():
+      yield "foo"
+      yield b"bar"
+      yield u"baz"
+
+    iterator = (dataset_ops.Dataset.from_generator(
+        generator, output_types=dtypes.string, output_shapes=[])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for expected in [b"foo", b"bar", b"baz"]:
+        next_val = sess.run(get_next)
+        self.assertAllEqual(expected, next_val)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testFromGeneratorTypeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)
