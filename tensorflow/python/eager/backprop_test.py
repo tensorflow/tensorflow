@@ -381,6 +381,14 @@ class BackpropTest(test.TestCase):
         [tensor_shape.TensorShape(s).as_proto() for s in shape_list],
         backprop.make_attr([pywrap_tensorflow.TF_ATTR_SHAPE], shape_list))
 
+  def testArgsGradientFunction(self):
+
+    def f(*args):
+      return args[0] * args[0]
+
+    grad = backprop.gradients_function(f)
+    self.assertAllEqual(grad(1.0)[0], 2.0)
+
   def testMultiValueConvertToTensor(self):
     x = resource_variable_ops.ResourceVariable(
         initial_value=array_ops.constant([1.0]), name='x')
