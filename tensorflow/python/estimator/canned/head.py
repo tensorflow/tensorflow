@@ -269,6 +269,21 @@ def _indicator_labels_mean(labels, weights=None, name=None):
     return metrics_lib.mean(labels, weights=weights, name=scope)
 
 
+def _classification_output(scores, n_classes, label_vocabulary=None):
+  batch_size = array_ops.shape(scores)[0]
+  if label_vocabulary:
+    export_class_list = label_vocabulary
+  else:
+    export_class_list = string_ops.as_string(math_ops.range(n_classes))
+  export_output_classes = array_ops.tile(
+      input=array_ops.expand_dims(input=export_class_list, axis=0),
+      multiples=[batch_size, 1])
+  return export_output.ClassificationOutput(
+      scores=scores,
+      # `ClassificationOutput` requires string classes.
+      classes=export_output_classes)
+
+
 def _accuracy_baseline(labels_mean):
   """Return accuracy baseline based on labels mean.
 
@@ -401,12 +416,11 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def logits_dimension(self):
     return self._n_classes
 
-  def _eval_metric_ops(self, labels, probabilities, logits,
-                       class_ids, weights, unweighted_loss):
+  def _eval_metric_ops(self, labels, class_ids, weights, unweighted_loss):
     """Returns the Eval metric ops."""
     with ops.name_scope(
         None, 'metrics',
-        (labels, probabilities, logits, class_ids, weights, unweighted_loss)):
+        (labels, class_ids, weights, unweighted_loss)):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
@@ -479,18 +493,9 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
             pred_keys.CLASSES: classes,
         }
       if mode == model_fn.ModeKeys.PREDICT:
-        batch_size = array_ops.shape(probabilities)[0]
-        export_class_list = self._label_vocabulary
-        if not export_class_list:
-          export_class_list = string_ops.as_string(
-              math_ops.range(self._n_classes))
-        export_output_classes = array_ops.tile(
-            input=array_ops.expand_dims(input=export_class_list, axis=0),
-            multiples=[batch_size, 1])
-        classifier_output = export_output.ClassificationOutput(
-            scores=probabilities,
-            # `ClassificationOutput` requires string classes.
-            classes=export_output_classes)
+        classifier_output = _classification_output(
+            scores=probabilities, n_classes=self._n_classes,
+            label_vocabulary=self._label_vocabulary)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
@@ -513,8 +518,6 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
             loss=training_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=label_ids,
-                probabilities=probabilities,
-                logits=logits,
                 class_ids=class_ids,
                 unweighted_loss=unweighted_loss,
                 weights=weights))
@@ -611,12 +614,12 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                        labels,
                        logits,
                        logistic,
-                       scores,
                        class_ids,
                        unweighted_loss,
                        weights=None):
-    with ops.name_scope(None, 'metrics', (labels, logits, logistic, scores,
-                                          class_ids, unweighted_loss, weights)):
+    with ops.name_scope(
+        None, 'metrics',
+        (labels, logits, logistic, class_ids, unweighted_loss, weights)):
       keys = metric_keys.MetricKeys
       labels_mean = _indicator_labels_mean(
           labels=labels, weights=weights, name=keys.LABEL_MEAN)
@@ -709,7 +712,8 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         logistic = math_ops.sigmoid(logits, name=pred_keys.LOGISTIC)
         two_class_logits = array_ops.concat(
             (array_ops.zeros_like(logits), logits), 1, name='two_class_logits')
-        scores = nn.softmax(two_class_logits, name=pred_keys.PROBABILITIES)
+        probabilities = nn.softmax(
+            two_class_logits, name=pred_keys.PROBABILITIES)
         class_ids = array_ops.reshape(
             math_ops.argmax(two_class_logits, axis=1), (-1, 1), name='classes')
         if self._label_vocabulary:
@@ -722,22 +726,14 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         predictions = {
             pred_keys.LOGITS: logits,
             pred_keys.LOGISTIC: logistic,
-            pred_keys.PROBABILITIES: scores,
+            pred_keys.PROBABILITIES: probabilities,
             pred_keys.CLASS_IDS: class_ids,
             pred_keys.CLASSES: classes,
         }
       if mode == model_fn.ModeKeys.PREDICT:
-        batch_size = array_ops.shape(logistic)[0]
-        export_class_list = self._label_vocabulary
-        if not export_class_list:
-          export_class_list = string_ops.as_string([0, 1])
-        export_output_classes = array_ops.tile(
-            input=array_ops.expand_dims(input=export_class_list, axis=0),
-            multiples=[batch_size, 1])
-        classifier_output = export_output.ClassificationOutput(
-            scores=scores,
-            # `ClassificationOutput` requires string classes.
-            classes=export_output_classes)
+        classifier_output = _classification_output(
+            scores=probabilities, n_classes=2,
+            label_vocabulary=self._label_vocabulary)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
@@ -764,7 +760,6 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                 labels=processed_labels,
                 logits=logits,
                 logistic=logistic,
-                scores=scores,
                 class_ids=class_ids,
                 unweighted_loss=unweighted_loss,
                 weights=weights))

@@ -33,7 +33,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
+
+_DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
 def multi_class_head(n_classes,
@@ -287,11 +290,17 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
             pred_keys.PROBABILITIES: probabilities,
         }
       if mode == model_fn.ModeKeys.PREDICT:
+        classifier_output = head_lib._classification_output(  # pylint:disable=protected-access
+            scores=probabilities, n_classes=self._n_classes,
+            label_vocabulary=self._label_vocabulary)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
-                '': export_output.ClassificationOutput(scores=probabilities)
+                _DEFAULT_SERVING_KEY: classifier_output,
+                head_lib._CLASSIFY_SERVING_KEY: classifier_output,  # pylint:disable=protected-access
+                head_lib._PREDICT_SERVING_KEY: (  # pylint:disable=protected-access
+                    export_output.PredictOutput(predictions))
             })
 
       # Eval.
