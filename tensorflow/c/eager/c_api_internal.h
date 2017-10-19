@@ -35,6 +35,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
+struct TFE_ContextOptions {
+  TF_SessionOptions session_options;
+};
+
 struct TFE_Context {
   explicit TFE_Context(TF_Session* s) : session(s) {}
 

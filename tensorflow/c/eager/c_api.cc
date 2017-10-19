@@ -54,9 +54,18 @@ string DeviceName(tensorflow::Device* d) {
 
 extern "C" {
 
-TFE_Context* TFE_NewContext(const TF_SessionOptions* opts, TF_Status* status) {
+TFE_ContextOptions* TFE_NewContextOptions() { return new TFE_ContextOptions; }
+
+void TFE_ContextOptionsSetConfig(TFE_ContextOptions* options, const void* proto,
+                                 size_t proto_len, TF_Status* status) {
+  TF_SetConfig(&options->session_options, proto, proto_len, status);
+}
+
+void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
+
+TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   TF_Graph* graph = TF_NewGraph();
-  TF_Session* session = TF_NewSession(graph, opts, status);
+  TF_Session* session = TF_NewSession(graph, &opts->session_options, status);
   if (status->status.ok()) {
     if (session->device_mgr == nullptr || session->devices.empty()) {
       status->status = tensorflow::errors::InvalidArgument(
@@ -72,8 +81,8 @@ TFE_Context* TFE_NewContext(const TF_SessionOptions* opts, TF_Status* status) {
 
   TFE_Context* ret = new TFE_Context(session);
   ret->pflr.reset(new tensorflow::ProcessFunctionLibraryRuntime(
-      ret->session->device_mgr, opts->options.env, TF_GRAPH_DEF_VERSION,
-      &ret->func_lib_def, {}));
+      ret->session->device_mgr, opts->session_options.options.env,
+      TF_GRAPH_DEF_VERSION, &ret->func_lib_def, {}));
   ret->rendezvous =
       new tensorflow::IntraProcessRendezvous(ret->session->device_mgr);
 

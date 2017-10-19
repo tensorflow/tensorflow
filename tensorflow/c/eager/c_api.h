@@ -43,14 +43,30 @@ limitations under the License.
 extern "C" {
 #endif
 
+typedef struct TFE_ContextOptions TFE_ContextOptions;
+
+// Return a new options object.
+TF_CAPI_EXPORT extern TFE_ContextOptions* TFE_NewContextOptions();
+
+// Set the config in TF_ContextOptions.options.
+// config should be a serialized tensorflow.ConfigProto proto.
+// If config was not parsed successfully as a ConfigProto, record the
+// error information in *status.
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetConfig(
+    TFE_ContextOptions* options, const void* proto, size_t proto_len,
+    TF_Status* status);
+
+// Destroy an options object.
+TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
+
 // "Context" under which operations/functions are executed. It encapsulates
 // things like the available devices, resource manager etc.
 //
 // TODO(ashankar): Merge with TF_Session?
 typedef struct TFE_Context TFE_Context;
 
-TF_CAPI_EXPORT extern TFE_Context* TFE_NewContext(const TF_SessionOptions* opts,
-                                                  TF_Status* status);
+TF_CAPI_EXPORT extern TFE_Context* TFE_NewContext(
+    const TFE_ContextOptions* opts, TF_Status* status);
 TF_CAPI_EXPORT extern void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status);
 TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
                                                             TF_Status* status);

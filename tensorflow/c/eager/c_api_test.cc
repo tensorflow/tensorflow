@@ -62,10 +62,10 @@ TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
 void BM_InitOp(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   tensorflow::testing::StartTiming();
@@ -84,10 +84,10 @@ BENCHMARK(BM_InitOp);
 void BM_Execute(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   TFE_Op* matmul = MatMulOp(ctx, m, m);
@@ -109,9 +109,9 @@ BENCHMARK(BM_Execute);
 
 TEST(CAPI, Context) {
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TF_DeviceList* devices = TFE_ContextListDevices(ctx, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -150,9 +150,9 @@ TEST(CAPI, TensorHandle) {
 TEST(CAPI, TensorHandleCopyBetweenDevices) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status.get());
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
@@ -218,10 +218,10 @@ TEST(CAPI, TensorHandleCopyBetweenDevices) {
 
 TEST(CAPI, Execute) {
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   TFE_Op* matmul = MatMulOp(ctx, m, m);
@@ -285,10 +285,10 @@ string MatMulFunction() {
 
 TEST(CAPI, FunctionDefAndExecute) {
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   string function_def = MatMulFunction();
   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
@@ -326,10 +326,10 @@ TEST(CAPI, FunctionDefAndExecute) {
 void BM_ExecuteFunction(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   string function_def = MatMulFunction();
   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
@@ -406,10 +406,10 @@ TEST(CAPI, Variables) {
   // Variables use resource handles, so this is really a test for resource
   // tensor handling.
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* var_handle = CreateVariable(ctx, 12.0, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -446,10 +446,10 @@ TEST(CAPI, Variables) {
 void BM_ReadVariable(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
-  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteSessionOptions(opts);
+  TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* var_handle = CreateVariable(ctx, 5.0, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
