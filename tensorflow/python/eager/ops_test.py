@@ -46,8 +46,8 @@ class OpsTest(test_util.TensorFlowTestCase):
   def testMatMulGPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
-    three = constant_op.constant([[3.]]).as_gpu_tensor()
-    five = constant_op.constant([[5.]]).as_gpu_tensor()
+    three = constant_op.constant([[3.]]).gpu()
+    five = constant_op.constant([[5.]]).gpu()
     product = math_ops.matmul(three, five)
     self.assertEqual([[15.0]], product.numpy())
 
@@ -239,10 +239,10 @@ class OpsTest(test_util.TensorFlowTestCase):
 
     # The GPU kernel for the Reshape op requires that the
     # shape input be on CPU.
-    value = constant_op.constant([1., 2.]).as_gpu_tensor()
+    value = constant_op.constant([1., 2.]).gpu()
     shape = constant_op.constant([2, 1])
     reshaped = array_ops.reshape(value, shape)
-    self.assertAllEqual([[1], [2]], reshaped.as_cpu_tensor())
+    self.assertAllEqual([[1], [2]], reshaped.cpu())
 
     # And if the shape is in device memory, it should complain
     # TODO(ashankar): Revisit this - perhaps instead of complaining,
@@ -250,7 +250,7 @@ class OpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
         'cannot compute Reshape as input #1 was expected to be on'):
-      reshaped = array_ops.reshape(value, shape.as_gpu_tensor())
+      reshaped = array_ops.reshape(value, shape.gpu())
 
   def testInvalidInputDataType(self):
     # Fill requires the first input to be an int32 tensor.
@@ -262,7 +262,7 @@ class OpsTest(test_util.TensorFlowTestCase):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
     # The Shape op kernel on GPU places the output in host memory.
-    value = constant_op.constant([1.]).as_gpu_tensor()
+    value = constant_op.constant([1.]).gpu()
     shape = array_ops.shape(value)
     self.assertEqual([1], shape.numpy())
 

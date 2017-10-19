@@ -236,7 +236,10 @@ class _MultiHead(head_lib._Head):  # pylint:disable=protected-access
     for head, spec in zip(self._heads, all_estimator_spec):
       head_name = head.name
       for k, v in six.iteritems(spec.export_outputs):
-        key = '%s/%s' % (k, head_name) if k else head_name
+        if k == _DEFAULT_SERVING_KEY:
+          key = head_name
+        else:
+          key = '%s/%s' % (k, head_name)
         export_outputs[key] = v
       for k, v in six.iteritems(spec.predictions):
         predictions[(head_name, k)] = v

@@ -206,7 +206,7 @@ class ShapeRefiner {
   // - outer_context will contain output shapes inferred from input shapes
   // - outer_context will contain nested inferences collection, iff
   //   keep_nested_shapes is true
-  static Status InferShapesForFunction(
+  Status InferShapesForFunction(
       const tensorflow::FunctionLibraryDefinition& function_library,
       const tensorflow::FunctionDef& function_def, bool keep_nested_shapes,
       ExtendedInferenceContext* outer_context);

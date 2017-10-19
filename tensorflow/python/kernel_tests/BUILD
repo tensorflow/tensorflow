@@ -622,21 +622,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "random_shuffle_queue_test",
-    size = "small",
-    srcs = ["random_shuffle_queue_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:data_flow_ops",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-    ],
-)
-
 cuda_py_test(
     name = "resource_variable_ops_test",
     size = "small",
@@ -1554,43 +1539,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "multinomial_op_test",
-    size = "small",
-    srcs = ["multinomial_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-    ],
-)
-
-cuda_py_test(
-    name = "multinomial_op_big_test",
-    size = "medium",
-    srcs = ["multinomial_op_big_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-    ],
-    shard_count = 3,
-)
-
-cuda_py_test(
     name = "numerics_test",
     size = "small",
     srcs = ["numerics_test.py"],
@@ -1672,30 +1620,6 @@ cuda_py_test(
         "//tensorflow/python:script_ops",
     ],
     tags = ["no_windows"],
-)
-
-cuda_py_test(
-    name = "random_crop_test",
-    size = "small",
-    srcs = ["random_crop_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:random_ops",
-    ],
-)
-
-cuda_py_test(
-    name = "random_ops_test",
-    size = "medium",
-    srcs = ["random_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:random_ops",
-    ],
 )
 
 cuda_py_test(
@@ -2375,37 +2299,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "random_gamma_test",
-    size = "medium",
-    srcs = ["random_gamma_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_ops",
-    ],
-    shard_count = 4,
-)
-
-cuda_py_test(
-    name = "random_poisson_test",
-    size = "medium",
-    srcs = ["random_poisson_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_ops",
-    ],
-)
-
-cuda_py_test(
     name = "rnn_test",
     size = "medium",
     srcs = ["rnn_test.py"],
@@ -2820,7 +2713,10 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 3,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+        "nozapfhahn",
+    ],
 )
 
 tf_py_test(

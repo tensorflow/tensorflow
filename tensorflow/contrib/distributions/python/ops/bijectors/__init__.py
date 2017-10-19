@@ -26,6 +26,7 @@
 @@Identity
 @@Inline
 @@Invert
+@@MaskedAutoregressiveFlow
 @@Permute
 @@PowerTransform
 @@Sigmoid
@@ -34,6 +35,9 @@
 @@SoftmaxCentered
 @@Softplus
 @@Weibull
+
+@@masked_autoregressive_default_template
+@@masked_dense
 """
 
 from __future__ import absolute_import
@@ -52,6 +56,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.exp import *
 from tensorflow.contrib.distributions.python.ops.bijectors.gumbel import *
 from tensorflow.contrib.distributions.python.ops.bijectors.inline import *
 from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
+from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import *
 from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import *

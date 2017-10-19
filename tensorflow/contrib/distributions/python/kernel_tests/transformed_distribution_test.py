@@ -116,6 +116,18 @@ class TransformedDistributionTest(test.TestCase):
             np.log(sp_normal.pdf(2.13) + sp_normal.pdf(-2.13)),
             abs_normal.log_prob(2.13).eval())
 
+  def testQuantile(self):
+    with self.test_session() as sess:
+      logit_normal = self._cls()(
+          distribution=ds.Normal(loc=0., scale=1.),
+          bijector=bs.Sigmoid(),
+          validate_args=True)
+      grid = [0., 0.25, 0.5, 0.75, 1.]
+      q = logit_normal.quantile(grid)
+      cdf = logit_normal.cdf(q)
+      cdf_ = sess.run(cdf)
+      self.assertAllClose(grid, cdf_, rtol=1e-6, atol=0.)
+
   def testCachedSamples(self):
     exp_forward_only = bs.Exp(event_ndims=0)
     exp_forward_only._inverse = self._make_unimplemented(

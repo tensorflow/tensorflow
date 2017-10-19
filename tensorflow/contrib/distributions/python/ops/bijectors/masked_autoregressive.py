@@ -12,17 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for testing tfe code."""
+"""MaskedAutoregressiveFlow bijector."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops as _ops
-from tensorflow.python.platform import test as _test
-from tensorflow.python.platform.test import *  # pylint: disable=wildcard-import
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
+from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive_impl import *
+# pylint: enable=wildcard-import
+from tensorflow.python.util.all_util import remove_undocumented
 
+_allowed_symbols = [
+    "MaskedAutoregressiveFlow",
+    "masked_dense",
+    "masked_autoregressive_default_template",
+]
 
-def main(argv=None):
-  _ops.enable_eager_execution()
-  _test.main(argv)
+remove_undocumented(__name__, _allowed_symbols)

@@ -81,6 +81,11 @@ class LayerCollectionTest(test.TestCase):
       lc = layer_collection.LayerCollection()
       lc.register_fully_connected(
           array_ops.constant(1), array_ops.constant(2), array_ops.constant(3))
+      lc.register_fully_connected(
+          array_ops.constant(1),
+          array_ops.constant(2),
+          array_ops.constant(3),
+          approx=layer_collection.APPROX_DIAGONAL_NAME)
       lc.register_conv2d(
           array_ops.constant(4), [1, 1, 1, 1], 'SAME',
           array_ops.ones((1, 1, 1, 1)), array_ops.constant(3))
@@ -91,7 +96,7 @@ class LayerCollectionTest(test.TestCase):
           16,
           approx=layer_collection.APPROX_DIAGONAL_NAME)
 
-      self.assertEqual(4, len(lc.get_blocks()))
+      self.assertEqual(5, len(lc.get_blocks()))
 
   def testRegisterBlocksMultipleRegistrations(self):
     with ops.Graph().as_default():
