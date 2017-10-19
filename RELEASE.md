@@ -71,6 +71,10 @@
   system support are now default build options.
 * Custom op libraries must link against libtensorflow_framework.so
   (installed at `tf.sysconfig.get_lib()`).
+* Change `RunConfig` default behavior to not set a random seed, making random
+  behavior independently random on distributed workers. We expect this to
+  generally improve training performance. Models that do rely on determinism
+  should set a random seed explicitly.
 
 ## Breaking Changes to the API
 * The signature of the `tf.contrib.data.rejection_resample()` function has been
