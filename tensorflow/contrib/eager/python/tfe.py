@@ -67,12 +67,10 @@ from tensorflow.contrib.eager.python.saver import Saver
 from tensorflow.contrib.eager.python.summary_writer import SummaryWriter
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import function
-from tensorflow.python.eager.context import enable_eager_execution
 from tensorflow.python.eager.context import in_eager_mode
 from tensorflow.python.eager.context import in_graph_mode
 from tensorflow.python.eager.context import list_devices
 from tensorflow.python.eager.context import num_gpus
-from tensorflow.python.eager.context import run
 from tensorflow.python.eager.core import enable_tracing
 from tensorflow.python.eager.custom_gradient import custom_gradient
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
@@ -81,6 +79,8 @@ from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
+from tensorflow.python.framework.ops import enable_eager_execution
+from tensorflow.python.framework.ops import eager_run as run
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.util.all_util import remove_undocumented

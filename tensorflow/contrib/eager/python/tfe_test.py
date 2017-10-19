@@ -95,14 +95,6 @@ class TFETest(test_util.TensorFlowTestCase):
     devices = tfe.list_devices()
     self.assertEqual(len(devices) - 1, tfe.num_gpus())
 
-  def testCallingEnableEagerExecutionMoreThanOnce(self):
-    # Note that eager.test.main() has already invoked enable_eager_exceution().
-    with self.assertRaisesRegexp(
-        ValueError, r'Do not call tfe\.%s more than once in the same process' %
-        tfe.enable_eager_execution.__name__):
-      tfe.enable_eager_execution()
-
-
 if __name__ == '__main__':
   tfe.enable_eager_execution()
   test.main()
