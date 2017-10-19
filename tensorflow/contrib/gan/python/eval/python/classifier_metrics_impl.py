@@ -107,7 +107,6 @@ def _symmetric_matrix_square_root(mat, eps=1e-10):
 
 
 # Convenience preprocessing function, with fixed defaults.
-# NOTE: Floating-point inputs are expected to be in [0, 1].
 # Copied from /tensorflow_models/slim/preprocessing/inception_preprocessing.py.
 def preprocess_image(
     images, height=INCEPTION_DEFAULT_IMAGE_SIZE,
