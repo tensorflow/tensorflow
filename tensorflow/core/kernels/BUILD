@@ -3152,7 +3152,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-    ],
+    ]+ if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(

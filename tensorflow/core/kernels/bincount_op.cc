@@ -135,7 +135,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
                               .TypeConstraint<type>("T"), \
                           BincountOp<GPUDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
+TF_CALL_float(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #endif  // GOOGLE_CUDA
