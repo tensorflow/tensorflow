@@ -27,7 +27,10 @@ from tensorflow.python.estimator import run_config as run_config_lib
 
 class TPUConfig(
     collections.namedtuple('TPUConfig', [
-        'iterations_per_loop', 'num_shards', 'per_host_input_for_training'
+        'iterations_per_loop',
+        'num_shards',
+        'per_host_input_for_training',
+        'tpu_job_name',
     ])):
   """TPU related configuration required by `TPUEstimator`.
 
@@ -46,12 +49,17 @@ class TPUConfig(
       that this only works for single-host TPU training now (tracked in
       b/67051042). For multi-host, please use Per-Core, i.e., `False` for
       `per_host_input_for_training`.
+    tpu_job_name: The name of the TPU job. Typically, this name is auto-inferred
+      within TPUEstimator, however when using ClusterSpec propagation in more
+      esoteric cluster configurations, you may need to specify the job name as a
+      string.
   """
 
   def __new__(cls,
               iterations_per_loop=2,
               num_shards=2,
-              per_host_input_for_training=True):
+              per_host_input_for_training=True,
+              tpu_job_name=None):
 
     # Check iterations_per_loop.
     util_lib.check_positive_integer(iterations_per_loop,
@@ -59,12 +67,12 @@ class TPUConfig(
 
     # Check num_shards.
     util_lib.check_positive_integer(num_shards, 'TPUConfig num_shards')
-
     return super(TPUConfig, cls).__new__(
         cls,
         iterations_per_loop=iterations_per_loop,
         num_shards=num_shards,
-        per_host_input_for_training=per_host_input_for_training)
+        per_host_input_for_training=per_host_input_for_training,
+        tpu_job_name=tpu_job_name)
 
 
 class RunConfig(run_config_lib.RunConfig):

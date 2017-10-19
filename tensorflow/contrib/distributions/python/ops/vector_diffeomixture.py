@@ -141,7 +141,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   and,
 
   ```none
-  grid, weight = np.polynomial.hermite.hermgauss(quadrature_polynomial_degree)
+  grid, weight = np.polynomial.hermite.hermgauss(quadrature_degree)
   prob[k]   = weight[k] / sqrt(pi)
   lambda[k; i] = sigmoid(mix_loc[k] + sqrt(2) mix_scale[k] grid[i])
   ```
@@ -219,7 +219,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                distribution,
                loc=None,
                scale=None,
-               quadrature_polynomial_degree=8,
+               quadrature_grid_and_probs=None,
                validate_args=False,
                allow_nan_stats=True,
                name="VectorDiffeomixture"):
@@ -248,7 +248,9 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         `k`-th element represents the `scale` used for the `k`-th affine
         transformation. `LinearOperator`s must have shape `[B1, ..., Bb, d, d]`,
         `b >= 0`, i.e., characterizes `b`-batches of `d x d` matrices
-      quadrature_polynomial_degree: Python `int`-like scalar.
+      quadrature_grid_and_probs: Python pair of `list`-like objects representing
+        the sample points and the corresponding (possibly normalized) weight.
+        When `None`, defaults to: `np.polynomial.hermite.hermgauss(deg=8)`.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
@@ -262,7 +264,8 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     Raises:
       ValueError: if `not scale or len(scale) < 2`.
       ValueError: if `len(loc) != len(scale)`
-      ValueError: if `quadrature_polynomial_degree < 1`.
+      ValueError: if `quadrature_grid_and_probs is not None` and
+        `len(quadrature_grid_and_probs[0]) != len(quadrature_grid_and_probs[1])`
       ValueError: if `validate_args` and any not scale.is_positive_definite.
       TypeError: if any scale.dtype != scale[0].dtype.
       TypeError: if any loc.dtype != scale[0].dtype.
@@ -307,12 +310,6 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                                name="endpoint_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(loc, scale))]
 
-      if quadrature_polynomial_degree < 1:
-        raise ValueError("quadrature_polynomial_degree={} "
-                         "is not at least 1".format(
-                             quadrature_polynomial_degree))
-      self._degree = quadrature_polynomial_degree
-
       # TODO(jvdillon): Remove once we support k-mixtures.
       # We make this assertion here because otherwise `grid` would need to be a
       # vector not a scalar.
@@ -320,17 +317,24 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         raise NotImplementedError("Currently only bimixtures are supported; "
                                   "len(scale)={} is not 2.".format(len(scale)))
 
-      grid, prob = np.polynomial.hermite.hermgauss(
-          deg=quadrature_polynomial_degree)
+      if quadrature_grid_and_probs is None:
+        grid, probs = np.polynomial.hermite.hermgauss(deg=8)
+      else:
+        grid, probs = tuple(quadrature_grid_and_probs)
+        if len(grid) != len(probs):
+          raise ValueError("`quadrature_grid_and_probs` must be a `tuple` of "
+                           "same-length list-like objects")
       grid = grid.astype(dtype.as_numpy_dtype)
-      prob = prob.astype(dtype.as_numpy_dtype)
-      prob /= np.linalg.norm(prob, ord=1)
+      probs = probs.astype(dtype.as_numpy_dtype)
+      probs /= np.linalg.norm(probs, ord=1)
+      self._quadrature_grid = grid
+      self._quadrature_probs = probs
 
       # Note: by creating the logits as `log(prob)` we ensure that
       # `self.mixture_distribution.logits` is equivalent to
       # `math_ops.log(self.mixture_distribution.probs)`.
       self._mixture_distribution = categorical_lib.Categorical(
-          logits=np.log(prob),
+          logits=np.log(probs),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats)
 
@@ -357,10 +361,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                                validate_args=validate_args,
                                name="interpolated_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(
-              interpolate_loc(quadrature_polynomial_degree,
+              interpolate_loc(len(self._quadrature_grid),
                               self._interpolate_weight,
                               loc),
-              interpolate_scale(quadrature_polynomial_degree,
+              interpolate_scale(len(self._quadrature_grid),
                                 self._interpolate_weight,
                                 scale)))]
 
@@ -416,9 +420,14 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     return self._interpolated_affine
 
   @property
-  def quadrature_polynomial_degree(self):
-    """Polynomial largest exponent used for Gauss-Hermite quadrature."""
-    return self._degree
+  def quadrature_grid(self):
+    """Quadrature grid points."""
+    return self._quadrature_grid
+
+  @property
+  def quadrature_probs(self):
+    """Quadrature normalized weights."""
+    return self._quadrature_probs
 
   def _batch_shape_tensor(self):
     return self._batch_shape_
@@ -454,10 +463,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         seed=distribution_util.gen_new_seed(
             seed, "vector_diffeomixture"))
 
-    # Stride `self._degree` for `batch_size` number of times.
+    # Stride `quadrature_degree` for `batch_size` number of times.
     offset = math_ops.range(start=0,
-                            limit=batch_size * self._degree,
-                            delta=self._degree,
+                            limit=batch_size * len(self.quadrature_probs),
+                            delta=len(self.quadrature_probs),
                             dtype=ids.dtype)
 
     weight = array_ops.gather(

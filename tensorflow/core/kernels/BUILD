@@ -2499,6 +2499,7 @@ cc_library(
         ":cross_op",
         ":cwise_op",
         ":fft_ops",
+        ":histogram_op",
         ":matmul_op",
         ":population_count_op",
         ":reduction_ops",
@@ -2633,6 +2634,24 @@ tf_kernel_library(
     name = "sequence_ops",
     prefix = "sequence_ops",
     deps = MATH_DEPS,
+)
+
+tf_cc_test(
+    name = "sequence_ops_test",
+    size = "small",
+    srcs = ["sequence_ops_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sequence_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cuda_cc_test(
@@ -2993,6 +3012,7 @@ cc_library(
         ":in_topk_op",
         ":l2loss_op",
         ":lrn_op",
+        ":nth_element_op",
         ":relu_op",
         ":softmax_op",
         ":softplus_op",
@@ -3080,6 +3100,12 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "nth_element_op",
+    prefix = "nth_element_op",
+    deps = NN_DEPS,
+)
+
+tf_kernel_library(
     name = "xent_op",
     prefix = "xent_op",
     deps = NN_DEPS,
@@ -3094,6 +3120,17 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
     ],
+)
+
+tf_kernel_library(
+    name = "histogram_op",
+    prefix = "histogram_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -4512,6 +4549,7 @@ filegroup(
         "cwise_op_greater_equal.cc",
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
+        "cwise_op_left_shift.cc",
         "cwise_op_less.cc",
         "cwise_op_less_equal.cc",
         "cwise_op_log.cc",
@@ -4525,6 +4563,7 @@ filegroup(
         "cwise_op_neg.cc",
         "cwise_op_pow.cc",
         "cwise_op_reciprocal.cc",
+        "cwise_op_right_shift.cc",
         "cwise_op_round.cc",
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
@@ -5671,7 +5710,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 

@@ -35,7 +35,7 @@ REQUIRED_PACKAGES = [
     'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
-    'protobuf >= 3.3.0',
+    'protobuf >= 3.4.0',
     'tensorflow-tensorboard >= 0.4.0rc1, < 0.5.0',
 ]
 

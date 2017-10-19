@@ -428,9 +428,37 @@ class ResourceVariable(variables.Variable):
   # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
   def __del__(self):
-    if context.in_eager_mode():
-      gen_resource_variable_ops.destroy_resource_op(self._handle,
-                                                    ignore_lookup_error=False)
+    if not self._in_graph_mode:
+      # There is only one ResourceVariable object for each underlying resource
+      # (cached in the Graph's VariableStore when created with get_variable), so
+      # it is safe to delete the resource we have a handle to. Each Graph has a
+      # unique container name in Eager, which prevents resource sharing.
+      #
+      # The Graph's VariableStore contains strong references to ResourceVariable
+      # objects created with get_variable, so this destructor will only be
+      # callled once the Graph is garbage collected for those objects. However,
+      # explicitly created ResourceVariables (e.g. through tfe.Variable) may be
+      # collected earlier.
+      try:
+        # We have checked that this ResourceVariable was created in Eager
+        # mode. However, this destructor may be running in graph mode
+        # (especially during unit tests). To clean up successfully, we switch
+        # back into Eager temporarily.
+        with context.eager_mode():
+          with ops.device(self._handle_device):
+            gen_resource_variable_ops.destroy_resource_op(
+                self._handle, ignore_lookup_error=True)
+      except TypeError:
+        # Suppress some exceptions, mainly for the case when we're running on
+        # module deletion. Things that can go wrong include the context module
+        # already being unloaded, self._handle._handle_data no longer being
+        # valid, and so on. Printing warnings in these cases is silly
+        # (exceptions raised from __del__ are printed as warnings to stderr).
+        pass  # 'NoneType' object is not callable when the handle has been
+              # partially unloaded.
+      except AttributeError:
+        pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+              # been unloaded. Will catch other module unloads as well.
 
   @property
   def dtype(self):
@@ -517,6 +545,12 @@ class ResourceVariable(variables.Variable):
     if context.in_eager_mode():
       raise RuntimeError("Trying to eval in EAGER mode")
     return self._graph_element.eval(session=session)
+
+  def numpy(self):
+    if context.in_graph_mode():
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+    return self.read_value().numpy()
 
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `ResourceVariable`.

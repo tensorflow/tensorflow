@@ -654,7 +654,8 @@ class RandomShuffleQueueTest(test.TestCase):
 
   def testBlockingDequeueFromClosedQueue(self):
     with self.test_session() as sess:
-      q = data_flow_ops.RandomShuffleQueue(10, 2, dtypes_lib.float32)
+      min_size = 2
+      q = data_flow_ops.RandomShuffleQueue(10, min_size, dtypes_lib.float32)
       elems = [10.0, 20.0, 30.0, 40.0]
       enqueue_op = q.enqueue_many((elems,))
       close_op = q.close()
@@ -664,20 +665,24 @@ class RandomShuffleQueueTest(test.TestCase):
 
       results = []
 
-      def dequeue():
-        for _ in elems:
-          results.append(sess.run(dequeued_t))
+      # Manually dequeue until we hit min_size.
+      results.append(sess.run(dequeued_t))
+      results.append(sess.run(dequeued_t))
+
+      def blocking_dequeue():
+        results.append(sess.run(dequeued_t))
+        results.append(sess.run(dequeued_t))
+
         self.assertItemsEqual(elems, results)
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
                                      "is closed and has insufficient"):
           sess.run(dequeued_t)
 
-      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread = self.checkedThread(target=blocking_dequeue)
       dequeue_thread.start()
-      # The close_op should run after the dequeue_thread has blocked.
-      # TODO(mrry): Figure out how to do this without sleeping.
       time.sleep(0.1)
+
       # The dequeue thread blocked when it hit the min_size requirement.
       self.assertEqual(len(results), 2)
       close_op.run()

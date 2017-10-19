@@ -464,7 +464,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   }
   if (ShapeUtil::Rank(operand_shape) != padding_config.dimensions_size()) {
     return InvalidArgument(
-        "the rank of the operand and the padding configuration do not match.");
+        "The rank of the operand and the padding configuration do not match: "
+        "%s vs %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        padding_config.ShortDebugString().c_str());
   }
   if (operand_shape.element_type() != padding_value_shape.element_type()) {
     return InvalidArgument(

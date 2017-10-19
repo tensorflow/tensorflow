@@ -29,7 +29,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -153,7 +152,7 @@ class AdamOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_resource=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with variable_scope.variable_scope("%d" % i):
+      with self.test_session(graph=ops.Graph()):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

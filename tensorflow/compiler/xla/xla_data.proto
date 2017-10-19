@@ -621,7 +621,7 @@ message WhileRequest {
 enum UnaryOperation {
   UNOP_INVALID = 0;
 
-  // Elementwise, logical negation
+  // Elementwise, logical negation on booleans and bitwise negation on ints.
   UNOP_NOT = 1;
 
   // Elementwise, computes e^x.
@@ -710,7 +710,7 @@ enum BinaryOperation {
   // Remainder operation.
   BINOP_REM = 17;
 
-  // Logical operators
+  // Element-wise, logical operators on booleans and bitwise operators on ints.
   BINOP_AND = 18;
   BINOP_OR = 19;
 

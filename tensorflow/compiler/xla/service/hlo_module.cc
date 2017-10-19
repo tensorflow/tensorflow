@@ -154,8 +154,8 @@ string HloModule::ToString() const {
   std::ostringstream s;
   s << "HloModule " << name() << ":\n\n";
   s << "ENTRY " << entry_computation()->ToString() << "\n\n";
-  for (const std::unique_ptr<HloComputation>& computation : computations_) {
-    if (computation.get() != entry_computation()) {
+  for (const HloComputation* computation : MakeNonfusionComputations()) {
+    if (computation != entry_computation()) {
       s << computation->ToString() << "\n\n";
     }
   }

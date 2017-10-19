@@ -284,6 +284,15 @@ class PadOpTest(test.TestCase):
     self.assertAllEqual(inp, out)
     self.assertShapeEqual(inp, tf_val)
 
+  def testPadTypes(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      paddings = np.zeros((0, 2))
+      inp = np.asarray(7)
+      with self.test_session(use_gpu=True):
+        tf_val = array_ops.pad(inp, constant_op.constant(paddings, dtype=dtype))
+        out = tf_val.eval()
+      self.assertAllEqual(inp, out)
+      self.assertShapeEqual(inp, tf_val)
 
 if __name__ == "__main__":
   test.main()

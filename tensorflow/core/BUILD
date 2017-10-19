@@ -781,6 +781,7 @@ cc_library(
         "//tensorflow/core/kernels:dataset_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:histogram_op",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:linalg",
@@ -1398,6 +1399,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/platform.h",
     "platform/protobuf_internal.h",
     "platform/setround.h",
+    "platform/snappy.h",
     "platform/tensor_coding.h",
     "platform/tracing.h",
 ]
@@ -2258,7 +2260,6 @@ cc_library(
         "lib/io/block_builder.h",
         "lib/io/format.h",
         "lib/random/philox_random_test_utils.h",
-        "platform/snappy.h",
     ],
     deps = [
         ":lib",

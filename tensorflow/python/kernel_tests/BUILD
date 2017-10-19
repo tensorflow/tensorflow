@@ -462,6 +462,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
@@ -906,6 +907,21 @@ cuda_py_test(
     name = "topk_op_test",
     size = "small",
     srcs = ["topk_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "nth_element_op_test",
+    size = "small",
+    srcs = ["nth_element_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
@@ -2891,6 +2907,27 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "dataset_from_generator_op_test",
+    size = "small",
+    srcs = ["dataset_from_generator_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+    ],
+)
+
+tf_py_test(
     name = "filter_dataset_op_test",
     size = "small",
     srcs = ["filter_dataset_op_test.py"],
@@ -3131,7 +3168,10 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_oss",  # Test flaky due to port collisions.
+        "no_windows",
+    ],
 )
 
 filegroup(

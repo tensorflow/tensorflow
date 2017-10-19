@@ -40,6 +40,10 @@ def FoldBatchNorms(graph):
   Raises:
     ValueError: When batch norm folding fails.
   """
+  # Fail immediately when the graph contains unsupported fused batch norm ops.
+  if any(op for op in graph.get_operations() if op.type == 'FusedBatchNorm'):
+    raise ValueError('Fused batch norm is not supported')
+
   input_to_ops_map = input_to_ops.InputToOps(graph)
 
   for bn in common.BatchNormGroups(graph):
