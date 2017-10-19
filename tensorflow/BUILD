@@ -123,7 +123,7 @@ config_setting(
 config_setting(
     name = "ios_x86_64",
     values = {
-        "cc_target_os": "apple",
+        "crosstool_top": "//tools/osx/crosstool:crosstool",
         "cpu": "ios_x86_64",
     },
     visibility = ["//visibility:public"],
