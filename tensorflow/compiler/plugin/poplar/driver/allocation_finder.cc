@@ -121,11 +121,9 @@ AllocationFinder::FindConsumers(HloInstruction* inst) {
       case HloOpcode::kReducePrecision:
       case HloOpcode::kReduceWindow:
       case HloOpcode::kReshape:
-      case HloOpcode::kReverse:
       case HloOpcode::kSelectAndScatter:
       case HloOpcode::kSend:
       case HloOpcode::kSlice:
-      case HloOpcode::kSort:
       case HloOpcode::kTrace:
       case HloOpcode::kTranspose:
       case HloOpcode::kTuple:
