@@ -69,23 +69,6 @@ class GraphCompiler {
   Status Compile();
 
  private:
-  // NodeOutputs is a wrapper over TensorValues that represents outputs of a
-  // node.
-  struct NodeOutputs {
-    ~NodeOutputs() {
-      for (auto& v : values) {
-        CHECK(!v.is_ref());
-        delete v.tensor;
-      }
-    }
-
-    // Output values of this node.
-    std::vector<TensorValue> values;
-  };
-
-  // A mapping from node id to node output.
-  using OutputRegistry = std::vector<NodeOutputs>;
-
   // Partially sets params. This partially set params can be reused
   // across multple nodes visit.
   void PartiallySetupParams(OpKernelContext::Params* params);
