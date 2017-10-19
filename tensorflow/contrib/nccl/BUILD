@@ -71,10 +71,12 @@ tf_kernel_library(
         "kernels/nccl_manager.cc",
         "kernels/nccl_manager.h",
         "kernels/nccl_ops.cc",
+        "kernels/nccl_rewrite.cc",
     ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:proto_text",
         "@nccl_archive//:nccl",
     ],
     alwayslink = 1,

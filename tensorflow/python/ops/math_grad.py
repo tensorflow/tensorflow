@@ -96,20 +96,16 @@ def _MinGrad(op, grad):
 def _MeanGrad(op, grad):
   """Gradient for Mean."""
   sum_grad = _SumGrad(op, grad)[0]
-  input_shape = array_ops.shape(op.inputs[0])
-  output_shape = array_ops.shape(op.outputs[0])
-  # TODO(apassos) remove this device hackery as eager copy to device becomes
-  # more seamless.
-  with ops.colocate_with(input_shape):
+  input_size = op.inputs[0].get_shape().num_elements()
+  output_size = op.outputs[0].get_shape().num_elements()
+  if input_size is not None and output_size is not None:
+    factor = input_size // max(output_size, 1)
+    factor = constant_op.constant(factor, dtype=sum_grad.dtype)
+  else:
+    input_shape = array_ops.shape(op.inputs[0])
+    output_shape = array_ops.shape(op.outputs[0])
     factor = _safe_shape_div(
         math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
-  if context.in_eager_mode():
-    # Note that we go through numpy here just so we use the eager per-device
-    # scalar cache. We know the factor is a host memory tensor because it's a
-    # shape, and we also know that converting a scalar into a tensor triggers a
-    # per-device cache.
-    factor = factor.numpy()
-    factor = constant_op.constant(factor, dtype=sum_grad.dtype)
   return sum_grad / math_ops.cast(factor, sum_grad.dtype), None
 
 
@@ -704,10 +700,26 @@ def _AddNGrad(op, grad):
   return [grad] * len(op.inputs)
 
 
+def _ShapesFullySpecifiedAndEqual(x, y, grad):
+  # pylint: disable=protected-access
+  x_shape = x._shape_tuple()
+  y_shape = y._shape_tuple()
+  grad_shape = grad._shape_tuple()
+  # pylint: enable=protected-access
+  return (x_shape == y_shape and
+          x_shape == grad_shape and
+          x_shape is not None and
+          None not in x_shape)
+
+
 @ops.RegisterGradient("Add")
 def _AddGrad(op, grad):
+  """Gradient for Add."""
   x = op.inputs[0]
   y = op.inputs[1]
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad)):
+    return grad, grad
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   # pylint: disable=protected-access
@@ -735,10 +747,14 @@ def _MulGrad(op, grad):
   """The gradient of scalar multiplication."""
   x = op.inputs[0]
   y = op.inputs[1]
+  # pylint: disable=protected-access
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad) and
+      grad.dtype in (dtypes.int32, dtypes.float32)):
+    return gen_math_ops._mul(grad, y), gen_math_ops._mul(grad, x)
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  # pylint: disable=protected-access
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
   # pylint: enable=protected-access
   x = math_ops.conj(x)
@@ -851,7 +867,7 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
   xgrad = array_ops.where(xmask, grad, zeros)
-  ygrad = array_ops.where(math_ops.logical_not(xmask), grad, zeros)
+  ygrad = array_ops.where(xmask, zeros, grad)
   gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
   gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
   return (gx, gy)

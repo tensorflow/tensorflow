@@ -397,27 +397,57 @@ def swap_inputs(sgv0, sgv1):
 
 
 def reroute_inputs(sgv0, sgv1):
-  """Re-route all the inputs of sgv0 to sgv1 (see reroute_inputs)."""
+  """Re-route all the inputs of two subgraphs.
+
+  Args:
+    sgv0: the first subgraph to have its inputs swapped. This argument is
+      converted to a subgraph using the same rules than the function
+      subgraph.make_view.
+    sgv1: the second subgraph to have its inputs swapped. This argument is
+      converted to a subgraph using the same rules than the function
+      subgraph.make_view.
+  Returns:
+    A tuple `(sgv0, sgv1)` of subgraph views with their inputs swapped.
+      Note that the function argument sgv0 and sgv1 are also modified in place.
+  Raises:
+    StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
+      the same rules than the function subgraph.make_view.
+  """
   return _reroute_sgv_inputs(sgv0, sgv1, _RerouteMode.a2b)
 
 
 def swap_outputs(sgv0, sgv1):
-  """Swap all the outputs of sgv0 and sgv1 (see _reroute_outputs)."""
+  """Swap all the outputs of sgv0 and sgv1 (see reroute_outputs)."""
   return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.swap)
 
 
 def reroute_outputs(sgv0, sgv1):
-  """Re-route all the outputs of sgv0 to sgv1 (see _reroute_outputs)."""
+  """Re-route all the outputs of two operations.
+
+  Args:
+    sgv0: the first subgraph to have its outputs swapped. This argument is
+      converted to a subgraph using the same rules than the function
+      subgraph.make_view.
+    sgv1: the second subgraph to have its outputs swapped. This argument is
+      converted to a subgraph using the same rules than the function
+      subgraph.make_view.
+  Returns:
+    A tuple `(sgv0, sgv1)` of subgraph views with their outputs swapped.
+      Note that the function argument sgv0 and sgv1 are also modified in place.
+  Raises:
+    StandardError: if sgv0 or sgv1 cannot be converted to a SubGraphView using
+      the same rules than the function subgraph.make_view.
+  """
   return _reroute_sgv_outputs(sgv0, sgv1, _RerouteMode.a2b)
 
 
 def swap_ios(sgv0, sgv1):
-  """Swap the inputs and outputs of sgv1 to sgv0 (see _reroute)."""
+  """Swap the inputs and outputs of sgv1 to sgv0 (see _reroute_sgv)."""
   return _reroute_sgv(sgv0, sgv1, _RerouteMode.swap)
 
 
 def reroute_ios(sgv0, sgv1):
-  """Re-route the inputs and outputs of sgv0 to sgv1 (see _reroute)."""
+  """Re-route the inputs and outputs of sgv0 to sgv1 (see _reroute_sgv)."""
   return _reroute_sgv(sgv0, sgv1, _RerouteMode.a2b)
 
 

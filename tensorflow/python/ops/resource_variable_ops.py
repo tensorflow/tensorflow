@@ -38,9 +38,11 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.util import compat
 
 
-def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode,
-                                container=None):
+def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   """Creates a variable handle with information to do shape inference."""
+  container = ops.get_default_graph()._container  # pylint: disable=protected-access
+  if container is None:
+    container = ""
   handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                    shared_name=shared_name,
                                                    name=name,
@@ -305,8 +307,7 @@ class ResourceVariable(variables.Variable):
                 dtype=initial_value.dtype.base_dtype,
                 shared_name=handle_name,
                 name=name,
-                graph_mode=False,
-                container="")
+                graph_mode=False)
             self._handle_device = (
                 self._handle.device if self._in_graph_mode else
                 context.get_default_context().device_name)
@@ -332,8 +333,7 @@ class ResourceVariable(variables.Variable):
               dtype=initial_value.dtype.base_dtype,
               shared_name=handle_name,
               name=name,
-              graph_mode=self._in_graph_mode,
-              container="")
+              graph_mode=self._in_graph_mode)
           self._handle_device = (self._handle.device if self._in_graph_mode else
                                  context.get_default_context().device_name)
           self._graph_shape = initial_value.get_shape()
@@ -427,6 +427,39 @@ class ResourceVariable(variables.Variable):
     self._constraint = None
   # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
+  def __del__(self):
+    if not self._in_graph_mode:
+      # There is only one ResourceVariable object for each underlying resource
+      # (cached in the Graph's VariableStore when created with get_variable), so
+      # it is safe to delete the resource we have a handle to. Each Graph has a
+      # unique container name in Eager, which prevents resource sharing.
+      #
+      # The Graph's VariableStore contains strong references to ResourceVariable
+      # objects created with get_variable, so this destructor will only be
+      # callled once the Graph is garbage collected for those objects. However,
+      # explicitly created ResourceVariables (e.g. through tfe.Variable) may be
+      # collected earlier.
+      try:
+        # We have checked that this ResourceVariable was created in Eager
+        # mode. However, this destructor may be running in graph mode
+        # (especially during unit tests). To clean up successfully, we switch
+        # back into Eager temporarily.
+        with context.eager_mode():
+          with ops.device(self._handle_device):
+            gen_resource_variable_ops.destroy_resource_op(
+                self._handle, ignore_lookup_error=True)
+      except TypeError:
+        # Suppress some exceptions, mainly for the case when we're running on
+        # module deletion. Things that can go wrong include the context module
+        # already being unloaded, self._handle._handle_data no longer being
+        # valid, and so on. Printing warnings in these cases is silly
+        # (exceptions raised from __del__ are printed as warnings to stderr).
+        pass  # 'NoneType' object is not callable when the handle has been
+              # partially unloaded.
+      except AttributeError:
+        pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+              # been unloaded. Will catch other module unloads as well.
+
   @property
   def dtype(self):
     """The dtype of this variable."""
@@ -513,6 +546,12 @@ class ResourceVariable(variables.Variable):
       raise RuntimeError("Trying to eval in EAGER mode")
     return self._graph_element.eval(session=session)
 
+  def numpy(self):
+    if context.in_graph_mode():
+      raise NotImplementedError(
+          "numpy() is only available when eager execution is enabled.")
+    return self.read_value().numpy()
+
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `ResourceVariable`.
 
@@ -540,16 +579,8 @@ class ResourceVariable(variables.Variable):
      the read operation.
     """
     with ops.name_scope("Read"):
-      # In graph mode, ensure we read the variable in the same device as the
-      # handle. In eager mode, however, this sometimes tries to read a GPU
-      # variable in the CPU because the handle is host memory. For now, then, we
-      # need to skip the device block in eager. TODO(apassos): eager should have
-      # separate notions of device and memory, so handle.device can be GPU while
-      # handle.memory_space is always CPU.
-      if context.in_graph_mode():
-        with ops.device(self._handle_device):
-          value = self._read_variable_op()
-      else:
+      # Ensure we read the variable in the same device as the handle.
+      with ops.device(self._handle_device):
         value = self._read_variable_op()
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.

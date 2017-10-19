@@ -19,12 +19,17 @@ limitations under the License.
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_ContextAddFunctionDef;
-%rename("%s") TFE_NewOp;
-%rename("%s") TFE_OpGetAttrType;
+%rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_Execute;
 %rename("%s") TFE_Py_UID;
+%rename("%s") TFE_Py_NewTape;
+%rename("%s") TFE_Py_TapeShouldRecord;
+%rename("%s") TFE_Py_TapeWatch;
+%rename("%s") TFE_Py_TapeDeleteTrace;
+%rename("%s") TFE_Py_TapeRecordOperation;
+%rename("%s") TFE_Py_TapeExport;
 
 
 %{

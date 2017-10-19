@@ -728,7 +728,10 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
             strings::StrCat(dst_frame_name, "$$", dst_device);
         ControlLoop loop = control_loops[cl_key];
         DCHECK(loop.enter != nullptr);
-        g->AddControlEdge(loop.merge, dst);
+        // Note that we'll create multiple duplicate edges if dst has multiple
+        // cross-device inputs. This is expected by the logic in Partition(), so
+        // it can add control edges to the recv nodes once they're created.
+        g->AddControlEdge(loop.merge, dst, /*allow_duplicates=*/true);
       }
     }
   }

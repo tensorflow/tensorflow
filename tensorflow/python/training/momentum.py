@@ -53,7 +53,10 @@ class MomentumOptimizer(optimizer.Optimizer):
         gradients.  Defaults to "Momentum".
       use_nesterov: If `True` use Nesterov Momentum.
         See [Sutskever et al., 2013](
-        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf)
+        http://jmlr.org/proceedings/papers/v28/sutskever13.pdf).
+        This implementation always computes gradients at the value of the
+        variable(s) passed to the optimizer. Using Nesterov Momentum makes the
+        variable(s) track the values called `theta_t + mu*v_t` in the paper.
 
     """
     super(MomentumOptimizer, self).__init__(use_locking, name)

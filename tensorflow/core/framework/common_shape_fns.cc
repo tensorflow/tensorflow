@@ -17,24 +17,31 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
-                                    int64 stride, Padding padding_type,
-                                    int64* output_size, int64* padding_before,
-                                    int64* padding_after) {
+Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
+                                      int64 dilation_rate, int64 stride,
+                                      Padding padding_type, int64* output_size,
+                                      int64* padding_before,
+                                      int64* padding_after) {
   if (stride <= 0) {
     return errors::InvalidArgument("Stride must be > 0, but got ", stride);
   }
+  if (dilation_rate < 1) {
+    return errors::InvalidArgument("Dilation rate must be >= 1, but got ",
+                                   dilation_rate);
+  }
 
-  // See also the parallel implementation in GetWindowedOutputSizeFromDims.
+  // See also the parallel implementation in GetWindowedOutputSizeFromDimsV2.
+  int64 effective_filter_size = (filter_size - 1) * dilation_rate + 1;
   switch (padding_type) {
     case Padding::VALID:
-      *output_size = (input_size - filter_size + stride) / stride;
+      *output_size = (input_size - effective_filter_size + stride) / stride;
       *padding_before = *padding_after = 0;
       break;
     case Padding::SAME:
       *output_size = (input_size + stride - 1) / stride;
       const int64 padding_needed =
-          std::max(0LL, (*output_size - 1) * stride + filter_size - input_size);
+          std::max(0LL, (*output_size - 1) * stride + effective_filter_size -
+                            input_size);
       // For odd values of total padding, add more padding at the 'right'
       // side of the given dimension.
       *padding_before = padding_needed / 2;
@@ -47,13 +54,33 @@ Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
   return Status::OK();
 }
 
+Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
+                                    int64 stride, Padding padding_type,
+                                    int64* output_size, int64* padding_before,
+                                    int64* padding_after) {
+  return GetWindowedOutputSizeVerboseV2(input_size, filter_size,
+                                        /*dilation_rate=*/1, stride,
+                                        padding_type, output_size,
+                                        padding_before, padding_after);
+}
+
 Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
                              Padding padding_type, int64* output_size,
-                             int64* padding) {
+                             int64* padding_size) {
   int64 padding_after_unused;
   return GetWindowedOutputSizeVerbose(input_size, filter_size, stride,
-                                      padding_type, output_size, padding,
+                                      padding_type, output_size, padding_size,
                                       &padding_after_unused);
+}
+
+Status GetWindowedOutputSizeV2(int64 input_size, int64 filter_size,
+                               int64 dilation_rate, int64 stride,
+                               Padding padding_type, int64* output_size,
+                               int64* padding_size) {
+  int64 padding_after_unused;
+  return GetWindowedOutputSizeVerboseV2(input_size, filter_size, dilation_rate,
+                                        stride, padding_type, output_size,
+                                        padding_size, &padding_after_unused);
 }
 
 Status Get3dOutputSize(const std::array<int64, 3>& input,
@@ -69,32 +96,75 @@ Status Get3dOutputSize(const std::array<int64, 3>& input,
   return Status::OK();
 }
 
+Status Get3dOutputSizeV2(const std::array<int64, 3>& input,
+                         const std::array<int64, 3>& window,
+                         const std::array<int64, 3>& dilations,
+                         const std::array<int64, 3>& strides,
+                         Padding padding_type, std::array<int64, 3>* output_ptr,
+                         std::array<int64, 3>* padding_ptr) {
+  for (size_t i = 0; i < input.size(); ++i) {
+    TF_RETURN_IF_ERROR(GetWindowedOutputSizeV2(
+        input[i], window[i], dilations[i], strides[i], padding_type,
+        &(*output_ptr)[i], &(*padding_ptr)[i]));
+  }
+  return Status::OK();
+}
+
 namespace shape_inference {
+
+// The V2 version computes windowed output size with arbitrary dilation_rate,
+// while the original version only handles the cases where dilation_rates equal
+// to 1.
+Status GetWindowedOutputSizeFromDimsV2(
+    shape_inference::InferenceContext* c,
+    shape_inference::DimensionHandle input_size,
+    shape_inference::DimensionOrConstant filter_size, int64 dilation_rate,
+    int64 stride, Padding padding_type,
+    shape_inference::DimensionHandle* output_size) {
+  if (stride <= 0) {
+    return errors::InvalidArgument("Stride must be > 0, but got ", stride);
+  }
+
+  if (dilation_rate < 1) {
+    return errors::InvalidArgument("Dilation rate must be >= 1, but got ",
+                                   dilation_rate);
+  }
+
+  // See also the parallel implementation in GetWindowedOutputSizeVerbose.
+  switch (padding_type) {
+    case Padding::VALID:
+      if (dilation_rate > 1) {
+        DimensionHandle window_size;
+        TF_RETURN_IF_ERROR(
+            c->Subtract(c->MakeDim(filter_size), 1, &window_size));
+        TF_RETURN_IF_ERROR(
+            c->Multiply(window_size, dilation_rate, &window_size));
+        TF_RETURN_IF_ERROR(c->Add(window_size, 1, &window_size));
+        TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
+      } else {
+        TF_RETURN_IF_ERROR(c->Subtract(input_size, filter_size, output_size));
+      }
+      TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
+      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
+                                   /*evenly_divisible=*/false, output_size));
+      break;
+    case Padding::SAME:
+      TF_RETURN_IF_ERROR(c->Add(input_size, stride - 1, output_size));
+      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
+                                   /*evenly_divisible=*/false, output_size));
+      break;
+  }
+  return Status::OK();
+}
 
 Status GetWindowedOutputSizeFromDims(
     shape_inference::InferenceContext* c,
     shape_inference::DimensionHandle input_size,
     shape_inference::DimensionOrConstant filter_size, int64 stride,
     Padding padding_type, shape_inference::DimensionHandle* output_size) {
-  if (stride <= 0) {
-    return errors::InvalidArgument("Stride must be > 0, but got ", stride);
-  }
-
-  // See also the parallel implementation in GetWindowedOutputSizeVerbose.
-  switch (padding_type) {
-    case Padding::VALID:
-      TF_RETURN_IF_ERROR(c->Subtract(input_size, filter_size, output_size));
-      TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
-      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
-                                   false /* evenly_divisible */, output_size));
-      break;
-    case Padding::SAME:
-      TF_RETURN_IF_ERROR(c->Add(input_size, stride - 1, output_size));
-      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
-                                   false /* evenly_divisible */, output_size));
-      break;
-  }
-  return Status::OK();
+  return GetWindowedOutputSizeFromDimsV2(c, input_size, filter_size,
+                                         /*dilation_rate=*/1, stride,
+                                         padding_type, output_size);
 }
 
 Status UnchangedShape(shape_inference::InferenceContext* c) {

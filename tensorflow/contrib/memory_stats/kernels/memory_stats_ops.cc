@@ -54,15 +54,13 @@ class BytesInUseOp : public MemoryStatsOp {
 };
 
 // Register this op on GPU only, see comment for MaxBytesInUse for reason
-REGISTER_KERNEL_BUILDER(
-    Name("BytesInUse").Device(DEVICE_GPU).HostMemory("out"),
-    BytesInUseOp);
+REGISTER_KERNEL_BUILDER(Name("BytesInUse").Device(DEVICE_GPU).HostMemory("out"),
+                        BytesInUseOp);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(
-    Name("BytesInUse").Device(DEVICE_SYCL).HostMemory("out"),
-    MaxBytesInUseOp);
-#endif // TENSORFLOW_USE_SYCL
+    Name("BytesInUse").Device(DEVICE_SYCL).HostMemory("out"), MaxBytesInUseOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 // Op that measures the total memory (in bytes) of a device.
 class BytesLimitOp : public MemoryStatsOp {

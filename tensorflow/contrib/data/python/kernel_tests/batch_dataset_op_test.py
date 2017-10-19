@@ -256,8 +256,9 @@ class BatchDatasetTest(test.TestCase):
   def testDenseToSparseBatchDatasetWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
     iterator = (dataset_ops.Dataset.from_tensor_slices(components)
-                .map(lambda x: array_ops.fill([x, x], x)).dense_to_sparse_batch(
-                    4, [5, -1]).make_initializable_iterator())
+                .map(lambda x: array_ops.fill([x, x], x)).apply(
+                    batching.dense_to_sparse_batch(
+                        4, [5, -1])).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = sparse_tensor.SparseTensor(*iterator.get_next())
 
@@ -285,7 +286,8 @@ class BatchDatasetTest(test.TestCase):
   def testDenseToSparseBatchDatasetWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
     iterator = (dataset_ops.Dataset.from_tensors(input_tensor)
-                .dense_to_sparse_batch(4, [-2]).make_initializable_iterator())
+                .apply(batching.dense_to_sparse_batch(4, [-2]))
+                .make_initializable_iterator())
     init_op = iterator.initializer
 
     with self.test_session() as sess:
@@ -424,6 +426,102 @@ class BatchDatasetTest(test.TestCase):
     self.assertEqual([None], dataset.output_shapes[1][0].as_list())
     self.assertEqual([None, 30], dataset.output_shapes[1][1].as_list())
 
+  def testBatchAndMapDataset(self):
+    """Test a dataset that maps a TF function across its input elements."""
+    # The pipeline is TensorSliceDataset ->
+    # RepeatDataset(count) -> BatchAndMapDataset(square_3, batch_size).
+    components = (np.arange(7),
+                  np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
+                  np.array(37.0) * np.arange(7))
+
+    count = array_ops.placeholder(dtypes.int64, shape=[])
+    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components).repeat(count)
+                .apply(batching.map_and_batch(_map_fn, batch_size))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    self.assertEqual([[None] + list(c.shape[1:]) for c in components],
+                     [t.shape.as_list() for t in get_next])
+
+    with self.test_session() as sess:
+      # Batch of a finite input, where the batch_size divides the
+      # total number of elements.
+      sess.run(init_op, feed_dict={count: 28, batch_size: 14})
+      num_batches = (28 * 7) // 14
+      for i in range(num_batches):
+        result = sess.run(get_next)
+        for component, result_component in zip(components, result):
+          for j in range(14):
+            self.assertAllEqual(component[(i*14 + j) % 7]**2,
+                                result_component[j])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # Batch of a finite input, where the batch_size does not
+      # divide the total number of elements.
+      sess.run(init_op, feed_dict={count: 14, batch_size: 8})
+
+      # We expect (num_batches - 1) full-sized batches.
+      num_batches = int(math.ceil((14 * 7) / 8))
+      for i in range(num_batches - 1):
+        result = sess.run(get_next)
+        for component, result_component in zip(components, result):
+          for j in range(8):
+            self.assertAllEqual(component[(i*8 + j) % 7]**2,
+                                result_component[j])
+      # The last batch should fail with `OutOfRange`.
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # Batch of an empty input should fail straight away.
+      sess.run(init_op, feed_dict={count: 0, batch_size: 8})
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # Empty batch should be an initialization time error.
+      with self.assertRaises(errors.InvalidArgumentError):
+        sess.run(init_op, feed_dict={count: 14, batch_size: 0})
+
+  def testBatchAndMapDatasetFails(self):
+    """Test a dataset that maps a TF function across its input elements."""
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.check_numerics(
+            constant_op.constant(1.0) / constant_op.constant(0.0), "oops"))
+    batch_size = array_ops.placeholder(dtypes.int64, shape=[])
+    iterator = (dataset.apply(batching.map_and_batch(lambda x: x, batch_size))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
+        sess.run(init_op, feed_dict={batch_size: 14})
+
+  def testBatchAndMapDatasetShapeMismatch(self):
+    """Test a dataset that maps a TF function across its input elements."""
+    def generator():
+      yield [1]
+      yield [2]
+      yield [3]
+      yield [[4, 5, 6]]
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator, output_types=dtypes.int32)
+    batch_size = 4
+    iterator = (
+        dataset.apply(batching.map_and_batch(lambda x: x, batch_size))
+        .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    with self.test_session() as sess:
+      sess.run(init_op)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "number of elements does not match"):
+        sess.run(get_next)
 
 if __name__ == "__main__":
   test.main()

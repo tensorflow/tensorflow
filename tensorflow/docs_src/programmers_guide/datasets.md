@@ -44,7 +44,7 @@ To start an input pipeline, you must define a *source*. For example, to
 construct a `Dataset` from some tensors in memory, you can use
 `tf.data.Dataset.from_tensors()` or
 `tf.data.Dataset.from_tensor_slices()`. Alternatively, if your input
-data are on disk in the recommend TFRecord format, you can construct a
+data are on disk in the recommended TFRecord format, you can construct a
 `tf.data.TFRecordDataset`.
 
 Once you have a `Dataset` object, you can *transform* it into a new `Dataset` by

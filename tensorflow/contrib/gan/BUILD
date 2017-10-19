@@ -441,6 +441,7 @@ py_test(
     srcs = ["python/estimator/python/gan_estimator_test.py"],
     shard_count = 1,
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":gan_estimator",
         ":namedtuples",

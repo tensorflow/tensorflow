@@ -62,6 +62,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                    "Expected float got int32."):
         _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
 
+  def testEagerInitializedValue(self):
+    with context.eager_mode():
+      variable = resource_variable_ops.ResourceVariable(1.0, name="eager-init")
+      self.assertAllEqual(variable.numpy(), 1.0)
+      self.assertAllEqual(variable.initialized_value().numpy(), 1.0)
+
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
@@ -410,6 +416,27 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
       # Test operations
       self.assertAllEqual((v * 2).numpy(), (v + v).numpy())
+
+  def testContainerEager(self):
+    with context.eager_mode():
+      v1 = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
+                                                  name="same")
+      with ops.container("different"):
+        v2 = resource_variable_ops.ResourceVariable(initial_value=lambda: 0,
+                                                    name="same")
+      v2.assign(2)
+      self.assertEqual(1, v1.read_value().numpy())
+      self.assertEqual(2, v2.read_value().numpy())
+
+  def testDestruction(self):
+    with context.eager_mode():
+      var = resource_variable_ops.ResourceVariable(initial_value=1.0,
+                                                   name="var8")
+      var.__del__()
+      with self.assertRaisesRegexp(errors.NotFoundError,
+                                   r"Resource .*\/var8\/.* does not exist."):
+        resource_variable_ops.destroy_resource_op(var._handle,
+                                                  ignore_lookup_error=False)
 
 
 if __name__ == "__main__":

@@ -274,8 +274,8 @@ class ACGANLossTest(test.TestCase):
         self._discriminator_real_classification_logits,
         'one_hot_labels': self._one_hot_labels,
     }
-    self._generator_loss_name = 'softmax_cross_entropy_loss/value'
-    self._discriminator_loss_name = 'add'
+    self._generator_loss_name = 'acgan_generator_loss/value'
+    self._discriminator_loss_name = 'acgan_discriminator_loss/add'
     self._expected_g_loss = 3.84974
     self._expected_d_loss = 9.43950
 
@@ -453,10 +453,11 @@ class GradientPenaltyTest(test.TestCase, _PenaltyTest):
         'discriminator_scope': self._scope,
     }
     self._expected_loss = 9.00000
-    self._expected_op_name = 'weighted_loss/value'
+    self._expected_op_name = 'wasserstein_gradient_penalty/value'
     self._batch_size = 1
 
   def _discriminator_fn(self, inputs, _):
+    ops.add_to_collection('fake_update_ops', constant_op.constant(1.0))
     return variable_scope.get_variable('dummy_d', initializer=2.0) * inputs
 
   def test_loss_with_placeholder(self):
@@ -487,6 +488,26 @@ class GradientPenaltyTest(test.TestCase, _PenaltyTest):
     self.assertEqual(
         num_vars, len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
 
+  def test_works_with_get_collection(self):
+    """Tests that gradient penalty works inside other scopes."""
+    # We ran the discriminator once in the setup, so there should be an op
+    # already in the collection.
+    self.assertEqual(1, len(ops.get_collection(
+        'fake_update_ops', self._kwargs['discriminator_scope'].name)))
+
+    # Make sure the op is added to the collection even if it's in a name scope.
+    with ops.name_scope('loss'):
+      tfgan_losses.wasserstein_gradient_penalty(**self._kwargs)
+    self.assertEqual(2, len(ops.get_collection(
+        'fake_update_ops', self._kwargs['discriminator_scope'].name)))
+
+    # Make sure the op is added to the collection even if it's in a variable
+    # scope.
+    with variable_scope.variable_scope('loss_vscope'):
+      tfgan_losses.wasserstein_gradient_penalty(**self._kwargs)
+    self.assertEqual(3, len(ops.get_collection(
+        'fake_update_ops', self._kwargs['discriminator_scope'].name)))
+
 
 class MutualInformationPenaltyTest(test.TestCase, _PenaltyTest):
   """Tests for mutual_information_penalty."""
@@ -504,7 +525,7 @@ class MutualInformationPenaltyTest(test.TestCase, _PenaltyTest):
         'predicted_distributions': self._predicted_distributions,
     }
     self._expected_loss = 1.61610
-    self._expected_op_name = 'mul'
+    self._expected_op_name = 'mutual_information_loss/mul'
     self._batch_size = 2
 
 

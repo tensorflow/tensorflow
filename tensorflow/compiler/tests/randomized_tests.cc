@@ -899,7 +899,7 @@ TEST_F(OpTest, ApproximateEqual) {
 
 TEST_F(OpTest, ArgMax) {
   Repeatedly([this]() {
-    std::vector<int64> dims = RandomDims(1, 5);
+    std::vector<int64> dims = RandomDims(1, 5, 1);
     int num_dims = dims.size();
     int reduce_dim =
         std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
@@ -1165,6 +1165,28 @@ TEST_F(OpTest, BiasAddV1) {
                                              .RandomInput(DT_FLOAT, x_dims)
                                              .RandomInput(DT_FLOAT, y_dims)
                                              .Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, BitwiseAnd) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BitwiseAnd")
+                                             .RandomInput(type, dims.first)
+                                             .RandomInput(type, dims.second)
+                                             .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, BitwiseOr) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BitwiseOr")
+                                             .RandomInput(type, dims.first)
+                                             .RandomInput(type, dims.second)
+                                             .Attr("T", type));
   });
 }
 
@@ -1726,6 +1748,14 @@ TEST_F(OpTest, GreaterEqual) {
                                              .RandomInput(type, dims.first)
                                              .RandomInput(type, dims.second)
                                              .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, Invert) {
+  Repeatedly([this]() {
+    DataType type = DT_INT32;
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Invert").RandomInput(type).Attr("T", type));
   });
 }
 

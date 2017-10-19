@@ -55,6 +55,7 @@ class LayerParametersDict(OrderedDict):
     super(LayerParametersDict, self).__init__(*args, **kwargs)
 
   def __setitem__(self, key, value):
+    key = self._canonicalize_key(key)
     tensors = key if isinstance(key, (tuple, list)) else (key,)
     key_collisions = self._tensors.intersection(tensors)
     if key_collisions:
@@ -63,8 +64,22 @@ class LayerParametersDict(OrderedDict):
     super(LayerParametersDict, self).__setitem__(key, value)
 
   def __delitem__(self, key):
+    key = self._canonicalize_key(key)
     self._tensors.remove(key)
     super(LayerParametersDict, self).__delitem__(key)
+
+  def __getitem__(self, key):
+    key = self._canonicalize_key(key)
+    return super(LayerParametersDict, self).__getitem__(key)
+
+  def __contains__(self, key):
+    key = self._canonicalize_key(key)
+    return super(LayerParametersDict, self).__contains__(key)
+
+  def _canonicalize_key(self, key):
+    if isinstance(key, (list, tuple)):
+      return tuple(key)
+    return key
 
 
 # TODO(duckworthd): add capability for LayerCollection to be "finalized"
@@ -94,13 +109,16 @@ class LayerCollection(object):
     self.fisher_factors = OrderedDict()
     self._generic_registrations = set()
     self._graph = graph or ops.get_default_graph()
-    self.losses = []
+    self._loss_dict = {}  # {str: LossFunction}
     self._subgraph = None
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
 
-  reset_internals = __init__
+  @property
+  def losses(self):
+    """LossFunctions registered with this LayerCollection."""
+    return list(self._loss_dict.values())
 
   def register_block(self, layer_key, fisher_block):
     """Validates and registers the layer_key associated with the fisher_block.
@@ -277,7 +295,8 @@ class LayerCollection(object):
   def register_categorical_predictive_distribution(self,
                                                    logits,
                                                    seed=None,
-                                                   targets=None):
+                                                   targets=None,
+                                                   name=None):
     """Registers a categorical predictive distribution.
 
     Args:
@@ -288,16 +307,24 @@ class LayerCollection(object):
         total_loss() is required, for example, to estimate the
         "empirical Fisher" (instead of the true Fisher).
         (Default: None)
+      name: (OPTIONAL) str or None. Unique name for this loss function. If None,
+        a new name is generated. (Default: None)
     """
+    name = name or self._graph.unique_name(
+        "register_categorical_predictive_distribution")
+    if name in self._loss_dict:
+      raise NotImplementedError(
+          "Adding logits to an existing LossFunction not yet supported.")
     loss = lf.CategoricalLogitsNegativeLogProbLoss(
         logits, targets=targets, seed=seed)
-    self.losses.append(loss)
+    self._loss_dict[name] = loss
 
   def register_normal_predictive_distribution(self,
                                               mean,
                                               var=0.5,
                                               seed=None,
-                                              targets=None):
+                                              targets=None,
+                                              name=None):
     """Registers a normal predictive distribution.
 
     Args:
@@ -312,15 +339,23 @@ class LayerCollection(object):
         total_loss() is required, for example, to estimate the
         "empirical Fisher" (instead of the true Fisher).
         (Default: None)
+      name: (OPTIONAL) str or None. Unique name for this loss function. If None,
+        a new name is generated. (Default: None)
     """
+    name = name or self._graph.unique_name(
+        "register_normal_predictive_distribution")
+    if name in self._loss_dict:
+      raise NotImplementedError(
+          "Adding logits to an existing LossFunction not yet supported.")
     loss = lf.NormalMeanNegativeLogProbLoss(
         mean, var, targets=targets, seed=seed)
-    self.losses.append(loss)
+    self._loss_dict[name] = loss
 
   def register_multi_bernoulli_predictive_distribution(self,
                                                        logits,
                                                        seed=None,
-                                                       targets=None):
+                                                       targets=None,
+                                                       name=None):
     """Registers a multi-Bernoulli predictive distribution.
 
     Args:
@@ -331,10 +366,17 @@ class LayerCollection(object):
         total_loss() is required, for example, to estimate the
         "empirical Fisher" (instead of the true Fisher).
         (Default: None)
+      name: (OPTIONAL) str or None. Unique name for this loss function. If None,
+        a new name is generated. (Default: None)
     """
+    name = name or self._graph.unique_name(
+        "register_multi_bernoulli_predictive_distribution")
+    if name in self._loss_dict:
+      raise NotImplementedError(
+          "Adding logits to an existing LossFunction not yet supported.")
     loss = lf.MultiBernoulliNegativeLogProbLoss(
         logits, targets=targets, seed=seed)
-    self.losses.append(loss)
+    self._loss_dict[name] = loss
 
   def make_or_get_factor(self, cls, args):
     with variable_scope.variable_scope(self._var_scope):

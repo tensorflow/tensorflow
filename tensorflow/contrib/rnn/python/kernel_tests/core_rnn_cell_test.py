@@ -450,6 +450,17 @@ class RNNCellTest(test.TestCase):
       outputs, _ = cell(x, m)
       self.assertTrue("cpu:14159" in outputs.device.lower())
 
+  def _retrieve_cpu_gpu_stats(self, run_metadata):
+    cpu_stats = None
+    gpu_stats = None
+    step_stats = run_metadata.step_stats
+    for ds in step_stats.dev_stats:
+      if "cpu:0" in ds.device[-5:].lower():
+        cpu_stats = ds.node_stats
+      if "gpu:0" == ds.device[-5:].lower():
+        gpu_stats = ds.node_stats
+    return cpu_stats, gpu_stats
+
   def testDeviceWrapperDynamicExecutionNodesAreAllProperlyLocated(self):
     if not test.is_gpu_available():
       # Can't perform this test w/o a GPU
@@ -471,10 +482,7 @@ class RNNCellTest(test.TestCase):
         sess.run([variables_lib.global_variables_initializer()])
         _ = sess.run(outputs, options=opts, run_metadata=run_metadata)
 
-      step_stats = run_metadata.step_stats
-      ix = 0 if gpu_dev in step_stats.dev_stats[0].device else 1
-      gpu_stats = step_stats.dev_stats[ix].node_stats
-      cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+      cpu_stats, gpu_stats = self._retrieve_cpu_gpu_stats(run_metadata)
       self.assertFalse([s for s in cpu_stats if "gru_cell" in s.node_name])
       self.assertTrue([s for s in gpu_stats if "gru_cell" in s.node_name])
 

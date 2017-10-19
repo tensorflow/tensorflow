@@ -545,9 +545,11 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     # Create a tensor array to store the intermediate values.
     accs_ta = [
-        tensor_array_ops.TensorArray(dtype=init.dtype, size=n,
-                                     dynamic_size=False,
-                                     infer_shape=infer_shape)
+        tensor_array_ops.TensorArray(
+            dtype=init.dtype, size=n,
+            element_shape=init.shape if infer_shape else None,
+            dynamic_size=False,
+            infer_shape=infer_shape)
         for init in a_flat]
 
     if initializer is None:
