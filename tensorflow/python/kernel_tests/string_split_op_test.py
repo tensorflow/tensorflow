@@ -145,6 +145,31 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(indices, [[0, 0], [1, 0], [2, 0]])
       self.assertAllEqual(shape, [3, 1])
 
+  def testStringSplitWithUtf8AndSkipEmpty(self):
+    # utf8 \xE5\xA5\xBD \xE6\x82\xA8, \xE6\x82\xA8 \xE5\xA5\xBD
+    strings = [b"\xE5\xA5\xBD\xE6\x82\xA8", b"\xE6\x82\xA8\xE7\x95\x8C"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, delimiter=b"\xE6\x82\xA8",
+                                            skip_empty=True)
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [1, 0]])
+      self.assertAllEqual(values, [b"\xE5\xA5\xBD", b"\xE7\x95\x8C"])
+      self.assertAllEqual(shape, [2, 1])
+
+  def testStringSplitWithUtf8AndNonSkipEmpty(self):
+    # utf8 \xE5\xA5\xBD \xE6\x82\xA8, \xE6\x82\xA8 \xE5\xA5\xBD
+    strings = [b"\xE5\xA5\xBD\xE6\x82\xA8", b"\xE6\x82\xA8\xE7\x95\x8C"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, delimiter=b"\xE6\x82\xA8",
+                                            skip_empty=False)
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(values, [b"\xE5\xA5\xBD", b"",
+                                   b"", b"\xE7\x95\x8C"])
+      self.assertAllEqual(shape, [2, 2])
+
   def testStringSplitWithUtf8AndEmptyDelimiter(self):
     # utf8 \xE6\x82\xA8 \xE5\xA5\xBD, \xE6\x82\xA8 \xE5\xA5\xBD
     strings = [b"\xE6\x82\xA8\xE5\xA5\xBD", b"\xE4\xB8\x96\xE7\x95\x8C"]
@@ -176,7 +201,7 @@ class StringSplitOpTest(test.TestCase):
     strings1 = [b"\xE2\x28\xA1"]
     tokens1 = string_ops.string_split_utf8(strings1, delimiter="")
     with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 "Invalid UTF8 encoding at byte of 1"):
+                                 "Invalid UTF8 encoding at byte 1"):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens1)
 
@@ -184,7 +209,7 @@ class StringSplitOpTest(test.TestCase):
     strings2 = [b"\xE6\x82"]
     tokens2 = string_ops.string_split_utf8(strings2, delimiter="")
     with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 "Not enough characters for UTF8 encoding"):
+                                 "Invalid UTF8 encoding, incomplete"):
       with self.test_session() as sess:
         indices, values, shape = sess.run(tokens2)
 

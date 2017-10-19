@@ -138,14 +138,14 @@ std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 // If the delim is empty, then each string in the array consists of
 // one ASCII or one unicode char. If successful, the result
 // is passed to "*result" and returns OK. Otherwise returns error.
-Status SplitUTF8(StringPiece text, const string& delim,
+Status SplitUTF8(StringPiece text, const string& delim, const bool skip_empty,
                  std::vector<string>* result);
 
 // Validate "text" as a UTF8 encoding
 Status ValidUTF8Character(StringPiece text);
 
 // Check number of bytes for a UTF8 encoded unicode char
-Status UTF8CharNumBytes(StringPiece text, size_t* num_bytes);
+bool UTF8CharNumBytes(StringPiece text, size_t* num_bytes);
 
 // Split "text" at "delim" characters, and parse each component as
 // an integer.  If successful, adds the individual numbers in order

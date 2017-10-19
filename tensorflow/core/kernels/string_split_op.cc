@@ -54,7 +54,7 @@ class StringSplitOpBase : public OpKernel {
   virtual Status Split(const string& input, const string& delimiter,
                        std::vector<string>* parts) = 0;
 
-  void Compute(OpKernelContext* ctx) {
+  void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(input_tensor->shape()),
@@ -116,9 +116,6 @@ class StringSplitOpBase : public OpKernel {
       }
     }
   }
-
- protected:
-  bool skip_empty_;
 };
 
 class StringSplitOp : public StringSplitOpBase {
@@ -138,6 +135,9 @@ class StringSplitOp : public StringSplitOpBase {
     *parts = SplitString(input, delimiter, skip_empty_);
     return Status::OK();
   }
+
+ private:
+  bool skip_empty_;
 };
 
 class StringSplitUTF8Op : public StringSplitOpBase {
@@ -154,8 +154,11 @@ class StringSplitUTF8Op : public StringSplitOpBase {
 
   Status Split(const string& input, const string& delimiter,
                std::vector<string>* parts) {
-    return str_util::SplitUTF8(input, delimiter, parts);
+    return str_util::SplitUTF8(input, delimiter, skip_empty_, parts);
   }
+
+ private:
+  bool skip_empty_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringSplit").Device(DEVICE_CPU), StringSplitOp);
