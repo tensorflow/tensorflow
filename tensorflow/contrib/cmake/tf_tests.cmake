@@ -192,12 +192,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
     # generally not working
     "${tensorflow_source_dir}/tensorflow/python/profiler/pprof_profiler_test.py"
-    # flaky test
-    "${tensorflow_source_dir}/tensorflow/python/profiler/internal/run_metadata_test.py"
+    # Fails because uses data dependencies with bazel
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
-    # flaky tests
-    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"  # takes very long to run
-    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/internal/run_metadata_test.py"
+    # Takes very long to run without sharding (defined in bazel build file).
+    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"
     # Loading resources in contrib doesn't seem to work on Windows
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/random_forest_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/tensor_forest_test.py"
@@ -216,14 +214,22 @@ if (tensorflow_BUILD_PYTHON_TESTS)
 
       # stl on windows handles overflows different
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/as_string_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cast_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
       # Numerical issues, calculations off.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/wals_test.py"  
+      "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/wals_test.py"
       # Float division by zero
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
+      # Flaky, for unknown reasons. Cannot reproduce in terminal. Revisit once we can get stack traces.
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/batch_matmul_op_test.py"
+      # Flaky because of local cluster creation.
+      "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
+      "${tensorflow_source_dir}tensorflow/python/training/localhost_cluster_performance_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/iterator_ops_cluster_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_cluster_test.py"
       # Type error in testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/iterator_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/self_adjoint_eig_op_test.py"
@@ -233,6 +239,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Depends on gemmlowp -> pthread
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/neon_depthwise_conv_op_test.py"
       # int32/int64 mixup
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cast_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/variable_scope_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
