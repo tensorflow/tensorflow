@@ -26,6 +26,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@implicit_value_and_gradients
 @@gradients_function
 @@value_and_gradients_function
+@@GradientTape
 
 @@enable_tracing
 @@flush_trace
@@ -92,5 +93,6 @@ implicit_gradients = backprop.implicit_grad
 implicit_value_and_gradients = backprop.implicit_val_and_grad
 gradients_function = backprop.gradients_function
 value_and_gradients_function = backprop.val_and_grad_function
+GradientTape = backprop.GradientTape  # pylint: disable=invalid-name
 
 remove_undocumented(__name__)

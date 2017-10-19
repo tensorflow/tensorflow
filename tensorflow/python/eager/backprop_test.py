@@ -277,6 +277,27 @@ class BackpropTest(test.TestCase):
 
     self.assertEqual(backprop.implicit_grad(f)()[0][0], None)
 
+  def testGradientTape(self):
+    with backprop.GradientTape() as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      with backprop.GradientTape() as gg:
+        gg.watch(y)
+        z = 2 * y
+      inner_grad = gg.gradient(z, [y])[0]
+      self.assertEqual(inner_grad.numpy(), 2.0)
+      y += inner_grad
+    grad = g.gradient(y, [x])[0]
+    self.assertEqual(grad.numpy(), 6.0)
+
+  def testGradientTapeVariable(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    with backprop.GradientTape() as g:
+      y = v * v
+    grad = g.gradient(y, [v])[0]
+    self.assertAllEqual(grad, 2.0)
+
   def testEmptyParamsForValueAndGradFunction(self):
     def fn(a, b):
       return a * b
