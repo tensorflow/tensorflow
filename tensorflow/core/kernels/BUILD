@@ -3153,7 +3153,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
         ":segment_reduction_ops",
-    ]+ if_cuda(["@cub_archive//:cub"]),
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
