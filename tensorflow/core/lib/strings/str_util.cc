@@ -465,10 +465,14 @@ Status SplitUTF8(StringPiece text, const string& delim, const bool skip_empty,
       } else if (delim == entry) {
         advance = true;
         if (!skip_empty) {
-          if (TF_PREDICT_FALSE(char_start == 0)) {
+          // Follow python style, if it is beginning or the end, always add ''
+          // >>> "##a##b##c##".split("#")
+          // ['', '', 'a', '', 'b', '', 'c', '', '']
+          if (result->size() == 0 || result->back() != "") {
             result->emplace_back("");
-          }
-          if (TF_PREDICT_FALSE(i + 1 == text.size())) {
+          } else if (result->size() == 1) {
+            result->emplace_back("");
+          } else if (TF_PREDICT_FALSE(i + 1 == text.size())) {
             result->emplace_back("");
           }
         }
