@@ -332,7 +332,20 @@ class OperationTest(test_util.TensorFlowTestCase):
       values = [1.23]
       tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
       self.assertEqual(dtypes.float32, tensor.dtype)
-
+  
+  def testConvertToTensorFloatNoneValue(self):
+    with self.test_session():
+      values = values = [[2], [3], [5], [None]]
+      tensor_float16 = ops.convert_to_tensor(values, dtype=dtypes.float16)
+      tensor_float32 = ops.convert_to_tensor(values, dtype=dtypes.float32)
+      tensor_float64 = ops.convert_to_tensor(values, dtype=dtypes.float64)
+      self.assertAllEqual((4, 1), tensor_float16.get_shape().as_list())
+      self.assertAllEqual((4, 1), tensor_float32.get_shape().as_list())
+      self.assertAllEqual((4, 1), tensor_float64.get_shape().as_list())
+      self.assertAllEqual(((2,), (3,), (5,), (float('nan'),)), tensor_float16.eval())
+      self.assertAllEqual(((2,), (3,), (5,), (float('nan'),)), tensor_float32.eval())
+      self.assertAllEqual(((2,), (3,), (5,), (float('nan'),)), tensor_float64.eval())
+  
   def testConvertToInvalidTensorType(self):
     with self.assertRaises(TypeError):
       # Forcing an invalid dtype should fail with a type error.
