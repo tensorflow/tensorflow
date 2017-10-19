@@ -25,6 +25,7 @@ import sys
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -375,6 +376,18 @@ class SessionCreator(object):
   def create_session(self):
     raise NotImplementedError(
         'create_session is not implemented for {}.'.format(self))
+
+
+class PlainSessionCreator(SessionCreator):
+  """ Create a tf.Session and return it directly. """
+
+  def __init__(self, target='', graph=None, config=None):
+    self._target = target
+    self._graph = graph
+    self._config = config
+
+  def create_session(self):
+    return session.Session(self._target, graph=self._graph, config=self._config)
 
 
 class ChiefSessionCreator(SessionCreator):
