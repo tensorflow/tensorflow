@@ -148,21 +148,6 @@ class PyOpTest(test.TestCase):
       z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
       self.assertListEqual(list(z.eval()), [b"hello there", b"hi there"])
 
-  def testObjectArraysAreConvertedToBytes(self):
-
-    def read_object_array():
-      return np.array([b" there", u" ya"], dtype=np.object)
-
-    def read_and_return_strings(x, y):
-      return x + y
-
-    with self.test_session():
-      x = constant_op.constant(["hello", "hi"], dtypes.string)
-      y, = script_ops.py_func(read_object_array, [],
-                              [dtypes.string])
-      z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
-      self.assertListEqual(list(z.eval()), [b"hello there", b"hi ya"])
-
   def testStringPadding(self):
     correct = [b"this", b"is", b"a", b"test"]
     with self.test_session():
