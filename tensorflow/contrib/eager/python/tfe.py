@@ -43,7 +43,6 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@seterr
 
 @@Iterator
-@@Network
 @@Saver
 @@SummaryWriter
 @@restore_variables_on_create
@@ -63,7 +62,6 @@ from __future__ import print_function
 # pylint:disable=g-bad-import-order,g-import-not-at-top,unused-import
 #
 from tensorflow.contrib.eager.python.datasets import Iterator
-from tensorflow.contrib.eager.python.network import Network
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
 from tensorflow.contrib.eager.python.summary_writer import SummaryWriter
