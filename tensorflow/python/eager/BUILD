@@ -151,9 +151,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
         ":core",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
     ],
 )
 

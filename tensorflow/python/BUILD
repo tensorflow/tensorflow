@@ -246,6 +246,17 @@ cc_library(
 )
 
 cc_library(
+    name = "cpp_python_util",
+    srcs = ["util/util.cc"],
+    hdrs = ["util/util.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//util/python:python_headers",
+    ],
+)
+
+cc_library(
     name = "py_func_lib",
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
@@ -2982,10 +2993,12 @@ tf_py_wrap_cc(
         "util/stat_summarizer.i",
         "util/tfprof.i",
         "util/transform_graph.i",
+        "util/util.i",
     ],
     deps = [
         ":cost_analyzer_lib",
         ":model_analyzer_lib",
+        ":cpp_python_util",
         ":cpp_shape_inference",
         ":kernel_registry",
         ":numpy_lib",

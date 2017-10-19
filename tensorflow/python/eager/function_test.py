@@ -173,9 +173,9 @@ class FunctionTest(test.TestCase):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
 
-    x = constant_op.constant([1.]).as_gpu_tensor()
+    x = constant_op.constant([1.]).gpu()
     f = function.defun(math_ops.add)
-    y = f(x, x).as_cpu_tensor()
+    y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
   def testFunctionHandlesInputsOnDifferentDevices(self):
@@ -184,9 +184,9 @@ class FunctionTest(test.TestCase):
 
     # The Reshape op requires the shape tensor to be placed in host memory.
     reshape = function.defun(array_ops.reshape)
-    value = constant_op.constant([1., 2.]).as_gpu_tensor()
+    value = constant_op.constant([1., 2.]).gpu()
     shape = constant_op.constant([2, 1])
-    reshaped = reshape(value, shape).as_cpu_tensor()
+    reshaped = reshape(value, shape).cpu()
     self.assertAllEqual(reshaped, [[1], [2]])
 
   def testFunctionHandlesInputsPlacedOnTheWrongDeviceGracefully(self):
@@ -195,8 +195,8 @@ class FunctionTest(test.TestCase):
 
     # The Reshape op requires the shape tensor to be placed in host memory.
     reshape = function.defun(array_ops.reshape)
-    value = constant_op.constant([1., 2.]).as_gpu_tensor()
-    shape = constant_op.constant([2, 1]).as_gpu_tensor()
+    value = constant_op.constant([1., 2.]).gpu()
+    shape = constant_op.constant([2, 1]).gpu()
     with self.assertRaises(errors.InvalidArgumentError):
       reshape(value, shape)
 

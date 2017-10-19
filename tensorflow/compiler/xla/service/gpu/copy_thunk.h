@@ -26,19 +26,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// A thunk that copies data. For now, it copies data only from host to device.
-// But it can be extended to perform device-to-host or intra-device copying.
-class CopyThunk : public Thunk {
+// A thunk that copies data from a host buffer to a device buffer.
+class HostToDeviceCopyThunk : public Thunk {
  public:
   // Constructs a CopyThunk that copies host data from `source_address` to the
   // device buffer `destination_buffer`. `mem_size` is the size of the data in
   // bytes.
-  CopyThunk(const void* source_address,
-            const BufferAllocation::Slice& destination_buffer, uint64 mem_size,
-            const HloInstruction* hlo_instruction);
+  HostToDeviceCopyThunk(const void* source_address,
+                        const BufferAllocation::Slice& destination_buffer,
+                        uint64 mem_size, const HloInstruction* hlo_instruction);
 
-  CopyThunk(const CopyThunk&) = delete;
-  CopyThunk& operator=(const CopyThunk&) = delete;
+  HostToDeviceCopyThunk(const HostToDeviceCopyThunk&) = delete;
+  HostToDeviceCopyThunk& operator=(const HostToDeviceCopyThunk&) = delete;
 
   tensorflow::Status ExecuteOnStream(
       const BufferAllocations& buffer_allocations,
@@ -46,6 +45,30 @@ class CopyThunk : public Thunk {
 
  private:
   const void* source_address_;
+  const BufferAllocation::Slice destination_buffer_;
+  const uint64 mem_size_;
+};
+
+// A thunk that copies data from a device buffer to another device buffer.
+class DeviceToDeviceCopyThunk : public Thunk {
+ public:
+  // Constructs a CopyThunk that copies host data from `source_buffer` to the
+  // device buffer `destination_buffer`. `mem_size` is the size of the data in
+  // bytes.
+  DeviceToDeviceCopyThunk(const BufferAllocation::Slice& source_buffer,
+                          const BufferAllocation::Slice& destination_buffer,
+                          uint64 mem_size,
+                          const HloInstruction* hlo_instruction);
+
+  DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
+  DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
+
+  tensorflow::Status ExecuteOnStream(
+      const BufferAllocations& buffer_allocations,
+      perftools::gputools::Stream* stream) override;
+
+ private:
+  const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
   const uint64 mem_size_;
 };

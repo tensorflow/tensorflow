@@ -209,6 +209,152 @@ class NaiveDiagonalFBTest(test.TestCase):
       self.assertAllClose(output_flat, explicit)
 
 
+class FullyConnectedDiagonalFB(test.TestCase):
+
+  def setUp(self):
+    super(FullyConnectedDiagonalFB, self).setUp()
+
+    self.batch_size = 4
+    self.input_size = 6
+    self.output_size = 3
+
+    self.inputs = np.random.randn(self.batch_size, self.input_size).astype(
+        np.float32)
+    self.outputs = np.zeros([self.batch_size, self.output_size]).astype(
+        np.float32)
+    self.output_grads = np.random.randn(self.batch_size,
+                                        self.output_size).astype(np.float32)
+    self.w = np.random.randn(self.input_size, self.output_size).astype(
+        np.float32)
+    self.b = np.random.randn(self.output_size).astype(np.float32)
+
+  def fisherApprox(self, has_bias=False):
+    """Fisher approximation using default inputs."""
+    if has_bias:
+      inputs = np.concatenate(
+          [self.inputs, np.ones([self.batch_size, 1])], axis=1)
+    else:
+      inputs = self.inputs
+    return self.buildDiagonalFisherApproximation(inputs, self.output_grads)
+
+  def buildDiagonalFisherApproximation(self, inputs, output_grads):
+    """Builds explicit diagonal Fisher approximation.
+
+    Fisher's diagonal is (d loss / d w)'s elements squared for
+      d/dw = E[outer(input, output_grad)]
+
+    where the expectation is taken over examples.
+
+    Args:
+      inputs: np.array of shape [batch_size, input_size].
+      output_grads: np.array of shape [batch_size, output_size].
+
+    Returns:
+      Diagonal np.array of shape [num_params, num_params] for num_params =
+      input_size * output_size.
+    """
+    batch_size = inputs.shape[0]
+    assert output_grads.shape[0] == batch_size
+    input_size = inputs.shape[1]
+    output_size = output_grads.shape[1]
+    fisher_diag = np.zeros((input_size, output_size))
+    for i in range(batch_size):
+      fisher_diag += np.square(np.outer(inputs[i], output_grads[i]))
+    return np.diag(fisher_diag.flatten()) / batch_size
+
+  def testMultiply(self):
+    result, _ = self.runFisherBlockOps(self.w, [self.inputs], [self.outputs],
+                                       [self.output_grads])
+
+    # Construct Fisher-vector product.
+    expected_result = self.fisherApprox().dot(self.w.flatten())
+    expected_result = expected_result.reshape(
+        [self.input_size, self.output_size])
+
+    self.assertAllClose(expected_result, result)
+
+  def testMultiplyInverse(self):
+    _, result = self.runFisherBlockOps(self.w, [self.inputs], [self.outputs],
+                                       [self.output_grads])
+
+    # Construct inverse Fisher-vector product.
+    expected_result = np.linalg.inv(self.fisherApprox()).dot(self.w.flatten())
+    expected_result = expected_result.reshape(
+        [self.input_size, self.output_size])
+
+    self.assertAllClose(expected_result, result)
+
+  def testRegisterAdditionalMinibatch(self):
+    """Ensure 1 big minibatch and 2 small minibatches are equivalent."""
+    multiply_result_big, multiply_inverse_result_big = self.runFisherBlockOps(
+        self.w, [self.inputs], [self.outputs], [self.output_grads])
+    multiply_result_small, multiply_inverse_result_small = (
+        self.runFisherBlockOps(self.w,
+                               np.split(self.inputs, 2),
+                               np.split(self.outputs, 2),
+                               np.split(self.output_grads, 2)))
+
+    self.assertAllClose(multiply_result_big, multiply_result_small)
+    self.assertAllClose(multiply_inverse_result_big,
+                        multiply_inverse_result_small)
+
+  def testMultiplyHasBias(self):
+    result, _ = self.runFisherBlockOps((self.w, self.b), [self.inputs],
+                                       [self.outputs], [self.output_grads])
+    expected_result = self.fisherApprox(True).dot(
+        np.concatenate([self.w.flatten(), self.b.flatten()]))
+    expected_result = expected_result.reshape(
+        [self.input_size + 1, self.output_size])
+    expected_result = (expected_result[:-1], expected_result[-1])
+
+    self.assertEqual(len(result), 2)
+    self.assertAllClose(expected_result[0], result[0])
+    self.assertAllClose(expected_result[1], result[1])
+
+  def runFisherBlockOps(self, params, inputs, outputs, output_grads):
+    """Run Ops guaranteed by FisherBlock interface.
+
+    Args:
+      params: Tensor or 2-tuple of Tensors. Represents weights or weights and
+        bias of this layer.
+      inputs: list of Tensors of shape [batch_size, input_size]. Inputs to
+        layer.
+      outputs: list of Tensors of shape [batch_size, output_size].
+        Preactivations produced by layer.
+      output_grads: list of Tensors of shape [batch_size, output_size].
+        Gradient of loss with respect to 'outputs'.
+
+    Returns:
+      multiply_result: Result of FisherBlock.multiply(params)
+      multiply_inverse_result: Result of FisherBlock.multiply_inverse(params)
+    """
+
+    def _as_tensors(tensor_or_tuple):
+      if isinstance(tensor_or_tuple, (tuple, list)):
+        return tuple(ops.convert_to_tensor(t) for t in tensor_or_tuple)
+      return ops.convert_to_tensor(tensor_or_tuple)
+
+    with ops.Graph().as_default(), self.test_session() as sess:
+      inputs = [_as_tensors(i) for i in inputs]
+      outputs = [_as_tensors(o) for o in outputs]
+      output_grads = [_as_tensors(og) for og in output_grads]
+      params = _as_tensors(params)
+
+      block = fb.FullyConnectedDiagonalFB(
+          lc.LayerCollection(), has_bias=isinstance(params, (tuple, list)))
+      for (i, o) in zip(inputs, outputs):
+        block.register_additional_minibatch(i, o)
+
+      block.instantiate_factors((output_grads,), damping=0.0)
+
+      sess.run(tf_variables.global_variables_initializer())
+      sess.run(block._factor.make_covariance_update_op(0.0))
+      multiply_result = sess.run(block.multiply(params))
+      multiply_inverse_result = sess.run(block.multiply_inverse(params))
+
+    return multiply_result, multiply_inverse_result
+
+
 class FullyConnectedKFACBasicFBTest(test.TestCase):
 
   def testFullyConnectedKFACBasicFBInit(self):
