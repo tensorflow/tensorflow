@@ -38,7 +38,6 @@ template <typename T>
 struct BincountFunctor<CPUDevice, T> {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<int32, 1>::ConstTensor& arr,
-                        const typename TTypes<T, 1>::ConstTensor& weights,
                         typename TTypes<T, 1>::Tensor& output) {
     int size = output.size();
 
@@ -68,12 +67,8 @@ struct BincountFunctor<CPUDevice, T> {
           for (int64 i = start_ind; i < limit_ind; i++) {
             int32 value = arr(i);
             if (value < size) {
-              if (weights.size()) {
-                partial_bins(worker_id, value) += weights(i);
-              } else {
-                // Complex numbers don't support "++".
-                partial_bins(worker_id, value) += T(1);
-              }
+              // Complex numbers don't support "++".
+              partial_bins(worker_id, value) += T(1);
             }
           }
         });
@@ -115,8 +110,8 @@ class BincountOp : public OpKernel {
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_output(0, TensorShape({size}), &output_t));
       auto output = output_t->flat<T>();
-      OP_REQUIRES_OK(ctx, functor::BincountFunctor<Device, T>::Compute(
-                              ctx, arr, weights, output));
+      OP_REQUIRES_OK(
+          ctx, functor::BincountFunctor<Device, T>::Compute(ctx, arr, output));
     } else {
       TensorShape output_shape;
       output_shape.AddDim(size);
