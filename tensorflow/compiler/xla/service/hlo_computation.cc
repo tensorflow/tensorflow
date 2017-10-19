@@ -373,8 +373,8 @@ string HloComputation::ToString(int nested_level) const {
   for (int i = 0; i < nested_level; i++) {
     s << "    ";
   }
-  s << "%" << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
-    << " {\n";
+  s << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
+    << " { \n";
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     for (int i = 0; i < nested_level; i++) {
       s << "    ";

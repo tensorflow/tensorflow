@@ -102,32 +102,6 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   return true;
 }
 
-// Constructs and returns the new shape with the given minor_to_major order in
-// its Layout.
-StatusOr<Shape> MakeShapeWithLayoutInternal(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
-  if (dimensions.size() != minor_to_major.size()) {
-    return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
-                           dimensions.size(), minor_to_major.size());
-  }
-  if (element_type == OPAQUE || element_type == TUPLE) {
-    return InvalidArgument("Unsupported element type: %s",
-                           PrimitiveType_Name(element_type).c_str());
-  }
-  Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
-  auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
-  min2maj->Clear();
-  for (int64 value : minor_to_major) {
-    min2maj->Add(value);
-  }
-  if (!shape.has_layout()) {
-    return InvalidArgument("Shape has no layout.");
-  }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return shape;
-}
-
 }  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
@@ -178,8 +152,16 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 /* static */ Shape ShapeUtil::MakeShapeWithLayout(
     PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
     tensorflow::gtl::ArraySlice<int64> minor_to_major) {
-  return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major)
-      .ValueOrDie();
+  CHECK_EQ(dimensions.size(), minor_to_major.size());
+  Shape shape = MakeShape(element_type, dimensions);
+  auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
+  min2maj->Clear();
+  for (int64 value : minor_to_major) {
+    min2maj->Add(value);
+  }
+  DCHECK(shape.has_layout());
+  TF_DCHECK_OK(ValidateShape(shape));
+  return shape;
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
@@ -517,10 +499,11 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       // Extract the layout minor-to-major and set it.
       TF_ASSIGN_OR_RETURN(std::vector<int64> min2maj,
                           comma_list_to_int64s(layout_string));
-      TF_ASSIGN_OR_RETURN(result, MakeShapeWithLayoutInternal(
-                                      primitive_type, dimensions, min2maj));
+      TF_RET_CHECK(dimensions.size() == min2maj.size());
+      result =
+          ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions, min2maj);
     }
-    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(result));
+    TF_DCHECK_OK(ShapeUtil::ValidateShape(result));
     return std::move(result);
   }
 

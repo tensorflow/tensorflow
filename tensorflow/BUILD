@@ -340,7 +340,6 @@ filegroup(
         "//tensorflow/compiler/xla/service/llvm_ir:all_files",
         "//tensorflow/compiler/xla/tests:all_files",
         "//tensorflow/compiler/xla/tools:all_files",
-        "//tensorflow/compiler/xla/tools/parser:all_files",
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/all_reduce:all_files",
         "//tensorflow/contrib/android:all_files",
