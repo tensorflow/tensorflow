@@ -29,7 +29,8 @@ class ListDiffOp : public OpKernel {
  public:
   explicit ListDiffOp(OpKernelConstruction* context) : OpKernel(context) {
     const DataType dt = DataTypeToEnum<T>::v();
-    OP_REQUIRES_OK(context, context->MatchSignature({dt, dt}, {dt, DT_INT32}));
+    const DataType dtidx = DataTypeToEnum<Tidx>::v();
+    OP_REQUIRES_OK(context, context->MatchSignature({dt, dt}, {dt, dtidx}));
   }
 
   void Compute(OpKernelContext* context) override {
