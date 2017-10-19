@@ -157,11 +157,24 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
 }
 
 static popconv::Pass GetConvolutionPass(const HloInstruction* inst) {
-  const ConvolutionDimensionNumbers& dims(inst->convolution_dimension_numbers());
-  if (dims.kernel_input_feature_dimension() == 0) {
+  // TODO - add other dimensionality
+  const std::string& tf_core_op = inst->metadata().op_type();
+  if (tf_core_op == "Conv2D" ||
+      tf_core_op == "Conv3D" ||
+      tf_core_op == "DepthwiseConv2dNative") {
+    return popconv::Pass::TRAINING_FWD;
+  }
+  if (tf_core_op == "Conv2DBackpropInput" ||
+      tf_core_op == "Conv3DBackpropInputV2" ||
+      tf_core_op == "DepthwiseConv2dNativeBackpropInput") {
+    return popconv::Pass::TRAINING_BWD;
+  }
+  if (tf_core_op == "Conv2DBackpropFilter" ||
+      tf_core_op == "Conv3DBackpropFilterV2" ||
+      tf_core_op == "DepthwiseConv2dNativeBackpropFilter") {
     return popconv::Pass::TRAINING_WU;
   }
-  return popconv::Pass::TRAINING_FWD;
+  return popconv::Pass::NONE;
 }
 
 static bool is_identity_shuffle(const std::vector<unsigned int> shuffle) {
@@ -451,7 +464,7 @@ Create2DConvWithReverse(poplar::Graph &graph,
 
   popconv::ConvOptions opts;
   opts.cache = &res.convolution_cache;
-  opts.pass = popconv::Pass::TRAINING_BWD;
+  opts.pass = GetConvolutionPass(inst);
 
   const ConvolutionDimensionNumbers& d(conv->convolution_dimension_numbers());
 
