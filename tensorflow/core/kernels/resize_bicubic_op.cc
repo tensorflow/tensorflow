@@ -331,7 +331,7 @@ inline void interpolate_with_caching(
                       x_wai.weight_2, x_wai.weight_3);
         }
       } else {
-        std::unique_ptr<float[]> cached_value(new float[4 * num_channels]);
+        std::vector<float> cached_value(4 * num_channels, 0);
         for (int64 x = 0; x < resizer_state.out_width; ++x) {
           const WeightsAndIndices& x_wai = x_wais[x];
           // Shift values in cached_value to fill first 'advance' values.
