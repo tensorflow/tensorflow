@@ -85,6 +85,11 @@
 * Remove seldom used and unnecessary `tf.contrib.data.Iterator.dispose_op()`.
 * Reorder some TFGAN loss functions in a non-backwards compatible way.
 
+## Known Issues
+* In Python 3, `Dataset.from_generator()` does not support Unicode strings.
+  You must convert any strings to bytes objects before yielding them from
+  the generator.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
