@@ -26,7 +26,6 @@ import threading
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
-from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
 
 GRAPH_MODE = 0
@@ -103,11 +102,16 @@ class Context(object):
       if self._context_handle is not None:
         return
       assert self._context_devices is None
-      opts = pywrap_tensorflow.TF_NewSessionOptions(
-          target=compat.as_bytes(""), config=self._config)
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
-        pywrap_tensorflow.TF_DeleteSessionOptions(opts)
+      opts = pywrap_tensorflow.TFE_NewContextOptions()
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if self._config is not None:
+            config_str = self._config.SerializeToString()
+            pywrap_tensorflow.TFE_ContextOptionsSetConfig(
+                opts, config_str, len(config_str), status)
+          self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
+      finally:
+        pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       # Store list of devices
       self._context_devices = []
       with errors.raise_exception_on_not_ok_status() as status:

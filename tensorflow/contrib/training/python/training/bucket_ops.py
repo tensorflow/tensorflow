@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -47,7 +48,6 @@ _dtypes = input_py._dtypes
 _store_sparse_tensors = input_py._store_sparse_tensors
 _validate_keep_input = input_py._validate_keep_input
 _shapes = input_py._shapes
-_smart_cond = input_py._smart_cond
 _which_queue = input_py._which_queue
 
 # pylint: enable=protected-access
@@ -239,7 +239,7 @@ def bucket(tensors,
       ]
       return control_flow_ops.group(*enqueues, name="group_enqueues")
 
-    maybe_enqueue = _smart_cond(
+    maybe_enqueue = utils.smart_cond(
         keep_input,
         enqueue_which,
         control_flow_ops.no_op)

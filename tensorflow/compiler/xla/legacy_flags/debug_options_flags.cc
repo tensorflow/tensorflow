@@ -206,9 +206,9 @@ void AllocateFlags() {
            flag_values->xla_gpu_disable_multi_streaming(),
            "If true, multi-streaming in the GPU backend is disabled."),
        tensorflow::Flag(
-           "xla_dump_debug_json_to",
-           flag_values->mutable_xla_dump_debug_json_to(),
-           "Dump compilation artifacts as JSON into this directory."),
+           "xla_dump_hlo_proto_to",
+           flag_values->mutable_xla_dump_hlo_proto_to(),
+           "Dump compilation artifacts as proto binary into this directory."),
        tensorflow::Flag(
            "xla_test_all_output_layouts",
            bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),

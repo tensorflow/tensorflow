@@ -475,8 +475,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  const string dump_debug_json_to =
-      module->config().debug_options().xla_dump_debug_json_to();
+  const string xla_dump_hlo_proto_to =
+      module->config().debug_options().xla_dump_hlo_proto_to();
 
   if (options::CpuParallelBackendRequested(module->config())) {
     VLOG(1) << "Using parallel cpu backend";
@@ -496,10 +496,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!dump_debug_json_to.empty()) {
+    if (!xla_dump_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
-      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, dump_debug_json_to, module->name()));
+      TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+          proto, xla_dump_hlo_proto_to, module->name()));
     }
 
     // If we are using the parallel CPU backend, we need to create map from
@@ -603,12 +603,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!dump_debug_json_to.empty()) {
+    if (!xla_dump_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
-      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, dump_debug_json_to, module->name()));
+      TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+          proto, xla_dump_hlo_proto_to, module->name()));
     }
-
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
     // GetEmbeddedComputations guarantees that a called computation occurs
@@ -775,12 +774,12 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    const string dump_debug_json_to =
-        module->config().debug_options().xla_dump_debug_json_to();
-    if (!dump_debug_json_to.empty()) {
+    const string xla_dump_hlo_proto_to =
+        module->config().debug_options().xla_dump_hlo_proto_to();
+    if (!xla_dump_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
-      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, dump_debug_json_to, module->name()));
+      TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+          proto, xla_dump_hlo_proto_to, module->name()));
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,

@@ -30,7 +30,6 @@ import sys
 
 import numpy as np
 import pandas
-from sklearn import metrics
 import tensorflow as tf
 
 FLAGS = None
@@ -46,8 +45,8 @@ def char_rnn_model(features, labels, mode):
   byte_vectors = tf.one_hot(features[CHARS_FEATURE], 256, 1., 0.)
   byte_list = tf.unstack(byte_vectors, axis=1)
 
-  cell = tf.contrib.rnn.GRUCell(HIDDEN_SIZE)
-  _, encoding = tf.contrib.rnn.static_rnn(cell, byte_list, dtype=tf.float32)
+  cell = tf.nn.rnn_cell.GRUCell(HIDDEN_SIZE)
+  _, encoding = tf.nn.static_rnn(cell, byte_list, dtype=tf.float32)
 
   logits = tf.layers.dense(encoding, MAX_LABEL, activation=None)
 
@@ -98,28 +97,20 @@ def main(unused_argv):
   train_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={CHARS_FEATURE: x_train},
       y=y_train,
-      batch_size=len(x_train),
+      batch_size=128,
       num_epochs=None,
       shuffle=True)
   classifier.train(input_fn=train_input_fn, steps=100)
 
-  # Predict.
+  # Eval.
   test_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={CHARS_FEATURE: x_test},
       y=y_test,
       num_epochs=1,
       shuffle=False)
-  predictions = classifier.predict(input_fn=test_input_fn)
-  y_predicted = np.array(list(p['class'] for p in predictions))
-  y_predicted = y_predicted.reshape(np.array(y_test).shape)
 
-  # Score with sklearn.
-  score = metrics.accuracy_score(y_test, y_predicted)
-  print('Accuracy (sklearn): {0:f}'.format(score))
-
-  # Score with tensorflow.
   scores = classifier.evaluate(input_fn=test_input_fn)
-  print('Accuracy (tensorflow): {0:f}'.format(scores['accuracy']))
+  print('Accuracy: {0:f}'.format(scores['accuracy']))
 
 
 if __name__ == '__main__':
