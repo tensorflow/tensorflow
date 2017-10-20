@@ -2066,6 +2066,29 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "hlo_runner",
+    srcs = ["hlo_runner.cc"],
+    hdrs = ["hlo_runner.h"],
+    deps = [
+        ":executable",
+        ":hlo",
+        ":transfer_manager",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:backend",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//third_party/eigen3",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 
 filegroup(
