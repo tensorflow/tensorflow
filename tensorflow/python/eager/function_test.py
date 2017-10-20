@@ -57,7 +57,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testGraphModeWithGradients(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = resource_variable_ops.ResourceVariable(1.0, name='v')
 
     @function.defun
     def step():
@@ -156,7 +156,7 @@ class FunctionTest(test.TestCase):
     g(constant_op.constant(1.0))
 
   def testGradientTensorConversionWithDefun(self):
-    three = resource_variable_ops.ResourceVariable(3.0)
+    three = resource_variable_ops.ResourceVariable(3.0, name='v')
 
     @function.defun
     def f(x):

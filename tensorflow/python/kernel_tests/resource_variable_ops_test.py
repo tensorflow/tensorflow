@@ -181,7 +181,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testInitFnDtype(self):
     v = resource_variable_ops.ResourceVariable(
-        initial_value=lambda: 1, dtype=dtypes.float32)
+        initial_value=lambda: 1, dtype=dtypes.float32, name="var0")
     self.assertEqual(dtypes.float32, v.value().dtype)
 
   @test_util.run_in_graph_and_eager_modes()
@@ -192,26 +192,27 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitializeAllVariables(self):
-    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.float32)
+    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.float32,
+                                               name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(1.0, self.evaluate(v.value()))
 
   @test_util.run_in_graph_and_eager_modes()
   def testOperatorOverload(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(2.0, self.evaluate(v + v))
 
   @test_util.run_in_graph_and_eager_modes()
   def testAssignMethod(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(v.assign(2.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
 
   @test_util.run_in_graph_and_eager_modes()
   def testLoad(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     v.load(2.0)
     self.assertEqual(2.0, self.evaluate(v.value()))
@@ -237,21 +238,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testAssignAddMethod(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(v.assign_add(1.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
 
   @test_util.run_in_graph_and_eager_modes()
   def testAssignSubMethod(self):
-    v = resource_variable_ops.ResourceVariable(3.0)
+    v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(v.assign_sub(1.0))
     self.assertEqual(2.0, self.evaluate(v.value()))
 
   @test_util.run_in_graph_and_eager_modes()
   def testDestroyResource(self):
-    v = resource_variable_ops.ResourceVariable(3.0)
+    v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(3.0, self.evaluate(v.value()))
     self.evaluate(resource_variable_ops.destroy_resource_op(v.handle))
@@ -442,6 +443,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                    r"Resource .*\/var8\/.* does not exist."):
         resource_variable_ops.destroy_resource_op(var._handle,
                                                   ignore_lookup_error=False)
+
+  def testSharingViaResourceVariableObject(self):
+    with context.eager_mode():
+      _ = resource_variable_ops.ResourceVariable(1.0, name="var0")
+      with self.assertRaisesRegexp(ValueError,
+                                   "'var0' already created"):
+        _ = resource_variable_ops.ResourceVariable(2.0, name="var0")
+      with ops.Graph().as_default():
+        _ = resource_variable_ops.ResourceVariable(2.0, name="var0")
+
+  def testVariableNameMissing(self):
+    with context.eager_mode():
+      with self.assertRaisesRegexp(ValueError,
+                                   "Variables need to have explicit names"):
+        _ = resource_variable_ops.ResourceVariable(1.0)
 
 
 if __name__ == "__main__":

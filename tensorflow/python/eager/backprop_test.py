@@ -292,7 +292,7 @@ class BackpropTest(test.TestCase):
     self.assertEqual(grad.numpy(), 6.0)
 
   def testGradientTapeVariable(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = resource_variable_ops.ResourceVariable(1.0, name='v')
     with backprop.GradientTape() as g:
       y = v * v
     grad = g.gradient(y, [v])[0]
@@ -457,7 +457,8 @@ class BackpropTest(test.TestCase):
         add_n.append(1)
     context.context().add_post_execution_callback(callback)
 
-    v = resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
+    v = resource_variable_ops.ResourceVariable(constant_op.constant(2.0),
+                                               name='v')
     def fn():
       outputs = []
       for _ in range(20):
