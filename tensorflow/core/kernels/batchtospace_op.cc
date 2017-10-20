@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/spacetobatch_functor.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -249,40 +249,34 @@ class BatchToSpaceOp : public OpKernel {
   Tensor block_shape_;
 };
 
-#define REGISTER(T)                                                  \
-  REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")                     \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int32>("Tblock_shape") \
-                              .TypeConstraint<int32>("Tcrops")       \
-                              .HostMemory("block_shape")             \
-                              .HostMemory("crops"),                  \
-                          BatchToSpaceNDOp<CPUDevice, T>);           \
-  REGISTER_KERNEL_BUILDER(Name("BatchToSpace")                       \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int32>("Tidx")         \
-                              .HostMemory("crops"),                  \
+#define REGISTER(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")           \
+                              .Device(DEVICE_CPU)          \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("block_shape")   \
+                              .HostMemory("crops"),        \
+                          BatchToSpaceNDOp<CPUDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("BatchToSpace")             \
+                              .Device(DEVICE_CPU)          \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("crops"),        \
                           BatchToSpaceOp<CPUDevice, T>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 
 #if GOOGLE_CUDA
-#define REGISTER(T)                                                  \
-  REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")                     \
-                              .Device(DEVICE_GPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int32>("Tblock_shape") \
-                              .TypeConstraint<int32>("Tcrops")       \
-                              .HostMemory("block_shape")             \
-                              .HostMemory("crops"),                  \
-                          BatchToSpaceNDOp<GPUDevice, T>);           \
-  REGISTER_KERNEL_BUILDER(Name("BatchToSpace")                       \
-                              .Device(DEVICE_GPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int32>("Tidx")         \
-                              .HostMemory("crops"),                  \
+#define REGISTER(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")           \
+                              .Device(DEVICE_GPU)          \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("block_shape")   \
+                              .HostMemory("crops"),        \
+                          BatchToSpaceNDOp<GPUDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("BatchToSpace")             \
+                              .Device(DEVICE_GPU)          \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("crops"),        \
                           BatchToSpaceOp<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
