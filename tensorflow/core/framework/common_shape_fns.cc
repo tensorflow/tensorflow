@@ -1050,22 +1050,44 @@ Status ReductionShape(InferenceContext* c) {
   }
 
   const int32 input_rank = c->Rank(input);
-  std::set<int32> true_indices;
-  auto reduction_indices = reduction_indices_t->flat<int32>();
-  for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
-    int32 reduction_index = reduction_indices(i);
-    if (reduction_index < -input_rank || reduction_index >= input_rank) {
-      return errors::InvalidArgument("Invalid reduction dimension ",
-                                     reduction_index, " for input with ",
-                                     input_rank, " dimensions.");
-    }
+  std::set<int64> true_indices;
+  if (reduction_indices_t->dtype() == DataType::DT_INT32) {
+    auto reduction_indices = reduction_indices_t->flat<int32>();
+    for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
+      int32 reduction_index = reduction_indices(i);
+      if (reduction_index < -input_rank || reduction_index >= input_rank) {
+        return errors::InvalidArgument("Invalid reduction dimension ",
+                                       reduction_index, " for input with ",
+                                       input_rank, " dimensions.");
+      }
 
-    int32 wrapped_index = reduction_index;
-    if (wrapped_index < 0) {
-      wrapped_index += input_rank;
-    }
+      int32 wrapped_index = reduction_index;
+      if (wrapped_index < 0) {
+        wrapped_index += input_rank;
+      }
 
-    true_indices.insert(wrapped_index);
+      true_indices.insert(wrapped_index);
+    }
+  } else if (reduction_indices_t->dtype() == DataType::DT_INT64) {
+    auto reduction_indices = reduction_indices_t->flat<int64>();
+    for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
+      int64 reduction_index = reduction_indices(i);
+      if (reduction_index < -input_rank || reduction_index >= input_rank) {
+        return errors::InvalidArgument("Invalid reduction dimension ",
+                                       reduction_index, " for input with ",
+                                       input_rank, " dimensions.");
+      }
+
+      int64 wrapped_index = reduction_index;
+      if (wrapped_index < 0) {
+        wrapped_index += input_rank;
+      }
+
+      true_indices.insert(wrapped_index);
+    }
+  } else {
+    return errors::InvalidArgument(
+        "reduction_indices can only be int32 or int64");
   }
 
   std::vector<DimensionHandle> dims;
@@ -1319,11 +1341,10 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", num_outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", num_outer_dims,
-            " dimensions of updates.shape=", c->DebugString(updates_shape),
-            ": ", s.error_message());
+            "The outer ", num_outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ",
+            num_outer_dims, " dimensions of updates.shape=",
+            c->DebugString(updates_shape), ": ", s.error_message());
       }
 
       ShapeHandle input_suffix;
