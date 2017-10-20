@@ -235,6 +235,7 @@ inline void interpolate_with_caching(
 
   const T* input_b_ptr = input_data.data();
   float* output_y_ptr = output_data.data();
+  std::vector<float> cached_value(num_channels == 3 ? 0 : 4 * num_channels, 0);
 
   for (int64 b = 0; b < resizer_state.batch_size;
        ++b, input_b_ptr += in_batch_width) {
@@ -331,7 +332,6 @@ inline void interpolate_with_caching(
                       x_wai.weight_2, x_wai.weight_3);
         }
       } else {
-        std::vector<float> cached_value(4 * num_channels, 0);
         for (int64 x = 0; x < resizer_state.out_width; ++x) {
           const WeightsAndIndices& x_wai = x_wais[x];
           // Shift values in cached_value to fill first 'advance' values.
