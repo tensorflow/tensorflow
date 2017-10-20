@@ -1978,6 +1978,7 @@ py_library(
         ":tensor_array_ops",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
     ],
 )
 
