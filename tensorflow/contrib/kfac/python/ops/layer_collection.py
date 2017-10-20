@@ -259,9 +259,9 @@ class LayerCollection(object):
                           fb.FullyConnectedKFACBasicFB(self, inputs, outputs,
                                                        has_bias))
     elif approx == APPROX_DIAGONAL_NAME:
-      self.register_block(params,
-                          fb.FullyConnectedDiagonalFB(self, inputs, outputs,
-                                                      has_bias))
+      block = fb.FullyConnectedDiagonalFB(self, has_bias)
+      block.register_additional_minibatch(inputs, outputs)
+      self.register_block(params, block)
     else:
       raise ValueError("Bad value {} for approx.".format(approx))
 

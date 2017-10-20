@@ -510,6 +510,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
+        ":lib_internal",
         ":op_gen_overrides_proto_cc",
         ":protos_all_cc",
     ],
@@ -2506,6 +2507,7 @@ tf_cc_test(
     srcs = ["framework/op_gen_lib_test.cc"],
     deps = [
         ":op_gen_lib",
+        ":protos_all_cc",
         ":test",
         ":test_main",
     ],

@@ -26,10 +26,8 @@ import threading
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
-from tensorflow.python.platform import app
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_inspect
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -421,68 +419,6 @@ def device(name):
     Context manager for setting the device.
   """
   return context().device(name)
-
-
-def run(main=None, argv=None):
-  """Runs the program with an optional main function and argv list.
-
-  The program will run with eager execution enabled.
-
-  Example:
-  ```python
-  import tensorflow as tf
-  # Import subject to future changes:
-  from tensorflow.contrib.eager.python import tfe
-
-  def main(_):
-    u = tf.constant(6.0)
-    v = tf.constant(7.0)
-    print(u * v)
-
-  if __name__ == "__main__":
-    tfe.run()
-  ```
-
-  Args:
-    main: the main function to run.
-    argv: the arguments to pass to it.
-  """
-  enable_eager_execution()
-  app.run(main, argv)
-
-
-# TODO(apassos): This should not be a part of the public API.
-def enable_eager_execution():
-  """Enables, for the rest of the lifetime of this program, eager execution.
-
-  If not called immediately on startup risks creating breakage and bugs. Calling
-  this method more than once in the same process will lead to an exception.
-
-  Example:
-  ```python
-  # Before eager execution is enabled, `Tensor`s are symbolic and do not hold
-  # concrete values (they are to be executed in a `tf.Session`).
-  assert not hasattr(tf.multiply(6, 7), "numpy")
-
-  tfe.enable_eager_execution()
-
-  # After eager execution is enabled, operations are executed as they are
-  # defined and `Tensor`s hold concrete values, which can be accessed as
-  # `numpy.ndarray`s through the `numpy()` method.
-  assert tf.multiply(6, 7).numpy() == 42
-  ```
-
-  Raises:
-    ValueError: If this method has already been invoked in the current process.
-  """
-  global _default_mode
-  if _default_mode == EAGER_MODE:
-    func_name = (
-        "tfe." + tf_inspect.getframeinfo(tf_inspect.currentframe()).function)
-    raise ValueError(
-        "Do not call %s more than once in the same process. Note eager-mode "
-        "methods such as tfe.run() also call %s." % (func_name, func_name))
-  _default_mode = EAGER_MODE
 
 
 def list_devices():

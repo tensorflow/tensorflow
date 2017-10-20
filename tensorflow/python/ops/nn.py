@@ -21,6 +21,7 @@ See the @{$python/nn} guide.
 @@relu
 @@relu6
 @@crelu
+@@swish
 @@elu
 @@leaky_relu
 @@selu

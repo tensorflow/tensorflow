@@ -69,20 +69,6 @@ class GraphCompiler {
   Status Compile();
 
  private:
-  // NodeBinding is a wrapper on a `Node` that also contains computed
-  // TensorValue.
-  struct NodeBinding {
-    const Node* node;
-    // Kernel for this node, to be filled by CreateKernel.
-    // TODO(yunxing): Switching this to unique_ptr and understand why it crashes
-    // on GPU devices.
-    OpKernel* op_kernel;
-    // Output values of this node.
-    std::vector<TensorValue> tensor_values;
-    // Attributes of the outputs.
-    gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
-  };
-
   // Partially sets params. This partially set params can be reused
   // across multple nodes visit.
   void PartiallySetupParams(OpKernelContext::Params* params);

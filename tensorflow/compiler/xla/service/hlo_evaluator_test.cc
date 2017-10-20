@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -41,7 +41,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloEvaluatorTest : public HloTestBase {
+class HloEvaluatorTest : public HloVerifiedTestBase {
  protected:
   HloEvaluatorTest() { evaluator_ = MakeUnique<HloEvaluator>(); }
 
@@ -62,8 +62,7 @@ TEST_F(HloEvaluatorTest, DoesClamp) {
   auto c3 = b.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
   auto instruction = b.AddInstruction(
       HloInstruction::CreateTernary(shape, HloOpcode::kClamp, c1, c2, c3));
-  HloModule module(TestName());
-  module.AddEntryComputation(b.Build());
+  module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
@@ -89,8 +88,7 @@ TEST_F(HloEvaluatorTest, DoesSelect) {
       b.AddInstruction(HloInstruction::CreateConstant(std::move(on_false)));
   auto instruction = b.AddInstruction(
       HloInstruction::CreateTernary(shape, HloOpcode::kSelect, c1, c2, c3));
-  HloModule module(TestName());
-  module.AddEntryComputation(b.Build());
+  module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
@@ -112,8 +110,7 @@ TEST_F(HloEvaluatorTest, DoesAdd) {
   auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs)));
   auto instruction = b.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, c1, c2));
-  HloModule module(TestName());
-  module.AddEntryComputation(b.Build());
+  module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
@@ -125,111 +122,100 @@ TEST_F(HloEvaluatorTest, DoesAdd) {
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
-TEST_F(HloEvaluatorTest, DoesDivide) {
-  {
-    auto lhs_s64 = Literal::CreateR2<int64>({{1, 0}, {-100, 4}});
-    auto rhs_s64 = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
+TEST_F(HloEvaluatorTest, DoesDivideInt64) {
+  auto lhs_s64 = Literal::CreateR2<int64>({{1, 0}, {-100, 4}});
+  auto rhs_s64 = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
 
-    Shape shape_s64 = ShapeUtil::MakeShape(S64, {2, 2});
-    HloComputation::Builder b(TestName());
-    auto c1_s64 =
-        b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_s64)));
-    auto c2_s64 =
-        b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_s64)));
-    auto instruction = b.AddInstruction(HloInstruction::CreateBinary(
-        shape_s64, HloOpcode::kDivide, c1_s64, c2_s64));
-    HloModule module(TestName());
-    module.AddEntryComputation(b.Build());
+  Shape shape_s64 = ShapeUtil::MakeShape(S64, {2, 2});
+  HloComputation::Builder b(TestName());
+  auto c1_s64 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_s64)));
+  auto c2_s64 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_s64)));
+  auto instruction = b.AddInstruction(HloInstruction::CreateBinary(
+      shape_s64, HloOpcode::kDivide, c1_s64, c2_s64));
+  module().AddEntryComputation(b.Build());
 
-    std::unique_ptr<Literal> result =
-        evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
-    auto expected = Literal::CreateR2<int64>({{0, 0}, {-25, 1}});
+  auto expected = Literal::CreateR2<int64>({{0, 0}, {-25, 1}});
 
-    LiteralTestUtil::ExpectEqual(*expected, *result);
-  }
-  {
-    auto lhs_f64 = Literal::CreateR2<double>({{1.0, 0.0}, {-100.0, 4.0}});
-    auto rhs_f64 = Literal::CreateR2<double>({{2.2, 4.0}, {4.0, 4.0}});
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+TEST_F(HloEvaluatorTest, DoesDivideDouble) {
+  auto lhs_f64 = Literal::CreateR2<double>({{1.0, 0.0}, {-100.0, 4.0}});
+  auto rhs_f64 = Literal::CreateR2<double>({{2.2, 4.0}, {4.0, 4.0}});
 
-    Shape shape_f64 = ShapeUtil::MakeShape(F64, {2, 2});
-    HloComputation::Builder b(TestName());
-    auto c1_f64 =
-        b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_f64)));
-    auto c2_f64 =
-        b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_f64)));
-    auto instruction = b.AddInstruction(HloInstruction::CreateBinary(
-        shape_f64, HloOpcode::kDivide, c1_f64, c2_f64));
-    HloModule module(TestName());
-    module.AddEntryComputation(b.Build());
+  Shape shape_f64 = ShapeUtil::MakeShape(F64, {2, 2});
+  HloComputation::Builder b(TestName());
+  auto c1_f64 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_f64)));
+  auto c2_f64 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_f64)));
+  auto instruction = b.AddInstruction(HloInstruction::CreateBinary(
+      shape_f64, HloOpcode::kDivide, c1_f64, c2_f64));
+  module().AddEntryComputation(b.Build());
 
-    auto result = evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
+  auto result = evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
-    auto expected =
-        Literal::CreateR2<double>({{0.45454545454545453, 0}, {-25, 1}});
+  auto expected =
+      Literal::CreateR2<double>({{0.45454545454545453, 0}, {-25, 1}});
 
-    LiteralTestUtil::ExpectEqual(*expected, *result);
-  }
+  LiteralTestUtil::ExpectEqual(*expected, *result);
 }
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise abs op with 1 operand.
-TEST_F(HloEvaluatorTest, DoesAbs) {
-  {
-    auto operand = Literal::CreateR2<int64>({{1, -20}, {-100, 4}});
-    const Shape& shape = ShapeUtil::MakeShape(S64, {2, 2});
-    HloComputation::Builder b(TestName());
-    auto c1 =
-        b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
-    auto instruction = b.AddInstruction(
-        HloInstruction::CreateUnary(shape, HloOpcode::kAbs, c1));
-    HloModule module(TestName());
-    module.AddEntryComputation(b.Build());
+TEST_F(HloEvaluatorTest, DoesAbsR2) {
+  auto operand = Literal::CreateR2<int64>({{1, -20}, {-100, 4}});
+  const Shape& shape = ShapeUtil::MakeShape(S64, {2, 2});
+  HloComputation::Builder b(TestName());
+  auto c1 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
+  auto instruction =
+      b.AddInstruction(HloInstruction::CreateUnary(shape, HloOpcode::kAbs, c1));
+  module().AddEntryComputation(b.Build());
 
-    std::unique_ptr<Literal> result =
-        evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(instruction, {}).ConsumeValueOrDie();
 
-    auto expected = Literal::CreateR2<int64>({{1, 20}, {100, 4}});
+  auto expected = Literal::CreateR2<int64>({{1, 20}, {100, 4}});
 
-    LiteralTestUtil::ExpectEqual(*expected, *result);
-  }
-
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+TEST_F(HloEvaluatorTest, DoesAbsR0) {
   // For R0 literal.
-  {
-    const Shape& r0 = ShapeUtil::MakeShape(F32, {});
-    auto operand = Literal::CreateR0<float>(-1.0f);
-    HloComputation::Builder b(TestName());
-    auto c1 =
-        b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
-    auto instruction =
-        b.AddInstruction(HloInstruction::CreateUnary(r0, HloOpcode::kAbs, c1));
-    HloModule module(TestName());
-    module.AddEntryComputation(b.Build());
+  const Shape& r0 = ShapeUtil::MakeShape(F32, {});
+  auto operand = Literal::CreateR0<float>(-1.0f);
+  HloComputation::Builder b(TestName());
+  auto c1 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
+  auto instruction =
+      b.AddInstruction(HloInstruction::CreateUnary(r0, HloOpcode::kAbs, c1));
+  module().AddEntryComputation(b.Build());
 
-    auto result = evaluator_->Evaluate(instruction).ConsumeValueOrDie();
-    auto expected = Literal::CreateR0<float>(1.0f);
+  auto result = evaluator_->Evaluate(instruction).ConsumeValueOrDie();
+  auto expected = Literal::CreateR0<float>(1.0f);
 
-    LiteralTestUtil::ExpectEqual(*expected, *result);
-  }
-
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+TEST_F(HloEvaluatorTest, DoesAbsR1WithZeroSize) {
   // For R1 literal with dimension of size 0.
-  {
-    Shape empty_r1 = ShapeUtil::MakeShape(F32, {0});
-    auto operand = Literal::CreateR1<float>({});
-    HloComputation::Builder b(TestName());
-    auto c1 =
-        b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
-    auto instruction = b.AddInstruction(
-        HloInstruction::CreateUnary(empty_r1, HloOpcode::kAbs, c1));
-    HloModule module(TestName());
-    module.AddEntryComputation(b.Build());
+  Shape empty_r1 = ShapeUtil::MakeShape(F32, {0});
+  auto operand = Literal::CreateR1<float>({});
+  HloComputation::Builder b(TestName());
+  auto c1 =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(operand)));
+  auto instruction = b.AddInstruction(
+      HloInstruction::CreateUnary(empty_r1, HloOpcode::kAbs, c1));
+  module().AddEntryComputation(b.Build());
 
-    auto result = evaluator_->Evaluate(instruction).ConsumeValueOrDie();
-    auto expected = Literal::CreateR1<float>({});
+  auto result = evaluator_->Evaluate(instruction).ConsumeValueOrDie();
+  auto expected = Literal::CreateR1<float>({});
 
-    LiteralTestUtil::ExpectEqual(*expected, *result);
-  }
-}  // namespace
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
 
 // Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
 // constant operands.
@@ -253,8 +239,7 @@ TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
       b.AddInstruction(HloInstruction::CreateParameter(2, shape, "rhs2"));
   b.AddInstruction(HloInstruction::CreateBinary(shape, HloOpcode::kAdd,
                                                 lhs_instruction, param_rhs2));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, args).ConsumeValueOrDie();
@@ -279,8 +264,7 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
   const int64 permutation[] = {1, 2, 0, 4, 3};
   b.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -303,8 +287,7 @@ TEST_F(HloEvaluatorTest, DoesBroadcast) {
       HloInstruction::CreateConstant(std::move(input_literal)));
   b.AddInstruction(HloInstruction::CreateBroadcast(
       output_literal->shape(), literal_instruction, {1, 2}));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -324,8 +307,7 @@ TEST_F(HloEvaluatorTest, DoesBroadcastScalar) {
   b.AddInstruction(HloInstruction::CreateBroadcast(
       output_literal->shape(), literal_instruction,
       /*broadcast_dimensions=*/{}));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -343,11 +325,10 @@ TEST_F(HloEvaluatorTest, DoesConcatenateSimple) {
 
   std::vector<HloInstruction*> operands = {operand1, operand2};
 
-  Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
+  Shape shape = ShapeUtil::MakeShape(S64, {4, 2});
   b.AddInstruction(HloInstruction::CreateConcatenate(shape, operands, 0));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -370,8 +351,7 @@ TEST_F(HloEvaluatorTest, ConcatenateHandlesShapeWithZeroElement) {
   Shape shape = ShapeUtil::MakeShape(S64, {2});
   b.AddInstruction(HloInstruction::CreateConcatenate(shape, operands, 0));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -392,8 +372,7 @@ TEST_F(HloEvaluatorTest, ConvertWithSameLayout) {
   HloInstruction* constant = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
   b.AddInstruction(HloInstruction::CreateConvert(expected->shape(), constant));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -414,8 +393,7 @@ TEST_F(HloEvaluatorTest, ConvertWithDifferentLayout) {
   HloInstruction* constant = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
   b.AddInstruction(HloInstruction::CreateConvert(expected->shape(), constant));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -451,8 +429,7 @@ TEST_F(HloEvaluatorTest, Pad2DIntegerArrayWithZeroDimension) {
   Shape shape = ShapeUtil::MakeShape(S32, {5, 2});
   auto pad_instruction = b.AddInstruction(HloInstruction::CreatePad(
       shape, operand_instruction, padding_value_instruction, padding_config));
-  HloModule module(TestName());
-  module.AddEntryComputation(b.Build());
+  module().AddEntryComputation(b.Build());
 
   auto result = evaluator_->Evaluate(pad_instruction).ConsumeValueOrDie();
 
@@ -479,8 +456,7 @@ TEST_F(HloEvaluatorTest, Pad4DFloatArrayWithInteriorPadding) {
       CreatePaddingConfig({{{1, 0, 2}}, {{0, 2, 1}}, {{0, 0, 0}}, {{0, 0, 0}}});
   b.AddInstruction(HloInstruction::CreatePad(
       shape, input_instruction, pad_instruction, r4_padding_on_dim0_dim1));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -525,8 +501,7 @@ TEST_F(HloEvaluatorTest, NegativePadding2D) {
                                              pad_value_instruction,
                                              r2_padding_on_dim0_dim1));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -572,8 +547,7 @@ TEST_F(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
                                              pad_value_instruction,
                                              r2_padding_on_dim0_dim1));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -609,8 +583,7 @@ TEST_F(HloEvaluatorTest, DotRank2AndRank1) {
   Shape shape = ShapeUtil::MakeShape(F32, {4, 2});
   b.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -653,8 +626,7 @@ TEST_F(HloEvaluatorTest, DotRank1AndRank2) {
   Shape shape = ShapeUtil::MakeShape(F32, {2});
   b.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -695,8 +667,7 @@ TEST_F(HloEvaluatorTest, DotRank2AndRank2) {
   Shape shape = ShapeUtil::MakeShape(F32, {4, 2});
   b.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kDot, lhs_instruction, rhs_instruction));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -749,8 +720,7 @@ TEST_F(HloEvaluatorTest, SimpleConv1D) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -805,8 +775,7 @@ TEST_F(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -885,8 +854,7 @@ TEST_F(HloEvaluatorTest, Conv2DGeneralDimensions) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -944,8 +912,7 @@ TEST_F(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -1009,8 +976,7 @@ TEST_F(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -1082,8 +1048,7 @@ TEST_F(HloEvaluatorTest,
   const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, window, dnums));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -1131,15 +1096,14 @@ TEST_F(HloEvaluatorTest, ReduceAdd) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   add_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
-  HloModule module(TestName());
-  auto add_func = module.AddEmbeddedComputation(add_computation.Build());
+  auto add_func = module().AddEmbeddedComputation(add_computation.Build());
 
   Shape shape = ShapeUtil::MakeShape(F32, {2});
   b.AddInstruction(
       HloInstruction::CreateReduce(shape, arg_instruction, init_value,
                                    /*dimensions_to_reduce=*/{1}, add_func));
 
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -1175,8 +1139,7 @@ TEST_F(HloEvaluatorTest, ReduceWindowMax) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   max_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kMaximum, param_lhs, param_rhs));
-  HloModule module(TestName());
-  auto max_func = module.AddEmbeddedComputation(max_computation.Build());
+  auto max_func = module().AddEmbeddedComputation(max_computation.Build());
 
   Window window;
   WindowDimension dim;
@@ -1193,7 +1156,7 @@ TEST_F(HloEvaluatorTest, ReduceWindowMax) {
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, max_func));
 
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
@@ -1227,8 +1190,7 @@ TEST_F(HloEvaluatorTest, ReduceWindowAdd) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   add_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
-  HloModule module(TestName());
-  auto add_func = module.AddEmbeddedComputation(add_computation.Build());
+  auto add_func = module().AddEmbeddedComputation(add_computation.Build());
 
   Window window;
   WindowDimension dim;
@@ -1251,7 +1213,7 @@ TEST_F(HloEvaluatorTest, ReduceWindowAdd) {
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, add_func));
 
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
@@ -1281,8 +1243,7 @@ TEST_F(HloEvaluatorTest, ReduceWindowAdd6D) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   add_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
-  HloModule module(TestName());
-  auto add_func = module.AddEmbeddedComputation(add_computation.Build());
+  auto add_func = module().AddEmbeddedComputation(add_computation.Build());
 
   Window window;
 
@@ -1313,7 +1274,7 @@ TEST_F(HloEvaluatorTest, ReduceWindowAdd6D) {
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, add_func));
 
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
@@ -1344,8 +1305,7 @@ TEST_F(HloEvaluatorTest, StridedSlice) {
                                                /*start_indices=*/{0, 2},
                                                /*limit_indices=*/{3, 5},
                                                /*strides=*/{2, 3}));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -1379,8 +1339,7 @@ TEST_F(HloEvaluatorTest, DynamicSlice) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
                                                       start_indices, {2, 3}));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -1416,8 +1375,7 @@ TEST_F(HloEvaluatorTest, DynamicSliceModSlice) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
                                                       start_indices, {2, 3}));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -1454,8 +1412,7 @@ TEST_F(HloEvaluatorTest, DynamicSliceUpdate) {
   Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       shape, operand, update, start_indices));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
@@ -1491,8 +1448,7 @@ TEST_F(HloEvaluatorTest, SetAndGetTuples) {
   Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
   b.AddInstruction(HloInstruction::CreateGetTupleElement(shape, tuple, 1));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
@@ -1531,8 +1487,7 @@ TEST_F(HloEvaluatorTest, SetAndGetNestedTuples) {
   b.AddInstruction(
       HloInstruction::CreateGetTupleElement(tuple2->shape(), outer_tuple, 1));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();
 
@@ -1572,8 +1527,7 @@ TEST_F(HloEvaluatorTest, Reverse) {
 
   const Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 2, 1});
   b.AddInstruction(HloInstruction::CreateReverse(shape, operand, {0, 1}));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(b.Build());
+  auto computation = module().AddEntryComputation(b.Build());
 
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(*computation, {}).ConsumeValueOrDie();

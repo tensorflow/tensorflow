@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_ops
 
 
 __all__ = [
@@ -279,26 +280,32 @@ class VectorDistributionTestHelpers(object):
     def monte_carlo_hypersphere_volume(dist, num_samples, radius, center):
       # https://en.wikipedia.org/wiki/Importance_sampling
       x = dist.sample(num_samples, seed=seed)
+      x = array_ops.identity(x)  # Invalidate bijector cacheing.
       return math_ops.reduce_mean(
           math_ops.exp(-dist.log_prob(x)) * is_in_ball(x, radius, center),
           axis=0)
 
-    [
-        batch_shape_,
-        actual_volume_,
-        sample_volume_,
-    ] = sess.run([
-        dist.batch_shape_tensor(),
-        actual_hypersphere_volume(
-            dims=dist.event_shape_tensor()[0],
-            radius=radius),
-        monte_carlo_hypersphere_volume(
-            dist,
-            num_samples=num_samples,
-            radius=radius,
-            center=center),
-    ])
+    # Build graph.
+    with ops.name_scope(
+        "run_test_sample_consistent_log_prob",
+        values=[num_samples, radius, center] + dist._graph_parents):  # pylint: disable=protected-access
+      batch_shape = dist.batch_shape_tensor()
+      actual_volume = actual_hypersphere_volume(
+          dims=dist.event_shape_tensor()[0],
+          radius=radius)
+      sample_volume = monte_carlo_hypersphere_volume(
+          dist,
+          num_samples=num_samples,
+          radius=radius,
+          center=center)
+      init_op = variables_ops.global_variables_initializer()
 
+    # Execute graph.
+    sess.run(init_op)
+    [batch_shape_, actual_volume_, sample_volume_] = sess.run([
+        batch_shape, actual_volume, sample_volume])
+
+    # Check results.
     self.assertAllClose(np.tile(actual_volume_, reps=batch_shape_),
                         sample_volume_,
                         rtol=rtol, atol=atol)
