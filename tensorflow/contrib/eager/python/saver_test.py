@@ -54,6 +54,40 @@ class SaverTest(test.TestCase):
       saver.restore(ckpt_prefix)
       self.assertEqual(v1.read_value().numpy(), 1.0)
 
+  def testSameNameNoClobbering(self):
+    with context.eager_mode(), ops.device(self._dev()):
+      # Note that this test purposefully uses Graphs rather than
+      # IsolateTest. Users are more likely to accidentally create the same
+      # variable name this way.
+      first_graph = ops.Graph()
+      with first_graph.as_default():
+        v1_first_graph = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      with ops.Graph().as_default():
+        v1_second_graph = resource_variable_ops.ResourceVariable(2.0, name='v1')
+        saver = _saver.Saver([v1_first_graph, v1_second_graph])
+      ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
+      with self.assertRaisesRegexp(ValueError, 'v1'):
+        saver.save(ckpt_prefix)
+
+  def testDifferentGraphError(self):
+    with context.eager_mode(), ops.device(self._dev()):
+      with ops.Graph().as_default():
+        v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      with ops.Graph().as_default():
+        saver = _saver.Saver([v1])
+        ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
+        with self.assertRaisesRegexp(ValueError, 'Graph'):
+          saver.save(ckpt_prefix)
+
+  def testSameObjectOK(self):
+    with context.eager_mode(), ops.device(self._dev()):
+      v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      # While different objects with the same shared_name are not good, passing
+      # in the same object multiple times is fine.
+      saver = _saver.Saver([v1, v1])
+      ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
+      saver.save(ckpt_prefix)
+
   def testRestoreOnCreate(self):
     with ops.device(self._dev()):
       def model(init_val):
