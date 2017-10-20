@@ -371,8 +371,9 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   """Computes the singular value decompositions of one or more matrices.
 
   Computes the SVD of each inner matrix in `tensor` such that
-  `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :,
-  :])`
+  `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(conj(v[..., :,
+  :])). ` Note: Currently only support complex SVD on CPU.
+
 
   ```python
   # a is a tensor.
@@ -403,12 +404,13 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
       `[..., M, M]`. Not returned if `compute_uv` is `False`.
     v: Right singular vectors. If `full_matrices` is `False` (default) then
       shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
-      `[..., N, N]`. Not returned if `compute_uv` is `False`.
+      `[..., N, N]`. Not returned if `compute_uv` is `False`. 
 
   @compatibility(numpy)
-  Mostly equivalent to numpy.linalg.svd, except that the order of output
-  arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
-  `u`, `s`, `v` for numpy.linalg.svd.
+  Mostly equivalent to numpy.linalg.svd, except that the transposition and 
+  order of output arguments here is `s`, `u`, `v` when `compute_uv` is `True`, 
+  as opposed to `u`, `s`, `v` for numpy.linalg.svd. 
+
   @end_compatibility
   """
   # pylint: disable=protected-access
