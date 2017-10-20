@@ -56,6 +56,22 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetConfig(
     TFE_ContextOptions* options, const void* proto, size_t proto_len,
     TF_Status* status);
 
+// Controls how to act when we try to run an operation on a given device but
+// some input tensors are not on that device.
+typedef enum TFE_ContextDevicePlacementPolicy {
+  // The default: running operations with input tensors on the wrong device will
+  // fail.
+  TFE_DEVICE_PLACEMENT_EXPLICIT = 0,
+  // Copy the tensor to the right device but log a warning.
+  TFE_DEVICE_PLACEMENT_WARN = 1,
+  // Silently copy the tensor, which has a performance cost since the
+  // operation will be blocked till the copy completes.
+  TFE_DEVICE_PLACEMENT_SILENT = 2,
+} TFE_ContextDevicePlacementPolicy;
+
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
+    TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
+
 // Destroy an options object.
 TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
 
