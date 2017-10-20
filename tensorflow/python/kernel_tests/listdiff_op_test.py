@@ -41,7 +41,7 @@ class ListDiffTest(test.TestCase):
         y = [compat.as_bytes(str(a)) for a in y]
         out = [compat.as_bytes(str(a)) for a in out]
       for diff_func in [array_ops.setdiff1d]:
-        for index_dtype in [dtypes.int64]:
+        for index_dtype in [dtypes.int32, dtypes.int64]:
           with self.test_session() as sess:
             x_tensor = ops.convert_to_tensor(x, dtype=dtype)
             y_tensor = ops.convert_to_tensor(y, dtype=dtype)
