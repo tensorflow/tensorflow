@@ -24,6 +24,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -52,14 +53,15 @@ class BatchToSpaceDepthToSpace(test.TestCase, PythonOpImpl):
   def testDepthToSpaceTranspose(self):
     x = np.arange(20 * 5 * 8 * 7, dtype=np.float32).reshape([20, 5, 8, 7])
     block_size = 2
-    crops = np.zeros((2, 2), dtype=np.int32)
-    y1 = self.batch_to_space(x, crops, block_size=block_size)
-    y2 = array_ops.transpose(
-        array_ops.depth_to_space(
-            array_ops.transpose(x, [3, 1, 2, 0]), block_size=block_size),
-        [3, 1, 2, 0])
-    with self.test_session():
-      self.assertAllEqual(y1.eval(), y2.eval())
+    for crops_dtype in [dtypes.int64]:
+      crops = array_ops.zeros((2, 2), dtype=crops_dtype)
+      y1 = self.batch_to_space(x, crops, block_size=block_size)
+      y2 = array_ops.transpose(
+          array_ops.depth_to_space(
+              array_ops.transpose(x, [3, 1, 2, 0]), block_size=block_size),
+          [3, 1, 2, 0])
+      with self.test_session():
+        self.assertAllEqual(y1.eval(), y2.eval())
 
 
 class BatchToSpaceDepthToSpaceCpp(BatchToSpaceDepthToSpace, CppOpImpl):
@@ -289,18 +291,19 @@ class BatchToSpaceNDGradientTest(test.TestCase):
   # Check the gradients.
   def _checkGrad(self, x, block_shape, crops):
     block_shape = np.array(block_shape)
-    crops = np.array(crops).reshape((len(block_shape), 2))
-    with self.test_session():
-      tf_x = ops.convert_to_tensor(x)
-      tf_y = array_ops.batch_to_space_nd(tf_x, block_shape, crops)
-      epsilon = 1e-5
-      ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
-          tf_x,
-          x.shape,
-          tf_y,
-          tf_y.get_shape().as_list(),
-          x_init_value=x,
-          delta=epsilon)
+    for crops_dtype in [dtypes.int64]:
+      crops = constant_op.constant(np.array(crops).reshape((len(block_shape), 2)), crops_dtype)
+      with self.test_session():
+        tf_x = ops.convert_to_tensor(x)
+        tf_y = array_ops.batch_to_space_nd(tf_x, block_shape, crops)
+        epsilon = 1e-5
+        ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
+            tf_x,
+            x.shape,
+            tf_y,
+            tf_y.get_shape().as_list(),
+            x_init_value=x,
+            delta=epsilon)
 
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=1e-2, atol=epsilon)
 
