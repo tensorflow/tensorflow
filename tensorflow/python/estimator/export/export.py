@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util import compat
 
@@ -47,8 +48,8 @@ class ServingInputReceiver(collections.namedtuple(
   """A return type for a serving_input_receiver_fn.
 
   The expected return values are:
-    features: A dict of string to `Tensor` or `SparseTensor`, specifying the
-      features to be passed to the model.
+    features: A `Tensor`, `SparseTensor`, or dict of string to `Tensor` or
+      `SparseTensor`, specifying the features to be passed to the model.
     receiver_tensors: a `Tensor`, or a dict of string to `Tensor`, specifying
       input nodes where this receiver expects to be fed by default.  Typically,
       this is a single placeholder expecting serialized `tf.Example` protos.
@@ -193,13 +194,14 @@ def build_all_signature_defs(receiver_tensors,
     raise ValueError('export_outputs must be a dict.')
 
   signature_def_map = {}
+  excluded_signatures = {}
   for output_key, export_output in export_outputs.items():
     signature_name = '{}'.format(output_key or 'None')
     try:
       signature = export_output.as_signature_def(receiver_tensors)
       signature_def_map[signature_name] = signature
-    except ValueError:
-      pass
+    except ValueError as e:
+      excluded_signatures[signature_name] = str(e)
 
   if receiver_tensors_alternatives:
     for receiver_name, receiver_tensors_alt in (
@@ -213,8 +215,10 @@ def build_all_signature_defs(receiver_tensors,
         try:
           signature = export_output.as_signature_def(receiver_tensors_alt)
           signature_def_map[signature_name] = signature
-        except ValueError:
-          pass
+        except ValueError as e:
+          excluded_signatures[signature_name] = str(e)
+
+  _log_signature_report(signature_def_map, excluded_signatures)
 
   # The above calls to export_output.as_signature_def should return only
   # valid signatures; if there is a validity problem, they raise ValueError,
@@ -222,6 +226,46 @@ def build_all_signature_defs(receiver_tensors,
   # should not remove anything else; it's just an extra sanity check.
   return {k: v for k, v in signature_def_map.items()
           if signature_def_utils.is_valid_signature(v)}
+
+
+_FRIENDLY_METHOD_NAMES = {
+    signature_constants.CLASSIFY_METHOD_NAME: 'Classify',
+    signature_constants.REGRESS_METHOD_NAME: 'Regress',
+    signature_constants.PREDICT_METHOD_NAME: 'Predict',
+}
+
+
+def _log_signature_report(signature_def_map, excluded_signatures):
+  """Log a report of which signatures were produced."""
+  sig_names_by_method_name = collections.defaultdict(list)
+
+  # We'll collect whatever method_names are present, but also we want to make
+  # sure to output a line for each of the three standard methods even if they
+  # have no signatures.
+  for method_name in _FRIENDLY_METHOD_NAMES:
+    sig_names_by_method_name[method_name] = []
+
+  for signature_name, sig in signature_def_map.items():
+    sig_names_by_method_name[sig.method_name].append(signature_name)
+
+  # TODO(b/67733540): consider printing the full signatures, not just names
+  for method_name, sig_names in sig_names_by_method_name.items():
+    if method_name in _FRIENDLY_METHOD_NAMES:
+      method_name = _FRIENDLY_METHOD_NAMES[method_name]
+    logging.info('Signatures INCLUDED in export for {}: {}'.format(
+        method_name, sig_names if sig_names else 'None'))
+
+  if excluded_signatures:
+    logging.info('Signatures EXCLUDED from export because they cannot be '
+                 'be served via TensorFlow Serving APIs:')
+    for signature_name, message in excluded_signatures.items():
+      logging.info('\'{}\' : {}'.format(signature_name, message))
+
+  if not signature_def_map:
+    logging.warn('Export includes no signatures!')
+  elif (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+        not in signature_def_map):
+    logging.warn('Export includes no default signature!')
 
 
 # When we create a timestamped directory, there is a small chance that the

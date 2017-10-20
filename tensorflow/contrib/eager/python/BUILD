@@ -86,7 +86,7 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:graph_callable",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python:variables",
     ],
 )
@@ -132,11 +132,12 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
         "//tensorflow/python:layers_base",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -146,6 +147,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -160,6 +165,8 @@ py_library(
     deps = [
         ":datasets",
         ":metrics",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 

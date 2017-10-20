@@ -313,8 +313,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
       new_conv->convolution_dimension_numbers().kernel_spatial_dimensions(1));
 }
 
-// Test that a transpose of the activations does not get folded into
-// convolution.
+// Test that a transpose of the activations gets folded into convolution.
 TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   auto builder = HloComputation::Builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -348,18 +347,25 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
       module.AddEntryComputation(builder.Build(conv));
   FoldTranspose(&module);
 
-  // Instructions after folding: transpose_x, y, and the convolution.
+  // Instructions after folding: x, y, and the convolution.
   std::unordered_set<HloInstruction*> instruction_set(
       entry_computation->instructions().begin(),
       entry_computation->instructions().end());
-  CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
-  CHECK_EQ(1, instruction_set.erase(y)) << "y is not in entry_computation.";
-  CHECK_EQ(1, instruction_set.erase(transpose_x))
-      << "transpose_x is not in entry_computation.";
-  CHECK_EQ(1, instruction_set.erase(conv))
-      << "transpose_x is not in entry_computation.";
-  CHECK_EQ(0, instruction_set.size())
-      << "entry_computation should contain exactly 4 instructions.";
+  EXPECT_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
+  EXPECT_EQ(1, instruction_set.erase(y)) << "y is not in entry_computation.";
+  EXPECT_EQ(1, instruction_set.size())
+      << "entry_computation should contain exactly 3 instructions.";
+  HloInstruction* new_conv = *instruction_set.begin();
+  EXPECT_EQ(HloOpcode::kConvolution, new_conv->opcode());
+  EXPECT_EQ(dnums.input_feature_dimension(),
+            new_conv->convolution_dimension_numbers().input_batch_dimension());
+  EXPECT_EQ(
+      dnums.input_batch_dimension(),
+      new_conv->convolution_dimension_numbers().input_feature_dimension());
+  EXPECT_EQ(dnums.spatial_dimensions(0),
+            new_conv->convolution_dimension_numbers().spatial_dimensions(0));
+  EXPECT_EQ(dnums.spatial_dimensions(1),
+            new_conv->convolution_dimension_numbers().spatial_dimensions(1));
 }
 
 }  // namespace

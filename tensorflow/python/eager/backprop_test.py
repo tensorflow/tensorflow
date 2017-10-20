@@ -292,7 +292,7 @@ class BackpropTest(test.TestCase):
     self.assertEqual(grad.numpy(), 6.0)
 
   def testGradientTapeVariable(self):
-    v = resource_variable_ops.ResourceVariable(1.0)
+    v = resource_variable_ops.ResourceVariable(1.0, name='v')
     with backprop.GradientTape() as g:
       y = v * v
     grad = g.gradient(y, [v])[0]
@@ -381,6 +381,14 @@ class BackpropTest(test.TestCase):
         [tensor_shape.TensorShape(s).as_proto() for s in shape_list],
         backprop.make_attr([pywrap_tensorflow.TF_ATTR_SHAPE], shape_list))
 
+  def testArgsGradientFunction(self):
+
+    def f(*args):
+      return args[0] * args[0]
+
+    grad = backprop.gradients_function(f)
+    self.assertAllEqual(grad(1.0)[0], 2.0)
+
   def testMultiValueConvertToTensor(self):
     x = resource_variable_ops.ResourceVariable(
         initial_value=array_ops.constant([1.0]), name='x')
@@ -449,7 +457,8 @@ class BackpropTest(test.TestCase):
         add_n.append(1)
     context.context().add_post_execution_callback(callback)
 
-    v = resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
+    v = resource_variable_ops.ResourceVariable(constant_op.constant(2.0),
+                                               name='v')
     def fn():
       outputs = []
       for _ in range(20):

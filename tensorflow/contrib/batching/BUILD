@@ -70,6 +70,28 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "adaptive_shared_batch_scheduler",
+    hdrs = ["adaptive_shared_batch_scheduler.h"],
+    deps = [
+        ":batch_scheduler",
+        "//tensorflow/contrib/batching/util:periodic_function_dynamic",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "adaptive_shared_batch_scheduler_test",
+    srcs = ["adaptive_shared_batch_scheduler_test.cc"],
+    deps = [
+        ":adaptive_shared_batch_scheduler",
+        "//tensorflow/contrib/batching/test_util:fake_clock_env",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "basic_batch_scheduler",
     hdrs = ["basic_batch_scheduler.h"],
     deps = [
