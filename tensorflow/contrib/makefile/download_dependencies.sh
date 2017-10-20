@@ -54,7 +54,7 @@ download_and_extract() {
   elif [[ "${url}" == *zip ]]; then
     tempdir=$(mktemp -d)
     tempdir2=$(mktemp -d)
-    wget ${url} -P ${tempdir}
+    wget -P ${tempdir} ${url}
     unzip ${tempdir}/* -d ${tempdir2}
     # unzip has no strip components, so unzip to a temp dir, and move the files
     # we want from the tempdir to destination.
