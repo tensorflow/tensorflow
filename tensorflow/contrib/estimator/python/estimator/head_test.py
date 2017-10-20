@@ -143,6 +143,7 @@ class MultiLabelHead(test.TestCase):
     logits = np.array(
         [[0., 1., 2., -1.], [-1., -2., -3., 1.]], dtype=np.float32)
     expected_probabilities = _sigmoid(logits)
+    expected_export_classes = [[b'0', b'1', b'2', b'3']] * 2
 
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
@@ -150,7 +151,8 @@ class MultiLabelHead(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        ('', _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
+        (_DEFAULT_SERVING_KEY, 'predict', 'classification'),
+        spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
     with self.test_session() as sess:
@@ -166,6 +168,29 @@ class MultiLabelHead(test.TestCase):
       self.assertAllClose(
           expected_probabilities,
           sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].scores))
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
+
+  def test_predict_with_label_vocabulary(self):
+    n_classes = 4
+    head = head_lib.multi_label_head(
+        n_classes, label_vocabulary=['foo', 'bar', 'foobar', 'barfoo'])
+
+    logits = np.array(
+        [[0., 1., 2., -1.], [-1., -2., -3., 1.]], dtype=np.float32)
+    expected_export_classes = [[b'foo', b'bar', b'foobar', b'barfoo']] * 2
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
 
   def test_weight_should_not_impact_prediction(self):
     n_classes = 4

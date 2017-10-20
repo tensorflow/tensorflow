@@ -106,9 +106,6 @@ def _symmetric_matrix_square_root(mat, eps=1e-10):
       math_ops.matmul(u, array_ops.diag(si)), v, transpose_b=True)
 
 
-# Convenience preprocessing function, with fixed defaults.
-# NOTE: Floating-point inputs are expected to be in [0, 1].
-# Copied from /tensorflow_models/slim/preprocessing/inception_preprocessing.py.
 def preprocess_image(
     images, height=INCEPTION_DEFAULT_IMAGE_SIZE,
     width=INCEPTION_DEFAULT_IMAGE_SIZE, scope=None):
@@ -116,6 +113,9 @@ def preprocess_image(
 
   This is the preprocessing portion of the graph from
   http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz.
+
+  Note that it expects Tensors in [0, 255]. This function maps pixel values to
+  [-1, 1] and resizes to match the InceptionV1 network.
 
   Args:
     images: 3-D or 4-D Tensor of images. Values are in [0, 255].
