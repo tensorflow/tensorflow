@@ -45,12 +45,11 @@ const DeviceOptions GetDeviceOptionsFromEnv() {
   }
 
   unsigned device_flags = 0;
-  if (strcasecmp(kScheduleSpinString, gpu_schedule_string) == 0) {
+  if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
     device_flags = perftools::gputools::DeviceOptions::kScheduleSpin;
-  } else if (strcasecmp(kScheduleYieldString, gpu_schedule_string) == 0) {
+  } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
     device_flags = perftools::gputools::DeviceOptions::kScheduleYield;
-  } else if (strcasecmp(kScheduleBlockingSyncString, gpu_schedule_string) ==
-             0) {
+  } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
     device_flags = perftools::gputools::DeviceOptions::kScheduleBlockingSync;
   } else {
     LOG(QFATAL) << "Unknown option for environment variable "

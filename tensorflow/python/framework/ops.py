@@ -47,6 +47,7 @@ from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
+from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
@@ -607,9 +608,6 @@ class _EagerTensorBase(Tensor):
   def numpy(self):
     """Returns a numpy array with the same contents as the Tensor.
 
-    The contents of the Tensor must be backed by host memory. The
-    as_cpu_tensor() method can be used ensure that this is true.
-
     TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
     buffer but instead always explicitly copy? Note that currently it may or may
     not copy based on whether the numpy data is properly aligned or not.
@@ -618,7 +616,7 @@ class _EagerTensorBase(Tensor):
       A numpy array that may share memory with the Tensor object. Any changes
       to one may be reflected in the other.
     """
-    return self.as_cpu_tensor()._numpy()  # pylint: disable=protected-access
+    return self.cpu()._numpy()  # pylint: disable=protected-access
 
   def __array__(self):
     return np.array(self.numpy())
@@ -703,11 +701,11 @@ class _EagerTensorBase(Tensor):
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
 
-  def as_cpu_tensor(self):
+  def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
 
-  def as_gpu_tensor(self, gpu_index=0):
+  def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
     Arguments:
@@ -727,7 +725,7 @@ class _EagerTensorBase(Tensor):
     if self.dtype != dtypes.bool:
       raise ValueError(
           "Non-boolean tensor %s cannot be converted to boolean." % repr(self))
-    return bool(self.as_cpu_tensor().numpy())
+    return bool(self.cpu().numpy())
 
   def __nonzero__(self):
     return self.__bool__()
@@ -741,19 +739,19 @@ class _EagerTensorBase(Tensor):
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
-    raise NotImplementedError("op not supported for Eager Tensors.")
+    raise AttributeError("op not supported for Eager Tensors.")
 
   @property
   def graph(self):
-    raise NotImplementedError("graph not supported for Eager Tensors.")
+    raise AttributeError("graph not supported for Eager Tensors.")
 
   @property
   def name(self):
-    raise NotImplementedError("name not supported for Eager Tensors.")
+    raise AttributeError("name not supported for Eager Tensors.")
 
   @property
   def value_index(self):
-    raise NotImplementedError("value_index not supported for Eager Tensors.")
+    raise AttributeError("value_index not supported for Eager Tensors.")
 
   def consumers(self):
     raise NotImplementedError("consumers not supported for Eager Tensors.")
@@ -4559,6 +4557,63 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 
 
 _default_graph_stack = _DefaultGraphStack()
+
+
+def enable_eager_execution():
+  """Enables, for the rest of the lifetime of this program, eager execution.
+
+  If not called immediately on startup risks creating breakage and bugs.
+
+  Example:
+  ```python
+  tfe.enable_eager_execution()
+
+  # After eager execution is enabled, operations are executed as they are
+  # defined and `Tensor`s hold concrete values, which can be accessed as
+  # `numpy.ndarray`s through the `numpy()` method.
+  assert tf.multiply(6, 7).numpy() == 42
+  ```
+
+  Raises:
+    ValueError: If this method has already been invoked in the current process.
+  """
+  # pylint: disable=protected-access
+  if context._default_mode == context.GRAPH_MODE:
+    graph_mode_has_been_used = (
+        _default_session_stack.stack or
+        _default_graph_stack._global_default_graph is not None)
+    if graph_mode_has_been_used:
+      raise ValueError(
+          "tfe.enable_eager_execution has to be called at program startup.")
+  context._default_mode = context.EAGER_MODE
+
+
+def eager_run(main=None, argv=None):
+  """Runs the program with an optional main function and argv list.
+
+  The program will run with eager execution enabled.
+
+  Example:
+  ```python
+  import tensorflow as tf
+  # Import subject to future changes:
+  from tensorflow.contrib.eager.python import tfe
+
+  def main(_):
+    u = tf.constant(6.0)
+    v = tf.constant(7.0)
+    print(u * v)
+
+  if __name__ == "__main__":
+    tfe.run()
+  ```
+
+  Args:
+    main: the main function to run.
+    argv: the arguments to pass to it.
+  """
+  enable_eager_execution()
+  app.run(main, argv)
 
 
 def reset_default_graph():

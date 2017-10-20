@@ -428,11 +428,28 @@ class NaiveDiagonalFactor(DiagonalFactor):
 
 
 class FullyConnectedDiagonalFactor(DiagonalFactor):
-  """FisherFactor for a diagonal approx of a fully-connected layer's Fisher."""
+  r"""FisherFactor for a diagonal approx of a fully-connected layer's Fisher.
+
+  Given in = [batch_size, input_size] and out_grad = [batch_size, output_size],
+  approximates the covariance as,
+
+    Cov(in, out) = (1/batch_size) \sum_{i} outer(in[i], out_grad[i]) ** 2.0
+
+  where the square is taken element-wise.
+  """
 
   # TODO(jamesmartens): add units tests for this class
 
   def __init__(self, inputs, outputs_grads, has_bias=False):
+    """Instantiate FullyConnectedDiagonalFactor.
+
+    Args:
+      inputs: Tensor of shape [batch_size, input_size]. Inputs to fully
+        connected layer.
+      outputs_grads: List of Tensors of shape [batch_size, output_size].
+        Gradient of loss with respect to layer's preactivations.
+      has_bias: bool. If True, append '1' to each input.
+    """
     self._outputs_grads = outputs_grads
     self._batch_size = array_ops.shape(inputs)[0]
     self._orig_tensors_name = scope_string_from_params((inputs,) +

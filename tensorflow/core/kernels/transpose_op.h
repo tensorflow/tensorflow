@@ -86,7 +86,6 @@ class ConjugateTransposeCpuOp : public TransposeOp {
 };
 
 #ifdef INTEL_MKL
-template <bool conjugate = false>
 class MklConjugateTransposeCpuOp : public TransposeOp {
  public:
   explicit MklConjugateTransposeCpuOp(OpKernelConstruction* ctx)
