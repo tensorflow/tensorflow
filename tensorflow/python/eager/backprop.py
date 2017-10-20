@@ -396,12 +396,11 @@ def implicit_grad(f):
   return grad_fn
 
 
-def _get_arg_spec(f, params):
+def _get_arg_spec(f, params, param_args):
   args = tf_inspect.getargspec(f).args
   if params is None:
     if not args:
-      raise ValueError("When params is None the differentiated function cannot"
-                       " only take arguments by *args and **kwds.")
+      return range(len(param_args))
     return range(len(args))
   elif all(isinstance(x, six.string_types) for x in params):
     return [args.index(n) for n in params]
@@ -560,10 +559,9 @@ def val_and_grad_function(f, params=None):
    ValueError: if the params are not all strings or all integers.
   """
 
-  parameter_positions = _get_arg_spec(f, params)
-
   def decorated(*args, **kwds):
     """Computes the value and gradient of the decorated function."""
+    parameter_positions = _get_arg_spec(f, params, args)
     dy = kwds.pop("dy", None)
     if dy is not None:
       dy = ops.convert_to_tensor(dy)
@@ -616,10 +614,9 @@ def make_vjp(f, params=None):
 
   """
 
-  parameter_positions = _get_arg_spec(f, params)
-
   def decorated(*args, **kwds):
     """Computes the value and gradient of the decorated function."""
+    parameter_positions = _get_arg_spec(f, params, args)
     assert not kwds, "The gradient function can't take keyword arguments."
     tape.push_new_tape()
     sources = []

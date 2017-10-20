@@ -412,6 +412,8 @@ void InitApiDefFromOpDef(const OpDef& op_def, ApiDef* api_def) {
     api_in_arg->set_name(op_in_arg.name());
     api_in_arg->set_rename_to(op_in_arg.name());
     api_in_arg->set_description(op_in_arg.description());
+
+    *api_def->add_arg_order() = op_in_arg.name();
   }
   for (const auto& op_out_arg : op_def.output_arg()) {
     auto* api_out_arg = api_def->add_out_arg();
@@ -503,6 +505,22 @@ Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
   }
   // Merge arg order
   if (new_api_def.arg_order_size() > 0) {
+    // Validate that new arg_order is correct.
+    if (new_api_def.arg_order_size() != base_api_def->arg_order_size()) {
+      return errors::FailedPrecondition(
+          "Invalid number of arguments ", new_api_def.arg_order_size(), " for ",
+          base_api_def->graph_op_name(),
+          ". Expected: ", base_api_def->arg_order_size());
+    }
+    if (!std::is_permutation(new_api_def.arg_order().begin(),
+                             new_api_def.arg_order().end(),
+                             base_api_def->arg_order().begin())) {
+      return errors::FailedPrecondition(
+          "Invalid arg_order: ", str_util::Join(new_api_def.arg_order(), ", "),
+          " for ", base_api_def->graph_op_name(),
+          ". All elements in arg_order override must match base arg_order: ",
+          str_util::Join(base_api_def->arg_order(), ", "));
+    }
     base_api_def->clear_arg_order();
     std::copy(
         new_api_def.arg_order().begin(), new_api_def.arg_order().end(),

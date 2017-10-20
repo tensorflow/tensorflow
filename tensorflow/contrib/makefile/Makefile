@@ -502,6 +502,7 @@ $(wildcard tensorflow/core/platform/google/*) \
 $(wildcard tensorflow/core/platform/google/*/*) \
 $(wildcard tensorflow/core/platform/jpeg.*) \
 $(wildcard tensorflow/core/platform/png.*) \
+$(wildcard tensorflow/core/platform/s3/*) \
 $(wildcard tensorflow/core/platform/stream_executor.*) \
 $(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/user_ops/*.cu.cc) \

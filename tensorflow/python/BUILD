@@ -1978,6 +1978,7 @@ py_library(
         ":tensor_array_ops",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2638,6 +2639,7 @@ py_library(
         ":init_ops",
         ":io_ops",
         ":io_ops_gen",
+        ":layers_base",
         ":lib",
         ":lookup_ops",
         ":math_ops",

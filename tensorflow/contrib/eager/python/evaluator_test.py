@@ -86,7 +86,7 @@ class EvaluatorTest(test.TestCase):
     for v in e.metric_variables:
       p = v.name.split("/")[0]
       prefix_count[p] = prefix_count.get(p, 0) + 1
-    self.assertEqual({"outer-mean": 2, "mean": 2}, prefix_count)
+    self.assertEqual({"outer_mean": 2, "mean": 2}, prefix_count)
 
   def testDataset(self):
     e = SimpleEvaluator(IdentityModel())

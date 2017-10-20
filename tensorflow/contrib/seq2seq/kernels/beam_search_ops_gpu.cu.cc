@@ -46,24 +46,31 @@ __global__ void GatherTreeOpKernel(const int32 batch_size, const int32 max_time,
     const int32 initial_beam_ix = GET_IX(max_seq_len_b - 1, beam);
     beams[initial_beam_ix] = ldg(step_ids + initial_beam_ix);
     int32 parent = ldg(parent_ids + initial_beam_ix);
+    bool found_bad = false;
     for (int32 level = max_seq_len_b - 2; level >= 0; --level) {
       const int32 level_beam_ix = GET_IX(level, beam);
       const int32 level_parent_ix = GET_IX(level, parent);
       if (parent < 0 || parent > beam_width) {
         beams[level_beam_ix] = -1;
         parent = -1;
+        found_bad = true;
       } else {
         beams[level_beam_ix] = ldg(step_ids + level_parent_ix);
         parent = ldg(parent_ids + level_parent_ix);
       }
     }
-    bool finished = false;
-    for (int32 time = 0; time < max_seq_len_b; ++time) {
-      const int32 level_beam_ix = GET_IX(time, beam);
-      if (finished) {
-        beams[level_beam_ix] = -1;
-      } else if (beams[level_beam_ix] == end_token) {
-        finished = true;
+    // Not necessary when using a BeamSearchDecoder, but necessary
+    // when a user feeds in possibly broken trajectory (i.e., non-eos
+    // entries in a beam following eos entries).
+    if (!found_bad) {
+      bool finished = false;
+      for (int32 time = 0; time < max_seq_len_b; ++time) {
+        const int32 level_beam_ix = GET_IX(time, beam);
+        if (finished) {
+          beams[level_beam_ix] = end_token;
+        } else if (beams[level_beam_ix] == end_token) {
+          finished = true;
+        }
       }
     }
 #undef GET_IX
@@ -80,8 +87,8 @@ struct GatherTree<GPUDevice, T> {
     const int32 max_time = parent_ids.dimension(0);
     const int32 batch_size = parent_ids.dimension(1);
     const int32 beam_width = parent_ids.dimension(2);
-    // First kernel launch to zero things out
-    beams.device(d) = beams.constant(T(-1));
+    // First kernel launch to "zero" things out
+    beams.device(d) = beams.constant(end_token);
 
     CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * beam_width, d);
     // clang-format off

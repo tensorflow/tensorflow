@@ -1411,7 +1411,7 @@ cc_library(
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     defines = tf_additional_lib_defines() + [
-                  "SNAPPY",
+                  "TF_USE_SNAPPY",
               ] + tf_additional_verbs_lib_defines() +
               tf_additional_mpi_lib_defines() +
               tf_additional_gdr_lib_defines(),

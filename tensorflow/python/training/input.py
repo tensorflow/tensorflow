@@ -32,7 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -413,22 +413,6 @@ def _as_original_type(original_tensors, tensor_list):
     return tensor_list
 
 
-def _smart_cond(pred, if_true, if_false):
-  """A `tf.cond` that does nothing when the condition is static."""
-  pred = ops.convert_to_tensor(pred)
-  static_pred = tensor_util.constant_value(pred)
-  if static_pred is not None:
-    if static_pred:
-      return if_true()
-    else:
-      return if_false()
-  else:
-    return control_flow_ops.cond(
-        pred,
-        if_true,
-        if_false)
-
-
 def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
                           shared_map_ops=None):
   """Store SparseTensors for feeding into batch, etc.
@@ -480,13 +464,13 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
     map_op_name = shared_map_op.name if shared_map_op else None
     def _maybe_store_sparse(t, map_op_name, keep_input):
       """Conditionally store a single sparse Tensor."""
-      return _smart_cond(
+      return utils.smart_cond(
           keep_input,
           lambda: _store_sparse(t, shared_name=map_op_name),
           lambda: constant_op.constant(-1, dtypes.int64))
     def _maybe_store_many_sparse(t, map_op_name, keep_input):
       """Conditionally store multiple sparse Tensors."""
-      out_tensor = _smart_cond(
+      out_tensor = utils.smart_cond(
           keep_input,
           lambda: _store_many_sparse(t, shared_name=map_op_name),
           lambda: -1 * array_ops.ones(array_ops.shape(t)[0:1], dtypes.int64))
@@ -667,7 +651,7 @@ def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
     enqueue_ops = [enqueue_fn(_select_which_to_enqueue(x, keep_input))
                    for x in tensor_list_list]
   else:
-    enqueue_ops = [_smart_cond(
+    enqueue_ops = [utils.smart_cond(
         keep_input,
         lambda: enqueue_fn(tl),  # pylint:disable=cell-var-from-loop
         control_flow_ops.no_op) for tl in tensor_list_list]
@@ -684,7 +668,7 @@ def _enqueue(queue, tensor_list, threads, enqueue_many, keep_input):
     enqueue_ops = [
         enqueue_fn(_select_which_to_enqueue(tensor_list, keep_input))] * threads
   else:
-    enqueue_ops = [_smart_cond(
+    enqueue_ops = [utils.smart_cond(
         keep_input,
         lambda: enqueue_fn(tensor_list),
         control_flow_ops.no_op)] * threads

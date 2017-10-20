@@ -233,7 +233,8 @@ class SaverTest(test.TestCase):
   def testResourceSaveRestoreCachingDevice(self):
     save_path = os.path.join(self.get_temp_dir(), "resource_cache")
     with self.test_session(graph=ops_lib.Graph()) as sess:
-      v = resource_variable_ops.ResourceVariable([1], caching_device="/cpu:0")
+      v = resource_variable_ops.ResourceVariable([1], caching_device="/cpu:0",
+                                                 name="v")
       if context.in_graph_mode():
         self.evaluate(variables.global_variables_initializer())
       else:

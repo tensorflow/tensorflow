@@ -312,11 +312,21 @@ def _graph_callable_internal(func, shape_and_dtypes):
   Returns:
     Callable graph object.
   """
+  container = tf_ops.get_default_graph()._container  # pylint: disable=protected-access
+  container_prefix = tf_ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
   with context.graph_mode():
     # This graph will store both the initialization and the call version of the
     # wrapped function. It will later be used by the backprop code to build the
     # backprop graph, if necessary.
     tmp_graph = tf_ops.Graph()
+    # Inherit the container from the original graph to create resources at user
+    # expected containers. Also inherits the container prefix, since this is
+    # used for error checking when isolating Eager execution (the container
+    # prefix at creation must match the container prefix when used, and
+    # variables returned from the graph callable will be used in the outside
+    # context).
+    tmp_graph._container = container  # pylint: disable=protected-access
+    tmp_graph._container_prefix = container_prefix  # pylint: disable=protected-access
     with tmp_graph.as_default():
       # Placeholders for the non-variable inputs.
       func_inputs = _get_graph_callable_inputs(shape_and_dtypes)

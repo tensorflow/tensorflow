@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/s3/s3_file_system.h"
-#include "tensorflow/contrib/s3/s3_crypto.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/s3/s3_file_system.h"
+#include "tensorflow/core/platform/s3/s3_crypto.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/FileSystemUtils.h>
