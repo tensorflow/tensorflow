@@ -1068,10 +1068,16 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
   refiner->set_graph_def_version(
       std::min(refiner->graph_def_version(), gdef.versions().producer()));
 
-  return GraphConstructor::Construct(
-      opts, gdef.node(), &gdef.versions(), &gdef.library(), g, refiner,
-      &results->return_tensors, &results->return_nodes,
-      &results->unused_input_map_keys);
+  if (results == nullptr) {
+    return GraphConstructor::Construct(opts, gdef.node(), &gdef.versions(),
+                                       &gdef.library(), g, refiner, nullptr,
+                                       nullptr, nullptr);
+  } else {
+    return GraphConstructor::Construct(
+        opts, gdef.node(), &gdef.versions(), &gdef.library(), g, refiner,
+        &results->return_tensors, &results->return_nodes,
+        &results->unused_input_map_keys);
+  }
 }
 
 void CopyGraph(const Graph& src, Graph* dest) {

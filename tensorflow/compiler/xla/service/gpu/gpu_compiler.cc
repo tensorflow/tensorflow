@@ -318,12 +318,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // print one ourselves.
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
 
-  const string dump_debug_json_to =
-      module->config().debug_options().xla_dump_debug_json_to();
-  if (!dump_debug_json_to.empty()) {
+  const string xla_dump_hlo_proto_to =
+      module->config().debug_options().xla_dump_hlo_proto_to();
+  if (!xla_dump_hlo_proto_to.empty()) {
     HloProto proto = MakeHloProto(*module, *buffer_assignment);
-    TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-        proto, dump_debug_json_to, module->name()));
+    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+        proto, xla_dump_hlo_proto_to, module->name()));
   }
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),

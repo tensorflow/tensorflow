@@ -47,6 +47,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -391,6 +392,66 @@ def with_c_api(cls):
   return cls
 
 
+class IsolateTest(object):
+  """A context manager which isolates resources in its block.
+
+  Provides an Eager-agnostic abstraction for preventing the sharing of
+  variables and other resources.
+
+  In graph mode, resource handle ops are only executed in a particular Session,
+  isolating them from resources with the same name in other Graphs. In Eager,
+  separate Sessions do not exist, so resources (particularly ResourceVariables)
+  would be shared implicitly if a resource of the same name were created
+  anywhere in a Python process. Multiple handles to the same resource would
+  cause several issues, and so this type of sharing will raise an exception.
+
+  Using resources with the same name in a single Python process may be useful
+  (especially for unit tests), so this context manager provides an abstraction
+  for isolating resources. Using a resource created in one Isolation environment
+  in another is an error.
+
+  Example usage in Eager mode:
+
+  ```python
+  import tensorflow as tf
+  # Import subject to change
+  from tensorflow.contrib.eager.python import tfe
+
+  tfe.enable_eager_execution()
+
+  for hyperparameter in [1, 2, 3]:
+    with tfe.IsolateTest():
+      v = tfe.Variable(name="v", initial_value=hyperparameter)
+      # train model, test results ...
+  ```
+
+  IsolateTest is currently exposed through contrib.eager, but it creates a new
+  default Graph and provides equivalent safety in graph mode.
+  """
+
+  def __init__(self):
+    if context.in_eager_mode() and tape.could_possibly_record():
+      raise ValueError("Cannot isolate Eager execution with an active tape.")
+    # In Eager, Graphs set a container which isolates resources, and maintain a
+    # VariableStore which caches ResourceVariable objects created through
+    # get_variable. So setting the default Graph has the side effect of
+    # isolating Eager resources.
+    with context.eager_mode():
+      # Create the graph in Eager mode, as this provides stricter semantics
+      # (i.e. has a unique container prefix). This prevents implicit sharing
+      # when a Graph-mode graph is created and then Eager mode is enabled (an
+      # error through enable_eager_execution, but common with context managers
+      # in unit tests).
+      self._graph_as_default_context_manager = ops.Graph().as_default()
+
+  def __enter__(self):
+    self._graph_as_default_context_manager.__enter__()
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    return self._graph_as_default_context_manager.__exit__(
+        type_arg, value_arg, traceback_arg)
+
+
 def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
                                  use_gpu=False, force_gpu=False,
                                  reset_test=True):
@@ -440,9 +501,8 @@ def run_in_graph_and_eager_modes(__unused__=None, graph=None, config=None,
           with context.device("/device:CPU:0"):
             f(self, **kwargs)
 
-      eager_graph = graph or ops.Graph()
       with context.eager_mode():
-        with eager_graph.as_default():
+        with IsolateTest():
           run_eager_mode()
 
     return decorated

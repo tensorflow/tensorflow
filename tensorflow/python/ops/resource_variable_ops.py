@@ -49,6 +49,16 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
                                                    container=container)
   if graph_mode:
     return handle
+
+  # We do not want two distinct ResourceVariable objects for the same
+  # underlying resource in the runtime.
+  # When in eager mode, explicitly ensure so here. When in graph mode, it's
+  # ensured by always generating different variable names.
+  exists = gen_resource_variable_ops.var_is_initialized_op(handle)
+  if exists:
+    raise ValueError("variable object with name '%s' already created. Use "
+                     "get_variable() if reuse is desired." %
+                     shared_name)
   with context.graph_mode(), ops.Graph().as_default():
     h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                 shared_name=shared_name,
@@ -270,6 +280,15 @@ class ResourceVariable(variables.Variable):
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     self._save_slice_info = None
     self._in_graph_mode = context.in_graph_mode()
+    # Save the graph's container prefix for error checking. Reading the value of
+    # the ResourceVariable from another Graph in Eager mode is an error.
+    self._container_prefix = ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
+    if not self._in_graph_mode and not name:
+      # TODO(ashankar,josh11b): make this unnecessary using the same
+      # logic as in layer
+      raise ValueError("Variables need to have explicit names when eager "
+                       "execution is enabled")
+
     with ops.control_dependencies(None):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
@@ -577,7 +596,15 @@ class ResourceVariable(variables.Variable):
 
     Returns:
      the read operation.
+    Raises:
+      ValueError: if the ResourceVariable was created in another isolation
+        environment or graph.
     """
+    if (not self._in_graph_mode and
+        self._container_prefix != ops.get_default_graph()._container_prefix):  # pylint: disable=protected-access
+      raise ValueError(
+          "Attempted to read a variable from another isolation environment"
+          " or Graph")
     with ops.name_scope("Read"):
       # Ensure we read the variable in the same device as the handle.
       with ops.device(self._handle_device):
