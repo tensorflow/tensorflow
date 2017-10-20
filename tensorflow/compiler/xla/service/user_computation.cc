@@ -20,6 +20,7 @@ limitations under the License.
 #include <stack>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -1843,10 +1844,17 @@ UserComputation::GetEmbeddedComputations(
   XLA_VLOG_LINES(3, session_computation_.DebugString());
 
   std::vector<VersionedComputationHandle> computations;
+  std::vector<int64> sorted_handles;
   for (const auto& handle_request : session_computation_.requests()) {
-    int64 handle_value = handle_request.first;
+    sorted_handles.push_back(handle_request.first);
+  }
+  std::sort(sorted_handles.begin(), sorted_handles.end());
+  for (int64 handle : sorted_handles) {
+    const auto& handle_request = session_computation_.requests().find(handle);
+    CHECK(handle_request != session_computation_.requests().end());
+    int64 handle_value = handle_request->first;
     if (handle_value <= version) {
-      const OperationRequest& request = handle_request.second;
+      const OperationRequest& request = handle_request->second;
       switch (request.request().op_case()) {
         case OpRequest::kCallRequest: {
           CHECK_EQ(1, request.embedded_computation_versions_size());
