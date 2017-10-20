@@ -32,6 +32,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 
 
 class FunctionTest(test.TestCase):
@@ -67,6 +68,23 @@ class FunctionTest(test.TestCase):
       return backprop.implicit_grad(inner)()[0][0]
 
     self.assertAllEqual(step(), 2.0)
+
+  def testGraphModeCaptureVariable(self):
+    with context.graph_mode(), self.test_session() as sess:
+
+      class HasAVar(object):
+
+        def __init__(self):
+          self.v = resource_variable_ops.ResourceVariable(1.0)
+
+        def call(self):
+          return self.v * 2
+
+      o = HasAVar()
+      variables.global_variables_initializer().run()
+      call = function.defun(o.call)
+      op = call()
+      self.assertAllEqual(sess.run(op), 2.0)
 
   def testTensorConversionWithDefun(self):
 
