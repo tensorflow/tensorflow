@@ -309,12 +309,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(variables.global_variables_initializer())
 
     w = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var4")
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var4",
+        # Needed in Eager since we get a unique container name by default.
+        container=ops.get_default_graph()._container)
     w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
     self.assertEqual(300.0, self.evaluate(w_read))
 
     x = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5")
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
+        container=ops.get_default_graph()._container)
     with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
       x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
       self.evaluate(x_read)
@@ -328,7 +331,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
 
     w = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var6")
+        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var6",
+        # Needed in Eager since we get a unique container name by default.
+        container=ops.get_default_graph()._container)
     w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
     self.assertEqual(300.0, self.evaluate(w_read))
 
