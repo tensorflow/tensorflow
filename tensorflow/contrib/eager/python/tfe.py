@@ -55,6 +55,10 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 
 @@IsolateTest
 @@run_test_in_graph_and_eager_modes
+
+@@DEVICE_PLACEMENT_EXPLICIT
+@@DEVICE_PLACEMENT_WARN
+@@DEVICE_PLACEMENT_SILENT
 """
 
 from __future__ import absolute_import
@@ -71,6 +75,9 @@ from tensorflow.contrib.eager.python.saver import Saver
 from tensorflow.contrib.eager.python.summary_writer import SummaryWriter
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import function
+from tensorflow.python.eager.context import DEVICE_PLACEMENT_EXPLICIT
+from tensorflow.python.eager.context import DEVICE_PLACEMENT_WARN
+from tensorflow.python.eager.context import DEVICE_PLACEMENT_SILENT
 from tensorflow.python.eager.context import in_eager_mode
 from tensorflow.python.eager.context import in_graph_mode
 from tensorflow.python.eager.context import list_devices
