@@ -192,10 +192,12 @@ class KerasIntegrationTest(test.TestCase):
       model.compile(loss='categorical_crossentropy',
                     optimizer='rmsprop',
                     metrics=['accuracy'])
+      self.assertEqual(len(model.losses), 2)
+      self.assertEqual(len(model.updates), 2)
       history = model.fit(x_train, y_train, epochs=10, batch_size=16,
                           validation_data=(x_test, y_test),
                           verbose=2)
-      self.assertGreater(history.history['val_acc'][-1], 0.85)
+      self.assertGreater(history.history['val_acc'][-1], 0.84)
 
   def test_vector_classification_shared_model(self):
     # Test that functional models that feature internal updates
