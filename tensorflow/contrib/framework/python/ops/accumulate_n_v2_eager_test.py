@@ -79,6 +79,6 @@ class AccumulateNV2EagerTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
-  eager_context.enable_eager_execution()
+  ops.enable_eager_execution()
   test.main()
 
