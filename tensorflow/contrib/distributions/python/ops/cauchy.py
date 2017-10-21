@@ -31,6 +31,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
 
+
 __all__ = [
     "Cauchy",
 ]
@@ -84,11 +85,11 @@ class Cauchy(distribution.Distribution):
   ```python
   # Define a batch of two scalar valued Normals.
   # Both have mean 1, but different standard deviations.
-  dist = tf.distributions.Normal(loc=1., scale=[11, 22.])
+  dist = tf.contrib.distributions.Cauchy(loc=1., scale=[11, 22.])
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
   dist.prob(3.0)
-    ```
+  ```
   """
 
   def __init__(self,
@@ -213,13 +214,19 @@ class Cauchy(distribution.Distribution):
       return z * self.scale + self.loc
 
   def _log_survival_function(self, x):
-    raise NotImplementedError()
+    return math_ops.log(self._survival_function(x))
 
   def _survival_function(self, x):
-    raise NotImplementedError()
+    return 1. - self._cdf(x)
 
   def _mean(self):
-    raise NotImplementedError()
+    if self.allow_nan_stats:
+      return float("nan")
+    else:
+      raise ValueError("`mean` is undefined for Cauchy distribution.")
 
   def _stddev(self):
-    raise NotImplementedError()
+    if self.allow_nan_stats:
+      return float("nan")
+    else:
+      raise ValueError("`stddev` is undefined for Cauchy distribution.")
