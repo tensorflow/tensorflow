@@ -407,6 +407,37 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual(expected_shape, samples.get_shape())
       self.assertAllEqual(expected_shape, sample_values.shape)
 
+  def testCauchyNegativeLocFails(self):
+    with self.test_session():
+      cauchy = cauchy_lib.Cauchy(loc=[1.], scale=[-5.], validate_args=True)
+      with self.assertRaisesOpError("Condition x > 0 did not hold"):
+        cauchy.median().eval()
+
+  def testCauchyShape(self):
+    with self.test_session():
+      loc = constant_op.constant([-3.0] * 5)
+      scale = constant_op.constant(11.0)
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+      self.assertEqual(cauchy.batch_shape_tensor().eval(), [5])
+      self.assertEqual(cauchy.batch_shape, tensor_shape.TensorShape([5]))
+      self.assertAllEqual(cauchy.event_shape_tensor().eval(), [])
+      self.assertEqual(cauchy.event_shape, tensor_shape.TensorShape([]))
+
+  def testCauchyShapeWithPlaceholders(self):
+    loc = array_ops.placeholder(dtype=dtypes.float32)
+    scale = array_ops.placeholder(dtype=dtypes.float32)
+    cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+    with self.test_session() as sess:
+      # get_batch_shape should return an "<unknown>" tensor.
+      self.assertEqual(cauchy.batch_shape, tensor_shape.TensorShape(None))
+      self.assertEqual(cauchy.event_shape, ())
+      self.assertAllEqual(cauchy.event_shape_tensor().eval(), [])
+      self.assertAllEqual(
+          sess.run(cauchy.batch_shape_tensor(),
+                   feed_dict={loc: 5.0,
+                              scale: [1.0, 2.0]}), [2])
 
 if __name__ == "__main__":
   test.main()
