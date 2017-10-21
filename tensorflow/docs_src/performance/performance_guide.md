@@ -87,6 +87,40 @@ the Dataset API is still strongly recommended. Try to avoid the following:
 sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 ```
 
+#### Fused decode and crop
+
+If inputs are JPEG images that also require cropping, use fused
+@{tf.image.decode_and_crop_jpeg} to speed up preprocessing.
+`tf.image.decode_and_crop_jpeg` only decodes the part of
+the image within the crop window. This significantly speeds up the process if
+the crop window is much smaller than the full image. For imagenet data, this
+approach could speed up the input pipeline by up to 30%.
+
+Example Usage:
+
+```python
+def _image_preprocess_fn(image_buffer):
+    # image_buffer 1-D string Tensor representing the raw JPEG image buffer.
+
+    # Extract image shape from raw JPEG image buffer.
+    image_shape = tf.image.extract_jpeg_shape(image_buffer)
+
+    # Get a crop window with distorted bounding box.
+    sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
+      image_shape, ...)
+    bbox_begin, bbox_size, distort_bbox = sample_distorted_bounding_box
+
+    # Decode and crop image.
+    offset_y, offset_x, _ = tf.unstack(bbox_begin)
+    target_height, target_width, _ = tf.unstack(bbox_size)
+    crop_window = tf.stack([offset_y, offset_x, target_height, target_width])
+    cropped_image = tf.image.decode_and_crop_jpeg(image, crop_window)
+```
+
+`tf.image.decode_and_crop_jpeg` is available on all platforms. There is no speed
+up on Windows due to the use of `libjpeg` vs. `libjpeg-turbo` on other
+platforms.
+
 #### Use large files
 
 Reading large numbers of small files significantly impacts I/O performance.

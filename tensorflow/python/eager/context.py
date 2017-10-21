@@ -42,6 +42,10 @@ _device_parsing_cache = {}
 
 _MAXINT32 = 2**31 - 1
 
+DEVICE_PLACEMENT_EXPLICIT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_EXPLICIT
+DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
+DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
+
 
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
@@ -62,13 +66,22 @@ class _EagerContext(threading.local):
 class Context(object):
   """Environment in which eager operations execute."""
 
-  def __init__(self, config=None):
+  def __init__(self, config=None, device_policy=None):
     """Creates a new Context.
 
     Args:
       config: (Optional.) A `ConfigProto` protocol buffer with configuration
-      options for the Context. Note that a lot of these options may be
-      currently unimplemented or irrelevant for EAGER mode.
+       options for the Context. Note that a lot of these options may be
+       currently unimplemented or irrelevant when eager execution is enabled.
+      device_policy: (Optional.) What policy to use when trying to run an
+       operation on a device with inputs which are not on that device.
+       Valid values:
+         tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
+           correct.
+         tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+           right device but raises a warning.
+         tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+           hide performance problems.
     """
     self._eager_context = _EagerContext()
     self._context_handle = None
@@ -78,6 +91,7 @@ class Context(object):
     self._config = config
     self._seed = None
     self._initialize_lock = threading.Lock()
+    self._device_policy = device_policy
 
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
@@ -109,6 +123,9 @@ class Context(object):
             config_str = self._config.SerializeToString()
             pywrap_tensorflow.TFE_ContextOptionsSetConfig(
                 opts, config_str, len(config_str), status)
+          if self._device_policy is not None:
+            pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
+                opts, self._device_policy)
           self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)

@@ -3358,6 +3358,11 @@ filegroup(
     data = glob(["api_def/base_api/*"]),
 )
 
+filegroup(
+    name = "python_api_def",
+    data = glob(["api_def/python_api/*"]),
+)
+
 tf_cc_test(
     name = "api_test",
     srcs = ["api_def/api_test.cc"],

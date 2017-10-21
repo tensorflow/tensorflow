@@ -757,7 +757,13 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     HloModule* module = modules[i].get();
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
+    VLOG(2) << "Before optimization:";
+    XLA_VLOG_LINES(2, module->ToString());
+
     TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true));
+
+    VLOG(2) << "After optimization:";
+    XLA_VLOG_LINES(2, module->ToString());
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
