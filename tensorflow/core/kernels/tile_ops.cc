@@ -538,10 +538,15 @@ REGISTER_KERNEL_BUILDER(
                               .TypeConstraint<int32>("Tmultiples") \
                               .HostMemory("multiples"),            \
                           TileGradientOp<GPUDevice>);
-TF_CALL_float(REGISTER_GPU) TF_CALL_double(REGISTER_GPU)
-    TF_CALL_half(REGISTER_GPU) TF_CALL_int16(REGISTER_GPU)
-        TF_CALL_int32(REGISTER_GPU) TF_CALL_complex64(REGISTER_GPU)
-            TF_CALL_complex128(REGISTER_GPU)
+
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_int16(REGISTER_GPU);
+TF_CALL_int32(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU)
+
 #undef REGISTER_GPU
 #endif  // GOOGLE_CUDA
 
@@ -566,7 +571,9 @@ TF_CALL_float(REGISTER_GPU) TF_CALL_double(REGISTER_GPU)
                               .HostMemory("multiples"),            \
                           TileGradientOp<SYCLDevice>);
 
-                TF_CALL_float(REGISTER_SYCL) TF_CALL_double(REGISTER_SYCL)
+TF_CALL_float(REGISTER_SYCL);
+TF_CALL_double(REGISTER_SYCL);
+
 #undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
