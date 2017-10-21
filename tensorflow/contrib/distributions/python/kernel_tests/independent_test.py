@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import independent as independent_lib
 from tensorflow.contrib.distributions.python.ops import mvn_diag as mvn_diag_lib
-from tensorflow.contrib.distributions.python.ops import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.platform import test
@@ -41,8 +40,7 @@ def try_import(name):  # pylint: disable=invalid-name
 stats = try_import("scipy.stats")
 
 
-class ProductDistributionTest(
-    test_util.VectorDistributionTestHelpers, test.TestCase):
+class ProductDistributionTest(test.TestCase):
 
   def testSampleAndLogProbUnivariate(self):
     loc = np.float32([-1., 1])
