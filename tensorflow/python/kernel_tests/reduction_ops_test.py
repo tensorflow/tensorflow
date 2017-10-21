@@ -553,6 +553,13 @@ class MinReductionTest(test.TestCase):
     self._compare(x, reduction_axes, True, use_gpu=True)
     self._compare(x, reduction_axes, True, use_gpu=False)
 
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_min([0, 0], constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, 0)
+
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
       for special_value_x in [-np.inf, np.inf]:
@@ -658,6 +665,13 @@ class MaxReductionTest(test.TestCase):
     self._compare(x, reduction_axes, False, use_gpu=False)
     self._compare(x, reduction_axes, True, use_gpu=True)
     self._compare(x, reduction_axes, True, use_gpu=False)
+
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_max([0, 0], constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, 0)
 
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
