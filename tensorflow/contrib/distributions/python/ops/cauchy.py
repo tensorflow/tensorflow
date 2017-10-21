@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -132,3 +134,92 @@ class Cauchy(distribution.Distribution):
         parameters=parameters,
         graph_parents=[self._loc, self._scale],
         name=name)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("loc", "scale"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
+
+  @property
+  def loc(self):
+    """Distribution parameter for the mean."""
+    return self._loc
+
+  @property
+  def scale(self):
+    """Distribution parameter for standard deviation."""
+    return self._scale
+
+  def _batch_shape_tensor(self):
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.loc),
+        array_ops.shape(self.scale))
+
+  def _batch_shape(self):
+    return array_ops.broadcast_static_shape(
+        self.loc.get_shape(),
+        self.scale.get_shape())
+
+  def _event_shape_tensor(self):
+    return constant_op.constant([], dtype=dtypes.int32)
+
+  def _event_shape(self):
+    return tensor_shape.scalar()
+
+  def _sample_n(self, n, seed=None):
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
+    probs = random_ops.random_uniform(
+        shape=shape, minval=0., maxval=1., dtype=self.loc.dtype, seed=seed)
+    return self._quantile(probs)
+
+  def _log_prob(self, x):
+    return self._log_unnormalized_prob(x) - self._log_normalization()
+
+  def _prob(self, x):
+    return math_ops.exp(self._log_prob(x))
+
+  def _cdf(self, x):
+    return 1/math.pi * math_ops.atan(self._z(x)) + 0.5
+
+  def _log_cdf(self, x):
+    return math_ops.log(self._cdf(x))
+
+  def _log_unnormalized_prob(self, x):
+    return -math_ops.log(1 + math_ops.square(self._z(x)))
+
+  def _log_normalization(self):
+    scale = self.scale * array_ops.ones_like(self.loc)
+    return math.log(math.pi) + math_ops.log(scale)
+
+  def _entropy(self):
+    scale = self.scale * array_ops.ones_like(self.loc)
+    return math.log(4 * math.pi) + math_ops.log(scale)
+
+  def _quantile(self, p):
+    return self.loc + self.scale * math_ops.tan(math.pi * (p - 0.5))
+
+  def _mode(self):
+    return self.loc * array_ops.ones_like(self.scale)
+
+  def _z(self, x):
+    """Standardize input `x`."""
+    with ops.name_scope("standardize", values=[x]):
+      return (x - self.loc) / self.scale
+
+  def _inv_z(self, z):
+    """Reconstruct input `x` from a its normalized version."""
+    with ops.name_scope("reconstruct", values=[z]):
+      return z * self.scale + self.loc
+
+  def _log_survival_function(self, x):
+    raise NotImplementedError()
+
+  def _survival_function(self, x):
+    raise NotImplementedError()
+
+  def _mean(self):
+    raise NotImplementedError()
+
+  def _stddev(self):
+    raise NotImplementedError()
