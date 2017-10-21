@@ -318,7 +318,7 @@ class CauchyTest(test.TestCase):
 
   def testCauchyVariance(self):
     with self.test_session():
-      # sigma will be broadcast to [7, 7, 7]
+      # scale will be broadcast to [7, 7, 7]
       loc = [1., 2., 3.]
       scale = [7.]
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
@@ -328,7 +328,7 @@ class CauchyTest(test.TestCase):
 
   def testCauchyNanVariance(self):
     with self.test_session():
-      # sigma will be broadcast to [7, 7, 7]
+      # scale will be broadcast to [7, 7, 7]
       loc = [1., 2., 3.]
       scale = [7.]
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
@@ -338,17 +338,17 @@ class CauchyTest(test.TestCase):
 
   def testCauchyStandardDeviation(self):
     with self.test_session():
-      # sigma will be broadcast to [7, 7, 7]
-      mu = [1., 2., 3.]
-      sigma = [7.]
-      cauchy = cauchy_lib.Cauchy(loc=mu, scale=sigma)
+      # scale will be broadcast to [7, 7, 7]
+      loc = [1., 2., 3.]
+      scale = [7.]
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       self.assertAllEqual((3,), cauchy.stddev().get_shape())
       self.assertAllEqual([float("nan")] * 3, cauchy.stddev().eval())
 
   def testCauchyNanStandardDeviation(self):
     with self.test_session():
-      # sigma will be broadcast to [7, 7, 7]
+      # scale will be broadcast to [7, 7, 7]
       loc = [1., 2., 3.]
       scale = [7.]
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
@@ -356,7 +356,56 @@ class CauchyTest(test.TestCase):
       with self.assertRaises(ValueError):
         var = cauchy.stddev()
 
+  def testCauchySample(self):
+    with self.test_session():
+      loc = constant_op.constant(3.0)
+      scale = constant_op.constant(1.0)
+      loc_v = 3.0
+      scale_v = 1.0
+      n = constant_op.constant(100000)
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+      samples = cauchy.sample(n)
+      sample_values = samples.eval()
 
+      self.assertEqual(sample_values.shape, (100000,))
+      self.assertAllClose(sample_values.median(), loc_v, atol=1e-1)
+
+      expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
+          tensor_shape.TensorShape(cauchy.batch_shape_tensor().eval()))
+
+      self.assertAllEqual(expected_shape, samples.get_shape())
+      self.assertAllEqual(expected_shape, sample_values.shape)
+
+      expected_shape = (tensor_shape.TensorShape(
+          [n.eval()]).concatenate(cauchy.batch_shape))
+
+      self.assertAllEqual(expected_shape, samples.get_shape())
+      self.assertAllEqual(expected_shape, sample_values.shape)
+
+  def testCauchySampleMultiDimensional(self):
+    with self.test_session():
+      batch_size = 2
+      loc = constant_op.constant([[3.0, -3.0]] * batch_size)
+      scale = constant_op.constant([[0.5, 1.0]] * batch_size)
+      loc_v = [3.0, -3.0]
+      scale_v = [0.5, 1.0]
+      n = constant_op.constant(100000)
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+      samples = cauchy.sample(n)
+      sample_values = samples.eval()
+      self.assertEqual(samples.get_shape(), (100000, batch_size, 2))
+      self.assertAllClose(sample_values[:, 0, 0].median(), loc_v[0], atol=1e-1)
+      self.assertAllClose(sample_values[:, 0, 1].median(), loc_v[1], atol=1e-1)
+
+      expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
+          tensor_shape.TensorShape(cauchy.batch_shape_tensor().eval()))
+      self.assertAllEqual(expected_shape, samples.get_shape())
+      self.assertAllEqual(expected_shape, sample_values.shape)
+
+      expected_shape = (tensor_shape.TensorShape(
+          [n.eval()]).concatenate(cauchy.batch_shape))
+      self.assertAllEqual(expected_shape, samples.get_shape())
+      self.assertAllEqual(expected_shape, sample_values.shape)
 
 
 if __name__ == "__main__":
