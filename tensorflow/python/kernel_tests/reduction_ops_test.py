@@ -793,6 +793,14 @@ class AllReductionTest(test.TestCase):
     self._compare(x, reduction_axes, True, use_gpu=True)
     self._compare(x, reduction_axes, True, use_gpu=False)
 
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_all([True, True],
+                                constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, True)
+
   def testAll3D(self):
     # Create a 3D array of bools and reduce across all possible
     # dimensions
@@ -833,6 +841,14 @@ class AnyReductionTest(test.TestCase):
     self._compare(x, reduction_axes, False, use_gpu=False)
     self._compare(x, reduction_axes, True, use_gpu=True)
     self._compare(x, reduction_axes, True, use_gpu=False)
+
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.test_session(use_gpu=True) as sess:
+        v = math_ops.reduce_any([True, True],
+                                constant_op.constant(0, dtype=dtype))
+        tf_v = sess.run(v)
+      self.assertAllEqual(tf_v, True)
 
   def testAll3D(self):
     # Create a 3D array of bools and reduce across all possible
