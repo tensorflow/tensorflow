@@ -148,6 +148,213 @@ class CauchyTest(test.TestCase):
       self.assertAllClose(expected_log_pdf, log_pdf_values)
       self.assertAllClose(np.exp(expected_log_pdf), pdf_values)
 
+  def testCauchyCDF(self):
+    with self.test_session():
+      batch_size = 50
+      loc = self._rng.randn(batch_size)
+      scale = self._rng.rand(batch_size) + 1.0
+      x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
+
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+      cdf = cauchy.cdf(x)
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.eval().shape)
+      self.assertAllEqual(cauchy.batch_shape, cdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, cdf.eval().shape)
+      if not stats:
+        return
+      expected_cdf = stats.cauchy(loc, scale).cdf(x)
+      self.assertAllClose(expected_cdf, cdf.eval(), atol=0)
+
+  def testCauchySurvivalFunction(self):
+    with self.test_session():
+      batch_size = 50
+      loc = self._rng.randn(batch_size)
+      scale = self._rng.rand(batch_size) + 1.0
+      x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
+
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+      sf = cauchy.survival_function(x)
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.eval().shape)
+      self.assertAllEqual(cauchy.batch_shape, sf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, sf.eval().shape)
+      if not stats:
+        return
+      expected_sf = stats.cauchy(loc, scale).sf(x)
+      self.assertAllClose(expected_sf, sf.eval(), atol=0)
+
+  def testCauchyLogCDF(self):
+    with self.test_session():
+      batch_size = 50
+      loc = self._rng.randn(batch_size)
+      scale = self._rng.rand(batch_size) + 1.0
+      x = np.linspace(-100.0, 10.0, batch_size).astype(np.float64)
+
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+      cdf = cauchy.log_cdf(x)
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.eval().shape)
+      self.assertAllEqual(cauchy.batch_shape, cdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, cdf.eval().shape)
+
+      if not stats:
+        return
+      expected_cdf = stats.cauchy(loc, scale).logcdf(x)
+      self.assertAllClose(expected_cdf, cdf.eval(), atol=0, rtol=1e-5)
+
+  def testFiniteGradientAtDifficultPoints(self):
+    for dtype in [np.float32, np.float64]:
+      g = ops.Graph()
+      with g.as_default():
+        loc = variables.Variable(dtype(0.0))
+        scale = variables.Variable(dtype(1.0))
+        dist = cauchy_lib.Cauchy(loc=loc, scale=scale)
+        x = np.array([-100., -20., -5., 0., 5., 20., 100.]).astype(dtype)
+        for func in [
+            dist.cdf, dist.log_cdf, dist.survival_function,
+            dist.log_survival_function, dist.log_prob, dist.prob
+        ]:
+          value = func(x)
+          grads = gradients_impl.gradients(value, [loc, scale])
+          with self.test_session(graph=g):
+            variables.global_variables_initializer().run()
+            self.assertAllFinite(value)
+            self.assertAllFinite(grads[0])
+            self.assertAllFinite(grads[1])
+
+  def testCauchyLogSurvivalFunction(self):
+    with self.test_session():
+      batch_size = 50
+      loc = self._rng.randn(batch_size)
+      scale = self._rng.rand(batch_size) + 1.0
+      x = np.linspace(-10.0, 100.0, batch_size).astype(np.float64)
+
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+      sf = cauchy.log_survival_function(x)
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.eval().shape)
+      self.assertAllEqual(cauchy.batch_shape, sf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, sf.eval().shape)
+
+      if not stats:
+        return
+      expected_sf = stats.cauchy(loc, scale).logsf(x)
+      self.assertAllClose(expected_sf, sf.eval(), atol=0, rtol=1e-5)
+
+  def testCauchyEntropy(self):
+    with self.test_session():
+      loc = np.array([1.0, 1.0, 1.0])
+      scale = np.array([[1.0, 2.0, 3.0]]).T
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+      entropy = cauchy.entropy()
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
+                          entropy.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
+                          entropy.eval().shape)
+      self.assertAllEqual(cauchy.batch_shape, entropy.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, entropy.eval().shape)
+
+      if not stats:
+        return
+      expected_entropy = stats.cauchy(loc, scale).entropy()
+      self.assertAllClose(expected_entropy, entropy.eval())
+
+  def testCauchyMedianAndMode(self):
+    with self.test_session():
+      # Mu will be broadcast to [7, 7, 7].
+      loc = [7.]
+      scale = [11., 12., 13.]
+
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+      self.assertAllEqual((3,), cauchy.median().get_shape())
+      self.assertAllEqual([7., 7, 7], cauchy.median().eval())
+
+      self.assertAllEqual((3,), cauchy.mode().get_shape())
+      self.assertAllEqual([7., 7, 7], cauchy.mode().eval())
+
+  def testCauchyMean(self):
+    with self.test_session():
+      loc = [1., 2., 3.]
+      scale = [7.]
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+      self.assertAllEqual((3,), cauchy.mean().get_shape())
+      self.assertAllEqual([float("nan")] * 3, cauchy.mean().eval())
+
+  def testCauchyNanMean(self):
+    with self.test_session():
+      loc = [1., 2., 3.]
+      scale = [7.]
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
+
+      with self.assertRaises(ValueError):
+        var = cauchy.mean()
+
+  def testCauchyQuantile(self):
+    with self.test_session():
+      batch_size = 52
+      loc = self._rng.randn(batch_size)
+      scale = self._rng.rand(batch_size) + 1.0
+      p = np.linspace(0., 1.0, batch_size - 2).astype(np.float64)
+
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+      x = cauchy.quantile(p)
+
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), x.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), x.eval().shape)
+      self.assertAllEqual(cauchy.batch_shape, x.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, x.eval().shape)
+
+      if not stats:
+        return
+      expected_x = stats.cauchy(loc, scale).ppf(p)
+      self.assertAllClose(expected_x, x.eval(), atol=0.)
+
+  def testCauchyVariance(self):
+    with self.test_session():
+      # sigma will be broadcast to [7, 7, 7]
+      loc = [1., 2., 3.]
+      scale = [7.]
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
+
+      self.assertAllEqual((3,), cauchy.variance().get_shape())
+      self.assertAllEqual([float("nan")] * 3, cauchy.variance().eval())
+
+  def testCauchyNanVariance(self):
+    with self.test_session():
+      # sigma will be broadcast to [7, 7, 7]
+      loc = [1., 2., 3.]
+      scale = [7.]
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
+
+      with self.assertRaises(ValueError):
+        var = cauchy.variance()
+
+  def testCauchyStandardDeviation(self):
+    with self.test_session():
+      # sigma will be broadcast to [7, 7, 7]
+      mu = [1., 2., 3.]
+      sigma = [7.]
+      cauchy = cauchy_lib.Cauchy(loc=mu, scale=sigma)
+
+      self.assertAllEqual((3,), cauchy.stddev().get_shape())
+      self.assertAllEqual([float("nan")] * 3, cauchy.stddev().eval())
+
+  def testCauchyNanStandardDeviation(self):
+    with self.test_session():
+      # sigma will be broadcast to [7, 7, 7]
+      loc = [1., 2., 3.]
+      scale = [7.]
+      cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
+
+      with self.assertRaises(ValueError):
+        var = cauchy.stddev()
 
 
 

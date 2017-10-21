@@ -45,9 +45,9 @@ class Cauchy(distribution.Distribution):
   The probability density function (pdf) is,
 
   ```none
-  pdf(x; mu, gamma) = 1 / (pi*gamma*(1+((x-mu)/gamma)**2))
+  pdf(x; loc, scale) = 1 / (pi*scale*(1+((x-loc)/scale)**2))
   ```
-  where `loc = mu` is the mean, `scale = gamma` is the std. deviation.
+  where `loc` is the location, and `scale` is the scale.
 
   The Cauchy distribution is a member of the [location-scale family](
   https://en.wikipedia.org/wiki/Location-scale_family), i.e.
@@ -221,12 +221,12 @@ class Cauchy(distribution.Distribution):
 
   def _mean(self):
     if self.allow_nan_stats:
-      return float("nan")
+      return constant_op.constant(float("nan"), shape=self.batch_shape)
     else:
       raise ValueError("`mean` is undefined for Cauchy distribution.")
 
   def _stddev(self):
     if self.allow_nan_stats:
-      return float("nan")
+      return constant_op.constant(float("nan"), shape=self.batch_shape)
     else:
       raise ValueError("`stddev` is undefined for Cauchy distribution.")
