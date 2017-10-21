@@ -65,7 +65,7 @@ class AccumulateNV2EagerTest(test_util.TensorFlowTestCase):
     num_inputs = 3
     input_vars = [
         resource_variable_ops.ResourceVariable(10.0 * np.random.random(), 
-                                               name="t1")
+                                               name="t%d" % i)
         for i in range(0, num_inputs)
     ]
 
