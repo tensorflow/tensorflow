@@ -73,7 +73,7 @@ RUN mkdir /bazel && \
 
 RUN git clone https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
-    git checkout r1.3
+    git checkout r1.4
 WORKDIR /tensorflow
 
 # Configure the build for our CUDA configuration.

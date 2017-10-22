@@ -68,15 +68,11 @@ def custom_gradient(f):
       return nest.pack_sequence_as(
           structure=result, flat_sequence=all_tensors[:len(flat_result)])
 
-    input_tensors = [x for x in args
-                     if isinstance(x, tf_ops.Tensor)]
+    input_tensors = [tf_ops.convert_to_tensor(x) for x in args]
 
     with tape.stop_recording():
       result, grad_fn = f(*args, **kwargs)
 
-    # TODO(apassos): naive uses of custom_gradient will not get the correct
-    # second derivative this way if they capture any output tensors. Change the
-    # signature of custom_gradient.
     def actual_grad_fn(*outputs):
       return nest.flatten(grad_fn(*outputs))
 

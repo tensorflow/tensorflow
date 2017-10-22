@@ -127,7 +127,7 @@ REGISTER_KERNEL_BUILDER(
                               .Device(DEVICE_GPU)              \
                               .HostMemory("resource")          \
                               .TypeConstraint<type>("dtype"),  \
-                          ResourceHandleOp<Var>)               \
+                          ResourceHandleOp<Var>)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
@@ -200,6 +200,9 @@ class DestroyResourceOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
                         DestroyResourceOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DestroyResourceOp").Device(DEVICE_GPU).HostMemory("resource"),
+    DestroyResourceOp);
 
 template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {
@@ -272,6 +275,56 @@ class AssignVariableOp : public OpKernel {
   DataType dtype_;
 };
 
+template <typename Device>
+class AssignVariableOp<Device, Variant> : public OpKernel {
+ public:
+  explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+    OP_REQUIRES(c, dtype_ == DT_VARIANT,
+                errors::Internal("Variant kernel called with dtype: ",
+                                 DataTypeString(dtype_)));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& value = context->input(1);
+    OP_REQUIRES(context, dtype_ == value.dtype(),
+                errors::InvalidArgument(
+                    "Variable and value dtypes don't match; respectively, ",
+                    dtype_, " and ", context->input(1).dtype()));
+
+    Var* variable = nullptr;
+    OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
+                                context, HandleFromInput(context, 0), &variable,
+                                [this, context](Var** ptr) {
+                                  *ptr = new Var(dtype_);
+                                  // Create an empty new Variant tensor.
+                                  return Status::OK();
+                                }));
+    core::ScopedUnref s(variable);
+
+    OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
+                errors::InvalidArgument(
+                    "Trying to assign variable with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(DT_VARIANT)));
+
+    mutex_lock ml(*variable->mu());
+    // TODO(ebrevdo): Add a proper Variant deep copy / assign registry
+    // entry and use that here.  For now, use a serialization
+    // roundtrip to perform the copy on CPU.  This is OK because this
+    // op is not registered for GPU.
+    *variable->tensor() = Tensor();
+    TensorProto tmp;
+    value.AsProtoTensorContent(&tmp);
+    OP_REQUIRES(context, variable->tensor()->FromProto(tmp),
+                errors::Internal("Could not properly reserialize values "
+                                 "Variant.  Check logs for more details."));
+  }
+
+ private:
+  DataType dtype_;
+};
+
 #define REGISTER_KERNELS(type)                                \
   REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")            \
                               .Device(DEVICE_CPU)             \
@@ -280,6 +333,7 @@ class AssignVariableOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_variant(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA

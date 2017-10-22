@@ -45,6 +45,10 @@ void Cluster::DisableDetailedStats(bool disable) {
   }
 }
 
+bool Cluster::DetailedStatsEnabled() const {
+  return options_.config.graph_options().build_cost_model() != 0;
+}
+
 void Cluster::DisableOptimizer(bool disable) {
   OptimizerOptions* options =
       options_.config.mutable_graph_options()->mutable_optimizer_options();

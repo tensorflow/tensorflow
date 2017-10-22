@@ -25,6 +25,17 @@ py_library(
     ],
 )
 
+py_library(
+    name = "linalg_impl",
+    srcs = ["linalg_impl.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

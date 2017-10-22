@@ -24,6 +24,22 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 
+cc_library(
+    name = "all_ops",
+    deps = [
+        ":gru_ops_op_lib",
+        ":lstm_ops_op_lib",
+    ],
+)
+
+cc_library(
+    name = "all_kernels",
+    deps = [
+        ":gru_ops_kernels",
+        ":lstm_ops_kernels",
+    ],
+)
+
 tf_custom_op_py_library(
     name = "rnn_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]) + [
@@ -34,10 +50,8 @@ tf_custom_op_py_library(
         ":python/ops/_lstm_ops.so",
     ],
     kernels = [
-        ":gru_ops_kernels",
-        ":lstm_ops_kernels",
-        ":gru_ops_op_lib",
-        ":lstm_ops_op_lib",
+        ":all_ops",
+        ":all_kernels",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -126,6 +140,9 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "optonly",
+    ],
 )
 
 cuda_py_tests(
@@ -139,6 +156,7 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
@@ -148,6 +166,7 @@ cuda_py_tests(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
 )
@@ -260,6 +279,7 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_oss"],
 )
 
 tf_cc_test(

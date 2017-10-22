@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/platform/types.h"
 
 // Two sets of macros:
@@ -67,6 +68,7 @@ limitations under the License.
 #define TF_CALL_int8(m) m(::tensorflow::int8)
 #define TF_CALL_string(m) m(string)
 #define TF_CALL_resource(m) m(::tensorflow::ResourceHandle)
+#define TF_CALL_variant(m) m(::tensorflow::Variant)
 #define TF_CALL_complex64(m) m(::tensorflow::complex64)
 #define TF_CALL_int64(m) m(::tensorflow::int64)
 #define TF_CALL_uint64(m) m(::tensorflow::uint64)
@@ -85,7 +87,7 @@ limitations under the License.
 
 #elif defined(__ANDROID_TYPES_FULL__)
 
-// Only half, float, int32, int64, and quantized types are supported.
+// Only half, float, int32, int64, bool, and quantized types are supported.
 #define TF_CALL_float(m) m(float)
 #define TF_CALL_double(m)
 #define TF_CALL_int32(m) m(::tensorflow::int32)
@@ -96,6 +98,7 @@ limitations under the License.
 #define TF_CALL_int8(m)
 #define TF_CALL_string(m)
 #define TF_CALL_resource(m)
+#define TF_CALL_variant(m)
 #define TF_CALL_complex64(m)
 #define TF_CALL_int64(m) m(::tensorflow::int64)
 #define TF_CALL_uint64(m)
@@ -114,7 +117,7 @@ limitations under the License.
 
 #else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
 
-// Only float and int32 are supported.
+// Only float, int32, and bool are supported.
 #define TF_CALL_float(m) m(float)
 #define TF_CALL_double(m)
 #define TF_CALL_int32(m) m(::tensorflow::int32)
@@ -125,6 +128,7 @@ limitations under the License.
 #define TF_CALL_int8(m)
 #define TF_CALL_string(m)
 #define TF_CALL_resource(m)
+#define TF_CALL_variant(m)
 #define TF_CALL_complex64(m)
 #define TF_CALL_int64(m)
 #define TF_CALL_uint64(m)

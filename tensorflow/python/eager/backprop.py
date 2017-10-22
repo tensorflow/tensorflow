@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -337,7 +338,12 @@ def implicit_val_and_grad(f):
     end_node = f(*args)
     variables = tape.top_tape_watched_variables()
     sources = [x.handle for x in variables]
+
+    if not sources:
+      raise ValueError("no trainable variables were accessed while the "
+                       "function was being computed.")
     grad = imperative_grad.imperative_grad(_default_vspace,
+                                           tape.pop_tape(),
                                            nest.flatten(end_node),
                                            sources)
     return end_node, list(zip(grad, variables))
@@ -390,12 +396,11 @@ def implicit_grad(f):
   return grad_fn
 
 
-def _get_arg_spec(f, params):
+def _get_arg_spec(f, params, param_args):
   args = tf_inspect.getargspec(f).args
   if params is None:
     if not args:
-      raise ValueError("When params is None the differentiated function cannot"
-                       " only take arguments by *args and **kwds.")
+      return range(len(param_args))
     return range(len(args))
   elif all(isinstance(x, six.string_types) for x in params):
     return [args.index(n) for n in params]
@@ -554,10 +559,9 @@ def val_and_grad_function(f, params=None):
    ValueError: if the params are not all strings or all integers.
   """
 
-  parameter_positions = _get_arg_spec(f, params)
-
   def decorated(*args, **kwds):
     """Computes the value and gradient of the decorated function."""
+    parameter_positions = _get_arg_spec(f, params, args)
     dy = kwds.pop("dy", None)
     if dy is not None:
       dy = ops.convert_to_tensor(dy)
@@ -574,8 +578,63 @@ def val_and_grad_function(f, params=None):
       tape.watch(args[i])
     result = f(*args)
     return result, imperative_grad.imperative_grad(
-        _default_vspace, nest.flatten(result), sources,
+        _default_vspace, tape.pop_tape(), nest.flatten(result), sources,
         output_gradients=nest.flatten(dy) if dy is not None else None)
+
+  return decorated
+
+
+def make_vjp(f, params=None):
+  """Returns a function that computes f and is vjp w.r.t. params.
+
+  The term "vjp" here is an abbreviation for vector-jacobian product.
+
+  Args:
+    f: the function to be differentiated.
+    params: the parameters (numbers or names) to differentiate with respect to.
+       A value of None will differentiate with respect to all parameters.
+
+  Returns:
+    A function, which when called, returns a tuple (value, vjp), where:
+    - value is the result of calling f.
+    - vjp is a function, which takes a vector as an argument and
+      returns the product of that vector with the Jacobian of f.
+      Providing no argument to vjp is equivalent to providing a
+      vector of ones.
+
+    For example,
+    ```python
+    def f(x):
+      return x * x
+
+    wrapped_fn = tfe.make_vjp(f)
+    result, vjp = wrapped_fn(tf.constant(3.0))
+    # result is 9.0
+    vjp()  # the vjp function rturns 6.0
+
+  """
+
+  def decorated(*args, **kwds):
+    """Computes the value and gradient of the decorated function."""
+    parameter_positions = _get_arg_spec(f, params, args)
+    assert not kwds, "The gradient function can't take keyword arguments."
+    tape.push_new_tape()
+    sources = []
+    args = [
+        ops.convert_to_tensor(args[i]) if i in parameter_positions else args[i]
+        for i in range(len(args))
+    ]
+    args = _ensure_unique_tensor_objects(parameter_positions, args)
+    for i in parameter_positions:
+      sources.append(args[i])
+      tape.watch(args[i])
+    result = f(*args)
+    t = tape.pop_tape()
+    def vjp(dy=None):
+      return imperative_grad.imperative_grad(
+          _default_vspace, t, nest.flatten(result), sources,
+          output_gradients=nest.flatten(dy) if dy is not None else None)
+    return result, vjp
 
   return decorated
 
@@ -620,49 +679,108 @@ def _aggregate_grads(gradients):
     return ops.IndexedSlices(values, indices, dense_shape)
 
 
-# If over MIN_AGGREGATE_COUNT gradients are accumulated and the total
-# memory consumption is over MIN_AGGREGATE_BYTES, do an early aggregation
-# so as to release the gradient tensor to save memory.
-_MIN_AGGREGATE_COUNT = 4
-_MIN_AGGREGATE_BYTES = 128 * 1024 * 1024
-
-
-def _add_new_grads(gradients, gradients_size, tid, grad):
-  """Adds a new gradient and maybe aggregate the gradients.
-
-  Args:
-    gradients: A dict map from tensor id to list of gradients.
-    gradients_size: A dict map from tensor id to its total units. Might
-       not be initialized.
-    tid: Tensor id.
-    grad: New gradient for the `tid`, either a Tensor or IndexedSlices.
-
-  Raises:
-    ValueError: if `grad` is neight Tensor nor IndexedSlices.
-  """
-  tensor_grads = gradients[tid]
-  tensor_grads.append(grad)
-  if len(tensor_grads) < _MIN_AGGREGATE_COUNT:
-    return
-  elif tid not in gradients_size:
-    if isinstance(grad, ops.Tensor):
-      size = functools.reduce(operator.mul, grad._shape_tuple(), 1)  # pylint: disable=protected-access
-    elif isinstance(grad, ops.IndexedSlices):
-      size = functools.reduce(operator.mul, grad.values._shape_tuple(), 1)  # pylint: disable=protected-access
-    else:
-      raise ValueError("Unexpected gradient type: %s" % type(grad))
-    gradients_size[tid] = size
-  else:
-    size = gradients_size[tid]
-
-  # For simplicity, assume each element to be 4 bytes now.
-  if len(tensor_grads) * size * 4 > _MIN_AGGREGATE_BYTES:
-    gradients[tid] = [_aggregate_grads(tensor_grads)]
+def _num_elements(grad):
+  """The number of elements in the `grad` tensor."""
+  if isinstance(grad, ops.Tensor):
+    return functools.reduce(operator.mul, grad._shape_tuple(), 1)  # pylint: disable=protected-access
+  if isinstance(grad, ops.IndexedSlices):
+    return functools.reduce(operator.mul, grad.values._shape_tuple(), 1)  # pylint: disable=protected-access
+  raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
 _default_vspace = imperative_grad.VSpace(
-    add_new_grads_fn=_add_new_grads,
+    num_elements_fn=_num_elements,
     aggregate_fn=_aggregate_grads,
     tensor_id=ops.tensor_id,
     zeros=array_ops.zeros,
     ones_like=array_ops.ones_like)
+
+
+class GradientTape(object):
+  """Records operations to use to compute gradients.
+
+  Operations are recorded if:
+    - they happen in code marked by this context manager
+    - at least one of their inputs is being watched
+
+  Outputs of recorded operations are watched. Variables are automatically
+  watched and tensors can be manually watched by calling the watch method on the
+  context manager.
+
+  Example usage:
+
+  ```python
+  with tfe.GradientTape() as g:
+    x = tf.constant(3.0)
+    g.watch(x)
+    y = x * x
+  grad = g.gradient(y, [x])[0]
+  assert grad.numpy() == 6.0
+  ```
+
+  It is possible to use GradientTapes to compute higher-order derivatives as
+  follows:
+
+  ```python
+  with tfe.GradientTape() as g:
+    x = tf.constant(3.0)
+    g.watch(x)
+    y = x * x
+    with tfe.GradientTape() as gg:
+      gg.watch(y)
+      z = 2 * y
+    inner_grad = gg.gradient(z, [y])[0]
+    assert inner_grad.numpy() == 2
+    y = y + inner_grad
+  grad = g.gradient(y, [x])[0]
+  assert grad.numpy() == 6.0
+  ```
+  """
+
+  def __init__(self):
+    self._tape = None
+
+  def __enter__(self):
+    tape.push_new_tape()
+    return self
+
+  def __exit__(self, typ, value, traceback):
+    self._tape = tape.pop_tape()
+
+  def watch(self, tensor):
+    """Ensures that `tensor` is being traced by this tape.
+
+    Args:
+      tensor: a Tensor or Variable a list of Tensors or Variables.
+    """
+    for t in nest.flatten(tensor):
+      if isinstance(t, resource_variable_ops.ResourceVariable):
+        t = t.handle
+      tape.watch(t)
+
+  def gradient(self, target, sources):
+    """Computes the gradient using information traced by the tape.
+
+    Args:
+      target: the tensor to be differentiated.
+      sources: a list of Tensors or Variables, the target will be
+       differentiated with respect to the sources.
+
+    Returns:
+      a list of Tensors (or IndexedSlices, or None), one for each element in
+      `sources`.
+
+    Raises:
+      RuntimeError: if called inside the context of the tape, or if called more
+       than once.
+    """
+    if self._tape is None:
+      raise RuntimeError("GradientTape.gradient can only be called once, and "
+                         "only when the context manager has exited.")
+    sources = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
+               else x
+               for x in sources]
+    grad = imperative_grad.imperative_grad(
+        _default_vspace, self._tape, [target], sources)
+    self.tape = None
+    return grad

@@ -23,7 +23,24 @@ namespace xla {
 
 string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
   string root = prefix.empty() ? "name" : prefix.ToString();
-  int* count = &(generated_names_[root]);
+
+  // Strip away numeric suffix (if any). Only recognize separator if it is in
+  // the middle of the name.
+  size_t separator_index = root.rfind(separator_);
+  if (separator_index != string::npos && (separator_index > 0) &&
+      (separator_index < root.size() - 1)) {
+    string after_suffix = root.substr(separator_index + 1);
+    int64 numeric_suffix;
+    if (tensorflow::strings::safe_strto64(after_suffix, &numeric_suffix)) {
+      // Remove numeric suffix from root.
+      root = root.substr(0, separator_index);
+      // Update count to at least the numeric suffix value to avoid future
+      // colisions with this name.
+      generated_names_[root] = std::max(generated_names_[root], numeric_suffix);
+    }
+  }
+
+  int64* count = &(generated_names_[root]);
   if (*count == 0) {
     *count = 1;
     return root;
@@ -31,9 +48,6 @@ string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
     tensorflow::strings::StrAppend(&root, separator_, *count);
     // Increment lookup under old 'root' name.
     (*count)++;
-    // Initialize count under new 'root' name.
-    count = &(generated_names_[root]);
-    *count = 1;
     return root;
   }
 }

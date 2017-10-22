@@ -42,12 +42,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/cpu/shape_partition.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -185,20 +187,9 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
   // Even though the type of params and temps is void** in the host's view, in
   // LLVM IR this is represented by i8*, similarly to void*. It's up to the code
   // to use GEPs to unravel the indirection layers.
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
-  llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
-  llvm::Type* i64_ptr_type = llvm::Type::getInt64PtrTy(module_->getContext());
-  std::vector<llvm::Type*> compute_function_params(
-      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
-  if (IsParallelContext()) {
-    compute_function_params.push_back(i64_ptr_type);
-  }
-  if (hlo_to_profile_idx_) {
-    compute_function_params.push_back(i64_ptr_type);
-  }
   llvm::FunctionType* compute_function_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(module_->getContext()),
-      /*Params=*/compute_function_params,
+      /*Params=*/GetComputeFunctionParams(),
       /*isVarArg=*/false);
 
   // Functions with local linkage get an inlining bonus.  Because we know
@@ -220,7 +211,7 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
   (++arg_iter)->setName("run_options");
   (++arg_iter)->setName("params");
   (++arg_iter)->setName("temps");
-  if (IsParallelContext()) {
+  if (num_dynamic_loop_bounds_ > 0) {
     (++arg_iter)->setName("dynamic_loop_bounds");
   }
   if (hlo_to_profile_idx_) {
@@ -959,13 +950,14 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
 
       // Input tensor.
       const Shape& input_shape = convolution->operand(0)->shape();
-      int64 input_batch = input_shape.dimensions(dnums.batch_dimension());
+      int64 input_batch = input_shape.dimensions(dnums.input_batch_dimension());
       int64 input_rows = input_shape.dimensions(dnums.spatial_dimensions(0));
       int64 input_cols =
           one_dim_convolution
               ? 1
               : input_shape.dimensions(dnums.spatial_dimensions(1));
-      int64 input_channels = input_shape.dimensions(dnums.feature_dimension());
+      int64 input_channels =
+          input_shape.dimensions(dnums.input_feature_dimension());
 
       // Kernel tensor.
       const Shape& kernel_shape = convolution->operand(1)->shape();
@@ -1080,8 +1072,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
         for (int i = 0; i < num_spatial_dims; ++i) {
           output_spatial[i] = index[dnums.spatial_dimensions(i)];
         }
-        llvm::Value* output_feature = index[dnums.feature_dimension()];
-        llvm::Value* batch = index[dnums.batch_dimension()];
+        llvm::Value* output_feature = index[dnums.output_feature_dimension()];
+        llvm::Value* batch = index[dnums.output_batch_dimension()];
 
         // We will accumulate the products into this sum to calculate
         // the output entry at the given index.
@@ -1105,8 +1097,9 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
         }
         llvm::Value* input_feature =
             loops
-                .AddLoop(0, lhs->shape().dimensions(dnums.feature_dimension()),
-                         "iz")
+                .AddLoop(
+                    0, lhs->shape().dimensions(dnums.input_feature_dimension()),
+                    "iz")
                 ->GetIndVarValue();
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &ir_builder_);
@@ -1186,8 +1179,8 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
         for (int i = 0; i < num_spatial_dims; ++i) {
           input_index[dnums.spatial_dimensions(i)] = input_spatial[i];
         }
-        input_index[dnums.feature_dimension()] = input_feature;
-        input_index[dnums.batch_dimension()] = batch;
+        input_index[dnums.input_feature_dimension()] = input_feature;
+        input_index[dnums.input_batch_dimension()] = batch;
 
         llvm_ir::IrArray kernel_array(GetIrArrayFor(rhs));
         llvm_ir::IrArray::Index kernel_index(num_dims);
@@ -2125,39 +2118,6 @@ Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
   return DefaultAction(dynamic_slice);
 }
 
-namespace {
-
-// Checks if we can emit code for DynamicUpdateSlice to update data in-place.
-// Returns true if operand 0 of DynamicUpdateSlice and its output buffer
-// share the same buffer allocation.
-// Returns false otherwise.
-// TODO(b/64142684) Share code with GPU implementation.
-bool CanUpdateDynamicSliceInPlace(const BufferAssignment& assignment,
-                                  HloInstruction* dynamic_update_slice) {
-  CHECK_EQ(HloOpcode::kDynamicUpdateSlice, dynamic_update_slice->opcode());
-
-  // Walk DynamicUpdateSlice operand(0) to parameter and get its
-  // associated operand. See if it shares an allocation with this operand.
-  HloInstruction* operand;
-  ShapeIndex index;
-  std::tie(operand, index) =
-      dynamic_update_slice->mutable_operand(0)->LatestNonGteAncestorAndIndex();
-  if (operand->opcode() != HloOpcode::kParameter) {
-    return false;
-  }
-
-  BufferAllocation::Slice operand_slice =
-      assignment.GetUniqueSlice(operand, index).ConsumeValueOrDie();
-
-  BufferAllocation::Slice dynamic_update_slice_slice =
-      assignment.GetUniqueTopLevelSlice(dynamic_update_slice)
-          .ConsumeValueOrDie();
-
-  return operand_slice == dynamic_update_slice_slice;
-}
-
-}  // namespace
-
 Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                            HloInstruction* operand,
                                            HloInstruction* update,
@@ -2165,60 +2125,13 @@ Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
   if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
     return EmitMemcpy(*update, *dynamic_update_slice);
-  } else if (CanUpdateDynamicSliceInPlace(assignment_, dynamic_update_slice)) {
-    VLOG(2) << "Emitting HandleDynamicUpdateSlice in-place.";
-    // DynamicUpdateSlice's operand(0) and 'fusion' output share the same
-    // BufferAllocation::Slice, so it is safe to emit code to update the slice
-    // 'in-place'. This avoids copying data outside of the slice update region.
-    // TODO(b/64142684) Implement in-place update for fused DynamicUpdateSlice.
-
-    // Emit IR to read dynamic start indices from 'start_indices'.
-    const int64 rank = ShapeUtil::Rank(operand->shape());
-    llvm_ir::IrArray::Index start_index(rank);
-    for (int64 i = 0; i < rank; ++i) {
-      llvm_ir::IrArray::Index dim_index({ir_builder_.getInt64(i)});
-      llvm_ir::IrArray start_indices_array(GetIrArrayFor(start_indices));
-      start_index[i] =
-          start_indices_array.EmitReadArrayElement(dim_index, &ir_builder_);
-    }
-
-    // Create loop body emitter which emits code to do the following:
-    // *) Map requested 'index' and slice 'start_index' to input/output shape
-    //    as 'output_index'.
-    // *) Reads value from 'update'.
-    // *) Writes value to input/output array at 'output_index'.
-    auto loop_body_emitter =
-        [&](const llvm_ir::IrArray::Index& index) -> Status {
-      // Calculate 'output_index' at which to write value from update.
-      llvm_ir::IrArray::Index output_index(rank);
-      for (int64 i = 0; i < rank; ++i) {
-        // Emit IR which computes:
-        //   output_index = (start_index + index) % dim_size
-        llvm::Value* dim_size = llvm::ConstantInt::get(
-            index[i]->getType(), operand->shape().dimensions(i));
-        llvm::Value* start_index0 = ir_builder_.CreateZExtOrBitCast(
-            start_index[i], index[i]->getType());
-        output_index[i] = ir_builder_.CreateURem(
-            ir_builder_.CreateAdd(start_index0, index[i]), dim_size);
-      }
-
-      // Read value from 'update'.
-      llvm_ir::IrArray update_array(GetIrArrayFor(update));
-      llvm::Value* update_data =
-          update_array.EmitReadArrayElement(index, &ir_builder_);
-
-      // Write value to output array.
-      GetIrArrayFor(operand).EmitWriteArrayElement(output_index, update_data,
-                                                   &ir_builder_);
-      return Status::OK();
-    };
-
-    TF_RETURN_IF_ERROR(
-        llvm_ir::LoopEmitter(loop_body_emitter, update->shape(), &ir_builder_)
-            .EmitLoop(IrName(dynamic_update_slice, "in_place")));
-
+  } else if (llvm_ir::CanUpdateDynamicSliceInPlace(dynamic_update_slice,
+                                                   assignment_)) {
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(dynamic_update_slice));
-    return Status::OK();
+    auto operands = GetIrArraysForOperandsOf(dynamic_update_slice);
+    return llvm_ir::EmitDynamicUpdateSliceInPlace(
+        operands, GetIrArrayFor(dynamic_update_slice),
+        IrName(dynamic_update_slice, "in_place"), &ir_builder_);
   }
   return DefaultAction(dynamic_update_slice);
 }
@@ -2296,11 +2209,11 @@ static const HloInstruction* StripTranspose(const HloInstruction& hlo) {
 }
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
+  auto* root = fusion->fused_expression_root();
   if (fusion->fusion_kind() == HloInstruction::FusionKind::kTransposeDot) {
-    const HloInstruction* dot = fusion->fused_expression_root();
-    DCHECK(dot->opcode() == HloOpcode::kDot);
-    const HloInstruction* lhs_parameter = StripTranspose(*dot->operand(0));
-    const HloInstruction* rhs_parameter = StripTranspose(*dot->operand(1));
+    DCHECK(root->opcode() == HloOpcode::kDot);
+    const HloInstruction* lhs_parameter = StripTranspose(*root->operand(0));
+    const HloInstruction* rhs_parameter = StripTranspose(*root->operand(1));
     DCHECK(lhs_parameter->opcode() == HloOpcode::kParameter &&
            rhs_parameter->opcode() == HloOpcode::kParameter);
     const HloInstruction* lhs =
@@ -2309,7 +2222,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         fusion->operand(rhs_parameter->parameter_number());
 
     TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
-        /*instruction=*/*dot, /*operands=*/{lhs, rhs},
+        /*instruction=*/*root, /*operands=*/{lhs, rhs},
         /*supported_types=*/{F32}));
 
     llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
@@ -2328,17 +2241,25 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
 
     // Dot operation is complicated so we delegate to a helper class.
     TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
-        *dot, dot->operand(0)->IsRank2Transpose(),
-        dot->operand(1)->IsRank2Transpose(), target_array, lhs_array, rhs_array,
-        GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_));
+        *root, root->operand(0)->IsRank2Transpose(),
+        root->operand(1)->IsRank2Transpose(), target_array, lhs_array,
+        rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_,
+        hlo_module_config_));
     return Status::OK();
-  } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kLoop) {
-    std::vector<llvm_ir::IrArray> parameter_arrays;
-    for (HloInstruction* operand : fusion->operands()) {
-      parameter_arrays.push_back(GetIrArrayFor(operand));
-    }
+  } else if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion,
+                                                            assignment_)) {
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
-    FusedIrEmitter fused_emitter(parameter_arrays, &elemental_emitter);
+    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
+
+    // Delegate to common implementation of fused in-place dynamic-update-slice.
+    auto operands = GetIrArraysForOperandsOf(fusion);
+    return llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
+        fusion, operands, GetIrArrayFor(fusion), &elemental_emitter,
+        &ir_builder_);
+  } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+    CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+    auto operands = GetIrArraysForOperandsOf(fusion);
+    FusedIrEmitter fused_emitter(operands, &elemental_emitter);
     TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
     return EmitTargetElementLoop(fusion, fused_emitter.GetRootGenerator());
@@ -2357,8 +2278,19 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
   }
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
-  EmitArrayFunctionCallInto(call_ir_function, parameter_addresses,
-                            emitted_value_[call], computation->name());
+
+  if (!computation->root_instruction()->outer_dimension_partitions().empty() &&
+      !parallel_cpu_backend_) {
+    // ParallelTaskAssignment assigned partitions, emit call to
+    // ParallelForkJoin.
+    TF_RETURN_IF_ERROR(EmitParallelForkJoin(parameter_addresses,
+                                            emitted_value_[call], computation,
+                                            call_ir_function));
+  } else {
+    EmitArrayFunctionCallInto(call_ir_function, parameter_addresses,
+                              emitted_value_[call], computation->name());
+  }
+
   return Status::OK();
 }
 
@@ -2668,7 +2600,7 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   // For the parallel cpu backend, we record the total for each embedded
   // computation callee with its caller kCall HLO.
   HloInstruction* hlo_to_lookup = nullptr;
-  if (IsParallelContext()) {
+  if (parallel_cpu_backend_ && is_top_level_computation_) {
     auto* computation = root->parent();
     auto* entry_computation = computation->parent()->entry_computation();
     if (computation != entry_computation) {
@@ -2804,6 +2736,16 @@ llvm_ir::IrArray IrEmitter::GetIrArrayFor(const HloInstruction* hlo) {
   return array;
 }
 
+std::vector<llvm_ir::IrArray> IrEmitter::GetIrArraysForOperandsOf(
+    const HloInstruction* hlo) {
+  std::vector<llvm_ir::IrArray> arrays;
+  std::transform(
+      hlo->operands().begin(), hlo->operands().end(),
+      std::back_inserter(arrays),
+      [&](const HloInstruction* operand) { return GetIrArrayFor(operand); });
+  return arrays;
+}
+
 llvm::Value* IrEmitter::GetEmittedValueFor(const HloInstruction* hlo) {
   auto it = emitted_value_.find(hlo);
   if (it == emitted_value_.end()) {
@@ -2816,12 +2758,27 @@ llvm::Type* IrEmitter::IrShapeType(const Shape& shape) {
   return llvm_ir::ShapeToIrType(shape, &ir_builder_);
 }
 
+std::vector<llvm::Type*> IrEmitter::GetComputeFunctionParams() {
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
+  llvm::Type* i64_ptr_type = llvm::Type::getInt64PtrTy(module_->getContext());
+  std::vector<llvm::Type*> compute_function_params(
+      {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type});
+  if (num_dynamic_loop_bounds_ > 0) {
+    compute_function_params.push_back(i64_ptr_type);
+  }
+  if (hlo_to_profile_idx_) {
+    compute_function_params.push_back(i64_ptr_type);
+  }
+  return compute_function_params;
+}
+
 llvm::Argument* IrEmitter::GetResultArgument() {
   return GetArg(compute_function_, 0);
 }
 
 llvm::Argument* IrEmitter::GetProfileCountersArgument() {
-  const int64 arg_index = IsParallelContext() ? 5 : 4;
+  const int64 arg_index = num_dynamic_loop_bounds_ > 0 ? 5 : 4;
   return hlo_to_profile_idx_ ? GetArg(compute_function_, arg_index) : nullptr;
 }
 
@@ -2904,18 +2861,11 @@ llvm::Value* IrEmitter::EmitElementFunctionCall(
       AsStringRef(tensorflow::strings::StrCat(name, "_return_value")));
 }
 
-// Emits a core function call based on the following pseudo-code.
-//
-//   char** parameter_addresses_buffer =
-//       allocate buffer with a pointer for each parameter to the function
-//   for each parameter index, i.e. for i = 0, ..., #parameters:
-//     parameter_addresses_buffer[i] = parameter_addresses[i]
-//   call function(return_value_buffer,
-//                 parameter_addresses_buffer,
-//                 temps)
-//   return return_value_buffer  -- address of the return value.
-void IrEmitter::EmitArrayFunctionCallInto(
-    llvm::Function* function,
+// Emits code to allocate an array of parameter address pointers, and store
+// each address from 'parameter_addresses'.
+// Returns an array of compute function call arguments (including parameter
+// address buffer).
+std::vector<llvm::Value*> IrEmitter::GetArrayFunctionCallArguments(
     tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
     llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
   llvm::Value* parameter_addresses_buffer =
@@ -2944,7 +2894,26 @@ void IrEmitter::EmitArrayFunctionCallInto(
   if (auto* profile_counters = GetProfileCountersArgument()) {
     arguments.push_back(profile_counters);
   }
-  ir_builder_.CreateCall(function, arguments);
+  return arguments;
+}
+
+// Emits a core function call based on the following pseudo-code.
+//
+//   char** parameter_addresses_buffer =
+//       allocate buffer with a pointer for each parameter to the function
+//   for each parameter index, i.e. for i = 0, ..., #parameters:
+//     parameter_addresses_buffer[i] = parameter_addresses[i]
+//   call function(return_value_buffer,
+//                 parameter_addresses_buffer,
+//                 temps)
+//   return return_value_buffer  -- address of the return value.
+void IrEmitter::EmitArrayFunctionCallInto(
+    llvm::Function* function,
+    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
+  ir_builder_.CreateCall(
+      function, GetArrayFunctionCallArguments(parameter_addresses,
+                                              return_value_buffer, name));
 }
 
 llvm::Value* IrEmitter::EmitArrayFunctionCall(
@@ -2962,6 +2931,110 @@ llvm::Value* IrEmitter::EmitArrayFunctionCall(
   EmitArrayFunctionCallInto(function, parameter_addresses, return_value_buffer,
                             name);
   return return_value_buffer;
+}
+
+// Emits a call to a runtime fork/join function which dispatches parallel
+// calls to 'parallel_function' (and joins threads before returning).
+Status IrEmitter::EmitParallelForkJoin(
+    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    llvm::Value* output_address, HloComputation* computation,
+    llvm::Function* parallel_function) {
+  HloInstruction* root = computation->root_instruction();
+
+  // Build ParallelForkJoin function type.
+  std::vector<llvm::Type*> compute_function_params = GetComputeFunctionParams();
+  // Number of parallel compute functions.
+  compute_function_params.push_back(ir_builder_.getInt32Ty());
+  // Array of partitions. There is an array element for each
+  // partition x partition_dim x 2 (for dimension start and limit).
+  compute_function_params.push_back(
+      llvm::Type::getInt64PtrTy(module_->getContext()));
+  // Number of partitioned most-major dimensions in 'root.shape'.
+  compute_function_params.push_back(ir_builder_.getInt32Ty());
+  // Function pointer for compute function to be dispatched in parallel.
+  compute_function_params.push_back(
+      llvm::Type::getInt8PtrTy(module_->getContext()));
+
+  llvm::FunctionType* fork_join_type = llvm::FunctionType::get(
+      /*Result=*/llvm::Type::getVoidTy(module_->getContext()),
+      /*Params=*/compute_function_params,
+      /*isVarArg=*/false);
+
+  llvm::Function* fork_join_func =
+      llvm::cast<llvm::Function>(module_->getOrInsertFunction(
+          runtime::kParallelForkJoinSymbolName, fork_join_type));
+  fork_join_func->setCallingConv(llvm::CallingConv::C);
+  fork_join_func->setDoesNotThrow();
+
+  // Add common compute function arguments.
+  const string name = computation->name();
+  std::vector<llvm::Value*> arguments =
+      GetArrayFunctionCallArguments(parameter_addresses, output_address, name);
+
+  // Create ShapePartitionIterator to generate all partitions of 'root.shape'.
+  ShapePartitionIterator partition_iterator(root->shape(),
+                                            root->outer_dimension_partitions());
+  const int64 num_partitions = partition_iterator.GetTotalPartitionCount();
+  // Add argument specifying the number of parallel partitions.
+  arguments.push_back(ir_builder_.getInt32(num_partitions));
+
+  // The number of partitioned most-major dimensions in 'root.shape'.
+  const int32 num_partitioned_dims = root->outer_dimension_partitions().size();
+  // A dimension partition consists of two elements: [start_index, limit_index).
+  const int32 dim_partition_size = 2;
+  // Calculate array partition stride.
+  const int32 array_partition_stride =
+      num_partitioned_dims * dim_partition_size;
+  // Calculate the total number of elements in the partition array.
+  const int32 partition_array_size =
+      dim_partition_size * num_partitioned_dims * num_partitions;
+
+  // Store dimension partition values as llvm constants in 'partitions'.
+  // See comments in runtime_fork_join.cc for array layout description.
+  std::vector<llvm::Constant*> partitions(partition_array_size);
+  for (int32 i = 0; i < num_partitions; ++i) {
+    std::vector<std::pair<int64, int64>> dim_partitions =
+        partition_iterator.GetPartition(i);
+    CHECK_EQ(num_partitioned_dims, dim_partitions.size());
+    const int32 partition_index = i * array_partition_stride;
+    for (int32 j = 0; j < num_partitioned_dims; ++j) {
+      const std::pair<int64, int64>& dim_partition = dim_partitions[j];
+      const int32 index = partition_index + j * dim_partition_size;
+      // Store partition [dim_start, dim_limit) intervals for each dimension.
+      partitions[index] = ir_builder_.getInt64(dim_partition.first);
+      partitions[index + 1] =
+          ir_builder_.getInt64(dim_partition.first + dim_partition.second);
+    }
+  }
+
+  // Create global variable out of dimension partitions in 'partitions'.
+  llvm::ArrayType* partitions_array_type =
+      llvm::ArrayType::get(ir_builder_.getInt64Ty(), partition_array_size);
+  llvm::Constant* partitions_array =
+      llvm::ConstantArray::get(partitions_array_type, partitions);
+  llvm::GlobalVariable* global_partitions_array = new llvm::GlobalVariable(
+      /*Module=*/*module_,
+      /*Type=*/partitions_array_type,
+      /*isConstant=*/true,
+      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+      /*Initializer=*/partitions_array,
+      /*Name=*/
+      AsStringRef(
+          tensorflow::strings::StrCat(name, "_parallel_dimension_partitions")));
+
+  // Add argument specifying parallel dimension partitions.
+  arguments.push_back(ir_builder_.CreateBitCast(
+      global_partitions_array,
+      llvm::Type::getInt64PtrTy(module_->getContext())));
+  // Add argument specifying the number of partitioned most-major dimensions.
+  arguments.push_back(ir_builder_.getInt32(num_partitioned_dims));
+  // Add argument for parallel compute function pointer.
+  arguments.push_back(
+      ir_builder_.CreateBitCast(parallel_function, ir_builder_.getInt8PtrTy()));
+  // Emit call to parallel fork/join.
+  ir_builder_.CreateCall(fork_join_func, arguments);
+
+  return Status::OK();
 }
 
 Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {

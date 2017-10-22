@@ -102,28 +102,18 @@ cc_library(
     deps = [
         ":literal_test_util",
         "//tensorflow/compiler/xla:shape_layout",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:backend",
-        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:computation_layout",
-        "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_execution_profile",
-        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
-        "//third_party/eigen3",
     ],
 )
 
@@ -389,6 +379,7 @@ xla_test(
     name = "params_test",
     srcs = ["params_test.cc"],
     shard_count = 30,
+    tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
@@ -1410,8 +1401,10 @@ xla_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1477,6 +1470,7 @@ xla_test(
 xla_test(
     name = "local_client_execute_test",
     srcs = ["local_client_execute_test.cc"],
+    tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

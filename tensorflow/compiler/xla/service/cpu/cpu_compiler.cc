@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
+#include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -248,7 +249,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 };
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* module) {
+Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
   pipeline.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
@@ -316,6 +317,14 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   if (options::CpuParallelBackendRequested(module->config())) {
     pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
                                                  ShapeSizeBytesFunction());
+  } else if (!is_aot_compile) {
+    // Run ParallelTaskAssigner to assign parallel tasks to HLOs in module.
+    // Note this is not run for AOT because it would bring in thread pool
+    // and thread synchronization dependencies which would likely increase
+    // binary size (and most AOT applications are single-threaded).
+    // TODO(29630486) Support multi-threaded AOT.
+    pipeline.AddPass<ParallelTaskAssigner>(max_parallelism,
+                                           ShapeSizeBytesFunction(), module);
   }
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -450,7 +459,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
-  TF_RETURN_IF_ERROR(RunHloPasses(module.get()));
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false));
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
@@ -466,8 +475,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  const string dump_debug_json_to =
-      module->config().debug_options().xla_dump_debug_json_to();
+  const string xla_dump_hlo_proto_to =
+      module->config().debug_options().xla_dump_hlo_proto_to();
 
   if (options::CpuParallelBackendRequested(module->config())) {
     VLOG(1) << "Using parallel cpu backend";
@@ -487,10 +496,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!dump_debug_json_to.empty()) {
+    if (!xla_dump_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
-      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, dump_debug_json_to, module->name()));
+      TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+          proto, xla_dump_hlo_proto_to, module->name()));
     }
 
     // If we are using the parallel CPU backend, we need to create map from
@@ -594,12 +603,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!dump_debug_json_to.empty()) {
+    if (!xla_dump_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
-      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, dump_debug_json_to, module->name()));
+      TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+          proto, xla_dump_hlo_proto_to, module->name()));
     }
-
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
     // GetEmbeddedComputations guarantees that a called computation occurs
@@ -653,7 +661,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::vector<se::StreamExecutor*>> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on CPU.");
 }
@@ -749,7 +757,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     HloModule* module = modules[i].get();
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
-    TF_RETURN_IF_ERROR(RunHloPasses(module));
+    TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true));
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
@@ -766,12 +774,12 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    const string dump_debug_json_to =
-        module->config().debug_options().xla_dump_debug_json_to();
-    if (!dump_debug_json_to.empty()) {
+    const string xla_dump_hlo_proto_to =
+        module->config().debug_options().xla_dump_hlo_proto_to();
+    if (!xla_dump_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
-      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, dump_debug_json_to, module->name()));
+      TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
+          proto, xla_dump_hlo_proto_to, module->name()));
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,

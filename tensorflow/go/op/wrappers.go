@@ -1461,6 +1461,25 @@ func Slice(scope *Scope, input tf.Output, begin tf.Output, size tf.Output) (outp
 	return op.Output(0)
 }
 
+// Shuffle dimensions of x according to a permutation and conjugate the result.
+//
+// The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
+//   `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
+//   `y[i,j,k,...,s,t,u] == conj(x[perm[i], perm[j], perm[k],...,perm[s], perm[t], perm[u]])`
+func ConjugateTranspose(scope *Scope, x tf.Output, perm tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConjugateTranspose",
+		Input: []tf.Input{
+			x, perm,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Checks a tensor for NaN and Inf values.
 //
 // When run, reports an `InvalidArgument` error if `tensor` has any values
@@ -2303,6 +2322,45 @@ func DecodeWav(scope *Scope, contents tf.Output, optional ...DecodeWavAttr) (aud
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Elementwise computes the bitwise right-shift of `x` and `y`.
+//
+// Performs a logical shift for unsigned integer types, and an arithmetic shift
+// for signed integer types.
+//
+// If `y` is negative, or greater than or equal to than the width of `x` in bits
+// the result is implementation defined.
+func RightShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RightShift",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Elementwise computes the bitwise left-shift of `x` and `y`.
+//
+// If `y` is negative, or greater than or equal to the width of `x` in bits the
+// result is implementation defined.
+func LeftShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LeftShift",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Elementwise computes the bitwise AND of `x` and `y`.
@@ -5456,6 +5514,39 @@ func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_han
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Outputs the single element from the given dataset.
+//
+// Arguments:
+//	dataset: A handle to a dataset that contains a single element.
+//
+//
+//
+// Returns The components of the single element of `input`.
+func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "DatasetToSingleElement",
+		Input: []tf.Input{
+			dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("DatasetToSingleElement", err)
+		return
+	}
+	return components
 }
 
 // Gets the next output from the given iterator.

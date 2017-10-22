@@ -1471,13 +1471,13 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
 
   // Helper lambda to extract port num from _Send and _Recv op name.
   auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn:0") != std::string::npos) {
+    if (name.find("bn_0") != std::string::npos) {
       return 0;
-    } else if (name.find("bn:1") != std::string::npos) {
+    } else if (name.find("bn_1") != std::string::npos) {
       return 1;
-    } else if (name.find("bn:2") != std::string::npos) {
+    } else if (name.find("bn_2") != std::string::npos) {
       return 2;
-    } else if (name.find("bn:minus1") != std::string::npos) {
+    } else if (name.find("bn_minus1") != std::string::npos) {
       return -1;
     }
     return -999;

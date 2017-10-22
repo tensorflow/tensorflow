@@ -288,8 +288,10 @@ class MklConv2DOp : public OpKernel {
     mkl_filter_output_mkl_shape.SetMklLayout(mkl_context.prim_fwd,
                                              dnnResourceFilter);
 
-    size_t filter_sizes[4] = {filter.dim_size(0), filter.dim_size(1),
-                              filter.dim_size(2), filter.dim_size(3)};
+    size_t filter_sizes[4] = {static_cast<size_t>(filter.dim_size(0)),
+                              static_cast<size_t>(filter.dim_size(1)),
+                              static_cast<size_t>(filter.dim_size(2)),
+                              static_cast<size_t>(filter.dim_size(3))};
     mkl_filter_output_mkl_shape.SetTfLayout(filter.dims(), filter_sizes,
                                             mkl_context.filter_strides);
 

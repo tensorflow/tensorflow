@@ -12,7 +12,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":datasets",
+        ":evaluator",
         ":metrics",
+        ":network",
         ":saver",
         ":summary_writer",
         "//tensorflow/python:framework_ops",
@@ -84,7 +86,7 @@ cuda_py_test(
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:graph_callable",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python:variables",
     ],
 )
@@ -130,11 +132,12 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
         "//tensorflow/python:layers_base",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -144,6 +147,61 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "evaluator",
+    srcs = [
+        "evaluator.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":datasets",
+        ":metrics",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+py_test(
+    name = "evaluator_test",
+    srcs = ["evaluator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":evaluator",
+        ":metrics",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "network",
+    srcs = ["network.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_test(
+    name = "network_test",
+    srcs = ["network_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":network",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:layers",
         "//tensorflow/python/eager:test",
     ],
 )

@@ -30,6 +30,43 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 
+class LayerParametersDictTest(test.TestCase):
+
+  def testSetItem(self):
+    """Ensure insertion, contains, retrieval works for supported key types."""
+    with ops.Graph().as_default():
+      lp_dict = layer_collection.LayerParametersDict()
+
+      x = array_ops.constant(0)
+      y0 = array_ops.constant(0)
+      y1 = array_ops.constant(0)
+      z0 = array_ops.constant(0)
+      z1 = array_ops.constant(0)
+      keys = [x, (y0, y1), [z0, z1]]
+      for key in keys:
+        lp_dict[key] = key
+
+      for key in keys:
+        self.assertTrue(key in lp_dict)
+        self.assertEqual(lp_dict[key], key)
+
+  def testSetItemOverlap(self):
+    """Ensure insertion fails if key overlaps with existing key."""
+    with ops.Graph().as_default():
+      lp_dict = layer_collection.LayerParametersDict()
+
+      x = array_ops.constant(0)
+      y = array_ops.constant(0)
+      lp_dict[x] = 'value'
+
+      with self.assertRaises(ValueError):
+        lp_dict[(x, y)] = 'value'
+
+      # Ensure 'y' wasn't inserted.
+      self.assertTrue(x in lp_dict)
+      self.assertFalse(y in lp_dict)
+
+
 class LayerCollectionTest(test.TestCase):
 
   def testLayerCollectionInit(self):
@@ -44,6 +81,11 @@ class LayerCollectionTest(test.TestCase):
       lc = layer_collection.LayerCollection()
       lc.register_fully_connected(
           array_ops.constant(1), array_ops.constant(2), array_ops.constant(3))
+      lc.register_fully_connected(
+          array_ops.constant(1),
+          array_ops.constant(2),
+          array_ops.constant(3),
+          approx=layer_collection.APPROX_DIAGONAL_NAME)
       lc.register_conv2d(
           array_ops.constant(4), [1, 1, 1, 1], 'SAME',
           array_ops.ones((1, 1, 1, 1)), array_ops.constant(3))
@@ -54,7 +96,7 @@ class LayerCollectionTest(test.TestCase):
           16,
           approx=layer_collection.APPROX_DIAGONAL_NAME)
 
-      self.assertEqual(4, len(lc.get_blocks()))
+      self.assertEqual(5, len(lc.get_blocks()))
 
   def testRegisterBlocksMultipleRegistrations(self):
     with ops.Graph().as_default():
@@ -156,6 +198,36 @@ class LayerCollectionTest(test.TestCase):
       lc2.register_categorical_predictive_distribution(logits, seed=200)
       double_loss = sess.run(lc2.total_sampled_loss())
       self.assertAlmostEqual(2 * single_loss, double_loss)
+
+  def testLossFunctionByName(self):
+    """Ensure loss functions can be identified by name."""
+    with ops.Graph().as_default():
+      logits = linalg_ops.eye(2)
+      lc = layer_collection.LayerCollection()
+
+      # Create a new loss function by name.
+      lc.register_categorical_predictive_distribution(logits, name='loss1')
+      self.assertEqual(1, len(lc.losses))
+
+      # Add logits to same loss function.
+      with self.assertRaises(NotImplementedError):
+        lc.register_categorical_predictive_distribution(logits, name='loss1')
+      self.assertEqual(1, len(lc.losses))
+
+      # Add another new loss function.
+      lc.register_categorical_predictive_distribution(logits, name='loss2')
+      self.assertEqual(2, len(lc.losses))
+
+  def testLossFunctionWithoutName(self):
+    """Ensure loss functions get unique names if 'name' not specified."""
+    with ops.Graph().as_default():
+      logits = linalg_ops.eye(2)
+      lc = layer_collection.LayerCollection()
+
+      # Create a new loss function by name.
+      lc.register_categorical_predictive_distribution(logits)
+      lc.register_categorical_predictive_distribution(logits)
+      self.assertEqual(2, len(lc.losses))
 
   def testRegisterCategoricalPredictiveDistributionBatchSize1(self):
     with ops.Graph().as_default():

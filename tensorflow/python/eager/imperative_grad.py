@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import tape as tape_module
 
 
 # Terminology:
@@ -73,10 +73,10 @@ def _prepare_backprop(vspace, target, tensor_to_op, op_to_entry, id_sources):
   while tensor_stack:
     t = tensor_stack.pop()
     op = tensor_to_op.get(t, None)
-    # op is None if the tensor is a source (i.e. was watched directly)
-    if op is None or op in o_to_e:
+    # op is None or -1 if the tensor is a source (i.e. was watched directly)
+    if op is None or op == -1 or op in o_to_e:
       continue
-    op_trace = op_to_entry[op]
+    op_trace = tape_module.TapeEntry(*op_to_entry[op])
     o_to_e[op] = op_trace
     for it in op_trace.input_ids:
       if it in tensor_usage_counts:
@@ -120,11 +120,19 @@ def _initial_gradients(vspace, target, output_gradients, tensor_usage_counts):
 
 VSpace = collections.namedtuple(
     "VSpace",
-    ["add_new_grads_fn", "aggregate_fn", "tensor_id", "zeros", "ones_like"])
+    ["aggregate_fn", "num_elements_fn", "tensor_id", "zeros", "ones_like"])
+
+
+# If over MIN_AGGREGATE_COUNT gradients are accumulated and the total
+# memory consumption is over MIN_AGGREGATE_BYTES, do an early aggregation
+# so as to release the gradient tensor to save memory.
+_MIN_AGGREGATE_COUNT = 4
+_MIN_AGGREGATE_BYTES = 128 * 1024 * 1024
 
 
 def imperative_grad(
     vspace,
+    tape,
     target,
     sources,
     output_gradients=None):
@@ -136,6 +144,7 @@ def imperative_grad(
 
   Args:
    vspace: the vector space in which to differentiate.
+   tape: the gradient tape which stores the trace.
    target: either a Tensor or list of Tensors to be differentiated.
    sources: list of Tensors for which we want gradients
    output_gradients: if not None, a list of gradient provided for each Target,
@@ -152,10 +161,7 @@ def imperative_grad(
      or if only non-differentiable functions of the source were used in the
      computation of target.
   """
-  if not tape._tape_stack.stack:  # pylint: disable=protected-access
-    raise RuntimeError("Computing a gradient with no tape present")
-  bp_tape = tape.pop_tape()
-  tensor_to_op, op_to_entry = bp_tape.export()
+  tensor_to_op, op_to_entry = tape.export()
   # This overwrites the op_to_entry variable, which will release all memory used
   # to keep traces that are irrelevant to the gradient computation we're doing
   # here.
@@ -194,14 +200,22 @@ def imperative_grad(
     in_gradients = op_trace.backward_function(*(out_gradients))
     for i, t in enumerate(op_trace.input_ids):
       if in_gradients[i] is not None:
-        vspace.add_new_grads_fn(gradients, gradients_size, t, in_gradients[i])
+        t_grads = gradients.setdefault(t, [])
+        t_grads.append(in_gradients[i])
+        if len(t_grads) >= _MIN_AGGREGATE_COUNT:
+          if t not in gradients_size:
+            gradients_size[t] = vspace.num_elements_fn(t_grads[-1])
+          size = gradients_size[t]
+
+          if len(t_grads) * size * 4 > _MIN_AGGREGATE_BYTES:
+            t_grads[:] = [vspace.aggregate_fn(t_grads)]
       if tensor_usage_counts.get(t, 0) > 0:
         tensor_usage_counts[t] -= 1
         if (t in tensor_to_op
             and tensor_usage_counts[t] == 0
             and t not in id_sources):
           in_op = tensor_to_op[t]
-          if in_op is None:
+          if in_op is None or in_op == -1:
             continue
           if op_missing_tensor.get(in_op, 0) > 0:
             op_missing_tensor[in_op] -= 1

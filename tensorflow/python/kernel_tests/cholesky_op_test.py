@@ -35,6 +35,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -72,7 +73,7 @@ def TriAngSolveCompositeGrad(l, grad):
   # we can ommit the conjugate transpose here.
   z_h = math_ops.conj(array_ops.matrix_transpose(l_inverse_middle))
   grad_a = linalg_ops.matrix_triangular_solve(l, z_h, adjoint=True)
-  grad_a += math_ops.conj(array_ops.matrix_transpose(grad_a))
+  grad_a += linalg.adjoint(grad_a)
   return grad_a * 0.5
 
 

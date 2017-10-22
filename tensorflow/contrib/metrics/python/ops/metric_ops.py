@@ -56,7 +56,10 @@ def _safe_div(numerator, denominator, name):
       name=name)
 
 
-def _create_local(name, shape, collections=None, validate_shape=True,
+def _create_local(name,
+                  shape,
+                  collections=None,
+                  validate_shape=True,
                   dtype=dtypes.float32):
   """Creates a new local variable.
 
@@ -87,7 +90,9 @@ def _assert_weights_rank(weights, values):
   return check_ops.assert_rank_in(weights, (0, array_ops.rank(values)))
 
 
-def _count_condition(values, weights=None, metrics_collections=None,
+def _count_condition(values,
+                     weights=None,
+                     metrics_collections=None,
                      updates_collections=None):
   """Sums the weights of cases where the given values are True.
 
@@ -134,7 +139,9 @@ def _count_condition(values, weights=None, metrics_collections=None,
   return value_tensor, update_op
 
 
-def streaming_true_positives(predictions, labels, weights=None,
+def streaming_true_positives(predictions,
+                             labels,
+                             weights=None,
                              metrics_collections=None,
                              updates_collections=None,
                              name=None):
@@ -168,12 +175,17 @@ def streaming_true_positives(predictions, labels, weights=None,
       tuple.
   """
   return metrics.true_positives(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_true_negatives(predictions, labels, weights=None,
+def streaming_true_negatives(predictions,
+                             labels,
+                             weights=None,
                              metrics_collections=None,
                              updates_collections=None,
                              name=None):
@@ -206,20 +218,22 @@ def streaming_true_negatives(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  with variable_scope.variable_scope(
-      name, 'true_negatives', (predictions, labels, weights)):
+  with variable_scope.variable_scope(name, 'true_negatives',
+                                     (predictions, labels, weights)):
 
     predictions, labels, weights = _remove_squeezable_dimensions(
         predictions=math_ops.cast(predictions, dtype=dtypes.bool),
         labels=math_ops.cast(labels, dtype=dtypes.bool),
         weights=weights)
-    is_true_negative = math_ops.logical_and(math_ops.equal(labels, False),
-                                            math_ops.equal(predictions, False))
+    is_true_negative = math_ops.logical_and(
+        math_ops.equal(labels, False), math_ops.equal(predictions, False))
     return _count_condition(is_true_negative, weights, metrics_collections,
                             updates_collections)
 
 
-def streaming_false_positives(predictions, labels, weights=None,
+def streaming_false_positives(predictions,
+                              labels,
+                              weights=None,
                               metrics_collections=None,
                               updates_collections=None,
                               name=None):
@@ -253,12 +267,17 @@ def streaming_false_positives(predictions, labels, weights=None,
       tuple.
   """
   return metrics.false_positives(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_false_negatives(predictions, labels, weights=None,
+def streaming_false_negatives(predictions,
+                              labels,
+                              weights=None,
                               metrics_collections=None,
                               updates_collections=None,
                               name=None):
@@ -291,9 +310,12 @@ def streaming_false_negatives(predictions, labels, weights=None,
       or tuple.
   """
   return metrics.false_negatives(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
 # TODO(ptucker): Move this somewhere common, to share with ops/losses/losses.py.
@@ -317,17 +339,18 @@ def _broadcast_weights(weights, values):
   with ops.name_scope(None, 'broadcast_weights', (values, weights)) as scope:
     weights_shape = weights.get_shape()
     values_shape = values.get_shape()
-    if (weights_shape.is_fully_defined() and
-        values_shape.is_fully_defined() and
+    if (weights_shape.is_fully_defined() and values_shape.is_fully_defined() and
         weights_shape.is_compatible_with(values_shape)):
       return weights
     with ops.control_dependencies((_assert_weights_rank(weights, values),)):
-      return math_ops.multiply(
-          weights, array_ops.ones_like(values), name=scope)
+      return math_ops.multiply(weights, array_ops.ones_like(values), name=scope)
 
 
-def streaming_mean(values, weights=None, metrics_collections=None,
-                   updates_collections=None, name=None):
+def streaming_mean(values,
+                   weights=None,
+                   metrics_collections=None,
+                   updates_collections=None,
+                   name=None):
   """Computes the (weighted) mean of the given values.
 
   The `streaming_mean` function creates two local variables, `total` and `count`
@@ -365,12 +388,18 @@ def streaming_mean(values, weights=None, metrics_collections=None,
       or tuple.
   """
   return metrics.mean(
-      values=values, weights=weights, metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      values=values,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_mean_tensor(values, weights=None, metrics_collections=None,
-                          updates_collections=None, name=None):
+def streaming_mean_tensor(values,
+                          weights=None,
+                          metrics_collections=None,
+                          updates_collections=None,
+                          name=None):
   """Computes the element-wise (weighted) mean of the given tensors.
 
   In contrast to the `streaming_mean` function which returns a scalar with the
@@ -412,13 +441,19 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
       or tuple.
   """
   return metrics.mean_tensor(
-      values=values, weights=weights, metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      values=values,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      updates_collections=updates_collections,
+      name=name)
 
 @deprecated(None, "Please switch to tf.metrics.accuracy. Note that the order "
     "of the inputs of labels and predictions have been switched.")
-def streaming_accuracy(predictions, labels, weights=None,
-                       metrics_collections=None, updates_collections=None,
+def streaming_accuracy(predictions,
+                       labels,
+                       weights=None,
+                       metrics_collections=None,
+                       updates_collections=None,
                        name=None):
   """Calculates how often `predictions` matches `labels`.
 
@@ -463,13 +498,19 @@ def streaming_accuracy(predictions, labels, weights=None,
       tuple.
   """
   return metrics.accuracy(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_precision(predictions, labels, weights=None,
-                        metrics_collections=None, updates_collections=None,
+def streaming_precision(predictions,
+                        labels,
+                        weights=None,
+                        metrics_collections=None,
+                        updates_collections=None,
                         name=None):
   """Computes the precision of the predictions with respect to the labels.
 
@@ -513,13 +554,19 @@ def streaming_precision(predictions, labels, weights=None,
       tuple.
   """
   return metrics.precision(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_recall(predictions, labels, weights=None,
-                     metrics_collections=None, updates_collections=None,
+def streaming_recall(predictions,
+                     labels,
+                     weights=None,
+                     metrics_collections=None,
+                     updates_collections=None,
                      name=None):
   """Computes the recall of the predictions with respect to the labels.
 
@@ -561,13 +608,242 @@ def streaming_recall(predictions, labels, weights=None,
       tuple.
   """
   return metrics.recall(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
-def _streaming_confusion_matrix_at_thresholds(
-    predictions, labels, thresholds, weights=None, includes=None):
+def _true_negatives(labels,
+                    predictions,
+                    weights=None,
+                    metrics_collections=None,
+                    updates_collections=None,
+                    name=None):
+  """Sum the weights of true negatives.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that the metric
+      value variable should be added to.
+    updates_collections: An optional list of collections that the metric update
+      ops should be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    value_tensor: A `Tensor` representing the current value of the metric.
+    update_op: An operation that accumulates the error from a batch of data.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'true_negatives',
+                                     (predictions, labels, weights)):
+
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+    is_true_negative = math_ops.logical_and(
+        math_ops.equal(labels, False), math_ops.equal(predictions, False))
+    return _count_condition(is_true_negative, weights, metrics_collections,
+                            updates_collections)
+
+
+def streaming_false_positive_rate(predictions,
+                                  labels,
+                                  weights=None,
+                                  metrics_collections=None,
+                                  updates_collections=None,
+                                  name=None):
+  """Computes the false positive rate of predictions with respect to labels.
+
+  The `false_positive_rate` function creates two local variables,
+  `false_positives` and `true_negatives`, that are used to compute the
+  false positive rate. This value is ultimately returned as
+  `false_positive_rate`, an idempotent operation that simply divides
+  `false_positives` by the sum of `false_positives` and `true_negatives`.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `false_positive_rate`. `update_op` weights each prediction by the
+  corresponding value in `weights`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+     `false_positive_rate` should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_positive_rate: Scalar float `Tensor` with the value of
+      `false_positives` divided by the sum of `false_positives` and
+      `true_negatives`.
+    update_op: `Operation` that increments `false_positives` and
+      `true_negatives` variables appropriately and whose value matches
+      `false_positive_rate`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'false_positive_rate',
+                                     (predictions, labels, weights)):
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+
+    false_p, false_positives_update_op = metrics.false_positives(
+        labels,
+        predictions,
+        weights,
+        metrics_collections=None,
+        updates_collections=None,
+        name=None)
+    true_n, true_negatives_update_op = _true_negatives(
+        labels,
+        predictions,
+        weights,
+        metrics_collections=None,
+        updates_collections=None,
+        name=None)
+
+    def compute_fpr(fp, tn, name):
+      return array_ops.where(
+          math_ops.greater(fp + tn, 0), math_ops.div(fp, fp + tn), 0, name)
+
+    fpr = compute_fpr(false_p, true_n, 'value')
+    update_op = compute_fpr(false_positives_update_op, true_negatives_update_op,
+                            'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, fpr)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return fpr, update_op
+
+
+def streaming_false_negative_rate(predictions,
+                                  labels,
+                                  weights=None,
+                                  metrics_collections=None,
+                                  updates_collections=None,
+                                  name=None):
+  """Computes the false negative rate of predictions with respect to labels.
+
+  The `false_negative_rate` function creates two local variables,
+  `false_negatives` and `true_positives`, that are used to compute the
+  false positive rate. This value is ultimately returned as
+  `false_negative_rate`, an idempotent operation that simply divides
+  `false_negatives` by the sum of `false_negatives` and `true_positives`.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `false_negative_rate`. `update_op` weights each prediction by the
+  corresponding value in `weights`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: The predicted values, a `Tensor` of arbitrary dimensions. Will
+      be cast to `bool`.
+    labels: The ground truth values, a `Tensor` whose dimensions must match
+      `predictions`. Will be cast to `bool`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+      `false_negative_rate` should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_negative_rate: Scalar float `Tensor` with the value of
+      `false_negatives` divided by the sum of `false_negatives` and
+      `true_positives`.
+    update_op: `Operation` that increments `false_negatives` and
+      `true_positives` variables appropriately and whose value matches
+      `false_negative_rate`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'false_negative_rate',
+                                     (predictions, labels, weights)):
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
+
+    false_n, false_negatives_update_op = metrics.false_negatives(
+        labels,
+        predictions,
+        weights,
+        metrics_collections=None,
+        updates_collections=None,
+        name=None)
+    true_p, true_positives_update_op = metrics.true_positives(
+        labels,
+        predictions,
+        weights,
+        metrics_collections=None,
+        updates_collections=None,
+        name=None)
+
+    def compute_fnr(fn, tp, name):
+      return array_ops.where(
+          math_ops.greater(fn + tp, 0), math_ops.div(fn, fn + tp), 0, name)
+
+    fnr = compute_fnr(false_n, true_p, 'value')
+    update_op = compute_fnr(false_negatives_update_op, true_positives_update_op,
+                            'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, fnr)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return fnr, update_op
+
+
+def _streaming_confusion_matrix_at_thresholds(predictions,
+                                              labels,
+                                              thresholds,
+                                              weights=None,
+                                              includes=None):
   """Computes true_positives, false_negatives, true_negatives, false_positives.
 
   This function creates up to four local variables, `true_positives`,
@@ -655,8 +931,8 @@ def _streaming_confusion_matrix_at_thresholds(
   if weights is not None:
     broadcast_weights = weights_broadcast_ops.broadcast_weights(
         math_ops.to_float(weights), predictions)
-    weights_tiled = array_ops.tile(array_ops.reshape(
-        broadcast_weights, [1, -1]), [num_thresholds, 1])
+    weights_tiled = array_ops.tile(
+        array_ops.reshape(broadcast_weights, [1, -1]), [num_thresholds, 1])
     thresh_tiled.get_shape().assert_is_compatible_with(
         weights_tiled.get_shape())
   else:
@@ -671,8 +947,9 @@ def _streaming_confusion_matrix_at_thresholds(
         math_ops.logical_and(label_is_pos, pred_is_pos))
     if weights_tiled is not None:
       is_true_positive *= weights_tiled
-    update_ops['tp'] = state_ops.assign_add(
-        true_positives, math_ops.reduce_sum(is_true_positive, 1))
+    update_ops['tp'] = state_ops.assign_add(true_positives,
+                                            math_ops.reduce_sum(
+                                                is_true_positive, 1))
     values['tp'] = true_positives
 
   if 'fn' in includes:
@@ -681,8 +958,9 @@ def _streaming_confusion_matrix_at_thresholds(
         math_ops.logical_and(label_is_pos, pred_is_neg))
     if weights_tiled is not None:
       is_false_negative *= weights_tiled
-    update_ops['fn'] = state_ops.assign_add(
-        false_negatives, math_ops.reduce_sum(is_false_negative, 1))
+    update_ops['fn'] = state_ops.assign_add(false_negatives,
+                                            math_ops.reduce_sum(
+                                                is_false_negative, 1))
     values['fn'] = false_negatives
 
   if 'tn' in includes:
@@ -691,8 +969,9 @@ def _streaming_confusion_matrix_at_thresholds(
         math_ops.logical_and(label_is_neg, pred_is_neg))
     if weights_tiled is not None:
       is_true_negative *= weights_tiled
-    update_ops['tn'] = state_ops.assign_add(
-        true_negatives, math_ops.reduce_sum(is_true_negative, 1))
+    update_ops['tn'] = state_ops.assign_add(true_negatives,
+                                            math_ops.reduce_sum(
+                                                is_true_negative, 1))
     values['tn'] = true_negatives
 
   if 'fp' in includes:
@@ -701,36 +980,45 @@ def _streaming_confusion_matrix_at_thresholds(
         math_ops.logical_and(label_is_neg, pred_is_pos))
     if weights_tiled is not None:
       is_false_positive *= weights_tiled
-    update_ops['fp'] = state_ops.assign_add(
-        false_positives, math_ops.reduce_sum(is_false_positive, 1))
+    update_ops['fp'] = state_ops.assign_add(false_positives,
+                                            math_ops.reduce_sum(
+                                                is_false_positive, 1))
     values['fp'] = false_positives
 
   return values, update_ops
 
 
-def streaming_true_positives_at_thresholds(
-    predictions, labels, thresholds, weights=None):
+def streaming_true_positives_at_thresholds(predictions,
+                                           labels,
+                                           thresholds,
+                                           weights=None):
   values, update_ops = _streaming_confusion_matrix_at_thresholds(
       predictions, labels, thresholds, weights=weights, includes=('tp',))
   return values['tp'], update_ops['tp']
 
 
-def streaming_false_negatives_at_thresholds(
-    predictions, labels, thresholds, weights=None):
+def streaming_false_negatives_at_thresholds(predictions,
+                                            labels,
+                                            thresholds,
+                                            weights=None):
   values, update_ops = _streaming_confusion_matrix_at_thresholds(
       predictions, labels, thresholds, weights=weights, includes=('fn',))
   return values['fn'], update_ops['fn']
 
 
-def streaming_false_positives_at_thresholds(
-    predictions, labels, thresholds, weights=None):
+def streaming_false_positives_at_thresholds(predictions,
+                                            labels,
+                                            thresholds,
+                                            weights=None):
   values, update_ops = _streaming_confusion_matrix_at_thresholds(
       predictions, labels, thresholds, weights=weights, includes=('fp',))
   return values['fp'], update_ops['fp']
 
 
-def streaming_true_negatives_at_thresholds(
-    predictions, labels, thresholds, weights=None):
+def streaming_true_negatives_at_thresholds(predictions,
+                                           labels,
+                                           thresholds,
+                                           weights=None):
   values, update_ops = _streaming_confusion_matrix_at_thresholds(
       predictions, labels, thresholds, weights=weights, includes=('tn',))
   return values['tn'], update_ops['tn']
@@ -790,8 +1078,8 @@ def streaming_curve_points(labels=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  with variable_scope.variable_scope(name, 'curve_points', (labels, predictions,
-                                                            weights)):
+  with variable_scope.variable_scope(name, 'curve_points',
+                                     (labels, predictions, weights)):
     if curve != 'ROC' and curve != 'PR':
       raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
     kepsilon = 1e-7  # to account for floating point imprecisions
@@ -833,9 +1121,14 @@ def streaming_curve_points(labels=None,
 
 @deprecated(None, "Please switch to tf.metrics.auc. Note that the order of "
     "the inputs of labels and predictions have been switched.")
-def streaming_auc(predictions, labels, weights=None, num_thresholds=200,
-                  metrics_collections=None, updates_collections=None,
-                  curve='ROC', name=None):
+def streaming_auc(predictions,
+                  labels,
+                  weights=None,
+                  num_thresholds=200,
+                  metrics_collections=None,
+                  updates_collections=None,
+                  curve='ROC',
+                  name=None):
   """Computes the approximate AUC via a Riemann sum.
 
   The `streaming_auc` function creates four local variables, `true_positives`,
@@ -892,14 +1185,24 @@ def streaming_auc(predictions, labels, weights=None, num_thresholds=200,
       tuple.
   """
   return metrics.auc(
-      predictions=predictions, labels=labels, weights=weights,
-      metrics_collections=metrics_collections, num_thresholds=num_thresholds,
-      curve=curve, updates_collections=updates_collections, name=name)
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      num_thresholds=num_thresholds,
+      curve=curve,
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_specificity_at_sensitivity(
-    predictions, labels, sensitivity, weights=None, num_thresholds=200,
-    metrics_collections=None, updates_collections=None, name=None):
+def streaming_specificity_at_sensitivity(predictions,
+                                         labels,
+                                         sensitivity,
+                                         weights=None,
+                                         num_thresholds=200,
+                                         metrics_collections=None,
+                                         updates_collections=None,
+                                         name=None):
   """Computes the specificity at a given sensitivity.
 
   The `streaming_specificity_at_sensitivity` function creates four local
@@ -949,15 +1252,24 @@ def streaming_specificity_at_sensitivity(
       or `updates_collections` are not a list or tuple.
   """
   return metrics.specificity_at_sensitivity(
-      sensitivity=sensitivity, num_thresholds=num_thresholds,
-      predictions=predictions, labels=labels, weights=weights,
+      sensitivity=sensitivity,
+      num_thresholds=num_thresholds,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_sensitivity_at_specificity(
-    predictions, labels, specificity, weights=None, num_thresholds=200,
-    metrics_collections=None, updates_collections=None, name=None):
+def streaming_sensitivity_at_specificity(predictions,
+                                         labels,
+                                         specificity,
+                                         weights=None,
+                                         num_thresholds=200,
+                                         metrics_collections=None,
+                                         updates_collections=None,
+                                         name=None):
   """Computes the sensitivity at a given specificity.
 
   The `streaming_sensitivity_at_specificity` function creates four local
@@ -1007,18 +1319,25 @@ def streaming_sensitivity_at_specificity(
       or `updates_collections` are not a list or tuple.
   """
   return metrics.sensitivity_at_specificity(
-      specificity=specificity, num_thresholds=num_thresholds,
-      predictions=predictions, labels=labels, weights=weights,
+      specificity=specificity,
+      num_thresholds=num_thresholds,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 @deprecated(
     None, "Please switch to tf.metrics.precision_at_thresholds. Note that the "
     "order of of the inputs of labels and predictions have been switched.")
-def streaming_precision_at_thresholds(predictions, labels, thresholds,
+def streaming_precision_at_thresholds(predictions,
+                                      labels,
+                                      thresholds,
                                       weights=None,
                                       metrics_collections=None,
-                                      updates_collections=None, name=None):
+                                      updates_collections=None,
+                                      name=None):
   """Computes precision values for different `thresholds` on `predictions`.
 
   The `streaming_precision_at_thresholds` function creates four local variables,
@@ -1063,16 +1382,23 @@ def streaming_precision_at_thresholds(predictions, labels, thresholds,
   """
   return metrics.precision_at_thresholds(
       thresholds=thresholds,
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 @deprecated(
     None, "Please switch to tf.metrics.recall_at_thresholds. Note that the "
     "order of of the inputs of labels and predictions have been switched.")
-def streaming_recall_at_thresholds(predictions, labels, thresholds,
-                                   weights=None, metrics_collections=None,
-                                   updates_collections=None, name=None):
+def streaming_recall_at_thresholds(predictions,
+                                   labels,
+                                   thresholds,
+                                   weights=None,
+                                   metrics_collections=None,
+                                   updates_collections=None,
+                                   name=None):
   """Computes various recall values for different `thresholds` on `predictions`.
 
   The `streaming_recall_at_thresholds` function creates four local variables,
@@ -1115,9 +1441,154 @@ def streaming_recall_at_thresholds(predictions, labels, thresholds,
   """
   return metrics.recall_at_thresholds(
       thresholds=thresholds,
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
+
+
+def streaming_false_positive_rate_at_thresholds(predictions,
+                                                labels,
+                                                thresholds,
+                                                weights=None,
+                                                metrics_collections=None,
+                                                updates_collections=None,
+                                                name=None):
+  """Computes various fpr values for different `thresholds` on `predictions`.
+
+  The `streaming_false_positive_rate_at_thresholds` function creates two
+  local variables, `false_positives`, `true_negatives`, for various values of
+  thresholds. `false_positive_rate[i]` is defined as the total weight
+  of values in `predictions` above `thresholds[i]` whose corresponding entry in
+  `labels` is `False`, divided by the total weight of `False` values in `labels`
+  (`false_positives[i] / (false_positives[i] + true_negatives[i])`).
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `false_positive_rate`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    weights: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+      must be broadcastable to `labels` (i.e., all dimensions must be either
+      `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+      `false_positive_rate` should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_positive_rate: A float `Tensor` of shape `[len(thresholds)]`.
+    update_op: An operation that increments the `false_positives` and
+      `true_negatives` variables that are used in the computation of
+      `false_positive_rate`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'false_positive_rate_at_thresholds',
+                                     (predictions, labels, weights)):
+    values, update_ops = _streaming_confusion_matrix_at_thresholds(
+        predictions, labels, thresholds, weights, includes=('fp', 'tn'))
+
+    # Avoid division by zero.
+    epsilon = 1e-7
+
+    def compute_fpr(fp, tn, name):
+      return math_ops.div(fp, epsilon + fp + tn, name='fpr_' + name)
+
+    fpr = compute_fpr(values['fp'], values['tn'], 'value')
+    update_op = compute_fpr(update_ops['fp'], update_ops['tn'], 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, fpr)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return fpr, update_op
+
+
+def streaming_false_negative_rate_at_thresholds(predictions,
+                                                labels,
+                                                thresholds,
+                                                weights=None,
+                                                metrics_collections=None,
+                                                updates_collections=None,
+                                                name=None):
+  """Computes various fnr values for different `thresholds` on `predictions`.
+
+  The `streaming_false_negative_rate_at_thresholds` function creates two
+  local variables, `false_negatives`, `true_positives`, for various values of
+  thresholds. `false_negative_rate[i]` is defined as the total weight
+  of values in `predictions` above `thresholds[i]` whose corresponding entry in
+  `labels` is `False`, divided by the total weight of `True` values in `labels`
+  (`false_negatives[i] / (false_negatives[i] + true_positives[i])`).
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `false_positive_rate`.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    weights: `Tensor` whose rank is either 0, or the same rank as `labels`, and
+      must be broadcastable to `labels` (i.e., all dimensions must be either
+      `1`, or the same as the corresponding `labels` dimension).
+    metrics_collections: An optional list of collections that
+      `false_negative_rate` should be added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    false_negative_rate: A float `Tensor` of shape `[len(thresholds)]`.
+    update_op: An operation that increments the `false_negatives` and
+      `true_positives` variables that are used in the computation of
+      `false_negative_rate`.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'false_negative_rate_at_thresholds',
+                                     (predictions, labels, weights)):
+    values, update_ops = _streaming_confusion_matrix_at_thresholds(
+        predictions, labels, thresholds, weights, includes=('fn', 'tp'))
+
+    # Avoid division by zero.
+    epsilon = 1e-7
+
+    def compute_fnr(fn, tp, name):
+      return math_ops.div(fn, epsilon + fn + tp, name='fnr_' + name)
+
+    fnr = compute_fnr(values['fn'], values['tp'], 'value')
+    update_op = compute_fnr(update_ops['fn'], update_ops['tp'], 'update_op')
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, fnr)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return fnr, update_op
 
 
 def _at_k_name(name, k=None, class_id=None):
@@ -1132,8 +1603,12 @@ def _at_k_name(name, k=None, class_id=None):
 
 @deprecated("2016-11-08", "Please use `streaming_sparse_recall_at_k`, "
             "and reshape labels from [batch_size] to [batch_size, 1].")
-def streaming_recall_at_k(predictions, labels, k, weights=None,
-                          metrics_collections=None, updates_collections=None,
+def streaming_recall_at_k(predictions,
+                          labels,
+                          k,
+                          weights=None,
+                          metrics_collections=None,
+                          updates_collections=None,
                           name=None):
   """Computes the recall@k of the predictions with respect to dense labels.
 
@@ -1179,11 +1654,8 @@ def streaming_recall_at_k(predictions, labels, k, weights=None,
       tuple.
   """
   in_top_k = math_ops.to_float(nn.in_top_k(predictions, labels, k))
-  return streaming_mean(in_top_k,
-                        weights,
-                        metrics_collections,
-                        updates_collections,
-                        name or _at_k_name('recall', k))
+  return streaming_mean(in_top_k, weights, metrics_collections,
+                        updates_collections, name or _at_k_name('recall', k))
 
 
 # TODO(ptucker): Validate range of values in labels?
@@ -1262,10 +1734,14 @@ def streaming_sparse_recall_at_k(predictions,
     are not a list or tuple.
   """
   return metrics.recall_at_k(
-      k=k, class_id=class_id,
-      predictions=predictions, labels=labels, weights=weights,
+      k=k,
+      class_id=class_id,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
 # TODO(ptucker): Validate range of values in labels?
@@ -1347,10 +1823,14 @@ def streaming_sparse_precision_at_k(predictions,
       are not a list or tuple.
   """
   return metrics.sparse_precision_at_k(
-      k=k, class_id=class_id,
-      predictions=predictions, labels=labels, weights=weights,
+      k=k,
+      class_id=class_id,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
 # TODO(ptucker): Validate range of values in labels?
@@ -1429,9 +1909,8 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
     ValueError: If `top_k_predictions` has rank < 2.
   """
   default_name = _at_k_name('precision', class_id=class_id)
-  with ops.name_scope(
-      name, default_name,
-      (top_k_predictions, labels, weights)) as name_scope:
+  with ops.name_scope(name, default_name,
+                      (top_k_predictions, labels, weights)) as name_scope:
     return metrics_impl._sparse_precision_at_top_k(  # pylint: disable=protected-access
         labels=labels,
         predictions_idx=top_k_predictions,
@@ -1511,8 +1990,8 @@ def sparse_recall_at_top_k(labels,
     are not a list or tuple.
   """
   default_name = _at_k_name('recall', class_id=class_id)
-  with ops.name_scope(name, default_name, (top_k_predictions, labels,
-                                           weights)) as name_scope:
+  with ops.name_scope(name, default_name,
+                      (top_k_predictions, labels, weights)) as name_scope:
     return metrics_impl._sparse_recall_at_top_k(  # pylint: disable=protected-access
         labels=labels,
         predictions_idx=top_k_predictions,
@@ -1582,9 +2061,13 @@ def streaming_sparse_average_precision_at_k(predictions,
       value matches `metric`.
   """
   return metrics.sparse_average_precision_at_k(
-      k=k, predictions=predictions, labels=labels, weights=weights,
+      k=k,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
 def streaming_sparse_average_precision_at_top_k(top_k_predictions,
@@ -1650,7 +2133,9 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       name=name)
 
 @deprecated(None, "Please switch to tf.metrics.mean.")
-def streaming_mean_absolute_error(predictions, labels, weights=None,
+def streaming_mean_absolute_error(predictions,
+                                  labels,
+                                  weights=None,
                                   metrics_collections=None,
                                   updates_collections=None,
                                   name=None):
@@ -1698,12 +2183,18 @@ def streaming_mean_absolute_error(predictions, labels, weights=None,
       tuple.
   """
   return metrics.mean_absolute_error(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_mean_relative_error(predictions, labels, normalizer, weights=None,
+def streaming_mean_relative_error(predictions,
+                                  labels,
+                                  normalizer,
+                                  weights=None,
                                   metrics_collections=None,
                                   updates_collections=None,
                                   name=None):
@@ -1752,12 +2243,18 @@ def streaming_mean_relative_error(predictions, labels, normalizer, weights=None,
       tuple.
   """
   return metrics.mean_relative_error(
-      normalizer=normalizer, predictions=predictions, labels=labels,
-      weights=weights, metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      normalizer=normalizer,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_mean_squared_error(predictions, labels, weights=None,
+def streaming_mean_squared_error(predictions,
+                                 labels,
+                                 weights=None,
                                  metrics_collections=None,
                                  updates_collections=None,
                                  name=None):
@@ -1805,12 +2302,17 @@ def streaming_mean_squared_error(predictions, labels, weights=None,
       tuple.
   """
   return metrics.mean_squared_error(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
-def streaming_root_mean_squared_error(predictions, labels, weights=None,
+def streaming_root_mean_squared_error(predictions,
+                                      labels,
+                                      weights=None,
                                       metrics_collections=None,
                                       updates_collections=None,
                                       name=None):
@@ -1858,9 +2360,12 @@ def streaming_root_mean_squared_error(predictions, labels, weights=None,
       tuple.
   """
   return metrics.root_mean_squared_error(
-      predictions=predictions, labels=labels, weights=weights,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
 def streaming_covariance(predictions,
@@ -1916,8 +2421,8 @@ def streaming_covariance(predictions,
     ValueError: If labels and predictions are of different sizes or if either
       `metrics_collections` or `updates_collections` are not a list or tuple.
   """
-  with variable_scope.variable_scope(
-      name, 'covariance', (predictions, labels, weights)):
+  with variable_scope.variable_scope(name, 'covariance',
+                                     (predictions, labels, weights)):
     predictions, labels, weights = _remove_squeezable_dimensions(
         predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -1961,22 +2466,22 @@ def streaming_covariance(predictions,
     # prev_mean_label is E[y_A] in the update equation
     prev_mean_label = update_mean_label - delta_mean_label
 
-    unweighted_batch_coresiduals = (
-        (predictions - batch_mean_prediction) * (labels - batch_mean_label))
+    unweighted_batch_coresiduals = ((predictions - batch_mean_prediction) *
+                                    (labels - batch_mean_label))
     # batch_comoment is C_B in the update equation
     if weights is None:
       batch_comoment = math_ops.reduce_sum(unweighted_batch_coresiduals)
     else:
-      batch_comoment = math_ops.reduce_sum(unweighted_batch_coresiduals *
-                                           weights)
+      batch_comoment = math_ops.reduce_sum(
+          unweighted_batch_coresiduals * weights)
 
     # View delta_comoment as = C_AB - C_A in the update equation above.
     # Since C_A is stored in a var, by how much do we need to increment that var
     # to make the var = C_AB?
-    delta_comoment = (batch_comoment +
-                      (prev_mean_prediction - batch_mean_prediction) *
-                      (prev_mean_label - batch_mean_label) *
-                      (prev_count * batch_count / update_count))
+    delta_comoment = (
+        batch_comoment + (prev_mean_prediction - batch_mean_prediction) *
+        (prev_mean_label - batch_mean_label) *
+        (prev_count * batch_count / update_count))
     update_comoment = state_ops.assign_add(comoment, delta_comoment)
 
     covariance = array_ops.where(
@@ -2050,8 +2555,8 @@ def streaming_pearson_correlation(predictions,
       `weights` is the wrong size, or if either `metrics_collections` or
       `updates_collections` are not a `list` or `tuple`.
   """
-  with variable_scope.variable_scope(
-      name, 'pearson_r', (predictions, labels, weights)):
+  with variable_scope.variable_scope(name, 'pearson_r',
+                                     (predictions, labels, weights)):
     predictions, labels, weights = _remove_squeezable_dimensions(
         predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -2068,13 +2573,14 @@ def streaming_pearson_correlation(predictions,
 
     pearson_r = math_ops.truediv(
         cov,
-        math_ops.multiply(math_ops.sqrt(var_predictions),
-                          math_ops.sqrt(var_labels)),
+        math_ops.multiply(
+            math_ops.sqrt(var_predictions), math_ops.sqrt(var_labels)),
         name='pearson_r')
     update_op = math_ops.truediv(
         update_cov,
-        math_ops.multiply(math_ops.sqrt(update_var_predictions),
-                          math_ops.sqrt(update_var_labels)),
+        math_ops.multiply(
+            math_ops.sqrt(update_var_predictions),
+            math_ops.sqrt(update_var_labels)),
         name='update_op')
 
   if metrics_collections:
@@ -2088,7 +2594,10 @@ def streaming_pearson_correlation(predictions,
 
 # TODO(nsilberman): add a 'normalized' flag so that the user can request
 # normalization if the inputs are not normalized.
-def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
+def streaming_mean_cosine_distance(predictions,
+                                   labels,
+                                   dim,
+                                   weights=None,
                                    metrics_collections=None,
                                    updates_collections=None,
                                    name=None):
@@ -2134,12 +2643,11 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
       predictions, labels, weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.multiply(predictions, labels)
-  radial_diffs = math_ops.reduce_sum(radial_diffs,
-                                     reduction_indices=[dim,],
-                                     keep_dims=True)
-  mean_distance, update_op = streaming_mean(radial_diffs, weights,
-                                            None,
-                                            None,
+  radial_diffs = math_ops.reduce_sum(
+      radial_diffs, reduction_indices=[
+          dim,
+      ], keep_dims=True)
+  mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,
                                             name or 'mean_cosine_distance')
   mean_distance = math_ops.subtract(1.0, mean_distance)
   update_op = math_ops.subtract(1.0, update_op)
@@ -2153,7 +2661,9 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
   return mean_distance, update_op
 
 
-def streaming_percentage_less(values, threshold, weights=None,
+def streaming_percentage_less(values,
+                              threshold,
+                              weights=None,
                               metrics_collections=None,
                               updates_collections=None,
                               name=None):
@@ -2193,9 +2703,12 @@ def streaming_percentage_less(values, threshold, weights=None,
       or tuple.
   """
   return metrics.percentage_below(
-      values=values, threshold=threshold, weights=weights,
+      values=values,
+      threshold=threshold,
+      weights=weights,
       metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      updates_collections=updates_collections,
+      name=name)
 
 
 def streaming_mean_iou(predictions,
@@ -2247,9 +2760,13 @@ def streaming_mean_iou(predictions,
       tuple.
   """
   return metrics.mean_iou(
-      num_classes=num_classes, predictions=predictions, labels=labels,
-      weights=weights, metrics_collections=metrics_collections,
-      updates_collections=updates_collections, name=name)
+      num_classes=num_classes,
+      predictions=predictions,
+      labels=labels,
+      weights=weights,
+      metrics_collections=metrics_collections,
+      updates_collections=updates_collections,
+      name=name)
 
 
 def _next_array_size(required_size, growth_factor=1.5):
@@ -2264,9 +2781,9 @@ def _next_array_size(required_size, growth_factor=1.5):
     tf.Tensor with dtype=int32 giving the next array size.
   """
   exponent = math_ops.ceil(
-      math_ops.log(math_ops.cast(required_size, dtypes.float32))
-      / math_ops.log(math_ops.cast(growth_factor, dtypes.float32)))
-  return math_ops.cast(math_ops.ceil(growth_factor ** exponent), dtypes.int32)
+      math_ops.log(math_ops.cast(required_size, dtypes.float32)) / math_ops.log(
+          math_ops.cast(growth_factor, dtypes.float32)))
+  return math_ops.cast(math_ops.ceil(growth_factor**exponent), dtypes.int32)
 
 
 def streaming_concat(values,
@@ -2323,8 +2840,7 @@ def streaming_concat(values,
     if not 0 <= axis < ndim:
       raise ValueError('axis = %r not in [0, %r)' % (axis, ndim))
 
-    fixed_shape = [dim.value for n, dim in enumerate(values_shape)
-                   if n != axis]
+    fixed_shape = [dim.value for n, dim in enumerate(values_shape) if n != axis]
     if any(value is None for value in fixed_shape):
       raise ValueError('all dimensions of `values` other than the dimension to '
                        'concatenate along must have statically known size')
@@ -2467,14 +2983,14 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
       # Use static rank.
       if weights_rank - predictions_rank == 1:
         weights = array_ops.squeeze(weights, [-1])
-    elif (weights_rank is None) or (
-        weights_shape.dims[-1].is_compatible_with(1)):
+    elif (weights_rank is
+          None) or (weights_shape.dims[-1].is_compatible_with(1)):
       # Use dynamic rank
       weights = control_flow_ops.cond(
-          math_ops.equal(array_ops.rank(weights),
-                         math_ops.add(array_ops.rank(predictions), 1)),
-          lambda: array_ops.squeeze(weights, [-1]),
-          lambda: weights)
+          math_ops.equal(
+              array_ops.rank(weights),
+              math_ops.add(array_ops.rank(predictions), 1)),
+          lambda: array_ops.squeeze(weights, [-1]), lambda: weights)
   return predictions, labels, weights
 
 
@@ -2485,8 +3001,12 @@ __all__ = [
     'streaming_accuracy',
     'streaming_auc',
     'streaming_curve_points',
+    'streaming_false_negative_rate',
+    'streaming_false_negative_rate_at_thresholds',
     'streaming_false_negatives',
     'streaming_false_negatives_at_thresholds',
+    'streaming_false_positive_rate',
+    'streaming_false_positive_rate_at_thresholds',
     'streaming_false_positives',
     'streaming_false_positives_at_thresholds',
     'streaming_mean',

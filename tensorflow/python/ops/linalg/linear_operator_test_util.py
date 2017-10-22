@@ -31,7 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.platform import test
 
 
@@ -196,8 +196,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             if not use_placeholder:
               self.assertAllEqual(shape[:-2], op_log_abs_det.get_shape())
             op_log_abs_det_v, mat_log_abs_det_v = sess.run(
-                [op_log_abs_det, mat_log_abs_det],
-                feed_dict=feed_dict)
+                [op_log_abs_det, mat_log_abs_det], feed_dict=feed_dict)
             self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
 
   def test_matmul(self):
@@ -215,14 +214,15 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 # If adjoint_arg, compute A X^H^H = A X.
                 if adjoint_arg:
                   op_matmul = operator.matmul(
-                      linear_operator_util.matrix_adjoint(x),
-                      adjoint=adjoint, adjoint_arg=adjoint_arg)
+                      linalg.adjoint(x),
+                      adjoint=adjoint,
+                      adjoint_arg=adjoint_arg)
                 else:
                   op_matmul = operator.matmul(x, adjoint=adjoint)
                 mat_matmul = math_ops.matmul(mat, x, adjoint_a=adjoint)
                 if not use_placeholder:
-                  self.assertAllEqual(
-                      op_matmul.get_shape(), mat_matmul.get_shape())
+                  self.assertAllEqual(op_matmul.get_shape(),
+                                      mat_matmul.get_shape())
                 op_matmul_v, mat_matmul_v = sess.run(
                     [op_matmul, mat_matmul], feed_dict=feed_dict)
                 self.assertAC(op_matmul_v, mat_matmul_v)
@@ -242,17 +242,18 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 # If adjoint_arg, solve A X = (rhs^H)^H = rhs.
                 if adjoint_arg:
                   op_solve = operator.solve(
-                      linear_operator_util.matrix_adjoint(rhs),
-                      adjoint=adjoint, adjoint_arg=adjoint_arg)
+                      linalg.adjoint(rhs),
+                      adjoint=adjoint,
+                      adjoint_arg=adjoint_arg)
                 else:
                   op_solve = operator.solve(
                       rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
                 mat_solve = linalg_ops.matrix_solve(mat, rhs, adjoint=adjoint)
                 if not use_placeholder:
-                  self.assertAllEqual(
-                      op_solve.get_shape(), mat_solve.get_shape())
-                op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve],
-                                                   feed_dict=feed_dict)
+                  self.assertAllEqual(op_solve.get_shape(),
+                                      mat_solve.get_shape())
+                op_solve_v, mat_solve_v = sess.run(
+                    [op_solve, mat_solve], feed_dict=feed_dict)
                 self.assertAC(op_solve_v, mat_solve_v)
 
   def test_trace(self):
@@ -268,8 +269,8 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             mat_trace = math_ops.trace(mat)
             if not use_placeholder:
               self.assertAllEqual(op_trace.get_shape(), mat_trace.get_shape())
-            op_trace_v, mat_trace_v = sess.run([op_trace, mat_trace],
-                                               feed_dict=feed_dict)
+            op_trace_v, mat_trace_v = sess.run(
+                [op_trace, mat_trace], feed_dict=feed_dict)
             self.assertAC(op_trace_v, mat_trace_v)
 
   def test_add_to_tensor(self):
@@ -286,8 +287,8 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             if not use_placeholder:
               self.assertAllEqual(shape, op_plus_2mat.get_shape())
 
-            op_plus_2mat_v, mat_v = sess.run([op_plus_2mat, mat],
-                                             feed_dict=feed_dict)
+            op_plus_2mat_v, mat_v = sess.run(
+                [op_plus_2mat, mat], feed_dict=feed_dict)
 
             self.assertAC(op_plus_2mat_v, 3 * mat_v)
 
@@ -304,8 +305,8 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             mat_diag_part = array_ops.matrix_diag_part(mat)
 
             if not use_placeholder:
-              self.assertAllEqual(
-                  mat_diag_part.get_shape(), op_diag_part.get_shape())
+              self.assertAllEqual(mat_diag_part.get_shape(),
+                                  op_diag_part.get_shape())
 
             op_diag_part_, mat_diag_part_ = sess.run(
                 [op_diag_part, mat_diag_part], feed_dict=feed_dict)
@@ -584,13 +585,16 @@ def random_sign_uniform(shape,
     if seed is not None:
       seed += 12
     signs = math_ops.sign(
-        random_ops.random_uniform(
-            shape, minval=-1., maxval=1., seed=seed))
+        random_ops.random_uniform(shape, minval=-1., maxval=1., seed=seed))
     return unsigned_samples * math_ops.cast(signs, unsigned_samples.dtype)
 
 
-def random_normal_correlated_columns(
-    shape, mean=0.0, stddev=1.0, dtype=dtypes.float32, eps=1e-4, seed=None):
+def random_normal_correlated_columns(shape,
+                                     mean=0.0,
+                                     stddev=1.0,
+                                     dtype=dtypes.float32,
+                                     eps=1e-4,
+                                     seed=None):
   """Batch matrix with (possibly complex) Gaussian entries and correlated cols.
 
   Returns random batch matrix `A` with specified element-wise `mean`, `stddev`,

@@ -199,7 +199,7 @@ class EvalSpec(
         evaluations on different data sets. Metrics for different evaluations
         are saved in separate folders, and appear separately in tensorboard.
       hooks: Iterable of `tf.train.SessionRunHook` objects to run
-        on all workers (including chief) during training.
+        during evaluation.
       exporters: Iterable of `Exporter`s, or a single one, or `None`.
         `exporters` will be invoked after each evaluation.
       start_delay_secs: Int. Start evaluating after waiting for this many

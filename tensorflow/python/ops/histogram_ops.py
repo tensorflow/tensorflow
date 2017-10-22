@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -69,30 +70,6 @@ def histogram_fixed_width(values,
   ```
   """
   with ops.name_scope(name, 'histogram_fixed_width',
-                      [values, value_range, nbins]) as scope:
-    values = ops.convert_to_tensor(values, name='values')
-    values = array_ops.reshape(values, [-1])
-    value_range = ops.convert_to_tensor(value_range, name='value_range')
-    nbins = ops.convert_to_tensor(nbins, dtype=dtypes.int32, name='nbins')
-    nbins_float = math_ops.cast(nbins, values.dtype)
-
-    # Map tensor values that fall within value_range to [0, 1].
-    scaled_values = math_ops.truediv(values - value_range[0],
-                                     value_range[1] - value_range[0],
-                                     name='scaled_values')
-
-    # map tensor values within the open interval value_range to {0,.., nbins-1},
-    # values outside the open interval will be zero or less, or nbins or more.
-    indices = math_ops.floor(nbins_float * scaled_values, name='indices')
-
-    # Clip edge cases (e.g. value = value_range[1]) or "outliers."
-    indices = math_ops.cast(
-        clip_ops.clip_by_value(indices, 0, nbins_float - 1), dtypes.int32)
-
-    # TODO(langmore) This creates an array of ones to add up and place in the
-    # bins.  This is inefficient, so replace when a better Op is available.
-    return math_ops.unsorted_segment_sum(
-        array_ops.ones_like(indices, dtype=dtype),
-        indices,
-        nbins,
-        name=scope)
+                      [values, value_range, nbins]) as name:
+    return gen_math_ops._histogram_fixed_width(values, value_range, nbins,
+                                               dtype=dtype, name=name)

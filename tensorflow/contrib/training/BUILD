@@ -26,6 +26,7 @@ py_library(
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
+        "python/training/sgdr_learning_rate_decay.py",
         "python/training/training.py",
         "python/training/tuner.py",
     ],
@@ -263,6 +264,7 @@ py_test(
     srcs = ["python/training/training_test.py"],
     shard_count = 3,
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":training_py",
         "//tensorflow/contrib/framework:framework_py",

@@ -44,6 +44,11 @@ def _add_should_use_warning(x, fatal_error=False):
   if x is None:  # special corner case where x is None
     return x
 
+  # TODO(apassos) we don't have an easier way to check because importing context
+  # or ops here would create a BUILD dependency cycle.
+  if type(x).__name__ == 'EagerTensor':
+    return x
+
   def override_method(method):
     def fn(self, *args, **kwargs):
       return method(self, *args, **kwargs)

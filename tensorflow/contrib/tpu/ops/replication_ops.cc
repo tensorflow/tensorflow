@@ -22,6 +22,11 @@ namespace tensorflow {
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+REGISTER_OP("TPUReplicateMetadata")
+    .Attr("num_replicas: int >= 0")
+    .Attr("global_tpu_id: list(int) = []")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("TPUReplicatedInput")
     .Input("inputs: N * T")
     .Output("output: T")

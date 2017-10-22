@@ -371,8 +371,19 @@ const int TensorSizeHistogram::Index(const uint64 value) const {
 string GetDeviceClassForNonChannelDevice(const string& device_name) {
   DeviceNameUtils::ParsedName parsed_name;
   bool parsed = DeviceNameUtils::ParseFullName(device_name, &parsed_name);
+  if (!parsed) {
+    string name = str_util::StringReplace(device_name, "/job_", "/job:", true);
+    name = str_util::StringReplace(name, "/replica_", "/replica:", true);
+    name = str_util::StringReplace(name, "/task_", "/task:", true);
+    name = str_util::StringReplace(name, "/device_", "/device:", true);
+    name = str_util::StringReplace(name, "GPU_", "GPU:", true);
+    name = str_util::StringReplace(name, "CPU_", "CPU:", true);
+    name = str_util::StringReplace(name, "gpu_", "gpu:", true);
+    name = str_util::StringReplace(name, "cpu_", "cpu:", true);
+    parsed = DeviceNameUtils::ParseFullName(name, &parsed_name);
+  }
   if (parsed) {
-    const string& jobname = parsed_name.has_job ? parsed_name.job : "";
+    const string jobname = parsed_name.has_job ? parsed_name.job : "";
     return strings::StrCat("/", jobname, "/", parsed_name.type);
   } else {
     return "Unclassified";
@@ -384,8 +395,8 @@ string GetDeviceClass(const string& device_name) {
   // in VirtualScheduler. This should be revised with VirtualScheduler as well
   // as VirtualPlacer in the future.
   if (device_name.find("Channel") != string::npos) {
-    const string from = " from ";
-    const string to = " to ";
+    const string from = "_from_";
+    const string to = "_to_";
     const auto from_loc = device_name.find(from);
     const auto to_loc = device_name.find(to);
     const auto src_device_full = device_name.substr(

@@ -390,11 +390,32 @@ class OperationTest(test_util.TensorFlowTestCase):
 
   # TODO(nolivia): test all error cases
   def testAddControlInput(self):
+    # The C API dedups redundant control edges, pure Python does not
+    if ops._USE_C_API: return
     with ops.Graph().as_default():
       x = constant_op.constant(1).op
       y = constant_op.constant(2).op
-    y._add_control_input(x)  # pylint: disable=protected-access
-    self.assertEqual(y.control_inputs, [x])
+      z = constant_op.constant(3).op
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x])
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x, x])
+    z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x, x, x, y, y])
+
+  def testAddControlInputC(self):
+    # The C API dedups redundant control edges, pure Python does not
+    if not ops._USE_C_API: return
+    with ops.Graph().as_default():
+      x = constant_op.constant(1).op
+      y = constant_op.constant(2).op
+      z = constant_op.constant(3).op
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x])
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x])
+    z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x, y])
 
   def testControlInputCycle(self):
     # Non-C API path has a different error message
@@ -482,6 +503,21 @@ class OperationTest(test_util.TensorFlowTestCase):
                                  r"Node 'Const' \(type: 'Const', "
                                  r"num of inputs: 0\) does not have input 1"):
       x.op._update_input(1, x)  # pylint: disable=protected-access
+
+  def testOpDef(self):
+    x = constant_op.constant(0)
+    y = constant_op.constant(1)
+    z = x + y
+
+    # Pure Python mode doesn't create OpDefs for constants
+    if ops._USE_C_API:
+      self.assertEqual(x.op.op_def.name, "Const")
+      self.assertEqual(len(x.op.op_def.input_arg), 0)
+      self.assertEqual(len(x.op.op_def.output_arg), 1)
+
+    self.assertEqual(z.op.op_def.name, "Add")
+    self.assertEqual(len(z.op.op_def.input_arg), 2)
+    self.assertEqual(len(z.op.op_def.output_arg), 1)
 
 
 @test_util.with_c_api

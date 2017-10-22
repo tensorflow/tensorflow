@@ -499,6 +499,7 @@ add_python_module("tensorflow/contrib/lookup")
 add_python_module("tensorflow/contrib/losses")
 add_python_module("tensorflow/contrib/losses/python")
 add_python_module("tensorflow/contrib/losses/python/losses")
+add_python_module("tensorflow/contrib/losses/python/metric_learning")
 add_python_module("tensorflow/contrib/makefile")
 add_python_module("tensorflow/contrib/makefile/test")
 add_python_module("tensorflow/contrib/memory_stats")
@@ -873,6 +874,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.cc"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.h"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.cc"
+    "${tensorflow_source_dir}/tensorflow/python/util/util.h"
+    "${tensorflow_source_dir}/tensorflow/python/util/util.cc"
     "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
     "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
