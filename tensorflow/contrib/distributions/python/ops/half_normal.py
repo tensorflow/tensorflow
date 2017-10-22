@@ -92,7 +92,7 @@ class FoldedNormal(distribution.Distribution):
   ```python
   # Define a batch of two scalar valued FoldedNormals.
   # Both have location 1, but different scales.
-  dist = tf.distributions.Normal(loc=1., scale=[11, 22.])
+  dist = tf.contrib.distributions.FoldedNormal(loc=1., scale=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
@@ -100,4 +100,47 @@ class FoldedNormal(distribution.Distribution):
   ```
 
   """
-  pass
+
+  def __init__(self,
+               loc,
+               scale,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="FoldedNormal"):
+    """Construct FoldedNormals with location and scale `loc` and `scale`.
+
+    The parameters `loc` and `scale` must be shaped in a way that supports
+    broadcasting (e.g. `loc + scale` is a valid operation).
+
+    Args:
+      loc: Floating point tensor; the locations of the distribution(s).
+      scale: Floating point tensor; the scales of the distribution(s).
+        Must contain only positive values.
+      validate_args: Python `bool`, default `False`. When `True` distribution
+        parameters are checked for validity despite possibly degrading runtime
+        performance. When `False` invalid inputs may silently render incorrect
+        outputs.
+      allow_nan_stats: Python `bool`, default `True`. When `True`,
+        statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+        indicate the result is undefined. When `False`, an exception is raised
+        if one or more of the statistic's batch members are undefined.
+      name: Python `str` name prefixed to Ops created by this class.
+
+    Raises:
+      TypeError: if `loc` and `scale` have different `dtype`.
+    """
+    parameters = locals()
+    with ops.name_scope(name, values=[loc, scale]):
+      with ops.control_dependencies([check_ops.assert_positive(scale)] if
+                                    validate_args else []):
+        self._loc = array_ops.identity(loc, name="loc")
+        self._scale = array_ops.identity(scale, name="scale")
+        check_ops.assert_same_float_dtype([self._loc, self._scale])
+    super(FoldedNormal, self).__init__(
+        dtype=self._scale.dtype,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
+        validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
+        parameters=parameters,
+        graph_parents=[self._loc, self._scale],
+        name=name)
