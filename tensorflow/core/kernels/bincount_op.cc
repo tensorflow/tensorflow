@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -96,34 +95,18 @@ class BincountOp : public OpKernel {
     OP_REQUIRES(ctx, size >= 0, errors::InvalidArgument(
                                     "size (", size, ") must be non-negative"));
 
-    const bool has_weights = weights_t.NumElements() > 0;
-    OP_REQUIRES(ctx, !(has_weights && arr_t.shape() != weights_t.shape()),
-                errors::InvalidArgument(
-                    "If weights are passed, they must have the same shape (" +
-                    weights_t.shape().DebugString() + ") as arr (" +
-                    arr_t.shape().DebugString() + ")"));
+    OP_REQUIRES(
+        ctx, (weights_t.NumElements() == 0),
+        errors::InvalidArgument("Weights should not be passed as it should be "
+                                "handled by unsorted_segment_sum"));
     const auto arr = arr_t.flat<int32>();
-    const auto weights = weights_t.flat<T>();
 
-    if (weights.size() == 0) {
-      Tensor* output_t;
-      OP_REQUIRES_OK(ctx,
-                     ctx->allocate_output(0, TensorShape({size}), &output_t));
-      auto output = output_t->flat<T>();
-      OP_REQUIRES_OK(
-          ctx, functor::BincountFunctor<Device, T>::Compute(ctx, arr, output));
-    } else {
-      TensorShape output_shape;
-      output_shape.AddDim(size);
-
-      Tensor* output = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
-      auto output_flat = output->flat_outer_dims<T>();
-
-      functor::UnsortedSegmentSumFunctor<Device, T, int32>()(
-          ctx, ctx->template eigen_device<Device>(), size, arr_t.shape(), arr,
-          weights.size(), weights.data(), output_flat);
-    }
+    Tensor* output_t;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(0, TensorShape({size}), &output_t));
+    auto output = output_t->flat<T>();
+    OP_REQUIRES_OK(
+        ctx, functor::BincountFunctor<Device, T>::Compute(ctx, arr, output));
   }
 };
 
