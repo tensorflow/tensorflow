@@ -68,7 +68,7 @@ class Cauchy(distribution.Distribution):
   # Evaluate the cdf at 1, returning a scalar.
   dist.cdf(1.)
 
-  # Define a batch of two scalar valued Normals.
+  # Define a batch of two scalar valued Cauchy distributions.
   dist = Cauchy(loc=[1, 2.], scale=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
@@ -82,8 +82,8 @@ class Cauchy(distribution.Distribution):
   Arguments are broadcast when possible.
 
   ```python
-  # Define a batch of two scalar valued Normals.
-  # Both have mean 1, but different standard deviations.
+  # Define a batch of two scalar valued Cauchy distributions.
+  # Both have median 1, but different scales.
   dist = tf.contrib.distributions.Cauchy(loc=1., scale=[11, 22.])
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
