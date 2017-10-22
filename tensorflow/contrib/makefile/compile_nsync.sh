@@ -290,7 +290,7 @@ for arch in $archs; do
                 touch "$nsync_platform_dir/dependfile"
         fi
         if (cd "$nsync_platform_dir" && make depend nsync.a >&2 \
-            && mv "$nsync_platform_dir/nsync.a" "$nsync_platform_dir/libnsync.a"); then
+            && mv nsync.a libnsync.a); then
                 case "$target_platform" in
                 ios)    platform_libs="$platform_libs '$nsync_platform_dir/libnsync.a'";;
                 *)      echo "$nsync_platform_dir/libnsync.a";;
