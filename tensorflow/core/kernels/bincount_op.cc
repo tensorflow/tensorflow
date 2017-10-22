@@ -127,6 +127,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
                               .TypeConstraint<type>("T"), \
                           BincountOp<GPUDevice, type>)
 
+TF_CALL_int32(REGISTER_KERNELS);
 TF_CALL_float(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 

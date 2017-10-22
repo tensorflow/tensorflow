@@ -99,7 +99,8 @@ struct BincountFunctor<GPUDevice, T> {
 #define REGISTER_GPU_SPEC(type) \
   template struct functor::BincountFunctor<GPUDevice, type>;
 
-TF_CALL_float(REGISTER_GPU_SPEC)
+TF_CALL_int32(REGISTER_GPU_SPEC);
+TF_CALL_float(REGISTER_GPU_SPEC);
 #undef REGISTER_GPU_SPEC
 
 }  // namespace tensorflow

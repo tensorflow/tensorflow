@@ -75,6 +75,17 @@ class BincountTest(test_util.TensorFlowTestCase):
             math_ops.bincount(arr, weights).eval(),
             np.bincount(arr, weights))
 
+  def test_random_without_weights(self):
+    num_samples = 10000
+    with self.test_session(use_gpu=True):
+      np.random.seed(42)
+      for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
+        arr = np.random.randint(0, 1000, num_samples)
+        weights = np.ones(num_samples)
+        self.assertAllClose(
+            math_ops.bincount(arr, None).eval(),
+            np.bincount(arr, weights))
+
   def test_zero_weights(self):
     with self.test_session(use_gpu=True):
       self.assertAllEqual(
@@ -82,7 +93,8 @@ class BincountTest(test_util.TensorFlowTestCase):
           np.zeros(1000))
 
   def test_negative(self):
-    with self.test_session(use_gpu=True):
+    # unsorted_segment_sum will only report InvalidArgumentError on CPU
+    with self.test_session():
       with self.assertRaises(errors.InvalidArgumentError):
         math_ops.bincount([1, 2, 3, -1, 6, 8]).eval()
 
