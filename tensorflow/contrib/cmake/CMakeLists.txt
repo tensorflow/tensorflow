@@ -58,11 +58,7 @@ set (DOWNLOAD_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/downloads"
      CACHE PATH "Location where external projects will be downloaded.")
 mark_as_advanced(DOWNLOAD_LOCATION)
 
-if(HAIKU)
-  set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
-else()
-  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-endif()
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC)
