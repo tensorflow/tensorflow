@@ -30,7 +30,7 @@ namespace internal {
 template <typename Device, typename T>
 void TileSimple(const Device& d, Tensor* out, const Tensor& in);
 
-template <typename Device, typename Tmultiples, typename T, int NDIM>
+template <typename Device, typename T, typename Tmultiples, int NDIM>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                     const gtl::ArraySlice<Tmultiples>& broadcast_array) {
   auto x = in.tensor<T, NDIM>();
@@ -46,7 +46,7 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
   }
 }
 
-template <typename Device, typename Tmultiples, typename T>
+template <typename Device, typename T, typename Tmultiples>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                     const gtl::ArraySlice<Tmultiples>&) {
   auto x = in.tensor<T, 0>();
@@ -59,41 +59,41 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
 
 namespace functor {
 
-template <typename Device, typename Tmultiples, typename T>
+template <typename Device, typename T, typename Tmultiples>
 struct Tile {
   void operator()(const Device& d, Tensor* out, const Tensor& in,
                   const gtl::ArraySlice<Tmultiples> broadcast_array) const {
     switch (in.dims()) {
       case 0:
-        internal::TileUsingEigen<Device, Tmultiples, T>(d, out, in,
+        internal::TileUsingEigen<Device, T, Tmultiples>(d, out, in,
                                                         broadcast_array);
         break;
       case 1:
-        internal::TileUsingEigen<Device, Tmultiples, T, 1>(d, out, in,
+        internal::TileUsingEigen<Device, T, Tmultiples, 1>(d, out, in,
                                                            broadcast_array);
         break;
       case 2:
-        internal::TileUsingEigen<Device, Tmultiples, T, 2>(d, out, in,
+        internal::TileUsingEigen<Device, T, Tmultiples, 2>(d, out, in,
                                                            broadcast_array);
         break;
       case 3:
-        internal::TileUsingEigen<Device, Tmultiples, T, 3>(d, out, in,
+        internal::TileUsingEigen<Device, T, Tmultiples, 3>(d, out, in,
                                                            broadcast_array);
         break;
       case 4:
-        internal::TileUsingEigen<Device, Tmultiples, T, 4>(d, out, in,
+        internal::TileUsingEigen<Device, T, Tmultiples, 4>(d, out, in,
                                                            broadcast_array);
         break;
       case 5:
-        internal::TileUsingEigen<Device, Tmultiples, T, 5>(d, out, in,
+        internal::TileUsingEigen<Device, T, Tmultiples, 5>(d, out, in,
                                                            broadcast_array);
         break;
       case 6:
-        internal::TileUsingEigen<Device, Tmultiples, T, 6>(d, out, in,
+        internal::TileUsingEigen<Device, T, Tmultiples, 6>(d, out, in,
                                                            broadcast_array);
         break;
       case 7:
-        internal::TileUsingEigen<Device, Tmultiples, T, 7>(d, out, in,
+        internal::TileUsingEigen<Device, T, Tmultiples, 7>(d, out, in,
                                                            broadcast_array);
         break;
       default:

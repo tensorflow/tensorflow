@@ -87,8 +87,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 // Register functors used for Tile functor.
 #define DEFINE_TYPE(T)                       \
-  template struct Tile<GPUDevice, int32, T>; \
-  template struct Tile<GPUDevice, int64, T>;
+  template struct Tile<GPUDevice, T, int32>; \
+  template struct Tile<GPUDevice, T, int64>;
 
 TF_CALL_int16(DEFINE_TYPE);
 TF_CALL_int32(DEFINE_TYPE);

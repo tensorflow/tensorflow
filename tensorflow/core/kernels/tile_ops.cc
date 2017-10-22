@@ -46,7 +46,7 @@ typedef Eigen::SyclDevice SYCLDevice;
 
 // Forward declarations of functors that will be defined in tile_ops_impl.h
 namespace functor {
-template <typename Device, typename Tmultiple, typename T>
+template <typename Device, typename T, typename Tmultiple>
 struct Tile {
   void operator()(const Device& d, Tensor* out, const Tensor& in,
                   const gtl::ArraySlice<Tmultiple> broadcast_array) const;
@@ -161,7 +161,7 @@ class TileOp : public OpKernel {
                       const gtl::ArraySlice<Tmultiples>& multiples_array,
                       Tensor* result) {
     typedef typename EnumToDataType<DT>::Type T;
-    functor::Tile<Device, Tmultiples, T>()(context->eigen_device<Device>(),
+    functor::Tile<Device, T, Tmultiples>()(context->eigen_device<Device>(),
                                            result, context->input(0),
                                            multiples_array);
   }
@@ -186,7 +186,7 @@ inline void TileOp<Device, Tmultiples>::HandleCase(
              << DataTypeString(DT);
 }
 
-#define HANDLE_CASE(device, Tmultiples, dtype)                              \
+#define HANDLE_CASE(device, dtype, Tmultiples)                              \
   template <>                                                               \
   template <>                                                               \
   void TileOp<device, Tmultiples>::HandleCase<dtype>(                       \
@@ -196,17 +196,17 @@ inline void TileOp<Device, Tmultiples>::HandleCase(
   }
 
 #define HANDLE_TYPE_NAME_CPU(T)                            \
-  HANDLE_CASE(CPUDevice, int32, DataTypeToEnum<T>::value); \
-  HANDLE_CASE(CPUDevice, int64, DataTypeToEnum<T>::value);
+  HANDLE_CASE(CPUDevice, DataTypeToEnum<T>::value, int32); \
+  HANDLE_CASE(CPUDevice, DataTypeToEnum<T>::value, int64);
 
 #define HANDLE_TYPE_NAME_GPU(T)                            \
-  HANDLE_CASE(GPUDevice, int32, DataTypeToEnum<T>::value); \
-  HANDLE_CASE(GPUDevice, int64, DataTypeToEnum<T>::value);
+  HANDLE_CASE(GPUDevice, DataTypeToEnum<T>::value, int32); \
+  HANDLE_CASE(GPUDevice, DataTypeToEnum<T>::value, int64);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define HANDLE_TYPE_NAME_SYCL(T)                            \
-  HANDLE_CASE(SYCLDevice, int32, DataTypeToEnum<T>::value); \
-  HANDLE_CASE(SYCLDevice, int64, DataTypeToEnum<T>::value);
+  HANDLE_CASE(SYCLDevice, DataTypeToEnum<T>::value, int32); \
+  HANDLE_CASE(SYCLDevice, DataTypeToEnum<T>::value, int64);
 #endif  // TENSORFLOW_USE_SYCL
 
 TF_CALL_bool(HANDLE_TYPE_NAME_CPU);
@@ -571,7 +571,7 @@ TF_CALL_complex128(REGISTER_GPU)
                               .HostMemory("multiples"),            \
                           TileGradientOp<SYCLDevice>);
 
-TF_CALL_float(REGISTER_SYCL);
+    TF_CALL_float(REGISTER_SYCL);
 TF_CALL_double(REGISTER_SYCL);
 
 #undef REGISTER_SYCL

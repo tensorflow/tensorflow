@@ -52,8 +52,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // Register functors used for Tile functor.
 #define DEFINE_TYPE(T)                       \
-  template struct Tile<CPUDevice, int32, T>; \
-  template struct Tile<CPUDevice, int64, T>;
+  template struct Tile<CPUDevice, T, int32>; \
+  template struct Tile<CPUDevice, T, int64>;
 
 TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
@@ -72,7 +72,9 @@ TF_CALL_string(DEFINE_TYPE);
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 
-#define DEFINE_TYPE(T) template struct Tile<SYCLDevice, T>;
+#define DEFINE_TYPE(T)                        \
+  template struct Tile<SYCLDevice, T, int32>; \
+  template struct Tile<SYCLDevice, T, int64>;
 
 TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
