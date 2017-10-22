@@ -23,6 +23,7 @@ import collections
 
 import six
 
+from tensorflow.contrib.framework import get_graph_from_inputs
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
@@ -126,7 +127,7 @@ class ModelFnOps(
     ModeKeys.validate(mode)
 
     # Assert all ops are from the same graph.
-    ops.IndexedSlices(predictions, loss, train_op)
+    get_graph_from_inputs((predictions, loss, train_op))
 
     # Validate train_op.
     if train_op is None:
