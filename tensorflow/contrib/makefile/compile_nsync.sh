@@ -289,10 +289,10 @@ for arch in $archs; do
                 echo "$makefile" | sed $'s,^[ \t]*,,' > "$nsync_platform_dir/Makefile"
                 touch "$nsync_platform_dir/dependfile"
         fi
-        if (cd "$nsync_platform_dir" && make depend nsync.a >&2); then
+        if (cd "$nsync_platform_dir" && make depend libnsync.a >&2); then
                 case "$target_platform" in
-                ios)    platform_libs="$platform_libs '$nsync_platform_dir/nsync.a'";;
-                *)      echo "$nsync_platform_dir/nsync.a";;
+                ios)    platform_libs="$platform_libs '$nsync_platform_dir/libnsync.a'";;
+                *)      echo "$nsync_platform_dir/libnsync.a";;
                 esac
         else
                 exit 2  # The if-statement suppresses the "set -e" on the "make".
@@ -302,7 +302,7 @@ done
 case "$target_platform" in
 ios)    nsync_platform_dir="$nsync_builds_dir/lipo.$target_platform.c++11"
         mkdir "$nsync_platform_dir"
-        eval lipo $platform_libs -create -output '$nsync_platform_dir/nsync.a'
-        echo "$nsync_platform_dir/nsync.a"
+        eval lipo $platform_libs -create -output '$nsync_platform_dir/libnsync.a'
+        echo "$nsync_platform_dir/libnsync.a"
         ;;
 esac
