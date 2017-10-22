@@ -30,9 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -294,7 +292,7 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
 
       with self.assertRaises(ValueError):
-        var = cauchy.mean()
+        cauchy.mean().eval()
 
   def testCauchyQuantile(self):
     with self.test_session():
@@ -334,7 +332,7 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
 
       with self.assertRaises(ValueError):
-        var = cauchy.variance()
+        cauchy.variance().eval()
 
   def testCauchyStandardDeviation(self):
     with self.test_session():
@@ -354,14 +352,13 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
 
       with self.assertRaises(ValueError):
-        var = cauchy.stddev()
+        cauchy.stddev().eval()
 
   def testCauchySample(self):
     with self.test_session():
       loc = constant_op.constant(3.0)
       scale = constant_op.constant(1.0)
       loc_v = 3.0
-      scale_v = 1.0
       n = constant_op.constant(100000)
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
       samples = cauchy.sample(n)
@@ -388,7 +385,6 @@ class CauchyTest(test.TestCase):
       loc = constant_op.constant([[3.0, -3.0]] * batch_size)
       scale = constant_op.constant([[0.5, 1.0]] * batch_size)
       loc_v = [3.0, -3.0]
-      scale_v = [0.5, 1.0]
       n = constant_op.constant(100000)
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
       samples = cauchy.sample(n)
@@ -438,6 +434,7 @@ class CauchyTest(test.TestCase):
           sess.run(cauchy.batch_shape_tensor(),
                    feed_dict={loc: 5.0,
                               scale: [1.0, 2.0]}), [2])
+
 
 if __name__ == "__main__":
   test.main()
