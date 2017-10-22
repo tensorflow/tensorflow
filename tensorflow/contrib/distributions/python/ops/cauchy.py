@@ -229,3 +229,23 @@ class Cauchy(distribution.Distribution):
       return constant_op.constant(float("nan"), shape=self.batch_shape)
     else:
       raise ValueError("`stddev` is undefined for Cauchy distribution.")
+
+
+class CauchyWithSoftplusScale(Cauchy):
+  """Cauchy with softplus applied to `scale`."""
+
+  def __init__(self,
+               loc,
+               scale,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="CauchyWithSoftplusScale"):
+    parameters = locals()
+    with ops.name_scope(name, values=[scale]):
+      super(CauchyWithSoftplusScale, self).__init__(
+          loc=loc,
+          scale=nn.softplus(scale, name="softplus_scale"),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=name)
+    self._parameters = parameters
