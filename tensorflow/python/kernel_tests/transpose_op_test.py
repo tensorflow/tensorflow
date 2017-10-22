@@ -322,7 +322,7 @@ class TransposeTest(test.TestCase):
       x = np.arange(0, 8).reshape([2, 4]).astype(np.float32)
       p = np.array([1, 0]).astype(perm_dtype)
       np_ans = np.copy(x).transpose(p)
-      with self.test_session(use_gpu=False):
+      with self.test_session(use_gpu=True):
         inx = ops.convert_to_tensor(x)
         inp = constant_op.constant(p)
         y = array_ops.transpose(inx, inp)
