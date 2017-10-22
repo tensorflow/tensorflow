@@ -33,6 +33,7 @@ from tensorflow.python.ops.distributions import distribution
 
 __all__ = [
     "Cauchy",
+    "CauchyWithSoftplusScale",
 ]
 
 
