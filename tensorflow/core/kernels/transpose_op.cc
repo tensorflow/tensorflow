@@ -91,6 +91,7 @@ REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                         InvertPermutationOp);
 #endif  // TENSORFLOW_USE_SYCL
 
+namespace {
 template <typename Tperm>
 Status PermutationHelper(const Tensor& perm, const int dims,
                          std::vector<int32>* permutation) {
@@ -107,6 +108,7 @@ Status PermutationHelper(const Tensor& perm, const int dims,
   *permutation = std::vector<int32>(perm_begin, perm_begin + dims);
 
   return Status::OK();
+}
 }
 
 // output = TransposeOp(T<any> input, T<int32> perm) takes a tensor
