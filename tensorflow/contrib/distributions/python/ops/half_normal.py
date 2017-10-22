@@ -55,7 +55,9 @@ class FoldedNormal(distribution.Distribution):
   ```none
   # for x > 0
   pdf(x; loc, scale) = (1 / (scale * sqrt(2 *pi)) *
-    (exp(-0.5 * ((x - loc) /scale) ** 2) + exp(-0.5 * ((x + loc) /scale) ** 2))
+    ( exp(-0.5 * ((x - loc) /scale) ** 2) +
+      exp(-0.5 * ((x + loc) /scale) ** 2) )
+  )
   ```
 
   Where `loc = mu` is the mean and `scale = sigma` is the std. deviation of
@@ -144,3 +146,90 @@ class FoldedNormal(distribution.Distribution):
         parameters=parameters,
         graph_parents=[self._loc, self._scale],
         name=name)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("loc", "scale"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
+
+  @property
+  def loc(self):
+    """Distribution parameter for the location."""
+    return self._loc
+
+  @property
+  def scale(self):
+    """Distribution parameter for the scale."""
+    return self._scale
+
+  def _batch_shape_tensor(self):
+    return array_ops.broadcast_dynamic_shape(
+        array_ops.shape(self.loc),
+        array_ops.shape(self.scale))
+
+  def _batch_shape(self):
+    return array_ops.broadcast_static_shape(
+        self.loc.get_shape(),
+        self.scale.get_shape())
+
+  def _event_shape_tensor(self):
+    return constant_op.constant([], dtype=dtypes.int32)
+
+  def _event_shape(self):
+    return tensor_shape.scalar()
+
+  def _sample_n(self, n, seed=None):
+    pass
+
+  def _log_prob(self, x):
+    return math_ops.log(self._prob(x))
+
+  def _prob(self, x):
+    coeff = 1 / (self.scale * math.sqrt(2 * math.pi))
+    pos_portion = math_ops.exp(-0.5 * math_ops.square(self._pos_z))
+    neg_portion = math_ops.exp(-0.5 * math_ops.square(self._neg_z))
+    return coeff * (pos_portion + neg_portion)
+
+  def _log_cdf(self, x):
+    pass
+
+  def _cdf(self, x):
+    pass
+
+  def _log_survival_function(self, x):
+    pass
+
+  def _survival_function(self, x):
+    pass
+
+  def _log_unnormalized_prob(self, x):
+    pass
+
+  def _log_normalization(self):
+    pass
+
+  def _entropy(self):
+    pass
+
+  def _mean(self):
+    pass
+
+  def _quantile(self, p):
+    pass
+
+  def _stddev(self):
+    pass
+
+  def _mode(self):
+    pass
+
+  def _pos_z(self, x):
+    """Standardize input `x` to a unit normal."""
+    with ops.name_scope("standardize", values=[x]):
+      return (x - self.loc) / self.scale
+
+  def _neg_z(self, x):
+    """Standardize input `x` to a unit normal around -self.loc."""
+    with ops.name_scope("standardize_neg", values=[x]):
+      return (x + self.loc) / self.scale
