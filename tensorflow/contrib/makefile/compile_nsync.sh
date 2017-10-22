@@ -289,7 +289,8 @@ for arch in $archs; do
                 echo "$makefile" | sed $'s,^[ \t]*,,' > "$nsync_platform_dir/Makefile"
                 touch "$nsync_platform_dir/dependfile"
         fi
-        if (cd "$nsync_platform_dir" && make depend libnsync.a >&2); then
+        if (cd "$nsync_platform_dir" && make depend nsync.a >&2 \
+            && mv "$nsync_platform_dir/nsync.a" "$nsync_platform_dir/libnsync.a"); then
                 case "$target_platform" in
                 ios)    platform_libs="$platform_libs '$nsync_platform_dir/libnsync.a'";;
                 *)      echo "$nsync_platform_dir/libnsync.a";;
