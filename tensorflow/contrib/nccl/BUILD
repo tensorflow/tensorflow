@@ -74,8 +74,10 @@ tf_kernel_library(
         "kernels/nccl_rewrite.cc",
     ],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:proto_text",
         "@nccl_archive//:nccl",
     ],
