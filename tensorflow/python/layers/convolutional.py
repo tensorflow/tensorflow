@@ -153,22 +153,18 @@ class _Conv(base.Layer):
       self.bias = None
     self.input_spec = base.InputSpec(ndim=self.rank + 2,
                                      axes={channel_axis: input_dim})
-    with ops.name_scope(None, 'convolution', [self.kernel]) as name:
-      self._convolution_op = nn_ops.Convolution(
-          input_shape,
-          filter_shape=self.kernel.get_shape(),
-          dilation_rate=self.dilation_rate,
-          strides=self.strides,
-          padding=self.padding.upper(),
-          data_format=utils.convert_data_format(self.data_format,
-                                                self.rank + 2),
-          name=name)
+    self._convolution_op = nn_ops.Convolution(
+        input_shape,
+        filter_shape=self.kernel.get_shape(),
+        dilation_rate=self.dilation_rate,
+        strides=self.strides,
+        padding=self.padding.upper(),
+        data_format=utils.convert_data_format(self.data_format,
+                                              self.rank + 2))
     self.built = True
 
   def call(self, inputs):
-    # TODO(agarwal): do we need this name_scope ?
-    with ops.name_scope(None, 'convolution', [inputs, self.kernel]):
-      outputs = self._convolution_op(inputs, self.kernel)
+    outputs = self._convolution_op(inputs, self.kernel)
 
     if self.use_bias:
       if self.data_format == 'channels_first':
