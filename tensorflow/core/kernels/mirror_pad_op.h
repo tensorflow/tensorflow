@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_MIRROR_PAD_OP_H_
 #define TENSORFLOW_KERNELS_MIRROR_PAD_OP_H_
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace Eigen {
 template <typename PaddingDimensions, typename XprType>
