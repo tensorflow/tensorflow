@@ -448,7 +448,6 @@ filegroup(
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/contrib/verbs:all_files",
-        "//tensorflow/contrib/xla_tf_graph:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
