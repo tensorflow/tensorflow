@@ -89,6 +89,10 @@ class LayerCollectionTest(test.TestCase):
       lc.register_conv2d(
           array_ops.constant(4), [1, 1, 1, 1], 'SAME',
           array_ops.ones((1, 1, 1, 1)), array_ops.constant(3))
+      lc.register_conv2d(
+          array_ops.constant(4), [1, 1, 1, 1], 'SAME',
+          array_ops.ones((1, 1, 1, 1)), array_ops.constant(3),
+          approx=layer_collection.APPROX_DIAGONAL_NAME)
       lc.register_generic(
           array_ops.constant(5), 16, approx=layer_collection.APPROX_FULL_NAME)
       lc.register_generic(
@@ -96,7 +100,7 @@ class LayerCollectionTest(test.TestCase):
           16,
           approx=layer_collection.APPROX_DIAGONAL_NAME)
 
-      self.assertEqual(5, len(lc.get_blocks()))
+      self.assertEqual(6, len(lc.get_blocks()))
 
   def testRegisterBlocksMultipleRegistrations(self):
     with ops.Graph().as_default():
@@ -278,6 +282,73 @@ class LayerCollectionTest(test.TestCase):
       single_loss = sess.run(lc.total_loss())
       self.assertAlmostEqual(7.6983433, single_loss)
 
+  def testRegisterFullyConnectedReuse(self):
+    """Ensure the 'reuse' keyword argument function as intended."""
+    with ops.Graph().as_default():
+      inputs = [
+          array_ops.ones([2, 10]),  #
+          array_ops.zeros([5, 10])
+      ]
+      outputs = [
+          array_ops.zeros([2, 5]),  #
+          array_ops.ones([5, 5])
+      ]
+      params = (
+          variable_scope.get_variable('w', [10, 5]),  #
+          variable_scope.get_variable('b', [5]))
+
+      # Fails on second if reuse=False.
+      lc = layer_collection.LayerCollection()
+      lc.register_fully_connected(params, inputs[0], outputs[0])
+      with self.assertRaises(ValueError):
+        lc.register_fully_connected(params, inputs[1], outputs[1], reuse=False)
+
+      # Succeeds on second if reuse=True.
+      lc = layer_collection.LayerCollection()
+      lc.register_fully_connected(params, inputs[0], outputs[0])
+      lc.register_fully_connected(params, inputs[1], outputs[1], reuse=True)
+
+      # Fails on second if reuse=VARIABLE_SCOPE and no variable reuse.
+      lc = layer_collection.LayerCollection()
+      lc.register_fully_connected(params, inputs[0], outputs[0])
+      with self.assertRaises(ValueError):
+        lc.register_fully_connected(
+            params,
+            inputs[1],
+            outputs[1],
+            reuse=layer_collection.VARIABLE_SCOPE)
+
+      # Succeeds on second if reuse=VARIABLE_SCOPE and variable reuse.
+      lc = layer_collection.LayerCollection()
+      lc.register_fully_connected(params, inputs[0], outputs[0])
+      with variable_scope.variable_scope(
+          variable_scope.get_variable_scope(), reuse=True):
+        lc.register_fully_connected(
+            params,
+            inputs[1],
+            outputs[1],
+            reuse=layer_collection.VARIABLE_SCOPE)
+
+      # Fails if block type changes.
+      lc = layer_collection.LayerCollection()
+      lc.register_fully_connected(
+          params,
+          inputs[0],
+          outputs[0],
+          approx=layer_collection.APPROX_KRONECKER_NAME)
+      with self.assertRaises(ValueError):
+        lc.register_fully_connected(
+            params,
+            inputs[1],
+            outputs[1],
+            approx=layer_collection.APPROX_DIAGONAL_NAME,
+            reuse=True)
+
+      # Fails if reuse requested but no FisherBlock exists.
+      lc = layer_collection.LayerCollection()
+      with self.assertRaises(KeyError):
+        lc.register_fully_connected(params, inputs[0], outputs[0], reuse=True)
+
   def testMakeOrGetFactor(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
@@ -309,10 +380,20 @@ class LayerCollectionTest(test.TestCase):
       self.assertTrue(all([var.name.startswith(scope) for var in variables]))
 
   def testGetUseCountMap(self):
+    """Ensure get_use_count_map() sums 'num_registered_minibatches'."""
+
+    class MockFisherBlock(object):
+
+      num_registered_minibatches = 2
+
     lc = layer_collection.LayerCollection()
-    lc.fisher_blocks = {'a': 1, ('a', 'c'): 2, ('b', 'c'): 2}
+    lc.fisher_blocks = {
+        'a': MockFisherBlock(),
+        ('a', 'c'): MockFisherBlock(),
+        ('b', 'c'): MockFisherBlock()
+    }
     use_count_map = lc.get_use_count_map()
-    self.assertDictEqual({'a': 2, 'b': 1, 'c': 2}, use_count_map)
+    self.assertDictEqual({'a': 4, 'b': 2, 'c': 4}, use_count_map)
 
 
 if __name__ == '__main__':

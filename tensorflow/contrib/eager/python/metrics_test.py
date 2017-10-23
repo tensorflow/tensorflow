@@ -34,12 +34,22 @@ class MetricsTest(test.TestCase):
     m(1000)
     m([10000.0, 100000.0])
     self.assertEqual(111111.0/6, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
 
   def testWeightedMean(self):
     m = metrics.Mean()
     m([1, 100, 100000], weights=[1, 0.2, 0.3])
     m([500000, 5000, 500])  # weights of 1 each
     self.assertNear(535521/4.5, m.result().numpy(), 0.001)
+
+  def testMeanDtype(self):
+    # Can override default dtype of float64.
+    m = metrics.Mean(dtype=dtypes.float32)
+    m([0, 2])
+    self.assertEqual(1, m.result().numpy())
+    self.assertEqual(dtypes.float32, m.dtype)
+    self.assertEqual(dtypes.float32, m.result().dtype)
 
   def testAccuracy(self):
     m = metrics.Accuracy()
@@ -49,6 +59,8 @@ class MetricsTest(test.TestCase):
     m([6], [6])  # 1 correct
     m([7], [2])  # 0 correct
     self.assertEqual(3.0/8, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
 
   def testWeightedAccuracy(self):
     m = metrics.Accuracy()
@@ -59,6 +71,14 @@ class MetricsTest(test.TestCase):
     m([6], [6])  # 1 correct, weight 1
     m([7], [2])  # 0 correct, weight 1
     self.assertEqual(2.5/5, m.result().numpy())
+
+  def testAccuracyDtype(self):
+    # Can override default dtype of float64.
+    m = metrics.Accuracy(dtype=dtypes.float32)
+    m([0, 0], [0, 1])
+    self.assertEqual(0.5, m.result().numpy())
+    self.assertEqual(dtypes.float32, m.dtype)
+    self.assertEqual(dtypes.float32, m.result().dtype)
 
   def testTwoMeans(self):
     # Verify two metrics with the same class and name don't

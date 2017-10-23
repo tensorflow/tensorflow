@@ -43,9 +43,9 @@ py_library(
     deps = [
         ":gen_summary_ops",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:summary_op_util",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:context",
