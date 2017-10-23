@@ -27,15 +27,22 @@ from tensorflow.python.keras._impl.keras.datasets.cifar import load_batch
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 
 
-def load_data():
+def load_data(fname=None):
   """Loads CIFAR10 dataset.
 
+  Arguments:
+    fname: Name of the file. If an absolute path /path/to/file.txt is
+        specified the file will be saved at that location.
+        
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
   """
-  dirname = 'cifar-10-batches-py'
-  origin = 'http://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
-  path = get_file(dirname, origin=origin, untar=True)
+  if fname is None:
+    dirname = 'cifar-10-batches-py'
+    origin = 'http://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz'
+    path = get_file(dirname, origin=origin, untar=True)
+  else:
+    path = fname
 
   num_train_samples = 50000
 
