@@ -22,13 +22,13 @@ set -e
 prog=compile_nsync.sh
 android_api_version=21
 default_android_arch=armeabi-v7a
-default_ios_arch="i386 x86_64 armv7 armv7s arm64"
+default_ios_arch="x86_64 arm64"
 
 usage="usage: $prog [-t linux|ios|android|macos|native]
         [-a architecture] [-v android_api_version]
 
 A script to build nsync for tensorflow.
-This script can be run on Linux or MacOS host platforms, and can target 
+This script can be run on Linux or MacOS host platforms, and can target
 Linux, MacOS, iOS, or Android.
 
 Options:
