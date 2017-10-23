@@ -420,6 +420,8 @@ class Sequential(Model):
     # Used by Layer base class.
     self._dtype = None
     self._activity_regularizer = None
+    self._per_input_losses = {}
+    self._per_input_updates = {}
 
     # The following properties are not actually used by Keras;
     # they exist for compatibility with TF's variable scoping mechanism.

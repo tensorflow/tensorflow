@@ -129,6 +129,7 @@ def tf_library(name, graph, config,
   # Rule that runs tfcompile to produce the header and object file.
   header_file = name + ".h"
   object_file = name + ".o"
+  session_module_pb = name + "_session_module.pb"
   ep = ("__" + PACKAGE_NAME + "__" + name).replace("/", "_")
   native.genrule(
       name=("gen_" + name),
@@ -139,6 +140,7 @@ def tf_library(name, graph, config,
       outs=[
           header_file,
           object_file,
+          session_module_pb,
       ],
       cmd=("$(location " + tfcompile_tool + ")" +
            " --graph=$(location " + tfcompile_graph + ")" +
@@ -148,6 +150,7 @@ def tf_library(name, graph, config,
            " --target_triple=" + target_llvm_triple() +
            " --out_header=$(@D)/" + header_file +
            " --out_object=$(@D)/" + object_file +
+           " --out_session_module=$(@D)/" + session_module_pb +
            " " + (tfcompile_flags or "")),
       tools=[tfcompile_tool],
       visibility=visibility,
