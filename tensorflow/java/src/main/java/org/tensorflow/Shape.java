@@ -89,7 +89,7 @@ public final class Shape {
     }
 
     if (obj instanceof Shape && Arrays.equals(this.shape, ((Shape) obj).shape)) {
-      return true;
+      return !hasUnknownDimension();
     }
 
     return super.equals(obj);
@@ -116,4 +116,18 @@ public final class Shape {
   }
 
   private long[] shape;
+
+  private boolean hasUnknownDimension() {
+    if (shape == null) {
+      return false;
+    }
+
+    for (long dimension : shape) {
+      if (dimension == -1) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 }
