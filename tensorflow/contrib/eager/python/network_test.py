@@ -27,7 +27,7 @@ class MyNetwork(network.Network):
 
   def __init__(self):
     super(MyNetwork, self).__init__(name="abcd")
-    self.l1 = self.add_layer(core.Dense(1, use_bias=False))
+    self.l1 = self.track_layer(core.Dense(1, use_bias=False))
 
   def call(self, x):
     return self.l1(x)
@@ -94,7 +94,7 @@ class SequentialTest(test.TestCase):
 
     # Add a second layer to the network.
     l2 = core.Dense(1, use_bias=False)
-    net.add_layer(l2)
+    net.track_layer(l2)
 
     # Set the second layer's weights so it multiplies by 11
     net(constant_op.constant([[2.0]]))  # Create l2's variables

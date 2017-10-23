@@ -40,7 +40,7 @@ class Network(base.Layer):
     print(d.name)
     print(d.variables)
   - Note that name provided to __init__ is only for error messages?
-  - Detect layers used in __call__ that weren't registered with add_layer.
+  - Detect layers used in __call__ that weren't registered with track_layer.
   - Convert inputs to __call__ to tensors.
   - Prevent variables from being created after the first __call__?
     (Think about restoring from a checkpoint).
@@ -52,10 +52,10 @@ class Network(base.Layer):
     self._container = uuid.uuid4().hex
     self._layers = collections.OrderedDict()
 
-  def add_layer(self, layer):
-    """Add a Layer to this Network.
+  def track_layer(self, layer):
+    """Track a Layer in this Network.
 
-    `Network` requires that all `Layer`s used in `call()` be added so that the
+    `Network` requires that all `Layer`s used in `call()` be tracked so that the
     `Network` can export a complete list of variables.
 
     Args:
@@ -66,14 +66,14 @@ class Network(base.Layer):
 
     Raises:
       RuntimeError: If __init__ has not been called.
-      TypeError: If layer is the wrong type.
-      ValueError: If a layer with the same name has already been added.
+      TypeError: If `layer` is the wrong type.
+      ValueError: If a `Layer` with the same name has already been added.
     """
     if not hasattr(self, "_layers"):
       raise RuntimeError("Need to call Network.__init__ before adding layers")
     if not isinstance(layer, base.Layer):
       raise TypeError(
-          "Network.add_layer() passed type %s, not a tf.layers.Layer" %
+          "Network.track_layer() passed type %s, not a tf.layers.Layer" %
           (type(layer),))
     if layer.name in self._layers:
       if self._layers[layer.name] is layer:
@@ -189,7 +189,7 @@ class Sequential(Network):
     super(Sequential, self).__init__(name=name)
     if layers:
       for l in layers:
-        self.add_layer(l)
+        self.track_layer(l)
 
   def call(self, inputs):
     """Call each Layer in the order they were added."""
