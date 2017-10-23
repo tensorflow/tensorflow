@@ -109,7 +109,7 @@ Status PermutationHelper(const Tensor& perm, const int dims,
 
   return Status::OK();
 }
-}
+}  // namespace
 
 // output = TransposeOp(T<any> input, T<int32> perm) takes a tensor
 // of type T and rank N, and a permutation of 0, 1, ..., N-1. It
