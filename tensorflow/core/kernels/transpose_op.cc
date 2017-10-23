@@ -133,6 +133,9 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, TensorShapeUtils::IsVector(perm.shape()),
               errors::InvalidArgument("perm must be a vector, not ",
                                       perm.shape().DebugString()));
+
+  // Although Tperm may be an int64 type, an int32 is sufficient to hold
+  // dimension range values, so the narrowing here should be safe.
   std::vector<int32> permutation;
   const int dims = input.dims();
   if (perm.dtype() == DT_INT32) {
