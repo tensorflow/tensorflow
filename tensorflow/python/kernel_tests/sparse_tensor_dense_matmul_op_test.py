@@ -52,14 +52,18 @@ class SparseTensorDenseMatMulTest(test.TestCase):
                   adjoint_a=False,
                   adjoint_b=False,
                   indices_dtype=np.int64):
-    x_mat = np.matrix(x)
+    adjoint_ind = list(range(len(x.shape)))
+    adjoint_ind[-1] = -2
+    adjoint_ind[-2] = -1
+    x_tensor = np.array(x)
     if adjoint_a:
-      x_mat = x_mat.H
-    y_mat = np.matrix(y)
+      x_tensor = x_tensor.transpose(adjoint_ind).conjugate()
+    y_tensor = np.array(y)
     if adjoint_b:
-      y_mat = y_mat.H
-
-    np_ans = x_mat * y_mat
+      y_tensor = y_tensor.transpose(adjoint_ind).conjugate()
+    
+    np_ans = np.matmul(x_tensor, y_tensor)
+    
 
     x_indices = np.vstack(np.where(x)).astype(indices_dtype).T
     x_values = x[np.where(x)]
@@ -105,6 +109,24 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     self._testBasic(np.complex128)
     self._testBasic(np.int32, indices_dtype=np.int32)
     self._testBasic(np.float32, indices_dtype=np.int32)
+
+  def _testHigherRank(self, value_dtype, indices_dtype=np.int64):
+    x = _maybe_complex(np.random.rand(3,2,5,7).astype(value_dtype))
+    x[np.abs(x) < 0.5] = 0  # Make it sparse
+
+    y = _maybe_complex(np.random.randn(3,2,7,3).astype(value_dtype))
+
+    self._testMatmul(x, y, indices_dtype=indices_dtype)
+    
+  def testHigherRank(self):
+    np.random.seed(127)  # Repeatable results
+    self._testHigherRank(np.int32)
+    self._testHigherRank(np.float32)
+    self._testHigherRank(np.float64)
+    self._testHigherRank(np.complex64)
+    self._testHigherRank(np.complex128)
+    self._testHigherRank(np.int32, indices_dtype=np.int32)
+    self._testHigherRank(np.float32, indices_dtype=np.int32)
 
   def testShapeInference(self):
     x = np.random.rand(10, 10)
@@ -207,6 +229,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     r1 = np.random.randint(6000, 20000)
     r2 = np.random.randint(1, 10)
     r3 = np.random.randint(1, 10)
+    r4 = np.random.randint(1, 4)
 
     for m, k, n in [(r1, r2, r3),
                     (r2, r1, r3),
@@ -221,6 +244,17 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self._testMatmul(x, y.transpose(), adjoint_a=False, adjoint_b=True)
       self._testMatmul(
           x.transpose(), y.transpose(), adjoint_a=True, adjoint_b=True)
+      
+    for l, m, k, n in [(r1, r2, r3, r4),
+                       (r2, r1, r3, r4),
+                       (r2, r3, r1, r4),
+                       (r2, r3, r4, r1)]:
+      x = _maybe_complex(np.random.rand(l, m, k).astype(np_dtype))
+      x[np.abs(x) < 0.8] = 0
+
+      y = _maybe_complex(np.random.randn(l, k, n).astype(np_dtype))
+
+      self._testMatmul(x, y)
 
     np.random.seed(127)  # Repeatable results
     self._testLarge(np.float32)

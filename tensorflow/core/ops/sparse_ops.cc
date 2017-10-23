@@ -146,24 +146,33 @@ REGISTER_OP("SparseTensorDenseMatMul")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));  // a_indices
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // a_values
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &a_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(a_shape, 2, &a_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 2, &b));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(a_shape, 2, &a_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 2, &b));
+      ShapeHandle a_pre;
+      ShapeHandle b_pre;
+      TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_pre));
+      TF_RETURN_IF_ERROR(c->Subshape(b, 0, -2, &b_pre));
+      TF_RETURN_IF_ERROR(c->Merge(a_pre, b_pre, &b_pre));
 
       bool adjoint_a;
       bool adjoint_b;
       TF_RETURN_IF_ERROR(c->GetAttr("adjoint_a", &adjoint_a));
       TF_RETURN_IF_ERROR(c->GetAttr("adjoint_b", &adjoint_b));
 
-      DimensionHandle output_right = c->Dim(b, adjoint_b ? 0 : 1);
-      DimensionHandle output_left = c->Dim(a_shape, adjoint_a ? 1 : 0);
-      DimensionHandle inner_left = c->Dim(a_shape, adjoint_a ? 0 : 1);
-      DimensionHandle inner_right = c->Dim(b, adjoint_b ? 1 : 0);
+      DimensionHandle output_right = c->Dim(b, adjoint_b ? -2 : -1);
+      DimensionHandle output_left = c->Dim(a_shape, adjoint_a ? -1 : -2);
+      DimensionHandle inner_left = c->Dim(a_shape, adjoint_a ? -2 : -1);
+      DimensionHandle inner_right = c->Dim(b, adjoint_b ? -1 : -2);
       TF_RETURN_IF_ERROR(c->Merge(inner_left, inner_right, &unused_dim));
-      c->set_output(0, c->Matrix(output_left, output_right));
+      
+      ShapeHandle output_shape;
+      ShapeHandle output_post = c->Matrix(output_left, output_right);
+      TF_RETURN_IF_ERROR(c->Concatenate(b_pre, output_post, &output_shape));
+      c->set_output(0, output_shape);
       return Status::OK();
     })
     .Doc(R"doc(
-Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
+Multiply SparseTensor "A" by dense Tensor "B".
 
 No validity checking is performed on the indices of A.  However, the following
 input format is recommended for optimal behavior:
@@ -172,13 +181,13 @@ if adjoint_a == false:
   A should be sorted in lexicographically increasing order.  Use SparseReorder
   if you're not sure.
 if adjoint_a == true:
-  A should be sorted in order of increasing dimension 1 (i.e., "column major"
+  A should be sorted in order of increasing dimension -1 (i.e., "column major"
   order instead of "row major" order).
 
-a_indices: 2-D.  The `indices` of the `SparseTensor`, size `[nnz, 2]` Matrix.
+a_indices: 2-D.  The `indices` of the `SparseTensor`, size `[nnz, ndim]` Matrix.
 a_values: 1-D.  The `values` of the `SparseTensor`, size `[nnz]` Vector.
-a_shape: 1-D.  The `shape` of the `SparseTensor`, size `[2]` Vector.
-b: 2-D.  A dense Matrix.
+a_shape: 1-D.  The `shape` of the `SparseTensor`, size `[ndim]` Vector.
+b: At least 2-D.  A dense Tensor.
 adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex, this
   is transpose(conj(A)).  Otherwise it's transpose(A).
 adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex, this
