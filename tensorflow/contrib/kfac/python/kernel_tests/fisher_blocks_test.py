@@ -328,17 +328,11 @@ class FullyConnectedDiagonalFB(test.TestCase):
       multiply_result: Result of FisherBlock.multiply(params)
       multiply_inverse_result: Result of FisherBlock.multiply_inverse(params)
     """
-
-    def _as_tensors(tensor_or_tuple):
-      if isinstance(tensor_or_tuple, (tuple, list)):
-        return tuple(ops.convert_to_tensor(t) for t in tensor_or_tuple)
-      return ops.convert_to_tensor(tensor_or_tuple)
-
     with ops.Graph().as_default(), self.test_session() as sess:
-      inputs = [_as_tensors(i) for i in inputs]
-      outputs = [_as_tensors(o) for o in outputs]
-      output_grads = [_as_tensors(og) for og in output_grads]
-      params = _as_tensors(params)
+      inputs = as_tensors(inputs)
+      outputs = as_tensors(outputs)
+      output_grads = as_tensors(output_grads)
+      params = as_tensors(params)
 
       block = fb.FullyConnectedDiagonalFB(
           lc.LayerCollection(), has_bias=isinstance(params, (tuple, list)))
@@ -464,6 +458,188 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       self.assertAllClose(output_flat, explicit)
 
 
+class ConvDiagonalFBTest(test.TestCase):
+
+  def setUp(self):
+    super(ConvDiagonalFBTest, self).setUp()
+
+    self.batch_size = 2
+    self.height = 8
+    self.width = 4
+    self.input_channels = 6
+    self.output_channels = 3
+    self.kernel_size = 1
+
+    self.inputs = np.random.randn(self.batch_size, self.height, self.width,
+                                  self.input_channels).astype(np.float32)
+    self.outputs = np.zeros(
+        [self.batch_size, self.height, self.width,
+         self.output_channels]).astype(np.float32)
+    self.output_grads = np.random.randn(
+        self.batch_size, self.height, self.width, self.output_channels).astype(
+            np.float32)
+    self.w = np.random.randn(self.kernel_size, self.kernel_size,
+                             self.input_channels, self.output_channels).astype(
+                                 np.float32)
+    self.b = np.random.randn(self.output_channels).astype(np.float32)
+
+  def fisherApprox(self, has_bias=False):
+    """Fisher approximation using default inputs."""
+    if has_bias:
+      inputs = np.concatenate(
+          [self.inputs,
+           np.ones([self.batch_size, self.height, self.width, 1])],
+          axis=-1)
+    else:
+      inputs = self.inputs
+    return self.buildDiagonalFisherApproximation(inputs, self.output_grads,
+                                                 self.kernel_size)
+
+  def buildDiagonalFisherApproximation(self, inputs, output_grads, kernel_size):
+    r"""Builds explicit diagonal Fisher approximation.
+
+    Fisher's diagonal is (d loss / d w)'s elements squared for
+      d/dw = E[\sum_{loc} outer(input_{loc}, output_grad_{loc})]
+
+    where the expectation is taken over examples and the sum over (x, y)
+    locations upon which the convolution is applied.
+
+    Args:
+      inputs: np.array of shape [batch_size, height, width, input_channels].
+      output_grads: np.array of shape [batch_size, height, width,
+        output_channels].
+      kernel_size: int. height and width of kernel.
+
+    Returns:
+      Diagonal np.array of shape [num_params, num_params] for num_params =
+      kernel_size^2 * input_channels * output_channels.
+    """
+    batch_size, height, width, input_channels = inputs.shape
+    assert output_grads.shape[0] == batch_size
+    assert output_grads.shape[1] == height
+    assert output_grads.shape[2] == width
+    output_channels = output_grads.shape[3]
+
+    # If kernel_size == 1, then we don't need to worry about capturing context
+    # around the pixel upon which a convolution is applied. This makes testing
+    # easier.
+    assert kernel_size == 1, "kernel_size != 1 isn't supported."
+    num_locations = height * width
+    inputs = np.reshape(inputs, [batch_size, num_locations, input_channels])
+    output_grads = np.reshape(output_grads,
+                              [batch_size, num_locations, output_channels])
+
+    fisher_diag = np.zeros((input_channels, output_channels))
+    for i in range(batch_size):
+      # Each example's approximation is a square(sum-of-outer-products).
+      example_fisher_diag = np.zeros((input_channels, output_channels))
+      for j in range(num_locations):
+        example_fisher_diag += np.outer(inputs[i, j], output_grads[i, j])
+      fisher_diag += np.square(example_fisher_diag)
+
+    # Normalize by batch_size (not num_locations).
+    return np.diag(fisher_diag.flatten()) / batch_size
+
+  def testMultiply(self):
+    result, _ = self.runFisherBlockOps(self.w, [self.inputs], [self.outputs],
+                                       [self.output_grads])
+
+    # Construct Fisher-vector product.
+    expected_result = self.fisherApprox().dot(self.w.flatten())
+    expected_result = expected_result.reshape([
+        self.kernel_size, self.kernel_size, self.input_channels,
+        self.output_channels
+    ])
+
+    self.assertAllClose(expected_result, result)
+
+  def testMultiplyInverse(self):
+    _, result = self.runFisherBlockOps(self.w, [self.inputs], [self.outputs],
+                                       [self.output_grads])
+
+    # Construct inverse Fisher-vector product.
+    expected_result = np.linalg.inv(self.fisherApprox()).dot(self.w.flatten())
+    expected_result = expected_result.reshape([
+        self.kernel_size, self.kernel_size, self.input_channels,
+        self.output_channels
+    ])
+
+    self.assertAllClose(expected_result, result, atol=1e-3)
+
+  def testRegisterAdditionalMinibatch(self):
+    """Ensure 1 big minibatch and 2 small minibatches are equivalent."""
+    multiply_result_big, multiply_inverse_result_big = self.runFisherBlockOps(
+        self.w, [self.inputs], [self.outputs], [self.output_grads])
+    multiply_result_small, multiply_inverse_result_small = (
+        self.runFisherBlockOps(self.w,
+                               np.split(self.inputs, 2),
+                               np.split(self.outputs, 2),
+                               np.split(self.output_grads, 2)))
+
+    self.assertAllClose(multiply_result_big, multiply_result_small)
+    self.assertAllClose(multiply_inverse_result_big,
+                        multiply_inverse_result_small)
+
+  def testMultiplyHasBias(self):
+    result, _ = self.runFisherBlockOps((self.w, self.b), [self.inputs],
+                                       [self.outputs], [self.output_grads])
+    # Clone 'b' along 'input_channels' dimension.
+    b_filter = np.tile(
+        np.reshape(self.b, [1, 1, 1, self.output_channels]),
+        [self.kernel_size, self.kernel_size, 1, 1])
+    params = np.concatenate([self.w, b_filter], axis=2)
+    expected_result = self.fisherApprox(True).dot(params.flatten())
+
+    # Extract 'b' from concatenated parameters.
+    expected_result = expected_result.reshape([
+        self.kernel_size, self.kernel_size, self.input_channels + 1,
+        self.output_channels
+    ])
+    expected_result = (expected_result[:, :, 0:-1, :], np.reshape(
+        expected_result[:, :, -1, :], [self.output_channels]))
+
+    self.assertEqual(len(result), 2)
+    self.assertAllClose(expected_result[0], result[0])
+    self.assertAllClose(expected_result[1], result[1])
+
+  def runFisherBlockOps(self, params, inputs, outputs, output_grads):
+    """Run Ops guaranteed by FisherBlock interface.
+
+    Args:
+      params: Tensor or 2-tuple of Tensors. Represents weights or weights and
+        bias of this layer.
+      inputs: list of Tensors of shape [batch_size, input_size]. Inputs to
+        layer.
+      outputs: list of Tensors of shape [batch_size, output_size].
+        Preactivations produced by layer.
+      output_grads: list of Tensors of shape [batch_size, output_size].
+        Gradient of loss with respect to 'outputs'.
+
+    Returns:
+      multiply_result: Result of FisherBlock.multiply(params)
+      multiply_inverse_result: Result of FisherBlock.multiply_inverse(params)
+    """
+    with ops.Graph().as_default(), self.test_session() as sess:
+      inputs = as_tensors(inputs)
+      outputs = as_tensors(outputs)
+      output_grads = as_tensors(output_grads)
+      params = as_tensors(params)
+
+      block = fb.ConvDiagonalFB(
+          lc.LayerCollection(), params, strides=[1, 1, 1, 1], padding='SAME')
+      for (i, o) in zip(inputs, outputs):
+        block.register_additional_minibatch(i, o)
+
+      block.instantiate_factors((output_grads,), damping=0.0)
+
+      sess.run(tf_variables.global_variables_initializer())
+      sess.run(block._factor.make_covariance_update_op(0.0))
+      multiply_result = sess.run(block.multiply(params))
+      multiply_inverse_result = sess.run(block.multiply_inverse(params))
+
+    return multiply_result, multiply_inverse_result
+
+
 class ConvKFCBasicFBTest(test.TestCase):
 
   def _testConvKFCBasicFBInitParams(self, params):
@@ -582,6 +758,12 @@ class ConvKFCBasicFBTest(test.TestCase):
 
       self.assertAllClose(output_flat, explicit)
 
+
+def as_tensors(tensor_or_tuple):
+  """Converts a potentially nested tuple of np.array to Tensors."""
+  if isinstance(tensor_or_tuple, (tuple, list)):
+    return tuple(as_tensors(t) for t in tensor_or_tuple)
+  return ops.convert_to_tensor(tensor_or_tuple)
 
 if __name__ == '__main__':
   test.main()

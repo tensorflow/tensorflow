@@ -273,9 +273,9 @@ class LayerCollection(object):
                           fb.ConvKFCBasicFB(self, params, inputs, outputs,
                                             strides, padding))
     elif approx == APPROX_DIAGONAL_NAME:
-      self.register_block(params,
-                          fb.ConvDiagonalFB(self, params, inputs, outputs,
-                                            strides, padding))
+      block = fb.ConvDiagonalFB(self, params, strides, padding)
+      block.register_additional_minibatch(inputs, outputs)
+      self.register_block(params, block)
 
   def register_generic(self, params, batch_size, approx=APPROX_DIAGONAL_NAME):
     params = params if isinstance(params, (tuple, list)) else (params,)
@@ -379,6 +379,27 @@ class LayerCollection(object):
     self._loss_dict[name] = loss
 
   def make_or_get_factor(self, cls, args):
+    """Insert 'cls(args)' into 'self.fisher_factors' if not already present.
+
+    Wraps constructor in 'tf.variable_scope()' to ensure variables constructed
+    in 'cls.__init__' are placed under this LayerCollection's scope.
+
+    Args:
+      cls: Class that implements FisherFactor.
+      args: Tuple of arguments to pass into 'cls's constructor. Must be
+        hashable.
+
+    Returns:
+      Instance of 'cls' found in self.fisher_factors.
+    """
+    try:
+      hash(args)
+    except TypeError:
+      raise TypeError((
+          "Unable to use (cls, args) = ({}, {}) as a key in "
+          "LayerCollection.fisher_factors. The pair cannot be hashed."
+      ).format(cls, args))
+
     with variable_scope.variable_scope(self._var_scope):
       return utils.setdefault(self.fisher_factors, (cls, args),
                               lambda: cls(*args))

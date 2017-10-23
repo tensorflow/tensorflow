@@ -227,7 +227,7 @@ class FullyConnectedDiagonalFB(FisherBlock):
   'w'. For an example 'x' that produces layer inputs 'a' and output
   preactivations 's',
 
-    v(x, y, w) = vec( x (d loss / d s)^T )
+    v(x, y, w) = vec( a (d loss / d s)^T )
 
   This FisherBlock tracks Fisher(params)[i, i] for all indices 'i' corresponding
   to the layer's parameters 'w'.
@@ -309,13 +309,29 @@ class FullyConnectedDiagonalFB(FisherBlock):
 class ConvDiagonalFB(FisherBlock):
   """FisherBlock for convolutional layers using a diagonal approx.
 
-  Unlike NaiveDiagonalFB this uses the low-variance "sum of squares" estimator.
+  Estimates the Fisher Information matrix's diagonal entries for a convolutional
+  layer. Unlike NaiveDiagonalFB this uses the low-variance "sum of squares"
+  estimator.
+
+  Let 'params' be a vector parameterizing a model and 'i' an arbitrary index
+  into it. We are interested in Fisher(params)[i, i]. This is,
+
+    Fisher(params)[i, i] = E[ v(x, y, params) v(x, y, params)^T ][i, i]
+                         = E[ v(x, y, params)[i] ^ 2 ]
+
+  Consider a convoluational layer in this model with (unshared) filter matrix
+  'w'. For an example image 'x' that produces layer inputs 'a' and output
+  preactivations 's',
+
+    v(x, y, w) = vec( sum_{loc} a_{loc} (d loss / d s_{loc})^T )
+
+  where 'loc' is a single (x, y) location in an image.
+
+  This FisherBlock tracks Fisher(params)[i, i] for all indices 'i' corresponding
+  to the layer's parameters 'w'.
   """
 
-  # TODO(jamesmartens): add units tests for this class
-
-  def __init__(self, layer_collection, params, inputs, outputs, strides,
-               padding):
+  def __init__(self, layer_collection, params, strides, padding):
     """Creates a ConvDiagonalFB block.
 
     Args:
@@ -325,37 +341,39 @@ class ConvDiagonalFB(FisherBlock):
         kernel alone, a Tensor of shape [kernel_height, kernel_width,
         in_channels, out_channels]. If kernel and bias, a tuple of 2 elements
         containing the previous and a Tensor of shape [out_channels].
-      inputs: A Tensor of shape [batch_size, height, width, in_channels].
-        Input activations to this layer.
-      outputs: A Tensor of shape [batch_size, height, width, out_channels].
-        Output pre-activations from this layer.
       strides: The stride size in this layer (1-D Tensor of length 4).
-      padding: The padding in this layer (1-D of Tensor length 4).
+      padding: The padding in this layer (e.g. "SAME").
     """
-    self._inputs = inputs
-    self._outputs = outputs
-    self._strides = strides
+    self._inputs = []
+    self._outputs = []
+    self._strides = tuple(strides) if isinstance(strides, list) else strides
     self._padding = padding
     self._has_bias = isinstance(params, (tuple, list))
 
     fltr = params[0] if self._has_bias else params
     self._filter_shape = tuple(fltr.shape.as_list())
 
-    input_shape = tuple(inputs.shape.as_list())
-    self._num_locations = (
-        input_shape[1] * input_shape[2] // (strides[1] * strides[2]))
-
     super(ConvDiagonalFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
+    # Concatenate inputs, grads_list into single Tensors.
+    inputs = _concat_along_batch_dim(self._inputs)
+    grads_list = tuple(_concat_along_batch_dim(grads) for grads in grads_list)
+
+    # Infer number of locations upon which convolution is applied.
+    inputs_shape = tuple(inputs.shape.as_list())
+    self._num_locations = (
+        inputs_shape[1] * inputs_shape[2] //
+        (self._strides[1] * self._strides[2]))
+
     if NORMALIZE_DAMPING_POWER:
       damping /= self._num_locations**NORMALIZE_DAMPING_POWER
     self._damping = damping
 
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvDiagonalFactor,
-        (self._inputs, grads_list, self._filter_shape, self._strides,
-         self._padding, self._has_bias))
+        (inputs, grads_list, self._filter_shape, self._strides, self._padding,
+         self._has_bias))
 
   def multiply_inverse(self, vector):
     reshaped_vect = utils.layer_params_to_mat2d(vector)
@@ -369,6 +387,18 @@ class ConvDiagonalFB(FisherBlock):
 
   def tensors_to_compute_grads(self):
     return self._outputs
+
+  def register_additional_minibatch(self, inputs, outputs):
+    """Registers an additional minibatch to the FisherBlock.
+
+    Args:
+      inputs: Tensor of shape [batch_size, height, width, input_size]. Inputs to
+        the convolution.
+      outputs: Tensor of shape [batch_size, height, width, output_size]. Layer
+        preactivations.
+    """
+    self._inputs.append(inputs)
+    self._outputs.append(outputs)
 
 
 class KroneckerProductFB(FisherBlock):
