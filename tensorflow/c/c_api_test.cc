@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -49,6 +50,11 @@ TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 namespace {
+
+static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+  EXPECT_TRUE(StringPiece(s).contains(expected))
+      << "'" << s << "' does not contain '" << expected << "'";
+}
 
 TEST(CAPI, Version) { EXPECT_STRNE("", TF_Version()); }
 
@@ -833,6 +839,31 @@ TEST(CAPI, ShapeInferenceError) {
   ASSERT_NE(TF_OK, TF_GetCode(status));
   ASSERT_TRUE(add == nullptr);
 
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, GetOpDef) {
+  TF_Status* status = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+  TF_Buffer* buffer = TF_NewBuffer();
+
+  TF_GraphGetOpDef(graph, "Add", buffer, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status));
+  const OpDef* expected_op_def;
+  TF_ASSERT_OK(OpRegistry::Global()->LookUpOpDef("Add", &expected_op_def));
+  string expected_serialized;
+  expected_op_def->SerializeToString(&expected_serialized);
+  string actual_string(reinterpret_cast<const char*>(buffer->data),
+                       buffer->length);
+  EXPECT_EQ(expected_serialized, actual_string);
+
+  TF_GraphGetOpDef(graph, "MyFakeOp", buffer, status);
+  EXPECT_EQ(TF_NOT_FOUND, TF_GetCode(status));
+  ExpectHasSubstr(TF_Message(status),
+                  "Op type not registered 'MyFakeOp' in binary");
+
+  TF_DeleteBuffer(buffer);
   TF_DeleteGraph(graph);
   TF_DeleteStatus(status);
 }

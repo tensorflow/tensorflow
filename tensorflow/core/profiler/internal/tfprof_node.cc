@@ -227,7 +227,7 @@ std::vector<int64> ShapeProtoToVec(const TensorShapeProto& shape_pb) {
   return shape_vec;
 }
 
-TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
+TensorShapeProto VecToShapeProto(const std::vector<int64>& shape_vec) {
   TensorShapeProto shape_pb;
   if (shape_vec.empty()) {
     shape_pb.set_unknown_rank(true);

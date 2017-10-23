@@ -41,10 +41,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
                  "HloConstantFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
 
-  for (auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (auto* computation : module->MakeNonfusionComputations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
       if (instruction->user_count() == 0 &&

@@ -704,8 +704,8 @@ class CursesTest(test_util.TensorFlowTestCase):
     # The manually registered command, along with the automatically registered
     # exit commands should appear in the candidates.
     self.assertEqual(
-        [["a", "babble", "exit", "h", "help", "m", "mouse", "quit"]],
-        ui.candidates_lists)
+        [["a", "babble", "cfg", "config", "exit", "h", "help", "m", "mouse",
+          "quit"]], ui.candidates_lists)
 
     # The two candidates have no common prefix. So no command should have been
     # issued.

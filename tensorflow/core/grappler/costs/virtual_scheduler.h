@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 
@@ -250,15 +251,6 @@ class FirstReadyManager : public ReadyNodeManager {
   const std::unordered_map<const NodeDef*, NodeState>* node_state_;
 };
 
-// A wrapper struct to OpInfo proto.
-// TODO(dyoon): once we extend OpInfo or implement a better interface, and  then
-// delete this wrapper struct.
-struct NodeInfo {
-  OpInfo op_info;
-  string name;
-  string device_name;
-};
-
 // The virtual scheduler emulates execution of nodes in a graph, considering
 // dependencies, device, etc.
 class VirtualScheduler {
@@ -270,7 +262,7 @@ class VirtualScheduler {
   // graph_properties_.
   Status Init();
 
-  NodeInfo GetCurrNodeInfo() const;
+  OpContext GetCurrNode() const;
 
   // Returns true if there is any node to be scheduled.
   bool MarkCurrNodeExecuted(const Costs& node_costs);
@@ -311,6 +303,7 @@ class VirtualScheduler {
   std::pair<const NodeDef*, const NodeDef*> CreateSendRecv(
       const NodeDef* from, const NodeDef* to, const string& input_name);
   string DeviceName(const NodeDef* node) const;
+  string SanitizedDeviceName(const NodeDef* node) const;
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
 
   // Helper methods.
@@ -335,7 +328,7 @@ class VirtualScheduler {
 
   // Auxilliary data structures for constructing NodeState and DeviceState.
   GraphProperties graph_properties_;
-  Cluster* cluster_;                   // Not owned.
+  Cluster* cluster_;  // Not owned.
 
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;

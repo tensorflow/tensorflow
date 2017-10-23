@@ -32,6 +32,7 @@ _allowed_symbols = [
     'add_metrics',
     'binary_classification_head',
     'clip_gradients_by_norm',
+    'forward_features',
     'multi_class_head',
     'multi_head',
     'multi_label_head',

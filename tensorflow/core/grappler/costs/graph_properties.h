@@ -39,6 +39,9 @@ class GraphProperties {
   Status InferDynamically(Cluster* cluster);
   Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
+  // Stores `item_.graph` with the inferred output shapes to `output_graph_def`.
+  Status AnnotateOutputShapes(GraphDef* output_graph_def);
+
   bool HasInputProperties(const string& name) const;
   bool HasOutputProperties(const string& name) const;
   const std::vector<OpInfo::TensorProperties>& GetInputProperties(

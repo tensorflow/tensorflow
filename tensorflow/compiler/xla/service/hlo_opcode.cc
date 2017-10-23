@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -95,12 +97,12 @@ string HloOpcodeString(HloOpcode opcode) {
       return "less-than-or-equal-to";
     case HloOpcode::kLog:
       return "log";
-    case HloOpcode::kLogicalAnd:
-      return "logical-and";
-    case HloOpcode::kLogicalOr:
-      return "logical-or";
-    case HloOpcode::kLogicalNot:
-      return "logical-not";
+    case HloOpcode::kAnd:
+      return "and";
+    case HloOpcode::kOr:
+      return "or";
+    case HloOpcode::kNot:
+      return "not";
     case HloOpcode::kLt:
       return "less-than";
     case HloOpcode::kMap:
@@ -147,6 +149,12 @@ string HloOpcodeString(HloOpcode opcode) {
       return "select";
     case HloOpcode::kSend:
       return "send";
+    case HloOpcode::kShiftLeft:
+      return "shift-left";
+    case HloOpcode::kShiftRightArithmetic:
+      return "shift-right-arithmetic";
+    case HloOpcode::kShiftRightLogical:
+      return "shift-right-logical";
     case HloOpcode::kSign:
       return "sign";
     case HloOpcode::kSin:
@@ -170,6 +178,89 @@ string HloOpcodeString(HloOpcode opcode) {
     case HloOpcode::kWhile:
       return "while";
   }
+}
+
+StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
+  static auto* opcode_map = new tensorflow::gtl::FlatMap<string, HloOpcode>(
+      {{"abs", HloOpcode::kAbs},
+       {"add", HloOpcode::kAdd},
+       {"batch-norm-training", HloOpcode::kBatchNormTraining},
+       {"batch-norm-inference", HloOpcode::kBatchNormInference},
+       {"batch-norm-grad", HloOpcode::kBatchNormGrad},
+       {"bitcast", HloOpcode::kBitcast},
+       {"broadcast", HloOpcode::kBroadcast},
+       {"call", HloOpcode::kCall},
+       {"clamp", HloOpcode::kClamp},
+       {"concatenate", HloOpcode::kConcatenate},
+       {"constant", HloOpcode::kConstant},
+       {"convert", HloOpcode::kConvert},
+       {"convolution", HloOpcode::kConvolution},
+       {"cosine", HloOpcode::kCos},
+       {"cross-replica-sum", HloOpcode::kCrossReplicaSum},
+       {"custom-call", HloOpcode::kCustomCall},
+       {"copy", HloOpcode::kCopy},
+       {"divide", HloOpcode::kDivide},
+       {"dot", HloOpcode::kDot},
+       {"dynamic-slice", HloOpcode::kDynamicSlice},
+       {"dynamic-update-slice", HloOpcode::kDynamicUpdateSlice},
+       {"equal-to", HloOpcode::kEq},
+       {"exponential", HloOpcode::kExp},
+       {"floor", HloOpcode::kFloor},
+       {"ceil", HloOpcode::kCeil},
+       {"fusion", HloOpcode::kFusion},
+       {"greater-than-or-equal-to", HloOpcode::kGe},
+       {"get-tuple-element", HloOpcode::kGetTupleElement},
+       {"greater-than", HloOpcode::kGt},
+       {"index", HloOpcode::kIndex},
+       {"infeed", HloOpcode::kInfeed},
+       {"is-finite", HloOpcode::kIsFinite},
+       {"less-than-or-equal-to", HloOpcode::kLe},
+       {"log", HloOpcode::kLog},
+       {"and", HloOpcode::kAnd},
+       {"or", HloOpcode::kOr},
+       {"not", HloOpcode::kNot},
+       {"less-than", HloOpcode::kLt},
+       {"map", HloOpcode::kMap},
+       {"maximum", HloOpcode::kMaximum},
+       {"minimum", HloOpcode::kMinimum},
+       {"multiply", HloOpcode::kMultiply},
+       {"not-equal-to", HloOpcode::kNe},
+       {"negate", HloOpcode::kNegate},
+       {"outfeed", HloOpcode::kOutfeed},
+       {"pad", HloOpcode::kPad},
+       {"parameter", HloOpcode::kParameter},
+       {"power", HloOpcode::kPower},
+       {"recv", HloOpcode::kRecv},
+       {"reduce", HloOpcode::kReduce},
+       {"reduce-precision", HloOpcode::kReducePrecision},
+       {"reduce-window", HloOpcode::kReduceWindow},
+       {"remainder", HloOpcode::kRemainder},
+       {"reshape", HloOpcode::kReshape},
+       {"reverse", HloOpcode::kReverse},
+       {"rng", HloOpcode::kRng},
+       {"round-nearest-afz", HloOpcode::kRoundNearestAfz},
+       {"select-and-scatter", HloOpcode::kSelectAndScatter},
+       {"select", HloOpcode::kSelect},
+       {"send", HloOpcode::kSend},
+       {"shift-left", HloOpcode::kShiftLeft},
+       {"shift-right-arithmetic", HloOpcode::kShiftRightArithmetic},
+       {"shift-right-logical", HloOpcode::kShiftRightLogical},
+       {"sign", HloOpcode::kSign},
+       {"sine", HloOpcode::kSin},
+       {"slice", HloOpcode::kSlice},
+       {"sort", HloOpcode::kSort},
+       {"subtract", HloOpcode::kSubtract},
+       {"tanh", HloOpcode::kTanh},
+       {"trace", HloOpcode::kTrace},
+       {"transpose", HloOpcode::kTranspose},
+       {"tuple", HloOpcode::kTuple},
+       {"update", HloOpcode::kUpdate},
+       {"while", HloOpcode::kWhile}});
+  auto it = opcode_map->find(opcode_name);
+  if (it == opcode_map->end()) {
+    return InvalidArgument("Unknown opcode: %s", opcode_name.c_str());
+  }
+  return it->second;
 }
 
 bool HloOpcodeIsComparison(HloOpcode opcode) {

@@ -127,5 +127,8 @@ void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
 }
 
 const char IteratorBase::kIteratorExhausted[] = "ITERATOR_EXHAUSTED";
+const char GraphDatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
+const char GraphDatasetBase::kDatasetGraphOutputNodeKey[] =
+    "_DATASET_GRAPH_OUTPUT_NODE";
 
 }  // namespace tensorflow

@@ -29,24 +29,6 @@ namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-// TODO(rmlarsen): Add a faster custom kernel similar to
-// SwapDimension1And2InTensor3 in tensorflow/core/kernels/conv_ops_gpu_3.cu.cc
-template <typename Scalar>
-struct AdjointBatchFunctor<GPUDevice, Scalar> {
-  void operator()(const GPUDevice& device,
-                  typename TTypes<Scalar, 3>::ConstTensor input,
-                  typename TTypes<Scalar, 3>::Tensor output) {
-    const Eigen::array<int, 3> perm({0, 2, 1});
-    To32Bit(output).device(device) = To32Bit(input).shuffle(perm).conjugate();
-  }
-};
-
-// Instantiate implementations for the 4 numeric types.
-template struct AdjointBatchFunctor<GPUDevice, float>;
-template struct AdjointBatchFunctor<GPUDevice, double>;
-template struct AdjointBatchFunctor<GPUDevice, complex64>;
-template struct AdjointBatchFunctor<GPUDevice, complex128>;
-
 namespace {
 
 // Hacks around missing support for complex arithmetic in nvcc.

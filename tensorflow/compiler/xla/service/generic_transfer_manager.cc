@@ -35,8 +35,9 @@ namespace se = ::perftools::gputools;
 
 namespace xla {
 
-GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id)
-    : platform_id_(platform_id) {
+GenericTransferManager::GenericTransferManager(se::Platform::Id platform_id,
+                                               size_t pointer_size)
+    : platform_id_(platform_id), pointer_size_(pointer_size) {
   // We currently only support kHostPlatformId for CPU, kCudaPlatformId for
   // GPU and kInterpreterPlatformId for Interpreter. Before supporting other
   // platforms, we need to test this transfer manager on them.
@@ -125,6 +126,23 @@ GenericTransferManager::ShallowCopyTupleFromDevice(
     destination.emplace_back(element_pointers[i], buffer_size);
   }
   return std::move(destination);
+}
+
+Status GenericTransferManager::WriteTuplePointersToDevice(
+    perftools::gputools::StreamExecutor* executor,
+    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+    const Shape& shape, perftools::gputools::DeviceMemoryBase* region) {
+  TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
+
+  std::vector<const void*> element_pointers;
+  for (const se::DeviceMemoryBase& element : elements) {
+    element_pointers.push_back(element.opaque());
+  }
+  int64 tuple_size =
+      ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
+
+  return TransferBufferToDevice(executor, tuple_size, element_pointers.data(),
+                                region);
 }
 
 Status GenericTransferManager::TransferLiteralToDevice(

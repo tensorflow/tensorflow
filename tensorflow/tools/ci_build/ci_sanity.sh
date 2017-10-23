@@ -95,6 +95,7 @@ do_pylint() {
 "^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
 "^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
 "^tensorflow/contrib/layers/python/layers/feature_column\.py.*\[E0110.*abstract-class-instantiated "\
+"^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable"
 

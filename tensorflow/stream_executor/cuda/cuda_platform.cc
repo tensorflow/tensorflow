@@ -27,6 +27,42 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 namespace cuda {
+namespace {
+
+// Synchronize with spinlocks.
+const char kScheduleSpinString[] = "spin";
+// Synchronize with spinlocks that also call CPU yield instructions.
+const char kScheduleYieldString[] = "yield";
+// Synchronize with a "synchronization primitive" (e.g. mutex).
+const char kScheduleBlockingSyncString[] = "blocking_sync";
+
+const DeviceOptions GetDeviceOptionsFromEnv() {
+  const char* gpu_schedule_string =
+      std::getenv("TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE");
+
+  if (gpu_schedule_string == nullptr) {
+    return perftools::gputools::DeviceOptions::Default();
+  }
+
+  unsigned device_flags = 0;
+  if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
+    device_flags = perftools::gputools::DeviceOptions::kScheduleSpin;
+  } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
+    device_flags = perftools::gputools::DeviceOptions::kScheduleYield;
+  } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
+    device_flags = perftools::gputools::DeviceOptions::kScheduleBlockingSync;
+  } else {
+    LOG(QFATAL) << "Unknown option for environment variable "
+                   "TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE "
+                << gpu_schedule_string << " should be one of {"
+                << kScheduleBlockingSyncString << ", " << kScheduleSpinString
+                << ", " << kScheduleYieldString << "}";
+  }
+
+  return perftools::gputools::DeviceOptions(device_flags);
+}
+
+}  // namespace
 
 CudaPlatform::CudaPlatform()
     : name_("CUDA"), min_numa_node_(0), limit_numa_node_(0) {}
@@ -112,7 +148,7 @@ port::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.plugin_config = PluginConfig();
-  config.device_options = DeviceOptions::Default();
+  config.device_options = GetDeviceOptionsFromEnv();
   return GetExecutor(config);
 }
 
@@ -121,7 +157,7 @@ port::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDeviceWithPluginConfig(
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
   config.plugin_config = plugin_config;
-  config.device_options = DeviceOptions::Default();
+  config.device_options = GetDeviceOptionsFromEnv();
   return GetExecutor(config);
 }
 

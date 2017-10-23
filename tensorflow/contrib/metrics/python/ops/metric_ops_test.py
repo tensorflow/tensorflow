@@ -1101,7 +1101,7 @@ class StreamingPrecisionTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     precision, update_op = metrics.streaming_precision(predictions, labels)
 
     with self.test_session() as sess:
@@ -1265,7 +1265,7 @@ class StreamingRecallTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     recall, update_op = metrics.streaming_recall(predictions, labels)
 
     with self.test_session() as sess:
@@ -1353,6 +1353,262 @@ class StreamingRecallTest(test.TestCase):
       sess.run(variables.local_variables_initializer())
       sess.run(update_op)
       self.assertEqual(0, recall.eval())
+
+
+class StreamingFPRTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_false_positive_rate(
+        predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
+    _assert_local_variables(self, (
+        'false_positive_rate/false_positives/count:0',
+        'false_positive_rate/true_negatives/count:0'))
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    mean, _ = metrics.streaming_false_positive_rate(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [mean])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_false_positive_rate(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = random_ops.random_uniform(
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+    labels = random_ops.random_uniform(
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
+    fpr, update_op = metrics.streaming_false_positive_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_fpr = fpr.eval()
+      for _ in range(10):
+        self.assertEqual(initial_fpr, fpr.eval())
+
+  def testAllCorrect(self):
+    np_inputs = np.random.randint(0, 2, size=(100, 1))
+
+    predictions = constant_op.constant(np_inputs)
+    labels = constant_op.constant(np_inputs)
+    fpr, update_op = metrics.streaming_false_positive_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(0, fpr.eval())
+
+  def testSomeCorrect(self):
+    predictions = constant_op.constant([1, 0, 1, 0], shape=(1, 4))
+    labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+    fpr, update_op = metrics.streaming_false_positive_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.5, update_op.eval())
+      self.assertAlmostEqual(0.5, fpr.eval())
+
+  def testWeighted1d(self):
+    predictions = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    labels = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    weights = constant_op.constant([[2], [5]])
+    fpr, update_op = metrics.streaming_false_positive_rate(
+        predictions, labels, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      weighted_fp = 2.0 + 5.0
+      weighted_f = (2.0 + 2.0) + (5.0 + 5.0)
+      expected_fpr = weighted_fp / weighted_f
+      self.assertAlmostEqual(expected_fpr, update_op.eval())
+      self.assertAlmostEqual(expected_fpr, fpr.eval())
+
+  def testWeighted2d(self):
+    predictions = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    labels = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    weights = constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1]])
+    fpr, update_op = metrics.streaming_false_positive_rate(
+        predictions, labels, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      weighted_fp = 1.0 + 3.0
+      weighted_f = (1.0 + 4.0) + (2.0 + 3.0)
+      expected_fpr = weighted_fp / weighted_f
+      self.assertAlmostEqual(expected_fpr, update_op.eval())
+      self.assertAlmostEqual(expected_fpr, fpr.eval())
+
+  def testAllIncorrect(self):
+    np_inputs = np.random.randint(0, 2, size=(100, 1))
+
+    predictions = constant_op.constant(np_inputs)
+    labels = constant_op.constant(1 - np_inputs)
+    fpr, update_op = metrics.streaming_false_positive_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(1, fpr.eval())
+
+  def testZeroFalsePositivesAndTrueNegativesGivesZeroFPR(self):
+    predictions = array_ops.ones((1, 4))
+    labels = array_ops.ones((1, 4))
+    fpr, update_op = metrics.streaming_false_positive_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(0, fpr.eval())
+
+
+class StreamingFNRTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_false_negative_rate(
+        predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
+    _assert_local_variables(self, (
+        'false_negative_rate/false_negatives/count:0',
+        'false_negative_rate/true_positives/count:0'))
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    mean, _ = metrics.streaming_false_negative_rate(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [mean])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_false_negative_rate(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = random_ops.random_uniform(
+        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
+    labels = random_ops.random_uniform(
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
+    fnr, update_op = metrics.streaming_false_negative_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_fnr = fnr.eval()
+      for _ in range(10):
+        self.assertEqual(initial_fnr, fnr.eval())
+
+  def testAllCorrect(self):
+    np_inputs = np.random.randint(0, 2, size=(100, 1))
+
+    predictions = constant_op.constant(np_inputs)
+    labels = constant_op.constant(np_inputs)
+    fnr, update_op = metrics.streaming_false_negative_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(0, fnr.eval())
+
+  def testSomeCorrect(self):
+    predictions = constant_op.constant([1, 0, 1, 0], shape=(1, 4))
+    labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+    fnr, update_op = metrics.streaming_false_negative_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.5, update_op.eval())
+      self.assertAlmostEqual(0.5, fnr.eval())
+
+  def testWeighted1d(self):
+    predictions = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    labels = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    weights = constant_op.constant([[2], [5]])
+    fnr, update_op = metrics.streaming_false_negative_rate(
+        predictions, labels, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      weighted_fn = 2.0 + 5.0
+      weighted_t = (2.0 + 2.0) + (5.0 + 5.0)
+      expected_fnr = weighted_fn / weighted_t
+      self.assertAlmostEqual(expected_fnr, update_op.eval())
+      self.assertAlmostEqual(expected_fnr, fnr.eval())
+
+  def testWeighted2d(self):
+    predictions = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    labels = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    weights = constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1]])
+    fnr, update_op = metrics.streaming_false_negative_rate(
+        predictions, labels, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      weighted_fn = 2.0 + 4.0
+      weighted_t = (2.0 + 3.0) + (1.0 + 4.0)
+      expected_fnr = weighted_fn / weighted_t
+      self.assertAlmostEqual(expected_fnr, update_op.eval())
+      self.assertAlmostEqual(expected_fnr, fnr.eval())
+
+  def testAllIncorrect(self):
+    np_inputs = np.random.randint(0, 2, size=(100, 1))
+
+    predictions = constant_op.constant(np_inputs)
+    labels = constant_op.constant(1 - np_inputs)
+    fnr, update_op = metrics.streaming_false_negative_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(1, fnr.eval())
+
+  def testZeroFalseNegativesAndTruePositivesGivesZeroFNR(self):
+    predictions = array_ops.zeros((1, 4))
+    labels = array_ops.zeros((1, 4))
+    fnr, update_op = metrics.streaming_false_negative_rate(
+        predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(0, fnr.eval())
 
 
 class StreamingCurvePointsTest(test.TestCase):
@@ -1481,7 +1737,7 @@ class StreamingAUCTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     auc, update_op = metrics.streaming_auc(predictions, labels)
 
     with self.test_session() as sess:
@@ -1714,6 +1970,170 @@ class StreamingAUCTest(test.TestCase):
         self.assertAlmostEqual(expected_auc, auc.eval(), 2)
 
 
+class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def _testResultsEqual(self, expected_dict, gotten_result):
+    """Tests that 2 results (dicts) represent the same data.
+
+    Args:
+      expected_dict: A dictionary with keys that are the names of properties
+        of PrecisionRecallData and whose values are lists of floats.
+      gotten_result: A PrecisionRecallData object.
+    """
+    gotten_dict = {k: t.eval() for k, t in gotten_result._asdict().items()}
+    self.assertItemsEqual(
+        list(expected_dict.keys()), list(gotten_dict.keys()))
+
+    for key, expected_values in expected_dict.items():
+      self.assertAllClose(expected_values, gotten_dict[key])
+
+  def _testCase(self, predictions, labels, expected_result, weights=None):
+    """Performs a test given a certain scenario of labels, predictions, weights.
+
+    Args:
+      predictions: The predictions tensor. Of type float32.
+      labels: The labels tensor. Of type bool.
+      expected_result: The expected result (dict) that maps to tensors.
+      weights: Optional weights tensor.
+    """
+    with self.test_session() as sess:
+      predictions_tensor = constant_op.constant(
+          predictions, dtype=dtypes_lib.float32)
+      labels_tensor = constant_op.constant(labels, dtype=dtypes_lib.bool)
+      weights_tensor = None
+      if weights:
+        weights_tensor = constant_op.constant(weights, dtype=dtypes_lib.float32)
+      gotten_result, update_op = (
+          metric_ops.streaming_precision_recall_at_equal_thresholds(
+              predictions=predictions_tensor,
+              labels=labels_tensor,
+              num_thresholds=3,
+              weights=weights_tensor))
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+
+      self._testResultsEqual(expected_result, gotten_result)
+
+  def testVars(self):
+    metric_ops.streaming_precision_recall_at_equal_thresholds(
+        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
+        labels=constant_op.constant([True], dtype=dtypes_lib.bool))
+    _assert_local_variables(
+        self,
+        (
+            'precision_recall_at_equal_thresholds/variables/tp_buckets:0',
+            'precision_recall_at_equal_thresholds/variables/fp_buckets:0'
+        ))
+
+  def testVarsWithName(self):
+    metric_ops.streaming_precision_recall_at_equal_thresholds(
+        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
+        labels=constant_op.constant([True], dtype=dtypes_lib.bool),
+        name='foo')
+    _assert_local_variables(
+        self, ('foo/variables/tp_buckets:0', 'foo/variables/fp_buckets:0'))
+
+  def testValuesAreIdempotent(self):
+    predictions = constant_op.constant(
+        np.random.uniform(size=(10, 3)), dtype=dtypes_lib.float32)
+    labels = constant_op.constant(
+        np.random.uniform(size=(10, 3)) > 0.5, dtype=dtypes_lib.bool)
+
+    result, update_op = (
+        metric_ops.streaming_precision_recall_at_equal_thresholds(
+            predictions=predictions, labels=labels))
+
+    with self.test_session() as sess:
+      # Run several updates.
+      sess.run(variables.local_variables_initializer())
+      for _ in range(3):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_result = {k: value.eval().tolist() for k, value in
+                        result._asdict().items()}
+      for _ in range(3):
+        self._testResultsEqual(initial_result, result)
+
+  def testAllTruePositives(self):
+    self._testCase([[1]], [[True]], {
+        'tp': [1, 1, 1],
+        'fp': [0, 0, 0],
+        'tn': [0, 0, 0],
+        'fn': [0, 0, 0],
+        'precision': [1.0, 1.0, 1.0],
+        'recall': [1.0, 1.0, 1.0],
+        'thresholds': [0.0, 0.5, 1.0],
+    })
+
+  def testAllTrueNegatives(self):
+    self._testCase([[0]], [[False]], {
+        'tp': [0, 0, 0],
+        'fp': [1, 0, 0],
+        'tn': [0, 1, 1],
+        'fn': [0, 0, 0],
+        'precision': [0.0, 0.0, 0.0],
+        'recall': [0.0, 0.0, 0.0],
+        'thresholds': [0.0, 0.5, 1.0],
+    })
+
+  def testAllFalsePositives(self):
+    self._testCase([[1]], [[False]], {
+        'tp': [0, 0, 0],
+        'fp': [1, 1, 1],
+        'tn': [0, 0, 0],
+        'fn': [0, 0, 0],
+        'precision': [0.0, 0.0, 0.0],
+        'recall': [0.0, 0.0, 0.0],
+        'thresholds': [0.0, 0.5, 1.0],
+    })
+
+  def testAllFalseNegatives(self):
+    self._testCase([[0]], [[True]], {
+        'tp': [1, 0, 0],
+        'fp': [0, 0, 0],
+        'tn': [0, 0, 0],
+        'fn': [0, 1, 1],
+        'precision': [1.0, 0.0, 0.0],
+        'recall': [1.0, 0.0, 0.0],
+        'thresholds': [0.0, 0.5, 1.0],
+    })
+
+  def testManyValues(self):
+    self._testCase(
+        [[0.2, 0.3, 0.4, 0.6, 0.7, 0.8]],
+        [[True, False, False, True, True, True]],
+        {
+            'tp': [4, 3, 0],
+            'fp': [2, 0, 0],
+            'tn': [0, 2, 2],
+            'fn': [0, 1, 4],
+            'precision': [2.0 / 3.0, 1.0, 0.0],
+            'recall': [1.0, 0.75, 0.0],
+            'thresholds': [0.0, 0.5, 1.0],
+        })
+
+  def testManyValuesWithWeights(self):
+    self._testCase(
+        [[0.2, 0.3, 0.4, 0.6, 0.7, 0.8]],
+        [[True, False, False, True, True, True]],
+        {
+            'tp': [1.5, 1.5, 0.0],
+            'fp': [2.5, 0.0, 0.0],
+            'tn': [0.0, 2.5, 2.5],
+            'fn': [0.0, 0.0, 1.5],
+            'precision': [0.375, 1.0, 0.0],
+            'recall': [1.0, 1.0, 0.0],
+            'thresholds': [0.0, 0.5, 1.0],
+        },
+        weights=[0.0, 0.5, 2.0, 0.0, 0.5, 1.0])
+
+
 class StreamingSpecificityAtSensitivityTest(test.TestCase):
 
   def setUp(self):
@@ -1753,7 +2173,7 @@ class StreamingSpecificityAtSensitivityTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     specificity, update_op = metrics.streaming_specificity_at_sensitivity(
         predictions, labels, sensitivity=0.7)
 
@@ -2015,7 +2435,7 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     thresholds = [0, 0.5, 1.0]
     prec, prec_op = metrics.streaming_precision_at_thresholds(predictions,
                                                               labels,
@@ -2026,12 +2446,14 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
 
-      # Run several updates, then verify idempotency.
-      sess.run([prec_op, rec_op])
+      # Run several updates.
+      for _ in range(10):
+        sess.run([prec_op, rec_op])
+
+      # Then verify idempotency.
       initial_prec = prec.eval()
       initial_rec = rec.eval()
       for _ in range(10):
-        sess.run([prec_op, rec_op])
         self.assertAllClose(initial_prec, prec.eval())
         self.assertAllClose(initial_rec, rec.eval())
 
@@ -2105,14 +2527,10 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds, weights=weights)
 
-      [prec_low, prec_high] = array_ops.split(
-          value=prec, num_or_size_splits=2, axis=0)
-      prec_low = array_ops.reshape(prec_low, shape=())
-      prec_high = array_ops.reshape(prec_high, shape=())
-      [rec_low, rec_high] = array_ops.split(
-          value=rec, num_or_size_splits=2, axis=0)
-      rec_low = array_ops.reshape(rec_low, shape=())
-      rec_high = array_ops.reshape(rec_high, shape=())
+      prec_low = prec[0]
+      prec_high = prec[1]
+      rec_low = rec[0]
+      rec_high = rec[1]
 
       sess.run(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
@@ -2135,14 +2553,10 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds, weights=weights)
 
-      [prec_low, prec_high] = array_ops.split(
-          value=prec, num_or_size_splits=2, axis=0)
-      prec_low = array_ops.reshape(prec_low, shape=())
-      prec_high = array_ops.reshape(prec_high, shape=())
-      [rec_low, rec_high] = array_ops.split(
-          value=rec, num_or_size_splits=2, axis=0)
-      rec_low = array_ops.reshape(rec_low, shape=())
-      rec_high = array_ops.reshape(rec_high, shape=())
+      prec_low = prec[0]
+      prec_high = prec[1]
+      rec_low = rec[0]
+      rec_high = rec[1]
 
       sess.run(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
@@ -2164,10 +2578,10 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(predictions, labels,
                                                            thresholds)
 
-      [prec_low, prec_high] = array_ops.split(
-          value=prec, num_or_size_splits=2, axis=0)
-      [rec_low, rec_high] = array_ops.split(
-          value=rec, num_or_size_splits=2, axis=0)
+      prec_low = prec[0]
+      prec_high = prec[1]
+      rec_low = rec[0]
+      rec_high = rec[1]
 
       sess.run(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
@@ -2266,6 +2680,470 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
       # accuracy improving
       self.assertAlmostEqual(expected_prec, prec.eval(), 2)
       self.assertAlmostEqual(expected_rec, rec.eval(), 2)
+
+
+class StreamingFPRThresholdsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_false_positive_rate_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0])
+    _assert_local_variables(self, (
+        'false_positive_rate_at_thresholds/false_positives:0',
+        'false_positive_rate_at_thresholds/true_negatives:0',))
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    fpr, _ = metrics.streaming_false_positive_rate_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0],
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [fpr])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_false_positive_rate_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0],
+        updates_collections=[my_collection_name])
+    self.assertListEqual(
+        ops.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = random_ops.random_uniform(
+        (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
+    labels = random_ops.random_uniform(
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
+    thresholds = [0, 0.5, 1.0]
+    fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+        predictions, labels, thresholds)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(fpr_op)
+
+      # Then verify idempotency.
+      initial_fpr = fpr.eval()
+      for _ in range(10):
+        self.assertAllClose(initial_fpr, fpr.eval())
+
+  def testAllCorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(inputs)
+      thresholds = [0.5]
+      fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fpr_op)
+
+      self.assertEqual(0, fpr.eval())
+
+  def testSomeCorrect(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+      thresholds = [0.5]
+      fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fpr_op)
+
+      self.assertAlmostEqual(0.5, fpr.eval())
+
+  def testAllIncorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(1 - inputs, dtype=dtypes_lib.float32)
+      thresholds = [0.5]
+      fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fpr_op)
+
+      self.assertAlmostEqual(1, fpr.eval())
+
+  def testWeights1d(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
+      weights = constant_op.constant(
+          [[0], [1]], shape=(2, 1), dtype=dtypes_lib.float32)
+      thresholds = [0.5, 1.1]
+      fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+          predictions, labels, thresholds, weights=weights)
+
+      fpr_low = fpr[0]
+      fpr_high = fpr[1]
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fpr_op)
+
+      self.assertAlmostEqual(0.0, fpr_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, fpr_high.eval(), places=5)
+
+  def testWeights2d(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
+      weights = constant_op.constant(
+          [[0, 0], [1, 1]], shape=(2, 2), dtype=dtypes_lib.float32)
+      thresholds = [0.5, 1.1]
+      fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+          predictions, labels, thresholds, weights=weights)
+
+      fpr_low = fpr[0]
+      fpr_high = fpr[1]
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fpr_op)
+
+      self.assertAlmostEqual(0.0, fpr_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, fpr_high.eval(), places=5)
+
+  def testExtremeThresholds(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 1, 1, 1], shape=(1, 4))
+      thresholds = [-1.0, 2.0]  # lower/higher than any values
+      fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      fpr_low = fpr[0]
+      fpr_high = fpr[1]
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fpr_op)
+
+      self.assertAlmostEqual(1.0, fpr_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, fpr_high.eval(), places=5)
+
+  def testZeroLabelsPredictions(self):
+    with self.test_session() as sess:
+      predictions = array_ops.zeros([4], dtype=dtypes_lib.float32)
+      labels = array_ops.zeros([4])
+      thresholds = [0.5]
+      fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fpr_op)
+
+      self.assertAlmostEqual(0, fpr.eval(), 6)
+
+  def testWithMultipleUpdates(self):
+    num_samples = 1000
+    batch_size = 10
+    num_batches = int(num_samples / batch_size)
+
+    # Create the labels and data.
+    labels = np.random.randint(0, 2, size=(num_samples, 1))
+    noise = np.random.normal(0.0, scale=0.2, size=(num_samples, 1))
+    predictions = 0.4 + 0.2 * labels + noise
+    predictions[predictions > 1] = 1
+    predictions[predictions < 0] = 0
+    thresholds = [0.3]
+
+    fp = 0
+    tn = 0
+    for i in range(num_samples):
+      if predictions[i] > thresholds[0]:
+        if labels[i] == 0:
+          fp += 1
+      else:
+        if labels[i] == 0:
+          tn += 1
+    epsilon = 1e-7
+    expected_fpr = fp / (epsilon + fp + tn)
+
+    labels = labels.astype(np.float32)
+    predictions = predictions.astype(np.float32)
+
+    with self.test_session() as sess:
+      # Reshape the data so its easy to queue up:
+      predictions_batches = predictions.reshape((batch_size, num_batches))
+      labels_batches = labels.reshape((batch_size, num_batches))
+
+      # Enqueue the data:
+      predictions_queue = data_flow_ops.FIFOQueue(
+          num_batches, dtypes=dtypes_lib.float32, shapes=(batch_size,))
+      labels_queue = data_flow_ops.FIFOQueue(
+          num_batches, dtypes=dtypes_lib.float32, shapes=(batch_size,))
+
+      for i in range(int(num_batches)):
+        tf_prediction = constant_op.constant(predictions_batches[:, i])
+        tf_label = constant_op.constant(labels_batches[:, i])
+        sess.run([
+            predictions_queue.enqueue(tf_prediction),
+            labels_queue.enqueue(tf_label)
+        ])
+
+      tf_predictions = predictions_queue.dequeue()
+      tf_labels = labels_queue.dequeue()
+
+      fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
+          tf_predictions, tf_labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      for _ in range(int(num_samples / batch_size)):
+        sess.run(fpr_op)
+      # Since this is only approximate, we can't expect a 6 digits match.
+      # Although with higher number of samples/thresholds we should see the
+      # accuracy improving
+      self.assertAlmostEqual(expected_fpr, fpr.eval(), 2)
+
+
+class StreamingFNRThresholdsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.streaming_false_negative_rate_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0])
+    _assert_local_variables(self, (
+        'false_negative_rate_at_thresholds/false_negatives:0',
+        'false_negative_rate_at_thresholds/true_positives:0',))
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    fnr, _ = metrics.streaming_false_negative_rate_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0],
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [fnr])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_false_negative_rate_at_thresholds(
+        predictions=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        thresholds=[0, 0.5, 1.0],
+        updates_collections=[my_collection_name])
+    self.assertListEqual(
+        ops.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = random_ops.random_uniform(
+        (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
+    labels = random_ops.random_uniform(
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
+    thresholds = [0, 0.5, 1.0]
+    fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+        predictions, labels, thresholds)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(fnr_op)
+
+      # Then verify idempotency.
+      initial_fnr = fnr.eval()
+      for _ in range(10):
+        self.assertAllClose(initial_fnr, fnr.eval())
+
+  def testAllCorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(inputs)
+      thresholds = [0.5]
+      fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fnr_op)
+
+      self.assertEqual(0, fnr.eval())
+
+  def testSomeCorrect(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+      thresholds = [0.5]
+      fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fnr_op)
+
+      self.assertAlmostEqual(0.5, fnr.eval())
+
+  def testAllIncorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(1 - inputs, dtype=dtypes_lib.float32)
+      thresholds = [0.5]
+      fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fnr_op)
+
+      self.assertAlmostEqual(1, fnr.eval())
+
+  def testWeights1d(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
+      weights = constant_op.constant(
+          [[0], [1]], shape=(2, 1), dtype=dtypes_lib.float32)
+      thresholds = [0.5, 1.1]
+      fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+          predictions, labels, thresholds, weights=weights)
+
+      fnr_low = fnr[0]
+      fnr_high = fnr[1]
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fnr_op)
+
+      self.assertAlmostEqual(0.0, fnr_low.eval(), places=5)
+      self.assertAlmostEqual(1.0, fnr_high.eval(), places=5)
+
+  def testWeights2d(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
+      weights = constant_op.constant(
+          [[0, 0], [1, 1]], shape=(2, 2), dtype=dtypes_lib.float32)
+      thresholds = [0.5, 1.1]
+      fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+          predictions, labels, thresholds, weights=weights)
+
+      fnr_low = fnr[0]
+      fnr_high = fnr[1]
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fnr_op)
+
+      self.assertAlmostEqual(0.0, fnr_low.eval(), places=5)
+      self.assertAlmostEqual(1.0, fnr_high.eval(), places=5)
+
+  def testExtremeThresholds(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 1, 1, 1], shape=(1, 4))
+      thresholds = [-1.0, 2.0]  # lower/higher than any values
+      fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      fnr_low = fnr[0]
+      fnr_high = fnr[1]
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fnr_op)
+
+      self.assertAlmostEqual(0.0, fnr_low.eval())
+      self.assertAlmostEqual(1.0, fnr_high.eval())
+
+  def testZeroLabelsPredictions(self):
+    with self.test_session() as sess:
+      predictions = array_ops.zeros([4], dtype=dtypes_lib.float32)
+      labels = array_ops.zeros([4])
+      thresholds = [0.5]
+      fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+          predictions, labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(fnr_op)
+
+      self.assertAlmostEqual(0, fnr.eval(), 6)
+
+  def testWithMultipleUpdates(self):
+    num_samples = 1000
+    batch_size = 10
+    num_batches = int(num_samples / batch_size)
+
+    # Create the labels and data.
+    labels = np.random.randint(0, 2, size=(num_samples, 1))
+    noise = np.random.normal(0.0, scale=0.2, size=(num_samples, 1))
+    predictions = 0.4 + 0.2 * labels + noise
+    predictions[predictions > 1] = 1
+    predictions[predictions < 0] = 0
+    thresholds = [0.3]
+
+    fn = 0
+    tp = 0
+    for i in range(num_samples):
+      if predictions[i] > thresholds[0]:
+        if labels[i] == 1:
+          tp += 1
+      else:
+        if labels[i] == 1:
+          fn += 1
+    epsilon = 1e-7
+    expected_fnr = fn / (epsilon + fn + tp)
+
+    labels = labels.astype(np.float32)
+    predictions = predictions.astype(np.float32)
+
+    with self.test_session() as sess:
+      # Reshape the data so its easy to queue up:
+      predictions_batches = predictions.reshape((batch_size, num_batches))
+      labels_batches = labels.reshape((batch_size, num_batches))
+
+      # Enqueue the data:
+      predictions_queue = data_flow_ops.FIFOQueue(
+          num_batches, dtypes=dtypes_lib.float32, shapes=(batch_size,))
+      labels_queue = data_flow_ops.FIFOQueue(
+          num_batches, dtypes=dtypes_lib.float32, shapes=(batch_size,))
+
+      for i in range(int(num_batches)):
+        tf_prediction = constant_op.constant(predictions_batches[:, i])
+        tf_label = constant_op.constant(labels_batches[:, i])
+        sess.run([
+            predictions_queue.enqueue(tf_prediction),
+            labels_queue.enqueue(tf_label)
+        ])
+
+      tf_predictions = predictions_queue.dequeue()
+      tf_labels = labels_queue.dequeue()
+
+      fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
+          tf_predictions, tf_labels, thresholds)
+
+      sess.run(variables.local_variables_initializer())
+      for _ in range(int(num_samples / batch_size)):
+        sess.run(fnr_op)
+      # Since this is only approximate, we can't expect a 6 digits match.
+      # Although with higher number of samples/thresholds we should see the
+      # accuracy improving
+      self.assertAlmostEqual(expected_fnr, fnr.eval(), 2)
 
 
 # TODO(ptucker): Remove when we remove `streaming_recall_at_k`.
@@ -4978,7 +5856,7 @@ class StreamingMeanIOUTest(test.TestCase):
       sess.run(variables.local_variables_initializer())
       for _ in range(5):
         sess.run(update_op)
-      desired_output = np.mean([1.0 / 3.0, 2.0 / 4.0, 0.])
+      desired_output = np.mean([1.0 / 3.0, 2.0 / 4.0])
       self.assertAlmostEqual(desired_output, miou.eval())
 
   def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
@@ -5059,6 +5937,58 @@ class StreamingMeanIOUTest(test.TestCase):
       self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
       desired_miou = np.mean([2. / 4., 4. / 6.])
       self.assertAlmostEqual(desired_miou, miou.eval())
+
+  def testMissingClassInLabels(self):
+    labels = constant_op.constant([
+      [[0, 0, 1, 1, 0, 0],
+       [1, 0, 0, 0, 0, 1]],
+      [[1, 1, 1, 1, 1, 1],
+       [0, 0, 0, 0, 0, 0]]])
+    predictions = constant_op.constant([
+      [[0, 0, 2, 1, 1, 0],
+       [0, 1, 2, 2, 0, 1]],
+      [[0, 0, 2, 1, 1, 1],
+       [1, 1, 2, 0, 0, 0]]])
+    num_classes = 3
+    with self.test_session() as sess:
+      miou, update_op = metrics.streaming_mean_iou(
+          predictions, labels, num_classes)
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual([[7, 4, 3], [3, 5, 2], [0, 0, 0]], update_op.eval())
+      self.assertAlmostEqual(
+        1 / 3 * (7 / (7 + 3 + 7) + 5 / (5 + 4 + 5) + 0 / (0 + 5 + 0)),
+        miou.eval())
+
+  def testMissingClassOverallSmall(self):
+    labels = constant_op.constant([0])
+    predictions = constant_op.constant([0])
+    num_classes = 2
+    with self.test_session() as sess:
+      miou, update_op = metrics.streaming_mean_iou(
+          predictions, labels, num_classes)
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual([[1, 0], [0, 0]], update_op.eval())
+      self.assertAlmostEqual(1, miou.eval())
+
+  def testMissingClassOverallLarge(self):
+    labels = constant_op.constant([
+      [[0, 0, 1, 1, 0, 0],
+       [1, 0, 0, 0, 0, 1]],
+      [[1, 1, 1, 1, 1, 1],
+       [0, 0, 0, 0, 0, 0]]])
+    predictions = constant_op.constant([
+      [[0, 0, 1, 1, 0, 0],
+       [1, 1, 0, 0, 1, 1]],
+      [[0, 0, 0, 1, 1, 1],
+       [1, 1, 1, 0, 0, 0]]])
+    num_classes = 3
+    with self.test_session() as sess:
+      miou, update_op = metrics.streaming_mean_iou(
+          predictions, labels, num_classes)
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual([[9, 5, 0], [3, 7, 0], [0, 0, 0]], update_op.eval())
+      self.assertAlmostEqual(
+        1 / 2 * (9 / (9 + 3 + 5) + 7 / (7 + 5 + 3)), miou.eval())
 
 
 class StreamingConcatTest(test.TestCase):

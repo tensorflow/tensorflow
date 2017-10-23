@@ -47,7 +47,7 @@ HloModule::HloModule(const string& name, const HloModuleConfig& config)
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
   computation->UniquifyName(&computation_name_uniquer_);
-  for (auto& instruction : computation->instructions()) {
+  for (auto* instruction : computation->instructions()) {
     instruction->UniquifyName(&instruction_name_uniquer_);
     instruction->SetUniqueId(NewUniqueInstructionId());
   }
@@ -94,7 +94,7 @@ void HloModule::ReplaceComputations(
   new_computations.reserve(computations_.size());
 
   for (std::unique_ptr<HloComputation>& computation : computations_) {
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kCall:
         case HloOpcode::kMap:
@@ -154,8 +154,8 @@ string HloModule::ToString() const {
   std::ostringstream s;
   s << "HloModule " << name() << ":\n\n";
   s << "ENTRY " << entry_computation()->ToString() << "\n\n";
-  for (const std::unique_ptr<HloComputation>& computation : computations_) {
-    if (computation.get() != entry_computation()) {
+  for (const HloComputation* computation : MakeNonfusionComputations()) {
+    if (computation != entry_computation()) {
       s << computation->ToString() << "\n\n";
     }
   }
@@ -167,10 +167,43 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_name(name_);
   proto.set_entry_computation_name(entry_computation_->name());
   for (const HloComputation* computation : MakeComputationPostOrder()) {
+    // Fusion computations are added when the fusion instructions are created by
+    // HloInstruction::CreateFromProto.
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     HloComputationProto computation_proto = computation->ToProto();
     proto.add_computations()->Swap(&computation_proto);
   }
   return proto;
+}
+
+/* static */
+StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
+    const HloModuleProto& proto,
+    const VersionedComputationHandle& entry_computation_handle,
+    const HloModuleConfig& config) {
+  auto module =
+      MakeUnique<HloModule>(proto.name(), entry_computation_handle, config);
+  tensorflow::gtl::FlatMap<string, HloComputation*> computation_map;
+  for (const HloComputationProto& computation_proto : proto.computations()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> computation,
+                        HloComputation::CreateFromProto(
+                            module.get(), computation_proto, &computation_map));
+    CHECK_NE(computation.get(), nullptr);
+    TF_RET_CHECK(!ContainsKey(computation_map, computation->name()));
+    string computation_name = computation->name();
+    if (proto.entry_computation_name() == computation_name) {
+      computation_map[computation_name] =
+          module->AddEntryComputation(std::move(computation));
+    } else {
+      computation_map[computation_name] =
+          module->AddEmbeddedComputation(std::move(computation));
+    }
+  }
+  TF_RET_CHECK(module->entry_computation_ != nullptr);
+
+  return std::move(module);
 }
 
 namespace {
@@ -266,7 +299,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   VLOG(2) << "as a call " << call->ToString();
   VLOG(2) << "to " << nested_computation->ToString();
 
-  TF_CHECK_OK(computation->ReplaceUsesOfInstruction(output, call));
+  TF_CHECK_OK(output->ReplaceAllUsesWith(call));
   for (auto i = instructions_to_outline.rbegin();
        i != instructions_to_outline.rend(); ++i) {
     TF_CHECK_OK(computation->RemoveInstruction(*i));
@@ -281,7 +314,7 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // module).
   std::set<HloComputation*> nonroot_computations;
   for (auto& computation : computations_) {
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
            instruction->called_computations()) {
         nonroot_computations.insert(called_computation);
@@ -313,6 +346,17 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
+std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
+  std::vector<HloComputation*> result;
+  for (auto* c : computations()) {
+    if (c->IsFusionComputation()) {
+      continue;
+    }
+    result.push_back(c);
+  }
+  return result;
+}
+
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = MakeUnique<HloModule>(name_ + "-" + suffix);
@@ -333,7 +377,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
   }
 
   for (auto& cloned_computation : module->computations_) {
-    for (auto& instruction : cloned_computation->instructions()) {
+    for (auto* instruction : cloned_computation->instructions()) {
       // Rewrite instruction's called_computation to point to the cloned
       // computations.
       instruction->ReplaceCalledComputations(

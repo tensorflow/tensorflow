@@ -32,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
@@ -79,9 +80,13 @@ def _sigmoid(logits):
 
 
 def _sigmoid_cross_entropy(labels, logits):
+  """Returns sigmoid cross entropy averaged over classes."""
   sigmoid_logits = _sigmoid(logits)
-  return (-labels * np.log(sigmoid_logits)
-          -(1 - labels) * np.log(1 - sigmoid_logits))
+  unreduced_result = (
+      -labels * np.log(sigmoid_logits)
+      -(1 - labels) * np.log(1 - sigmoid_logits))
+  # Mean over classes
+  return np.mean(unreduced_result, axis=-1, keepdims=True)
 
 
 class MultiLabelHead(test.TestCase):
@@ -138,6 +143,7 @@ class MultiLabelHead(test.TestCase):
     logits = np.array(
         [[0., 1., 2., -1.], [-1., -2., -3., 1.]], dtype=np.float32)
     expected_probabilities = _sigmoid(logits)
+    expected_export_classes = [[b'0', b'1', b'2', b'3']] * 2
 
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
@@ -145,7 +151,8 @@ class MultiLabelHead(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        ('', _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
+        (_DEFAULT_SERVING_KEY, 'predict', 'classification'),
+        spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
     with self.test_session() as sess:
@@ -161,6 +168,29 @@ class MultiLabelHead(test.TestCase):
       self.assertAllClose(
           expected_probabilities,
           sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].scores))
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
+
+  def test_predict_with_label_vocabulary(self):
+    n_classes = 4
+    head = head_lib.multi_label_head(
+        n_classes, label_vocabulary=['foo', 'bar', 'foobar', 'barfoo'])
+
+    logits = np.array(
+        [[0., 1., 2., -1.], [-1., -2., -3., 1.]], dtype=np.float32)
+    expected_export_classes = [[b'foo', b'bar', b'foobar', b'barfoo']] * 2
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
 
   def test_weight_should_not_impact_prediction(self):
     n_classes = 4
@@ -225,7 +255,7 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits
     expected_unweighted_loss = np.array(
-        [[10., 10.], [15., 0.]], dtype=np.float32)
+        [[(10. + 10.) / 2.], [(15. + 0.) / 2.]], dtype=np.float32)
     actual_unweighted_loss, _ = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
@@ -260,6 +290,18 @@ class MultiLabelHead(test.TestCase):
           r'labels shape must be \[batch_size, 2\]\. Given: \] \[2\]'):
         actual_unweighted_loss.eval(
             {labels_placeholder: np.array([1, 1], dtype=np.int64)})
+
+  def test_eval_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib.multi_label_head(n_classes=2)
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.EVAL,
+          logits=np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+          labels=None)
 
   def _test_eval(self, head, logits, labels, expected_loss, expected_metrics):
     spec = head.create_estimator_spec(
@@ -298,10 +340,8 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
-    expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
-    )
+    # Sum over examples.
+    expected_loss = np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits))
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # Average loss over examples.
@@ -330,10 +370,9 @@ class MultiLabelHead(test.TestCase):
     labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits)) /
-        n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
     )
     keys = metric_keys.MetricKeys
     expected_metrics = {
@@ -364,10 +403,9 @@ class MultiLabelHead(test.TestCase):
     labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits)) /
-        n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
     )
     keys = metric_keys.MetricKeys
     expected_metrics = {
@@ -394,9 +432,9 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits))
     )
 
     keys = metric_keys.MetricKeys
@@ -493,7 +531,7 @@ class MultiLabelHead(test.TestCase):
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits
     expected_unweighted_loss = np.array(
-        [[10., 10.], [15., 0.]], dtype=np.float32)
+        [[(10. + 10.) / 2.], [(15. + 0.) / 2.]], dtype=np.float32)
     actual_unweighted_loss, _ = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.TRAIN,
@@ -503,6 +541,22 @@ class MultiLabelHead(test.TestCase):
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_unweighted_loss, actual_unweighted_loss.eval(), atol=1e-4)
+
+  def test_train_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib.multi_label_head(n_classes=2)
+    def _no_op_train_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+          labels=None,
+          train_op_fn=_no_op_train_fn)
 
   def _test_train(self, head, logits, labels, expected_loss):
     expected_train_result = 'my_train_op'

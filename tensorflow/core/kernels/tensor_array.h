@@ -460,8 +460,9 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
         "TensorArray ", handle_.vec<string>()(1),
         ": Could not write to TensorArray index ", index,
         " because the value shape is ", value_t->shape().DebugString(),
-        " which is incompatible with the TensorArray's element shape: ",
-        element_shape_.DebugString(), ".");
+        " which is incompatible with the TensorArray's inferred element "
+        "shape: ",
+        element_shape_.DebugString(), " (consider setting infer_shape=False).");
   }
 
   if (t.read) {
@@ -530,11 +531,53 @@ template <typename Device, typename T>
 Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
                                PersistentTensor* value) {
   TF_RETURN_IF_ERROR(LockedReturnIfClosed());
-  if (index < 0 || static_cast<size_t>(index) >= tensors_.size()) {
+  if ((index < 0) ||
+      (!is_grad_ && (static_cast<size_t>(index) >= tensors_.size()))) {
     return errors::InvalidArgument("Tried to read from index ", index,
                                    " but array size is: ", tensors_.size());
   }
+  size_t index_t = static_cast<size_t>(index);
+  if (is_grad_ && (index_t >= tensors_.size() || !tensors_[index].written)) {
+    // Special case returning zeros if this is a gradient read that happens
+    // after a stop_gradients call with dynamic forward TensorArrays.
+    // There is sometimes a race condition where the gradient is not
+    // written due to stop_gradients, but is later read.
+    TensorShape element_shape;
+    if (index_t < tensors_.size() && tensors_[index].shape.dims() > 0) {
+      element_shape = tensors_[index].shape;
+    } else if (!element_shape_.IsFullyDefined()) {
+      return errors::InvalidArgument(
+          "TensorArray ", handle_.vec<string>()(1),
+          ": Could not read from gradient TensorArray index ", index,
+          ".  Furthermore, the element shape is not fully defined: ",
+          element_shape_.DebugString(),
+          ".  "
+          "It is likely you are working with a resizeable TensorArray and "
+          "stop_gradients "
+          "is not allowing the gradients to be written.  If you set the full "
+          "element_shape "
+          "property on the forward TensorArray, the proper all-zeros tensor "
+          "will be "
+          "returned instead of incurring this error.");
+    } else {
+      DCHECK(element_shape_.AsTensorShape(&element_shape));
+    }
+    if (index_t >= tensors_.size()) {
+      // Fill in tensors_ up to index to have known shape.
+      size_t old_tensors_size = tensors_.size();
+      tensors_.resize(index + 1);
+      for (size_t i = old_tensors_size; i < index + 1; ++i) {
+        tensors_[i].shape = element_shape;
+        tensors_[i].written = true;
+      }
+    } else {
+      tensors_[index].shape = element_shape;
+      tensors_[index].written = true;
+    }
+  }
+
   TensorAndState& t = tensors_[index];
+
   if (!t.written) {
     return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
                                    ": Could not read from TensorArray index ",

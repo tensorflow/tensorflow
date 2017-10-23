@@ -13,7 +13,10 @@ load(
 tf_gen_op_wrapper_py(
     name = "gen_summary_ops",
     out = "gen_summary_ops.py",
-    deps = ["//tensorflow/core:summary_ops_op_lib"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:summary_ops_op_lib",
+    ],
 )
 
 py_test(
@@ -40,9 +43,9 @@ py_library(
     deps = [
         ":gen_summary_ops",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:summary_op_util",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:context",

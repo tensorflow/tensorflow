@@ -51,6 +51,9 @@ extern const char* const kAcquireOutfeedBufferForPopulationSymbolName =
     "__xla_cpu_runtime_AcquireOutfeedBufferForPopulation";
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
     "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
+extern const char* const kParallelForkJoinSymbolName =
+    "__xla_cpu_runtime_ParallelForkJoin";
+
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix = "__xla_cpu_runtime_";
 }  // namespace runtime
 }  // namespace cpu

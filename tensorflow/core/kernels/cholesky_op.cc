@@ -112,19 +112,22 @@ class CholeskyOpGpu : public AsyncOpKernel {
                                 input.dim_size(ndims - 2), " != ", n),
         done);
 
+    if (input.NumElements() == 0) {
+      // If X is an empty matrix (0 rows, 0 col), X * X' == X.
+      // Therefore, we return X.
+      context->set_output(0, input);
+      done();
+      return;
+    }
+
     // Allocate output.
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(context,
                          context->forward_input_or_allocate_output(
                              {0}, 0, input.shape(), &output),
                          done);
-
-    if (n == 0) {
-      // If X is an empty matrix (0 rows, 0 col), X * X' == X.
-      // Therefore, we return X.
-      done();
-      return;
-    }
 
     // Copy the lower triangular part of the input matrices to the output and
     // set the strictly upper triangular part to zero. We use a pre-existing
@@ -140,35 +143,27 @@ class CholeskyOpGpu : public AsyncOpKernel {
     // Launch a Cholesky kernel for each matrix in the batch.
     const int64 batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "potrf");
+    dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
     // TODO(rmlarsen): Parallelize over batches if it turns out to be
     // an important use case.
-    CudaSolver solver(context);
-    for (int64 i = 0; i < batch_size; ++i) {
-      Scalar* output_ptr = output_reshaped.data() + i * n * n;
-      int* dev_info_ptr = dev_info.back().mutable_data() + i;
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          solver.Potrf(CUBLAS_FILL_MODE_UPPER, n, output_ptr, n, dev_info_ptr),
-          done);
+    for (int batch = 0; batch < batch_size; ++batch) {
+      OP_REQUIRES_OK_ASYNC(context,
+                           solver->Potrf(CUBLAS_FILL_MODE_UPPER, n,
+                                         &output_reshaped(batch, 0, 0), n,
+                                         &dev_info.back()(batch)),
+                           done);
     }
 
     // Register callback to check info after kernels finish.
-    auto info_checker = [context, dev_info, done](
+    auto info_checker = [context, done](
                             const Status& status,
                             const std::vector<HostLapackInfo>& /* unused */) {
-      Status full_status = status;
-      if (!full_status.ok()) {
-        full_status.Update(errors::InvalidArgument(kErrMsg));
-      }
-      OP_REQUIRES_OK_ASYNC(context, full_status, done);
+      OP_REQUIRES_ASYNC(context, status.ok(), errors::InvalidArgument(kErrMsg),
+                        done);
       done();
     };
-
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
-        done);
+    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                    std::move(info_checker));
   }
 };
 

@@ -46,7 +46,8 @@ class GpuCompiler : public LLVMCompiler {
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::vector<std::unique_ptr<HloModule>> modules,
-      std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+          stream_execs) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
@@ -61,6 +62,13 @@ class GpuCompiler : public LLVMCompiler {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     };
   }
+
+  // The triple that represents our target.
+  static const char* kTargetTriple;
+
+  // The data layout of the emitted module. Copied from computeDataLayout in
+  // NVPTXTargetMachine.cpp.
+  static const char* kDataLayout;
 
  private:
   // The parent directory of libdevice IR libraries.

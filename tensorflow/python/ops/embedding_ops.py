@@ -222,7 +222,7 @@ def _embedding_lookup_and_transform(params,
             result = transform_fn(_clip(result, pids, max_norm))
         partitioned_result.append(result)
       # Stitch these back together
-      ret = data_flow_ops.dynamic_stitch(
+      ret = data_flow_ops.parallel_dynamic_stitch(
           pindices, partitioned_result, name=name)
 
       # Determine the static element shape.
