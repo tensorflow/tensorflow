@@ -8,39 +8,39 @@
 namespace xla {
 namespace poplarplugin {
 
-bool IsTruncatedNormalWhile(HloInstruction *inst) {
+bool IsTruncatedNormalWhile(const HloInstruction *inst) {
   return inst->while_condition()->name().substr(0, 16) == "truncated_normal";
 }
 
-bool IsRandomBernoulli(HloInstruction *inst) {
+bool IsRandomBernoulli(const HloInstruction *inst) {
   return inst->random_distribution() == RandomDistribution::RNG_BERNOULLI;
 }
 
-bool IsRandomNormal(HloInstruction *inst) {
+bool IsRandomNormal(const HloInstruction *inst) {
   return inst->random_distribution() == RandomDistribution::RNG_NORMAL;
 }
 
-bool IsRandomUniform(HloInstruction *inst) {
+bool IsRandomUniform(const HloInstruction *inst) {
   return inst->random_distribution() == RandomDistribution::RNG_UNIFORM;
 }
 
-bool IsConstantZero(HloInstruction *inst) {
+bool IsConstantZero(const HloInstruction *inst) {
   return !ShapeUtil::HasZeroElements(inst->shape()) &&
          inst->literal().IsAll(0);
 }
 
-bool IsConstantHalf(HloInstruction *inst) {
+bool IsConstantHalf(const HloInstruction *inst) {
   return !ShapeUtil::HasZeroElements(inst->shape()) &&
          inst->literal().IsAllFloat(0.5);
 }
 
-bool IsPoplarConvolution(HloInstruction *inst) {
+bool IsPoplarConvolution(const HloInstruction *inst) {
   if (inst->to_apply()->name().substr(0, 15) == "pop_convolution") return true;
   if (inst->to_apply()->name().substr(0, 14) == "pop_depth_conv") return true;
   return false;
 }
 
-bool IsExternalPadding(HloInstruction *inst) {
+bool IsExternalPadding(const HloInstruction *inst) {
   const PaddingConfig &cfg(inst->padding_config());
   for (auto &d : cfg.dimensions()) {
     if (d.interior_padding() > 0) return false;
@@ -48,11 +48,11 @@ bool IsExternalPadding(HloInstruction *inst) {
   return true;
 }
 
-bool IsAveragePool(HloInstruction *inst) {
+bool IsAveragePool(const HloInstruction *inst) {
   return inst->metadata().op_type() == "AvgPool";
 }
 
-bool IsReductionWindowNYXC(HloInstruction *inst) {
+bool IsReductionWindowNYXC(const HloInstruction *inst) {
   const Window &window(inst->window());
   if (window.dimensions(0).size() != 1 ||
       window.dimensions(0).stride() != 1 ||
@@ -67,11 +67,11 @@ bool IsReductionWindowNYXC(HloInstruction *inst) {
   return true;
 }
 
-bool IsScalarConstant(HloInstruction *inst) {
+bool IsScalarConstant(const HloInstruction *inst) {
   return ShapeUtil::IsScalar(inst->shape());
 }
 
-bool IsDepthwisePadding(HloInstruction *inst) {
+bool IsDepthwisePadding(const HloInstruction *inst) {
   if (inst->users().size() != 1) return false;
   HloInstruction *conv = inst->users()[0];
   const Shape &conv_shape(conv->shape());
@@ -94,7 +94,7 @@ bool IsDepthwisePadding(HloInstruction *inst) {
   return true;
 }
 
-bool IsConvFilterSpatialReverse(HloInstruction *inst) {
+bool IsConvFilterSpatialReverse(const HloInstruction *inst) {
   // If this reverse feeds a convolution and it is reversing the
   // spatial dimensions of the convolution, then we can use the
   // special 'reverse spatial dimensions' feature of the convolution
@@ -113,7 +113,7 @@ bool IsConvFilterSpatialReverse(HloInstruction *inst) {
   return true;
 }
 
-bool IsBiasReduce(HloInstruction *inst) {
+bool IsBiasReduce(const HloInstruction *inst) {
   HloInstruction* root(inst->to_apply()->root_instruction());
   if (!hlo_query::AllOperandsAreParameters(*root)) {
     return false;
@@ -136,13 +136,35 @@ bool IsBiasReduce(HloInstruction *inst) {
   return true;
 }
 
-bool IsOutputFeed(HloInstruction *inst) {
+bool IsOutputFeed(const HloInstruction *inst) {
   HloInstruction* root = inst->parent()->root_instruction();
   if (inst == root) return true;
   if (inst->user_count() != 1) return false;
   if (inst->users()[0] == root) return true;
   return false;
 }
+
+bool IsForwardConvolution(const HloInstruction *inst) {
+  const std::string& tf_core_op = inst->metadata().op_type();
+  return (tf_core_op == "Conv2D" ||
+          tf_core_op == "Conv3D" ||
+          tf_core_op == "DepthwiseConv2dNative");
+}
+
+bool IsGradientConvolution(const HloInstruction *inst) {
+  const std::string& tf_core_op = inst->metadata().op_type();
+  return (tf_core_op == "Conv2DBackpropInput" ||
+          tf_core_op == "Conv3DBackpropInputV2" ||
+          tf_core_op == "DepthwiseConv2dNativeBackpropInput");
+}
+
+bool IsWeightUpdateConvolution(const HloInstruction *inst) {
+  const std::string& tf_core_op = inst->metadata().op_type();
+  return (tf_core_op == "Conv2DBackpropFilter" ||
+          tf_core_op == "Conv3DBackpropFilterV2" ||
+          tf_core_op == "DepthwiseConv2dNativeBackpropFilter");
+}
+
 
 }
 }

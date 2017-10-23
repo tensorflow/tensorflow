@@ -1,13 +1,16 @@
 #include <algorithm>
 
-#include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
-#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
+
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
@@ -157,21 +160,13 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
 }
 
 static popconv::Pass GetConvolutionPass(const HloInstruction* inst) {
-  // TODO - add other dimensionality
-  const std::string& tf_core_op = inst->metadata().op_type();
-  if (tf_core_op == "Conv2D" ||
-      tf_core_op == "Conv3D" ||
-      tf_core_op == "DepthwiseConv2dNative") {
+  if (IsForwardConvolution(inst)) {
     return popconv::Pass::TRAINING_FWD;
   }
-  if (tf_core_op == "Conv2DBackpropInput" ||
-      tf_core_op == "Conv3DBackpropInputV2" ||
-      tf_core_op == "DepthwiseConv2dNativeBackpropInput") {
+  if (IsGradientConvolution(inst)) {
     return popconv::Pass::TRAINING_BWD;
   }
-  if (tf_core_op == "Conv2DBackpropFilter" ||
-      tf_core_op == "Conv3DBackpropFilterV2" ||
-      tf_core_op == "DepthwiseConv2dNativeBackpropFilter") {
+  if (IsWeightUpdateConvolution(inst)) {
     return popconv::Pass::TRAINING_WU;
   }
   return popconv::Pass::NONE;
