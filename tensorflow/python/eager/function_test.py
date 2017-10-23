@@ -86,6 +86,19 @@ class FunctionTest(test.TestCase):
       op = call()
       self.assertAllEqual(sess.run(op), 2.0)
 
+  def testGraphModeManyFunctions(self):
+    with context.graph_mode(), self.test_session():
+
+      @function.defun
+      def f(x):
+        return x * x
+
+      @function.defun
+      def g(x):
+        return f(x) + 1
+
+      self.assertAllEqual(g(constant_op.constant(2.0)).eval(), 5.0)
+
   def testTensorConversionWithDefun(self):
 
     @function.defun
