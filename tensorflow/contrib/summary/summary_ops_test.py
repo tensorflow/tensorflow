@@ -40,9 +40,9 @@ class TargetTest(test_util.TensorFlowTestCase):
       summary_ops.create_summary_file_writer(logdir, max_queue=0, name='t0')
 
   def testShouldRecordSummary(self):
-    self.assertFalse(summary_ops.should_record_summaries().numpy())
+    self.assertFalse(summary_ops.should_record_summaries())
     summary_ops.always_record_summaries()
-    self.assertTrue(summary_ops.should_record_summaries().numpy())
+    self.assertTrue(summary_ops.should_record_summaries())
 
   def testSummaryOps(self):
     training_util.get_or_create_global_step()

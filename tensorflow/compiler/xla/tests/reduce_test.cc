@@ -457,7 +457,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
   const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, 2, cols / 2});
   auto input = builder.Parameter(0, input_shape, "input");
   auto zero = builder.ConstantR0<float>(0.0);
-  auto log_ = builder.Log(input);
+  auto log_ = builder.Tanh(input);
   auto reshape = builder.Reshape(log_, {rows, cols});
   builder.Reduce(reshape, zero, add_f32, /*dimensions_to_reduce=*/{0});
 
@@ -473,7 +473,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
     for (int64 colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;
       for (int64 rowno = 0; rowno < rows; ++rowno) {
-        column_sum += log(input_data(rowno, major, colno));
+        column_sum += tanh(input_data(rowno, major, colno));
       }
       expected.push_back(column_sum);
     }
