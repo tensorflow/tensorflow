@@ -225,6 +225,11 @@ class Conv2DFastBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
 #if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
@@ -317,6 +322,11 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
+
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
 
 // TODO(andydavis) Consider moving code shared with
 // Conv2DCustomBackpropFilterOp into a shared helper function.
@@ -603,6 +613,11 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
     // For now we take the stride from the second and third dimensions only (we
     // do not support striding on the batch or depth dimension).
     const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
@@ -870,39 +885,34 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
-    std::vector<AlgorithmDesc::Index> algorithms;
+    std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
-    // TODO(benbarsdell): Ideally this should not attempt using tensor op math
-    // if it's not enabled.
-    for (bool use_tensor_ops : {false, true}) {
-      for (auto algo_index : algorithms) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        AlgorithmDesc profile_algorithm(algo_index, use_tensor_ops);
-        CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
-                                                ctx);
-        ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardDataWithAlgorithm(
-                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
-          if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
-            }
+    for (auto profile_algorithm : algorithms) {
+      // TODO(zhengxq): profile each algorithm multiple times to better
+      // accuracy.
+      CudnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                              ctx);
+      ProfileResult profile_result;
+      bool cudnn_launch_status =
+          stream
+              ->ThenConvolveBackwardDataWithAlgorithm(
+                  filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                  AlgorithmConfig(profile_algorithm), &profile_result)
+              .ok();
+      if (cudnn_launch_status) {
+        if (profile_result.is_valid()) {
+          if (profile_result.elapsed_time_in_ms() <
+              best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+          if (scratch_allocator.TotalByteSize() == 0 &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result_no_scratch.elapsed_time_in_ms()) {
+            best_result_no_scratch = profile_result;
           }
         }
       }

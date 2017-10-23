@@ -223,6 +223,7 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
   if len(grad_ys) != len(ys):
     raise ValueError("Passed %d grad_ys for %d ys" % (len(grad_ys), len(ys)))
   grad_ys = ops.convert_n_to_tensor_or_indexed_slices(grad_ys, name="grad_y")
+  new_grad_ys = []
   for i in xrange(len(grad_ys)):
     grad_y = grad_ys[i]
     y = ys[i]
@@ -232,28 +233,49 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
             "Gradients of complex tensors must set grad_ys (y.dtype = %r)" %
             y.dtype)
       with _maybe_colocate_with(y.op, colocate_gradients_with_ops):
-        grad_ys[i] = array_ops.fill(
+        new_grad_ys.append(array_ops.fill(
             array_ops.shape(y), constant_op.constant(
-                1, dtype=y.dtype))
+                1, dtype=y.dtype, name="grad_ys_%d" % i)))
       continue
     if y.dtype.is_floating or y.dtype.is_integer:
       if not grad_y.dtype.is_floating and not grad_y.dtype.is_integer:
         raise TypeError("Gradient type %s generated for real or "
-                         "integer-valued tensor %s with type %s must be "
-                         "real or integer" %
-                         (dtypes.as_dtype(grad_y.dtype).name, y,
-                          dtypes.as_dtype(y.dtype).name))
+                        "integer-valued tensor %s with type %s must be "
+                        "real or integer" %
+                        (dtypes.as_dtype(grad_y.dtype).name, y,
+                         dtypes.as_dtype(y.dtype).name))
     elif y.dtype.is_complex:
       if not grad_y.dtype.is_complex:
         raise TypeError("Gradient type %s generated for complex-valued "
-                         "tensor %s with type %s must be real" %
-                         (dtypes.as_dtype(grad_y.dtype).name, y,
-                          dtypes.as_dtype(y.dtype).name))
+                        "tensor %s with type %s must be real" %
+                        (dtypes.as_dtype(grad_y.dtype).name, y,
+                         dtypes.as_dtype(y.dtype).name))
     else:
       raise TypeError("Tensor %s with type %s must be numeric "
                       "to obtain a default gradient" %
                       (y, dtypes.as_dtype(y.dtype).name))
-  return grad_ys
+    # Create a grad_y tensor in the name scope of the gradient.
+    # Required for TensorArrays to identify which gradient call a
+    # grad_y value is coming from.
+    if isinstance(grad_y, ops.IndexedSlices):
+      new_grad_ys.append(
+          ops.IndexedSlices(
+              indices=(array_ops.identity(grad_y.indices,
+                                          name="grad_ys_%d_indices" % i)
+                       if isinstance(grad_y.indices, ops.Tensor)
+                       else grad_y.indices),
+              values=(array_ops.identity(grad_y.values,
+                                         name="grad_ys_%d_values" % i)
+                      if isinstance(grad_y.values, ops.Tensor)
+                      else grad_y.values),
+              dense_shape=(array_ops.identity(grad_y.dense_shape,
+                                              name="grad_ys_%d_shape" % i)
+                           if isinstance(grad_y.dense_shape, ops.Tensor)
+                           else grad_y.dense_shape)))
+    else:
+      new_grad_ys.append(array_ops.identity(grad_y, name="grad_ys_%d" % i))
+
+  return new_grad_ys
 
 
 def _IsTrainable(tensor):
@@ -594,11 +616,19 @@ def gradients(ys,
           # If no grad_fn is defined or none of out_grads is available,
           # just propagate a list of None backwards.
           in_grads = [None] * len(op.inputs)
-        for t_in, in_grad in zip(op.inputs, in_grads):
+        for i, (t_in, in_grad) in enumerate(zip(op.inputs, in_grads)):
           if in_grad is not None:
             if (isinstance(in_grad, ops.Tensor) and
                 t_in.dtype != dtypes.resource):
-              in_grad.set_shape(t_in.get_shape())
+              try:
+                in_grad.set_shape(t_in.get_shape())
+              except ValueError:
+                raise ValueError(
+                    "Incompatible shapes between op input and calculated "
+                    "input gradient.  Forward operation: %s.  Input index: %d. "
+                    "Original input shape: %s.  "
+                    "Calculated input gradient shape: %s"
+                    % (op.name, i, t_in.shape, in_grad.shape))
             _SetGrad(grads, t_in, in_grad)
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)

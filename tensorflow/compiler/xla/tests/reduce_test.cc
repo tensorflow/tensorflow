@@ -120,10 +120,10 @@ class ReduceTest : public ClientLibraryTestBase {
     Computation reduce;
     if (and_reduce) {
       init_value = builder.ConstantR0<bool>(true);
-      reduce = CreateScalarLogicalAndComputation(&builder);
+      reduce = CreateScalarAndComputation(&builder);
     } else {
       init_value = builder.ConstantR0<bool>(false);
-      reduce = CreateScalarLogicalOrComputation(&builder);
+      reduce = CreateScalarOrComputation(&builder);
     }
     builder.Reduce(pred_values, init_value, reduce,
                    /*dimensions_to_reduce=*/{0});
@@ -457,7 +457,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
   const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, 2, cols / 2});
   auto input = builder.Parameter(0, input_shape, "input");
   auto zero = builder.ConstantR0<float>(0.0);
-  auto log_ = builder.Log(input);
+  auto log_ = builder.Tanh(input);
   auto reshape = builder.Reshape(log_, {rows, cols});
   builder.Reduce(reshape, zero, add_f32, /*dimensions_to_reduce=*/{0});
 
@@ -473,7 +473,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
     for (int64 colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;
       for (int64 rowno = 0; rowno < rows; ++rowno) {
-        column_sum += log(input_data(rowno, major, colno));
+        column_sum += tanh(input_data(rowno, major, colno));
       }
       expected.push_back(column_sum);
     }
@@ -729,16 +729,14 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
                           std::numeric_limits<uint32>::max());
 }
 
-XLA_TEST_F(ReduceTest, VectorizedReduce_LogicalAnd) {
-  RunVectorizedReduceTestForType<bool>(CreateScalarLogicalAndComputation,
-                                       [](bool a, bool b) { return a && b; },
-                                       true);
+XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanAnd) {
+  RunVectorizedReduceTestForType<bool>(
+      CreateScalarAndComputation, [](bool a, bool b) { return a && b; }, true);
 }
 
-XLA_TEST_F(ReduceTest, VectorizedReduce_LogicalOr) {
-  RunVectorizedReduceTestForType<bool>(CreateScalarLogicalOrComputation,
-                                       [](bool a, bool b) { return a || b; },
-                                       false);
+XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanOr) {
+  RunVectorizedReduceTestForType<bool>(
+      CreateScalarOrComputation, [](bool a, bool b) { return a || b; }, false);
 }
 
 class ReduceR3ToR2Test : public ReduceTest,

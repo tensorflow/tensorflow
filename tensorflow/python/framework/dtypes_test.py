@@ -269,6 +269,9 @@ class TypesTest(test_util.TensorFlowTestCase):
           self.assertEquals(dtype.max, 4294967295)
       if numpy_dtype == np.uint32:
         self.assertEquals(dtype.min, 0)
+        self.assertEquals(dtype.max, 4294967295)
+      if numpy_dtype == np.uint64:
+        self.assertEquals(dtype.min, 0)
         self.assertEquals(dtype.max, 18446744073709551615)
       if numpy_dtype in (np.float16, np.float32, np.float64):
         self.assertEquals(dtype.min, np.finfo(numpy_dtype).min)

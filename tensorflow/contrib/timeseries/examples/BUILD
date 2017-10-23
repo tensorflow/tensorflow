@@ -25,6 +25,7 @@ py_test(
     srcs = ["predict_test.py"],
     data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/67513579
     deps = [
         ":predict",
         "//tensorflow/python:client_testlib",
@@ -96,6 +97,7 @@ py_test(
     timeout = "long",  # Moderate but for asan
     srcs = ["lstm_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [":lstm"],
 )
 

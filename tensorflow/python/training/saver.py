@@ -163,6 +163,7 @@ class BaseSaverBuilder(object):
     """SaveableObject implementation that handles ResourceVariables."""
 
     def __init__(self, var, slice_spec, name):
+      self._var_device = var.device
       if isinstance(var, ops.Tensor):
         self.handle_op = var.op.inputs[0]
         tensor = var
@@ -190,6 +191,9 @@ class BaseSaverBuilder(object):
       restored_tensor = restored_tensors[0]
       if restored_shapes is not None:
         restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
+      # Copy the restored tensor to the variable's device.
+      with ops.device(self._var_device):
+        restored_tensor = array_ops.identity(restored_tensor)
       return resource_variable_ops.assign_variable_op(
           self.handle_op, restored_tensor)
 
@@ -553,7 +557,14 @@ class BaseSaverBuilder(object):
           if not isinstance(var, resource_variable_ops.ResourceVariable):
             raise ValueError("Can only save/restore ResourceVariable eager "
                              "mode is enabled, type: %s." % type(var))
-          names_to_saveables[var._shared_name] = var
+          set_var = names_to_saveables.setdefault(var._shared_name, var)
+          if set_var is not var:
+            raise ValueError(
+                ("Two different ResourceVariable objects with the same "
+                 "shared_name '%s' were passed to the Saver. This likely means "
+                 "that they were created in different Graphs or isolation "
+                 "contexts, and may not be checkpointed together.") % (
+                     var._shared_name,))
 
       # pylint: enable=protected-access
     return names_to_saveables

@@ -298,6 +298,17 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   constexpr int rank = is_int8x4 ? 5 : 4;
   constexpr int vect = is_int8x4 ? 4 : 1;
 
+  if (is_int8x4) {
+    int cc_major, cc_minor;
+    stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                     &cc_minor);
+    OP_REQUIRES(
+        ctx, cc_major >= 6 && cc_minor >= 1,
+        errors::Unimplemented(
+            "FusedConv2DBiasActivation for int8 is only supported on GPUs with "
+            "compute capability 6.1 or later."));
+  }
+
   const int batch_size = GetTensorDim(conv_input_param, data_format, 'N');
   int conv_input_rows = GetTensorDim(conv_input_param, data_format, 'H');
   int conv_input_cols = GetTensorDim(conv_input_param, data_format, 'W');
@@ -493,42 +504,37 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   dnn::AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBiasActivation::GetInstance()->Find(
                                 fused_conv_parameters, &algorithm_config)) {
-    std::vector<dnn::AlgorithmDesc::Index> algorithms;
+    std::vector<dnn::AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
         fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(),
         &algorithms));
     dnn::ProfileResult best_result;
     dnn::ProfileResult best_result_no_scratch;
-    // TODO(benbarsdell): Ideally this should not attempt using tensor op math
-    // if it's not enabled.
-    for (bool use_tensor_ops : {false, true}) {
-      for (auto algo_index : algorithms) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        dnn::AlgorithmDesc profile_algorithm(algo_index, use_tensor_ops);
-        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-        dnn::ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenFusedConvolveWithAlgorithm(
-                    conv_input_desc, conv_input_ptr, conv_input_scale,
-                    filter_desc, filter_ptr, conv_desc, side_input_ptr,
-                    side_input_scale, bias_desc, bias_ptr,
-                    dnn::ActivationMode::kRelu, output_desc, &output_ptr,
-                    &scratch_allocator, dnn::AlgorithmConfig(profile_algorithm),
-                    &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
-          if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
-            }
+    for (auto profile_algorithm : algorithms) {
+      // TODO(zhengxq): profile each algorithm multiple times to better
+      // accuracy.
+      CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      dnn::ProfileResult profile_result;
+      bool cudnn_launch_status =
+          stream
+              ->ThenFusedConvolveWithAlgorithm(
+                  conv_input_desc, conv_input_ptr, conv_input_scale,
+                  filter_desc, filter_ptr, conv_desc, side_input_ptr,
+                  side_input_scale, bias_desc, bias_ptr,
+                  dnn::ActivationMode::kRelu, output_desc, &output_ptr,
+                  &scratch_allocator, dnn::AlgorithmConfig(profile_algorithm),
+                  &profile_result)
+              .ok();
+      if (cudnn_launch_status) {
+        if (profile_result.is_valid()) {
+          if (profile_result.elapsed_time_in_ms() <
+              best_result.elapsed_time_in_ms()) {
+            best_result = profile_result;
+          }
+          if (scratch_allocator.TotalByteSize() == 0 &&
+              profile_result.elapsed_time_in_ms() <
+                  best_result_no_scratch.elapsed_time_in_ms()) {
+            best_result_no_scratch = profile_result;
           }
         }
       }

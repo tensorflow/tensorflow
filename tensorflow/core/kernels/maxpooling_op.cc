@@ -1395,7 +1395,7 @@ REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")
                             .Label("eigen_tensor"),
                         MaxPoolingV2Op<GPUDevice, qint8>);
 #endif  // !defined(PLATFORM_WINDOWS)
-    
+
 #undef REGISTER_GPU_ONLY_POOL_KERNELS
 
 #endif  // GOOGLE_CUDA

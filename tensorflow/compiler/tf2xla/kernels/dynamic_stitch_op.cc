@@ -199,6 +199,7 @@ class DynamicStitchOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("DynamicStitch"), DynamicStitchOp);
+REGISTER_XLA_OP(Name("ParallelDynamicStitch"), DynamicStitchOp);
 
 }  // namespace
 }  // namespace tensorflow

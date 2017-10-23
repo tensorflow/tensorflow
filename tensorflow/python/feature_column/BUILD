@@ -86,6 +86,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",

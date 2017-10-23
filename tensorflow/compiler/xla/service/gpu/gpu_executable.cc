@@ -108,9 +108,10 @@ class HloExecutionProfiler {
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    tensorflow::StringPiece ptx, std::unique_ptr<ThunkSchedule> thunk_schedule,
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<BufferAssignment> assignment,
+    tensorflow::StringPiece ptx,
+    std::unique_ptr<const ThunkSchedule> thunk_schedule,
+    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<const BufferAssignment> assignment,
     HloCostAnalysis::ShapeSizeFunction shape_size_function)
     : Executable(std::move(hlo_module)),
       ptx_(ptx),
@@ -183,9 +184,6 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteOnStream(
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  // This ExecuteOnStream overload should only be called if has_hybrid_result is
-  // false.
-  TF_RET_CHECK(!module_config().has_hybrid_result());
 
   BufferAllocations::Builder buffer_allocations_builder;
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
@@ -263,9 +261,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  // This ExecuteOnStream overload should only be called by the LocalService
-  // which sets has_hybrid_result to true.
-  TF_RET_CHECK(module_config().has_hybrid_result());
 
   if (GetRootPointsToSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
@@ -277,9 +272,6 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
       auto param_no = allocation.parameter_number();
-      if (ShapeUtil::IsTuple(arguments[param_no]->shape())) {
-        return Unimplemented("Tuple ShapedBuffer arguments not supported");
-      }
       buffer_allocations_builder.RegisterBuffer(
           i, arguments[param_no]->buffer(/*index=*/{}));
     }
@@ -298,9 +290,8 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
 
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   auto device_ordinal = executor->device_ordinal();
-  TF_ASSIGN_OR_RETURN(auto shaped_buffer,
-                      ShapedBuffer::MakeShapedBuffer(
-                          root->shape(), executor->platform(), device_ordinal));
+  auto shaped_buffer = MakeUnique<ShapedBuffer>(
+      root->shape(), executor->platform(), device_ordinal);
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer.
@@ -310,32 +301,29 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
           ->ForEachMutableElementWithStatus(
               [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
                   const ShapeIndex& index, size_t* buffer_entry) {
-                if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
-                  const auto& sources =
-                      this->GetRootPointsToSet().element(index);
-                  // The points to set is unambiguous so the set should be a
-                  // singleton. That is, we know exactly which instruction
-                  // produced the array at this element.
-                  CHECK_EQ(1, sources.size());
-                  auto src_hlo = sources[0]->instruction();
+                const auto& sources = this->GetRootPointsToSet().element(index);
+                // The points-to set is unambiguous so the set should be a
+                // singleton. That is, we know exactly which instruction
+                // produced the array at this element.
+                CHECK_EQ(1, sources.size());
+                auto src_hlo = sources[0]->instruction();
 
-                  VLOG(4) << "Looking at: " << sources[0];
+                VLOG(4) << "Looking at: " << sources[0];
 
-                  // The source instruction should have a non-parameter buffer
-                  // assigned.
-                  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                                      this->assignment_->GetUniqueSlice(
-                                          src_hlo, sources[0]->index()));
-                  CHECK(!slice.allocation()->is_entry_computation_parameter());
+                // The source instruction should have a non-parameter buffer
+                // assigned.
+                TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                                    this->assignment_->GetUniqueSlice(
+                                        src_hlo, sources[0]->index()));
+                CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-                  perftools::gputools::DeviceMemoryBase src_base =
-                      buffer_allocations->GetDeviceAddress(slice.index());
-                  CHECK(!src_base.is_null() || src_base.size() == 0);
-                  shaped_buffer->mutable_buffers()->push_back(src_base);
-                  *buffer_entry = shaped_buffer->mutable_buffers()->size() - 1;
+                perftools::gputools::DeviceMemoryBase src_base =
+                    buffer_allocations->GetDeviceAddress(slice.index());
+                CHECK(!src_base.is_null() || src_base.size() == 0);
+                shaped_buffer->mutable_buffers()->push_back(src_base);
+                *buffer_entry = shaped_buffer->mutable_buffers()->size() - 1;
 
-                  buffers_in_result.insert(src_base);
-                }
+                buffers_in_result.insert(src_base);
                 return Status::OK();
               }));
   TF_RETURN_IF_ERROR(

@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -71,7 +73,10 @@ class ConstantFoldingTest : public ::testing::Test {
     test::FillIota<float>(&placeholder_tensor, 1.0f);
     TestConstantFolding(graph_def,
                         {{"placeholder_expect_remains", placeholder_tensor}},
-                        {}, {"output_expect_remains"});
+                        {}, {"output_expect_remains"}, {});
+    TestConstantFolding(graph_def,
+                        {{"placeholder_expect_remains:0", placeholder_tensor}},
+                        {}, {"output_expect_remains:0"}, {});
   }
 
   void TestOpExclusionAdd() {
@@ -105,13 +110,70 @@ class ConstantFoldingTest : public ::testing::Test {
     test::FillIota<float>(&placeholder_tensor, 1.0f);
     TestConstantFolding(graph_def,
                         {{"placeholder_expect_remains", placeholder_tensor}},
-                        {"Add"}, {"output_expect_remains"});
+                        {"Add"}, {"output_expect_remains"}, {});
+  }
+
+  void TestShapePropagation() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    Output placeholder =
+        Placeholder(root.WithOpName("placeholder_expect_remains"), DT_FLOAT);
+    Output a_const =
+        Const(root.WithOpName("a_expect_removed"),
+              Input::Initializer({1, 1, 1}, TensorShape({1, 1, 3})));
+    Output shape = Shape(root.WithOpName("shape_expect_removed"), a_const);
+    Output cast = Cast(root.WithOpName("cast_expect_removed"), shape, DT_FLOAT);
+    Output mul =
+        Mul(root.WithOpName("output_expect_remains"), cast, placeholder);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    Tensor placeholder_tensor(DT_FLOAT, TensorShape({3}));
+    test::FillIota<float>(&placeholder_tensor, 1.0);
+    TestConstantFolding(graph_def,
+                        {{"placeholder_expect_remains", placeholder_tensor}},
+                        {}, {"output_expect_remains"}, {});
+  }
+
+  void TestPreserveOutputShapes() {
+    auto root = tensorflow::Scope::NewRootScope();
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    tensorflow::AttrValue shape_attr;
+    auto* shape_proto = shape_attr.mutable_list()->add_shape();
+    shape_proto->add_dim()->set_size(1);
+    shape_proto->add_dim()->set_size(1);
+    shape_proto->add_dim()->set_size(3);
+
+    Output placeholder =
+        Placeholder(root.WithOpName("placeholder_expect_remains"), DT_FLOAT);
+    placeholder.node()->AddAttr("_output_shapes", shape_attr);
+
+    Output shape = Shape(root.WithOpName("shape_expect_removed"), placeholder);
+    Output cast = Cast(root.WithOpName("cast_expect_removed"), shape, DT_FLOAT);
+    Output mul =
+        Mul(root.WithOpName("output_expect_remains"), cast, placeholder);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+
+    Tensor placeholder_tensor(DT_FLOAT, TensorShape({1, 1, 3}));
+    test::FillIota<float>(&placeholder_tensor, 1.0);
+
+    graph_transforms::TransformFuncContext context;
+    context.params["clear_output_shapes"] = {"false"};
+    TestConstantFolding(graph_def,
+                        {{"placeholder_expect_remains", placeholder_tensor}},
+                        {}, {"output_expect_remains"}, context);
   }
 
   void TestConstantFolding(const GraphDef& graph_def,
                            std::vector<std::pair<string, Tensor> > inputs,
                            std::vector<string> excluded_ops,
-                           const std::vector<string>& outputs) {
+                           const std::vector<string>& outputs,
+                           graph_transforms::TransformFuncContext context) {
     std::unique_ptr<tensorflow::Session> unfolded_session(
         tensorflow::NewSession(tensorflow::SessionOptions()));
     TF_ASSERT_OK(unfolded_session->Create(graph_def));
@@ -119,7 +181,6 @@ class ConstantFoldingTest : public ::testing::Test {
     TF_ASSERT_OK(unfolded_session->Run(inputs, outputs, {}, &unfolded_tensors));
 
     GraphDef folded_graph_def;
-    graph_transforms::TransformFuncContext context;
     for (const std::pair<string, Tensor>& input : inputs) {
       context.input_names.push_back(input.first);
     }
@@ -198,10 +259,40 @@ class ConstantFoldingTest : public ::testing::Test {
     EXPECT_EQ(0, node_map.count("new_send"));
   }
 
+  void TestReplaceSendRecvsPrefixNames() {
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+
+    auto o_root = tensorflow::Scope::NewRootScope();
+    auto a = Placeholder(o_root.WithOpName("placeholder"), DT_FLOAT);
+    auto b = Placeholder(o_root.WithOpName("placeholder_1"), DT_FLOAT);
+    auto add_o = Add(o_root.WithOpName("add"), a, b);
+    GraphDef o_graph_def;
+    TF_ASSERT_OK(o_root.ToGraphDef(&o_graph_def));
+
+    auto n_root = tensorflow::Scope::NewRootScope();
+    auto c = _Recv(n_root.WithOpName("_recv_placeholder_0"), DT_FLOAT, "", "",
+                   0, "");
+    auto d = _Recv(n_root.WithOpName("_recv_placeholder_1_0"), DT_FLOAT, "", "",
+                   0, "");
+    auto add_n = Add(n_root.WithOpName("add"), c, d);
+    GraphDef n_graph_def;
+    TF_ASSERT_OK(n_root.ToGraphDef(&n_graph_def));
+
+    GraphDef result_graph_def;
+    TF_ASSERT_OK(graph_transforms::ReplaceSendRecvs(
+        o_graph_def, n_graph_def, {"placeholder", "placeholder_1"}, {"add"},
+        &result_graph_def));
+
+    std::map<string, const NodeDef*> node_map;
+    graph_transforms::MapNamesToNodes(result_graph_def, &node_map);
+    EXPECT_EQ(1, node_map.count("placeholder"));
+    EXPECT_EQ(1, node_map.count("placeholder_1"));
+    EXPECT_EQ(1, node_map.count("add"));
+  }
+
   void TestRemoveUnusedNodes() {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
     auto root = tensorflow::Scope::NewRootScope();
-    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
     const int width = 100;
 
@@ -237,15 +328,71 @@ class ConstantFoldingTest : public ::testing::Test {
     EXPECT_EQ(1, node_map.count("output"));
     EXPECT_EQ(0, node_map.count("unused"));
   }
+
+  void TestRemoveUnusedNodesMultipleOutputs() {
+    using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+    auto root = tensorflow::Scope::NewRootScope();
+
+    //    a    b
+    //     \  /
+    //    shape_n
+    //     \  /
+    //       c
+    auto a = Placeholder(root.WithOpName("a"), DT_FLOAT);
+    auto b = Placeholder(root.WithOpName("b"), DT_FLOAT);
+    auto shape_n = ShapeN(root.WithOpName("shape_n"), {Output(a), Output(b)});
+    auto c = Add(root.WithOpName("c"), shape_n[0], shape_n[1]);
+
+    GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+    GraphDef result_graph_def;
+    TF_ASSERT_OK(graph_transforms::RemoveUnusedNodes(
+        graph_def, {{shape_n[0].name()}, {"c"}}, &result_graph_def));
+
+    // Only one output of shape_n node is fed input. Hence the graph search
+    // should propagate to inputs of shape_n. Nothing to remove here.
+    std::map<string, const NodeDef*> node_map;
+    graph_transforms::MapNamesToNodes(result_graph_def, &node_map);
+    EXPECT_EQ(1, node_map.count("a"));
+    EXPECT_EQ(1, node_map.count("b"));
+    EXPECT_EQ(1, node_map.count("c"));
+
+    result_graph_def.Clear();
+    TF_ASSERT_OK(graph_transforms::RemoveUnusedNodes(
+        graph_def, {{shape_n[0].name(), shape_n[1].name()}, {"c"}},
+        &result_graph_def));
+
+    // Both outputs of shape_n node are fed inputs. shape_n does not function
+    // and inputs to shape_n should be removed.
+    node_map.clear();
+    graph_transforms::MapNamesToNodes(result_graph_def, &node_map);
+    EXPECT_EQ(0, node_map.count("a"));
+    EXPECT_EQ(0, node_map.count("b"));
+    EXPECT_EQ(1, node_map.count("c"));
+  }
 };
 
 TEST_F(ConstantFoldingTest, TestSimpleAdd) { TestSimpleAdd(); }
 
 TEST_F(ConstantFoldingTest, TestOpExclusionAdd) { TestOpExclusionAdd(); }
 
+TEST_F(ConstantFoldingTest, TestShapePropagation) { TestShapePropagation(); }
+
+TEST_F(ConstantFoldingTest, TestPreserveOutputShapes) {
+  TestPreserveOutputShapes();
+}
+
 TEST_F(ConstantFoldingTest, TestReplaceSendRecvs) { TestReplaceSendRecvs(); }
 
+TEST_F(ConstantFoldingTest, TestReplaceSendRecvsPrefixNames) {
+  TestReplaceSendRecvsPrefixNames();
+}
+
 TEST_F(ConstantFoldingTest, TestRemoveUnusedNodes) { TestRemoveUnusedNodes(); }
+
+TEST_F(ConstantFoldingTest, TestRemoveUnusedNodesMultipleOutputs) {
+  TestRemoveUnusedNodesMultipleOutputs();
+}
 
 }  // namespace graph_transforms
 }  // namespace tensorflow

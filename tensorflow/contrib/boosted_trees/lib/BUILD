@@ -132,7 +132,6 @@ tf_cc_test(
         ":random_tree_gen",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -149,7 +148,6 @@ cc_library(
     deps = [
         ":utils",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
     ],
@@ -197,7 +195,6 @@ tf_cc_test(
     srcs = ["quantiles/weighted_quantiles_buffer_test.cc"],
     deps = [
         ":weighted_quantiles",
-        "//tensorflow/core",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -210,7 +207,6 @@ tf_cc_test(
     srcs = ["quantiles/weighted_quantiles_summary_test.cc"],
     deps = [
         ":weighted_quantiles",
-        "//tensorflow/core",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -262,6 +258,8 @@ py_library(
     srcs = ["learner/batch/base_split_handler.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/boosted_trees:batch_ops_utils_py",
+        "//tensorflow/python:control_flow_ops",
     ],
 )
 
@@ -271,9 +269,13 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base_split_handler",
-        "//tensorflow/contrib/boosted_trees:quantile_ops_py",
         "//tensorflow/contrib/boosted_trees:split_handler_ops_py",
         "//tensorflow/contrib/boosted_trees:stats_accumulator_ops_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -285,7 +287,15 @@ py_test(
         ":categorical_split_handler",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
     ],
 )
 
@@ -298,7 +308,14 @@ py_library(
         "//tensorflow/contrib/boosted_trees:quantile_ops_py",
         "//tensorflow/contrib/boosted_trees:split_handler_ops_py",
         "//tensorflow/contrib/boosted_trees:stats_accumulator_ops_py",
-        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 
@@ -310,7 +327,15 @@ py_test(
         ":ordinal_split_handler",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
     ],
 )
 

@@ -28,7 +28,7 @@ VariantTensorData::VariantTensorData(const VariantTensorDataProto& proto) {
 
 VariantTensorData::~VariantTensorData() {}
 
-int VariantTensorData::tensors_size() { return tensors_.size(); }
+int VariantTensorData::tensors_size() const { return tensors_.size(); }
 
 const Tensor& VariantTensorData::tensors(int index) const {
   return tensors_[index];

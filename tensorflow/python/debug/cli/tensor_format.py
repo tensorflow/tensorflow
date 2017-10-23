@@ -480,7 +480,7 @@ def _pad_string_to_length(string, length):
 
 
 def numeric_summary(tensor):
-  """Get a text summmary of a numeric tensor.
+  """Get a text summary of a numeric tensor.
 
   This summary is only available for numeric (int*, float*, complex*) and
   Boolean tensors.

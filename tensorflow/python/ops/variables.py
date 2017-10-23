@@ -213,9 +213,13 @@ class Variable(object):
           constraint=constraint)
 
   def __repr__(self):
-    return "<tf.Variable '%s' shape=%s dtype=%s>" % (self.name,
-                                                     self.get_shape(),
-                                                     self.dtype.name)
+    if context.in_eager_mode():
+      return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
+          self.name, self.get_shape(), self.dtype.name,
+          ops.numpy_text(self.read_value(), is_repr=True))
+    else:
+      return "<tf.Variable '%s' shape=%s dtype=%s>" % (
+          self.name, self.get_shape(), self.dtype.name)
 
   def _init_from_args(self,
                       initial_value=None,
@@ -390,7 +394,8 @@ class Variable(object):
                                import_scope=import_scope))
     if variable_def.HasField("save_slice_info_def"):
       self._save_slice_info = Variable.SaveSliceInfo(
-          save_slice_info_def=variable_def.save_slice_info_def)
+          save_slice_info_def=variable_def.save_slice_info_def,
+          import_scope=import_scope)
     else:
       self._save_slice_info = None
     self._caching_device = None

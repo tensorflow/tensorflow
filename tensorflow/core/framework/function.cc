@@ -34,8 +34,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-
 // Extracts the actual type from "attr_values" based on its definition
 // "arg_def".
 //
@@ -90,6 +88,8 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   dtypes->resize(num, dtype);
   return Status::OK();
 }
+
+namespace {
 
 template <typename T>
 void AddAttr(const string& name, const T& val, NodeDef* ndef) {
@@ -749,16 +749,7 @@ std::map<string, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
 }  // end namespace
 
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
-  // NOTE(skyewm): Using MessageDifferencer would be better here, but that is
-  // currently not included in tensorflow/core/platform/default/protobuf.h, so
-  // play fast and loose here.  I don't see anything in OpDef that should allow
-  // multiple equivalent string serializations, with the exception of
-  // AttrValues, which can vary for tensor values (see AreAttrValuesEqual()
-  // comments).
-  string sig1, sig2;
-  f1.signature().SerializeToString(&sig1);
-  f2.signature().SerializeToString(&sig2);
-  if (sig1 != sig2) return false;
+  if (!OpDefEqual(f1.signature(), f2.signature())) return false;
 
   std::map<string, AttrValue> f1_attrs = GetSetAttrs(f1);
   std::map<string, AttrValue> f2_attrs = GetSetAttrs(f2);
@@ -778,6 +769,30 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   if (ret1 != ret2) return false;
 
   return true;
+}
+
+uint64 FunctionDefHash(const FunctionDef& fdef) {
+  // signature
+  uint64 h = OpDefHash(fdef.signature());
+
+  // attrs
+  std::map<string, AttrValue> attrs = GetSetAttrs(fdef);
+  for (const auto& p : attrs) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64Combine(AttrValueHash(p.second), h);
+  }
+
+  // node defs
+  h = Hash64Combine(RepeatedNodeDefHash(fdef.node_def()), h);
+
+  // output names
+  std::map<string, string> ret(fdef.ret().begin(), fdef.ret().end());
+  for (const auto& p : ret) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64(p.second.data(), p.second.size(), h);
+  }
+
+  return h;
 }
 
 string Canonicalize(const string& funcname, AttrSlice attrs) {
@@ -877,7 +892,10 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionLibraryDefinition::FunctionDefAndOpRegistration::
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
     : fdef(fdef_in),
-      op_registration_data(fdef.signature(), shape_inference::UnknownShape) {}
+      // Exact shape inference for functions is handled by ShapeRefiner.
+      // Here we pass a dummy shape inference function for legacy code paths.
+      op_registration_data(fdef.signature(), shape_inference::UnknownShape,
+                           true /* is_function */) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
