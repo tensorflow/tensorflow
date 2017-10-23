@@ -43,55 +43,95 @@ then
     exit 1
 fi
 
+usage() {
+  echo "Usage: $(basename "$0") [-a]"
+  echo "-a [build_arch] build for specified arch comma separate for multiple archs (eg: x86_64,arm64)"
+  echo "default arch=arm64"
+  exit 1
+}
+
+#Default to just arm64
+BUILD_TARGET="arm64"
+while getopts "a:f:h:n:" opt_name; do
+  case "$opt_name" in
+    a) BUILD_TARGET="${OPTARG}";;
+    f) BUILD_OPT="${OPTARG}";;
+    h) NSYNC_HOST="${OPTARG}";;
+    n) NSYNC_TARGET="${OPTARG}";;
+    *) usage;;
+  esac
+done
+shift $((OPTIND - 1))
+
+
+IFS=', ' read -r -a build_targets <<< "${BUILD_TARGET}"
+
+SCRIPT_DIR=$(cd `dirname $0` && pwd)
+source "${SCRIPT_DIR}/build_helper.subr"
+
+
 GENDIR=tensorflow/contrib/makefile/gen/
 LIBDIR=${GENDIR}lib
 LIB_PREFIX=libtensorflow-core
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARMV7 LIB_NAME=${LIB_PREFIX}-armv7.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "armv7 compilation failed."
-  exit 1
-fi
+build_tf_target() {
+    if [ $1 = "x86_64" ]; then
+        make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
+        TARGET=IOS IOS_ARCH=X86_64 LIB_NAME=${LIB_PREFIX}-x86_64.a OPTFLAGS="${BUILD_OPT}" \
+        HOST_NSYNC_LIB="${NSYNC_HOST}" TARGET_NSYNC_LIB="${NSYNC_TARGET}"
+        if [ $? -ne 0 ]
+        then
+          echo "x86_64 compilation failed."
+          exit 1
+        fi
+        if [ -f "${LIBDIR}/${LIB_PREFIX}.a" ]; then
+            # Some other target is already built so include it in fat lib
+            lipo \
+            ${LIBDIR}/ios_X86_64/${LIB_PREFIX}-x86_64.a \
+            ${LIBDIR}/${LIB_PREFIX}.a \
+            -create \
+            -output ${LIBDIR}/${LIB_PREFIX}.a
+        else
+            lipo \
+            ${LIBDIR}/ios_X86_64/${LIB_PREFIX}-x86_64.a \
+            -create \
+            -output ${LIBDIR}/${LIB_PREFIX}.a
+        fi
+    elif [ $1 = "arm64" ];then
+        make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
+        TARGET=IOS IOS_ARCH=ARM64 LIB_NAME=${LIB_PREFIX}-arm64.a OPTFLAGS="$BUILD_OPT" \
+        HOST_NSYNC_LIB="${NSYNC_HOST}" TARGET_NSYNC_LIB="${NSYNC_TARGET}"
+        if [ $? -ne 0 ]
+        then
+          echo "arm64 compilation failed."
+          exit 1
+        fi
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARMV7S LIB_NAME=${LIB_PREFIX}-armv7s.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "arm7vs compilation failed."
-  exit 1
-fi
+        if [ -f "${LIBDIR}/${LIB_PREFIX}.a" ]; then
+            # Some other target is already built so include it in fat lib
+            lipo \
+            ${LIBDIR}/ios_ARM64/${LIB_PREFIX}-arm64.a \
+            ${LIBDIR}/${LIB_PREFIX}.a \
+            -create \
+            -output ${LIBDIR}/${LIB_PREFIX}.a
+        else
+            lipo \
+            ${LIBDIR}/ios_ARM64/${LIB_PREFIX}-arm64.a \
+            -create \
+            -output ${LIBDIR}/${LIB_PREFIX}.a
+        fi
+    else
+        echo "Unknown arch"
+        exit 1
+    fi
+}
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=ARM64 LIB_NAME=${LIB_PREFIX}-arm64.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "arm64 compilation failed."
-  exit 1
-fi
+for build_tf_element in "${build_targets[@]}"
+do
+    echo "$build_tf_element"
+    build_tf_target "$build_tf_element"
+done
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=I386 LIB_NAME=${LIB_PREFIX}-i386.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "i386 compilation failed."
-  exit 1
-fi
+echo "Done building and packaging TF"
+file ${LIBDIR}/${LIB_PREFIX}.a
 
-make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-TARGET=IOS IOS_ARCH=X86_64 LIB_NAME=${LIB_PREFIX}-x86_64.a OPTFLAGS="$1"
-if [ $? -ne 0 ]
-then
-  echo "x86_64 compilation failed."
-  exit 1
-fi
-
-lipo \
-${LIBDIR}/ios_ARMV7/${LIB_PREFIX}-armv7.a \
-${LIBDIR}/ios_ARMV7S/${LIB_PREFIX}-armv7s.a \
-${LIBDIR}/ios_ARM64/${LIB_PREFIX}-arm64.a \
-${LIBDIR}/ios_I386/${LIB_PREFIX}-i386.a \
-${LIBDIR}/ios_X86_64/${LIB_PREFIX}-x86_64.a \
--create \
--output ${LIBDIR}/${LIB_PREFIX}.a
