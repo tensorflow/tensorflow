@@ -281,6 +281,10 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
 }
 
+/* static */ bool ShapeUtil::ElementIsComplex(const Shape& shape) {
+  return primitive_util::IsComplexType(shape.element_type());
+}
+
 /* static */ bool ShapeUtil::ElementIsFloating(const Shape& shape) {
   return primitive_util::IsFloatingPointType(shape.element_type());
 }
@@ -592,6 +596,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       return sizeof(float);
     case F64:
       return sizeof(double);
+    case C64:
+      return sizeof(complex64);
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
   }
