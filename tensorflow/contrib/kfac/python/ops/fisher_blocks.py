@@ -114,6 +114,14 @@ class FisherBlock(object):
     """
     pass
 
+  @abc.abstractproperty
+  def num_registered_minibatches(self):
+    """Number of minibatches registered for this FisherBlock.
+
+    Typically equal to the number of towers in a multi-tower setup.
+    """
+    pass
+
 
 class FullFB(FisherBlock):
   """FisherBlock using a full matrix estimate (no approximations).
@@ -164,6 +172,10 @@ class FullFB(FisherBlock):
   def tensors_to_compute_grads(self):
     return self._params
 
+  @property
+  def num_registered_minibatches(self):
+    return 1  # Multiple minibatches not supported.
+
 
 class NaiveDiagonalFB(FisherBlock):
   """FisherBlock using a diagonal matrix approximation.
@@ -208,6 +220,10 @@ class NaiveDiagonalFB(FisherBlock):
 
   def tensors_to_compute_grads(self):
     return self._params
+
+  @property
+  def num_registered_minibatches(self):
+    return 1  # Multiple minibatches not supported.
 
 
 class FullyConnectedDiagonalFB(FisherBlock):
@@ -305,6 +321,12 @@ class FullyConnectedDiagonalFB(FisherBlock):
     self._inputs.append(inputs)
     self._outputs.append(outputs)
 
+  @property
+  def num_registered_minibatches(self):
+    result = len(self._inputs)
+    assert result == len(self._outputs)
+    return result
+
 
 class ConvDiagonalFB(FisherBlock):
   """FisherBlock for convolutional layers using a diagonal approx.
@@ -399,6 +421,10 @@ class ConvDiagonalFB(FisherBlock):
     """
     self._inputs.append(inputs)
     self._outputs.append(outputs)
+
+  @property
+  def num_registered_minibatches(self):
+    return len(self._inputs)
 
 
 class KroneckerProductFB(FisherBlock):
@@ -532,6 +558,10 @@ class FullyConnectedKFACBasicFB(KroneckerProductFB):
     self._inputs.append(inputs)
     self._outputs.append(outputs)
 
+  @property
+  def num_registered_minibatches(self):
+    return 1  # Multiple minibatches not supported.
+
 
 class ConvKFCBasicFB(KroneckerProductFB):
   """FisherBlock for 2D convolutional layers using the basic KFC approx.
@@ -590,6 +620,10 @@ class ConvKFCBasicFB(KroneckerProductFB):
 
   def tensors_to_compute_grads(self):
     return self._outputs
+
+  @property
+  def num_registered_minibatches(self):
+    return 1  # Multiple minibatches not supported.
 
 
 def _concat_along_batch_dim(tensor_list):

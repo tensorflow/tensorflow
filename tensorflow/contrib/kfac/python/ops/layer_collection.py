@@ -27,6 +27,8 @@ from __future__ import print_function
 from collections import defaultdict
 from collections import OrderedDict
 
+import six
+
 from tensorflow.contrib.kfac.python.ops import fisher_blocks as fb
 from tensorflow.contrib.kfac.python.ops import loss_functions as lf
 from tensorflow.contrib.kfac.python.ops import utils
@@ -82,8 +84,8 @@ class LayerParametersDict(OrderedDict):
     return key
 
 
-# TODO(duckworthd): add capability for LayerCollection to be "finalized"
-# and do this when it gets used by FisherEstimator / KfacOptimizer
+# TODO(b/68034464): add capability for LayerCollection to be "finalized"
+# and do this when it gets used by FisherEstimator / KfacOptimizer.
 
 
 class LayerCollection(object):
@@ -211,10 +213,10 @@ class LayerCollection(object):
   def get_use_count_map(self):
     """Returns a dict of variables to their number of registrations."""
     vars_to_uses = defaultdict(int)
-    for key in self.fisher_blocks.keys():
+    for key, block in six.iteritems(self.fisher_blocks):
       key = key if isinstance(key, (tuple, list)) else (key,)
       for k in key:
-        vars_to_uses[k] += 1
+        vars_to_uses[k] += block.num_registered_minibatches
     return vars_to_uses
 
   def get_blocks(self):

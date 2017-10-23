@@ -313,10 +313,20 @@ class LayerCollectionTest(test.TestCase):
       self.assertTrue(all([var.name.startswith(scope) for var in variables]))
 
   def testGetUseCountMap(self):
+    """Ensure get_use_count_map() sums 'num_registered_minibatches'."""
+
+    class MockFisherBlock(object):
+
+      num_registered_minibatches = 2
+
     lc = layer_collection.LayerCollection()
-    lc.fisher_blocks = {'a': 1, ('a', 'c'): 2, ('b', 'c'): 2}
+    lc.fisher_blocks = {
+        'a': MockFisherBlock(),
+        ('a', 'c'): MockFisherBlock(),
+        ('b', 'c'): MockFisherBlock()
+    }
     use_count_map = lc.get_use_count_map()
-    self.assertDictEqual({'a': 2, 'b': 1, 'c': 2}, use_count_map)
+    self.assertDictEqual({'a': 4, 'b': 2, 'c': 4}, use_count_map)
 
 
 if __name__ == '__main__':
