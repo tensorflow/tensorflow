@@ -255,9 +255,9 @@ class LayerCollection(object):
                                approx=APPROX_KRONECKER_NAME):
     has_bias = isinstance(params, (tuple, list))
     if approx == APPROX_KRONECKER_NAME:
-      self.register_block(params,
-                          fb.FullyConnectedKFACBasicFB(self, inputs, outputs,
-                                                       has_bias))
+      block = fb.FullyConnectedKFACBasicFB(self, has_bias)
+      block.register_additional_minibatch(inputs, outputs)
+      self.register_block(params, block)
     elif approx == APPROX_DIAGONAL_NAME:
       block = fb.FullyConnectedDiagonalFB(self, has_bias)
       block.register_additional_minibatch(inputs, outputs)

@@ -367,7 +367,7 @@ class ConvDiagonalFB(FisherBlock):
         (self._strides[1] * self._strides[2]))
 
     if NORMALIZE_DAMPING_POWER:
-      damping /= self._num_locations**NORMALIZE_DAMPING_POWER
+      damping /= self._num_locations ** NORMALIZE_DAMPING_POWER
     self._damping = damping
 
     self._factor = self._layer_collection.make_or_get_factor(
@@ -478,33 +478,59 @@ class FullyConnectedKFACBasicFB(KroneckerProductFB):
   K-FAC paper (https://arxiv.org/abs/1503.05671)
   """
 
-  def __init__(self, layer_collection, inputs, outputs, has_bias=False):
+  def __init__(self, layer_collection, has_bias=False):
     """Creates a FullyConnectedKFACBasicFB block.
 
     Args:
       layer_collection: The collection of all layers in the K-FAC approximate
           Fisher information matrix to which this FisherBlock belongs.
-      inputs: The Tensor of input activations to this layer.
-      outputs: The Tensor of output pre-activations from this layer.
       has_bias: Whether the component Kronecker factors have an additive bias.
           (Default: False)
     """
-    self._inputs = inputs
-    self._outputs = outputs
+    self._inputs = []
+    self._outputs = []
     self._has_bias = has_bias
 
     super(FullyConnectedKFACBasicFB, self).__init__(layer_collection)
 
   def instantiate_factors(self, grads_list, damping):
-    self._input_factor = self._layer_collection.make_or_get_factor(
-        fisher_factors.FullyConnectedKroneckerFactor,
-        ((self._inputs,), self._has_bias))
-    self._output_factor = self._layer_collection.make_or_get_factor(
-        fisher_factors.FullyConnectedKroneckerFactor, (grads_list,))
+    """Instantiate Kronecker Factors for this FisherBlock.
+
+    Args:
+      grads_list: List of list of Tensors. grads_list[i][j] is the
+        gradient of the loss with respect to 'outputs' from source 'i' and
+        tower 'j'. Each Tensor has shape [tower_minibatch_size, output_size].
+      damping: 0-D Tensor or float. 'damping' * identity is approximately added
+        to this FisherBlock's Fisher approximation.
+    """
+    # TODO(b/68033310): Validate which of,
+    #   (1) summing on a single device (as below), or
+    #   (2) on each device in isolation and aggregating
+    # is faster.
+    inputs = _concat_along_batch_dim(self._inputs)
+    grads_list = tuple(_concat_along_batch_dim(grads) for grads in grads_list)
+
+    self._input_factor = self._layer_collection.make_or_get_factor(  #
+        fisher_factors.FullyConnectedKroneckerFactor,  #
+        ((inputs,), self._has_bias))
+    self._output_factor = self._layer_collection.make_or_get_factor(  #
+        fisher_factors.FullyConnectedKroneckerFactor,  #
+        (grads_list,))
     self._register_damped_input_and_output_inverses(damping)
 
   def tensors_to_compute_grads(self):
     return self._outputs
+
+  def register_additional_minibatch(self, inputs, outputs):
+    """Registers an additional minibatch to the FisherBlock.
+
+    Args:
+      inputs: Tensor of shape [batch_size, input_size]. Inputs to the
+        matrix-multiply.
+      outputs: Tensor of shape [batch_size, output_size]. Layer preactivations.
+    """
+    self._inputs.append(inputs)
+    self._outputs.append(outputs)
 
 
 class ConvKFCBasicFB(KroneckerProductFB):

@@ -356,50 +356,51 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       inputs = array_ops.constant([1., 2.])
       outputs = array_ops.constant([3., 4.])
-      block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), inputs,
-                                           outputs)
+      block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection())
+      block.register_additional_minibatch(inputs, outputs)
 
-      self.assertAllEqual(outputs, block.tensors_to_compute_grads())
+      self.assertAllEqual([outputs], block.tensors_to_compute_grads())
 
   def testInstantiateFactorsHasBias(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       inputs = array_ops.constant([[1., 2.], [3., 4.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
-      block = fb.FullyConnectedKFACBasicFB(
-          lc.LayerCollection(), inputs, outputs, has_bias=True)
+      block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=True)
+      block.register_additional_minibatch(inputs, outputs)
 
       grads = outputs**2
-      block.instantiate_factors((grads,), 0.5)
+      block.instantiate_factors(([grads],), 0.5)
 
   def testInstantiateFactorsNoBias(self):
     with ops.Graph().as_default():
       random_seed.set_random_seed(200)
       inputs = array_ops.constant([[1., 2.], [3., 4.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
-      block = fb.FullyConnectedKFACBasicFB(
-          lc.LayerCollection(), inputs, outputs, has_bias=False)
+      block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=False)
+      block.register_additional_minibatch(inputs, outputs)
 
       grads = outputs**2
-      block.instantiate_factors((grads,), 0.5)
+      block.instantiate_factors(([grads],), 0.5)
 
   def testMultiplyInverseTuple(self):
     with ops.Graph().as_default(), self.test_session() as sess:
       random_seed.set_random_seed(200)
       inputs = array_ops.constant([[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
-      block = fb.FullyConnectedKFACBasicFB(
-          lc.LayerCollection(), inputs, outputs, has_bias=False)
+      block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=False)
+      block.register_additional_minibatch(inputs, outputs)
       grads = outputs**2
-      block.instantiate_factors((grads,), 0.5)
+      block.instantiate_factors(([grads],), 0.5)
 
       # Make sure our inverse is something other than the identity.
       sess.run(tf_variables.global_variables_initializer())
       sess.run(block._input_factor.make_inverse_update_ops())
       sess.run(block._output_factor.make_inverse_update_ops())
 
-      vector = (np.arange(2, 6).reshape(2, 2).astype(np.float32), np.arange(
-          1, 3).reshape(2, 1).astype(np.float32))
+      vector = (
+          np.arange(2, 6).reshape(2, 2).astype(np.float32),  #
+          np.arange(1, 3).reshape(2, 1).astype(np.float32))
       output = block.multiply_inverse((array_ops.constant(vector[0]),
                                        array_ops.constant(vector[1])))
 
@@ -413,10 +414,10 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       random_seed.set_random_seed(200)
       inputs = array_ops.constant([[1., 2.], [3., 4.]])
       outputs = array_ops.constant([[3., 4.], [5., 6.]])
-      block = fb.FullyConnectedKFACBasicFB(
-          lc.LayerCollection(), inputs, outputs, has_bias=False)
+      block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=False)
+      block.register_additional_minibatch(inputs, outputs)
       grads = outputs**2
-      block.instantiate_factors((grads,), 0.5)
+      block.instantiate_factors(([grads],), 0.5)
 
       # Make sure our inverse is something other than the identity.
       sess.run(tf_variables.global_variables_initializer())
@@ -436,11 +437,11 @@ class FullyConnectedKFACBasicFBTest(test.TestCase):
       inputs = array_ops.zeros([32, input_dim])
       outputs = array_ops.zeros([32, output_dim])
       params = array_ops.zeros([input_dim, output_dim])
-      block = fb.FullyConnectedKFACBasicFB(
-          lc.LayerCollection(), inputs, outputs, has_bias=False)
+      block = fb.FullyConnectedKFACBasicFB(lc.LayerCollection(), has_bias=False)
+      block.register_additional_minibatch(inputs, outputs)
       grads = outputs**2
       damping = 0.  # This test is only valid without damping.
-      block.instantiate_factors((grads,), damping)
+      block.instantiate_factors(([grads],), damping)
 
       sess.run(state_ops.assign(block._input_factor._cov, _make_psd(3)))
       sess.run(state_ops.assign(block._output_factor._cov, _make_psd(2)))
