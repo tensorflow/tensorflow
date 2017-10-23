@@ -32,6 +32,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeExport;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
+%rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
 %rename("%s") TFE_DeleteContextOptions;
 
 %{
@@ -100,6 +101,11 @@ limitations under the License.
     $result = PyCapsule_New($1, nullptr, TFE_DeleteContextCapsule);
   }
 }
+
+%rename("%s") TFE_ContextDevicePlacementPolicy;
+%rename("%s") TFE_DEVICE_PLACEMENT_EXPLICIT;
+%rename("%s") TFE_DEVICE_PLACEMENT_WARN;
+%rename("%s") TFE_DEVICE_PLACEMENT_SILENT;
 
 %include "tensorflow/c/eager/c_api.h"
 

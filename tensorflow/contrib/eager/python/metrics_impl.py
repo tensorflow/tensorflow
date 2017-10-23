@@ -198,13 +198,19 @@ class Mean(Metric):
   # TODO(josh11b): Maybe have a dtype argument that defaults to tf.float64?
   # Or defaults to type of the input if it is tf.float32, else tf.float64?
 
-  def build(self, values, weights=None):
-    del values, weights  # build() does not use call's arguments
+  def __init__(self, name=None, dtype=dtypes.float64):
+    super(Mean, self).__init__(name=name)
+    self.dtype = dtype
+
+  def build(self, *args, **kwargs):
+    # build() does not use call's arguments, by using *args, **kwargs
+    # we make it easier to inherit from Mean().
+    del args, kwargs
     self.numer = self.add_variable(name="numer", shape=(),
-                                   dtype=dtypes.float64,
+                                   dtype=self.dtype,
                                    initializer=init_ops.zeros_initializer)
     self.denom = self.add_variable(name="denom", shape=(),
-                                   dtype=dtypes.float64,
+                                   dtype=self.dtype,
                                    initializer=init_ops.zeros_initializer)
 
   def call(self, values, weights=None):
@@ -219,13 +225,13 @@ class Mean(Metric):
     """
     if weights is None:
       self.denom.assign_add(
-          math_ops.cast(array_ops.size(values), dtypes.float64))
+          math_ops.cast(array_ops.size(values), self.dtype))
       values = math_ops.reduce_sum(values)
-      self.numer.assign_add(math_ops.cast(values, dtypes.float64))
+      self.numer.assign_add(math_ops.cast(values, self.dtype))
     else:
-      weights = math_ops.cast(weights, dtypes.float64)
+      weights = math_ops.cast(weights, self.dtype)
       self.denom.assign_add(math_ops.reduce_sum(weights))
-      values = math_ops.cast(values, dtypes.float64) * weights
+      values = math_ops.cast(values, self.dtype) * weights
       self.numer.assign_add(math_ops.reduce_sum(values))
 
   def result(self):
@@ -235,9 +241,8 @@ class Mean(Metric):
 class Accuracy(Mean):
   """Calculates how often `predictions` matches `labels`."""
 
-  def build(self, labels, predictions, weights=None):
-    del labels, predictions, weights
-    super(Accuracy, self).build(None)  # Arguments are unused
+  def __init__(self, name=None, dtype=dtypes.float64):
+    super(Accuracy, self).__init__(name=name, dtype=dtype)
 
   def call(self, labels, predictions, weights=None):
     """Accumulate accuracy statistics.

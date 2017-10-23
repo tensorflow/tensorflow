@@ -24,10 +24,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.training import training_util
-
 
 # Name for a collection which is expected to have at most a single boolean
 # Tensor. If this tensor is True the summary ops will record summaries.
@@ -38,7 +37,7 @@ def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
   should_record_collection = ops.get_collection(_SHOULD_RECORD_SUMMARIES_NAME)
   if not should_record_collection:
-    return constant_op.constant(False)
+    return False
   if len(should_record_collection) != 1:
     raise ValueError(
         "More than one tensor specified for whether summaries "
@@ -56,13 +55,13 @@ def record_summaries_every_n_global_steps(n):
 def always_record_summaries():
   """Sets the should_record_summaries Tensor to always true."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  collection_ref[:] = [constant_op.constant(True)]
+  collection_ref[:] = [True]
 
 
 def never_record_summaries():
   """Sets the should_record_summaries Tensor to always false."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  collection_ref[:] = [constant_op.constant(False)]
+  collection_ref[:] = [False]
 
 
 def create_summary_file_writer(logdir,
@@ -106,7 +105,7 @@ def summary_writer_function(name, tensor, function, family=None):
       function(tag, scope)
       return True
 
-  return control_flow_ops.cond(
+  return utils.smart_cond(
       should_record_summaries(), record, _nothing, name="")
 
 

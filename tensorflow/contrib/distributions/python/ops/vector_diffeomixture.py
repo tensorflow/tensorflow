@@ -73,8 +73,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   denotes matrix multiplication.  However, the non-approximate distribution does
   not have an analytical probability density function (pdf). Therefore the
   `VectorDiffeomixture` class implements an approximation based on
-  [Gauss-Hermite quadrature](
-  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature). I.e., in
+  [numerical quadrature](
+  https://en.wikipedia.org/wiki/Numerical_integration) (default:
+  [Gauss--Hermite quadrature](
+  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature)). I.e., in
   Note: although the `VectorDiffeomixture` is approximately the
   `SoftmaxNormal-Distribution` compound distribution, it is itself a valid
   distribution. It possesses a `sample`, `log_prob`, `mean`, `covariance` which
@@ -109,8 +111,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   The `VectorDiffeomixture` approximates a SoftmaxNormal-mixed ("prior")
   [compound distribution](
   https://en.wikipedia.org/wiki/Compound_probability_distribution).
-  Using variable-substitution and [Gauss-Hermite quadrature](
-  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature) we can
+  Using variable-substitution and [numerical quadrature](
+  https://en.wikipedia.org/wiki/Numerical_integration) (default:
+  [Gauss--Hermite quadrature](
+  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature)) we can
   redefine the distribution to be a parameter-less convex combination of `K`
   different affine combinations of a `d` iid samples from `distribution`.
 
@@ -141,7 +145,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   and,
 
   ```none
-  grid, weight = np.polynomial.hermite.hermgauss(quadrature_degree)
+  grid, weight = np.polynomial.hermite.hermgauss(quadrature_size)
   prob[k]   = weight[k] / sqrt(pi)
   lambda[k; i] = sigmoid(mix_loc[k] + sqrt(2) mix_scale[k] grid[i])
   ```
@@ -248,9 +252,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         `k`-th element represents the `scale` used for the `k`-th affine
         transformation. `LinearOperator`s must have shape `[B1, ..., Bb, d, d]`,
         `b >= 0`, i.e., characterizes `b`-batches of `d x d` matrices
-      quadrature_grid_and_probs: Python pair of `list`-like objects representing
-        the sample points and the corresponding (possibly normalized) weight.
-        When `None`, defaults to: `np.polynomial.hermite.hermgauss(deg=8)`.
+      quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
+        representing the sample points and the corresponding (possibly
+        normalized) weight.  When `None`, defaults to:
+        `np.polynomial.hermite.hermgauss(deg=8)`.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
@@ -317,24 +322,17 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         raise NotImplementedError("Currently only bimixtures are supported; "
                                   "len(scale)={} is not 2.".format(len(scale)))
 
-      if quadrature_grid_and_probs is None:
-        grid, probs = np.polynomial.hermite.hermgauss(deg=8)
-      else:
-        grid, probs = tuple(quadrature_grid_and_probs)
-        if len(grid) != len(probs):
-          raise ValueError("`quadrature_grid_and_probs` must be a `tuple` of "
-                           "same-length list-like objects")
-      grid = grid.astype(dtype.as_numpy_dtype)
-      probs = probs.astype(dtype.as_numpy_dtype)
-      probs /= np.linalg.norm(probs, ord=1)
+      grid, probs = distribution_util.process_quadrature_grid_and_probs(
+          quadrature_grid_and_probs, dtype, validate_args)
       self._quadrature_grid = grid
       self._quadrature_probs = probs
+      self._quadrature_size = distribution_util.dimension_size(probs, axis=0)
 
       # Note: by creating the logits as `log(prob)` we ensure that
       # `self.mixture_distribution.logits` is equivalent to
       # `math_ops.log(self.mixture_distribution.probs)`.
       self._mixture_distribution = categorical_lib.Categorical(
-          logits=np.log(probs),
+          logits=math_ops.log(probs),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats)
 
@@ -361,10 +359,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                                validate_args=validate_args,
                                name="interpolated_affine_{}".format(k))
           for k, (loc_, scale_) in enumerate(zip(
-              interpolate_loc(len(self._quadrature_grid),
+              interpolate_loc(self._quadrature_size,
                               self._interpolate_weight,
                               loc),
-              interpolate_scale(len(self._quadrature_grid),
+              interpolate_scale(self._quadrature_size,
                                 self._interpolate_weight,
                                 scale)))]
 
@@ -463,10 +461,10 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         seed=distribution_util.gen_new_seed(
             seed, "vector_diffeomixture"))
 
-    # Stride `quadrature_degree` for `batch_size` number of times.
+    # Stride `quadrature_size` for `batch_size` number of times.
     offset = math_ops.range(start=0,
-                            limit=batch_size * len(self.quadrature_probs),
-                            delta=len(self.quadrature_probs),
+                            limit=batch_size * self._quadrature_size,
+                            delta=self._quadrature_size,
                             dtype=ids.dtype)
 
     weight = array_ops.gather(
