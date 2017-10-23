@@ -343,7 +343,7 @@ def implicit_val_and_grad(f):
     sources = [x.handle for x in variables]
 
     if not sources:
-      raise ValueError("no trainable variables were accessed while the "
+      raise ValueError("No trainable variables were accessed while the "
                        "function was being computed.")
     grad = imperative_grad.imperative_grad(_default_vspace,
                                            popped_tape,
