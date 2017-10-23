@@ -79,9 +79,9 @@ class BincountTest(test_util.TensorFlowTestCase):
     num_samples = 10000
     with self.test_session(use_gpu=True):
       np.random.seed(42)
-      for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
+      for dtype in [np.int32, np.float32]:
         arr = np.random.randint(0, 1000, num_samples)
-        weights = np.ones(num_samples)
+        weights = np.ones(num_samples).astype(dtype)
         self.assertAllClose(
             math_ops.bincount(arr, None).eval(),
             np.bincount(arr, weights))

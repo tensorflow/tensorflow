@@ -37,7 +37,13 @@ template <typename T>
 struct BincountFunctor<GPUDevice, T> {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<int32, 1>::ConstTensor& arr,
+                        const typename TTypes<T, 1>::ConstTensor& weights,
                         typename TTypes<T, 1>::Tensor& output) {
+    if (weights.size() != 0) {
+      return errors::InvalidArgument(
+          "Weights should not be passed as it should be "
+          "handled by unsorted_segment_sum");
+    }
     if (output.size() == 0) {
       return Status::OK();
     }

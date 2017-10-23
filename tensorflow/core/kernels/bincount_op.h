@@ -30,6 +30,7 @@ template <typename Device, typename T>
 struct BincountFunctor {
   static Status Compute(OpKernelContext* context,
                         const typename TTypes<int32, 1>::ConstTensor& arr,
+                        const typename TTypes<T, 1>::ConstTensor& weights,
                         typename TTypes<T, 1>::Tensor& output);
 };
 
