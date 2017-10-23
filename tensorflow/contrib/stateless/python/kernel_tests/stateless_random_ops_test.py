@@ -82,7 +82,7 @@ class StatelessOpsTest(test.TestCase):
 
   def testShapeType(self):
     with self.test_session(use_gpu=True):
-      for shape_dtype in [dtypes.int64]:
+      for shape_dtype in [dtypes.int32, dtypes.int64]:
         seed_t = array_ops.placeholder(dtypes.int64, shape=[2])
         seeds = [(x, y) for x in range(5) for y in range(5)] * 3
         for stateless_op, _ in CASES:
