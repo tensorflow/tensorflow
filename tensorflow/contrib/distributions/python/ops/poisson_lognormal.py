@@ -93,7 +93,7 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
           : d=0, ..., deg-1 }
   ```
 
-  where, [`grid, w = numpy.polynomial.hermite.hermgauss(deg)`](
+  where, [e.g., `grid, w = numpy.polynomial.hermite.hermgauss(deg)`](
   https://docs.scipy.org/doc/numpy-1.10.0/reference/generated/numpy.polynomial.hermite.hermgauss.html)
   and `prob = w / sqrt(pi)`.
 
@@ -106,14 +106,15 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
   pln = ds.PoissonLogNormalQuadratureCompound(
       loc=[0., -0.5],
       scale=1.,
-      quadrature_polynomial_degree=10,
+      quadrature_grid_and_probs=(
+        np.polynomial.hermite.hermgauss(deg=10)),
       validate_args=True)
   """
 
   def __init__(self,
                loc,
                scale,
-               quadrature_polynomial_degree=8,
+               quadrature_grid_and_probs=None,
                validate_args=False,
                allow_nan_stats=True,
                name="PoissonLogNormalQuadratureCompound"):
@@ -124,8 +125,9 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
         the LogNormal prior.
       scale: `float`-like (batch of) scalar `Tensor`; the scale parameter of
         the LogNormal prior.
-      quadrature_polynomial_degree: Python `int`-like scalar.
-        Default value: 8.
+      quadrature_grid_and_probs: Python pair of `list`-like objects representing
+        the sample points and the corresponding (possibly normalized) weight.
+        When `None`, defaults to: `np.polynomial.hermite.hermgauss(deg=8)`.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
@@ -138,6 +140,8 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
 
     Raises:
       TypeError: if `loc.dtype != scale[0].dtype`.
+      ValueError: if `quadrature_grid_and_probs is not None` and
+        `len(quadrature_grid_and_probs[0]) != len(quadrature_grid_and_probs[1])`
     """
     parameters = locals()
     with ops.name_scope(name, values=[loc, scale]):
@@ -153,18 +157,21 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
             "loc.dtype(\"{}\") does not match scale.dtype(\"{}\")".format(
                 loc.dtype.name, scale.dtype.name))
 
-      self._degree = quadrature_polynomial_degree
-
-      grid, prob = np.polynomial.hermite.hermgauss(
-          deg=quadrature_polynomial_degree)
-
-      # It should be that `sum(prob) == sqrt(pi)`, but self-normalization is
-      # more numerically stable.
-      prob = prob.astype(dtype.as_numpy_dtype)
-      prob /= np.linalg.norm(prob, ord=1)
+      if quadrature_grid_and_probs is None:
+        grid, probs = np.polynomial.hermite.hermgauss(deg=8)
+      else:
+        grid, probs = tuple(quadrature_grid_and_probs)
+        if len(grid) != len(probs):
+          raise ValueError("`quadrature_grid_and_probs` must be a `tuple` of "
+                           "same-length list-like objects")
+      grid = grid.astype(dtype.as_numpy_dtype)
+      probs = probs.astype(dtype.as_numpy_dtype)
+      probs /= np.linalg.norm(probs, ord=1)
+      self._quadrature_grid = grid
+      self._quadrature_probs = probs
 
       self._mixture_distribution = categorical_lib.Categorical(
-          logits=np.log(prob),
+          logits=np.log(probs),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats)
 
@@ -210,9 +217,14 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
     return self._scale
 
   @property
-  def quadrature_polynomial_degree(self):
-    """Polynomial largest exponent used for Gauss-Hermite quadrature."""
-    return self._degree
+  def quadrature_grid(self):
+    """Quadrature grid points."""
+    return self._quadrature_grid
+
+  @property
+  def quadrature_probs(self):
+    """Quadrature normalized weights."""
+    return self._quadrature_probs
 
   def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
@@ -242,10 +254,10 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
                 [batch_size])),
         seed=distribution_util.gen_new_seed(
             seed, "poisson_lognormal_quadrature_compound"))
-    # Stride `quadrature_polynomial_degree` for `batch_size` number of times.
+    # Stride `quadrature_degree` for `batch_size` number of times.
     offset = math_ops.range(start=0,
-                            limit=batch_size * self._degree,
-                            delta=self._degree,
+                            limit=batch_size * len(self.quadrature_probs),
+                            delta=len(self.quadrature_probs),
                             dtype=ids.dtype)
     ids += offset
     rate = array_ops.gather(

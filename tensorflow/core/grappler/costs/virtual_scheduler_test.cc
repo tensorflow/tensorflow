@@ -1235,7 +1235,7 @@ TEST_F(VirtualSchedulerTest, CalculateOutputSize) {
   EXPECT_EQ(2 * 10 * 10 * 10, scheduler_->CalculateOutputSize(output, 2));
   EXPECT_EQ(4 * 100 * 7 * 8 * 99, scheduler_->CalculateOutputSize(output, 3));
 
-  // Any uknown shape (-1) shall yield zero output size.
+  // Any unknown shape (-1) shall yield zero output size.
   EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 4));
   EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 5));
 
@@ -1320,8 +1320,10 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
         return std::make_pair(node_port.first->name(), node_port.second);
       });
   std::set<std::pair<string, int>> expected = {
-      std::make_pair("bn", -1), std::make_pair("bn", 0),
-      std::make_pair("bn", 2), std::make_pair("x", 0),
+      std::make_pair("bn", -1),
+      std::make_pair("bn", 0),
+      std::make_pair("bn", 2),
+      std::make_pair("x", 0),
   };
   ExpectSetEq(expected, nodes_in_memory);
 
@@ -1469,13 +1471,13 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
 
   // Helper lambda to extract port num from _Send and _Recv op name.
   auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn:0") != std::string::npos) {
+    if (name.find("bn_0") != std::string::npos) {
       return 0;
-    } else if (name.find("bn:1") != std::string::npos) {
+    } else if (name.find("bn_1") != std::string::npos) {
       return 1;
-    } else if (name.find("bn:2") != std::string::npos) {
+    } else if (name.find("bn_2") != std::string::npos) {
       return 2;
-    } else if (name.find("bn:minus1") != std::string::npos) {
+    } else if (name.find("bn_minus1") != std::string::npos) {
       return -1;
     }
     return -999;
@@ -1512,7 +1514,6 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
       output_properties.push_back(output_property);
     }
     return scheduler_->CalculateOutputSize(output_properties, 0);
-
   };
 
   // Validate transfer size.
@@ -1529,6 +1530,5 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
   EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
   EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
 }
-
 }  // end namespace grappler
 }  // end namespace tensorflow

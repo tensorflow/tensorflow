@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import contextlib
 
 from tensorflow.python.eager import context
@@ -28,6 +27,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops as tf_ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -54,7 +54,7 @@ class _VariableFromResource(resource_variable_ops.ResourceVariable):
 
   def __init__(self, resource, dtype, name, shape):
     self._handle = resource
-    self._graph_shape = shape
+    self._graph_shape = tensor_shape.as_shape(shape)
     self._handle_device = resource.device
     self._handle_name = name
     self._cached_value = None
@@ -240,18 +240,33 @@ class _InitializingFunctionObject(object):
   from the graph, which might not be possible in general.
   """
 
-  def __init__(self, call_fn, init_fn):
+  def __init__(self, call_fn, init_fn, shape_and_dtypes):
     self._init_fn = init_fn
     self._call_fn = call_fn
+    self.shape_and_dtypes = shape_and_dtypes
+    self.flattened_shapes = [tensor_shape.as_shape(sd.shape) for sd in
+                             nest.flatten(self.shape_and_dtypes)]
 
   @property
   def variables(self):
     return self._call_fn.variables
 
   def __call__(self, *args):
+    nest.assert_same_structure(self.shape_and_dtypes, args, check_types=False)
+    if not all([
+        shape.is_compatible_with(arg.shape)
+        for shape, arg in zip(self.flattened_shapes, nest.flatten(args))
+    ]):
+      raise ValueError(
+          "Declared shapes do not match argument shapes: Expected %s, found %s."
+          % (self.flattened_shapes, [arg.shape for arg in nest.flatten(args)]))
+
     initialized = [resource_variable_ops.var_is_initialized_op(
         v.handle).numpy() for v in self._call_fn.variables]
     if all(x for x in initialized):
+      for v in self._call_fn.variables:
+        if v._trainable:  # pylint: disable=protected-access
+          tape.watch_variable(v)
       return self._call_fn(*args)
     elif all(not x for x in initialized):
       return self._init_fn(*args)
@@ -297,11 +312,21 @@ def _graph_callable_internal(func, shape_and_dtypes):
   Returns:
     Callable graph object.
   """
+  container = tf_ops.get_default_graph()._container  # pylint: disable=protected-access
+  container_prefix = tf_ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
   with context.graph_mode():
     # This graph will store both the initialization and the call version of the
     # wrapped function. It will later be used by the backprop code to build the
     # backprop graph, if necessary.
     tmp_graph = tf_ops.Graph()
+    # Inherit the container from the original graph to create resources at user
+    # expected containers. Also inherits the container prefix, since this is
+    # used for error checking when isolating Eager execution (the container
+    # prefix at creation must match the container prefix when used, and
+    # variables returned from the graph callable will be used in the outside
+    # context).
+    tmp_graph._container = container  # pylint: disable=protected-access
+    tmp_graph._container_prefix = container_prefix  # pylint: disable=protected-access
     with tmp_graph.as_default():
       # Placeholders for the non-variable inputs.
       func_inputs = _get_graph_callable_inputs(shape_and_dtypes)
@@ -397,12 +422,19 @@ def _graph_callable_internal(func, shape_and_dtypes):
       function._map_sequence_obj_to_idx(capture_func_def_outputs),  # pylint: disable=protected-access
       output_shapes)
 
-  return _InitializingFunctionObject(captured_function, initializer_function)
+  return _InitializingFunctionObject(captured_function, initializer_function,
+                                     shape_and_dtypes)
 
 
-# Data type that packages together shape and type information for arguments to
-# graph callables. See graph_callable() for an example.
-ShapeAndDtype = collections.namedtuple("ShapeAndDtype", ["shape", "dtype"])
+class ShapeAndDtype(object):
+  """Data type that packages together shape and type information.
+
+  Used for arguments to graph callables. See graph_callable() for an example.
+  """
+
+  def __init__(self, shape, dtype):
+    self.shape = shape
+    self.dtype = dtype
 
 
 def graph_callable(shape_and_dtypes):

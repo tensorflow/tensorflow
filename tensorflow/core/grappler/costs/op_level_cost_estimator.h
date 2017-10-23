@@ -36,11 +36,14 @@ class OpLevelCostEstimator {
   virtual Costs PredictCosts(const OpContext& op_context) const;
 
  protected:
-  // Returns an estimate of device performance (in billions of operations
-  // executed per second) and memory bandwidth (in GigaBytes/second) for the
-  // specified device.
-  virtual std::pair<double, double> GetDeviceInfo(
-      const DeviceProperties& device) const;
+  // Basic device performance info, sufficient for roofline estimate.
+  struct DeviceInfo {
+    double gigaops;     // Billions of operations executed per second.
+    double gb_per_sec;  // Bandwidth to main memory in GB per second.
+  };
+
+  // Returns basic device performance info.
+  virtual DeviceInfo GetDeviceInfo(const DeviceProperties& device) const;
 
   // For operations for which we haven't yet built estimates, returns a dummy
   // value based on input size.

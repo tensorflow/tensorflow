@@ -2079,6 +2079,85 @@ dnn::AlgorithmDesc GetCudnnConvolutionForwardAlgorithm(
   return dnn::AlgorithmDesc(algo, use_tensor_ops);
 }
 
+// A helper class to set env-vars and choose options for cudnn-related
+// algorithms.
+template <typename EnvVar>
+class CudnnEnvVar {
+ public:
+  static bool IsEnabled() {
+    static bool is_enabled = IsEnabledImpl();
+    return is_enabled;
+  }
+
+ private:
+  static bool IsEnabledImpl() {
+    const char* tf_env_var_val = getenv(EnvVar::kName);
+    if (tf_env_var_val != nullptr) {
+      port::StringPiece tf_env_var_val_str(tf_env_var_val);
+      if (tf_env_var_val_str == "0") {
+        return false;
+      }
+      return true;
+    }
+    return EnvVar::kDefaultFlag;
+  }
+};
+
+// A helper struct to decide whether to enable the FFT_TILING algorithms for
+// forward convolution. Before cudnn v5.1 it works fine but since cudnn v5.1
+// it is turned off due to memory corruption caused by some shapes with this
+// algorithm.
+// Before NVIDIA fixes the memory corruption bug, users can explicitly
+// enable the algorithm through an env-var "TF_ENABLE_FFT_TILING_FORWARD=1".
+struct FftTilingForward {
+  static constexpr const char* kName = "TF_ENABLE_FFT_TILING_FORWARD";
+  // TODO(yangzihao): turn the default to True when the memory corruption bug
+  // is fixed.
+  static constexpr bool kDefaultFlag = CUDNN_VERSION < 5100;
+};
+
+// A helper struct to decide whether to enable the WINOGRAD_NONFUSED algorithms.
+// By default it is turned on, users can explicitly disable them through an
+// env-var "TF_ENABLE_WINOGRAD_NONFUSED=0".
+// https://github.com/tensorflow/tensorflow/pull/4901
+struct WinogradNonfused {
+  static constexpr const char* kName = "TF_ENABLE_WINOGRAD_NONFUSED";
+  // NVIDIA has fixed winograd nonfused bug for cudnn v>=7.
+  // For cudnn v>=5.1, we have a workaround and for any lower version, we
+  // disable it by default.
+  static constexpr bool kDefaultFlag = CUDNN_VERSION >= 5100;
+};
+
+// A helper struct to decide whether to use FP32 as the internal compute type
+// for convolution when the input data type is FP16. By default it is turned on,
+// users can explicitly disable them (choose to use FP16 as the internal compute
+// type) through an env-var "TF_FP16_CONV_USE_FP32_COMPUTE=0".
+struct ConvDoFP32ComputationFP16Input {
+  static constexpr const char* kName = "TF_FP16_CONV_USE_FP32_COMPUTE";
+  // Using FP16 as the internal compute type for convolution when the input data
+  // type is FP16 is only supported on architectures with true fp16 support
+  // (compute capability 5.3 and 6.0). Setting this to false in an unsupported
+  // architecture will cause internal errors.
+  static constexpr bool kDefaultFlag = true;
+};
+
+// A group of helper functions to return the internal compute type for
+// convolutions in cudnn.
+// TODO(yangzihao): Add support for float64.
+template <typename T>
+cudnnDataType_t GetConvComputeType() {
+  return CUDNN_DATA_FLOAT;
+}
+
+template <>
+cudnnDataType_t GetConvComputeType<Eigen::half>() {
+  if (CudnnEnvVar<ConvDoFP32ComputationFP16Input>::IsEnabled()) {
+    return CUDNN_DATA_FLOAT;
+  } else {
+    return CUDNN_DATA_HALF;
+  }
+}
+
 }  // namespace
 
 template <class T>
@@ -2098,12 +2177,8 @@ bool CudnnSupport::DoConvolveImpl(
       static_cast<cudnnDataType_t>(cudnn_type)};
   ScopedFilterDescriptor filter{parent_, filter_descriptor, batch_descriptor,
       static_cast<cudnnDataType_t>(cudnn_type)};
-  // TODO(sesse): Figure out under what circumstances cuDNN would
-  // accept CUDNN_DATA_HALF here; probably related to compute capability
-  // and cuDNN version; at least cuDNN 4 on TITAN X only supports
-  // CUDNN_DATA_FLOAT even for half input.
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
-      CUDNN_DATA_FLOAT};
+                                   GetConvComputeType<T>()};
 
   mutex_lock lock{dnn_handle_mutex_};
   auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
@@ -2423,55 +2498,6 @@ bool CudnnSupport::DoFusedConvolveImpl(
   return true;
 #endif  // CUDNN_VERSION < 6000
 }
-
-// A helper class to set env-vars and choose options for cudnn-related
-// algorithms.
-template <typename EnvVar>
-class CudnnEnvVar {
- public:
-  static bool IsEnabled() {
-    static bool is_enabled = IsEnabledImpl();
-    return is_enabled;
-  }
-
- private:
-  static bool IsEnabledImpl() {
-    const char* tf_env_var_val = getenv(EnvVar::kName);
-    if (tf_env_var_val != nullptr) {
-      port::StringPiece tf_env_var_val_str(tf_env_var_val);
-      if (tf_env_var_val_str == "0") {
-        return false;
-      }
-      return true;
-    }
-    return EnvVar::kDefaultFlag;
-  }
-};
-
-// A helper struct to decide whether to enable the FFT_TILING algorithms for
-// forward convolution. Before cudnn v5.1 it works fine but since cudnn v5.1
-// it is turned off due to memory corruption caused by some shapes with this
-// algorithm.
-// Before NVIDIA fixes the memory corruption bug, users can explicitly
-// enable the algorithm through an env-var "TF_ENABLE_FFT_TILING_FORWARD=1".
-struct FftTilingForward {
-  static constexpr const char* kName = "TF_ENABLE_FFT_TILING_FORWARD";
-  // TODO(yangzihao): turn the default to True when the memory corruption bug
-  // is fixed.
-  static constexpr bool kDefaultFlag = CUDNN_VERSION < 5100;
-};
-
-// A helper struct to decide whether to enable the WINOGRAD_NONFUSED algorithms.
-// By default it is turned on, users can explicitly disable them through an
-// env-var "TF_ENABLE_WINOGRAD_NONFUSED=0".
-// https://github.com/tensorflow/tensorflow/pull/4901
-struct WinogradNonfused {
-  static constexpr const char* kName = "TF_ENABLE_WINOGRAD_NONFUSED";
-  // NVIDIA has fixed winograd nonfused bug for cudnn v>=7.
-  // For cudnn v>=5.1, we have a workaround and for any lower version, we
-  // disable it by default.
-  static constexpr bool kDefaultFlag = CUDNN_VERSION >= 5100;
-};
 
 bool CudnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
@@ -2864,10 +2890,18 @@ bool CudnnSupport::DoFusedConvolve(
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
 #if CUDNN_VERSION < 6000
-  LOG(ERROR) << "cudnnConvolutionBiasActivationForward() is only "
-                "supported for cuDNN version >= 6";
+  LOG(WARNING) << "cudnnConvolutionBiasActivationForward() is only "
+                  "supported for cuDNN version >= 6";
   return false;
 #else
+  int cc_major, cc_minor;
+  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                   &cc_minor);
+  if (cc_major < 6 || (cc_major == 6 && cc_minor < 1)) {
+    LOG(WARNING) << "cudnnConvolutionBiasActivationForward() for int8 is only "
+                    "supported on GPUs with compute capability 6.1 or later.";
+    return false;
+  }
   return DoFusedConvolveImpl<int8, float, float, CUDNN_DATA_INT8x4,
                              CUDNN_DATA_INT32>(
       stream, conv_input_descriptor, conv_input_data, conv_input_scale,
@@ -2875,7 +2909,6 @@ bool CudnnSupport::DoFusedConvolve(
       side_input_scale, bias_descriptor, biases, activation_mode,
       output_descriptor, output_data, scratch_allocator, algorithm_config,
       output_profile_result);
-  return true;
 #endif
 }
 
@@ -2983,12 +3016,8 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
                                     static_cast<cudnnDataType_t>(cudnn_type)};
   ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
                                 static_cast<cudnnDataType_t>(cudnn_type)};
-  // TODO(sesse): Figure out under what circumstances cuDNN would
-  // accept CUDNN_DATA_HALF here; probably related to compute capability
-  // and cuDNN version; at least cuDNN 4 on TITAN X only supports
-  // CUDNN_DATA_FLOAT even for half input.
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
-                                   CUDNN_DATA_FLOAT};
+                                   GetConvComputeType<T>()};
 
   const bool is_profiling = output_profile_result != nullptr;
   cudnnConvolutionBwdDataAlgo_t algo;
@@ -3238,12 +3267,8 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
           static_cast<cudnnDataType_t>(cudnn_type)};
   ScopedFilterDescriptor filter{parent_, filter_descriptor, input_descriptor,
         static_cast<cudnnDataType_t>(cudnn_type)};
-  // TODO(sesse): Figure out under what circumstances cuDNN would
-  // accept CUDNN_DATA_HALF here; probably related to compute capability
-  // and cuDNN version; at least cuDNN 4 on TITAN X only supports
-  // CUDNN_DATA_FLOAT even for half input.
   ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
-      CUDNN_DATA_FLOAT};
+                                   GetConvComputeType<T>()};
 
   const bool is_profiling = output_profile_result != nullptr;
   cudnnConvolutionBwdFilterAlgo_t algo;
@@ -3396,6 +3421,7 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
       /*beta=*/&beta,
       /*gradDesc=*/filter.handle(),
       /*gradData=*/backward_filter_data->opaque());
+
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
     if (status == CUDNN_STATUS_SUCCESS) {

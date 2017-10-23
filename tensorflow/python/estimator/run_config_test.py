@@ -70,7 +70,7 @@ class RunConfigTest(test.TestCase):
     config = run_config_lib.RunConfig()
     self.assertIsNone(config.model_dir)
     self.assertIsNone(config.session_config)
-    self.assertEqual(1, config.tf_random_seed)
+    self.assertIsNone(config.tf_random_seed)
     self.assertEqual(100, config.save_summary_steps)
     self.assertEqual(600, config.save_checkpoints_secs)
     self.assertIsNone(config.save_checkpoints_steps)

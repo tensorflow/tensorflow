@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
@@ -82,7 +84,11 @@ Status Executable::DumpSessionModule() {
   }
   filename = SanitizeFileName(std::move(filename));
   string file_path = tensorflow::io::JoinPath(directory_path, filename);
-  return tensorflow::WriteBinaryProto(env, file_path, session_module);
+  string result;
+  TF_RET_CHECK(
+      tensorflow::SerializeToStringDeterministic(session_module, &result));
+  return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
+                                       result);
 }
 
 }  // namespace xla

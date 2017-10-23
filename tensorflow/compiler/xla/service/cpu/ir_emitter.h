@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/external_constant_pool.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -104,11 +105,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // llvm_module: the LLVM module to emit IR into.
   // hlo_to_profile_idx: the mapping from HLO to its index in the profiling
   //                     array.
+  // external_constant_pool: if non-null, points to an ExternalConstantPool
+  //                         instance into which the Ir emitter can spill
+  //                         constants.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
             const std::unordered_map<const HloInstruction*, size_t>*
                 hlo_to_profile_idx,
-            llvm::TargetMachine* target_machine);
+            llvm::TargetMachine* target_machine,
+            ExternalConstantPool* external_constant_pool);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -231,6 +236,10 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Gets an IrArray representing the given hlo.
   llvm_ir::IrArray GetIrArrayFor(const HloInstruction* hlo);
 
+  // Gets a list of IrArrays, one for each of hlo's operands.
+  std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
+      const HloInstruction* hlo);
+
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                        llvm_ir::IrArray* array) {
@@ -239,6 +248,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Convenience function to get the IR type matching the given shape.
   llvm::Type* IrShapeType(const Shape& shape);
+
+  // Returns an array of compute function parameter types.
+  std::vector<llvm::Type*> GetComputeFunctionParams();
 
   // Get the llvm::Value* that represents the "retval" argument of the
   // computation function being emitted by this emitter.
@@ -313,6 +325,18 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       llvm::Function* function, const Shape& return_shape, int64 element_count,
       tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
       tensorflow::StringPiece name);
+
+  // Returns an array of compute function call arguments.
+  std::vector<llvm::Value*> GetArrayFunctionCallArguments(
+      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+      llvm::Value* return_value_buffer, tensorflow::StringPiece name);
+
+  // Emits a call to a runtime fork/join function which dispatches parallel
+  // calls to 'parallel_function' (and joins threads before returning).
+  Status EmitParallelForkJoin(
+      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+      llvm::Value* output_address, HloComputation* computation,
+      llvm::Function* parallel_function);
 
   // Verifies that the element types of all of the given operand instructions
   // match and are of one of the given supported types.
@@ -587,12 +611,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                            llvm::Value* program_buffer_address);
 
-  // Returns true if the current function being emitted is called in a
-  // parallel context (returns false otherwise).
-  bool IsParallelContext() {
-    return parallel_cpu_backend_ && is_top_level_computation_;
-  }
-
   const HloModuleConfig& hlo_module_config_;
 
   const bool parallel_cpu_backend_;
@@ -600,6 +618,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   bool is_top_level_computation_;
 
   TargetMachineFeatures target_machine_features_;
+
+  int64 external_global_constant_counter_ = 0;
+  ExternalConstantPool* external_constant_pool_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

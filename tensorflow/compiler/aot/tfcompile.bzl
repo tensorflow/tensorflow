@@ -186,8 +186,6 @@ def tf_library(name, graph, config,
           "//tensorflow/compiler/xla:xla_data_proto",
       ] or []) + (include_standard_runtime_deps and [
           # TODO(cwhipkey): only depend on kernel code that the model actually needed.
-          "//tensorflow/compiler/tf2xla/kernels:gather_op_kernel_float_int32",
-          "//tensorflow/compiler/tf2xla/kernels:gather_op_kernel_float_int64",
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
           "//tensorflow/compiler/xla/service/cpu:cpu_runtime_avx",
@@ -294,7 +292,6 @@ def tf_library(name, graph, config,
         ]),
         tags=tags,
     )
-
 
 def target_llvm_triple():
   """Returns the target LLVM triple to be used for compiling the target."""

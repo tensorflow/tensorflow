@@ -90,7 +90,7 @@ class VectorExponentialDiag(
 
   ```python
   ds = tf.contrib.distributions
-  la = tf.contrib.linalg
+  la = tf.linalg
 
   # Initialize a single 2-variate VectorExponential, supported on
   # {(x, y) in R^2 : x > 0, y > 0}.

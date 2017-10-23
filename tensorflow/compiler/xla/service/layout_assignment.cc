@@ -732,7 +732,8 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     // dimension bound is 1 in the operand shape, there may be several such
     // layouts. So if 'output_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
-    // operations.
+    // operations. For similar reasons, if the operand and output have the same
+    // rank, try to match the operand's layout to the output.
     if (ShapeUtil::TrueRank(operand->shape()) == 1 &&
         ShapeUtil::Rank(instruction->shape()) == 1) {
       // Don't assign a layout in case of R1 -> effective R1 reshape.
@@ -747,6 +748,13 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
         LayoutUtil::GetDefaultLayoutForShape(operand_shape);
     if (ShapeUtil::ReshapeIsBitcast(operand_shape, output_shape_with_layout)) {
       return MakeUnique<Layout>(operand_shape.layout());
+    }
+    if (ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(output_shape)) {
+      *operand_shape.mutable_layout() = output_layout;
+      if (ShapeUtil::ReshapeIsBitcast(operand_shape,
+                                      output_shape_with_layout)) {
+        return MakeUnique<Layout>(output_layout);
+      }
     }
     auto aligned_operand_shape =
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
@@ -796,7 +804,8 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     // dimension bound is 1 in the user shape, there may be several such
     // layouts. So if 'operand_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
-    // operations.
+    // operations. For similar reasons, if the operand and output have the same
+    // rank, try to match the outputs's layout to the operand.
     if (ShapeUtil::Rank(operand->shape()) == 1 &&
         ShapeUtil::TrueRank(user->shape()) == 1) {
       // Don't assign a layout in case of R1 -> effective R1 reshape.
@@ -811,6 +820,13 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
         LayoutUtil::GetDefaultLayoutForShape(output_shape);
     if (ShapeUtil::ReshapeIsBitcast(output_shape, operand_shape_with_layout)) {
       return MakeUnique<Layout>(output_shape.layout());
+    }
+    if (ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape)) {
+      *output_shape.mutable_layout() = operand_layout;
+      if (ShapeUtil::ReshapeIsBitcast(output_shape,
+                                      operand_shape_with_layout)) {
+        return MakeUnique<Layout>(operand_layout);
+      }
     }
     auto aligned_user_shape =
         ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);

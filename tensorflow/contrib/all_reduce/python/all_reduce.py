@@ -191,7 +191,7 @@ def _ragged_split(tensor, pieces):
 
 
 def _ring_permutations(num_workers, num_subchunks, gpu_perm):
-  """"Generate an array of device index arrays, one for for each subchunk.
+  """"Generate an array of device index arrays, one for each subchunk.
 
   In the basic ring reduction algorithm there are size(T)/num_devices
   data chunks and each device process one chunk per tick, i.e. sending

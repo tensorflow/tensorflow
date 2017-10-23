@@ -1002,6 +1002,8 @@ _DTYPE_TO_STR = {
     dtypes.int32: "i32",
     dtypes.uint8: "i8",
     dtypes.uint16: "u16",
+    dtypes.uint32: "u32",
+    dtypes.uint64: "u64",
     dtypes.int16: "i16",
     dtypes.int8: "i8",
     dtypes.string: "s",

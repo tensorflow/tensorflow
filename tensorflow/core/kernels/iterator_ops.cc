@@ -256,6 +256,44 @@ class MakeIteratorOp : public OpKernel {
   }
 };
 
+class ToSingleElementOp : public OpKernel {
+ public:
+  explicit ToSingleElementOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    DatasetBase* dataset;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+    auto iterator = dataset->MakeIterator("SingleElementIterator");
+
+    IteratorContext::Params params;
+    params.env = ctx->env();
+    params.step_id = ctx->step_id();
+    params.resource_manager = ctx->resource_manager();
+    params.runner = *(ctx->runner());
+    IteratorContext iter_ctx(std::move(params));
+
+    std::vector<Tensor> components;
+    components.reserve(dataset->output_dtypes().size());
+    bool end_of_sequence;
+
+    OP_REQUIRES_OK(ctx,
+                   iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+    OP_REQUIRES(ctx, !end_of_sequence,
+                errors::InvalidArgument("Dataset was empty."));
+
+    for (int i = 0; i < components.size(); ++i) {
+      // TODO(mrry): Check that the shapes match the shape attrs.
+      ctx->set_output(i, components[i]);
+    }
+
+    components.clear();
+    OP_REQUIRES_OK(ctx,
+                   iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+    OP_REQUIRES(ctx, end_of_sequence,
+                errors::InvalidArgument("Dataset had more than one element."));
+  }
+};
+
 class SaveIteratorOp : public OpKernel {
  public:
   explicit SaveIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -609,6 +647,8 @@ class IteratorFromStringHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
+REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
+                        ToSingleElementOp);
 REGISTER_KERNEL_BUILDER(Name("SaveIterator").Device(DEVICE_CPU),
                         SaveIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("RestoreIterator").Device(DEVICE_CPU),

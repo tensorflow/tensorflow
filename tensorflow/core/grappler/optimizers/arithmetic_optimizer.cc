@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -289,10 +290,96 @@ static DataType GetDataTypeFromAttr(const NodeDef& node,
   return attr.type();
 }
 
+static void SetDataTypeToAttr(DataType dtype, const string& attr_name,
+                              NodeDef* node) {
+  (*node->mutable_attr())[attr_name].set_type(dtype);
+}
+
+static string SourceDataTypeAttrName(const NodeDef& node) {
+  if (node.op() == "Bitcast") {
+    return "T";
+  } else if (node.op() == "Cast") {
+    return "SrcT";
+  } else {
+    LOG(FATAL) << "SourceDataTypeAttrName not implemented for op " << node.op();
+  }
+}
+
+static string DestinationDataTypeAttrName(const NodeDef& node) {
+  if (node.op() == "Bitcast") {
+    return "type";
+  } else if (node.op() == "Cast") {
+    return "DstT";
+  } else {
+    LOG(FATAL) << "DestinationDataTypeAttrName not implemented for op "
+               << node.op();
+  }
+}
+
+static DataType GetSourceDataType(const NodeDef& node) {
+  return GetDataTypeFromAttr(node, SourceDataTypeAttrName(node));
+}
+
+static DataType GetDestinationDataType(const NodeDef& node) {
+  return GetDataTypeFromAttr(node, DestinationDataTypeAttrName(node));
+}
+
+static void SetSourceDataType(DataType dtype, NodeDef* node) {
+  SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
+}
+
 static bool IsNumberType(DataType dtype) {
   DataTypeVector number_types = NumberTypes();
   return std::find(number_types.begin(), number_types.end(), dtype) !=
          number_types.end();
+}
+
+const char kOutputShapesAttr[] = "_output_shapes";
+
+// Returns whether `reshape` is an identity op. The tensor that `reshape`
+// reshapes is the `output_pos`-th output of node `input`.
+static bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
+                              const int output_pos) {
+  if (!reshape.attr().count(kOutputShapesAttr) ||
+      !input.attr().count(kOutputShapesAttr)) {
+    return false;
+  }
+
+  PartialTensorShape src_shape(
+      input.attr().at(kOutputShapesAttr).list().shape(output_pos));
+  PartialTensorShape dst_shape(
+      reshape.attr().at(kOutputShapesAttr).list().shape(0));
+  if (src_shape.unknown_rank() || dst_shape.unknown_rank()) {
+    return false;
+  }
+
+  if (!dst_shape.IsCompatibleWith(src_shape)) {
+    return false;
+  }
+
+  // Returns false when src_shape or dst_shape has >=2 dimensions with unknown
+  // sizes.
+  auto num_unknown_dim_sizes = [](const PartialTensorShape& partial_shape) {
+    auto dim_sizes = partial_shape.dim_sizes();
+    return std::count(dim_sizes.begin(), dim_sizes.end(), -1);
+  };
+  int src_num_unknown_dim_sizes = num_unknown_dim_sizes(src_shape);
+  int dst_num_unknown_dim_sizes = num_unknown_dim_sizes(dst_shape);
+  if (src_num_unknown_dim_sizes > 1 || dst_num_unknown_dim_sizes > 1) {
+    return false;
+  }
+
+  // Now, src_shape and dst_shape have at most one dimension with unknown
+  // sizes, and are compatible. Therefore, the reshape is a no-op when
+  //
+  // 1. at least one of them is fully-defined, or
+  // 2. both are partially defined and the -1 appears on the same dimension,
+  //    i.e., IsIdenticalTo returns true.
+  if (src_num_unknown_dim_sizes == 1 && dst_num_unknown_dim_sizes == 1) {
+    return dst_shape.IsIdenticalTo(src_shape);
+  }
+
+  return true;
 }
 
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
@@ -332,12 +419,24 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     //      |      |
     //    input ---+
     NodeDef* reshape = node_map->GetNode(node->name());
-    const NodeDef* input = node_map->GetNode(node->input(0));
+    int output_pos = 0;
+    string input_node_name = ParseNodeName(node->input(0), &output_pos);
+    const NodeDef* input = node_map->GetNode(input_node_name);
     if (input->op() == "Reshape") {
       reshape->set_input(0, input->input(0));
       node_map->UpdateInput(reshape->name(), input->name(), input->input(0));
       new_nodes->push_back(reshape);
       return reshape->name();
+    }
+
+    // If the reshape is a no-op, forward its input to its consumers. This is
+    // considered aggressive and turned off by default, because users may state
+    // that the placeholder outputs tensors of shape [M, N] while feeding it
+    // with tensors of shape [M*N] (or worse). The reshape nodes are then
+    // necessary to update the tensor metadata to the required shape.
+    if (opt_level_ == RewriterConfig::AGGRESSIVE &&
+        ReshapeIsIdentity(*reshape, *input, output_pos)) {
+      return reshape->input(0);
     }
   }
 
@@ -369,8 +468,8 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       const NodeDef* cast = node_map->GetNode(transpose->input(0));
       if (cast->op() == "Cast") {
         const NodeDef* input = node_map->GetNode(cast->input(0));
-        const DataType src_type = GetDataTypeFromAttr(*cast, "SrcT");
-        const DataType dst_type = GetDataTypeFromAttr(*cast, "DstT");
+        const DataType src_type = GetSourceDataType(*cast);
+        const DataType dst_type = GetDestinationDataType(*cast);
         if (IsNumberType(src_type) && IsNumberType(dst_type) &&
             DataTypeSize(src_type) < DataTypeSize(dst_type)) {
           NodeDef* new_transpose = graph_def->add_node();
@@ -398,6 +497,32 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
           return new_cast->name();
         }
       }
+    }
+  }
+
+  if (node->op() == "Bitcast") {
+    NodeDef* bitcast = node_map->GetNode(node->name());
+    // Bypass bitcasts whose source type and destination type are equal.
+    if (GetSourceDataType(*bitcast) == GetDestinationDataType(*bitcast)) {
+      return bitcast->input(0);
+    }
+
+    const NodeDef* operand = node_map->GetNode(bitcast->input(0));
+    if (operand->op() == bitcast->op()) {
+      // Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
+      bitcast->set_input(0, operand->input(0));
+      SetSourceDataType(GetSourceDataType(*operand), bitcast);
+      node_map->UpdateInput(bitcast->name(), bitcast->input(0),
+                            operand->input(0));
+      new_nodes->push_back(bitcast);
+      return bitcast->name();
+    }
+  }
+
+  if (node->op() == "Cast") {
+    // Bypass casts whose source type and destination type are equal.
+    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
+      return node->input(0);
     }
   }
 
@@ -465,7 +590,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             scaled_weights->set_name(weights->name() + "_scaled");
             scaled_weights->set_op("Mul");
             scaled_weights->set_device(weights->device());
-            (*scaled_weights->mutable_attr())["dtype"] =
+            (*scaled_weights->mutable_attr())["T"] =
                 weights->attr().at("dtype");
             node_map->AddNode(scaled_weights->name(), scaled_weights);
             new_nodes->push_back(scaled_weights);
@@ -490,6 +615,7 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
             consumer_of_mul->set_input(0, mul->input(0));
             node_map->UpdateInput(consumer_of_mul->name(), mul->name(),
                                   other->name());
+            new_nodes->push_back(consumer_of_mul);
             return conv->name();
           }
         }
@@ -555,12 +681,18 @@ void ArithmeticOptimizer::SimplifyArithmeticOps(
       for (NodeDef* consumer : consumers) {
         // Update `consumer`'s use of `node` to `input`'s operand.
         for (int i = 0; i < consumer->input_size(); ++i) {
-          if (NodeName(consumer->input(i)) == node->name()) {
-            *consumer->mutable_input(i) = simplified_tensor;
+          int operand_pos;
+          string operand_node_name =
+              ParseNodeName(consumer->input(i), &operand_pos);
+          if (operand_node_name == node->name()) {
+            *consumer->mutable_input(i) =
+                (operand_pos < 0
+                     ? AsControlDependency(NodeName(simplified_tensor))
+                     : simplified_tensor);
           }
+          VLOG(2) << "Update input " << consumer->input(i) << " of "
+                  << consumer->name() << " to " << simplified_tensor;
         }
-        VLOG(2) << "Update input " << node->name() << " of " << consumer->name()
-                << " to " << simplified_tensor;
         node_map.UpdateInput(consumer->name(), node->name(), simplified_tensor);
         if (!nodes_to_simplify.Exists(consumer)) {
           nodes_to_simplify.PushBack(consumer);
@@ -581,8 +713,17 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   *optimized_graph = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
 
+  GraphProperties graph_properties(item);
+  TF_RETURN_IF_ERROR(graph_properties.InferStatically());
+  TF_RETURN_IF_ERROR(graph_properties.AnnotateOutputShapes(optimized_graph));
+
   DedupComputations(optimized_graph);
   SimplifyArithmeticOps(optimized_graph);
+
+  // Clear output shapes.
+  for (int i = 0; i < optimized_graph->node_size(); ++i) {
+    optimized_graph->mutable_node(i)->mutable_attr()->erase(kOutputShapesAttr);
+  }
 
   return Status::OK();
 }

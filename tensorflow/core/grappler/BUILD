@@ -100,6 +100,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/inputs:utils",
+        "//tensorflow/core/grappler/optimizers:model_pruner",
     ],
 )
 

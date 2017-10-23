@@ -266,12 +266,14 @@ add_python_module("tensorflow/python/keras/_impl/keras/utils")
 add_python_module("tensorflow/python/keras/_impl/keras/wrappers")
 add_python_module("tensorflow/python/kernel_tests")
 add_python_module("tensorflow/python/kernel_tests/distributions")
+add_python_module("tensorflow/python/kernel_tests/linalg")
 add_python_module("tensorflow/python/layers")
 add_python_module("tensorflow/python/lib")
 add_python_module("tensorflow/python/lib/core")
 add_python_module("tensorflow/python/lib/io")
 add_python_module("tensorflow/python/ops")
 add_python_module("tensorflow/python/ops/distributions")
+add_python_module("tensorflow/python/ops/linalg")
 add_python_module("tensorflow/python/ops/losses")
 add_python_module("tensorflow/python/platform")
 add_python_module("tensorflow/python/platform/default")
@@ -497,6 +499,7 @@ add_python_module("tensorflow/contrib/lookup")
 add_python_module("tensorflow/contrib/losses")
 add_python_module("tensorflow/contrib/losses/python")
 add_python_module("tensorflow/contrib/losses/python/losses")
+add_python_module("tensorflow/contrib/losses/python/metric_learning")
 add_python_module("tensorflow/contrib/makefile")
 add_python_module("tensorflow/contrib/makefile/test")
 add_python_module("tensorflow/contrib/memory_stats")
@@ -871,6 +874,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.cc"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.h"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.cc"
+    "${tensorflow_source_dir}/tensorflow/python/util/util.h"
+    "${tensorflow_source_dir}/tensorflow/python/util/util.cc"
     "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
     "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
