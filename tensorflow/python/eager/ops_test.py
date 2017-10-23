@@ -266,6 +266,23 @@ class OpsTest(test_util.TensorFlowTestCase):
     shape = array_ops.shape(value)
     self.assertEqual([1], shape.numpy())
 
+  def testSilentCopy(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    # Temporarily replace the context
+    # pylint: disable=protected-access
+    del context._context
+    try:
+      context._context = context.Context(
+          device_policy=context.DEVICE_PLACEMENT_SILENT)
+      cpu_tensor = constant_op.constant(1.0)
+      gpu_tensor = cpu_tensor.gpu()
+      self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
+    finally:
+      del context._context
+      context._context = context.Context()
+    # pylint: enable=protected-access
+
   def testRandomUniform(self):
     scalar_shape = constant_op.constant([], dtype=dtypes.int32)
 

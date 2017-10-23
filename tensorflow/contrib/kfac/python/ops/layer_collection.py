@@ -27,6 +27,8 @@ from __future__ import print_function
 from collections import defaultdict
 from collections import OrderedDict
 
+import six
+
 from tensorflow.contrib.kfac.python.ops import fisher_blocks as fb
 from tensorflow.contrib.kfac.python.ops import loss_functions as lf
 from tensorflow.contrib.kfac.python.ops import utils
@@ -37,9 +39,14 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
+# Names for various approximations that can be requested for Fisher blocks.
 APPROX_KRONECKER_NAME = "kron"
 APPROX_DIAGONAL_NAME = "diagonal"
 APPROX_FULL_NAME = "full"
+
+# Possible value for 'reuse' keyword argument. Sets 'reuse' to
+# tf.get_variable_scope().reuse.
+VARIABLE_SCOPE = "VARIABLE_SCOPE"
 
 # TODO(jamesmartens): need to add find_canonical_output back into this somewhere
 
@@ -82,8 +89,8 @@ class LayerParametersDict(OrderedDict):
     return key
 
 
-# TODO(duckworthd): add capability for LayerCollection to be "finalized"
-# and do this when it gets used by FisherEstimator / KfacOptimizer
+# TODO(b/68034464): add capability for LayerCollection to be "finalized"
+# and do this when it gets used by FisherEstimator / KfacOptimizer.
 
 
 class LayerCollection(object):
@@ -211,10 +218,10 @@ class LayerCollection(object):
   def get_use_count_map(self):
     """Returns a dict of variables to their number of registrations."""
     vars_to_uses = defaultdict(int)
-    for key in self.fisher_blocks.keys():
+    for key, block in six.iteritems(self.fisher_blocks):
       key = key if isinstance(key, (tuple, list)) else (key,)
       for k in key:
-        vars_to_uses[k] += 1
+        vars_to_uses[k] += block.num_registered_minibatches
     return vars_to_uses
 
   def get_blocks(self):
@@ -252,18 +259,57 @@ class LayerCollection(object):
                                params,
                                inputs,
                                outputs,
-                               approx=APPROX_KRONECKER_NAME):
-    has_bias = isinstance(params, (tuple, list))
-    if approx == APPROX_KRONECKER_NAME:
-      self.register_block(params,
-                          fb.FullyConnectedKFACBasicFB(self, inputs, outputs,
-                                                       has_bias))
-    elif approx == APPROX_DIAGONAL_NAME:
-      block = fb.FullyConnectedDiagonalFB(self, has_bias)
-      block.register_additional_minibatch(inputs, outputs)
-      self.register_block(params, block)
-    else:
+                               approx=APPROX_KRONECKER_NAME,
+                               reuse=VARIABLE_SCOPE):
+    """Registers a fully connnected layer.
+
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [input_size, output_size].
+        Bias should have shape [output_size].
+      inputs: Tensor of shape [batch_size, input_size]. Inputs to layer.
+      outputs: Tensor of shape [batch_size, output_size]. Preactivations
+        produced by layer.
+      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    approx_to_block_types = {
+        APPROX_KRONECKER_NAME: fb.FullyConnectedKFACBasicFB,
+        APPROX_DIAGONAL_NAME: fb.FullyConnectedDiagonalFB,
+    }
+
+    if approx not in approx_to_block_types:
       raise ValueError("Bad value {} for approx.".format(approx))
+
+    block_type = approx_to_block_types[approx]
+    has_bias = isinstance(params, (tuple, list))
+
+    if reuse == VARIABLE_SCOPE:
+      reuse = variable_scope.get_variable_scope().reuse
+
+    if reuse:
+      block = self.fisher_blocks.get(params, None)
+      if block is None:
+        raise KeyError(
+            "Reuse requested but no FisherBlock found for params {}.".format(
+                params))
+      if not isinstance(block, block_type):
+        raise ValueError(
+            "Requested block of type {} but block of type {} already exists "
+            "for params {}.".format(block_type, type(block), params))
+
+    else:
+      block = block_type(self, has_bias)
+      self.register_block(params, block)
+
+    block.register_additional_minibatch(inputs, outputs)
 
   def register_conv2d(self, params, strides, padding, inputs, outputs,
                       approx=APPROX_KRONECKER_NAME):
@@ -273,9 +319,9 @@ class LayerCollection(object):
                           fb.ConvKFCBasicFB(self, params, inputs, outputs,
                                             strides, padding))
     elif approx == APPROX_DIAGONAL_NAME:
-      self.register_block(params,
-                          fb.ConvDiagonalFB(self, params, inputs, outputs,
-                                            strides, padding))
+      block = fb.ConvDiagonalFB(self, params, strides, padding)
+      block.register_additional_minibatch(inputs, outputs)
+      self.register_block(params, block)
 
   def register_generic(self, params, batch_size, approx=APPROX_DIAGONAL_NAME):
     params = params if isinstance(params, (tuple, list)) else (params,)
@@ -379,6 +425,27 @@ class LayerCollection(object):
     self._loss_dict[name] = loss
 
   def make_or_get_factor(self, cls, args):
+    """Insert 'cls(args)' into 'self.fisher_factors' if not already present.
+
+    Wraps constructor in 'tf.variable_scope()' to ensure variables constructed
+    in 'cls.__init__' are placed under this LayerCollection's scope.
+
+    Args:
+      cls: Class that implements FisherFactor.
+      args: Tuple of arguments to pass into 'cls's constructor. Must be
+        hashable.
+
+    Returns:
+      Instance of 'cls' found in self.fisher_factors.
+    """
+    try:
+      hash(args)
+    except TypeError:
+      raise TypeError((
+          "Unable to use (cls, args) = ({}, {}) as a key in "
+          "LayerCollection.fisher_factors. The pair cannot be hashed."
+      ).format(cls, args))
+
     with variable_scope.variable_scope(self._var_scope):
       return utils.setdefault(self.fisher_factors, (cls, args),
                               lambda: cls(*args))

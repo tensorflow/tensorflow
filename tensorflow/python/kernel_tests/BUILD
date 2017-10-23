@@ -2715,10 +2715,7 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 3,
-    tags = [
-        "no_windows_gpu",
-        "nozapfhahn",
-    ],
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(

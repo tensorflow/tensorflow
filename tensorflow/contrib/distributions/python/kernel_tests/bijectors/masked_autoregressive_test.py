@@ -111,7 +111,7 @@ class MaskedAutoregressiveFlowTest(test_util.VectorDistributionTestHelpers,
           event_shape=[dims],
           validate_args=True)
       self.run_test_sample_consistent_log_prob(
-          sess=sess,
+          sess_run_fn=sess.run,
           dist=dist,
           num_samples=int(1e5),
           radius=1.,
@@ -130,7 +130,7 @@ class MaskedAutoregressiveFlowTest(test_util.VectorDistributionTestHelpers,
           event_shape=[dims],
           validate_args=True)
       self.run_test_sample_consistent_log_prob(
-          sess=sess,
+          sess_run_fn=sess.run,
           dist=dist,
           num_samples=int(1e5),
           radius=1.,
