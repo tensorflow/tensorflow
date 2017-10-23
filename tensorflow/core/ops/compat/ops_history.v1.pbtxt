@@ -9583,6 +9583,18 @@ op {
   }
 }
 op {
+  name: "DeserializeIterator"
+  input_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "serialized"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "DeserializeManySparse"
   input_arg {
     name: "serialized_sparse"
@@ -31464,6 +31476,18 @@ op {
       }
     }
   }
+}
+op {
+  name: "SerializeIterator"
+  input_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "serialized"
+    type: DT_VARIANT
+  }
+  is_stateful: true
 }
 op {
   name: "SerializeManySparse"
