@@ -573,6 +573,14 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
   """
 
   def __init__(self, tensors, has_bias=False):
+    """Instantiate FullyConnectedKroneckerFactor.
+
+    Args:
+      tensors: List of Tensors of shape [batch_size, n]. Represents either a
+        layer's inputs or its output's gradients.
+      has_bias: bool. If True, assume this factor is for the layer's inputs and
+        append '1' to each row.
+    """
     # The tensor argument is either a tensor of input activations or a tensor of
     # output pre-activation gradients.
     self._has_bias = has_bias

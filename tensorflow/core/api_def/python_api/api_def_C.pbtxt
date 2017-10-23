@@ -1,0 +1,15 @@
+op {
+  graph_op_name: "Cholesky"
+  endpoint {
+    name: "cholesky"
+  }
+  endpoint {
+    name: "linalg.cholesky"
+  }
+}
+op {
+  graph_op_name: "CropAndResize"
+  endpoint {
+    name: "image.crop_and_resize"
+  }
+}

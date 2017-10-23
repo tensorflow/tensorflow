@@ -201,17 +201,18 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   static bool Run(
       HloComputation* computation, bool is_layout_sensitive,
       AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-      bool enable_dot_simplification);
+      bool enable_dot_simplification, bool enable_conv_simplification);
 
  private:
   explicit AlgebraicSimplifierVisitor(
       HloComputation* computation, bool is_layout_sensitive,
       AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-      bool enable_dot_simplification)
+      bool enable_dot_simplification, bool enable_conv_simplification)
       : computation_(computation),
         is_layout_sensitive_(is_layout_sensitive),
         valid_bitcast_callback_(std::move(valid_bitcast_callback)),
-        enable_dot_simplification_(enable_dot_simplification) {}
+        enable_dot_simplification_(enable_dot_simplification),
+        enable_conv_simplification_(enable_conv_simplification) {}
 
   // Convenience method for replacing an instruction with a bitcast.
   void ReplaceWithBitcast(HloInstruction* instruction);
@@ -287,15 +288,18 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   // Disable dot simplication on platforms where it causes a slowdown.
   bool enable_dot_simplification_;
+
+  // Disable convolution simplication on platforms where it causes a slowdown.
+  bool enable_conv_simplification_;
 };
 
 bool AlgebraicSimplifierVisitor::Run(
     HloComputation* computation, bool is_layout_sensitive,
     AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-    bool enable_dot_simplification) {
-  AlgebraicSimplifierVisitor visitor(computation, is_layout_sensitive,
-                                     std::move(valid_bitcast_callback),
-                                     enable_dot_simplification);
+    bool enable_dot_simplification, bool enable_conv_simplification) {
+  AlgebraicSimplifierVisitor visitor(
+      computation, is_layout_sensitive, std::move(valid_bitcast_callback),
+      enable_dot_simplification, enable_conv_simplification);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -1459,6 +1463,9 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
 Status AlgebraicSimplifierVisitor::HandleConvolution(
     HloInstruction* convolution, HloInstruction* lhs, HloInstruction* rhs,
     const Window& window) {
+  if (!enable_conv_simplification_) {
+    return Status::OK();
+  }
   // HandleConvolution tries to replace a convolution with a DOT instruction.
   //
   // Only add when bitcasts can be used:
@@ -1962,9 +1969,9 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (AlgebraicSimplifierVisitor::Run(comp, is_layout_sensitive_,
-                                        valid_bitcast_callback_,
-                                        enable_dot_simplification_)) {
+    if (AlgebraicSimplifierVisitor::Run(
+            comp, is_layout_sensitive_, valid_bitcast_callback_,
+            enable_dot_simplification_, enable_conv_simplification_)) {
       changed = true;
     }
   }
