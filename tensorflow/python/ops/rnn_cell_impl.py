@@ -698,7 +698,7 @@ class LSTMCell(RNNCell):
     i, j, f, o = array_ops.split(
         value=lstm_matrix, num_or_size_splits=4, axis=1)
     # Diagonal connections
-    if self._use_peepholes and not self._w_f_diag:
+    if self._use_peepholes and self._w_f_diag is None:
       scope = vs.get_variable_scope()
       with vs.variable_scope(
           scope, initializer=self._initializer) as unit_scope:

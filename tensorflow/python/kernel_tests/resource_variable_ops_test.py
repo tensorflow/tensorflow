@@ -68,6 +68,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(variable.numpy(), 1.0)
       self.assertAllEqual(variable.initialized_value().numpy(), 1.0)
 
+  def testEagerBool(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(False, name="bool_test")
+      self.assertAllEqual(bool(v), False)
+
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(

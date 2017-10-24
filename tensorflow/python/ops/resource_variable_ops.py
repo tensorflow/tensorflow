@@ -478,6 +478,12 @@ class ResourceVariable(variables.Variable):
         pass  # 'NoneType' object has no attribute 'eager_mode' when context has
               # been unloaded. Will catch other module unloads as well.
 
+  def __nonzero__(self):
+    return self.__bool__()
+
+  def __bool__(self):
+    return bool(self.read_value())
+
   @property
   def dtype(self):
     """The dtype of this variable."""
