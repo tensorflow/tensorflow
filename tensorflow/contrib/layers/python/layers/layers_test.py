@@ -2644,6 +2644,26 @@ class BatchNormTest(test.TestCase):
                                        zero_debias_moving_mean=True)
       sess.run(variables_lib.global_variables_initializer())
 
+  def testAdjustmentCreated(self):
+    # Tests that the adjustment is appropriately passed to and used by the core
+    # BN layer.
+    all_adjustments = []
+    def _create_adjustment(shape):
+      adjustments = [array_ops.ones(shape[-1:]), array_ops.zeros(shape[-1:])]
+      all_adjustments.extend(adjustments)
+      return adjustments
+    depth = 8
+    images = array_ops.zeros([10, 5, 5, depth])
+    output = _layers.batch_norm(
+        images,
+        is_training=True,
+        adjustment=_create_adjustment)
+    self.assertListEqual(output.shape.as_list(), images.shape.as_list())
+    self.assertEqual(len(all_adjustments), 2)
+    self.assertListEqual(all_adjustments[0].shape.as_list(), [depth])
+    self.assertListEqual(all_adjustments[1].shape.as_list(), [depth])
+
+
 class LayerNormTest(test.TestCase):
 
   def testUnknownShape(self):
