@@ -80,6 +80,18 @@ py_test(
 )
 
 py_test(
+    name = "loss_functions_test",
+    srcs = ["loss_functions_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/kfac/python/ops:loss_functions",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+    ],
+)
+
+py_test(
     name = "optimizer_test",
     srcs = ["optimizer_test.py"],
     srcs_version = "PY2AND3",

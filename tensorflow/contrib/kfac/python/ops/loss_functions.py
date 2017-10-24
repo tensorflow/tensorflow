@@ -632,11 +632,12 @@ class MultiBernoulliNegativeLogProbLoss(DistributionNegativeLogProbLoss,
 
 
 def insert_slice_in_zeros(slice_to_insert, dim, dim_size, position):
-  """Inserts slice into a larger tensors of zeros.
+  """Inserts slice into a larger tensor of zeros.
 
-  Forms a new tensor that which is the same shape as slice_, except that
+  Forms a new tensor which is the same shape as slice_to_insert, except that
   the dimension given by 'dim' is expanded to the size given by 'dim_size'.
-  'position' determines the position (index) of the slice in that dimension.
+  'position' determines the position (index) at which to insert the slice within
+  that dimension.
 
   Assumes slice_to_insert.shape[dim] = 1.
 
@@ -644,7 +645,7 @@ def insert_slice_in_zeros(slice_to_insert, dim, dim_size, position):
     slice_to_insert: The slice to insert.
     dim: The dimension which to expand with zeros.
     dim_size: The new size of the 'dim' dimension.
-    position: The position of 'slice_' in the new tensor.
+    position: The position of 'slice_to_insert' in the new tensor.
 
   Returns:
     The new tensor.
@@ -662,4 +663,4 @@ def insert_slice_in_zeros(slice_to_insert, dim, dim_size, position):
   before[dim] = position
   after[dim] = dim_size - position - 1
 
-  return array_ops.pad(slice_to_insert, zip(before, after))
+  return array_ops.pad(slice_to_insert, list(zip(before, after)))
