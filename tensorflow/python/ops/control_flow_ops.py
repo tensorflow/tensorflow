@@ -2918,7 +2918,6 @@ def group(*inputs, **kwargs):
 
   Args:
     *inputs: Zero or more tensors to group.
-    **kwargs: Optional parameters to pass when constructing the NodeDef.
     name: A name for this operation (optional).
 
   Returns:
@@ -2940,6 +2939,12 @@ def group(*inputs, **kwargs):
     # Sorts *inputs according to their devices.
     ops_on_device = {}  # device -> operations specified on the device.
     for inp in inputs:
+      if not hasattr(inp, "device"):
+        if isinstance(inp, list):
+          raise TypeError("To call tf.group() with a list, use "
+                          "tf.group(*[...]) not tf.group([...]).")
+        raise TypeError("Expected tf.group() expected Tensor arguments not "
+                        "'%s' with type '%s'" % (inp, type(inp)))
       dev = inp.device
       if dev in ops_on_device:
         ops_on_device[dev].append(inp)

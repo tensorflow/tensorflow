@@ -114,6 +114,15 @@ class GroupTestCase(test_util.TensorFlowTestCase):
              device: "/task:2" }
     """, self._StripGraph(gd))
 
+  def testPassingList(self):
+    with ops.Graph().as_default():
+      a = constant_op.constant(0, name="a")
+      b = constant_op.constant(0, name="b")
+      with self.assertRaises(TypeError):
+        control_flow_ops.group([a.op, b.op])
+      with self.assertRaises(TypeError):
+        control_flow_ops.group(1, 2)
+
 
 class ShapeTestCase(test_util.TensorFlowTestCase):
 
