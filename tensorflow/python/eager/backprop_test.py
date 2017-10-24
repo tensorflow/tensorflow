@@ -389,6 +389,21 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(f)
     self.assertAllEqual(grad(1.0)[0], 2.0)
 
+  def testExceptionSafety(self):
+
+    def f(unused_x):
+      raise ValueError()
+
+    try:
+      backprop.gradients_function(f)(1.0)
+    except ValueError:
+      pass
+
+    def real_f(x):
+      return x * x
+
+    self.assertAllEqual(backprop.gradients_function(real_f)(1.0)[0], 2.0)
+
   def testMultiValueConvertToTensor(self):
     x = resource_variable_ops.ResourceVariable(
         initial_value=array_ops.constant([1.0]), name='x')

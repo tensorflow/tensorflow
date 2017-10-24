@@ -7,7 +7,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",
-        "//tensorflow/contrib/xla_tf_graph/...",
     ],
 )
 

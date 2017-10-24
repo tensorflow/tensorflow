@@ -18,12 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
 from tensorflow.contrib.eager.python import metrics
+from tensorflow.contrib.summary import summary_ops
+from tensorflow.core.util import event_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
+from tensorflow.python.training import training_util
 
 
 class MetricsTest(test.TestCase):
@@ -36,6 +44,26 @@ class MetricsTest(test.TestCase):
     self.assertEqual(111111.0/6, m.result().numpy())
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testWriteSummaries(self):
+    m = metrics.Mean()
+    m([1, 10, 100])
+    training_util.get_or_create_global_step()
+    logdir = tempfile.mkdtemp()
+    with summary_ops.create_summary_file_writer(
+        logdir, max_queue=0,
+        name="t0").as_default(), summary_ops.always_record_summaries():
+      m.result()  # As a side-effect will write summaries.
+
+    self.assertTrue(gfile.Exists(logdir))
+    files = gfile.ListDirectory(logdir)
+    self.assertEqual(len(files), 1)
+    records = list(
+        tf_record.tf_record_iterator(os.path.join(logdir, files[0])))
+    self.assertEqual(len(records), 2)
+    event = event_pb2.Event()
+    event.ParseFromString(records[1])
+    self.assertEqual(event.summary.value[0].simple_value, 37.0)
 
   def testWeightedMean(self):
     m = metrics.Mean()

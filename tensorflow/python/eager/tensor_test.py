@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -101,6 +104,20 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     n = np.array([[1, 2], [3, 4]], order="F")
     t = _create_tensor(n)
     self.assertAllEqual([[1, 2], [3, 4]], t)
+
+  def testCopy(self):
+    t = constant_op.constant(1.0)
+    tt = copy.copy(t)
+    self.assertAllEqual(tt, 1.0)
+    del tt
+    tt = copy.deepcopy(t)
+    self.assertAllEqual(tt, 1.0)
+    del tt
+    self.assertAllEqual(t, 1.0)
+
+  def testConstantDtype(self):
+    self.assertEqual(constant_op.constant(1.0, dtype=np.int64).dtype,
+                     dtypes.int64)
 
   def testTensorAndNumpyMatrix(self):
     expected = np.array([[1.0, 2.0], [3.0, 4.0]], np.float32)

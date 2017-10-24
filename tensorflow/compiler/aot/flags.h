@@ -29,6 +29,7 @@ struct MainFlags {
   string graph;
   string config;
   bool dump_fetch_nodes = false;
+  string debug_dir;
   string target_triple;
   string target_cpu;
   string target_features;
@@ -36,7 +37,6 @@ struct MainFlags {
   string cpp_class;
   string out_object;
   string out_header;
-  string out_session_module;
 
   // C++ codegen options
   bool gen_name_to_index = false;

@@ -683,8 +683,10 @@ class TensorFlowTestCase(googletest.TestCase):
     elif isinstance(tensors, dict):
       assert not tensors, "Only support empty dict now."
       return dict()
+    elif tensors is None:
+      return None
     else:
-      raise ValueError("Unsupported type.")
+      raise ValueError("Unsupported type %s." % type(tensors))
 
   def evaluate(self, tensors):
     """Evaluates tensors and returns numpy values.
