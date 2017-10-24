@@ -100,6 +100,7 @@ ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithPadding POPLAR // 1D conv
 ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation POPLAR // 1D conv
 ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithRHSDilation POPLAR // 1D conv
 ConvolutionTest.Convolve1D_1x2x5_1x2x2_WithLHSDilation POPLAR // 1D conv
+Convolve1D1WindowTest POPLAR // 1D conv
 
 DotOperationTest POPLAR // Test hangs
 
@@ -121,3 +122,5 @@ LocalClientExecuteTest.AddZeroElementVectors POPLAR // Doesn't cope with aliasin
 LocalClientExecuteTest.TupleResult POPLAR // Doesn't cope with aliasing
 LocalClientExecuteTest.NestedTupleResult POPLAR // Doesn't cope with aliasing
 LocalClientExecuteTest.TupleResultWithLayout POPLAR // Doesn't cope with aliasing
+
+LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
