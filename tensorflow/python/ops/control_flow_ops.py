@@ -16,7 +16,6 @@
 """Control Flow Operations.
 
 See the @{$python/control_flow_ops} guide.
-
 @@identity
 @@identity_n
 @@tuple
@@ -24,6 +23,7 @@ See the @{$python/control_flow_ops} guide.
 @@no_op
 @@count_up_to
 @@cond
+@@
 @@case
 @@while_loop
 @@logical_and
@@ -71,6 +71,7 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
@@ -258,7 +259,7 @@ def exit(data, name=None):
     The same tensor as `data`.
   """
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
-  if isinstance(data, ops.Tensor):
+  if isinstance(da ta, ops.Tensor):
     if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_control_flow_ops._ref_exit(data, name)
     else:
@@ -1915,6 +1916,61 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
       merges = _UnpackIfSingleton(merges)
     return merges
 # pylint: enable=g-doc-args
+
+def smart_cond(pred, fn1=None, fn2=None, name=None):
+  """Return either `fn1()` or `fn2()` based on the boolean predicate `pred`.
+
+  If `pred` is a bool or has a constant value, we return either `fn1()`
+  or `fn2()`, otherwise we use `tf.cond` to dynamically route to both.
+
+  Arguments:
+    pred: A scalar determining whether to return the result of `fn1` or `fn2`.
+    fn1: The callable to be performed if pred is true.
+    fn2: The callable to be performed if pred is false.
+    name: Optional name prefix when using `tf.cond`.
+
+  Returns:
+    Tensors returned by the call to either `fn1` or `fn2`.
+
+  Raises:
+    TypeError: If `fn1` or `fn2` is not callable.
+  """
+  if not callable(fn1):
+    raise TypeError('`fn1` must be callable.')
+  if not callable(fn2):
+    raise TypeError('`fn2` must be callable.')
+
+  pred_value = constant_value(pred)
+  if pred_value is not None:
+    if pred_value:
+      return fn1()
+    else:
+      return fn2()
+  else:
+    return cond(pred, fn1, fn2, name)
+
+def constant_value(pred):
+  """Return the bool value for `pred`, or None if `pred` had a dynamic value.
+
+    Arguments:
+      pred: A scalar, either a Python bool or a TensorFlow boolean variable
+        or tensor.
+
+    Returns:
+      True or False if `pred` has a constant boolean value, None otherwise.
+
+    Raises:
+      TypeError: If `pred` is not a Variable, Tensor or bool.
+    """
+  if isinstance(pred, bool):
+    pred_value = pred
+  elif isinstance(pred, variables.Variable):
+    pred_value = None
+  elif isinstance(pred, ops.Tensor):
+    pred_value = tensor_util.constant_value(pred)
+  else:
+    raise TypeError('`pred` must be a Tensor, a Variable, or a Python bool.')
+  return pred_value
 
 
 def _resource_safe_shape(t):
