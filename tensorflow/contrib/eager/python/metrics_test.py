@@ -29,7 +29,6 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import training_util
 
@@ -136,11 +135,16 @@ class MetricsTest(test.TestCase):
       m = metrics.Mean()
       p = array_ops.placeholder(dtypes.float32)
       accumulate = m(p)
-      variables.global_variables_initializer().run()
+      init_op = m.init_variables()
+      init_op.run()
       sess.run(accumulate, feed_dict={p: [1, 10, 100]})
       sess.run(accumulate, feed_dict={p: 1000})
       sess.run(accumulate, feed_dict={p: [10000, 100000]})
       self.assertAllEqual(m.result().eval(), 111111.0/6)
+      # Second init is ignored, since the variables are already initialized.
+      init_op.run()
+      sess.run(accumulate, feed_dict={p: 7})
+      self.assertAllEqual(m.result().eval(), 111118.0/7)
 
   def testTwoMeansGraph(self):
     # Verify two metrics with the same class and name don't
@@ -150,7 +154,8 @@ class MetricsTest(test.TestCase):
       m2 = metrics.Mean()
       accumulate1 = m1(0)
       accumulate2 = m2(2)
-      variables.global_variables_initializer().run()
+      m1.init_variables().run()
+      m2.init_variables().run()
       sess.run([accumulate1, accumulate2])
       self.assertEqual(0, m1.result().eval())
       self.assertEqual(2, m2.result().eval())

@@ -23,14 +23,28 @@ import re
 from tensorflow.contrib.summary import summary_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 
 
 _to_replace = re.compile("[^A-Za-z0-9.]")
+
+
+def _init_var(v):
+  def do_init(v):
+    with ops.control_dependencies([v.assign(v.initial_value)]):
+      return constant_op.constant(True)
+  return control_flow_ops.cond(
+      resource_variable_ops.var_is_initialized_op(v._handle),  # pylint: disable=protected-access
+      lambda: constant_op.constant(False),
+      lambda: do_init(v))
 
 
 class Metric(object):
@@ -76,7 +90,10 @@ class Metric(object):
     if context.in_graph_mode():
       # We make self.call() into a graph callable here, so that we can
       # return a single op that performs all of the variable updates.
+      self._construction_scope = ops.get_default_graph().as_default
       self.call = function.defun(self.call)
+    else:
+      self._construction_scope = context.eager_mode
 
   # ---- API for users ----
   def __call__(self, *args, **kwargs):
@@ -89,7 +106,8 @@ class Metric(object):
       **kwargs: A mini-batch of inputs to the Metric, passed on to `call()`.
     """
     if not self._built:
-      with variable_scope.variable_scope(self._scope):
+      with variable_scope.variable_scope(
+          self._scope), self._construction_scope():
         self.build(*args, **kwargs)
       self._built = True
     return self.call(*args, **kwargs)
@@ -101,6 +119,18 @@ class Metric(object):
   @property
   def variables(self):
     return self._vars
+
+  def init_variables(self):
+    """Return an op for initializing this Metric's uninitialized variables.
+
+    Only for graph execution. Should be called after variables are created
+    in the first execution of __call__().
+
+    Returns:
+      An op to run.
+    """
+    assert context.in_graph_mode()
+    return control_flow_ops.group(*[_init_var(v) for v in self._vars])
 
   # ---- To be implemented by descendants ---
   def build(self, *args, **kwargs):
