@@ -624,6 +624,15 @@ class _EagerTensorBase(Tensor):
   def _numpy(self):
     raise NotImplementedError()
 
+  def __copy__(self):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    return self
+
+  def __deepcopy__(self, memo):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    del memo
+    return self
+
   def _datatype_enum(self):
     raise NotImplementedError()
 
