@@ -1408,6 +1408,16 @@ def reduce_mean(input_tensor,
 
   @compatibility(numpy)
   Equivalent to np.mean
+
+  Please note that `np.mean` has a `dtype` parameter that could be used to specify the output type. By default this is `dtype=float64`. On the other hand, `tf.reduce_mean` has an aggressive type inference from `input_tensor`, for example:
+
+  ```python
+  x = tf.constant([1, 0, 1, 0])
+  tf.reduce_mean(x)  # 0
+  y = tf.constant([1., 0., 1., 0.])
+  tf.reduce_mean(y)  # 0.5
+  ```
+
   @end_compatibility
   """
   return gen_math_ops._mean(
