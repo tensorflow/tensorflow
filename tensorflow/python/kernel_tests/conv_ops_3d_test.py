@@ -328,7 +328,7 @@ class Conv3DTest(test.TestCase):
       elif data_type == dtypes.float32:
         tolerance = 5e-3
       elif data_type == dtypes.float16:
-        tolerance = 0.01
+        tolerance = 1e-3
 
 
       with self.test_session(use_gpu=use_gpu):
