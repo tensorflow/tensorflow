@@ -2910,7 +2910,7 @@ def _GroupControlDeps(dev, deps, name=None):
 def group(*inputs, **kwargs):
   """Create an op that groups multiple operations.
 
-  When this op finishes, all ops in `input` have finished. This op has no
+  When this op finishes, all ops in `inputs` have finished. This op has no
   output.
 
   See also @{tf.tuple$tuple} and
@@ -2938,7 +2938,10 @@ def group(*inputs, **kwargs):
 
     # Sorts *inputs according to their devices.
     ops_on_device = {}  # device -> operations specified on the device.
-    for inp in inputs:
+    for inp in nest.flatten(inputs):
+      if not hasattr(inp, "device"):
+        raise TypeError("Expected tf.group() expected Tensor arguments not "
+                        "'%s' with type '%s'" % (inp, type(inp)))
       if not hasattr(inp, "device"):
         if isinstance(inp, list):
           raise TypeError("To call tf.group() with a list, use "
