@@ -23,6 +23,7 @@ import uuid
 
 import six
 
+from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope
@@ -174,26 +175,47 @@ class Network(base.Layer):
 
 
 class Sequential(Network):
-  """Represents a linear sequence of Layers.
+  """Represents a linear sequence of Layers or functions.
 
-  The output of each layer is provided as the input to the next.
+  The output of each layer/function is provided as the input to the next.
   The inputs passed to `__call__` are passed to the inputs of the first
   Layer, and it returns the outputs of the last Layer.
 
   Args:
-    layers: An optional sequence of tf.layers.Layer objects.
+    layers_funcs: An optional sequence where each element is either a
+      tf.layers.Layer object or a callable.
     name: An optional string name to use for this Network.
   """
 
-  def __init__(self, layers=None, name=None):
+  def __init__(self, layers_funcs=None, name=None):
     super(Sequential, self).__init__(name=name)
-    if layers:
-      for l in layers:
-        self.track_layer(l)
+    self._layers_funcs = []
+    if layers_funcs:
+      for l in layers_funcs:
+        self.add(l)
 
-  def call(self, inputs):
+  def add(self, layer_func):
+    if isinstance(layer_func, base.Layer):
+      args = estimator_util.fn_args(layer_func.call)
+      self.track_layer(layer_func)
+    elif callable(layer_func):
+      args = estimator_util.fn_args(layer_func)
+    else:
+      raise TypeError(
+          "Sequential.add() takes only tf.layers.Layer objects or callables; "
+          "not '%s' of type '%s'." % (layer_func, type(layer_func)))
+    self._layers_funcs.append((("training" in args), layer_func))
+
+  def call(self, inputs, training=None):
     """Call each Layer in the order they were added."""
     # TODO(josh11b): Support "mode" and maybe other arguments
-    for l in self.layers:
-      inputs = l(inputs)
+    if training is None:
+      for _, l in self._layers_funcs:
+        inputs = l(inputs)
+    else:
+      for has_training_arg, l in self._layers_funcs:
+        if has_training_arg:
+          inputs = l(inputs, training)
+        else:
+          inputs = l(inputs)
     return inputs

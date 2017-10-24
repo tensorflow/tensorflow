@@ -192,6 +192,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:layers_base",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:util",
     ],
 )
 
@@ -203,6 +204,8 @@ py_test(
         ":network",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python/eager:test",
     ],
 )
