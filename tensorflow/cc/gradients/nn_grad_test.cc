@@ -193,11 +193,10 @@ TEST_F(NNGradTest, MaxPoolGradV2Helper) {
 
 TEST_F(NNGradTest, LRN){
   TensorShape x_shape({1, 2, 2, 1});
-  TensorShape y_shape({1, 1, 1, 1});
+  TensorShape y_shape({0, 0, 0, 0});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  auto bias = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(bias_shape));
-  auto y = LRN(scope_, bias, x);
-  RunTest(x, y);
+  auto y = LRN(scope_, x);
+  RunTest(x, x_shape, y, y_shape);
   }
 
 }  // namespace

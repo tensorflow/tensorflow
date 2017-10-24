@@ -196,13 +196,14 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 
-  Status LRN(const Scope& scope, const Operation& op,
+Status LRNHelper(const Scope& scope, const Operation& op,
              const std::vector<Output>& grad_inputs,
              std::vector<Output>* grad_outputs){
-    //TODO: get good at C++
+     auto dx = LRN(scope, grad_inputs[0]);
+  grad_outputs->push_back(dx);
     return scope.status();
   }
-REGISTER_GRADIENT_OP("LRN", LRN);
+REGISTER_GRADIENT_OP("LRN", LRNHelper);
 
 
 }  // anonymous namespace
