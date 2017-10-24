@@ -195,19 +195,7 @@ def smart_cond(pred, fn1, fn2, name=None):
   Raises:
     TypeError: If `fn1` or `fn2` is not callable.
   """
-  if not callable(fn1):
-    raise TypeError('`fn1` must be callable.')
-  if not callable(fn2):
-    raise TypeError('`fn2` must be callable.')
-
-  pred_value = constant_value(pred)
-  if pred_value is not None:
-    if pred_value:
-      return fn1()
-    else:
-      return fn2()
-  else:
-    return control_flow_ops.cond(pred, fn1, fn2, name)
+  return control_flow_ops.smart_cond(pred, fn1, fn2, name)
 
 
 def constant_value(pred):
@@ -223,12 +211,4 @@ def constant_value(pred):
   Raises:
     TypeError: If `pred` is not a Variable, Tensor or bool.
   """
-  if isinstance(pred, bool):
-    pred_value = pred
-  elif isinstance(pred, variables.Variable):
-    pred_value = None
-  elif isinstance(pred, ops.Tensor):
-    pred_value = tensor_util.constant_value(pred)
-  else:
-    raise TypeError('`pred` must be a Tensor, a Variable, or a Python bool.')
-  return pred_value
+  return control_flow_ops.constant_value(pred)
