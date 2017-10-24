@@ -739,7 +739,7 @@ REGISTER_OP("Diag")
     .Attr("T: {float, double, int32, int64, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle in = c->input(0);
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(in, 3, &in));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(in, 1, &in));
       // Output shape is original concatenated with itself.
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(in, in, &out));
@@ -767,7 +767,7 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
                        [0, 0, 0, 4]]
 ```
 
-diagonal: Rank k tensor where k is at most 3.
+diagonal: Rank k tensor where k is at most 1.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -783,9 +783,9 @@ REGISTER_OP("DiagPart")
       }
       // Rank must be even, and result will have rank <rank/2>.
       const int32 rank = c->Rank(in);
-      if ((rank % 2) != 0 || rank > 6) {
+      if ((rank % 2) != 0 || rank <= 0) {
         return errors::InvalidArgument(
-            "Input must have even rank <= 6, input rank is ", rank);
+            "Input must have even and non-zero rank, input rank is ", rank);
       }
       const int32 mid = rank / 2;
 
@@ -820,7 +820,7 @@ For example:
 tf.diag_part(input) ==> [1, 2, 3, 4]
 ```
 
-input: Rank k tensor where k is 2, 4, or 6.
+input: Rank k tensor where k is even and not zero.
 diagonal: The extracted diagonal.
 
 )doc");

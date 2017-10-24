@@ -999,7 +999,7 @@ class VariableScope(object):
   def set_caching_device(self, caching_device):
     """Set caching_device for this scope."""
     if context.in_eager_mode():
-      raise NotImplementedError("Partitioned variables are not yet supported "
+      raise NotImplementedError("Caching devices are not yet supported "
                                 "in Eager mode.")
     self._caching_device = caching_device
 

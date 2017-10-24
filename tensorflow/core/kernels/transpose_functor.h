@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TRANSPOSE_FUNCTOR_H_
 #define TENSORFLOW_CORE_KERNELS_TRANSPOSE_FUNCTOR_H_
 
+#include <numeric>
 #include <string>
 #include <vector>
 #include "tensorflow/core/framework/tensor.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-
 // Transpose tensor 'in' into tensor 'out' according to dimension
 // permutation 'perm'.
 //
@@ -45,6 +45,17 @@ Status DoTranspose(const Device& device, const Tensor& in,
 template <typename Device>
 Status DoConjugateTranspose(const Device& device, const Tensor& in,
                             const gtl::ArraySlice<int32> perm, Tensor* out);
+
+// Convenience versions of DoTranspose that only swap the last (inner) two
+// dimensions.
+template <typename Device>
+Status DoMatrixTranspose(const Device& device, const Tensor& in, Tensor* out);
+
+// Convenience versions of DoConjugateTranspose that only swap the last (inner)
+// two dimensions.
+template <typename Device>
+Status DoConjugateMatrixTranspose(const Device& device, const Tensor& in,
+                                  Tensor* out);
 
 // Primary device specific functor to be specialized for each device and type.
 template <typename Device, typename T, bool conjugate = false>
@@ -131,11 +142,6 @@ inline bool NonSingletonDimensionsAlign(const TensorShape& input_shape,
   return true;
 }
 
-// Device-specific naive implementation for transpose.
-template <typename Device, typename T, bool conjugate>
-void TransposeSimple(const Device& d, const Tensor& in,
-                     const gtl::ArraySlice<int32> perm, Tensor* out);
-
 // Uses Eigen to transpose.
 template <typename Device, typename T, int NDIMS>
 void TransposeUsingEigen(const Device& d, const Tensor& in,
@@ -157,69 +163,87 @@ void TransposeUsingEigen(const Device& d, const Tensor& in,
 }
 
 template <typename Device>
-struct DoTransposeImpl {
-  static Status run(const Device& d, const Tensor& in,
-                    const gtl::ArraySlice<int32> perm, bool conjugate,
-                    Tensor* out) {
-    CHECK_GE(in.dims(), 2);
-    CHECK_EQ(in.dims(), out->dims());
-    CHECK_EQ(in.dims(), perm.size());
-    CHECK_EQ(in.dtype(), out->dtype());
-    switch (in.dtype()) {
-      case DT_BOOL:
-      case DT_INT8:
-      case DT_QINT8:
-      case DT_QUINT8:
-      case DT_UINT8:
-        Transpose<Device, uint8>::run(d, in, perm, out);
-        break;
+Status DoTransposeImpl(const Device& d, const Tensor& in,
+                       const gtl::ArraySlice<int32> perm, bool conjugate,
+                       Tensor* out) {
+  CHECK_GE(in.dims(), 2);
+  CHECK_EQ(in.dims(), out->dims());
+  CHECK_EQ(in.dims(), perm.size());
+  CHECK_EQ(in.dtype(), out->dtype());
+  switch (in.dtype()) {
+    case DT_BOOL:
+    case DT_INT8:
+    case DT_QINT8:
+    case DT_QUINT8:
+    case DT_UINT8:
+      Transpose<Device, uint8>::run(d, in, perm, out);
+      break;
 
-      case DT_BFLOAT16:
-      case DT_HALF:
-      case DT_INT16:
-      case DT_QINT16:
-      case DT_QUINT16:
-      case DT_UINT16:
-        Transpose<Device, uint16>::run(d, in, perm, out);
-        break;
+    case DT_BFLOAT16:
+    case DT_HALF:
+    case DT_INT16:
+    case DT_QINT16:
+    case DT_QUINT16:
+    case DT_UINT16:
+      Transpose<Device, uint16>::run(d, in, perm, out);
+      break;
 
-      case DT_FLOAT:
-      case DT_INT32:
-      case DT_QINT32:
-        Transpose<Device, uint32>::run(d, in, perm, out);
-        break;
+    case DT_FLOAT:
+    case DT_INT32:
+    case DT_QINT32:
+      Transpose<Device, uint32>::run(d, in, perm, out);
+      break;
 
-      case DT_DOUBLE:
-      case DT_INT64:
+    case DT_DOUBLE:
+    case DT_INT64:
+      Transpose<Device, uint64>::run(d, in, perm, out);
+      break;
+
+    case DT_COMPLEX64:
+      if (conjugate) {
+#if defined(__ANDROID__) and !defined(__clang__)
+        // Workaround for GCC compiler bug in Android toolchain.
+        return errors::Unimplemented(
+            "Conjugate transpose of complex64 not supported for GCC on "
+            "Android.");
+#else
+        Transpose<Device, complex64, /*conjugate=*/true>::run(d, in, perm, out);
+#endif
+      } else {
         Transpose<Device, uint64>::run(d, in, perm, out);
-        break;
+      }
+      break;
 
-      case DT_COMPLEX64:
-        if (conjugate) {
-          Transpose<Device, complex64, true>::run(d, in, perm, out);
-        } else {
-          Transpose<Device, complex64, false>::run(d, in, perm, out);
-        }
-        break;
+    case DT_COMPLEX128:
+      if (conjugate) {
+        Transpose<Device, complex128, /*conjugate=*/true>::run(d, in, perm,
+                                                               out);
+      } else {
+        Transpose<Device, complex128, /*conjugate=*/false>::run(d, in, perm,
+                                                                out);
+      }
+      break;
 
-      case DT_COMPLEX128:
-        if (conjugate) {
-          Transpose<Device, complex128, true>::run(d, in, perm, out);
-        } else {
-          Transpose<Device, complex128, false>::run(d, in, perm, out);
-        }
-        break;
+    case DT_STRING:
+      Transpose<Device, string>::run(d, in, perm, out);
+      break;
 
-      case DT_STRING:
-        Transpose<Device, string>::run(d, in, perm, out);
-        break;
-
-      default:
-        return errors::Unimplemented("Unsupported dtype on CPU: ", in.dtype());
-    }
-    return Status::OK();
+    default:
+      return errors::Unimplemented("Unsupported dtype on CPU: ", in.dtype());
   }
-};
+  return Status::OK();
+}
+
+template <typename Device>
+inline Status DoMatrixTransposeImpl(const Device& device, const Tensor& in,
+                                    bool conjugate, Tensor* out) {
+  const int ndims = in.dims();
+  if (ndims == 0) return Status::OK();
+  TransposePermsVec perm(ndims);
+  std::iota(perm.begin(), perm.end(), 0);
+  std::swap(perm[ndims - 2], perm[ndims - 1]);
+  return DoTransposeImpl(device, in, perm, conjugate, out);
+}
 
 #ifdef TENSORFLOW_USE_SYCL
 // For SYCL lets always go through Eigen

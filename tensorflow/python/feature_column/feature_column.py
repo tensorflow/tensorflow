@@ -197,12 +197,13 @@ def input_layer(features,
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     cols_to_vars: If not `None`, must be a dictionary that will be filled with a
-      mapping from `_FeatureColumn` to associated `Variable` (or list of
-      `Variable`, or `PartitionedVariable`.  For example, after the call, we
-      might have cols_to_vars = {_EmbeddingColumn(
+      mapping from `_FeatureColumn` to list of `Variable`s.  For example, after
+      the call, we might have cols_to_vars =
+      {_EmbeddingColumn(
         categorical_column=_HashedCategoricalColumn(
           key='sparse_feature', hash_bucket_size=5, dtype=tf.string),
-        dimension=10): [<tf.Variable 'some_variable' shape=(5, 10)]}
+        dimension=10): [<tf.Variable 'some_variable:0' shape=(5, 10),
+                        <tf.Variable 'some_variable:1' shape=(5, 10)]}
       If a column creates no variables, its value will be an empty list.
 
   Returns:
@@ -302,18 +303,18 @@ def linear_model(features,
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     cols_to_vars: If not `None`, must be a dictionary that will be filled with a
-      mapping from `_FeatureColumn` to associated `Variable` (or list of
-      `Variable`, or `PartitionedVariable`.  For example,
-      after the call, we might have cols_to_vars = {
+      mapping from `_FeatureColumn` to associated list of `Variable`s.  For
+      example, after the call, we might have cols_to_vars = {
         _NumericColumn(
           key='numeric_feature1', shape=(1,):
-        <tf.Variable 'linear_model/price2/weights:0' shape=(1, 1)>,
-        'bias': <tf.Variable 'linear_model/bias_weights:0' shape=(1,)>,
+        [<tf.Variable 'linear_model/price2/weights:0' shape=(1, 1)>],
+        'bias': [<tf.Variable 'linear_model/bias_weights:0' shape=(1,)>],
         _NumericColumn(
           key='numeric_feature2', shape=(2,)):
-        <tf.Variable 'linear_model/price1/weights:0' shape=(2, 1)>}
-      Note that it will also contain a string key 'bias'.  If a column creates
-      no variables, its value will be an empty list.
+        [<tf.Variable 'linear_model/price1/weights:0' shape=(2, 1)>]}
+      If a column creates no variables, its value will be an empty list. Note
+      that cols_to_vars will also contain a string key 'bias' that maps to a
+      list of Variables.
 
   Returns:
     A `Tensor` which represents predictions/logits of a linear model. Its shape
@@ -366,8 +367,12 @@ def linear_model(features,
     predictions = nn_ops.bias_add(
         predictions_no_bias, bias, name='weighted_sum')
     if cols_to_vars is not None:
-      # Add the bias to cols_to_vars as well.
-      cols_to_vars['bias'] = bias
+      # Add the bias to cols_to_vars as well, converting the Variable or
+      # PartitionedVariable to a list of Variable's.
+      if isinstance(bias, variables.Variable):
+        cols_to_vars['bias'] = [bias]
+      else:  # Must be a PartitionedVariable.
+        cols_to_vars['bias'] = list(bias)
     return predictions
 
 

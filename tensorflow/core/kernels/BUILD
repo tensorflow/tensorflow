@@ -2636,6 +2636,24 @@ tf_kernel_library(
     deps = MATH_DEPS,
 )
 
+tf_cc_test(
+    name = "sequence_ops_test",
+    size = "small",
+    srcs = ["sequence_ops_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sequence_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "cast_op_test",
     size = "small",
@@ -2894,6 +2912,24 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "diag_op_test",
+    size = "small",
+    srcs = ["diag_op_test.cc"],
+    deps = [
+        ":diag_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # conv_grad_ops currently has to be built with conv_ops*.
 # TODO(josh11b, zhengxq): put these a separate libraries in ":nn" below once
 # conv_ops_gpu.h has be separated into its own library.
@@ -2994,6 +3030,7 @@ cc_library(
         ":in_topk_op",
         ":l2loss_op",
         ":lrn_op",
+        ":nth_element_op",
         ":relu_op",
         ":softmax_op",
         ":softplus_op",
@@ -3078,6 +3115,12 @@ tf_kernel_library(
     name = "topk_op",
     prefix = "topk_op",
     deps = NN_DEPS + if_cuda(["@cub_archive//:cub"]),
+)
+
+tf_kernel_library(
+    name = "nth_element_op",
+    prefix = "nth_element_op",
+    deps = NN_DEPS,
 )
 
 tf_kernel_library(
@@ -4524,6 +4567,7 @@ filegroup(
         "cwise_op_greater_equal.cc",
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
+        "cwise_op_left_shift.cc",
         "cwise_op_less.cc",
         "cwise_op_less_equal.cc",
         "cwise_op_log.cc",
@@ -4537,6 +4581,7 @@ filegroup(
         "cwise_op_neg.cc",
         "cwise_op_pow.cc",
         "cwise_op_reciprocal.cc",
+        "cwise_op_right_shift.cc",
         "cwise_op_round.cc",
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",

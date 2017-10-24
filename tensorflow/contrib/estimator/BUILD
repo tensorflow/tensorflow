@@ -135,6 +135,7 @@ py_library(
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 

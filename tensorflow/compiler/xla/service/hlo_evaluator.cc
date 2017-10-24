@@ -547,7 +547,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const auto& dnums = conv->convolution_dimension_numbers();
     const int64 num_spatial_dims = dnums.spatial_dimensions_size();
     CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
-    CHECK_GE(num_spatial_dims, 1);
+    CHECK_GE(num_spatial_dims, 0);
     CHECK_EQ(window.dimensions_size(), num_spatial_dims);
 
     const auto lhs_rank = ShapeUtil::Rank(lhs_shape);

@@ -33,6 +33,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 #endif
 
 namespace tensorflow {
@@ -135,15 +136,15 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                                        input.shape(), &input_copy),
         done);
     auto input_copy_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    auto input_reshaped = input.template flat_inner_dims<Scalar, 3>();
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     if (!adjoint_) {
       device.memcpy(input_copy.flat<Scalar>().data(),
                     input.flat<Scalar>().data(),
                     input.NumElements() * sizeof(Scalar));
     } else {
-      functor::AdjointBatchFunctor<GPUDevice, Scalar> functor;
-      functor(device, input_reshaped, input_copy_reshaped);
+      OP_REQUIRES_OK_ASYNC(
+          context, DoConjugateMatrixTranspose(device, input, &input_copy),
+          done);
     }
     const int64 batch_size = input_copy_reshaped.dimension(0);
 
@@ -238,10 +239,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
             done);
       }
     }
-    // Callback for checking info after kernels finish. Also capture the
-    // temporary Tensors/ScratchSpace so they don't get deallocated before the
-    // kernels run. TODO(rmlarsen): Use move capture once C++14 becomes
-    // available.
+    // Callback for checking info after kernels finish.
     auto info_checker = [context, done](
                             const Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {

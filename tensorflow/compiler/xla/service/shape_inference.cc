@@ -1385,14 +1385,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Window: %s",
         window.DebugString().c_str());
   }
-  int num_spatial_dims = dnums.spatial_dimensions_size();
-  if (num_spatial_dims < 1) {
-    return InvalidArgument(
-        "Convolution requires at least one spatial dimension.\n"
-        "Window: %s",
-        window.DebugString().c_str());
-  }
 
+  const int num_spatial_dims = dnums.spatial_dimensions_size();
   if (window.dimensions_size() != num_spatial_dims) {
     return InvalidArgument(
         "Window must have same number of dimensions as dimension numbers.\n"
@@ -1400,7 +1394,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         window.DebugString().c_str(), dnums.DebugString().c_str());
   }
 
-  int num_dims = num_spatial_dims + 2;
+  const int num_dims = num_spatial_dims + 2;
   if (ShapeUtil::Rank(lhs) != num_dims) {
     return InvalidArgument(
         "The LHS argument to a convolution should have rank %d.\n"

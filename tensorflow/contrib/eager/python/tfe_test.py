@@ -75,7 +75,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self.skipTest('No GPUs available')
 
     # tf.Tensor.as_gpu_device() moves a tensor to GPU.
-    x = constant_op.constant([[1., 2.], [3., 4.]]).as_gpu_tensor()
+    x = constant_op.constant([[1., 2.], [3., 4.]]).gpu()
     # Alternatively, tf.device() as a context manager places tensors and
     # operations.
     with ops.device('gpu:0'):
@@ -85,7 +85,7 @@ class TFETest(test_util.TensorFlowTestCase):
     reduction_indices = range(x.shape.ndims)
     m = math_ops.reduce_mean(x, reduction_indices)
     # m is on GPU, bring it back to CPU and compare.
-    self.assertEqual(3.5, m.as_cpu_tensor().numpy())
+    self.assertEqual(3.5, m.cpu().numpy())
 
   def testListDevices(self):
     # Expect at least one device.
@@ -94,14 +94,6 @@ class TFETest(test_util.TensorFlowTestCase):
   def testNumGPUs(self):
     devices = tfe.list_devices()
     self.assertEqual(len(devices) - 1, tfe.num_gpus())
-
-  def testCallingEnableEagerExecutionMoreThanOnce(self):
-    # Note that eager.test.main() has already invoked enable_eager_exceution().
-    with self.assertRaisesRegexp(
-        ValueError, r'Do not call tfe\.%s more than once in the same process' %
-        tfe.enable_eager_execution.__name__):
-      tfe.enable_eager_execution()
-
 
 if __name__ == '__main__':
   tfe.enable_eager_execution()

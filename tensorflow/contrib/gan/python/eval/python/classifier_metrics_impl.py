@@ -16,6 +16,11 @@
 
 These methods come from https://arxiv.org/abs/1606.03498 and
 https://arxiv.org/abs/1706.08500.
+
+NOTE: This implementation uses the same weights as in
+https://github.com/openai/improved-gan/blob/master/inception_score/model.py,
+but is more numerically stable and is an unbiased estimator of the true
+Inception score even when splitting the inputs into batches.
 """
 
 from __future__ import absolute_import
@@ -54,17 +59,16 @@ __all__ = [
     'classifier_score',
     'frechet_inception_distance',
     'frechet_classifier_distance',
+    'INCEPTION_DEFAULT_IMAGE_SIZE',
 ]
 
 
-INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v3_2017_09_13.tar.gz'
-INCEPTION_FROZEN_GRAPH = 'frozen_inception_v3.pb'
-INCEPTION_V3_INPUT = 'input'
-INCEPTION_V3_OUTPUT = 'InceptionV3/Logits/SpatialSqueeze:0'
-INCEPTION_V3_FINAL_POOL = 'InceptionV3/Logits/AvgPool_1a_8x8/AvgPool:0'
-_INCEPTION_V3_NUM_CLASSES = 1001
-_INCEPTION_V3_FINAL_POOL_SIZE = 2048
-INCEPTION_V3_DEFAULT_IMG_SIZE = 299
+INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v1_2015_12_05.tar.gz'
+INCEPTION_FROZEN_GRAPH = 'inceptionv1_for_inception_score.pb'
+INCEPTION_INPUT = 'Mul:0'
+INCEPTION_OUTPUT = 'logits:0'
+INCEPTION_FINAL_POOL = 'pool_3:0'
+INCEPTION_DEFAULT_IMAGE_SIZE = 299
 
 
 def _validate_images(images, image_size):
@@ -102,46 +106,37 @@ def _symmetric_matrix_square_root(mat, eps=1e-10):
       math_ops.matmul(u, array_ops.diag(si)), v, transpose_b=True)
 
 
-# Convenience preprocessing function, with fixed defaults.
-# NOTE: Floating-point inputs are expected to be in [0, 1].
-# Copied from /tensorflow_models/slim/preprocessing/inception_preprocessing.py.
 def preprocess_image(
-    image, height=INCEPTION_V3_DEFAULT_IMG_SIZE,
-    width=INCEPTION_V3_DEFAULT_IMG_SIZE, central_fraction=0.875, scope=None):
-  """Prepare one image for evaluation.
+    images, height=INCEPTION_DEFAULT_IMAGE_SIZE,
+    width=INCEPTION_DEFAULT_IMAGE_SIZE, scope=None):
+  """Prepare a batch of images for evaluation.
 
-  If height and width are specified it would output an image with that size by
-  applying resize_bilinear.
+  This is the preprocessing portion of the graph from
+  http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz.
 
-  If central_fraction is specified it would crop the central fraction of the
-  input image.
+  Note that it expects Tensors in [0, 255]. This function maps pixel values to
+  [-1, 1] and resizes to match the InceptionV1 network.
 
   Args:
-    image: 3-D Tensor of image. If dtype is tf.float32 then the range should be
-      [0, 1], otherwise it would converted to tf.float32 assuming that the range
-      is [0, MAX], where MAX is largest positive representable number for
-      int(8/16/32) data type (see `tf.image.convert_image_dtype` for details).
-    height: integer
-    width: integer
-    central_fraction: Optional Float, fraction of the image to crop.
+    images: 3-D or 4-D Tensor of images. Values are in [0, 255].
+    height: Integer. Height of resized output image.
+    width: Integer. Width of resized output image.
     scope: Optional scope for name_scope.
-  Returns:
-    3-D float Tensor of prepared image.
-  """
-  with ops.name_scope(scope, 'eval_image', [image, height, width]):
-    if image.dtype != dtypes.float32:
-      image = image_ops.convert_image_dtype(image, dtype=dtypes.float32)
-    # Crop the central region of the image with an area containing 87.5% of
-    # the original image.
-    image = image_ops.central_crop(image, central_fraction=central_fraction)
 
-    # Resize the image to the specified height and width.
-    image = array_ops.expand_dims(image, 0)
-    image = image_ops.resize_bilinear(image, [height, width],
-                                      align_corners=False)
-    image = array_ops.squeeze(image, [0])
-    image = (image - 0.5) * 2.0
-    return image
+  Returns:
+    3-D or 4-D float Tensor of prepared image(s). Values are in [-1, 1].
+  """
+  is_single = images.shape.ndims == 3
+  with ops.name_scope(scope, 'preprocess', [images, height, width]):
+    if not images.dtype.is_floating:
+      images = math_ops.to_float(images)
+    images = (images - 128.0) / 128.0
+    if is_single:
+      images = array_ops.expand_dims(images, axis=0)
+    resized = image_ops.resize_bilinear(images, [height, width])
+    if is_single:
+      resized = array_ops.squeeze(resized, axis=0)
+    return resized
 
 
 def _kl_divergence(p, p_logits, q):
@@ -211,9 +206,9 @@ def _default_graph_def_fn():
 def run_inception(images,
                   graph_def=None,
                   default_graph_def_fn=_default_graph_def_fn,
-                  image_size=INCEPTION_V3_DEFAULT_IMG_SIZE,
-                  input_tensor=INCEPTION_V3_INPUT,
-                  output_tensor=INCEPTION_V3_OUTPUT):
+                  image_size=INCEPTION_DEFAULT_IMAGE_SIZE,
+                  input_tensor=INCEPTION_INPUT,
+                  output_tensor=INCEPTION_OUTPUT):
   """Run images through a pretrained Inception classifier.
 
   Args:
@@ -338,7 +333,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
 inception_score = functools.partial(
     classifier_score,
     classifier_fn=functools.partial(
-        run_inception, output_tensor=INCEPTION_V3_OUTPUT))
+        run_inception, output_tensor=INCEPTION_OUTPUT))
 
 
 def trace_sqrt_product(sigma, sigma_v):
@@ -479,4 +474,4 @@ def frechet_classifier_distance(real_images,
 frechet_inception_distance = functools.partial(
     frechet_classifier_distance,
     classifier_fn=functools.partial(
-        run_inception, output_tensor=INCEPTION_V3_FINAL_POOL))
+        run_inception, output_tensor=INCEPTION_FINAL_POOL))

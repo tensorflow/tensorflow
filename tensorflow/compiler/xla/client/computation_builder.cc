@@ -663,7 +663,7 @@ bool ComputationBuilder::VerifyConvolution(
     return false;
   }
   int num_dims = ShapeUtil::Rank(lhs_shape);
-  if (num_dims < 3) {
+  if (num_dims < 2) {
     NoteError(InvalidArgument(
         "Convolution expects argument arrays with >= 3 dimensions. "
         "Got: %s and %s",
