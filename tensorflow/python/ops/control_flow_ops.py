@@ -1954,11 +1954,14 @@ def smart_cond(pred, fn1=None, fn2=None, name=None):
 
 def constant_value(pred):
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
+
   Arguments:
     pred: A scalar, either a Python bool or a TensorFlow boolean variable
       or tensor.
+
   Returns:
     True or False if `pred` has a constant boolean value, None otherwise.
+
   Raises:
     TypeError: If `pred` is not a Variable, Tensor or bool.
   """
