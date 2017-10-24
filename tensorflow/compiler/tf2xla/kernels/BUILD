@@ -5,7 +5,6 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load("//tensorflow/compiler/xla:xla.bzl", "export_dynamic_linkopts")
 
 tf_kernel_library(
     name = "xla_ops",
@@ -153,6 +152,7 @@ cc_library(
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
@@ -164,6 +164,7 @@ cc_library(
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
