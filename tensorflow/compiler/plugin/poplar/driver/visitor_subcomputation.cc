@@ -34,35 +34,36 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-SubComputationVisitor::SubComputationVisitor(poplar::Graph* graph,
-                                             CompilerResources& res,
-                                             int64 num_parameters)
+SubComputationVisitor::SubComputationVisitor(
+        poplar::Graph* graph,
+        CompilerResources& res,
+        const ArgVectors& inputs)
         : FullVisitor(graph, res) {
-  temp_inputs_.resize(num_parameters);
+  temp_inputs_ = inputs;
+  inputs_.resize(temp_inputs_.size());
 }
 
 Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
+  ArgVector inputs;
   std::vector<xla::Shape> shapes = FlattenedXlaShape(inst->shape());
   for (unsigned int i=0; i<shapes.size(); i++) {
-    poplar::Tensor out;
-    TF_ASSIGN_OR_RETURN(out,
-                        AddTensor(*graph_, inst, shapes[i], resources_));
+    auto& t = temp_inputs_[inst->parameter_number()][i];
+    poplar::Tensor out = graph_->clone(t);
+    inputs.push_back(out);
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
-    temp_inputs_[inst->parameter_number()].push_back(out);
   }
+
+  inputs_[inst->parameter_number()] = inputs;
+
   return Status::OK();
 }
 
 Status SubComputationVisitor::FinishVisit(HloInstruction* inst) {
   outputs_ = FindInstructionOutputs(tensor_map, inst);
 
-  for (auto i : temp_inputs_) {
-    inputs_.insert(inputs_.end(), i.begin(), i.end());
-  }
-
-  tensor_map.clear();
   temp_inputs_.clear();
+  tensor_map.clear();
   return Status::OK();
 }
 

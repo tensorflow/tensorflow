@@ -305,21 +305,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     comp_layout->CopyLayoutFromShape(entry->root_instruction()->shape());
   }
 
-  for (const auto comp : hlo_module->MakeComputationPostOrder()) {
-    if (call_finder.targets.count(comp) > 0) {
-      if (comp != entry && call_finder.targets.at(comp) > 1) {
-        VLOG(1) << "Compiling sub-computation " << comp->name();
-        XLA_VLOG_LINES(1, comp->ToString());
-
-        resources.computation_map.emplace(
-                std::piecewise_construct,
-                std::forward_as_tuple(comp),
-                std::forward_as_tuple(graph, resources, comp->num_parameters()));
-        TF_RETURN_IF_ERROR(comp->Accept(&(resources.computation_map.at(comp))));
-      }
-    }
-  }
-
   VLOG(1) << "Compiling main computation " << entry->name();
   XLA_VLOG_LINES(1, entry->ToString());
 

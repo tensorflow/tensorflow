@@ -273,8 +273,8 @@ CreateSelectOp(poplar::Graph &graph,
   poplar::Tensor pred;
   TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0));
 
-  std::vector<poplar::Tensor> in0 = FindInstructionInputs(tensor_map, inst, 1);
-  std::vector<poplar::Tensor> in1 = FindInstructionInputs(tensor_map, inst, 2);
+  ArgVector in0 = FindInstructionInputs(tensor_map, inst, 1);
+  ArgVector in1 = FindInstructionInputs(tensor_map, inst, 2);
 
   if (in0.size() != in1.size()) {
     return port::Status(port::error::FAILED_PRECONDITION,

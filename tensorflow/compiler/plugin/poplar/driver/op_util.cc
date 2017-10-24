@@ -21,21 +21,21 @@ CountShapes(const Shape& shape) {
   }
 };
 
-std::vector<poplar::Tensor>
+ArgVector
 FindTupleInInstructionInput(const TensorMap& map,
                             const HloInstruction* inst,
                             int64 input,
                             int64 n) {
   const HloInstruction* operand = inst->operand(input);
   const Shape& shape = operand->shape();
-  std::vector<poplar::Tensor> outputs = FindInstructionOutputs(map, operand);
+  OutVector outputs = FindInstructionOutputs(map, operand);
   int64 start=0;
   for (int64 i=0; i<n; i++) {
     start += CountShapes(ShapeUtil::GetTupleElementShape(shape, i));
   }
   int64 end = start + CountShapes(ShapeUtil::GetTupleElementShape(shape, n));
 
-  return std::vector<poplar::Tensor>(&outputs[start], &outputs[end]);
+  return ArgVector(&outputs[start], &outputs[end]);
 }
 
 port::StatusOr<poplar::Tensor>
@@ -43,7 +43,7 @@ FindInstructionInput(const TensorMap& map,
                      const HloInstruction* inst,
                      int64 input) {
   const HloInstruction* operand = inst->operand(input);
-  std::vector<poplar::Tensor> outputs = FindInstructionOutputs(map, operand);
+  OutVector outputs = FindInstructionOutputs(map, operand);
   if (outputs.size() == 0) {
     return port::Status(port::error::UNKNOWN,
                         port::StrCat("[Poplar] Couldn't find input ",
@@ -54,21 +54,21 @@ FindInstructionInput(const TensorMap& map,
   return outputs[0];
 }
 
-std::vector<poplar::Tensor>
+ArgVector
 FindInstructionInputs(const TensorMap& map,
                       const HloInstruction* inst,
                       int64 input) {
   const HloInstruction* operand = inst->operand(input);
-  std::vector<poplar::Tensor> outputs = FindInstructionOutputs(map, operand);
-  return outputs;
+  OutVector inputs = FindInstructionOutputs(map, operand);
+  return inputs;
 }
 
-std::vector<poplar::Tensor>
+OutVector
 FindInstructionOutputs(const TensorMap& map,
                        const HloInstruction* inst) {
   auto lower = std::make_pair(inst->name(), 0);
   auto upper = std::make_pair(inst->name(), std::numeric_limits<int64>::max());
-  std::vector<poplar::Tensor> outputs;
+  OutVector outputs;
   for (auto it = map.lower_bound(lower); it != map.upper_bound(upper); it++) {
     outputs.push_back(it->second);
   }

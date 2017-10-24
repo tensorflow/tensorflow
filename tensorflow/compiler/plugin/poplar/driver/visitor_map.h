@@ -33,7 +33,7 @@ class MapVisitor : public BaseVisitor {
 public:
   MapVisitor(poplar::Graph* graph,
                    CompilerResources& res,
-                   const std::vector<poplar::Tensor>& inputs,
+                   const ArgVector& inputs,
                    const xla::Shape& shape);
 
 
@@ -44,13 +44,13 @@ public:
     return shape_;
   }
 
-  const std::vector<poplar::Tensor>& outputs() {
+  const OutVector& outputs() {
     return outputs_;
   }
 
 private:
-  std::vector<poplar::Tensor> operands_;
-  std::vector<poplar::Tensor> outputs_;
+  ArgVector operands_;
+  OutVector outputs_;
   xla::Shape shape_;
 };
 

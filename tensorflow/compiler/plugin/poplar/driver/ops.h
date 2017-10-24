@@ -30,6 +30,10 @@ struct CompilerResources;
 
 using TensorMap = std::map<std::pair<std::string, int64>, poplar::Tensor>;
 
+using OutVector = std::vector<poplar::Tensor>;
+using ArgVector = std::vector<poplar::Tensor>;
+using ArgVectors = std::vector<ArgVector>;
+
 typedef poplar::Tensor (*popstd_unary_fn)(poplar::Graph &graph,
                                           poplar::Tensor A,
                                           poplar::program::Sequence &prog,
@@ -89,7 +93,7 @@ AddOutputTensor(TensorMap& map,
 /* This returns the vector of all poplar tensors which are part of the n'th
  * member of the tuple which is the input to the instruction.
  */
-std::vector<poplar::Tensor>
+ArgVector
 FindTupleInInstructionInput(const TensorMap& map,
                             const HloInstruction* inst,
                             int64 input,
@@ -106,7 +110,7 @@ FindInstructionInput(const TensorMap& map,
 /* This returns a vector of all poplar tensors which are part of the tuple
  * or non-tuple on the input to the instruction
  */
-std::vector<poplar::Tensor>
+ArgVector
 FindInstructionInputs(const TensorMap& map,
                       const HloInstruction* inst,
                       int64 input);
@@ -114,7 +118,7 @@ FindInstructionInputs(const TensorMap& map,
 /* This returns a vector of poplar tensors which are all of the outputs from
  * the given instruction
  */
-std::vector<poplar::Tensor>
+OutVector
 FindInstructionOutputs(const TensorMap& map,
                        const HloInstruction* inst);
 

@@ -33,23 +33,23 @@ class SubComputationVisitor : public FullVisitor {
 public:
   SubComputationVisitor(poplar::Graph* graph,
                         CompilerResources& res,
-                        int64 num_operands);
+                        const ArgVectors& inputs);
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;
 
-  const std::vector<poplar::Tensor>& inputs() {
+  const ArgVectors& inputs() {
     return inputs_;
   }
 
-  const std::vector<poplar::Tensor>& outputs() {
+  const OutVector& outputs() {
     return outputs_;
   }
 
 private:
-  std::vector<std::vector<poplar::Tensor>> temp_inputs_;
-  std::vector<poplar::Tensor> inputs_;
-  std::vector<poplar::Tensor> outputs_;
+  ArgVectors temp_inputs_;
+  ArgVectors inputs_;
+  OutVector outputs_;
 };
 
 }  // namespace poplarplugin

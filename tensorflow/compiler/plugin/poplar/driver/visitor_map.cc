@@ -36,7 +36,7 @@ namespace poplarplugin {
 
 MapVisitor::MapVisitor(poplar::Graph* graph,
                        CompilerResources& res,
-                       const std::vector<poplar::Tensor>& inputs,
+                       const ArgVector& inputs,
                        const xla::Shape& shape)
         : BaseVisitor(graph, res),
           operands_(std::move(inputs)),

@@ -34,16 +34,20 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-InlineCallVisitor::InlineCallVisitor(poplar::Graph* graph,
-                                     CompilerResources& res,
-                                     const std::vector<poplar::Tensor>& inputs)
+InlineCallVisitor::InlineCallVisitor(
+        poplar::Graph* graph,
+        CompilerResources& res,
+        const ArgVectors& inputs)
         : FullVisitor(graph, res),
           inputs_(std::move(inputs)) {
 }
 
 Status InlineCallVisitor::HandleParameter(HloInstruction* inst) {
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
-                                     inputs_[inst->parameter_number()]));
+  for (unsigned int t = 0; t < inputs_[inst->parameter_number()].size(); t++) {
+    auto& v = inputs_[inst->parameter_number()];
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, t, v[t]));
+
+  }
   return Status::OK();
 }
 

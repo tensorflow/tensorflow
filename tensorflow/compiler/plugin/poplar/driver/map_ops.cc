@@ -25,6 +25,29 @@
 namespace xla {
 namespace poplarplugin {
 
+static port::StatusOr<ComputationMap::iterator>
+GetOrCompileSubComputation(poplar::Graph &graph,
+                           CompilerResources& res,
+                           const ArgVectors& inputs,
+                           const HloComputation* comp) {
+
+  auto body(res.computation_map.find(comp));
+  if (body != res.computation_map.end()) {
+    return body;
+  }
+
+  VLOG(1) << "Compiling sub-computation " << comp->name();
+  XLA_VLOG_LINES(1, comp->ToString());
+
+  auto compiled = res.computation_map.emplace(
+          std::piecewise_construct,
+          std::forward_as_tuple(comp),
+          std::forward_as_tuple(&graph, res, inputs));
+  TF_RETURN_IF_ERROR(comp->Accept(&(res.computation_map.at(comp))));
+
+  return compiled.first;
+}
+
 class ParallelMapTester : public DfsHloVisitorWithDefault {
 public:
   ParallelMapTester() : _is_ok(true) {}
@@ -45,7 +68,7 @@ public:
     } else if (inst->opcode() == HloOpcode::kMap) {
       return Status::OK();
     } else {
-      LOG(INFO) << "Map didn't have a parallel computation " << inst->name();
+      VLOG(1) << "Map didn't have a parallel computation " << inst->name();
       _is_ok = false;
       return Status::OK();
     }
@@ -73,7 +96,7 @@ CreateParallelMap(poplar::Graph &graph,
                   TensorMap& tensor_map) {
 
   int64 op_count(inst->operand_count());
-  std::vector<poplar::Tensor> inputs;
+  ArgVector inputs;
 
   for (int64 i = 0; i < op_count; i++) {
     poplar::Tensor t;
@@ -104,44 +127,33 @@ CreateCallOp(poplar::Graph &graph,
   HloComputation* comp = inst->to_apply();
   poplar::program::Sequence seq;
 
-  auto subcomp_visitor(res.computation_map.find(comp));
-  if (subcomp_visitor == res.computation_map.end()) {
-    // Inline the sub-computation
+  ArgVectors args;
+  for (int64 i = 0; i < op_count; i++) {
+    ArgVector t = FindInstructionInputs(tensor_map, inst, i);
+    args.push_back(t);
+  }
 
-    std::vector <poplar::Tensor> inputs;
+  ComputationMap::iterator subcomp_visitor;
+  TF_ASSIGN_OR_RETURN(subcomp_visitor,
+                      GetOrCompileSubComputation(graph, res, args, comp));
 
-    for (int64 i = 0; i < op_count; i++) {
-      poplar::Tensor t;
-      TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
-      inputs.push_back(t);
+  for (int64 o = 0; o < op_count; o++) {
+    auto& inputs = subcomp_visitor->second.inputs()[o];
+    if (inputs.size() != args[o].size()) {
+      return port::Status(port::error::FAILED_PRECONDITION,
+                          "Mismatched number of inputs");
     }
-
-    InlineCallVisitor inline_visitor(&graph, res, inputs);
-    TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
-
-    seq.add(inline_visitor.sequence);
-
-    for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
-                                         inline_visitor.outputs()[i]));
+    for (int64 i = 0; i < inputs.size(); i++) {
+      seq.add(poplar::program::Copy(args[o][i], inputs[i]));
     }
+  }
 
-  } else {
-    // Pre-compiled callable sub-computation exists
+  seq.add(subcomp_visitor->second.sequence);
 
-    for (int64 i = 0; i < op_count; i++) {
-      poplar::Tensor t;
-      TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
-      seq.add(poplar::program::Copy(t, subcomp_visitor->second.inputs()[i]));
-    }
-
-    seq.add(subcomp_visitor->second.sequence);
-
-    for (size_t i=0; i<subcomp_visitor->second.outputs().size(); i++) {
-      poplar::Tensor o = graph.clone(subcomp_visitor->second.outputs()[i]);
-      seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
-      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
-    }
+  for (size_t i=0; i<subcomp_visitor->second.outputs().size(); i++) {
+    poplar::Tensor o = graph.clone(subcomp_visitor->second.outputs()[i]);
+    seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
   }
 
   return seq;
@@ -158,11 +170,10 @@ CreateFusionOp(poplar::Graph &graph,
   HloComputation* comp = inst->fused_instructions_computation();
   poplar::program::Sequence seq;
 
-  std::vector <poplar::Tensor> inputs;
+  ArgVectors inputs;
 
   for (int64 i = 0; i < op_count; i++) {
-    poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
+    ArgVector t = FindInstructionInputs(tensor_map, inst, i);
     inputs.push_back(t);
   }
 
@@ -188,27 +199,25 @@ CreateWhileOp(poplar::Graph &graph,
               const xla::Shape& output,
               TensorMap& tensor_map) {
 
-  auto body(res.computation_map.find(inst->while_body()));
-  if (body == res.computation_map.end()) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Couldn't find body sub-computation for while op");
-  }
+  ArgVectors inputs;
+  inputs.push_back(FindInstructionInputs(tensor_map, inst, 0));
 
-  auto condition(res.computation_map.find(inst->while_condition()));
-  if (condition == res.computation_map.end()) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Couldn't find condition sub-computation for while op");
-  }
+  ComputationMap::iterator body;
+  TF_ASSIGN_OR_RETURN(body,
+                      GetOrCompileSubComputation(graph, res, inputs,
+                                                 inst->while_body()));
 
-  const std::vector<poplar::Tensor>& inits =
-          FindInstructionInputs(tensor_map, inst, 0);
+  ComputationMap::iterator cond;
+  TF_ASSIGN_OR_RETURN(cond,
+                      GetOrCompileSubComputation(graph, res, inputs,
+                                                 inst->while_condition()));
 
-  unsigned int param_count = inits.size();
+  unsigned int param_count = inputs[0].size();
 
-  const std::vector<poplar::Tensor>& body_inputs = body->second.inputs();
-  const std::vector<poplar::Tensor>& body_outputs = body->second.outputs();
-  const std::vector<poplar::Tensor>& cond_inputs = condition->second.inputs();
-  const std::vector<poplar::Tensor>& cond_outputs = condition->second.outputs();
+  const ArgVector& body_inputs = body->second.inputs()[0];
+  const ArgVector& body_outputs = body->second.outputs();
+  const ArgVector& cond_inputs = cond->second.inputs()[0];
+  const ArgVector& cond_outputs = cond->second.outputs();
 
   if (body_inputs.size() != param_count) {
     return port::Status(port::error::FAILED_PRECONDITION,
@@ -231,7 +240,7 @@ CreateWhileOp(poplar::Graph &graph,
   poplar::program::Sequence main_seq;
   for (unsigned int i=0; i<param_count; i++) {
     if (body_outputs[i].isParallelWriteable()) {
-      main_seq.add(poplar::program::Copy(inits[i], body_outputs[i]));
+      main_seq.add(poplar::program::Copy(inputs[0][i], body_outputs[i]));
     }
   }
 
@@ -255,7 +264,7 @@ CreateWhileOp(poplar::Graph &graph,
   for (unsigned int i=0; i<param_count; i++) {
     cond_seq.add(poplar::program::Copy(body_outputs[i], cond_inputs[i]));
   }
-  cond_seq.add(condition->second.sequence);
+  cond_seq.add(cond->second.sequence);
   popstd::allTrue(graph, cond_outputs[0], cond_seq);
 
   // Main
