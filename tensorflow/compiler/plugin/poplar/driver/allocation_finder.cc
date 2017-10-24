@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -77,69 +78,60 @@ public:
 
 }
 
+bool
+AllocationFinder::CompareConvolutionTargets(const TensorTarget& a,
+                                            const TensorTarget& b) {
+  return IsForwardConvolution(a.first) && !IsForwardConvolution(b.first);
+}
 
-TensorTarget
-AllocationFinder::FindConsumers(HloInstruction* inst) {
-  for (auto user : inst->users()) {
-    int64 op_index = user->operand_index(inst);
+bool
+AllocationFinder::CompareDotTargets(const TensorTarget& a,
+                                    const TensorTarget& b) {
+  return true;
+}
+
+void
+AllocationFinder::FindConsumers(HloInstruction* src, HloInstruction* tgt) {
+  for (auto user : tgt->users()) {
+    int64 op_index = user->operand_index(tgt);
     switch (user->opcode()) {
       case HloOpcode::kConvolution:
       {
-        return std::make_pair(user, op_index);
+        auto t = std::make_pair(user, op_index);
+        auto i = tensor_allocation_map.find(src);
+        if (i != tensor_allocation_map.end() &&
+            CompareConvolutionTargets(t, i->second)) {
+          tensor_allocation_map.erase(src);
+        }
+        tensor_allocation_map.insert(std::make_pair(src, t));
+        return;
       }
       case HloOpcode::kDot:
       {
-        return std::make_pair(user, op_index);
+        auto t = std::make_pair(user, op_index);
+        auto i = tensor_allocation_map.find(src);
+        if (i != tensor_allocation_map.end() &&
+            CompareDotTargets(t, i->second)) {
+          tensor_allocation_map.erase(src);
+        }
+        tensor_allocation_map.insert(std::make_pair(src, t));
+        return;
       }
       case HloOpcode::kCall:
       {
         HloComputation* comp = user->to_apply();
         HloInstruction* param = comp->parameter_instruction(op_index);
-        TensorTarget target = FindConsumers(param);
-        if (target.first != nullptr) {
-          return target;
-        }
+        FindConsumers(src, param);
         break;
       }
-      case HloOpcode::kBatchNormTraining:
-      case HloOpcode::kBroadcast:
-      case HloOpcode::kConcatenate:
-      case HloOpcode::kCrossReplicaSum:
-      case HloOpcode::kCustomCall:
-      case HloOpcode::kDynamicSlice:
-      case HloOpcode::kDynamicUpdateSlice:
-      case HloOpcode::kFusion:
-      case HloOpcode::kGetTupleElement:
-      case HloOpcode::kIndex:
-      case HloOpcode::kInfeed:
-      case HloOpcode::kMap:
-      case HloOpcode::kOutfeed:
-      case HloOpcode::kPad:
-      case HloOpcode::kParameter:
-      case HloOpcode::kRecv:
-      case HloOpcode::kReduce:
-      case HloOpcode::kReducePrecision:
-      case HloOpcode::kReduceWindow:
-      case HloOpcode::kReshape:
-      case HloOpcode::kSelectAndScatter:
-      case HloOpcode::kSend:
-      case HloOpcode::kSlice:
-      case HloOpcode::kTrace:
-      case HloOpcode::kTranspose:
-      case HloOpcode::kTuple:
-      case HloOpcode::kUpdate:
-      case HloOpcode::kWhile:
-        // These opcodes produce different shaped outputs
-        break;
       default:
-        TensorTarget target = FindConsumers(user);
-        if (target.first != nullptr) {
-          return target;
+        if (ShapeUtil::Equal(src->shape(), user->shape())) {
+          FindConsumers(src, user);
         }
         break;
     }
   }
-  return std::make_pair(nullptr, 0);
+  return;
 }
 
 Status AllocationFinder::CreateAllocationMap(HloModule* module) {
@@ -149,10 +141,7 @@ Status AllocationFinder::CreateAllocationMap(HloModule* module) {
     TF_RETURN_IF_ERROR(comp->Accept(&finder));
 
     for (auto inst : finder.allocating_instructions) {
-      TensorTarget target = FindConsumers(inst);
-      if (target.first != nullptr) {
-        tensor_allocation_map.insert(std::make_pair(inst, target));
-      }
+      FindConsumers(inst, inst);
     }
   }
 

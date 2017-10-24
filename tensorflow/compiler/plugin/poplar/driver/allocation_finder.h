@@ -45,7 +45,11 @@ public:
   TensorAllocationMap tensor_allocation_map;
 
 private:
-  TensorTarget FindConsumers(HloInstruction* inst);
+  void FindConsumers(HloInstruction* src, HloInstruction* tgt);
+
+  // Should return true when target 'a' should be used over 'b'
+  bool CompareConvolutionTargets(const TensorTarget& a, const TensorTarget& b);
+  bool CompareDotTargets(const TensorTarget& a, const TensorTarget& b);
 };
 
 }

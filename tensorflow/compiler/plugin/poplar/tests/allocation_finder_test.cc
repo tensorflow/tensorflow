@@ -177,8 +177,8 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
 }
 
 
-// Check it works for multiple valid destinations
-TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations) {
+// Check it works for multiple valid destinations (perferred one first)
+TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
   Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
 
@@ -200,6 +200,12 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations) {
   auto conv1 = builder_sub1.AddInstruction(
           HloInstruction::CreateConvolve(conv1_shape, op0_sub1, op1_sub1,
                                          GetConv1Window(), GetConvDimensions()));
+  {
+    OpMetadata metadata;
+    metadata.set_op_name("Conv1");
+    metadata.set_op_type("Conv2D");
+    conv1->set_metadata(metadata);
+  }
 
   auto computation_sub1 = builder_sub1.Build();
 
@@ -213,6 +219,12 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations) {
   auto conv2 = builder_sub2.AddInstruction(
           HloInstruction::CreateConvolve(conv2_shape, op0_sub2, op1_sub2,
                                          GetConv1Window(), GetConvDimensions()));
+  {
+    OpMetadata metadata;
+    metadata.set_op_name("Conv2");
+    metadata.set_op_type("Conv2DBackpropInput");
+    conv2->set_metadata(metadata);
+  }
 
   auto computation_sub2 = builder_sub2.Build();
 
@@ -267,6 +279,108 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations) {
         std::make_pair(c_conv2,1ll));
 }
 
+// Check it works for multiple valid destinations (perferred one second)
+TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
+  Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
+
+  Shape conv1_shape = ShapeInference::InferConvolveShape(
+          input_shape, weight_shape,
+          GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+
+  Shape conv2_shape = ShapeInference::InferConvolveShape(
+          input_shape, weight_shape,
+          GetConv2Window(), GetConvDimensions()).ConsumeValueOrDie();
+
+  /* Create convolution sub-computation 1 */
+  auto builder_sub1 = HloComputation::Builder(TestName());
+  auto op0_sub1 = builder_sub1.AddInstruction(
+          HloInstruction::CreateParameter(0, input_shape, "input"));
+  auto op1_sub1 = builder_sub1.AddInstruction(
+          HloInstruction::CreateParameter(1, weight_shape, "weights"));
+
+  auto conv1 = builder_sub1.AddInstruction(
+          HloInstruction::CreateConvolve(conv1_shape, op0_sub1, op1_sub1,
+                                         GetConv1Window(), GetConvDimensions()));
+  {
+    OpMetadata metadata;
+    metadata.set_op_name("Conv1");
+    metadata.set_op_type("Conv2DBackpropInput");
+    conv1->set_metadata(metadata);
+  }
+
+
+  auto computation_sub1 = builder_sub1.Build();
+
+  /* Create convolution sub-computation 2 */
+  auto builder_sub2 = HloComputation::Builder(TestName());
+  auto op0_sub2 = builder_sub2.AddInstruction(
+          HloInstruction::CreateParameter(0, input_shape, "input"));
+  auto op1_sub2 = builder_sub2.AddInstruction(
+          HloInstruction::CreateParameter(1, weight_shape, "weights"));
+
+  auto conv2 = builder_sub2.AddInstruction(
+          HloInstruction::CreateConvolve(conv2_shape, op0_sub2, op1_sub2,
+                                         GetConv1Window(), GetConvDimensions()));
+  {
+    OpMetadata metadata;
+    metadata.set_op_name("Conv2");
+    metadata.set_op_type("Conv2D");
+    conv2->set_metadata(metadata);
+  }
+
+  auto computation_sub2 = builder_sub2.Build();
+
+  /* Create main computation */
+  auto builder_main = HloComputation::Builder(TestName());
+  auto op0 = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(0, input_shape, "op0"));
+  auto op1 = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(1, input_shape, "op1"));
+  auto op2 = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(2, weight_shape, "op2"));
+
+  auto add = builder_main.AddInstruction(
+          HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
+
+  auto call1 = builder_main.AddInstruction(
+          HloInstruction::CreateCall(conv1_shape, {op1, op2},
+                                     computation_sub1.get()));
+
+  auto call2 = builder_main.AddInstruction(
+          HloInstruction::CreateCall(conv2_shape, {op1, op2},
+                                     computation_sub2.get()));
+
+  builder_main.AddInstruction(
+          HloInstruction::CreateTuple({add, call1, call2}));
+
+  auto computation_main = builder_main.Build();
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEmbeddedComputation(std::move(computation_sub1));
+  hlo_module->AddEmbeddedComputation(std::move(computation_sub2));
+  hlo_module->AddEntryComputation(std::move(computation_main));
+
+  AllocationFinder finder;
+  TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
+
+  const HloInstruction* c_conv1 = conv1;
+  const HloInstruction* c_conv2 = conv2;
+
+  EXPECT_EQ(finder.tensor_allocation_map.size(), 6);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1),
+          std::make_pair(c_conv2,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2),
+          std::make_pair(c_conv2,1ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op0_sub1),
+          std::make_pair(c_conv1,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1_sub1),
+          std::make_pair(c_conv1,1ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op0_sub2),
+          std::make_pair(c_conv2,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1_sub2),
+          std::make_pair(c_conv2,1ll));
+}
 
 // Check it works for constants
 TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
