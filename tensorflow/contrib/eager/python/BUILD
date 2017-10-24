@@ -169,6 +169,9 @@ py_library(
     deps = [
         ":datasets",
         ":metrics",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
     ],
@@ -182,6 +185,7 @@ py_test(
         ":evaluator",
         ":metrics",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
 )
