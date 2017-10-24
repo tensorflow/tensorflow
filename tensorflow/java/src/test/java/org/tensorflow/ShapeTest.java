@@ -82,13 +82,14 @@ public class ShapeTest {
   @Test
   public void equalsWorksCorrectly() {
     assertEquals(Shape.scalar(), Shape.scalar());
-    assertEquals(Shape.unknown(), Shape.unknown());
     assertEquals(Shape.make(1, 2, 3), Shape.make(1, 2, 3));
 
     assertNotEquals(Shape.make(1,2), null);
     assertNotEquals(Shape.make(1,2), new Object());
     assertNotEquals(Shape.make(1, 2, 3), Shape.make(1, 2, 4));
 
+
+    assertNotEquals(Shape.unknown(), Shape.unknown());
     assertNotEquals(Shape.make(-1), Shape.make(-1));
     assertNotEquals(Shape.make(1, -1, 3), Shape.make(1, -1, 3));
   }

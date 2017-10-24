@@ -119,7 +119,7 @@ public final class Shape {
 
   private boolean hasUnknownDimension() {
     if (shape == null) {
-      return false;
+      return true;
     }
 
     for (long dimension : shape) {
