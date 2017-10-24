@@ -25,6 +25,7 @@ limitations under the License.
 #include "grpc++/impl/codegen/stub_options.h"
 #include "grpc++/impl/codegen/sync_stream.h"
 
+#include "tensorflow/core/distributed_runtime/rpc/grpc_namespace_compat.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 

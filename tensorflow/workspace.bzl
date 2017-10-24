@@ -515,15 +515,31 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@grpc//third_party/nanopb:nanopb",
   )
 
-  patched_http_archive(
+  native.http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
-          # "https://github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
+         "http://mirror.bazel.build/github.com/grpc/grpc/archive/c563b583cb9b7fecc33971581368796d2df4759d.tar.gz",
+         "https://github.com/grpc/grpc/archive/c563b583cb9b7fecc33971581368796d2df4759d.tar.gz",
       ],
-      sha256 = "2004635e6a078acfac8ffa71738397796be4f8fb72f572cc44ecee5d99511d9f",
-      strip_prefix = "grpc-781fd6f6ea03645a520cd5c675da67ab61f87e4b",
-      patch_file = str(Label("//third_party/grpc:grpc.patch")),
+     sha256 = "f2bf3a0769ddd830a1c63a81875c818e25ec93da83d6e00b6962eb4121a37527",
+     strip_prefix = "grpc-c563b583cb9b7fecc33971581368796d2df4759d",
+  )
+
+  native.http_archive(
+      name = "com_google_absl",
+      urls = [
+         "http://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
+         "https://github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
+      ],
+     sha256 = "f1a7349f88d2846210c42e2f7271dabeee404c2a3b4198e34a797993e3569b03",
+     strip_prefix = "abseil-cpp-cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
+  )
+
+  # gRPC wants the existence of a cares dependence but its contents are not
+  # actually important since we have set GRPC_ARES=0 in tf_copts
+  native.bind(
+      name = "cares",
+      actual = "@grpc//third_party/nanopb:nanopb",
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
@@ -609,6 +625,8 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "zlib-1.2.8",
       build_file = str(Label("//third_party:zlib.BUILD")),
   )
+
+
 
   native.bind(
       name = "zlib",
