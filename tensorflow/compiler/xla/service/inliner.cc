@@ -86,7 +86,6 @@ Status InlinerVisitor::HandleMap(
     }
     VLOG(10) << "inlining map({X ... Y}, op) => : op(X ... Y) with function "
              << root.ToShortString();
-
     // If the input is a constant then the shape of the constant could be
     // different than the map shape. Hence, a broadcast is needed, else the
     // cloned operand with new shape and operands work.
