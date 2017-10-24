@@ -137,8 +137,15 @@ The following NVIDIA <i>software</i> must be installed on your system:
     particularly the description of appending the appropriate pathname
     to your `LD_LIBRARY_PATH` environment variable.
 
-Finally, you must also install `libcupti-dev` by invoking the following
-command:
+Finally, you must also install `libcupti` which for Cuda Toolkit >= 8.0 you do via 
+
+<pre> $ <b>sudo apt-get install cuda-command-line-tools</b> </pre>
+
+and add its path to your `LD_LIBRARY_PATH` environment variable:
+
+<pre> $ <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64</b> </pre>
+
+For Cuda Toolkit <= 7.5, you install `libcupti-dev` by invoking the following command:
 
 <pre> $ <b>sudo apt-get install libcupti-dev</b> </pre>
 

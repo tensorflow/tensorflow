@@ -35,7 +35,7 @@ REQUIRED_PACKAGES = [
     'enum34 >= 1.1.6',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
-    'protobuf >= 3.3.0',
+    'protobuf >= 3.4.0',
     'tensorflow-tensorboard >= 0.4.0rc1, < 0.5.0',
 ]
 
@@ -67,6 +67,7 @@ if sys.version_info < (3, 4):
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
+    'freeze_graph = tensorflow.python.tools.freeze_graph:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
