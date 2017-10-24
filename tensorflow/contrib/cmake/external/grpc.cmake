@@ -28,8 +28,7 @@ else()
   set(grpc_STATIC_LIBRARIES
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a
-      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/third_party/cares/libcares.a)
+      ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DGRPC_ARES=0")
