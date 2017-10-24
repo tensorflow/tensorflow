@@ -178,6 +178,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(v.handle.op.colocation_groups(),
                        v.initializer.inputs[1].op.colocation_groups())
 
+  def testHandleNumpy(self):
+    with context.eager_mode():
+      with self.assertRaises(ValueError):
+        resource_variable_ops.ResourceVariable(
+            1.0, name="handle-numpy").handle.numpy()
+
   @test_util.run_in_graph_and_eager_modes()
   def testInitFnDtype(self):
     v = resource_variable_ops.ResourceVariable(
