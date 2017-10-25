@@ -39,7 +39,6 @@ static inline const double_conversion::StringToDoubleConverter& StringToFloatCon
     const static double_conversion::StringToDoubleConverter converter(
         double_conversion::StringToDoubleConverter::ALLOW_LEADING_SPACES
         | double_conversion::StringToDoubleConverter::ALLOW_HEX
-        | double_conversion::StringToDoubleConverter::ALLOW_OCTALS
         | double_conversion::StringToDoubleConverter::ALLOW_TRAILING_SPACES
         | double_conversion::StringToDoubleConverter::ALLOW_CASE_INSENSIBILITY,
         0., 0., "inf", "nan"
