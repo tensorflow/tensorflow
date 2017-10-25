@@ -464,7 +464,9 @@ do_clang_format_check() {
       return 0
     fi
   elif [[ -z "$1" ]]; then
-    CLANG_SRC_FILES=$(get_clang_files_to_check)
+    # TODO (yongtang): Always pass --incremental until all files have
+    # been sanitized gradually. Then this --incremental could be removed.
+    CLANG_SRC_FILES=$(get_clang_files_to_check --incremental)
   else
     echo "Invalid syntax for invoking do_clang_format_check"
     echo "Usage: do_clang_format_check [--incremental]"
