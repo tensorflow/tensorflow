@@ -536,7 +536,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   # gRPC wants the existence of a cares dependence but its contents are not
-  # actually important since we have set GRPC_ARES=0 in tf_copts
+  # actually important since we have set GRPC_ARES=0 in tools/bazel.rc
   native.bind(
       name = "cares",
       actual = "@grpc//third_party/nanopb:nanopb",
