@@ -100,7 +100,8 @@ class EvaluatorTest(test.TestCase):
     with context.graph_mode(), self.test_session():
       e = SimpleEvaluator(IdentityModel())
       ds = dataset_ops.Dataset.from_tensor_slices([3.0, 5.0, 7.0, 9.0])
-      results = e.evaluate_on_dataset(ds)
+      init_op, call_op, results_op = e.evaluate_on_dataset(ds)
+      results = e.run_evaluation(init_op, call_op, results_op)
       self.assertEqual(set(["mean"]), set(results.keys()))
       self.assertEqual(6.0, results["mean"])
 

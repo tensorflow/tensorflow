@@ -81,10 +81,18 @@ class Evaluator(object):
 
     Returns:
       An op.
+
+    Raises:
+      RuntimeError: if eager execution is enabled.
+
+    @compatibility(eager)
+    Only for graph execution.
+    @end_compatibility
     """
-    assert context.in_graph_mode()
-    return control_flow_ops.group(
-        *[m.init_variables() for _, m in self.metrics])
+    if context.in_eager_mode():
+      raise RuntimeError("Evaluator.init_variables() not needed when "
+                         "eager execution is enabled.")
+    return control_flow_ops.group([m.init_variables() for _, m in self.metrics])
 
   def all_metric_results(self):  # TODO(josh11b): Add optional summary_writer.
     """Returns dict mapping metric name -> value."""
@@ -97,27 +105,78 @@ class Evaluator(object):
     return results
 
   def evaluate_on_dataset(self, dataset, *args, **kwargs):
-    """Convenience method for performing an eval on a Dataset."""
+    """Convenience method for performing an eval on a Dataset.
+
+    Args:
+      dataset: Dataset object with the input data to evaluate on.
+      *args:
+      **kwargs: Optional additional arguments to __call__().
+
+    Returns:
+      @compatibility(eager)
+      When eager execution is enabled, this returns the result of performing
+      an evaluation as a dictionary. With graph execution, this returns a tuple
+      (init_op, call_op, results_op) which may be executed using this code:
+      ```python
+        sess.run(init_op)
+        try:
+          while True:
+            sess.run(call_op)
+        except tf.errors.OutOfRangeError:
+          pass
+        return sess.run(results_op)  # A dictionary
+
+        # equivalently:
+        return evaluator.run_evaluation(init_op, call_op, results_op, sess=sess)
+      ```
+      @end_compatibility
+    """
     # TODO(josh11b): Add optional summary_writer.
     if context.in_graph_mode():
-      # TODO(josh11b): Return an dict of tensors to pass to session.run()
-      # instead of running using the default session here.
-      sess = ops.get_default_session()
       call_op = self.__call__(dataset.make_one_shot_iterator().get_next(),
                               *args, **kwargs)
       init_op = self.init_variables()
       results_op = self.all_metric_results()
-      sess.run(init_op)
-      try:
-        while True:
-          sess.run(call_op)
-      except errors_impl.OutOfRangeError:
-        pass
-      return sess.run(results_op)
+      return (init_op, call_op, results_op)
     # Eager case
     for example in datasets.Iterator(dataset):
       self.__call__(example, *args, **kwargs)
     return self.all_metric_results()
+
+  @staticmethod
+  def run_evaluation(init_op, call_op, results_op, sess=None):
+    """Convenience method for running the ops returned by evaluate_on_dataset.
+
+    Args:
+      init_op: An op that initializes/resets evaluation state.
+      call_op: An op that updates evaluation state on a mini-batch of examples.
+        Must generate an tf.errors.OutOfRangeError when done.
+      results_op: A dictionary of tensors that compute the final evaluation
+        results from the evaulation state.
+      sess: The Session to run the evaluation in. Defaults to the default
+        Session.
+
+    Returns:
+      A dictionary of values, parallel to results_op.
+
+    Raises:
+      RuntimeError: if eager execution is enabled.
+
+    @compatibility(eager)
+    Only for graph execution.
+    @end_compatibility
+    """
+    if context.in_eager_mode():
+      raise RuntimeError("Evaluator.run_evaluation() not supported when "
+                         "eager execution is enabled.")
+    sess = sess or ops.get_default_session()
+    sess.run(init_op)
+    try:
+      while True:
+        sess.run(call_op)
+    except errors_impl.OutOfRangeError:
+      pass
+    return sess.run(results_op)
 
   # ---- To be implemented by descendants ---
   def call(self, eval_data):

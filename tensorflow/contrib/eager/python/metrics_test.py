@@ -141,10 +141,10 @@ class MetricsTest(test.TestCase):
       sess.run(accumulate, feed_dict={p: 1000})
       sess.run(accumulate, feed_dict={p: [10000, 100000]})
       self.assertAllEqual(m.result().eval(), 111111.0/6)
-      # Second init is ignored, since the variables are already initialized.
+      # Second init resets all the variables.
       init_op.run()
       sess.run(accumulate, feed_dict={p: 7})
-      self.assertAllEqual(m.result().eval(), 111118.0/7)
+      self.assertAllEqual(m.result().eval(), 7)
 
   def testTwoMeansGraph(self):
     # Verify two metrics with the same class and name don't
