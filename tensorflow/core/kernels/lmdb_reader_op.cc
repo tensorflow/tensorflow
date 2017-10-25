@@ -57,10 +57,13 @@ class LMDBReader : public ReaderBase {
     if (mdb_env_ != nullptr) {
       if (mdb_cursor_) {
         mdb_cursor_close(mdb_cursor_);
+        mdb_cursor_ = nullptr;
       }
-      mdb_txn_abort(mdb_txn_);
       mdb_dbi_close(mdb_env_, mdb_dbi_);
+      mdb_txn_abort(mdb_txn_);
       mdb_env_close(mdb_env_);
+      mdb_txn_ = nullptr;
+      mdb_dbi_ = 0;
       mdb_env_ = nullptr;
     }
     return Status::OK();
