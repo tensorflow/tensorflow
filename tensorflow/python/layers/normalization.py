@@ -717,7 +717,14 @@ def batch_normalization(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.BactchNormalization instead.')
   layer = BatchNormalization(
       axis=axis,
       momentum=momentum,
@@ -749,4 +756,3 @@ def batch_normalization(inputs,
 
 BatchNorm = BatchNormalization
 batch_norm = batch_normalization
-

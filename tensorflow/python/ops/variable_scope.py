@@ -724,9 +724,6 @@ class _VariableStore(object):
     if name in self._vars:
       # Here we handle the case when returning an existing variable.
       if reuse is False:
-        if context.in_eager_mode():
-          raise ValueError(
-              "Trying to recreate existing variable: %s" % self._vars[name])
         tb = self._vars[name].op.traceback[::-1]
         # Throw away internal tf entries and only take a few lines.
         tb = [x for x in tb if "tensorflow/python" not in x[0]][:3]
@@ -798,7 +795,10 @@ class _VariableStore(object):
           dtype=variable_dtype,
           validate_shape=validate_shape,
           constraint=constraint)
-    self._vars[name] = v
+    if context.in_graph_mode():
+      # In eager mode we do not want to keep default references to Variable
+      # objects as this will prevent their memory from being released.
+      self._vars[name] = v
     logging.vlog(1, "Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
 

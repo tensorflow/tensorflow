@@ -383,7 +383,14 @@ def conv1d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv1D instead.')
   layer = Conv1D(
       filters=filters,
       kernel_size=kernel_size,
@@ -583,7 +590,14 @@ def conv2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv2D instead.')
   layer = Conv2D(
       filters=filters,
       kernel_size=kernel_size,
@@ -785,7 +799,14 @@ def conv3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv3D instead.')
   layer = Conv3D(
       filters=filters,
       kernel_size=kernel_size,
@@ -1104,7 +1125,14 @@ def separable_conv2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.SeparableConv2D instead.')
   layer = SeparableConv2D(
       filters=filters,
       kernel_size=kernel_size,
@@ -1399,7 +1427,14 @@ def conv2d_transpose(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv2DTranspose instead.')
   layer = Conv2DTranspose(
       filters=filters,
       kernel_size=kernel_size,
@@ -1710,7 +1745,14 @@ def conv3d_transpose(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv3DTranspose instead.')
   layer = Conv3DTranspose(
       filters=filters,
       kernel_size=kernel_size,

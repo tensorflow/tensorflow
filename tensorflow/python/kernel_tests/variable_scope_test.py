@@ -67,7 +67,6 @@ class VariableScopeTest(test.TestCase):
     with self.assertRaises(ValueError):
       vs.get_variable("u", [1], reuse=True)  # That fails.
 
-  @test_util.run_in_graph_and_eager_modes()
   def testNamelessStore(self):
     vs = variable_scope._get_default_variable_store()
     vs.get_variable("v1", [2])
