@@ -27,6 +27,7 @@ import collections
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -146,6 +147,10 @@ def input_producer(input_tensor,
   Raises:
     ValueError: If the shape of the input cannot be inferred from the arguments.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   with ops.name_scope(name, "input_producer", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
     element_shape = input_tensor.shape[1:].merge_with(element_shape)
@@ -685,6 +690,10 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
            allow_smaller_final_batch=False, shared_name=None,
            name=None):
   """Helper function for `batch` and `maybe_batch`."""
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "batch", list(tensor_list) + [keep_input]) as name:
     tensor_list = _validate(tensor_list)
@@ -718,6 +727,10 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
                 enqueue_many=False, shapes=None, dynamic_pad=False,
                 allow_smaller_final_batch=False, shared_name=None, name=None):
   """Helper function for `batch_join` and `maybe_batch_join`."""
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   tensor_list_list = _as_tensor_list_list(tensors_list)
   with ops.name_scope(name, "batch_join",
                       _flatten(tensor_list_list) + [keep_input]) as name:
@@ -748,6 +761,10 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                    shapes=None, allow_smaller_final_batch=False,
                    shared_name=None, name=None):
   """Helper function for `shuffle_batch` and `maybe_shuffle_batch`."""
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "shuffle_batch",
                       list(tensor_list) + [keep_input]) as name:
@@ -788,6 +805,10 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
                         allow_smaller_final_batch=False, shared_name=None,
                         name=None):
   """Helper function for `shuffle_batch_join` and `maybe_shuffle_batch_join`."""
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   tensor_list_list = _as_tensor_list_list(tensors_list)
   with ops.name_scope(name, "shuffle_batch_join",
                       _flatten(tensor_list_list) + [keep_input]) as name:

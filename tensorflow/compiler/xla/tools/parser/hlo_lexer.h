@@ -39,8 +39,13 @@ class HloLexer {
   TokKind Lex() { return current_kind_ = LexToken(); }
   TokKind GetKind() const { return current_kind_; }
   string GetStrVal() const {
-    CHECK(GetKind() == TokKind::kName);
-    return str_val_;
+    switch (GetKind()) {
+      case TokKind::kName:
+      case TokKind::kAttributeName:
+        return str_val_;
+      default:
+        LOG(FATAL) << "This token does not have string value";
+    }
   }
   Shape GetShapeVal() const {
     CHECK(GetKind() == TokKind::kShape);

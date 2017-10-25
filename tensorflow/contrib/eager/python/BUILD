@@ -129,11 +129,15 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:layers_base",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
@@ -165,6 +169,9 @@ py_library(
     deps = [
         ":datasets",
         ":metrics",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
     ],
@@ -178,6 +185,7 @@ py_test(
         ":evaluator",
         ":metrics",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -191,6 +199,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:layers_base",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:util",
     ],
 )
 
@@ -202,6 +211,8 @@ py_test(
         ":network",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python/eager:test",
     ],
 )

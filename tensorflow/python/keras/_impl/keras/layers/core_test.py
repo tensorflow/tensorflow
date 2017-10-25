@@ -20,8 +20,11 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
+from tensorflow.python.ops import init_ops
 from tensorflow.python.platform import test
 
 
@@ -197,6 +200,12 @@ class CoreLayersTest(test.TestCase):
       layer(keras.backend.variable(np.ones((2, 4))))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
+
+  def test_eager_dense(self):
+    with context.eager_mode():
+      l = keras.layers.Dense(units=3,
+                             kernel_initializer=init_ops.zeros_initializer())
+      self.assertAllEqual(l(constant_op.constant([[1.0]])), [[0., 0., 0.]])
 
   def test_activity_regularization(self):
     with self.test_session():

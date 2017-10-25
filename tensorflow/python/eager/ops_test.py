@@ -249,7 +249,8 @@ class OpsTest(test_util.TensorFlowTestCase):
     # it should implicitly copy the tensor to host memory?
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
-        'cannot compute Reshape as input #1 was expected to be on'):
+        'cannot compute Reshape as input #1 was expected to be on.*'
+        'using.*DEVICE_PLACEMENT_SILENT'):
       reshaped = array_ops.reshape(value, shape.gpu())
 
   def testInvalidInputDataType(self):

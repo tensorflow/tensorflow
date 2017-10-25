@@ -40,7 +40,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import losses
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
 
@@ -314,9 +313,6 @@ def _predictions_mean(predictions, weights=None, name=None):
 def _auc(labels, predictions, weights=None, curve='ROC', name=None):
   with ops.name_scope(name, 'auc', (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions, name='predictions')
-    if labels.dtype.base_dtype != dtypes.bool:
-      logging.warning('Casting %s labels to bool.', labels.dtype)
-      labels = math_ops.cast(labels, dtypes.bool)
     if weights is not None:
       weights = weights_broadcast_ops.broadcast_weights(weights, predictions)
     return metrics_lib.auc(

@@ -356,31 +356,30 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       }
 
      protected:
-      Status SaveInternal(OpKernelContext* ctx,
-                          IteratorBundleWriter* writer) override {
+      Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(writer->WriteScalar<int64>(
-            full_name("current_file_index"), current_file_index_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
+                                               current_file_index_));
 
         // `input_buffer_` is empty if
         // 1. GetNext has not been called even once.
         // 2. All files have been read and iterator has been exhausted.
         int64 current_pos = input_buffer_ ? input_buffer_->Tell() : -1;
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar<int64>(full_name("current_pos"), current_pos));
+            writer->WriteScalar(full_name("current_pos"), current_pos));
         return Status::OK();
       }
 
       Status RestoreInternal(OpKernelContext* ctx,
-                             IteratorBundleReader* reader) override {
+                             IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         int64 current_file_index;
-        TF_RETURN_IF_ERROR(reader->ReadScalar<int64>(
-            full_name("current_file_index"), &current_file_index));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_file_index"),
+                                              &current_file_index));
         current_file_index_ = size_t(current_file_index);
         int64 current_pos;
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar<int64>(full_name("current_pos"), &current_pos));
+            reader->ReadScalar(full_name("current_pos"), &current_pos));
 
         // Seek to current_pos.
         input_buffer_.reset();
