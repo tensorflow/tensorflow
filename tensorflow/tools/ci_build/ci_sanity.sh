@@ -426,8 +426,68 @@ do_code_link_check() {
   tensorflow/tools/ci_build/code_link_check.sh
 }
 
+# List .h|.cc files changed in the last non-merge git commit that still exist,
+# i.e., not removed.
+# Usage: get_clang_files_to_check [--incremental]
+get_clang_files_to_check() {
+  if [[ "$1" == "--incremental" ]]; then
+    CHANGED_CLANG_FILES=$(get_changed_files_in_last_non_merge_git_commit | \
+                       grep '.*\.h$\|.*\.cc$')
+
+    # Do not include files removed in the last non-merge commit.
+    CLANG_FILES=""
+    for CLANG_FILE in ${CHANGED_CLANG_FILES}; do
+      if [[ -f "${CLANG_FILE}" ]]; then
+        CLANG_FILES="${CLANG_FILES} ${CLANG_FILE}"
+      fi
+    done
+
+    echo "${CLANG_FILES}"
+  else
+    find tensorflow -name '*.h' -o -name '*.cc'
+  fi
+}
+
 do_clang_format_check() {
-  CLANG_FORMAT=clang-format-3.8 tensorflow/tools/ci_build/clang_format_check.sh
+  if [[ $# != "0" ]] && [[ $# != "1" ]]; then
+    echo "Invalid syntax when invoking do_clang_format_check"
+    echo "Usage: do_clang_format_check [--incremental]"
+    return 1
+  fi
+
+  if [[ "$1" == "--incremental" ]]; then
+    CLANG_SRC_FILES=$(get_clang_files_to_check --incremental)
+
+    if [[ -z "${CLANG_SRC_FILES}" ]]; then
+      echo "do_clang_format_check will NOT run due to --incremental flag and "\
+"due to the absence of Python code changes in the last commit."
+      return 0
+    fi
+  elif [[ -z "$1" ]]; then
+    CLANG_SRC_FILES=$(get_clang_files_to_check)
+  else
+    echo "Invalid syntax for invoking do_clang_format_check"
+    echo "Usage: do_clang_format_check [--incremental]"
+    return 1
+  fi
+
+  CLANG_FORMAT=${CLANG_FORMAT:-clang-format-3.8}
+
+  success=1
+  for filename in $CLANG_SRC_FILES; do
+    $CLANG_FORMAT --style=google $filename | diff $filename - > /dev/null
+    if [ ! $? -eq 0 ]; then
+      success=0
+      echo File $filename is not properly formatted with "clang-format "\
+"--style=google"
+    fi
+  done
+
+  if [ $success == 0 ]; then
+    echo Clang format check fails.
+    exit 1
+  fi
+  echo Clang format check success.
 }
 
 do_check_load_py_test() {
