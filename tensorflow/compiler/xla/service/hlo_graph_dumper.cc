@@ -926,6 +926,9 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
                            [](int64 stride) { return stride == 1; })
                    ? ""
                    : StrCat("stride=", VectorString(instr->slice_strides()));
+      case HloOpcode::kSend:
+      case HloOpcode::kRecv:
+        return StrCat("channel_id=", instr->channel_id());
       default:
         return "";
     }
@@ -935,7 +938,9 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   if (!opcode_specific_info.empty()) {
     lines.push_back(opcode_specific_info);
   }
-
+  if (instr->device_assignment().has_device()) {
+    lines.push_back(StrCat("device=", instr->device_assignment().device()));
+  }
   // Show the shape and layout of the instruction, unless it's an inlined fusion
   // node -- there the shape and layout is present in the output node.
   if (instr->opcode() != HloOpcode::kFusion ||
