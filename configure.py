@@ -963,6 +963,19 @@ def set_monolithic():
   write_to_bazelrc('build --define framework_shared_object=true')
 
 
+def create_android_bazelrc_configs():
+  # Flags for --config=android
+  write_to_bazelrc('build:android --crosstool_top=//external:android/crosstool')
+  write_to_bazelrc(
+      'build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain')
+  # Flags for --config=android_arm
+  write_to_bazelrc('build:android_arm --config=android')
+  write_to_bazelrc('build:android_arm --cpu=armeabi-v7a')
+  # Flags for --config=android_arm64
+  write_to_bazelrc('build:android_arm64 --config=android')
+  write_to_bazelrc('build:android_arm64 --cpu=arm64-v8a')
+
+
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
@@ -1032,7 +1045,7 @@ def main():
   set_cc_opt_flags(environ_cp)
   set_mkl()
   set_monolithic()
-
+  create_android_bazelrc_configs()
 
 if __name__ == '__main__':
   main()
