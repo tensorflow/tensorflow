@@ -80,6 +80,12 @@ class FisherEstimator(object):
     self._layers = layer_collection
     self._layers.create_subgraph()
     self._check_registration(variables)
+    self._gradient_fns = {
+        "gradients": self._get_grads_lists_gradients,
+        "empirical": self._get_grads_lists_empirical,
+        "curvature_prop": self._get_grads_lists_curvature_prop,
+        "exact": self._get_grads_lists_exact
+    }
     setup = self._setup(cov_ema_decay)
     self.cov_update_op, self.inv_update_op, self.inv_updates_dict = setup
 
@@ -201,75 +207,73 @@ class FisherEstimator(object):
     Raises:
       ValueError: If estimation_mode was improperly specified at construction.
     """
-    damping = self.damping
-
     fisher_blocks_list = self._layers.get_blocks()
-
     tensors_to_compute_grads = [
         fb.tensors_to_compute_grads() for fb in fisher_blocks_list
     ]
-    tensors_to_compute_grads_flat = nest.flatten(tensors_to_compute_grads)
 
-    if self._estimation_mode == "gradients":
-      grads_flat = gradients_impl.gradients(self._layers.total_sampled_loss(),
-                                            tensors_to_compute_grads_flat)
-      grads_all = nest.pack_sequence_as(tensors_to_compute_grads, grads_flat)
-      grads_lists = tuple((grad,) for grad in grads_all)
-
-    elif self._estimation_mode == "empirical":
-      grads_flat = gradients_impl.gradients(self._layers.total_loss(),
-                                            tensors_to_compute_grads_flat)
-      grads_all = nest.pack_sequence_as(tensors_to_compute_grads, grads_flat)
-      grads_lists = tuple((grad,) for grad in grads_all)
-
-    elif self._estimation_mode == "curvature_prop":
-      loss_inputs = list(loss.inputs for loss in self._layers.losses)
-      loss_inputs_flat = nest.flatten(loss_inputs)
-
-      transformed_random_signs = list(loss.multiply_fisher_factor(
-          utils.generate_random_signs(loss.fisher_factor_inner_shape))
-                                      for loss in self._layers.losses)
-
-      transformed_random_signs_flat = nest.flatten(transformed_random_signs)
-
-      grads_flat = gradients_impl.gradients(loss_inputs_flat,
-                                            tensors_to_compute_grads_flat,
-                                            grad_ys
-                                            =transformed_random_signs_flat)
-      grads_all = nest.pack_sequence_as(tensors_to_compute_grads, grads_flat)
-      grads_lists = tuple((grad,) for grad in grads_all)
-
-    elif self._estimation_mode == "exact":
-      # Loop over all coordinates of all losses.
-      grads_all = []
-      for loss in self._layers.losses:
-        for index in np.ndindex(*loss.fisher_factor_inner_static_shape[1:]):
-          transformed_one_hot = loss.multiply_fisher_factor_replicated_one_hot(
-              index)
-          grads_flat = gradients_impl.gradients(loss.inputs,
-                                                tensors_to_compute_grads_flat,
-                                                grad_ys=transformed_one_hot)
-          grads_all.append(nest.pack_sequence_as(tensors_to_compute_grads,
-                                                 grads_flat))
-
-      grads_lists = zip(*grads_all)
-
-    else:
+    try:
+      grads_lists = self._gradient_fns[self._estimation_mode](
+          tensors_to_compute_grads)
+    except KeyError:
       raise ValueError("Unrecognized value {} for estimation_mode.".format(
           self._estimation_mode))
 
     for grads_list, fb in zip(grads_lists, fisher_blocks_list):
-      fb.instantiate_factors(grads_list, damping)
+      fb.instantiate_factors(grads_list, self.damping)
 
     cov_updates = [
         factor.make_covariance_update_op(cov_ema_decay)
         for factor in self._layers.get_factors()
     ]
-    inv_updates = {
-        op.name: op
-        for factor in self._layers.get_factors()
-        for op in factor.make_inverse_update_ops()
-    }
+    inv_updates = {op.name: op for op in self._get_all_inverse_update_ops()}
 
     return control_flow_ops.group(*cov_updates), control_flow_ops.group(
         *inv_updates.values()), inv_updates
+
+  def _get_all_inverse_update_ops(self):
+    for factor in self._layers.get_factors():
+      for op in factor.make_inverse_update_ops():
+        yield op
+
+  def _get_grads_lists_gradients(self, tensors):
+    grads_flat = gradients_impl.gradients(self._layers.total_sampled_loss(),
+                                          nest.flatten(tensors))
+    grads_all = nest.pack_sequence_as(tensors, grads_flat)
+    return tuple((grad,) for grad in grads_all)
+
+  def _get_grads_lists_empirical(self, tensors):
+    grads_flat = gradients_impl.gradients(self._layers.total_loss(),
+                                          nest.flatten(tensors))
+    grads_all = nest.pack_sequence_as(tensors, grads_flat)
+    return tuple((grad,) for grad in grads_all)
+
+  def _get_transformed_random_signs(self):
+    transformed_random_signs = []
+    for loss in self._layers.losses:
+      transformed_random_signs.append(
+          loss.multiply_fisher_factor(
+              utils.generate_random_signs(loss.fisher_factor_inner_shape)))
+    return transformed_random_signs
+
+  def _get_grads_lists_curvature_prop(self, tensors):
+    loss_inputs = list(loss.inputs for loss in self._layers.losses)
+    transformed_random_signs = self._get_transformed_random_signs()
+    grads_flat = gradients_impl.gradients(
+        nest.flatten(loss_inputs),
+        nest.flatten(tensors),
+        grad_ys=nest.flatten(transformed_random_signs))
+    grads_all = nest.pack_sequence_as(tensors, grads_flat)
+    return tuple((grad,) for grad in grads_all)
+
+  def _get_grads_lists_exact(self, tensors):
+    # Loop over all coordinates of all losses.
+    grads_all = []
+    for loss in self._layers.losses:
+      for index in np.ndindex(*loss.fisher_factor_inner_static_shape[1:]):
+        transformed_one_hot = loss.multiply_fisher_factor_replicated_one_hot(
+            index)
+        grads_flat = gradients_impl.gradients(
+            loss.inputs, nest.flatten(tensors), grad_ys=transformed_one_hot)
+        grads_all.append(nest.pack_sequence_as(tensors, grads_flat))
+    return zip(*grads_all)

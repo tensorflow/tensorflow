@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.training import training_util
+from tensorflow.python.util import tf_contextlib
 
 # Name for a collection which is expected to have at most a single boolean
 # Tensor. If this tensor is True the summary ops will record summaries.
@@ -46,22 +47,50 @@ def should_record_summaries():
 
 
 # TODO(apassos) consider how to handle local step here.
+@tf_contextlib.contextmanager
 def record_summaries_every_n_global_steps(n):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
+  old = collection_ref[:]
   collection_ref[:] = [training_util.get_global_step() % n == 0]
+  yield
+  collection_ref[:] = old
 
 
+@tf_contextlib.contextmanager
 def always_record_summaries():
   """Sets the should_record_summaries Tensor to always true."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
+  old = collection_ref[:]
   collection_ref[:] = [True]
+  yield
+  collection_ref[:] = old
 
 
+@tf_contextlib.contextmanager
 def never_record_summaries():
   """Sets the should_record_summaries Tensor to always false."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
+  old = collection_ref[:]
   collection_ref[:] = [False]
+  yield
+  collection_ref[:] = old
+
+
+class SummaryWriter(object):
+
+  def __init__(self, resource):
+    self._resource = resource
+
+  def set_as_default(self):
+    context.context().summary_writer_resource = self._resource
+
+  @tf_contextlib.contextmanager
+  def as_default(self):
+    old = context.context().summary_writer_resource
+    context.context().summary_writer_resource = self._resource
+    yield
+    context.context().summary_writer_resource = old
 
 
 def create_summary_file_writer(logdir,
@@ -77,9 +106,11 @@ def create_summary_file_writer(logdir,
   if filename_suffix is None:
     filename_suffix = constant_op.constant("")
   resource = gen_summary_ops.summary_writer(shared_name=name)
+  # TODO(apassos) ensure the initialization op runs when in graph mode; consider
+  # calling session.run here.
   gen_summary_ops.create_summary_file_writer(resource, logdir, max_queue,
                                              flush_secs, filename_suffix)
-  context.context().summary_writer_resource = resource
+  return SummaryWriter(resource)
 
 
 def _nothing():

@@ -69,7 +69,6 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
     // a result of basic user mistakes, such as providing integer valued
     // matrices that are exactly singular, or due to underflow if this
     // code is run with denormals being flushed to zero.
-    using RealScalar = typename Base::RealScalar;
     const RealScalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),

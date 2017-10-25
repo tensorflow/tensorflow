@@ -523,11 +523,16 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
   // A/pow(B,C) => A*pow(B,-C)
   if (rhs->opcode() == HloOpcode::kPower) {
     VLOG(10) << "transform [A/pow(B,C) => A*pow(B,-C)]: " << divide->ToString();
+    // The output shape of the created negate operator should be the same as the
+    // input.
+    const Shape& negate_shape = rhs->operand(1)->shape();
     HloInstruction* negate =
         computation_->AddInstruction(HloInstruction::CreateUnary(
-            divide->shape(), HloOpcode::kNegate, rhs->mutable_operand(1)));
+            negate_shape, HloOpcode::kNegate, rhs->mutable_operand(1)));
+    // And the power operator should retain the output shape of the old one.
+    const Shape& new_power_shape = rhs->shape();
     HloInstruction* new_power = computation_->AddInstruction(
-        HloInstruction::CreateBinary(divide->shape(), HloOpcode::kPower,
+        HloInstruction::CreateBinary(new_power_shape, HloOpcode::kPower,
                                      rhs->mutable_operand(0), negate));
     return ReplaceWithNewInstruction(
         divide, HloInstruction::CreateBinary(

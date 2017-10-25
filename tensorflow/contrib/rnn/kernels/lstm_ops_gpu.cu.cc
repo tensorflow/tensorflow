@@ -209,7 +209,7 @@ void LSTMBlockCellFpropWithCUDA(
   // Use 2D blocks. The number of threads per block is equal to x * y, where x =
   // min(batch_size, 8) and y = 32. See above for guidance on number of
   // threads.
-  dim3 block_dim_2d(min(batch_size, 8), 32);
+  dim3 block_dim_2d(std::min(batch_size, 8), 32);
   dim3 grid_dim_2d(Eigen::divup(batch_size, static_cast<int>(block_dim_2d.x)),
                    Eigen::divup(cell_size, static_cast<int>(block_dim_2d.y)));
 
@@ -323,7 +323,7 @@ void LSTMBlockCellBpropWithCUDA(
     const bool use_peephole) {
   const cudaStream_t& cu_stream = GetCudaStream(ctx);
 
-  dim3 block_dim_2d(min(batch_size, 8), 32);
+  dim3 block_dim_2d(std::min(batch_size, 8), 32);
   dim3 grid_dim_2d(Eigen::divup(batch_size, static_cast<int>(block_dim_2d.x)),
                    Eigen::divup(cell_size, static_cast<int>(block_dim_2d.y)));
 

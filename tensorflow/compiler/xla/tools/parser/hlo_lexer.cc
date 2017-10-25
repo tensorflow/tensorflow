@@ -152,6 +152,7 @@ TokKind HloLexer::LexToken() {
 // name     ::= [a-zA-Z_][a-zA-Z0-9_.-]*:
 // keyword  ::= HloModule, ENTRY, ...
 // opcode   ::= add, greater-than, ...
+// attribute_name ::= condition, body, dimensions, ...
 TokKind HloLexer::LexIdentifier() {
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
@@ -181,6 +182,13 @@ TokKind HloLexer::LexIdentifier() {
     return TokKind::kName;
   }
 
+  // If followed by '=', it's a attribute name.
+  if (PeekCurrentChar() == '=') {
+    str_val_.assign(token_start_, current_ptr_);
+    current_ptr_++;  // skip '='
+    return TokKind::kAttributeName;
+  }
+
   StringPiece identifier = StringPieceFromPointers(token_start_, current_ptr_);
 
   // See if this is a keyword.
@@ -195,6 +203,7 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(false);
   KEYWORD(HloModule);
   KEYWORD(ENTRY);
+  KEYWORD(ROOT);
 
 #undef KEYWORD
 

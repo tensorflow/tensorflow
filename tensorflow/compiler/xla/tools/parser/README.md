@@ -1,16 +1,22 @@
 # HloModule string syntax
 
-TODO: Support subcomputations (for fusion, reduce, while, ...).
+TODO: Support all subcomputations (for fusion, reduce, ...).
 
-TODO: Support ops that require extra attributes, e.g. dimensions, strides.
+TODO: Support all extra attributes, e.g. dimensions, strides.
 
 ```yacc
 hlo_module
-  : 'HloModule' name computation
+  : 'HloModule' name computations
+  ;
+
+computations
+  : computation
+  | computation computations
   ;
 
 computation
   : 'ENTRY' name param_list '->' shape instruction_list
+  | name param_list '->' shape instruction_list
   ;
 
 instruction_list
@@ -21,7 +27,8 @@ instruction_list1
   | instruction_list1 instruction
   ;
 instruction
-  : name '=' shape opcode operands
+  : 'ROOT' name '=' shape opcode operands extra_attributes
+  | name '=' shape opcode operands extra_attributes
   ;
 
 operands
@@ -34,6 +41,15 @@ operands1
   ;
 operand
   : shape name
+  ;
+
+extra_attributes
+  : /*empty*/
+  | ',' extra_attribute
+  | ',' extra_attribute extra_attributes
+  ;
+extra_attribute
+  : attribute_name attribute_value
   ;
 
 param_list
