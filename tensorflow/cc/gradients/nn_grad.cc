@@ -199,7 +199,14 @@ REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 Status LRNGradHelper(const Scope& scope, const Operation& op,
                      const std::vector<Output>& grad_inputs,
                       std::vector<Output>* grad_outputs){
-  auto dx = internal::LRNGrad(scope, grad_inputs[0]);
+
+  internal::LRNGrad::Attrs grad_attrs;
+
+  auto dx = internal::LRNGrad(scope,
+                              op.output(0),
+                              op.output(0),
+                              op.output(0),
+                              grad_attrs);
   grad_outputs->push_back(dx);
   return scope.status();
   }
