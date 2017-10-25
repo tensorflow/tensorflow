@@ -287,10 +287,12 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         port::Tracing::TraceMe activity(strings::StrCat(prefix(), "::Start"));
         // Initialize batch result.
-        mutex_lock l(batch_results_[batch_index].mu);
-        batch_results_[batch_index].output_allocated = false;
-        batch_results_[batch_index].counter.reset(
-            new BlockingCounter(dataset()->batch_size_));
+        {
+          mutex_lock l(batch_results_[batch_index].mu);
+          batch_results_[batch_index].output_allocated = false;
+          batch_results_[batch_index].counter.reset(
+              new BlockingCounter(dataset()->batch_size_));
+        }
         // Initialize invocation results.
         for (size_t i = 0; i < dataset()->batch_size_; ++i) {
           size_t index = ComputeInvocationIndex(batch_index, i);
