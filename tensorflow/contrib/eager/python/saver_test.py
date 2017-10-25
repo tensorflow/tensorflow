@@ -55,7 +55,7 @@ class SaverTest(test.TestCase):
       self.assertEqual(v1.read_value().numpy(), 1.0)
 
   def testSameNameNoClobbering(self):
-    with context.eager_mode(), ops.device(self._dev()):
+    with ops.device(self._dev()):
       # Note that this test purposefully uses Graphs rather than
       # IsolateTest. Users are more likely to accidentally create the same
       # variable name this way.
@@ -70,7 +70,7 @@ class SaverTest(test.TestCase):
         saver.save(ckpt_prefix)
 
   def testDifferentGraphError(self):
-    with context.eager_mode(), ops.device(self._dev()):
+    with ops.device(self._dev()):
       with ops.Graph().as_default():
         v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
       with ops.Graph().as_default():
@@ -80,13 +80,47 @@ class SaverTest(test.TestCase):
           saver.save(ckpt_prefix)
 
   def testSameObjectOK(self):
-    with context.eager_mode(), ops.device(self._dev()):
+    with ops.device(self._dev()):
       v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
       # While different objects with the same shared_name are not good, passing
       # in the same object multiple times is fine.
       saver = _saver.Saver([v1, v1])
       ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
       saver.save(ckpt_prefix)
+
+  def testSaveByDict(self):
+    with ops.device(self._dev()):
+      v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      v2 = resource_variable_ops.ResourceVariable(1.0, name='v2')
+      def model():
+        return array_ops.constant(2.0) * v1 * v2
+
+      ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
+
+      # Save the variables under different names.
+      _ = model()
+      saver = _saver.Saver({'ckpt/v1': v1, 'ckpt/v2': v2})
+      saver.save(ckpt_prefix)
+      v1.assign(2.0)
+      v2.assign(2.0)
+      self.assertEqual(v1.read_value().numpy(), 2.0)
+      self.assertEqual(v2.read_value().numpy(), 2.0)
+      # Can still restore it.
+      saver.restore(ckpt_prefix)
+      self.assertEqual(v1.read_value().numpy(), 1.0)
+      self.assertEqual(v1.read_value().numpy(), 1.0)
+      # However, cannot restore it with default name.
+      with self.assertRaisesOpError('not found in checkpoint'):
+        saver = _saver.Saver([v1, v2]).restore(ckpt_prefix)
+
+      # Can specify which variable in ckpt to restore to which variable.
+      def map_func(x):
+        return {'v3': 'ckpt/v1', 'v4': 'ckpt/v2'}.get(x, x)
+      with _saver.restore_variables_on_create(ckpt_prefix, map_func):
+        v3 = resource_variable_ops.ResourceVariable(2.0, name='v3')
+        v4 = resource_variable_ops.ResourceVariable(2.0, name='v4')
+      self.assertEqual(v3.read_value().numpy(), 1.0)
+      self.assertEqual(v4.read_value().numpy(), 1.0)
 
   def testRestoreOnCreate(self):
     with ops.device(self._dev()):
