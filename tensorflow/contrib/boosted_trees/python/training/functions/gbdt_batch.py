@@ -344,7 +344,7 @@ class GradientBoostedDecisionTreeModel(object):
                         learner_config.num_classes == 2)
 
   def _predict_and_return_dict(self, ensemble_handle, ensemble_stamp, mode):
-    """Runs prediciton and returns a dictionary of the prediction results.
+    """Runs prediction and returns a dictionary of the prediction results.
 
     Args:
       ensemble_handle: ensemble resource handle.
