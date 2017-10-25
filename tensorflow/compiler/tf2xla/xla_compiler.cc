@@ -177,7 +177,9 @@ Status XlaCompiler::CompileFunction(
   const FunctionBody* fbody;
   TF_RETURN_IF_ERROR(FindFunctionBody(function, &fbody));
 
-  TF_RETURN_IF_ERROR(CheckSignature(fbody->arg_types, args));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      CheckSignature(fbody->arg_types, args),
+      "Signature check failure while compiling: ", function.name());
 
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
