@@ -37,6 +37,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/compiler/xla/service:hlo_scheduling",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
