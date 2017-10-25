@@ -329,11 +329,7 @@ class SRUCell(RNNCell):
     f, r = array_ops.split(value=f_r, num_or_size_splits=2, axis=1)
 
     c = f * state + (1.0 - f) * x_bar
-    # For the following equaiton, in the paper, we have:
-    # h = r * self._activation(c) + (1.0 - r) * inputs
-    # However, this causes a dimension mismatch when num_units
-    # is not input_size.
-    h = r * self._activation(c) + (1.0 - r) * x_bar
+    h = r * self._activation(c) + (1.0 - r) * inputs
 
     return h, c
 
