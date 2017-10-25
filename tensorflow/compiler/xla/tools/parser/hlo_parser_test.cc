@@ -45,7 +45,7 @@ ENTRY %axpy.v5 (alpha: f32[2,4], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   %x = f32[2,4]{1,0} parameter(1)
   %multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %alpha, f32[2,4]{1,0} %x)
   %y = f32[2,4]{1,0} parameter(2)
-  %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
+  ROOT %add = f32[2,4]{1,0} add(f32[2,4]{1,0} %multiply, f32[2,4]{1,0} %y)
 }
 
 )"
@@ -56,7 +56,7 @@ ENTRY %axpy.v5 (alpha: f32[2,4], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 R"(HloModule constant_pred_module:
 
 ENTRY %constant_pred () -> pred[] {
-  %constant = pred[] constant(true)
+  ROOT %constant = pred[] constant(true)
 }
 
 )"
@@ -67,7 +67,7 @@ ENTRY %constant_pred () -> pred[] {
 R"(HloModule constant_s32_module:
 
 ENTRY %constant_s32 () -> s32[] {
-  %constant = s32[] constant(-42)
+  ROOT %constant = s32[] constant(-42)
 }
 
 )"
@@ -77,7 +77,7 @@ ENTRY %constant_s32 () -> s32[] {
 "ConstantF32", R"(HloModule ConstantF32_module:
 
 ENTRY %ConstantF32.v4 () -> f32[] {
-  %constant = f32[] constant(42)
+  ROOT %constant = f32[] constant(42)
 }
 
 )"
@@ -89,7 +89,7 @@ R"(HloModule add_constants_module:
 
 ENTRY %add_constants () -> f32[] {
   %constant = f32[] constant(3.14)
-  %add = f32[] add(f32[] %constant, f32[] %constant)
+  ROOT %add = f32[] add(f32[] %constant, f32[] %constant)
 }
 
 )"
@@ -103,7 +103,100 @@ ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f3
   %v1 = f32[4]{0} parameter(0)
   %v2 = f32[4]{0} parameter(1)
   %greater-than = pred[4]{0} greater-than(f32[4]{0} %v1, f32[4]{0} %v2)
-  %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2)
+  ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2)
+}
+
+)"
+},
+// empty tuple
+{
+"EmptyTupleCreate",
+R"(HloModule EmptyTupleCreate_module:
+
+ENTRY %EmptyTupleCreate.v1 () -> () {
+  ROOT %tuple = () tuple()
+}
+
+)"
+},
+// tuple
+{
+"TupleCreate",
+R"(HloModule TupleCreate_module:
+
+ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f32[2,3]) {
+  %v1 = f32[] parameter(0)
+  %v2 = f32[3]{0} parameter(1)
+  %v3 = f32[2,3]{1,0} parameter(2)
+  ROOT %tuple = (f32[], f32[3]{0}, f32[2,3]{1,0}) tuple(f32[] %v1, f32[3]{0} %v2, f32[2,3]{1,0} %v3)
+}
+
+)"
+},
+// int32 result = 0;
+// while (result < 5) { result = result + 1; }
+{
+"WhileWithScalarS32Result",
+R"(HloModule WhileWithScalarS32Result_module:
+
+%body.v3 (prev.1: s32[]) -> s32[] {
+  %constant = s32[] constant(1)
+  %prev.1 = s32[] parameter(0)
+  ROOT %add = s32[] add(s32[] %constant, s32[] %prev.1)
+}
+
+%condition.v3 (prev.2: s32[]) -> pred[] {
+  %constant.1 = s32[] constant(5)
+  %prev.2 = s32[] parameter(0)
+  ROOT %greater-than = pred[] greater-than(s32[] %constant.1, s32[] %prev.2)
+}
+
+ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
+  %constant.2 = s32[] constant(0)
+  ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
+}
+
+)"
+},
+// send and recv
+{
+"SendRecv",
+R"(HloModule TwoSendRecvBothWayRecvFist_module:
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
+  %recv = f32[] recv(), channel_id=15
+  ROOT %constant = f32[] constant(2.1)
+  %send = () send(f32[] %constant), channel_id=16
+}
+
+)"
+},
+// get-tuple-element
+{
+"GetTupleElement",
+R"(HloModule GetTupleElement_module:
+
+ENTRY %GetTupleElement.v4 () -> s32[] {
+  %constant = f32[] constant(1.23)
+  %constant.1 = s32[] constant(4)
+  %tuple = (f32[], s32[]) tuple(f32[] %constant, s32[] %constant.1)
+  ROOT %get-tuple-element = s32[] get-tuple-element((f32[], s32[]) %tuple), index=1
+}
+
+)"
+},
+// call
+{
+"Call",
+R"(HloModule CallR0F32IdentityScalar_module:
+
+%Identity.v1 (x: f32[]) -> f32[] {
+  ROOT %x = f32[] parameter(0)
+}
+
+ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
+  %constant = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant), to_apply=%Identity.v1
 }
 
 )"
@@ -221,18 +314,6 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
   // The string will be parsed successfully but the output strings are not
   // exactly the same, because "3e2" is parsed into value 300 and will be
   // printed as "300".
-}
-
-TEST_F(HloParserTest, Tuple) {
-  const string original = R"(HloModule EmptyTupleCreate_module:
-
-ENTRY %EmptyTupleCreate.v1 () -> () {
-  %tuple = () tuple()
-}
-
-)";
-  auto result = Parse(original);
-  EXPECT_NE(tensorflow::Status::OK(), result.status());
 }
 
 }  // namespace

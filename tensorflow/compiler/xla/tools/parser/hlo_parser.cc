@@ -44,14 +44,26 @@ class HloParser {
  private:
   // ParseXXX returns false if an error occurred.
   bool ParseHloModule();
+  bool ParseComputations();
   bool ParseComputation();
-  bool ParseInstructionList(HloComputation::Builder* builder);
-  bool ParseInstruction(HloComputation::Builder* builder);
+  bool ParseInstructionList(HloComputation::Builder* builder,
+                            string* root_name);
+  bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
   bool ParseLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
+  bool ParseOperands(std::vector<HloInstruction*>* operands);
+  // Fill parsed operands into 'operands' and expect a certain number of
+  // operands.
   bool ParseOperands(std::vector<HloInstruction*>* operands,
                      const int expected_size);
+
+  template <typename T>
+  bool ParseExtraAttribute(T* value, const string& expected_attribute);
+  template <typename T>
+  bool ParseAttributeValue(T* value);
+
   bool ParseParamList();
   bool ParseName(string* result);
+  bool ParseAttributeName(string* result);
   bool ParseShape(Shape* result);
   bool ParseOpcode(HloOpcode* result);
   bool ParseInt64(int64* result);
@@ -69,10 +81,14 @@ class HloParser {
   // Adds the instruction to the pool. Returns false and emits an error if the
   // instruction already exists.
   bool AddInstruction(const string& name, HloInstruction* instruction);
+  // Adds the computation to the pool. Returns false and emits an error if the
+  // computation already exists.
+  bool AddComputation(const string& name, HloComputation* computation);
 
   // The map from the instruction name to the instruction. This does not own the
   // instructions.
   std::unordered_map<string, HloInstruction*> instruction_pool_;
+  std::unordered_map<string, HloComputation*> computation_pool_;
 
   HloLexer lexer_;
   std::unique_ptr<HloModule> module_;
@@ -90,7 +106,7 @@ bool HloParser::Run() {
   return ParseHloModule();
 }
 
-// ::= 'HloModule' name computation
+// ::= 'HloModule' name computations
 bool HloParser::ParseHloModule() {
   if (lexer_.GetKind() != TokKind::kw_HloModule) {
     return TokenError("expects HloModule");
@@ -105,35 +121,63 @@ bool HloParser::ParseHloModule() {
 
   module_ = MakeUnique<HloModule>(name);
 
-  return ParseComputation();
+  return ParseComputations();
 }
 
-// computation ::= 'ENTRY' name param_list '->' shape instruction_list
+// computations ::= (computation)+
+bool HloParser::ParseComputations() {
+  do {
+    if (!ParseComputation()) {
+      return false;
+    }
+  } while (lexer_.GetKind() != TokKind::kEof);
+  return true;
+}
+
+// computation ::= ('ENTRY')? name param_list '->' shape instruction_list
 bool HloParser::ParseComputation() {
+  const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
   string name;
-  if (!ParseToken(TokKind::kw_ENTRY, "expects 'ENTRY'") || !ParseName(&name)) {
+  if (!ParseName(&name)) {
     return false;
   }
   auto builder = MakeUnique<HloComputation::Builder>(name);
 
   Shape shape;
+  string root_name;
   if (!ParseParamList() || !ParseToken(TokKind::kArrow, "expects '->'") ||
-      !ParseShape(&shape) || !ParseInstructionList(builder.get())) {
+      !ParseShape(&shape) || !ParseInstructionList(builder.get(), &root_name)) {
     return false;
   }
-  module_->AddEntryComputation(builder->Build());
-  return true;
+
+  HloInstruction* root =
+      tensorflow::gtl::FindPtrOrNull(instruction_pool_, root_name);
+  // This means some instruction was marked as ROOT but we didn't find it in the
+  // pool, which should not happen.
+  if (!root_name.empty() && root == nullptr) {
+    LOG(FATAL) << "instruction " << root_name
+               << " was marked as ROOT but the parser has not seen it before";
+  }
+  // Now root can be either an existing instruction or a nullptr. If it's a
+  // nullptr, the implementation of Builder will set the last instruction as
+  // root instruction.
+  HloComputation* computation =
+      is_entry_computation
+          ? module_->AddEntryComputation(builder->Build(root))
+          : module_->AddEmbeddedComputation(builder->Build(root));
+  return AddComputation(name, computation);
 }
 
 // instruction_list ::= '{' instruction_list1 '}'
 // instruction_list1 ::= (instruction)+
-bool HloParser::ParseInstructionList(HloComputation::Builder* builder) {
+bool HloParser::ParseInstructionList(HloComputation::Builder* builder,
+                                     string* root_name) {
   if (!ParseToken(TokKind::kLbrace,
                   "expects '{' at the beginning of instruction list.")) {
     return false;
   }
   do {
-    if (!ParseInstruction(builder)) {
+    if (!ParseInstruction(builder, root_name)) {
       return false;
     }
   } while (lexer_.GetKind() != TokKind::kRbrace);
@@ -141,39 +185,47 @@ bool HloParser::ParseInstructionList(HloComputation::Builder* builder) {
                     "expects '}' at the end of instruction list.");
 }
 
-// instruction ::= name '=' shape opcode operands
-bool HloParser::ParseInstruction(HloComputation::Builder* builder) {
+// instruction ::= ('ROOT')? name '=' shape opcode operands (extra_attribute)*
+bool HloParser::ParseInstruction(HloComputation::Builder* builder,
+                                 string* root_name) {
   string name;
   Shape shape;
   HloOpcode opcode;
   std::vector<HloInstruction*> operands;
+  bool is_root = EatIfPresent(TokKind::kw_ROOT);
   if (!ParseName(&name) ||
       !ParseToken(TokKind::kEqual, "expects '=' in instruction") ||
       !ParseShape(&shape) || !ParseOpcode(&opcode)) {
     return false;
   }
+  if (is_root) {
+    *root_name = name;
+  }
+  HloInstruction* instruction;
   switch (opcode) {
     case HloOpcode::kParameter: {
       int64 parameter_number;
-      return ParseToken(TokKind::kLparen,
-                        "expects '(' before parameter number") &&
-             ParseInt64(&parameter_number) &&
-             ParseToken(TokKind::kRparen,
-                        "expects ')' after parameter number") &&
-             AddInstruction(
-                 name, builder->AddInstruction(HloInstruction::CreateParameter(
-                           parameter_number, shape, name)));
+      if (!ParseToken(TokKind::kLparen,
+                      "expects '(' before parameter number") ||
+          !ParseInt64(&parameter_number) ||
+          !ParseToken(TokKind::kRparen, "expects ')' after parameter number")) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateParameter(parameter_number, shape, name));
+      break;
     }
     case HloOpcode::kConstant: {
       std::unique_ptr<Literal> literal;
-      return ParseToken(TokKind::kLparen,
-                        "expects '(' before parameter number") &&
-             ParseLiteral(&literal, shape) &&
-             ParseToken(TokKind::kRparen,
-                        "expects ')' after parameter number") &&
-             AddInstruction(
-                 name, builder->AddInstruction(
-                           HloInstruction::CreateConstant(std::move(literal))));
+      if (!ParseToken(TokKind::kLparen,
+                      "expects '(' before constant literal") ||
+          !ParseLiteral(&literal, shape) ||
+          !ParseToken(TokKind::kRparen, "expects ')' after constant literal")) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateConstant(std::move(literal)));
+      break;
     }
     // Unary ops.
     case HloOpcode::kAbs:
@@ -192,10 +244,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder) {
     case HloOpcode::kSin:
     case HloOpcode::kSort:
     case HloOpcode::kTanh: {
-      return ParseOperands(&operands, /*expected_size=*/1) &&
-             AddInstruction(name,
-                            builder->AddInstruction(HloInstruction::CreateUnary(
-                                shape, opcode, operands[0])));
+      if (!ParseOperands(&operands, /*expected_size=*/1)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateUnary(shape, opcode, operands[0]));
+      break;
     }
     // Binary ops.
     case HloOpcode::kAdd:
@@ -218,46 +272,117 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical: {
-      return ParseOperands(&operands, /*expected_size=*/2) &&
-             AddInstruction(
-                 name, builder->AddInstruction(HloInstruction::CreateBinary(
-                           shape, opcode, operands[0], operands[1])));
+      if (!ParseOperands(&operands, /*expected_size=*/2)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateBinary(
+          shape, opcode, operands[0], operands[1]));
+      break;
     }
     // Ternary ops.
     case HloOpcode::kClamp:
     case HloOpcode::kSelect: {
-      return ParseOperands(&operands, /*expected_size=*/3) &&
-             AddInstruction(
-                 name,
-                 builder->AddInstruction(HloInstruction::CreateTernary(
-                     shape, opcode, operands[0], operands[1], operands[2])));
+      if (!ParseOperands(&operands, /*expected_size=*/3)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateTernary(
+          shape, opcode, operands[0], operands[1], operands[2]));
+      break;
     }
     // Other supported ops.
     case HloOpcode::kConvert: {
-      return ParseOperands(&operands, /*expected_size=*/1) &&
-             AddInstruction(
-                 name, builder->AddInstruction(
-                           HloInstruction::CreateConvert(shape, operands[0])));
+      if (!ParseOperands(&operands, /*expected_size=*/1)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateConvert(shape, operands[0]));
+      break;
     }
     case HloOpcode::kCrossReplicaSum: {
-      return ParseOperands(&operands, /*expected_size=*/1) &&
-             AddInstruction(name, builder->AddInstruction(
-                                      HloInstruction::CreateCrossReplicaSum(
-                                          shape, operands[0])));
+      if (!ParseOperands(&operands, /*expected_size=*/1)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateCrossReplicaSum(shape, operands[0]));
+      break;
     }
     case HloOpcode::kReshape: {
-      return ParseOperands(&operands, /*expected_size=*/1) &&
-             AddInstruction(
-                 name, builder->AddInstruction(
-                           HloInstruction::CreateReshape(shape, operands[0])));
+      if (!ParseOperands(&operands, /*expected_size=*/1)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateReshape(shape, operands[0]));
+      break;
+    }
+    case HloOpcode::kTuple: {
+      if (!ParseOperands(&operands)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateTuple(operands));
+      break;
+    }
+    case HloOpcode::kWhile: {
+      HloComputation* condition;
+      HloComputation* body;
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseExtraAttribute(&condition,
+                               /*expected_attribute=*/"condition") ||
+          !ParseExtraAttribute(&body, /*expected_attribute=*/"body")) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateWhile(
+          shape, condition, body, /*init=*/operands[0]));
+      break;
+    }
+    case HloOpcode::kRecv: {
+      int64 channel_id;
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseExtraAttribute(&channel_id,
+                               /*expected_attribute=*/"channel_id")) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateRecv(shape, channel_id));
+      break;
+    }
+    case HloOpcode::kSend: {
+      int64 channel_id;
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseExtraAttribute(&channel_id,
+                               /*expected_attribute=*/"channel_id")) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateSend(operands[0], channel_id));
+      break;
+    }
+    case HloOpcode::kGetTupleElement: {
+      int64 index;
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseExtraAttribute(&index, /*expected_attribute=*/"index")) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateGetTupleElement(shape, operands[0], index));
+      break;
+    }
+    case HloOpcode::kCall: {
+      HloComputation* to_apply;
+      if (!ParseOperands(&operands) ||
+          !ParseExtraAttribute(&to_apply,
+                               /*expected_attribute=*/"to_apply")) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateCall(shape, operands, to_apply));
+      break;
     }
     case HloOpcode::kBroadcast:
-    case HloOpcode::kCall:
     case HloOpcode::kCustomCall:
     case HloOpcode::kConcatenate:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kConvolution:
-    case HloOpcode::kGetTupleElement:
     case HloOpcode::kMap:
     case HloOpcode::kPad:
     case HloOpcode::kReduce:
@@ -269,22 +394,31 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder) {
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kTranspose:
-    case HloOpcode::kTuple:
-    case HloOpcode::kWhile:
     case HloOpcode::kFusion:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kBatchNormGrad:
-    case HloOpcode::kRecv:
-    case HloOpcode::kSend:
     case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
   }
+  // Parse "device=".
+  if (lexer_.GetKind() == TokKind::kComma) {
+    int64 device;
+    if (!ParseExtraAttribute(&device, /*expected_attribute=*/"device")) {
+      return false;
+    }
+    OpDeviceAssignment assignment;
+    assignment.set_has_device(true);
+    assignment.set_device(device);
+    instruction->set_device_assignment(assignment);
+  }
+
+  return AddInstruction(name, instruction);
 }
 
 bool HloParser::ParseLiteral(std::unique_ptr<Literal>* literal,
@@ -322,8 +456,7 @@ bool HloParser::ParseLiteral(std::unique_ptr<Literal>* literal,
 //   ::= /*empty*/
 //   ::= operand (, operand)*
 // operand ::= shape name
-bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands,
-                              const int expected_size) {
+bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
   if (!ParseToken(TokKind::kLparen,
                   "expects '(' at the beginning of operands")) {
     return false;
@@ -345,11 +478,57 @@ bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands,
       operands->push_back(instruction);
     } while (EatIfPresent(TokKind::kComma));
   }
+  return ParseToken(TokKind::kRparen, "expects ')' at the end of operands");
+}
+
+bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands,
+                              const int expected_size) {
+  if (!ParseOperands(operands)) {
+    return false;
+  }
   if (expected_size != operands->size()) {
     return TokenError(StrCat("expects ", expected_size, " operands, but has ",
                              operands->size(), " operands"));
   }
-  return ParseToken(TokKind::kRparen, "expects ')' at the end of operands");
+  return true;
+}
+
+// extra_attribute ::= ',' attribute_name value
+template <typename T>
+bool HloParser::ParseExtraAttribute(T* value,
+                                    const string& expected_attribute) {
+  if (!ParseToken(TokKind::kComma,
+                  "expects ',' in front of an extra attribute")) {
+    return false;
+  }
+  string attribute_name;
+  if (!ParseAttributeName(&attribute_name) &&
+      attribute_name != expected_attribute) {
+    return TokenError(StrCat("expects attribute name: ", expected_attribute));
+  }
+  if (!ParseAttributeValue(value)) {
+    return TokenError(
+        StrCat("expects value for attribute: ", expected_attribute));
+  }
+  return true;
+}
+
+template <>
+bool HloParser::ParseAttributeValue<HloComputation*>(HloComputation** value) {
+  string name;
+  if (!ParseName(&name)) {
+    return TokenError("expects computation name");
+  }
+  *value = tensorflow::gtl::FindPtrOrNull(computation_pool_, name);
+  if (*value == nullptr) {
+    return TokenError(StrCat("computation does not exist: ", name));
+  }
+  return true;
+}
+
+template <>
+bool HloParser::ParseAttributeValue<int64>(int64* value) {
+  return ParseInt64(value);
 }
 
 // param_list ::= '(' param_list1 ')'
@@ -412,6 +591,15 @@ bool HloParser::ParseName(string* result) {
   VLOG(1) << "ParseName";
   if (lexer_.GetKind() != TokKind::kName) {
     return TokenError("expects name");
+  }
+  *result = lexer_.GetStrVal();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseAttributeName(string* result) {
+  if (lexer_.GetKind() != TokKind::kAttributeName) {
+    return TokenError("expects attribute name");
   }
   *result = lexer_.GetStrVal();
   lexer_.Lex();
@@ -484,6 +672,15 @@ bool HloParser::AddInstruction(const string& name,
   auto result = instruction_pool_.insert({name, instruction});
   if (!result.second) {
     return TokenError(StrCat("instruction already exists: ", name));
+  }
+  return true;
+}
+
+bool HloParser::AddComputation(const string& name,
+                               HloComputation* computation) {
+  auto result = computation_pool_.insert({name, computation});
+  if (!result.second) {
+    return TokenError(StrCat("computation already exists: ", name));
   }
   return true;
 }

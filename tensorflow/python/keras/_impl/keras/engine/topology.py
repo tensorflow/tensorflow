@@ -26,6 +26,7 @@ import os
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils import conv_utils
@@ -250,6 +251,8 @@ class Layer(tf_base_layers.Layer):
     """
     # Actually call the layer (optionally building it).
     output = super(Layer, self).__call__(inputs, **kwargs)
+    if context.in_eager_mode():
+      return output
 
     # Update learning phase info.
     output_tensors = _to_list(output)

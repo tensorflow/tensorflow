@@ -124,19 +124,18 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
-      Status SaveInternal(OpKernelContext* ctx,
-                          IteratorBundleWriter* writer) override {
+      Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(writer->WriteScalar<int64>(full_name("i"), i_));
-        TF_RETURN_IF_ERROR(writer->SaveParent(ctx, input_impl_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(OpKernelContext* ctx,
-                             IteratorBundleReader* reader) override {
+                             IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(reader->ReadScalar<int64>(full_name("i"), &i_));
-        TF_RETURN_IF_ERROR(reader->RestoreParent(ctx, input_impl_));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
         return Status::OK();
       }
 

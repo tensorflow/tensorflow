@@ -254,7 +254,8 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_layout) {
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-  if (ShapeUtil::ElementIsFloating(expected.shape())) {
+  if (ShapeUtil::ElementIsFloating(expected.shape()) ||
+      ShapeUtil::ElementIsComplex(expected.shape())) {
     LOG(WARNING) << "performing exact comparison of floating point numbers";
   } else {
     TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
@@ -282,7 +283,8 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
     const Shape* shape_with_layout) {
-  TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()));
+  TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()) ||
+               ShapeUtil::ElementIsComplex(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   auto expect_near = [&](const Literal& actual, const string& error_message) {
     LiteralTestUtil::ExpectNear(expected, actual, error, error_message);

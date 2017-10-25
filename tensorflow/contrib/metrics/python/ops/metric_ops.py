@@ -2085,7 +2085,7 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
   default_name = _at_k_name('precision', class_id=class_id)
   with ops.name_scope(name, default_name,
                       (top_k_predictions, labels, weights)) as name_scope:
-    return metrics_impl._sparse_precision_at_top_k(  # pylint: disable=protected-access
+    return metrics_impl.precision_at_top_k(
         labels=labels,
         predictions_idx=top_k_predictions,
         class_id=class_id,

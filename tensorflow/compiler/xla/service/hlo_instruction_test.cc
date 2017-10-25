@@ -1203,13 +1203,13 @@ TEST_F(HloInstructionTest, Stringification) {
 
   EXPECT_EQ(fusion->ToString(false, false),
             "%fusion = f32[5,20]{1,0} fusion:kTransposeDot(f32[5,10]{1,0} %x, "
-            "f32[20,10]{1,0} %y), calls=fused_computation");
+            "f32[20,10]{1,0} %y), calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));
   EXPECT_EQ(loop->ToString(false, false),
             "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
-            "condition=TransposeDot, body=TransposeDot");
+            "condition=%TransposeDot, body=%TransposeDot");
 }
 
 }  // namespace
