@@ -716,10 +716,12 @@ void HloInstruction::MergeFusionInstructionIntoMultiOutput(
 
   // Fuse the root instruction and generate multiple outputs.
   FuseInstructionIntoMultiOutput(unfused_root);
+  TF_CHECK_OK(unfused_root->parent()->RemoveInstruction(unfused_root));
   // The rest instructions are of normal fusing.
   for (int64 i = 1; i < unfused_instructions.size(); i++) {
     auto instruction = unfused_instructions[i];
     FuseInstruction(instruction);
+    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
 }
 

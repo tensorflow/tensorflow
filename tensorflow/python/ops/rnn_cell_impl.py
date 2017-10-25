@@ -159,17 +159,17 @@ class RNNCell(base_layer.Layer):
     """Run this RNN cell on inputs, starting from the given state.
 
     Args:
-      inputs: `2-D` tensor with shape `[batch_size x input_size]`.
+      inputs: `2-D` tensor with shape `[batch_size, input_size]`.
       state: if `self.state_size` is an integer, this should be a `2-D Tensor`
-        with shape `[batch_size x self.state_size]`.  Otherwise, if
+        with shape `[batch_size, self.state_size]`.  Otherwise, if
         `self.state_size` is a tuple of integers, this should be a tuple
-        with shapes `[batch_size x s] for s in self.state_size`.
+        with shapes `[batch_size, s] for s in self.state_size`.
       scope: VariableScope for the created subgraph; defaults to class name.
 
     Returns:
       A pair containing:
 
-      - Output: A `2-D` tensor with shape `[batch_size x self.output_size]`.
+      - Output: A `2-D` tensor with shape `[batch_size, self.output_size]`.
       - New state: Either a single `2-D` tensor, or a tuple of tensors matching
         the arity and shapes of `state`.
     """
@@ -229,11 +229,11 @@ class RNNCell(base_layer.Layer):
 
     Returns:
       If `state_size` is an int or TensorShape, then the return value is a
-      `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
+      `N-D` tensor of shape `[batch_size, state_size]` filled with zeros.
 
       If `state_size` is a nested list or tuple, then the return value is
       a nested list or tuple (of the same structure) of `2-D` tensors with
-      the shapes `[batch_size x s]` for each s in `state_size`.
+      the shapes `[batch_size, s]` for each s in `state_size`.
     """
     # Try to use the last cached zero_state. This is done to avoid recreating
     # zeros, especially when eager execution is enabled.
@@ -283,6 +283,45 @@ class BasicRNNCell(RNNCell):
 
     output = self._activation(self._linear([inputs, state]))
     return output, output
+
+
+class _LayerRNNCell(RNNCell):
+  """Subclass of RNNCells that act like proper `tf.Layer` objects.
+
+  For backwards compatibility purposes, most `RNNCell` instances allow their
+  `call` methods to instantiate variables via `tf.get_variable`.  The underlying
+  variable scope thus keeps track of any variables, and returning cached
+  versions.  This is atypical of `tf.layer` objects, which separate this
+  part of layer building into a `build` method that is only called once.
+
+  Here we provide a subclass for `RNNCell` objects that act exactly as
+  `Layer` objects do.  They must provide a `build` method and their
+  `call` methods do not access Variables `tf.get_variable`.
+  """
+
+  def __call__(self, inputs, state, scope=None):
+    """Run this RNN cell on inputs, starting from the given state.
+
+    Args:
+      inputs: `2-D` tensor with shape `[batch_size, input_size]`.
+      state: if `self.state_size` is an integer, this should be a `2-D Tensor`
+        with shape `[batch_size, self.state_size]`.  Otherwise, if
+        `self.state_size` is a tuple of integers, this should be a tuple
+        with shapes `[batch_size, s] for s in self.state_size`.
+      scope: `VariableScope` for the created subgraph; if not provided,
+        defaults to standard `tf.layers.Layer` behavior.
+
+    Returns:
+      A pair containing:
+
+      - Output: A `2-D` tensor with shape `[batch_size, self.output_size]`.
+      - New state: Either a single `2-D` tensor, or a tuple of tensors matching
+        the arity and shapes of `state`.
+    """
+    # Bypass RNNCell's variable capturing semantics for LayerRNNCell.
+    # Instead, it is up to subclasses to provide a proper build
+    # method.  See the class docstring for more details.
+    return base_layer.Layer.__call__(self, inputs, state, scope=scope)
 
 
 class GRUCell(RNNCell):
@@ -374,7 +413,7 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
-class BasicLSTMCell(RNNCell):
+class BasicLSTMCell(_LayerRNNCell):
   """Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
@@ -390,7 +429,7 @@ class BasicLSTMCell(RNNCell):
   """
 
   def __init__(self, num_units, forget_bias=1.0,
-               state_is_tuple=True, activation=None, reuse=None):
+               state_is_tuple=True, activation=None, reuse=None, name=None):
     """Initialize the basic LSTM cell.
 
     Args:
@@ -405,11 +444,14 @@ class BasicLSTMCell(RNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+      name: String, the name of the layer. Layers with the same name will
+        share weights, but to avoid mistakes we require reuse=True in such
+        cases.
 
       When restoring from CudnnLSTM-trained checkpoints, must use
-      CudnnCompatibleLSTMCell instead.
+      `CudnnCompatibleLSTMCell` instead.
     """
-    super(BasicLSTMCell, self).__init__(_reuse=reuse)
+    super(BasicLSTMCell, self).__init__(_reuse=reuse, name=name)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -428,15 +470,35 @@ class BasicLSTMCell(RNNCell):
   def output_size(self):
     return self._num_units
 
+  def build(self, inputs_shape):
+    if inputs_shape.ndims != 2:
+      raise ValueError("Expected inputs.shape to be rank 2, saw shape: %s"
+                       % inputs_shape)
+    if inputs_shape[1].value is None:
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                       % inputs_shape)
+
+    input_depth = inputs_shape[1].value
+    h_depth = self._num_units
+    self._kernel = self.add_variable(
+        _WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth + h_depth, 4 * self._num_units])
+    self._bias = self.add_variable(
+        _BIAS_VARIABLE_NAME,
+        shape=[4 * self._num_units],
+        initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
+
+    self._built = True
+
   def call(self, inputs, state):
     """Long short-term memory cell (LSTM).
 
     Args:
-      inputs: `2-D` tensor with shape `[batch_size x input_size]`.
+      inputs: `2-D` tensor with shape `[batch_size, input_size]`.
       state: An `LSTMStateTuple` of state tensors, each shaped
-        `[batch_size x self.state_size]`, if `state_is_tuple` has been set to
+        `[batch_size, self.state_size]`, if `state_is_tuple` has been set to
         `True`.  Otherwise, a `Tensor` shaped
-        `[batch_size x 2 * self.state_size]`.
+        `[batch_size, 2 * self.state_size]`.
 
     Returns:
       A pair containing the new hidden state, and the new state (either a
@@ -451,11 +513,13 @@ class BasicLSTMCell(RNNCell):
     else:
       c, h = array_ops.split(value=state, num_or_size_splits=2, axis=one)
 
-    if self._linear is None:
-      self._linear = _Linear([inputs, h], 4 * self._num_units, True)
+    gate_inputs = math_ops.matmul(
+        array_ops.concat([inputs, h], 1), self._kernel)
+    gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
+
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
     i, j, f, o = array_ops.split(
-        value=self._linear([inputs, h]), num_or_size_splits=4, axis=one)
+        value=gate_inputs, num_or_size_splits=4, axis=one)
 
     forget_bias_tensor = constant_op.constant(self._forget_bias, dtype=f.dtype)
     # Note that using `add` and `multiply` instead of `+` and `*` gives a
@@ -585,16 +649,16 @@ class LSTMCell(RNNCell):
     """Run one step of LSTM.
 
     Args:
-      inputs: input Tensor, 2D, batch x num_units.
+      inputs: input Tensor, 2D, `[batch, num_units].
       state: if `state_is_tuple` is False, this must be a state Tensor,
-        `2-D, batch x state_size`.  If `state_is_tuple` is True, this must be a
+        `2-D, [batch, state_size]`.  If `state_is_tuple` is True, this must be a
         tuple of state Tensors, both `2-D`, with column sizes `c_state` and
         `m_state`.
 
     Returns:
       A tuple containing:
 
-      - A `2-D, [batch x output_dim]`, Tensor representing the output of the
+      - A `2-D, [batch, output_dim]`, Tensor representing the output of the
         LSTM after reading `inputs` when previous state was `state`.
         Here output_dim is:
            num_proj if num_proj was set,
@@ -1143,7 +1207,7 @@ class _Linear(object):
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
   Args:
-    args: a 2D Tensor or a list of 2D, batch x n, Tensors.
+    args: a 2D Tensor or a list of 2D, batch, n, Tensors.
     output_size: int, second dimension of weight variable.
     dtype: data type for variables.
     build_bias: boolean, whether to build a bias variable.
@@ -1225,7 +1289,7 @@ def _linear(args,
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
   Args:
-    args: a 2D Tensor or a list of 2D, batch x n, Tensors.
+    args: a 2D Tensor or a list of 2D, batch, n, Tensors.
     output_size: int, second dimension of W[i].
     bias: boolean, whether to add a bias term or not.
     bias_initializer: starting value to initialize the bias
@@ -1233,7 +1297,7 @@ def _linear(args,
     kernel_initializer: starting value to initialize the weight.
 
   Returns:
-    A 2D Tensor with shape [batch x output_size] equal to
+    A 2D Tensor with shape `[batch, output_size]` equal to
     sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
 
   Raises:

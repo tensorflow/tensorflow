@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import re
 
+from tensorflow.contrib.summary import summary_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -235,7 +236,9 @@ class Mean(Metric):
       self.numer.assign_add(math_ops.reduce_sum(values))
 
   def result(self):
-    return self.numer / self.denom
+    t = self.numer / self.denom
+    summary_ops.scalar(name=self.name, tensor=t)
+    return t
 
 
 class Accuracy(Mean):

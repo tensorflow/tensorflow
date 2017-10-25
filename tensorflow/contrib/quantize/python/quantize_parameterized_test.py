@@ -101,7 +101,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         scope + '/weights/read'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
-    output_op_name = scope + '/convolution'
+    output_op_name = scope + '/Conv2D'
     self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
 
     if with_bypass:
@@ -407,7 +407,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
     output_op_name = scope + ('/weights_quant/delayed_quant/Switch_1'
-                              if (delay and use_ema) else '/convolution_Fold')
+                              if (delay and use_ema) else '/Conv2D_Fold')
     self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
 
     if with_bypass:

@@ -29,6 +29,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -193,6 +195,21 @@ class RangeDatasetTest(test.TestCase):
   def _iterator_checkpoint_prefix(self):
     return os.path.join(self.get_temp_dir(), "iterator")
 
+  def _save_op(self, iterator_resource):
+    iterator_state_variant = gen_dataset_ops.serialize_iterator(
+        iterator_resource)
+    save_op = io_ops.write_file(
+        self._iterator_checkpoint_prefix(),
+        parsing_ops.serialize_tensor(iterator_state_variant))
+    return save_op
+
+  def _restore_op(self, iterator_resource):
+    iterator_state_variant = parsing_ops.parse_tensor(
+        io_ops.read_file(self._iterator_checkpoint_prefix()), dtypes.variant)
+    restore_op = gen_dataset_ops.deserialize_iterator(iterator_resource,
+                                                      iterator_state_variant)
+    return restore_op
+
   def testSaveRestore(self):
 
     def _build_graph(start, stop):
@@ -200,10 +217,8 @@ class RangeDatasetTest(test.TestCase):
                                            stop).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     # Saving and restoring in different sessions.
@@ -246,14 +261,13 @@ class RangeDatasetTest(test.TestCase):
 
   def testRestoreWithoutBuildingDatasetGraph(self):
 
-    def _build_graph(start, stop, num_epochs, path):
+    def _build_graph(start, stop, num_epochs):
       dataset = dataset_ops.Dataset.range(start, stop).repeat(num_epochs)
       iterator = dataset.make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     # Saving and restoring in different sessions.
@@ -262,10 +276,8 @@ class RangeDatasetTest(test.TestCase):
     num_epochs = 5
     break_point = 5
     break_epoch = 3
-    path = self._iterator_checkpoint_prefix()
     with ops.Graph().as_default() as g:
-      init_op, get_next, save_op, _ = _build_graph(start, stop, num_epochs,
-                                                   path)
+      init_op, get_next, save_op, _ = _build_graph(start, stop, num_epochs)
       with self.test_session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
@@ -282,8 +294,7 @@ class RangeDatasetTest(test.TestCase):
       output_shapes = tensor_shape.scalar()
       iterator = iterator_ops.Iterator.from_structure(output_types,
                                                       output_shapes)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      restore_op = self._restore_op(iterator._iterator_resource)
       get_next = iterator.get_next()
       with self.test_session(graph=g) as sess:
         sess.run(restore_op)
@@ -302,10 +313,8 @@ class RangeDatasetTest(test.TestCase):
       iterator = dataset.make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     # Saving and restoring in different sessions.
@@ -343,10 +352,8 @@ class RangeDatasetTest(test.TestCase):
       iterator = dataset.make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     # Saving and restoring in different sessions.
@@ -379,10 +386,8 @@ class RangeDatasetTest(test.TestCase):
                                            stop).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     start = 2
@@ -424,10 +429,8 @@ class RangeDatasetTest(test.TestCase):
           start, stop).repeat(num_epochs).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     start = 2
@@ -471,10 +474,8 @@ class RangeDatasetTest(test.TestCase):
           start, stop).repeat(num_epochs).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     start = 2

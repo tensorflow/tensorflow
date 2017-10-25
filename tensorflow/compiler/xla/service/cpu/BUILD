@@ -525,6 +525,7 @@ cc_library(
 tf_cc_test(
     name = "cpu_runtime_test",
     srcs = ["cpu_runtime_test.cc"],
+    tags = ["optonly"],
     deps = [
         ":cpu_runtime",
         ":runtime_matmul",
