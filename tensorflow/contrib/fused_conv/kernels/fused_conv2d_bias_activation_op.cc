@@ -445,11 +445,11 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       .set_zero_padding_width(padding_cols / 2);
 
   Tensor maybe_transformed_filter;
-  const Tensor* filter;
-  if (is_int8x4) {
-    // We have already checked filter is OIHW_VECT_I in the constructor.
-    filter = &filter_param;
-  } else if (filter_format == FORMAT_HWIO) {
+  const Tensor* filter = &filter_param;
+  // For qint8, we have already checked filter is OIHW_VECT_I in the
+  // constructor, but we need to test for is_int8x4 so the if block doesn't
+  // generate code for qint8.
+  if (!is_int8x4 && filter_format == FORMAT_HWIO) {
     // Shuffle filter tensor from HWIO to OIHW:
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                             DataTypeToEnum<T>::value,

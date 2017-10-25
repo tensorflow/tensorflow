@@ -20,42 +20,80 @@ from __future__ import print_function
 
 from tensorflow.contrib.kfac.python.ops import estimator
 from tensorflow.contrib.kfac.python.ops import layer_collection as lc
+from tensorflow.contrib.kfac.python.ops import utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
+_ALL_ESTIMATION_MODES = ["gradients", "empirical", "curvature_prop", "exact"]
+
 
 class EstimatorTest(test.TestCase):
 
-  def testEstimatorInitManualRegistration(self):
-    with ops.Graph().as_default():
-      layer_collection = lc.LayerCollection()
+  def setUp(self):
+    self._graph = ops.Graph()
+    with self._graph.as_default():
+      self.layer_collection = lc.LayerCollection()
 
-      inputs = random_ops.random_normal((2, 2), dtype=dtypes.float32)
-      weights = variable_scope.get_variable(
-          'w', shape=(2, 2), dtype=dtypes.float32)
-      bias = variable_scope.get_variable(
-          'b', initializer=init_ops.zeros_initializer(), shape=(2, 1))
-      output = math_ops.matmul(inputs, weights) + bias
+      self.inputs = random_ops.random_normal((2, 2), dtype=dtypes.float32)
+      self.weights = variable_scope.get_variable(
+          "w", shape=(2, 2), dtype=dtypes.float32)
+      self.bias = variable_scope.get_variable(
+          "b", initializer=init_ops.zeros_initializer(), shape=(2, 1))
+      self.output = math_ops.matmul(self.inputs, self.weights) + self.bias
 
       # Only register the weights.
-      layer_collection.register_fully_connected((weights,), inputs, output)
+      self.layer_collection.register_fully_connected(
+          params=(self.weights,), inputs=self.inputs, outputs=self.output)
 
-      outputs = math_ops.tanh(output)
-      layer_collection.register_categorical_predictive_distribution(outputs)
+      self.outputs = math_ops.tanh(self.output)
+      self.targets = array_ops.zeros_like(self.outputs)
+      self.layer_collection.register_categorical_predictive_distribution(
+          logits=self.outputs, targets=self.targets)
 
+  def testEstimatorInitManualRegistration(self):
+    with self._graph.as_default():
       # We should be able to build an estimator for only the registered vars.
-      estimator.FisherEstimator([weights], 0.1, 0.2, layer_collection)
+      estimator.FisherEstimator([self.weights], 0.1, 0.2, self.layer_collection)
 
       # Check that we throw an error if we try to build an estimator for vars
       # that were not manually registered.
       with self.assertRaises(ValueError):
-        estimator.FisherEstimator([weights, bias], 0.1, 0.2, layer_collection)
+        estimator.FisherEstimator([self.weights, self.bias], 0.1, 0.2,
+                                  self.layer_collection)
+
+      # Check that we throw an error if we don't include registered variables,
+      # i.e. self.weights
+      with self.assertRaises(ValueError):
+        estimator.FisherEstimator([], 0.1, 0.2, self.layer_collection)
+
+  @test.mock.patch.object(utils.SubGraph, "variable_uses", return_value=42)
+  def testVariableWrongNumberOfUses(self, mock_uses):
+    with self.assertRaises(ValueError):
+      estimator.FisherEstimator([self.weights], 0.1, 0.2, self.layer_collection)
+
+  def testInvalidEstimationMode(self):
+    with self.assertRaises(ValueError):
+      estimator.FisherEstimator([self.weights], 0.1, 0.2, self.layer_collection,
+                                "not_a_real_mode")
+
+  def testModeListCorrect(self):
+    with self._graph.as_default():
+      est = estimator.FisherEstimator([self.weights], 0.1, 0.2,
+                                      self.layer_collection)
+    self.assertItemsEqual(_ALL_ESTIMATION_MODES, est._gradient_fns.keys())
+
+  def testAllModesBuild(self):
+    for mode in _ALL_ESTIMATION_MODES:
+      with self._graph.as_default():
+        estimator.FisherEstimator([self.weights], 0.1, 0.2,
+                                  self.layer_collection, mode)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   test.main()

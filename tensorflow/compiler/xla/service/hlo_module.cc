@@ -153,11 +153,17 @@ void HloModule::ReplaceComputations(
 string HloModule::ToString() const {
   std::ostringstream s;
   s << "HloModule " << name() << ":\n\n";
-  s << "ENTRY " << entry_computation()->ToString() << "\n\n";
-  for (const HloComputation* computation : MakeNonfusionComputations()) {
-    if (computation != entry_computation()) {
-      s << computation->ToString() << "\n\n";
+  for (const HloComputation* computation : MakeComputationPostOrder()) {
+    // Fusion computations are emitted with their fusion instruction and
+    // therefore don't need to be emitted as a separate comptutation in the
+    // module.
+    if (computation->IsFusionComputation()) {
+      continue;
     }
+    if (computation == entry_computation()) {
+      s << "ENTRY ";
+    }
+    s << computation->ToString() << "\n\n";
   }
   return s.str();
 }

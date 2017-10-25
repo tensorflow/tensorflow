@@ -347,6 +347,9 @@ class _GraphModeFunction(object):
       g = ops.get_default_graph()
       if self._fdef.name not in g._functions:  # pylint: disable=protected-access
         g._add_function(self._fdef)  # pylint: disable=protected-access
+      for f in self._graph._functions.values():  # pylint: disable=protected-access
+        if f.name not in g._functions:  # pylint: disable=protected-access
+          g._add_function(f)  # pylint: disable=protected-access
       signature = self._fdef.definition.signature
       args = list(tensor_inputs) + self._extra_inputs
       op = g.create_op(

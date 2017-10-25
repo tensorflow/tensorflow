@@ -7,7 +7,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",
-        "//tensorflow/contrib/xla_tf_graph/...",
     ],
 )
 
@@ -341,7 +340,6 @@ cc_library(
     hdrs = ["array.h"],
     deps = [
         ":types",
-        ":util",
         "//tensorflow/core:lib",
     ],
 )

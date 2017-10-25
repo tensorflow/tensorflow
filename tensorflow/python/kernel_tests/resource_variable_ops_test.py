@@ -68,6 +68,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(variable.numpy(), 1.0)
       self.assertAllEqual(variable.initialized_value().numpy(), 1.0)
 
+  def testEagerBool(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(False, name="bool_test")
+      self.assertAllEqual(bool(v), False)
+
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
@@ -177,6 +182,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           initial_value=lambda: 1, dtype=dtypes.float32)
       self.assertEqual(v.handle.op.colocation_groups(),
                        v.initializer.inputs[1].op.colocation_groups())
+
+  def testHandleNumpy(self):
+    with context.eager_mode():
+      with self.assertRaises(ValueError):
+        resource_variable_ops.ResourceVariable(
+            1.0, name="handle-numpy").handle.numpy()
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitFnDtype(self):
