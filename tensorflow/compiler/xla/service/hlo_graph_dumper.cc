@@ -814,7 +814,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
-    case HloOpcode::kUpdate:
       return kGreen;
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
