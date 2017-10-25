@@ -728,20 +728,22 @@ class Experiment(object):
 
   def _maybe_export(self, eval_result, checkpoint_path=None):
     """Export the Estimator using export_fn, if defined."""
-    export_dir_base = os.path.join(
-        compat.as_bytes(self._estimator.model_dir),
-        compat.as_bytes("export"))
-
     export_results = []
-    for strategy in self._export_strategies:
-      export_results.append(
-          strategy.export(
-              self._estimator,
-              os.path.join(
-                  compat.as_bytes(export_dir_base),
-                  compat.as_bytes(strategy.name)),
-              checkpoint_path=checkpoint_path,
-              eval_result=eval_result))
+
+    if self._estimator.config.is_chief:
+      export_dir_base = os.path.join(
+          compat.as_bytes(self._estimator.model_dir),
+          compat.as_bytes("export"))
+
+      for strategy in self._export_strategies:
+        export_results.append(
+            strategy.export(
+                self._estimator,
+                os.path.join(
+                    compat.as_bytes(export_dir_base),
+                    compat.as_bytes(strategy.name)),
+                checkpoint_path=checkpoint_path,
+                eval_result=eval_result))
 
     return export_results
 
