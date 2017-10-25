@@ -746,18 +746,22 @@ void MasterSession::ReffedClientGraph::ProcessStats(int64 step_id,
                  Status::OK());
   }
   // Assemble all stats for this timeline into a merged StepStats.
-  StepStats step_stats_proto;
   if (pss->collect_timeline) {
-    step_stats_proto = pss->rpc_stats;
+    StepStats step_stats_proto;
+    step_stats_proto.Swap(&pss->rpc_stats);
     for (size_t i = 0; i < partitions_.size(); ++i) {
-      const StepStats& ss = pss->step_stats[i];
-      step_stats_proto.MergeFrom(ss);
+      step_stats_proto.MergeFrom(pss->step_stats[i]);
+      pss->step_stats[i].Clear();
     }
-    stats_publisher_->PublishStatsProto(step_stats_proto);
+    pss->step_stats.clear();
     // Copy the stats back, but only for on-demand profiling to avoid slowing
     // down calls that trigger the automatic profiling.
     if (options.trace_level() == RunOptions::FULL_TRACE) {
       resp->mutable_step_stats()->Swap(&step_stats_proto);
+    } else {
+      // If FULL_TRACE, it can be fetched from Session API, no need for
+      // duplicated publishing.
+      stats_publisher_->PublishStatsProto(step_stats_proto);
     }
   }
 }

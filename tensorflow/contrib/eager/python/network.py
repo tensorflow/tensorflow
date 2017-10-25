@@ -23,6 +23,7 @@ import uuid
 
 import six
 
+from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope
@@ -40,7 +41,7 @@ class Network(base.Layer):
     print(d.name)
     print(d.variables)
   - Note that name provided to __init__ is only for error messages?
-  - Detect layers used in __call__ that weren't registered with add_layer.
+  - Detect layers used in __call__ that weren't registered with track_layer.
   - Convert inputs to __call__ to tensors.
   - Prevent variables from being created after the first __call__?
     (Think about restoring from a checkpoint).
@@ -52,10 +53,10 @@ class Network(base.Layer):
     self._container = uuid.uuid4().hex
     self._layers = collections.OrderedDict()
 
-  def add_layer(self, layer):
-    """Add a Layer to this Network.
+  def track_layer(self, layer):
+    """Track a Layer in this Network.
 
-    `Network` requires that all `Layer`s used in `call()` be added so that the
+    `Network` requires that all `Layer`s used in `call()` be tracked so that the
     `Network` can export a complete list of variables.
 
     Args:
@@ -66,14 +67,14 @@ class Network(base.Layer):
 
     Raises:
       RuntimeError: If __init__ has not been called.
-      TypeError: If layer is the wrong type.
-      ValueError: If a layer with the same name has already been added.
+      TypeError: If `layer` is the wrong type.
+      ValueError: If a `Layer` with the same name has already been added.
     """
     if not hasattr(self, "_layers"):
       raise RuntimeError("Need to call Network.__init__ before adding layers")
     if not isinstance(layer, base.Layer):
       raise TypeError(
-          "Network.add_layer() passed type %s, not a tf.layers.Layer" %
+          "Network.track_layer() passed type %s, not a tf.layers.Layer" %
           (type(layer),))
     if layer.name in self._layers:
       if self._layers[layer.name] is layer:
@@ -174,26 +175,47 @@ class Network(base.Layer):
 
 
 class Sequential(Network):
-  """Represents a linear sequence of Layers.
+  """Represents a linear sequence of Layers or functions.
 
-  The output of each layer is provided as the input to the next.
+  The output of each layer/function is provided as the input to the next.
   The inputs passed to `__call__` are passed to the inputs of the first
   Layer, and it returns the outputs of the last Layer.
 
   Args:
-    layers: An optional sequence of tf.layers.Layer objects.
+    layers_funcs: An optional sequence where each element is either a
+      tf.layers.Layer object or a callable.
     name: An optional string name to use for this Network.
   """
 
-  def __init__(self, layers=None, name=None):
+  def __init__(self, layers_funcs=None, name=None):
     super(Sequential, self).__init__(name=name)
-    if layers:
-      for l in layers:
-        self.add_layer(l)
+    self._layers_funcs = []
+    if layers_funcs:
+      for l in layers_funcs:
+        self.add(l)
 
-  def call(self, inputs):
+  def add(self, layer_func):
+    if isinstance(layer_func, base.Layer):
+      args = estimator_util.fn_args(layer_func.call)
+      self.track_layer(layer_func)
+    elif callable(layer_func):
+      args = estimator_util.fn_args(layer_func)
+    else:
+      raise TypeError(
+          "Sequential.add() takes only tf.layers.Layer objects or callables; "
+          "not '%s' of type '%s'." % (layer_func, type(layer_func)))
+    self._layers_funcs.append((("training" in args), layer_func))
+
+  def call(self, inputs, training=None):
     """Call each Layer in the order they were added."""
     # TODO(josh11b): Support "mode" and maybe other arguments
-    for l in self.layers:
-      inputs = l(inputs)
+    if training is None:
+      for _, l in self._layers_funcs:
+        inputs = l(inputs)
+    else:
+      for has_training_arg, l in self._layers_funcs:
+        if has_training_arg:
+          inputs = l(inputs, training)
+        else:
+          inputs = l(inputs)
     return inputs

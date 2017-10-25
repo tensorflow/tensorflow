@@ -27,6 +27,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@enumerate_dataset
 @@group_by_window
 @@ignore_errors
+@@make_saveable_from_iterator
 @@read_batch_features
 @@unbatch
 @@rejection_resample
@@ -49,6 +50,7 @@ from tensorflow.contrib.data.python.ops.dataset_ops import get_single_element
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
 from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.grouping import group_by_window
+from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
 from tensorflow.contrib.data.python.ops.readers import FixedLengthRecordDataset
 from tensorflow.contrib.data.python.ops.readers import read_batch_features
 from tensorflow.contrib.data.python.ops.readers import SqlDataset

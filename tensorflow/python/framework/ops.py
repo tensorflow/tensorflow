@@ -615,7 +615,12 @@ class _EagerTensorBase(Tensor):
     Returns:
       A numpy array that may share memory with the Tensor object. Any changes
       to one may be reflected in the other.
+
+    Raises:
+      ValueError: if the type of this Tensor is not representable in numpy.
     """
+    if self.dtype == dtypes.resource:
+      raise ValueError("Resource handles are not convertible to numpy.")
     return self.cpu()._numpy()  # pylint: disable=protected-access
 
   def __array__(self):
@@ -623,6 +628,15 @@ class _EagerTensorBase(Tensor):
 
   def _numpy(self):
     raise NotImplementedError()
+
+  def __copy__(self):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    return self
+
+  def __deepcopy__(self, memo):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    del memo
+    return self
 
   def _datatype_enum(self):
     raise NotImplementedError()
