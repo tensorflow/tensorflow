@@ -69,7 +69,7 @@ class Conv3DTest(test.TestCase):
 
     # Initializes the input tensor with array containing numbers from 0 to 1.
     # We keep the input tensor values fairly small to avoid overflowing a float16 
-    # tensor during the conv3d and to keep absolute errors small
+    # tensor during the conv3d 
     x1 = [f * 1.0 / total_size_1 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 / total_size_2 for f in range(1, total_size_2 + 1)]
     with self.test_session(use_gpu=use_gpu):
