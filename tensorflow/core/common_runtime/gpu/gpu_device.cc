@@ -652,6 +652,34 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
   if (static_cast<size_t>(n) > valid_gpu_ids.size()) {
     n = valid_gpu_ids.size();
   }
+  // Save the original device.
+  int original_device = 0;
+  cudaError_t err = cudaGetDevice(&original_device);
+  if (err != cudaSuccess) {
+    return errors::Internal("cudaGetDevice() failed. Status: ",
+                            cudaGetErrorString(err));
+  }
+  // Force to implicitly initialize CUDA runtime on each valid GPU before
+  // CreateGPUDevice().
+  for (int gpu_id : valid_gpu_ids) {
+    err = cudaSetDevice(gpu_id);
+    if (err != cudaSuccess) {
+      return errors::Internal("cudaSetDevice() on GPU:", gpu_id,
+                              " failed. Status: ", cudaGetErrorString(err));
+    }
+    err = cudaFree(nullptr);
+    if (err != cudaSuccess) {
+      return errors::Internal(
+          "CUDA runtime implicit initialization on GPU:", gpu_id,
+          " failed. Status: ", cudaGetErrorString(err));
+    }
+  }
+  // Reset to the original device.
+  err = cudaSetDevice(original_device);
+  if (err != cudaSuccess) {
+    return errors::Internal("cudaSetDevice() on GPU:", original_device,
+                            " failed. Status: ", cudaGetErrorString(err));
+  }
   for (int i = 0; i < n; i++) {
     BaseGPUDevice* gpu_device;
     TF_RETURN_IF_ERROR(CreateGPUDevice(
