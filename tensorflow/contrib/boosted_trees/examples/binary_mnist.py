@@ -21,7 +21,7 @@ r"""Demonstrates multiclass MNIST TF Boosted trees example.
   python tensorflow/contrib/boosted_trees/examples/binary_mnist.py \
   --output_dir="/tmp/binary_mnist" --depth=4 --learning_rate=0.3 \
   --batch_size=10761 --examples_per_layer=10761 --eval_batch_size=1030 \
-  --num_eval_steps=1 --num_trees=10 --l2=1 --vmodule=training_ops=1 \
+  --num_eval_steps=1 --num_trees=10 --l2=1 --vmodule=training_ops=1
 
   When training is done, accuracy on eval data is reported. Point tensorboard
   to the directory for the run to see how the training progresses:

@@ -412,7 +412,7 @@ class DatasetIterator : public IteratorBase {
     // Owns one reference on the shared dataset resource.
     const DatasetType* dataset;
 
-    // Identifies the sequence of iterators leading up to to this iterator.
+    // Identifies the sequence of iterators leading up to this iterator.
     const string prefix;
   };
 

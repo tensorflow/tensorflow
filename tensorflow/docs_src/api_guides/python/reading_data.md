@@ -67,7 +67,7 @@ A typical queue-based pipeline for reading records from files has the following 
 8.  Example queue
 
 Warning: This section discusses implementing input pipelines using the
-queue-based APIs which can be cleanly replaced by the @{$datasets$Dataset API}.
+queue-based APIs which can be cleanly replaced by the @{$datasets$Datasets API}.
 
 ### Filenames, shuffling, and epoch limits
 

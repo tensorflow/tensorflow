@@ -49,6 +49,38 @@ inputs: Must all be the same size and shape.
 
 // --------------------------------------------------------------------------
 
+// Note that the following operator is just a placeholder and has no
+// associated kernel. The code in accumulate_n_optimizer.cc replaces
+// this placeholder with a graph of operators that do have kernels.
+// The Python code that generates instances of this op is currently in
+// contrib/framework/python/ops/accumulate_n_v2.py
+REGISTER_OP("AccumulateNV2")
+    .Input("inputs: N * T")
+    .Output("sum: T")
+    .Attr("N: int >= 1")
+    .Attr("T: numbertype")
+    .Attr("shape: shape")
+    .SetIsCommutative()
+    .SetIsAggregate()
+    .SetShapeFn(shape_inference::ExplicitShape)
+    .Doc(R"doc(
+Returns the element-wise sum of a list of tensors.
+
+`tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
+wait for all of its inputs to be ready before beginning to sum. This can
+save memory if inputs are ready at different times, since minimum temporary
+storage is proportional to the output size rather than the inputs size.
+
+Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
+
+Returns a `Tensor` of same shape and type as the elements of `inputs`.
+
+inputs: A list of `Tensor` objects, each with same shape and type.
+shape: Shape of elements of `inputs`.
+)doc");
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("BatchMatMul")
     .Input("x: T")
     .Input("y: T")
@@ -591,7 +623,7 @@ REGISTER_OP("TruncateDiv")
 Returns x / y element-wise for integer types.
 
 Truncation designates that negative numbers will round fractional quantities
-toward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different
+toward zero. I.e. -7 / 5 = -1. This matches C semantics but it is different
 than Python semantics. See `FloorDiv` for a division function that matches
 Python Semantics.
 
@@ -2217,6 +2249,44 @@ product: Pairwise cross product of the vectors in `a` and `b`.
 )doc");
 
 // --------------------------------------------------------------------------
+
+REGISTER_OP("HistogramFixedWidth")
+    .Input("values: T")
+    .Input("value_range: T")
+    .Input("nbins: int32")
+    .Output("out: dtype")
+    .Attr("T: {int32, int64, float32, float64}")
+    .Attr("dtype: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->UnknownShapeOfRank(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Return histogram of values.
+
+Given the tensor `values`, this operation returns a rank 1 histogram counting
+the number of entries in `values` that fall into every bin.  The bins are
+equal width and determined by the arguments `value_range` and `nbins`.
+
+```python
+# Bins will be:  (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+nbins = 5
+value_range = [0.0, 5.0]
+new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+
+with tf.get_default_session() as sess:
+  hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
+  variables.global_variables_initializer().run()
+  sess.run(hist) => [2, 1, 1, 0, 2]
+```
+
+values:  Numeric `Tensor`.
+value_range:  Shape [2] `Tensor` of same `dtype` as `values`.
+  values <= value_range[0] will be mapped to hist[0],
+  values >= value_range[1] will be mapped to hist[-1].
+nbins:  Scalar `int32 Tensor`.  Number of histogram bins.
+out: A 1-D `Tensor` holding histogram of values.
+)doc");
 
 REGISTER_OP("Bincount")
     .Input("arr: int32")

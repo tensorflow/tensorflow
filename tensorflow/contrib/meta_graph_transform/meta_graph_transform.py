@@ -749,7 +749,7 @@ def meta_graph_transform(
         base_meta_graph_def, meta_graph_def, collection_name,
         removed_op_names)
 
-  # Append newly added initalizers to collection.
+  # Append newly added initializers to collection.
   _add_new_inits_to_collection(meta_graph_def, updated_initializer_names)
 
   # Copy signature_defs, excluding any pruned nodes

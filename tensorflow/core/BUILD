@@ -783,6 +783,7 @@ cc_library(
         "//tensorflow/core/kernels:dataset_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:histogram_op",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:linalg",
@@ -1943,6 +1944,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
 tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [
+        "common_runtime/accumulate_n_optimizer.cc",
         "common_runtime/allocator_retry.cc",
         "common_runtime/bfc_allocator.cc",
         "common_runtime/build_graph_options.cc",
@@ -2178,6 +2180,7 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+        ":stream_executor",
         "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
 )
@@ -2674,6 +2677,22 @@ tf_cc_tests(
 )
 
 tf_cc_test_mkl(
+    name = "mkl_runtime_tests",
+    size = "small",
+    srcs = ["common_runtime/mkl_cpu_allocator_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":framework",
+        ":framework_internal",
+        ":test",
+        ":test_main",
+        ":testlib",
+    ],
+)
+
+tf_cc_test_mkl(
     name = "mkl_related_tests",
     size = "small",
     srcs = [
@@ -2700,7 +2719,20 @@ tf_cc_test_mkl(
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl([
+        "//tensorflow/core/kernels:mkl_aggregate_ops",
+        "//tensorflow/core/kernels:mkl_concat_op",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_cwise_ops_common",
+        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_identity_op",
+        "//tensorflow/core/kernels:mkl_input_conversion_op",
+        "//tensorflow/core/kernels:mkl_lrn_op",
+        "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_relu_op",
+        "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
+    ]),
 )
 
 tf_cc_tests_gpu(
