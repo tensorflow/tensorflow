@@ -218,6 +218,15 @@ using namespace tensorflow;
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
+REGISTER_OP("Example")
+    .Attr("T: {float, int32}")
+    .Input("input: T")
+    .Output("output: T")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
 // CPU specialization of actual computation.
 template <typename T>
 struct ExampleFunctor<CPUDevice, T> {
@@ -1244,6 +1253,24 @@ For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 
 >   Note in some linux settings, additional options to `nvcc` compiling step are needed. Add `-D_MWAITXINTRIN_H_INCLUDED` to the `nvcc` command line to avoid errors from `mwaitxintrin.h`.
 
+#### Using Bazel to compile the kernel for the GPU device
+If you have installed TensorFlow from sources, it is also possible to use Tensorflow's Bazel build system to build GPU kernels.  If this option is available to you, it is the simplest way to complie CUDA kernels.  Place your sources in the [`tensorflow/core/user_ops`][user_ops] directory along with a BUILD file that contains the following:
+
+```python
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+
+tf_custom_op_library(
+    name = "example.so",
+    srcs = ["example.cc", "example.h"],
+    gpu_srcs = ["example.cu.cc", "example.h"],
+)
+```
+From that directory, run the command:
+```bash
+bazel build --config opt --config=cuda --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" //tensorflow/core/user_ops:example.so
+```
+The cxxopt option may not be needed for all systems.
+
 ### Implement the gradient in Python
 
 Given a graph of ops, TensorFlow uses automatic differentiation
@@ -1262,6 +1289,16 @@ the chain rule:
 $$\frac{\partial L}{\partial x}
     = \frac{\partial L}{\partial y} \frac{\partial y}{\partial x}
     = \frac{\partial L}{\partial y} \frac{\partial f}{\partial x}.$$
+    
+\\(\partial L/ \partial y\\) represents the gradient before it has been backpropagated through the op and \\(\partial L/ \partial x\\) is the gradient after being backpropagated through the op.  The important thing to realize is that the term  \frac{\partial f}{\partial x} isn't just the mathematical derivative of the function computed by the op, it is the mathematical derivative of the op evaluated at the input that the op received during the forward pass of the backpropagation algorithm.  So to calcuate the gradient of the op, we need two ingredients: the gradient that is to be backpropagated through the op and the input the op received during the forward pass.  These two ingredients are passed to the op_grad function through the parameters op.inputs and grad.  In general, if you have a custom op "f" that computes some mathematical function and a custom op "f_prime" that computes the derivative of f, the gradient registration for f would go as follows:
+
+```python
+@tf.RegisterGradient("F")
+def _f_grad(op, grad):
+    return grad * f_prime(op.inputs[0])
+```
+
+In a real application, the best practice is most likely to implement the kernel for your custom op grad in such a way so that it takes these two inputs and computes the proper gradient internally, rather than performing the multiplication in python, but implementing it this way is a good choice for demonstration as makes it the math more clear.
 
 In the case of `ZeroOut`, only one entry in the input affects the output, so the
 gradient with respect to the input is a sparse "one hot" tensor.  This is
@@ -1427,6 +1464,318 @@ compact in representing input and output shape specifications in tests.  For
 now, see the surrounding comments in those tests to get a sense of the shape
 string specification).
 
+## Putting it all together
+For the sake of ease and completeness, here is a full tutorial of how to implement a custom operator which is intended to be used as an activation function.  This isn't actually a very good activation function; it performs worse than commonly used activation functions like ReLu or Sigmoid, but this example is sufficient to use in a neural network and get it to train to marginal accuracy.  This specific mathematical form for the activation function was chosen only to demonstrate clearly how the gradient needs to be calculated, since ReLu is so simple that you can implement its gradient without really being clear what is happening from a mathematical standpoint
+
+1) Create the following three source files in the [`tensorflow/core/user_ops`][user_ops] directory:
+```c++
+// smooth_relu.h
+#ifndef KERNEL_SMOOTHRELU_H_
+#define KERNEL_SMOOTHRELU_H_
+
+template <typename Device, typename T>
+struct SmoothReluFunctor {
+  void operator()(const Device& d, int size, const T* in, T* out);
+};
+
+template <typename Device, typename T>
+struct SmoothReluGradFunctor {
+  void operator()(const Device& d, int size, const T* in, T* out);
+};
+
+#endif //KERNEL_SMOOTHRELU_H_
+```
+```c++
+// smooth_relu.cc
+
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
+
+using namespace tensorflow;
+
+REGISTER_OP("SmoothRelu")
+    .Attr("T: {float}")
+    .Input("weighted_input: T")
+    .Output("activation: T")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+REGISTER_OP("SmoothReluGrad")
+    .Attr("T: {float}")
+    .Input("weighted_input: T")
+    .Output("activation: T")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+    
+
+#define EIGEN_USE_THREADS
+#include "smooth_relu.h"
+#include "tensorflow/core/framework/op_kernel.h"
+
+using namespace tensorflow;
+
+using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
+
+// CPU specialization of actual computation.
+template <typename T>
+struct SmoothReluFunctor<CPUDevice, T> {
+  void operator()(const CPUDevice& d, int size, const T* in, T* out) {
+    for (int i = 0; i < size; ++i) {
+      if (in[i] < 0)
+        out[i] = 0.0;
+      else if (in[i] <= 1)
+        out[i] = 0.5 * in[i] * in[i];
+      else
+        out[i] = in[i] - 0.5;
+    }
+  }
+};
+
+// CPU specialization of actual computation.
+template <typename T>
+struct SmoothReluGradFunctor<CPUDevice, T> {
+  void operator()(const CPUDevice& d, int size, const T* in, T* out) {
+    for (int i = 0; i < size; ++i) {
+      if (in[i] < 0)
+        out[i] = 0.0;
+      else if (in[i] <= 1)
+        out[i] = in[i];
+      else
+        out[i] = 1.0;
+    }
+  }
+};
+
+// OpKernel definition.
+// template parameter <T> is the datatype of the tensors.
+template <typename Device, typename T>
+class SmoothReluOp : public OpKernel {
+ public:
+  explicit SmoothReluOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    // Grab the input tensor
+    const Tensor& input_tensor = context->input(0);
+
+    // Create an output tensor
+    Tensor* output_tensor = NULL;
+    OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
+                                                     &output_tensor));
+
+    // Do the computation.
+    OP_REQUIRES(context, input_tensor.NumElements() <= tensorflow::kint32max,
+                errors::InvalidArgument("Too many elements in tensor"));
+    SmoothReluFunctor<Device, T>()(
+        context->eigen_device<Device>(),
+        static_cast<int>(input_tensor.NumElements()),
+        input_tensor.flat<T>().data(),
+        output_tensor->flat<T>().data());
+  }
+};
+
+// OpKernel definition.
+// template parameter <T> is the datatype of the tensors.
+template <typename Device, typename T>
+class SmoothReluGradOp : public OpKernel {
+ public:
+  explicit SmoothReluGradOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    // Grab the input tensor
+    const Tensor& input_tensor = context->input(0);
+
+    // Create an output tensor
+    Tensor* output_tensor = NULL;
+    OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
+                                                     &output_tensor));
+
+    // Do the computation.
+    OP_REQUIRES(context, input_tensor.NumElements() <= tensorflow::kint32max,
+                errors::InvalidArgument("Too many elements in tensor"));
+    SmoothReluGradFunctor<Device, T>()(
+        context->eigen_device<Device>(),
+        static_cast<int>(input_tensor.NumElements()),
+        input_tensor.flat<T>().data(),
+        output_tensor->flat<T>().data());
+  }
+};
+
+// Register the CPU kernels.
+#define REGISTER_CPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("SmoothRelu").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SmoothReluOp<CPUDevice, T>);
+REGISTER_CPU(float);
+
+// Register the GPU kernels.
+#ifdef GOOGLE_CUDA
+#define REGISTER_GPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("SmoothRelu").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      SmoothReluOp<GPUDevice, T>);
+REGISTER_GPU(float);
+#endif  // GOOGLE_CUDA
+
+// Register the CPU kernels.
+#define REGISTER_GRAD_CPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("SmoothReluGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SmoothReluGradOp<CPUDevice, T>);
+REGISTER_GRAD_CPU(float);
+
+// Register the GPU kernels.
+#ifdef GOOGLE_CUDA
+#define REGISTER_GRAD_GPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("SmoothReluGrad").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      SmoothReluGradOp<GPUDevice, T>);
+REGISTER_GRAD_GPU(float);
+
+#endif  // GOOGLE_CUDA
+```
+```c++
+// smooth_relu.cu.cc
+#ifdef GOOGLE_CUDA
+
+#define EIGEN_USE_GPU
+#define EIGEN_USE_THREADS
+
+#include "smooth_relu.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
+
+using namespace tensorflow;
+
+#define EIGEN_USE_GPU
+
+// Define the CUDA kernel.
+template <typename T>
+__global__ void SmoothReluCudaKernel(const int size, const T* in, T* out) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < size;
+       i += blockDim.x * gridDim.x) {
+    if (ldg(in + i) < 0)
+      out[i] = 0.0;
+    else if (ldg(in + i) < 1)
+      out[i] = 0.5 * ldg(in + i) * ldg(in + i);
+    else
+      out[i] = ldg(in + i) - 0.5;
+  }
+}
+
+// Define the CUDA kernel.
+template <typename T>
+__global__ void SmoothReluGradCudaKernel(const int size, const T* in, T* out) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < size;
+       i += blockDim.x * gridDim.x) {
+    if (ldg(in + i) < 0)
+      out[i] = 0.0;
+    else if (ldg(in + i) < 1)
+      out[i] = ldg(in + i);
+    else
+      out[i] = 1.0;
+  }
+}
+
+// Define the GPU implementation that launches the CUDA kernel.
+template <typename T>
+struct SmoothReluFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, int size, const T* in, T* out) {
+    // Launch the cuda kernel.
+    //
+    // See core/util/cuda_kernel_helper.h for example of computing
+    // block count and thread_per_block count.
+    int block_count = 1024;
+    int thread_per_block = 20;
+    SmoothReluCudaKernel<T>
+        <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
+  }
+};
+
+// Define the GPU implementation that launches the CUDA kernel.
+template <typename T>
+struct SmoothReluGradFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, int size, const T* in, T* out) {
+    // Launch the cuda kernel.
+    //
+    // See core/util/cuda_kernel_helper.h for example of computing
+    // block count and thread_per_block count.
+    int block_count = 1024;
+    int thread_per_block = 20;
+    SmoothReluGradCudaKernel<T>
+        <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
+  }
+};
+
+// Instantiate functors for the types of OpKernels registered.
+typedef Eigen::GpuDevice GPUDevice;
+template struct SmoothReluFunctor<GPUDevice, float>;
+template struct SmoothReluGradFunctor<GPUDevice, float>;
+
+#endif  // GOOGLE_CUDA
+```
+2) Create a BUILD file in the same direction with the following, or append this rule if you already have a BUILD file
+```python
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+
+tf_custom_op_library(
+    name = "smooth_relu.so",
+    srcs = ["smooth_relu.cc", "smooth_relu.h"],
+    gpu_srcs = ["smooth_relu.cu.cc", "smooth_relu.h"],
+)
+```
+3) From the same directory, run the following command to build smooth_relu.so
+```bash
+bazel build --config opt --config=cuda --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" //tensorflow/core/user_ops:example.so
+```
+the cxxopt option may not be necessary on all systems
+4) The build file will be placed in the directory /tensorflow/bazel-bin/tensorflow/core/user_ops.  You can either link to it here, or make a copy in whatever project directory you will be working from.
+
+5) You can test that the op is working mathematically by plotting it in pyplot:
+```python
+import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
+
+smoothReluModule = tf.load_op_library("./smooth_relu.so")
+smoothRelu = smoothReluModule.smooth_relu
+smoothReluGrad = smoothReluModule.smooth_relu_grad
+
+session = tf.Session()
+
+x = np.linspace(-1, 2, 200, dtype=np.float32)
+y = smoothRelu(x)
+yPrime = smoothReluGrad(x)
+
+yData = session.run(y)
+yPrimeData = session.run(yPrime)
+
+plt.plot(x, yData)
+plt.plot(x, yPrimeData)
+plt.show()
+```
+You might need to adjust the axes of the plot to get it to show you the important parts of the plot, but you can be confident that your custom op is behaving in the correct mathematical way.
+
+6) Use the op in a neural network.  It can be loaded and the gradient registered in python like this:
+```python
+smoothReluModule = tf.load_op_library("./smooth_relu.so")
+smoothRelu = smoothReluModule.smooth_relu
+smoothReluGrad = smoothReluModule.smooth_relu_grad
+@tf.RegisterGradient("SmoothRelu")
+def _bentline_grad(op, grad):
+    return grad * smoothReluGrad(op.inputs[0])
+```
+And it can be used with the high-level TensorFlow API.  For example:
+```python
+self.conv1 = tf.layers.conv2d(
+            inputs=inputLayer, 
+            filters=32, 
+            kernel_size=5,
+            padding="same",
+            activation=smoothRelu)
+```
 
 [core-array_ops]:https://www.tensorflow.org/code/tensorflow/core/ops/array_ops.cc
 [python-user_ops]:https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py
