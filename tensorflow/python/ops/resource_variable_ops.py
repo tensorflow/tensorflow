@@ -768,6 +768,27 @@ class ResourceVariable(variables.Variable):
     else:
       return self.value()
 
+  def __iadd__(self, unused_other):
+    raise RuntimeError("Variable += value not supported.")
+
+  def __isub__(self, unused_other):
+    raise RuntimeError("Variable -= value not supported.")
+
+  def __imul__(self, unused_other):
+    raise RuntimeError("Variable *= value not supported.")
+
+  def __idiv__(self, unused_other):
+    raise RuntimeError("Variable /= value not supported.")
+
+  def __itruediv__(self, unused_other):
+    raise RuntimeError("Variable /= value not supported.")
+
+  def __irealdiv__(self, unused_other):
+    raise RuntimeError("Variable /= value not supported.")
+
+  def __ipow__(self, unused_other):
+    raise RuntimeError("Variable **= value not supported.")
+
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
