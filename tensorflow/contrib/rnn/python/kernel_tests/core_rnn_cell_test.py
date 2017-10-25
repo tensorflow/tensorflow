@@ -140,6 +140,33 @@ class RNNCellTest(test.TestCase):
         # Smoke test
         self.assertAllClose(res[0], [[0.156736, 0.156736]])
 
+  def testSRUCell(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        g, _ = rnn_cell_impl.SRUCell(2)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(
+            [g], {x.name: np.array([[1., 1.]]),
+                  m.name: np.array([[0.1, 0.1]])})
+        # Smoke test
+        self.assertAllClose(res[0], [[0.39352643,  0.39352643]])
+      with variable_scope.variable_scope(
+          "other", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros(
+            [1, 3])  # Test SRUCell with input_size != num_units.
+        m = array_ops.zeros([1, 2])
+        g, _ = rnn_cell_impl.SRUCell(2)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(
+            [g],
+            {x.name: np.array([[1., 1., 1.]]),
+             m.name: np.array([[0.1, 0.1]])})
+        # Smoke test
+        self.assertAllClose(res[0], [[0.40844864, 0.40844864]])
+
   def testBasicLSTMCell(self):
     for dtype in [dtypes.float16, dtypes.float32]:
       np_dtype = dtype.as_numpy_dtype

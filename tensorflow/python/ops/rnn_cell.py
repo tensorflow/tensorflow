@@ -24,6 +24,7 @@
 @@BasicLSTMCell
 @@GRUCell
 @@LSTMCell
+@@SRUCell
 
 ## Classes storing split `RNNCell` state
 
