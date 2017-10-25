@@ -1855,16 +1855,20 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   }
 
   if (opcode() == HloOpcode::kWhile) {
-    extra.push_back(StrCat("condition=", while_condition()->name()));
-    extra.push_back(StrCat("body=", while_body()->name()));
+    extra.push_back(StrCat("condition=%", while_condition()->name()));
+    extra.push_back(StrCat("body=%", while_body()->name()));
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
-    extra.push_back(StrCat("select=", select()->name()));
-    extra.push_back(StrCat("scatter=", scatter()->name()));
+    extra.push_back(StrCat("select=%", select()->name()));
+    extra.push_back(StrCat("scatter=%", scatter()->name()));
+  } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
+             opcode() == HloOpcode::kReduceWindow ||
+             opcode() == HloOpcode::kReduce) {
+    extra.push_back(StrCat("to_apply=%", to_apply()->name()));
   } else if (!called_computations().empty()) {
     extra.push_back(StrCat(
         "calls=", Join(called_computations(), ", ",
                        [](string* out, const HloComputation* computation) {
-                         StrAppend(out, computation->name());
+                         StrAppend(out, "%", computation->name());
                        })));
   }
 
@@ -1874,6 +1878,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
 
   if (opcode() == HloOpcode::kGetTupleElement) {
     extra.push_back(StrCat("index=", tuple_index()));
+  }
+  if (device_assignment_.has_device()) {
+    extra.push_back(StrCat("device=", device_assignment_.device()));
   }
   if (!control_successors_.empty()) {
     extra.push_back(StrCat(
