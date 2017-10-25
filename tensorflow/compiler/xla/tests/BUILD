@@ -920,6 +920,7 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
+    tags = ["optonly"],
     xla_test_library_deps = [":reduce_window_test_library"],
     deps = [],
 )
