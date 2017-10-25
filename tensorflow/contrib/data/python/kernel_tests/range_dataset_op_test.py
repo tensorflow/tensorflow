@@ -21,6 +21,7 @@ import os
 
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import enumerate_ops
+from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,6 +35,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver as saver_lib
 
 
 class RangeDatasetTest(test.TestCase):
@@ -255,6 +257,137 @@ class RangeDatasetTest(test.TestCase):
         sess.run(save_op)
         sess.run(restore_op)
         for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testSaveRestoreUsingSaverFromMetaGraph(self):
+
+    def _build_graph(start, stop):
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      ops.add_to_collection("iterator_ops", init_op)
+      ops.add_to_collection("iterator_ops", get_next)
+      saveable_obj = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      # Add the SaveableObject to the `SAVEABLE_OBJECTS` collection
+      # so that it can be automatically picked up by the Saver.
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+      saver = saver_lib.Saver()
+      return init_op, get_next, saver
+
+    start = 2
+    stop = 10
+    break_point = 5
+    path = self._iterator_checkpoint_prefix()
+    meta_filename = path + ".meta"
+
+    # Execute input pipeline for a few steps and save iterator state.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        saver.save(sess, path)
+
+    # Build the saver from the MetaGraph using import_meta_graph and
+    # check that the iterator state is restored.
+    with ops.Graph().as_default() as g:
+      saver = saver_lib.import_meta_graph(meta_filename)
+      init_op, get_next = ops.get_collection("iterator_ops")
+      with self.test_session(graph=g) as sess:
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testSaveRestoreUsingBuiltSaver(self):
+
+    def _build_graph(start, stop):
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      ops.add_to_collection("iterator_ops", init_op)
+      ops.add_to_collection("iterator_ops", get_next)
+      # Add the SaveableObject to the `SAVEABLE_OBJECTS` collection
+      # so that it can be automatically picked up by the Saver.
+      saveable_obj = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+      saver = saver_lib.Saver()
+      return init_op, get_next, saver
+
+    start = 2
+    stop = 10
+    stop_new = 15
+    break_point = 5
+    path = self._iterator_checkpoint_prefix()
+
+    # Execute input pipeline for a few steps and save iterator state.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        saver.save(sess, path)
+
+    # Manually build a modified Graph and Saver instead of importing
+    # MetaGraph and verify that original iterator state gets restored.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop_new)
+      with self.test_session(graph=g) as sess:
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testSaveRestoreUsingSaverThenInit(self):
+
+    def _build_graph(start, stop):
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      ops.add_to_collection("iterator_ops", init_op)
+      ops.add_to_collection("iterator_ops", get_next)
+      # Add the SaveableObject to the `SAVEABLE_OBJECTS` collection
+      # so that it can be automatically picked up by the Saver.
+      saveable_obj = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+      saver = saver_lib.Saver()
+      return init_op, get_next, saver
+
+    start = 2
+    stop = 10
+    stop_new = 15
+    break_point = 5
+    path = self._iterator_checkpoint_prefix()
+
+    # Execute input pipeline for a few steps and save iterator state.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        saver.save(sess, path)
+
+    # Restore iterator state call and then call init_op for the iterator and
+    # verify that the new iterator hides the restored iterator.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop_new)
+      with self.test_session(graph=g) as sess:
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        sess.run(init_op)
+        for i in range(start, stop_new):
           self.assertEqual(i, sess.run(get_next))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
