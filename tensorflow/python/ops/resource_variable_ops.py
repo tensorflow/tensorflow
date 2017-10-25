@@ -180,7 +180,7 @@ class ResourceVariable(variables.Variable):
 
     @compatibility(eager)
     When Eager Execution is enabled, the default for the `collections` argument
-    is None, which signifies that this Variable will not be added to any
+    is `None`, which signifies that this `Variable` will not be added to any
     collections.
     @end_compatibility
     """
@@ -257,8 +257,9 @@ class ResourceVariable(variables.Variable):
 
     @compatibility(eager)
     When Eager Execution is enabled, variables are never added to collections.
-    It is not implicitly added to the GLOBAL_VARIABLES or TRAINABLE_VARIABLES
-    collections, and the `collections` argument is ignored.
+    It is not implicitly added to the `GLOBAL_VARIABLES` or
+    `TRAINABLE_VARIABLES` collections, and the `collections` argument is
+    ignored.
     @end_compatibility
     """
     if initial_value is None:

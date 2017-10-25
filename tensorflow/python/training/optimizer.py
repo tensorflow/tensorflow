@@ -337,15 +337,16 @@ class Optimizer(object):
     Raises:
       ValueError: If some of the variables are not `Variable` objects.
 
-      @compatibility(eager):
-      When eager execution is enabled, `loss` should be a Python function that
-      takes elements of `var_list` as arguments and computes the value to be
-      minimized. If `var_list` is None, `loss` should take no arguments.
-      Minimization (and gradient computation) is done with respect to the
-      elements of `var_list` if not None, else with respect to any trainable
-      variables created during the execution of the `loss` function.
-      `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-      `grad_loss` are ignored when eager execution is enabled.
+    @compatibility(eager)
+    When eager execution is enabled, `loss` should be a Python function that
+    takes elements of `var_list` as arguments and computes the value to be
+    minimized. If `var_list` is None, `loss` should take no arguments.
+    Minimization (and gradient computation) is done with respect to the
+    elements of `var_list` if not None, else with respect to any trainable
+    variables created during the execution of the `loss` function.
+    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
+    `grad_loss` are ignored when eager execution is enabled.
+    @end_compatibility
     """
     grads_and_vars = self.compute_gradients(
         loss, var_list=var_list, gate_gradients=gate_gradients,
@@ -397,15 +398,16 @@ class Optimizer(object):
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
 
-      @compatibility(eager):
-      When eager execution is enabled, `loss` should be a Python function that
-      takes elements of `var_list` as arguments and computes the value to be
-      minimized. If `var_list` is None, `loss` should take no arguments.
-      Gradient computation is done with respect to the elements of `var_list` if
-      not None, else with respect to any trainable variables created during the
-      execution of the `loss` function.
-      `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-      `grad_loss` are ignored when eager execution is enabled.
+    @compatibility(eager)
+    When eager execution is enabled, `loss` should be a Python function that
+    takes elements of `var_list` as arguments and computes the value to be
+    minimized. If `var_list` is None, `loss` should take no arguments.
+    Gradient computation is done with respect to the elements of `var_list` if
+    not None, else with respect to any trainable variables created during the
+    execution of the `loss` function.
+    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
+    `grad_loss` are ignored when eager execution is enabled.
+    @end_compatibility
     """
     if context.in_eager_mode():
       if grad_loss is not None:
