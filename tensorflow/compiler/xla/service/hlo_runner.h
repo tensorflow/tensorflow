@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -52,9 +53,9 @@ class HloRunner {
   // result as a Literal. The LiteralPtr type accepts Literal* or
   // std::unique_ptr<Literal>.
   template <typename LiteralPtr>
-  std::unique_ptr<Literal> Execute(
+  StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr>& literals);
+      const tensorflow::gtl::ArraySlice<LiteralPtr> literals);
 
   // Executes the given module and returns a global data handle.
   StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
@@ -64,16 +65,16 @@ class HloRunner {
       Shape* result_shape);
 
   // Transfers the given literal to the device and returns the data handle.
-  perftools::gputools::DeviceMemoryBase TransferToDevice(
+  StatusOr<perftools::gputools::DeviceMemoryBase> TransferToDevice(
       const Literal& literal);
 
   // Transfers the array referred to by the given handle from the device and
   // returns as a Literal.
-  std::unique_ptr<Literal> TransferFromDevice(
+  StatusOr<std::unique_ptr<Literal>> TransferFromDevice(
       const Shape& shape, perftools::gputools::DeviceMemoryBase device_base);
 
   // Executes the given module and return the result as a Literal.
-  std::unique_ptr<Literal> ExecuteAndTransfer(
+  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       std::unique_ptr<HloModule> module,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments);
@@ -94,6 +95,19 @@ class HloRunner {
 
   std::unique_ptr<Backend> backend_;
 };
+
+template <typename LiteralPtr>
+StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
+    std::unique_ptr<HloModule> module,
+    const tensorflow::gtl::ArraySlice<LiteralPtr> literals) {
+  std::vector<perftools::gputools::DeviceMemoryBase> arguments;
+  for (const auto& literal : literals) {
+    TF_ASSIGN_OR_RETURN(perftools::gputools::DeviceMemoryBase argument,
+                        TransferToDevice(*literal));
+    arguments.push_back(argument);
+  }
+  return ExecuteAndTransfer(std::move(module), arguments);
+}
 
 }  // namespace xla
 
