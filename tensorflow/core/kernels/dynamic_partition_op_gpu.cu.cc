@@ -13,6 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// The algorithm for dynamic partition has the following steps:
+// 1. Let N be the size of partitions. We initialize a new vector indices_in
+//    with the values 0, 1, 2, ..., N-1.
+// 2. We apply cub::DeviceRadixSort::SortPairs to the key - value pairs given
+//    by partitions and indices_in. This will result in two new vectors
+//    partitions_out and indices_out, with partitions_out sorted.
+// 3. The first dimension of outputs[i] is equal to the length of the interval
+//    of i-values in partitions_out. We determine it in two steps:
+//    - compute the starting and ending point of each interval,
+//    - subtract the starting and ending points to find the length.
+//    The result is placed in partition_count.
+// 4. Because partition_count is on the GPU, we bring it asynchronously to
+//    the CPU. Then we can allocate the output tensors.
+// 5. Finally, we use indices_out and the gather functor to collect the output.
+//    This works, because for each interval of i-values, indices_out points
+//    to the slices which should form output[i].
+
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
@@ -31,6 +48,8 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
+
+namespace {
 
 template <typename T>
 __global__ void RangeInitKernel(const T start, const T delta, const int32 size,
@@ -110,6 +129,8 @@ void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
       params, indices, out, gather_dim_size, indices_size, slice_size,
       out_size);
 }
+
+}  // namespace
 
 // The current implementation has memory cost on GPU
 // I + P + max(3N + R, O + N), where:
@@ -236,6 +257,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                  Tensor* indices_out, DoneCallback done) {
     int32 N = partitions->NumElements();
     const GPUDevice& device = c->eigen_device<GPUDevice>();
+    const cudaStream_t& cu_stream = GetCudaStream(c);
 
     // Initialize the indices_in tensor using the Range GPU kernel.
     RangeInit(device, 0, 1, N, indices_in->flat<int32>());
@@ -247,9 +269,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Determine temporary device storage requirements.
     Tensor cub_temp_storage;
     size_t temp_storage_bytes = 0;
-    cub::DeviceRadixSort::SortPairs(NULL, temp_storage_bytes, partitions_ptr,
-                                    partitions_out_ptr, indices_in_ptr,
-                                    indices_out_ptr, N);
+    cub::DeviceRadixSort::SortPairs(
+        NULL, temp_storage_bytes, partitions_ptr, partitions_out_ptr,
+        indices_in_ptr, indices_out_ptr, N, 0, sizeof(int32) * 8, cu_stream);
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
         c, c->allocate_temp(
@@ -259,7 +281,8 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Radix-sort the partition information.
     cub::DeviceRadixSort::SortPairs(
         cub_temp_storage.flat<int8>().data(), temp_storage_bytes,
-        partitions_ptr, partitions_out_ptr, indices_in_ptr, indices_out_ptr, N);
+        partitions_ptr, partitions_out_ptr, indices_in_ptr, indices_out_ptr, N,
+        0, sizeof(int32) * 8, cu_stream);
   }  // At this point cub_temp_storage will be marked for deallocation.
 
   void CountAndSortParts(OpKernelContext* c, const Tensor* partitions,
