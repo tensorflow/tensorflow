@@ -45,7 +45,7 @@ class ElasticAverageCustomGetter(object):
     so that the global center variables and global step variable can be placed
     at ps device. Besides, use 'tf.get_variable' instead of 'tf.Variable' to
     use this custom getter.
-    
+
   For example,
   ea_custom_getter = ElasticAverageCustomGetter(worker_device)
   with tf.device(
@@ -111,6 +111,9 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
   then be used to update both local variables and global variables.
   """
 
+  # Default value as paper described
+  BETA = 0.9
+
   def __init__(
       self,
       opt,
@@ -141,7 +144,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     self._period = communication_period
 
     if moving_rate is None:
-      self._moving_rate = 0.9 / communication_period / num_worker
+      self._moving_rate = BETA / communication_period / num_worker
     else:
       self._moving_rate = moving_rate
     if rho is None:
@@ -156,8 +159,41 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       name="local_step")
     self._opt._prepare()
 
-  def compute_gradients(self, loss, *args, **kwargs):
-    # add rho*elastic_difference to loss to control the exploration
+  def compute_gradients(self, loss, var_list=None,
+                        gate_gradients=optimizer.Optimizer.GATE_OP,
+                        aggregation_method=None,
+                        colocate_gradients_with_ops=False,
+                        grad_loss=None):
+    """Compute gradients of `loss` for the variables in `var_list`.
+    
+    Add rho*elastic_difference to loss to control the exploration
+    This is the first part of `minimize()`.  It returns a list
+    of (gradient, variable) pairs where "gradient" is the gradient
+    for "variable".  Note that "gradient" can be a `Tensor`, an
+    `IndexedSlices`, or `None` if there is no gradient for the
+    given variable.
+
+    Args:
+      loss: A Tensor containing the value to minimize.
+      var_list: Optional list or tuple of `tf.Variable` to update to minimize
+        `loss`.  Defaults to the list of variables collected in the graph
+        under the key `GraphKey.TRAINABLE_VARIABLES`.
+      gate_gradients: How to gate the computation of gradients.  Can be
+        `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+      aggregation_method: Specifies the method used to combine gradient terms.
+        Valid values are defined in the class `AggregationMethod`.
+      colocate_gradients_with_ops: If True, try colocating gradients with
+        the corresponding op.
+      grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
+
+    Returns:
+      A list of (gradient, variable) pairs. Variable is always present, but
+      gradient can be `None`.
+
+    Raises:
+      TypeError: If `var_list` contains anything else than `Variable` objects.
+      ValueError: If some arguments are invalid.
+    """
     elastic_difference = [math_ops.subtract(v, lv) for v, lv in zip(
       variables.trainable_variables(),
       ops.get_collection_ref('local_center_variable'))]
@@ -167,10 +203,32 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
                       [gen_nn_ops.l2_loss(ed) for ed in elastic_difference])
 
     total_loss = loss + distance_loss
-    return self._opt.compute_gradients(total_loss, *args, **kwargs)
+    return self._opt.compute_gradients(total_loss, var_list,
+                                       gate_gradients,aggregation_method,
+                                       colocate_gradients_with_ops,grad_loss)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
-    # update local variables
+    """Apply gradients to global variables.
+
+    This is the second part of `minimize()`. It returns an `Operation` that
+    applies gradients.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs as returned by
+        `compute_gradients()`.
+      global_step: Optional `Variable` to increment by one after the
+        variables have been updated.
+      name: Optional name for the returned operation.  Default to the
+        name passed to the `Optimizer` constructor.
+
+    Returns:
+      An `Operation` that applies the specified gradients. If `global_step`
+      was not None, that operation also increments `global_step`.
+
+    Raises:
+      TypeError: If `grads_and_vars` is malformed.
+      ValueError: If none of the variables have gradients.
+    """
     apply_updates = self._opt.apply_gradients(grads_and_vars)
     with ops.control_dependencies([apply_updates]):
       local_update = state_ops.assign_add(
@@ -184,7 +242,6 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       local_center_vars = ops.get_collection_ref('local_center_variable')
       local_center_vars_update = []
       for lvar, var in zip(local_center_vars, global_center_vars):
-        # with ops.device(lvar.device):
         local_center_vars_update.append(lvar.assign(var))
       update_ops = []
       differences = []
