@@ -353,7 +353,7 @@ class SmartCondTest(test_util.TensorFlowTestCase):
       with session.Session():
         x = constant_op.constant(1)
         with self.assertRaises(TypeError):
-          control_flow_ops.smart_cond(True, fn2=lambda: x)
+          control_flow_ops.smart_cond(True, false_fn=lambda: x)
 
   def testSmartCondMissingArg2(self):
     with ops.Graph().as_default():

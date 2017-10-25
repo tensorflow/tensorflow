@@ -24,7 +24,7 @@ See the @{$python/control_flow_ops} guide.
 @@no_op
 @@count_up_to
 @@cond
-@smart_cond
+@@smart_cond
 @@case
 @@while_loop
 @@logical_and
@@ -1919,37 +1919,38 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
 # pylint: enable=g-doc-args
 
 
-def smart_cond(pred, fn1=None, fn2=None, name=None):
-  """Return either `fn1()` or `fn2()` based on the boolean predicate `pred`.
+def smart_cond(pred, true_fn=None, false_fn=None, name=None):
+  """Return either `true_fn()` if predicate `pred` is true else `false_fn()`.
 
-  If `pred` is a bool or has a constant value, we return either `fn1()`
-  or `fn2()`, otherwise we use `tf.cond` to dynamically route to both.
+  If `pred` is a bool or has a constant value, we return either `true_fn()`
+  or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
 
   Arguments:
-    pred: A scalar determining whether to return the result of `fn1` or `fn2`.
-    fn1: The callable to be performed if pred is true.
-    fn2: The callable to be performed if pred is false.
+    pred: A scalar determining whether to return the result of `true_fn` or
+      `false_fn`.
+    true_fn: The callable to be performed if pred is true.
+    false_fn: The callable to be performed if pred is false.
     name: Optional name prefix when using `tf.cond`.
 
   Returns:
-    Tensors returned by the call to either `fn1` or `fn2`.
+    Tensors returned by the call to either `true_fn` or `false_fn`.
 
   Raises:
-    TypeError: If `fn1` or `fn2` is not callable.
+    TypeError: If `true_fn` or `false_fn` is not callable.
   """
-  if not callable(fn1):
-    raise TypeError('`fn1` must be callable.')
-  if not callable(fn2):
-    raise TypeError('`fn2` must be callable.')
+  if not callable(true_fn):
+    raise TypeError('`true_fn` must be callable.')
+  if not callable(false_fn):
+    raise TypeError('`false_fn` must be callable.')
 
   pred_value = constant_value(pred)
   if pred_value is not None:
     if pred_value:
-      return fn1()
+      return true_fn()
     else:
-      return fn2()
+      return false_fn()
   else:
-    return cond(pred, fn1, fn2, name)
+    return cond(pred, true_fn=true_fn, false_fn=false_fn, name=name)
 
 
 def constant_value(pred):
