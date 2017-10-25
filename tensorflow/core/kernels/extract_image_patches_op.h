@@ -34,11 +34,12 @@ struct ExtractImagePatchesForward {
     // NHWC format while Eigen assumes NWHC format.
     const int64 N = std::max(input.size(), output.size());
     if (N <= std::numeric_limits<Index32>::max()) {
-      To32Bit(output).device(d) =
+      auto output_32bit = To32Bit(output);
+      output_32bit.device(d) =
           To32Bit(input)
               .extract_image_patches(patch_cols, patch_rows, stride_cols,
                                      stride_rows, rate_cols, rate_rows, padding)
-              .reshape(output.dimensions());
+              .reshape(output_32bit.dimensions());
     } else {
       output.device(d) =
           input
