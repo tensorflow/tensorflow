@@ -680,6 +680,10 @@ class ResourceVariable(variables.Variable):
     """Unsupported."""
     raise NotImplementedError("ResourceVariable does not implement _ref()")
 
+  def set_shape(self, shape):
+    """Unsupported."""
+    raise NotImplementedError("ResourceVariable does not implement set_shape()")
+
   @staticmethod
   def _OverloadOperator(operator):  # pylint: disable=invalid-name
     """Defer an operator overload to `ops.Tensor`.
