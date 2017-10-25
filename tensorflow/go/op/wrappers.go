@@ -13789,11 +13789,21 @@ func QuantizeV2Mode(value string) QuantizeV2Attr {
 	}
 }
 
+// QuantizeV2RoundMode sets the optional round_mode attribute to value.
+// If not specified, defaults to "HALF_AWAY_FROM_ZERO"
+func QuantizeV2RoundMode(value string) QuantizeV2Attr {
+	return func(m optionalAttr) {
+		m["round_mode"] = value
+	}
+}
+
 // Quantize the 'input' tensor of type float to 'output' tensor of type 'T'.
 //
 // [min_range, max_range] are scalar floats that specify the range for
 // the 'input' data. The 'mode' attribute controls exactly which calculations are
-// used to convert the float values to their quantized equivalents.
+// used to convert the float values to their quantized equivalents.  The
+// 'round_mode' attribute controls which rounding tie-breaking algorithm is used
+// when rounding float values to their quantized equivalents.
 //
 // In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
 //
@@ -13870,7 +13880,7 @@ func QuantizeV2Mode(value string) QuantizeV2Attr {
 //
 // Now we can quantize the elements of our tensor:
 // ```c++
-// result = (input * s).round_to_nearest()
+// result = round(input * s)
 // ```
 //
 // One thing to watch out for is that the operator may choose to adjust the
