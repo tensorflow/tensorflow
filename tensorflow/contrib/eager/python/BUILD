@@ -49,6 +49,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:errors",
         "//tensorflow/python:resource_variable_ops",
@@ -63,8 +64,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow/contrib/data",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/data",
         "//tensorflow/python/eager:test",
         "//third_party/py/numpy",
     ],
