@@ -231,9 +231,9 @@ string HtmlLikeStringSanitize(tensorflow::StringPiece s) {
 // commutative, we also support them with param0 and param1 swapped.
 //
 // This is useful primarily for reduce and map nodes.  These take a
-// subcomputation which is almost always one of the four above, and pattern
-// matching it to a short string lets us tell the user what the subcomputation
-// is without drawing it as a graph.
+// subcomputation which is almost always one of the above, and pattern matching
+// it to a short string lets us tell the user what the subcomputation is without
+// drawing it as a graph.
 optional<string> MatchTrivialComputation(const HloComputation* computation) {
   if (computation->instruction_count() != 3) {
     return nullopt;
@@ -788,7 +788,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kNegate:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
-    case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -799,21 +798,46 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kRng:
-    case HloOpcode::kBroadcast:
-    case HloOpcode::kTranspose:
+      // De-emphasize scalar-shaped elementwise ops -- they're generally
+      // uninteresting.
+      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
+        return kWhite;
+      }
       return kYellow;
     case HloOpcode::kBitcast:
     case HloOpcode::kTuple:
     case HloOpcode::kTrace:
     case HloOpcode::kGetTupleElement:
       return kWhite;
+    case HloOpcode::kBroadcast:
+      // De-emphasize nodes which broadcast a scalar within a fusion node --
+      // these are essentially free.
+      if (instr->IsFused() &&
+          ShapeUtil::IsEffectiveScalar(instr->operand(0)->shape())) {
+        return kWhite;
+      }
+      return kGreen;
     case HloOpcode::kConcatenate:
     case HloOpcode::kCopy:
     case HloOpcode::kDynamicSlice:
-    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
+    case HloOpcode::kSelect:
+    case HloOpcode::kTranspose:
+      // De-emphasize scalar-shaped data movement ops and all data movement ops
+      // inside fusion nodes, both of which are essentially free.
+      if (ShapeUtil::IsEffectiveScalar(instr->shape()) || instr->IsFused()) {
+        return kWhite;
+      }
+      return kGreen;
+    case HloOpcode::kDynamicUpdateSlice:
+      // Unlike the data-movement ops above, dynamic-update-slice is not ~free
+      // inside of fusion nodes, so we de-emphasize it only if it's
+      // scalar-shaped.
+      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
+        return kWhite;
+      }
       return kGreen;
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
