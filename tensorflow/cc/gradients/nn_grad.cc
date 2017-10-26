@@ -203,8 +203,8 @@ Status LRNGradHelper(const Scope& scope, const Operation& op,
   internal::LRNGrad::Attrs grad_attrs;
 
   auto dx = internal::LRNGrad(scope,
-                              op.output(0),
-                              op.output(0),
+                              grad_inputs[0],
+                              op.input(0),
                               op.output(0),
                               grad_attrs);
   grad_outputs->push_back(dx);
