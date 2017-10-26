@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
+#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
@@ -43,81 +44,6 @@ namespace xla {
 namespace cpu {
 namespace {
 
-// Converts a symbol 'name' into the form expected by dlsym().
-std::string CanonicalizeSymbol(const std::string& name) {
-#if defined(__APPLE__)
-  // On Mac OS X, dlsym() expects names not to be prefixed with a leading
-  // underscore.
-  if (!name.empty() && name.front() == '_') {
-    return name.substr(1);
-  }
-#endif
-  return name;
-}
-
-class JITSymbolTable {
- public:
-  JITSymbolTable() { Populate(); }
-
-  void* Lookup(llvm::StringRef jit_symbol_name) const {
-    auto it = jit_symbol_table_.find(jit_symbol_name);
-    return it == jit_symbol_table_.end() ? nullptr : it->getValue();
-  }
-
-  static bool MustBeInTable(llvm::StringRef name) {
-    // In particular, names starting with
-    // runtime::kXlaCpuRuntimeSymbolNamePrefix should not be dlsym'ed.
-    return name.startswith(runtime::kXlaCpuRuntimeSymbolNamePrefix);
-  }
-
- private:
-  void AddJITSymbolToTable(llvm::StringRef jit_symbol_name,
-                           llvm::StringRef cpp_symbol_name,
-                           void* jit_symbol_value) {
-    // The JIT symbol name and the C++ symbol name (with an extern "C" linkage)
-    // need to match, otherwise AOT links will fail.
-    CHECK(jit_symbol_name == cpp_symbol_name);
-    CHECK(jit_symbol_table_.insert({jit_symbol_name, jit_symbol_value}).second);
-  }
-
-  void Populate() {
-#define ADD_JIT_SYMBOL_TO_TABLE(base_name)                       \
-  do {                                                           \
-    AddJITSymbolToTable(                                         \
-        xla::cpu::runtime::k##base_name##SymbolName,             \
-        "__xla_cpu_runtime_" #base_name,                         \
-        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name)); \
-  } while (false)
-
-    ADD_JIT_SYMBOL_TO_TABLE(AcquireInfeedBufferForDequeue);
-    ADD_JIT_SYMBOL_TO_TABLE(ReleaseInfeedBufferAfterDequeue);
-    ADD_JIT_SYMBOL_TO_TABLE(AcquireOutfeedBufferForPopulation);
-    ADD_JIT_SYMBOL_TO_TABLE(ReleaseOutfeedBufferAfterPopulation);
-    ADD_JIT_SYMBOL_TO_TABLE(ExpV8F32AVX);
-    ADD_JIT_SYMBOL_TO_TABLE(LogV8F32AVX);
-    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32SSE);
-    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32SSE);
-    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32NEON);
-    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32NEON);
-    ADD_JIT_SYMBOL_TO_TABLE(EigenConvF32);
-    ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF32);
-    ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF64);
-    ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedConvF32);
-    ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedMatMulF32);
-    ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedMatMulF64);
-    ADD_JIT_SYMBOL_TO_TABLE(ParallelForkJoin);
-
-#undef ADD_JIT_SYMBOL_TO_TABLE
-  }
-
-  llvm::StringMap<void*> jit_symbol_table_;
-};
-
-const JITSymbolTable& GetJITSymbolTable() {
-  static JITSymbolTable* symbol_table = new JITSymbolTable;
-  return *symbol_table;
-}
-
 // A simple SymbolResolver that delegates to the host dynamic linker.
 class SimpleResolver : public llvm::JITSymbolResolver {
  public:
@@ -125,7 +51,6 @@ class SimpleResolver : public llvm::JITSymbolResolver {
       : external_constant_pool_(external_constant_pool) {}
 
   llvm::JITSymbol findSymbol(const std::string& name) override {
-    string name_as_string(name);
     if (const uint8* from_constant_pool =
             external_constant_pool_->Find(string(name))) {
       return llvm::JITEvaluatedSymbol(
@@ -133,13 +58,7 @@ class SimpleResolver : public llvm::JITSymbolResolver {
           llvm::JITSymbolFlags::None);
     }
 
-    std::string canonical_name = CanonicalizeSymbol(name);
-    const JITSymbolTable& jit_symbol_table = GetJITSymbolTable();
-
-    void* func_addr = JITSymbolTable::MustBeInTable(canonical_name)
-                          ? jit_symbol_table.Lookup(canonical_name)
-                          : dlsym(RTLD_DEFAULT, canonical_name.c_str());
-
+    void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
     if (func_addr == nullptr) {
       return nullptr;
     }
@@ -254,6 +173,119 @@ llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string& name) {
 
   return nullptr;
 }
+
+namespace {
+// Register some known symbols with the CustomCallTargetRegistry.
+bool RegisterKnownJITSymbols() {
+  CustomCallTargetRegistry* registry = CustomCallTargetRegistry::Global();
+
+#define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                                \
+  do {                                                                        \
+    auto* function_address =                                                  \
+        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name);               \
+    registry->Register(xla::cpu::runtime::k##base_name##SymbolName,           \
+                       function_address);                                     \
+    CHECK_EQ(                                                                 \
+        tensorflow::StringPiece(xla::cpu::runtime::k##base_name##SymbolName), \
+        "__xla_cpu_runtime_" #base_name);                                     \
+  } while (false)
+
+  REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);
+  REGISTER_CPU_RUNTIME_SYMBOL(AcquireOutfeedBufferForPopulation);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(ExpV4F32NEON);
+  REGISTER_CPU_RUNTIME_SYMBOL(ExpV4F32SSE);
+  REGISTER_CPU_RUNTIME_SYMBOL(ExpV8F32AVX);
+  REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32NEON);
+  REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32SSE);
+  REGISTER_CPU_RUNTIME_SYMBOL(LogV8F32AVX);
+  REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
+  REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
+  REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
+
+#undef REGISTER_CPU_RUNTIME_SYMBOL
+
+#define REGISTER_LIBM_SYMBOL(name)                                    \
+  do {                                                                \
+    /* Register both the F32 and F64 variants of the libm symbol.  */ \
+    registry->Register(#name "f", reinterpret_cast<void*>(name##f));  \
+    registry->Register(#name, reinterpret_cast<void*>(name));         \
+  } while (false)
+
+  REGISTER_LIBM_SYMBOL(acos);
+  REGISTER_LIBM_SYMBOL(acosh);
+  REGISTER_LIBM_SYMBOL(asin);
+  REGISTER_LIBM_SYMBOL(asinh);
+  REGISTER_LIBM_SYMBOL(atan);
+  REGISTER_LIBM_SYMBOL(atan2);
+  REGISTER_LIBM_SYMBOL(atanh);
+  REGISTER_LIBM_SYMBOL(cbrt);
+  REGISTER_LIBM_SYMBOL(ceil);
+  REGISTER_LIBM_SYMBOL(copysign);
+  REGISTER_LIBM_SYMBOL(cos);
+  REGISTER_LIBM_SYMBOL(cosh);
+  REGISTER_LIBM_SYMBOL(erf);
+  REGISTER_LIBM_SYMBOL(erfc);
+  REGISTER_LIBM_SYMBOL(exp);
+  REGISTER_LIBM_SYMBOL(exp2);
+  REGISTER_LIBM_SYMBOL(expm1);
+  REGISTER_LIBM_SYMBOL(fabs);
+  REGISTER_LIBM_SYMBOL(fdim);
+  REGISTER_LIBM_SYMBOL(floor);
+  REGISTER_LIBM_SYMBOL(fma);
+  REGISTER_LIBM_SYMBOL(fmax);
+  REGISTER_LIBM_SYMBOL(fmin);
+  REGISTER_LIBM_SYMBOL(fmod);
+  REGISTER_LIBM_SYMBOL(frexp);
+  REGISTER_LIBM_SYMBOL(hypot);
+  REGISTER_LIBM_SYMBOL(ilogb);
+  REGISTER_LIBM_SYMBOL(ldexp);
+  REGISTER_LIBM_SYMBOL(lgamma);
+  REGISTER_LIBM_SYMBOL(llrint);
+  REGISTER_LIBM_SYMBOL(llround);
+  REGISTER_LIBM_SYMBOL(log);
+  REGISTER_LIBM_SYMBOL(log10);
+  REGISTER_LIBM_SYMBOL(log1p);
+  REGISTER_LIBM_SYMBOL(log2);
+  REGISTER_LIBM_SYMBOL(logb);
+  REGISTER_LIBM_SYMBOL(lrint);
+  REGISTER_LIBM_SYMBOL(lround);
+  REGISTER_LIBM_SYMBOL(modf);
+  REGISTER_LIBM_SYMBOL(nan);
+  REGISTER_LIBM_SYMBOL(nearbyint);
+  REGISTER_LIBM_SYMBOL(nextafter);
+  REGISTER_LIBM_SYMBOL(nexttoward);
+  REGISTER_LIBM_SYMBOL(pow);
+  REGISTER_LIBM_SYMBOL(remainder);
+  REGISTER_LIBM_SYMBOL(remquo);
+  REGISTER_LIBM_SYMBOL(rint);
+  REGISTER_LIBM_SYMBOL(round);
+  REGISTER_LIBM_SYMBOL(scalbln);
+  REGISTER_LIBM_SYMBOL(scalbn);
+  REGISTER_LIBM_SYMBOL(sin);
+  REGISTER_LIBM_SYMBOL(sincos);
+  REGISTER_LIBM_SYMBOL(sinh);
+  REGISTER_LIBM_SYMBOL(sqrt);
+  REGISTER_LIBM_SYMBOL(tan);
+  REGISTER_LIBM_SYMBOL(tanh);
+  REGISTER_LIBM_SYMBOL(tgamma);
+  REGISTER_LIBM_SYMBOL(trunc);
+
+#undef REGISTER_LIBM_SYMBOL
+
+  registry->Register("memcpy", reinterpret_cast<void*>(memcpy));
+  registry->Register("memmove", reinterpret_cast<void*>(memmove));
+  registry->Register("memset", reinterpret_cast<void*>(memset));
+  return true;
+}
+
+bool unused = RegisterKnownJITSymbols();
+}  // namespace
 
 }  // namespace cpu
 }  // namespace xla

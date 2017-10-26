@@ -165,6 +165,34 @@ def tf_library(name, graph, config,
       tags=tags,
   )
 
+  # Rule that runs tfcompile to produce the SessionModule proto, useful for
+  # debugging.  TODO(b/64813587): Once the SessionModule proto is
+  # deterministic, move this into the main rule above.
+  session_module_pb = name + "_session_module.pb"
+  native.genrule(
+      name=(name + "_session_module"),
+      srcs=[
+          tfcompile_graph,
+          config,
+      ],
+      outs=[
+          session_module_pb,
+      ],
+      cmd=("$(location " + tfcompile_tool + ")" +
+           " --graph=$(location " + tfcompile_graph + ")" +
+           " --config=$(location " + config + ")" +
+           " --entry_point=" + ep +
+           " --cpp_class=" + cpp_class +
+           " --target_triple=" + target_llvm_triple() +
+           " --out_session_module=$(@D)/" + session_module_pb +
+           " " + (tfcompile_flags or "")),
+      tools=[tfcompile_tool],
+      visibility=visibility,
+      testonly=testonly,
+      local=1,
+      tags=tags,
+  )
+
   # The cc_library rule packaging up the header and object file, and needed
   # kernel implementations.
   need_xla_data_proto = (tfcompile_flags and

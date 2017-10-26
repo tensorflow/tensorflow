@@ -452,26 +452,26 @@ static void TFE_Py_Tape_Delete(PyObject* tape) {
 }
 
 static PyTypeObject TFE_Py_Tape_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0) "tfe.Tape", /* tp_name */
-    sizeof(TFE_Py_Tape),                       /* tp_basicsize */
-    0,                                         /* tp_itemsize */
-    &TFE_Py_Tape_Delete,                       /* tp_dealloc */
-    0,                                         /* tp_print */
-    0,                                         /* tp_getattr */
-    0,                                         /* tp_setattr */
-    0,                                         /* tp_reserved */
-    0,                                         /* tp_repr */
-    0,                                         /* tp_as_number */
-    0,                                         /* tp_as_sequence */
-    0,                                         /* tp_as_mapping */
-    0,                                         /* tp_hash  */
-    0,                                         /* tp_call */
-    0,                                         /* tp_str */
-    0,                                         /* tp_getattro */
-    0,                                         /* tp_setattro */
-    0,                                         /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                        /* tp_flags */
-    "TFE_Py_Tape objects",                     /* tp_doc */
+    PyVarObject_HEAD_INIT(nullptr, 0) "tfe.Tape", /* tp_name */
+    sizeof(TFE_Py_Tape),                          /* tp_basicsize */
+    0,                                            /* tp_itemsize */
+    &TFE_Py_Tape_Delete,                          /* tp_dealloc */
+    nullptr,                                      /* tp_print */
+    nullptr,                                      /* tp_getattr */
+    nullptr,                                      /* tp_setattr */
+    nullptr,                                      /* tp_reserved */
+    nullptr,                                      /* tp_repr */
+    nullptr,                                      /* tp_as_number */
+    nullptr,                                      /* tp_as_sequence */
+    nullptr,                                      /* tp_as_mapping */
+    nullptr,                                      /* tp_hash  */
+    nullptr,                                      /* tp_call */
+    nullptr,                                      /* tp_str */
+    nullptr,                                      /* tp_getattro */
+    nullptr,                                      /* tp_setattro */
+    nullptr,                                      /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                           /* tp_flags */
+    "TFE_Py_Tape objects",                        /* tp_doc */
 };
 
 PyObject* TFE_Py_NewTape() {

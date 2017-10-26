@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
@@ -901,6 +902,7 @@ class ConstantValueTest(test.TestCase):
 
 class ConstantValueAsShapeTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testConstant(self):
     np_val = np.random.rand(3).astype(np.int32)
     tf_val = constant_op.constant(np_val)
@@ -913,10 +915,17 @@ class ConstantValueAsShapeTest(test.TestCase):
         tensor_shape.TensorShape([]),
         tensor_util.constant_value_as_shape(tf_val))
 
+  @test_util.run_in_graph_and_eager_modes()
   def testShape(self):
     tf_val = array_ops.shape(constant_op.constant(0.0, shape=[1, 2, 3]))
     c_val = tensor_util.constant_value_as_shape(tf_val)
     self.assertEqual(tensor_shape.TensorShape([1, 2, 3]), c_val)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testMinusOneBecomesNone(self):
+    tf_val = constant_op.constant([-1, 1, -1], shape=[3])
+    c_val = tensor_util.constant_value_as_shape(tf_val)
+    self.assertEqual([None, 1, None], c_val.as_list())
 
   def testPack(self):
     tf_val = array_ops.stack(

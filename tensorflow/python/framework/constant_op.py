@@ -108,7 +108,10 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
           dtype, value.dtype))
     return value
   if dtype is not None:
-    dtype = dtype.as_datatype_enum
+    try:
+      dtype = dtype.as_datatype_enum
+    except AttributeError:
+      dtype = dtypes.as_dtype(dtype).as_datatype_enum
   device = ctx.device_name
   handle = ctx._handle  # pylint: disable=protected-access
   if isinstance(value, (float,) + six.integer_types):
@@ -195,7 +198,7 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
         # We don't have a Fill kernel for bool dtype on GPU. So we first run
         # Fill on CPU and then copy to GPU if needed.
         with ops.device("/device:CPU:0"):
-          x = _eager_fill(shape.as_list(), t.as_cpu_tensor(), ctx)
+          x = _eager_fill(shape.as_list(), t.cpu(), ctx)
         return _eager_identity(x, ctx)
       else:
         return _eager_fill(shape.as_list(), t, ctx)

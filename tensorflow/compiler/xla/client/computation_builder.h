@@ -138,6 +138,11 @@ class ComputationBuilder {
   ComputationDataHandle ConstantR2(
       std::initializer_list<std::initializer_list<NativeT>> values);
   template <typename NativeT>
+  ComputationDataHandle ConstantFromArrayWithLayout(
+      const Array<NativeT>& values, const Layout& layout);
+  template <typename NativeT>
+  ComputationDataHandle ConstantFromArray(const Array<NativeT>& values);
+  template <typename NativeT>
   ComputationDataHandle ConstantR2FromArray2DWithLayout(
       const Array2D<NativeT>& values, const Layout& layout);
   template <typename NativeT>
@@ -910,48 +915,54 @@ ComputationDataHandle ComputationBuilder::ConstantR2(
 }
 
 template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantFromArrayWithLayout(
+    const Array<NativeT>& values, const Layout& layout) {
+  return ConstantOp([&values, &layout](Literal* literal) {
+    literal->PopulateFromArrayWithLayout(values, layout);
+  });
+}
+
+template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantFromArray(
+    const Array<NativeT>& values) {
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateFromArray(values); });
+}
+
+template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR2FromArray2DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR2FromArray2D(values); });
+  return ConstantFromArray(values);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR3FromArray3DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3D(
     const Array3D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR3FromArray3D(values); });
+  return ConstantFromArray(values);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR4FromArray4DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4D(
     const Array4D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR4FromArray4D(values); });
+  return ConstantFromArray(values);
 }
 
 }  // namespace xla

@@ -467,7 +467,7 @@ def tf_additional_core_deps():
       "//conditions:default": [],
   }) + select({
       "//tensorflow:with_s3_support": [
-          "//tensorflow/contrib/s3:s3_file_system",
+          "//tensorflow/core/platform/s3:s3_file_system",
       ],
       "//conditions:default": [],
   })

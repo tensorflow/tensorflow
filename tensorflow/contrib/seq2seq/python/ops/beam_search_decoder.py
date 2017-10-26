@@ -254,6 +254,20 @@ class BeamSearchDecoder(decoder.Decoder):
       return nest.map_structure(lambda s: s[1:], layer_output_shape)
 
   @property
+  def tracks_own_finished(self):
+    """The BeamSearchDecoder shuffles its beams and their finished state.
+
+    For this reason, it conflicts with the `dynamic_decode` function's
+    tracking of finished states.  Setting this property to true avoids
+    early stopping of decoding due to mismanagement of the finished state
+    in `dynamic_decode`.
+
+    Returns:
+      `True`.
+    """
+    return True
+
+  @property
   def output_size(self):
     # Return the cell output and the id
     return BeamSearchDecoderOutput(
@@ -303,15 +317,23 @@ class BeamSearchDecoder(decoder.Decoder):
         output.
       sequence_lengths: An `int64` tensor shaped `[batch_size, beam_width]`.
         The sequence lengths determined for each beam during decode.
+        **NOTE** These are ignored; the updated sequence lengths are stored in
+        `final_state.lengths`.
 
     Returns:
-      outputs: An instance of FinalBeamSearchDecoderOutput where the
+      outputs: An instance of `FinalBeamSearchDecoderOutput` where the
         predicted_ids are the result of calling _gather_tree.
-      final_state: The same input instance of BeamSearchDecoderState.
+      final_state: The same input instance of `BeamSearchDecoderState`.
     """
+    del sequence_lengths
+    # Get max_sequence_length across all beams for each batch.
+    max_sequence_lengths = math_ops.to_int32(
+        math_ops.reduce_max(final_state.lengths, axis=1))
     predicted_ids = beam_search_ops.gather_tree(
-        outputs.predicted_ids, outputs.parent_ids,
-        sequence_length=sequence_lengths)
+        outputs.predicted_ids,
+        outputs.parent_ids,
+        max_sequence_lengths=max_sequence_lengths,
+        end_token=self._end_token)
     outputs = FinalBeamSearchDecoderOutput(
         beam_search_decoder_output=outputs, predicted_ids=predicted_ids)
     return outputs, final_state
@@ -588,10 +610,11 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
                                       name="next_beam_finished")
 
   # Calculate the length of the next predictions.
-  # 1. Finished beams remain unchanged
-  # 2. Beams that are now finished (EOS predicted) remain unchanged
-  # 3. Beams that are not yet finished have their length increased by 1
-  lengths_to_add = math_ops.to_int64(math_ops.logical_not(next_finished))
+  # 1. Finished beams remain unchanged.
+  # 2. Beams that are now finished (EOS predicted) have their length
+  #    increased by 1.
+  # 3. Beams that are not yet finished have their length increased by 1.
+  lengths_to_add = math_ops.to_int64(math_ops.logical_not(previously_finished))
   next_prediction_len = _tensor_gather_helper(
       gather_indices=next_beam_ids,
       gather_from=beam_state.lengths,
@@ -692,12 +715,6 @@ def _mask_probs(probs, eos_token, finished):
     probability on the EOS token.
   """
   vocab_size = array_ops.shape(probs)[2]
-  finished_mask = math_ops.cast(array_ops.expand_dims(finished, 2), probs.dtype)
-  not_finished_mask = math_ops.cast(
-      array_ops.expand_dims(math_ops.logical_not(finished), 2),
-      probs.dtype)
-  # These examples are not finished and we leave them
-  non_finished_examples = not_finished_mask * probs
   # All finished examples are replaced with a vector that has all
   # probability on EOS
   finished_row = array_ops.one_hot(
@@ -706,8 +723,13 @@ def _mask_probs(probs, eos_token, finished):
       dtype=probs.dtype,
       on_value=0.,
       off_value=probs.dtype.min)
-  finished_examples = finished_mask * finished_row
-  return finished_examples + non_finished_examples
+  finished_probs = array_ops.tile(
+      array_ops.reshape(finished_row, [1, 1, -1]),
+      array_ops.concat([array_ops.shape(finished), [1]], 0))
+  finished_mask = array_ops.tile(
+      array_ops.expand_dims(finished, 2), [1, 1, vocab_size])
+
+  return array_ops.where(finished_mask, finished_probs, probs)
 
 
 def _maybe_tensor_gather_helper(gather_indices, gather_from, batch_size,

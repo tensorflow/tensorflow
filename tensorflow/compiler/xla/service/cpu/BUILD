@@ -153,6 +153,7 @@ cc_library(
         ":cpu_runtime_avx",
         ":cpu_runtime_neon",
         ":cpu_runtime_sse4_1",
+        ":custom_call_target_registry",
         ":disassembler",
         ":external_constant_pool",
         ":runtime_conv2d",
@@ -525,6 +526,7 @@ cc_library(
 tf_cc_test(
     name = "cpu_runtime_test",
     srcs = ["cpu_runtime_test.cc"],
+    tags = ["optonly"],
     deps = [
         ":cpu_runtime",
         ":runtime_matmul",
@@ -716,6 +718,17 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/service:hlo_module_config",
     ],
+)
+
+cc_library(
+    name = "custom_call_target_registry",
+    srcs = [
+        "custom_call_target_registry.cc",
+    ],
+    hdrs = [
+        "custom_call_target_registry.h",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 # -----------------------------------------------------------------------------

@@ -11,6 +11,9 @@ py_test(
     size = "small",
     srcs = ["batch_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # b/67958604
+    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
@@ -185,6 +188,7 @@ py_test(
         "//tensorflow/python:function",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:script_ops",
@@ -244,6 +248,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -252,8 +257,11 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
@@ -274,6 +282,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:tensor_shape",
@@ -352,6 +361,9 @@ py_test(
     size = "small",
     srcs = ["sloppy_transformation_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # b/67958761
+    ],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",

@@ -398,7 +398,9 @@ Status HloCostAnalysis::HandleConvolution(HloInstruction* convolution,
   // For each output element, we do one fma per element in the kernel at some
   // given output feature index.
   const int64 fmas_per_output_element =
-      ShapeUtil::ElementsIn(rhs_instruction->shape()) / output_features;
+      output_features > 0
+          ? ShapeUtil::ElementsIn(rhs_instruction->shape()) / output_features
+          : 0;
   const int64 output_elements = ShapeUtil::ElementsIn(convolution->shape());
   current_properties_[kFlopsKey] =
       output_elements * fmas_per_output_element * kFmaFlops;

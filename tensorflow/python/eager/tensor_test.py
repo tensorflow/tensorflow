@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -45,7 +48,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def testScalarTensor(self):
     t = _create_tensor(3, dtype=dtypes.int32)
-    self.assertEqual(t.numpy(), _create_tensor(np.array(3)).numpy())
+    self.assertAllEqual(t, _create_tensor(np.array(3)))
     self.assertEqual(dtypes.int32, t.dtype)
     self.assertEqual(0, t.shape.ndims)
     self.assertAllEqual([], t.shape.as_list())
@@ -85,12 +88,12 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testNumpyValue(self):
     values = np.array([3.0])
     t = _create_tensor(values)
-    self.assertAllEqual(values, t.numpy())
+    self.assertAllEqual(values, t)
 
   def testNumpyValueWithCast(self):
     values = np.array([3.0], dtype=np.float32)
     t = _create_tensor(values, dtype=dtypes.float64)
-    self.assertAllEqual(values, t.numpy())
+    self.assertAllEqual(values, t)
     ctx = context.context()
     # Bad dtype value.
     with self.assertRaisesRegexp(TypeError, "Invalid dtype argument value"):
@@ -100,13 +103,27 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testNumpyOrderHandling(self):
     n = np.array([[1, 2], [3, 4]], order="F")
     t = _create_tensor(n)
-    self.assertAllEqual([[1, 2], [3, 4]], t.numpy())
+    self.assertAllEqual([[1, 2], [3, 4]], t)
+
+  def testCopy(self):
+    t = constant_op.constant(1.0)
+    tt = copy.copy(t)
+    self.assertAllEqual(tt, 1.0)
+    del tt
+    tt = copy.deepcopy(t)
+    self.assertAllEqual(tt, 1.0)
+    del tt
+    self.assertAllEqual(t, 1.0)
+
+  def testConstantDtype(self):
+    self.assertEqual(constant_op.constant(1.0, dtype=np.int64).dtype,
+                     dtypes.int64)
 
   def testTensorAndNumpyMatrix(self):
     expected = np.array([[1.0, 2.0], [3.0, 4.0]], np.float32)
     actual = _create_tensor([[1.0, 2.0], [3.0, 4.0]])
-    self.assertAllEqual(expected, actual.numpy())
-    self.assertEqual(np.float32, actual.numpy().dtype)
+    self.assertAllEqual(expected, actual)
+    self.assertEqual(np.float32, actual.dtype)
     self.assertEqual(dtypes.float32, actual.dtype)
     self.assertAllEqual([2, 2], actual.shape.as_list())
 
@@ -140,7 +157,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = _create_tensor(np.eye(3))
     tensor_str = str(t)
     self.assertIn("shape=%s, dtype=%s" % (t.shape, t.dtype.name), tensor_str)
-    self.assertIn(str(t.numpy()), tensor_str)
+    self.assertIn(str(t), tensor_str)
 
   def testMultiLineTensorRepr(self):
     t = _create_tensor(np.eye(3))

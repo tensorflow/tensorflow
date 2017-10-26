@@ -25,7 +25,7 @@ python tensorflow/examples/speech_commands/train.py
 ```
 
 The script will start off by downloading the [Speech Commands
-dataset](https://download.tensorflow.org/data/speech_commands_v0.01.tar.gz),
+dataset](https://storage.cloud.google.com/download.tensorflow.org/data/speech_commands_v0.01.tar.gz),
 which consists of 65,000 WAVE audio files of people saying thirty different
 words. This data was collected by Google and released under a CC BY license, and
 you can help improve it by [contributing five minutes of your own

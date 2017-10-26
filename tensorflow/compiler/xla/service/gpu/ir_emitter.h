@@ -339,8 +339,12 @@ class IrEmitterUnnested : public IrEmitter {
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
   std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
 
-  // Returns a CopyThunk that calls host-to-device cuMemcpy to implement `inst`.
-  std::unique_ptr<Thunk> BuildCopyThunk(const HloInstruction* inst);
+  // Returns a thunk that calls host-to-device cuMemcpy to implement `inst`.
+  std::unique_ptr<Thunk> BuildHostToDeviceCopyThunk(const HloInstruction* inst);
+
+  // Returns a thunk that calls device-to-device cuMemcpy to implement `inst`.
+  std::unique_ptr<Thunk> BuildDeviceToDeviceCopyThunk(
+      const HloInstruction* inst);
 
   // Returns an InfeedThunk that performs device-to-device memcpy to implement
   // `inst`.

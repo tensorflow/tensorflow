@@ -113,7 +113,9 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "@six_archive//:six",
     ],
 )
 

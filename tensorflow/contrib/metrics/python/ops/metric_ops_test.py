@@ -1101,7 +1101,7 @@ class StreamingPrecisionTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     precision, update_op = metrics.streaming_precision(predictions, labels)
 
     with self.test_session() as sess:
@@ -1265,7 +1265,7 @@ class StreamingRecallTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     recall, update_op = metrics.streaming_recall(predictions, labels)
 
     with self.test_session() as sess:
@@ -1388,7 +1388,7 @@ class StreamingFPRTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     fpr, update_op = metrics.streaming_false_positive_rate(
         predictions, labels)
 
@@ -1516,7 +1516,7 @@ class StreamingFNRTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     fnr, update_op = metrics.streaming_false_negative_rate(
         predictions, labels)
 
@@ -1737,7 +1737,7 @@ class StreamingAUCTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     auc, update_op = metrics.streaming_auc(predictions, labels)
 
     with self.test_session() as sess:
@@ -1970,6 +1970,170 @@ class StreamingAUCTest(test.TestCase):
         self.assertAlmostEqual(expected_auc, auc.eval(), 2)
 
 
+class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def _testResultsEqual(self, expected_dict, gotten_result):
+    """Tests that 2 results (dicts) represent the same data.
+
+    Args:
+      expected_dict: A dictionary with keys that are the names of properties
+        of PrecisionRecallData and whose values are lists of floats.
+      gotten_result: A PrecisionRecallData object.
+    """
+    gotten_dict = {k: t.eval() for k, t in gotten_result._asdict().items()}
+    self.assertItemsEqual(
+        list(expected_dict.keys()), list(gotten_dict.keys()))
+
+    for key, expected_values in expected_dict.items():
+      self.assertAllClose(expected_values, gotten_dict[key])
+
+  def _testCase(self, predictions, labels, expected_result, weights=None):
+    """Performs a test given a certain scenario of labels, predictions, weights.
+
+    Args:
+      predictions: The predictions tensor. Of type float32.
+      labels: The labels tensor. Of type bool.
+      expected_result: The expected result (dict) that maps to tensors.
+      weights: Optional weights tensor.
+    """
+    with self.test_session() as sess:
+      predictions_tensor = constant_op.constant(
+          predictions, dtype=dtypes_lib.float32)
+      labels_tensor = constant_op.constant(labels, dtype=dtypes_lib.bool)
+      weights_tensor = None
+      if weights:
+        weights_tensor = constant_op.constant(weights, dtype=dtypes_lib.float32)
+      gotten_result, update_op = (
+          metric_ops.streaming_precision_recall_at_equal_thresholds(
+              predictions=predictions_tensor,
+              labels=labels_tensor,
+              num_thresholds=3,
+              weights=weights_tensor))
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+
+      self._testResultsEqual(expected_result, gotten_result)
+
+  def testVars(self):
+    metric_ops.streaming_precision_recall_at_equal_thresholds(
+        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
+        labels=constant_op.constant([True], dtype=dtypes_lib.bool))
+    _assert_local_variables(
+        self,
+        (
+            'precision_recall_at_equal_thresholds/variables/tp_buckets:0',
+            'precision_recall_at_equal_thresholds/variables/fp_buckets:0'
+        ))
+
+  def testVarsWithName(self):
+    metric_ops.streaming_precision_recall_at_equal_thresholds(
+        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
+        labels=constant_op.constant([True], dtype=dtypes_lib.bool),
+        name='foo')
+    _assert_local_variables(
+        self, ('foo/variables/tp_buckets:0', 'foo/variables/fp_buckets:0'))
+
+  def testValuesAreIdempotent(self):
+    predictions = constant_op.constant(
+        np.random.uniform(size=(10, 3)), dtype=dtypes_lib.float32)
+    labels = constant_op.constant(
+        np.random.uniform(size=(10, 3)) > 0.5, dtype=dtypes_lib.bool)
+
+    result, update_op = (
+        metric_ops.streaming_precision_recall_at_equal_thresholds(
+            predictions=predictions, labels=labels))
+
+    with self.test_session() as sess:
+      # Run several updates.
+      sess.run(variables.local_variables_initializer())
+      for _ in range(3):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_result = {k: value.eval().tolist() for k, value in
+                        result._asdict().items()}
+      for _ in range(3):
+        self._testResultsEqual(initial_result, result)
+
+  def testAllTruePositives(self):
+    self._testCase([[1]], [[True]], {
+        'tp': [1, 1, 1],
+        'fp': [0, 0, 0],
+        'tn': [0, 0, 0],
+        'fn': [0, 0, 0],
+        'precision': [1.0, 1.0, 1.0],
+        'recall': [1.0, 1.0, 1.0],
+        'thresholds': [0.0, 0.5, 1.0],
+    })
+
+  def testAllTrueNegatives(self):
+    self._testCase([[0]], [[False]], {
+        'tp': [0, 0, 0],
+        'fp': [1, 0, 0],
+        'tn': [0, 1, 1],
+        'fn': [0, 0, 0],
+        'precision': [0.0, 0.0, 0.0],
+        'recall': [0.0, 0.0, 0.0],
+        'thresholds': [0.0, 0.5, 1.0],
+    })
+
+  def testAllFalsePositives(self):
+    self._testCase([[1]], [[False]], {
+        'tp': [0, 0, 0],
+        'fp': [1, 1, 1],
+        'tn': [0, 0, 0],
+        'fn': [0, 0, 0],
+        'precision': [0.0, 0.0, 0.0],
+        'recall': [0.0, 0.0, 0.0],
+        'thresholds': [0.0, 0.5, 1.0],
+    })
+
+  def testAllFalseNegatives(self):
+    self._testCase([[0]], [[True]], {
+        'tp': [1, 0, 0],
+        'fp': [0, 0, 0],
+        'tn': [0, 0, 0],
+        'fn': [0, 1, 1],
+        'precision': [1.0, 0.0, 0.0],
+        'recall': [1.0, 0.0, 0.0],
+        'thresholds': [0.0, 0.5, 1.0],
+    })
+
+  def testManyValues(self):
+    self._testCase(
+        [[0.2, 0.3, 0.4, 0.6, 0.7, 0.8]],
+        [[True, False, False, True, True, True]],
+        {
+            'tp': [4, 3, 0],
+            'fp': [2, 0, 0],
+            'tn': [0, 2, 2],
+            'fn': [0, 1, 4],
+            'precision': [2.0 / 3.0, 1.0, 0.0],
+            'recall': [1.0, 0.75, 0.0],
+            'thresholds': [0.0, 0.5, 1.0],
+        })
+
+  def testManyValuesWithWeights(self):
+    self._testCase(
+        [[0.2, 0.3, 0.4, 0.6, 0.7, 0.8]],
+        [[True, False, False, True, True, True]],
+        {
+            'tp': [1.5, 1.5, 0.0],
+            'fp': [2.5, 0.0, 0.0],
+            'tn': [0.0, 2.5, 2.5],
+            'fn': [0.0, 0.0, 1.5],
+            'precision': [0.375, 1.0, 0.0],
+            'recall': [1.0, 1.0, 0.0],
+            'thresholds': [0.0, 0.5, 1.0],
+        },
+        weights=[0.0, 0.5, 2.0, 0.0, 0.5, 1.0])
+
+
 class StreamingSpecificityAtSensitivityTest(test.TestCase):
 
   def setUp(self):
@@ -2009,7 +2173,7 @@ class StreamingSpecificityAtSensitivityTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     specificity, update_op = metrics.streaming_specificity_at_sensitivity(
         predictions, labels, sensitivity=0.7)
 
@@ -2271,7 +2435,7 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     thresholds = [0, 0.5, 1.0]
     prec, prec_op = metrics.streaming_precision_at_thresholds(predictions,
                                                               labels,
@@ -2282,12 +2446,14 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
 
-      # Run several updates, then verify idempotency.
-      sess.run([prec_op, rec_op])
+      # Run several updates.
+      for _ in range(10):
+        sess.run([prec_op, rec_op])
+
+      # Then verify idempotency.
       initial_prec = prec.eval()
       initial_rec = rec.eval()
       for _ in range(10):
-        sess.run([prec_op, rec_op])
         self.assertAllClose(initial_prec, prec.eval())
         self.assertAllClose(initial_rec, rec.eval())
 
@@ -2361,14 +2527,10 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds, weights=weights)
 
-      [prec_low, prec_high] = array_ops.split(
-          value=prec, num_or_size_splits=2, axis=0)
-      prec_low = array_ops.reshape(prec_low, shape=())
-      prec_high = array_ops.reshape(prec_high, shape=())
-      [rec_low, rec_high] = array_ops.split(
-          value=rec, num_or_size_splits=2, axis=0)
-      rec_low = array_ops.reshape(rec_low, shape=())
-      rec_high = array_ops.reshape(rec_high, shape=())
+      prec_low = prec[0]
+      prec_high = prec[1]
+      rec_low = rec[0]
+      rec_high = rec[1]
 
       sess.run(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
@@ -2391,14 +2553,10 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(
           predictions, labels, thresholds, weights=weights)
 
-      [prec_low, prec_high] = array_ops.split(
-          value=prec, num_or_size_splits=2, axis=0)
-      prec_low = array_ops.reshape(prec_low, shape=())
-      prec_high = array_ops.reshape(prec_high, shape=())
-      [rec_low, rec_high] = array_ops.split(
-          value=rec, num_or_size_splits=2, axis=0)
-      rec_low = array_ops.reshape(rec_low, shape=())
-      rec_high = array_ops.reshape(rec_high, shape=())
+      prec_low = prec[0]
+      prec_high = prec[1]
+      rec_low = rec[0]
+      rec_high = rec[1]
 
       sess.run(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
@@ -2420,10 +2578,10 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.streaming_recall_at_thresholds(predictions, labels,
                                                            thresholds)
 
-      [prec_low, prec_high] = array_ops.split(
-          value=prec, num_or_size_splits=2, axis=0)
-      [rec_low, rec_high] = array_ops.split(
-          value=rec, num_or_size_splits=2, axis=0)
+      prec_low = prec[0]
+      prec_high = prec[1]
+      rec_low = rec[0]
+      rec_high = rec[1]
 
       sess.run(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
@@ -2562,7 +2720,7 @@ class StreamingFPRThresholdsTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     thresholds = [0, 0.5, 1.0]
     fpr, fpr_op = metrics.streaming_false_positive_rate_at_thresholds(
         predictions, labels, thresholds)
@@ -2794,7 +2952,7 @@ class StreamingFNRThresholdsTest(test.TestCase):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
     labels = random_ops.random_uniform(
-        (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=2)
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     thresholds = [0, 0.5, 1.0]
     fnr, fnr_op = metrics.streaming_false_negative_rate_at_thresholds(
         predictions, labels, thresholds)

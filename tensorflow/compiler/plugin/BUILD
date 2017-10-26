@@ -40,3 +40,17 @@ cc_library(
         #"//tensorflow/compiler/plugin/example:example_lib",
     ],
 )
+
+#-----------------------------------------------------------------------------
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)

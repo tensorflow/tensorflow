@@ -146,7 +146,7 @@ Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
 }
 
 namespace {
-bool ImplementedAsMemcpy(const HloInstruction& hlo) {
+bool ImplementedAsHostToDeviceMemcpy(const HloInstruction& hlo) {
   // `hlo` needs to satisfy three conditions to be implemented as a
   // host-to-device cuMemcpy.
   //
@@ -156,6 +156,20 @@ bool ImplementedAsMemcpy(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCopy &&
          hlo.operand(0)->opcode() == HloOpcode::kConstant &&
          ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape());
+}
+
+bool ImplementedAsDeviceToDeviceMemcpy(
+    const BufferAssignment& buffer_assignment, const HloInstruction& hlo) {
+  // `hlo` needs to satisfy three conditions to be implemented as a
+  // device-to-device cuMemcpy.
+  //
+  // 1. `hlo` is a kCopy instruction.
+  // 2. `hlo` and its operand have the same shape (thus the same layout too).
+  // 3. The operand to `hlo` has a buffer assignment (constants do not, for
+  //    instance) which means the source buffer also resides on the device.
+  return hlo.opcode() == HloOpcode::kCopy &&
+         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
+         buffer_assignment.HasTopLevelAllocation(hlo.operand(0));
 }
 }  // namespace
 
@@ -664,8 +678,13 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
 }  // namespace
 
 Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
-  if (ImplementedAsMemcpy(*copy)) {
-    thunk_sequence_->emplace_back(BuildCopyThunk(copy));
+  if (ImplementedAsHostToDeviceMemcpy(*copy)) {
+    thunk_sequence_->emplace_back(BuildHostToDeviceCopyThunk(copy));
+    return Status::OK();
+  }
+  if (ImplementedAsDeviceToDeviceMemcpy(
+          ir_emitter_context_->buffer_assignment(), *copy)) {
+    thunk_sequence_->emplace_back(BuildDeviceToDeviceCopyThunk(copy));
     return Status::OK();
   }
   bool is_transpose_021;
@@ -1579,12 +1598,24 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(
                                  llvm_ir::AsString(kernel->getName()), inst);
 }
 
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildCopyThunk(
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(
     const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
   CHECK_EQ(HloOpcode::kConstant, operand->opcode());
-  return MakeUnique<CopyThunk>(
+  return MakeUnique<HostToDeviceCopyThunk>(
       /*source_address=*/operand->literal().InternalData(),
+      /*destination_buffer=*/GetAllocationSlice(*inst),
+      /*mem_size=*/
+      llvm_ir::ByteSizeOf(operand->shape(),
+                          ir_emitter_context_->llvm_module()->getDataLayout()),
+      inst);
+}
+
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildDeviceToDeviceCopyThunk(
+    const HloInstruction* inst) {
+  const HloInstruction* operand = inst->operand(0);
+  return MakeUnique<DeviceToDeviceCopyThunk>(
+      /*source_address=*/GetAllocationSlice(*operand),
       /*destination_buffer=*/GetAllocationSlice(*inst),
       /*mem_size=*/
       llvm_ir::ByteSizeOf(operand->shape(),

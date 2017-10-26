@@ -26,10 +26,7 @@ import threading
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
-from tensorflow.python.platform import app
-from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_inspect
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -45,6 +42,10 @@ _device_parsing_cache = {}
 
 _MAXINT32 = 2**31 - 1
 
+DEVICE_PLACEMENT_EXPLICIT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_EXPLICIT
+DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
+DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
+
 
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
@@ -57,6 +58,7 @@ class _EagerContext(threading.local):
     self.mode = _default_mode
     self.scope_name = ""
     self.recording_summaries = False
+    self.summary_writer_resource = None
     self.scalar_cache = {}
 
 
@@ -65,22 +67,31 @@ class _EagerContext(threading.local):
 class Context(object):
   """Environment in which eager operations execute."""
 
-  def __init__(self, config=None):
+  def __init__(self, config=None, device_policy=None):
     """Creates a new Context.
 
     Args:
       config: (Optional.) A `ConfigProto` protocol buffer with configuration
-      options for the Context. Note that a lot of these options may be
-      currently unimplemented or irrelevant for EAGER mode.
+       options for the Context. Note that a lot of these options may be
+       currently unimplemented or irrelevant when eager execution is enabled.
+      device_policy: (Optional.) What policy to use when trying to run an
+       operation on a device with inputs which are not on that device.
+       Valid values:
+         tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
+           correct.
+         tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+           right device but raises a warning.
+         tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+           hide performance problems.
     """
     self._eager_context = _EagerContext()
     self._context_handle = None
     self._context_devices = None
-    self._summary_writer_resource = None
     self._post_execution_callbacks = []
     self._config = config
     self._seed = None
     self._initialize_lock = threading.Lock()
+    self._device_policy = device_policy
 
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
@@ -105,11 +116,19 @@ class Context(object):
       if self._context_handle is not None:
         return
       assert self._context_devices is None
-      opts = pywrap_tensorflow.TF_NewSessionOptions(
-          target=compat.as_bytes(""), config=self._config)
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
-        pywrap_tensorflow.TF_DeleteSessionOptions(opts)
+      opts = pywrap_tensorflow.TFE_NewContextOptions()
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if self._config is not None:
+            config_str = self._config.SerializeToString()
+            pywrap_tensorflow.TFE_ContextOptionsSetConfig(
+                opts, config_str, len(config_str), status)
+          if self._device_policy is not None:
+            pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
+                opts, self._device_policy)
+          self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
+      finally:
+        pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       # Store list of devices
       self._context_devices = []
       with errors.raise_exception_on_not_ok_status() as status:
@@ -194,12 +213,12 @@ class Context(object):
   @property
   def summary_writer_resource(self):
     """Returns summary writer resource."""
-    return self._summary_writer_resource
+    return self._eager_context.summary_writer_resource
 
   @summary_writer_resource.setter
   def summary_writer_resource(self, resource):
     """Sets summary writer resource."""
-    self._summary_writer_resource = resource
+    self._eager_context.summary_writer_resource = resource
 
   @property
   def device_name(self):
@@ -421,68 +440,6 @@ def device(name):
     Context manager for setting the device.
   """
   return context().device(name)
-
-
-def run(main=None, argv=None):
-  """Runs the program with an optional main function and argv list.
-
-  The program will run with eager execution enabled.
-
-  Example:
-  ```python
-  import tensorflow as tf
-  # Import subject to future changes:
-  from tensorflow.contrib.eager.python import tfe
-
-  def main(_):
-    u = tf.constant(6.0)
-    v = tf.constant(7.0)
-    print(u * v)
-
-  if __name__ == "__main__":
-    tfe.run()
-  ```
-
-  Args:
-    main: the main function to run.
-    argv: the arguments to pass to it.
-  """
-  enable_eager_execution()
-  app.run(main, argv)
-
-
-# TODO(apassos): This should not be a part of the public API.
-def enable_eager_execution():
-  """Enables, for the rest of the lifetime of this program, eager execution.
-
-  If not called immediately on startup risks creating breakage and bugs. Calling
-  this method more than once in the same process will lead to an exception.
-
-  Example:
-  ```python
-  # Before eager execution is enabled, `Tensor`s are symbolic and do not hold
-  # concrete values (they are to be executed in a `tf.Session`).
-  assert not hasattr(tf.multiply(6, 7), "numpy")
-
-  tfe.enable_eager_execution()
-
-  # After eager execution is enabled, operations are executed as they are
-  # defined and `Tensor`s hold concrete values, which can be accessed as
-  # `numpy.ndarray`s through the `numpy()` method.
-  assert tf.multiply(6, 7).numpy() == 42
-  ```
-
-  Raises:
-    ValueError: If this method has already been invoked in the current process.
-  """
-  global _default_mode
-  if _default_mode == EAGER_MODE:
-    func_name = (
-        "tfe." + tf_inspect.getframeinfo(tf_inspect.currentframe()).function)
-    raise ValueError(
-        "Do not call %s more than once in the same process. Note eager-mode "
-        "methods such as tfe.run() also call %s." % (func_name, func_name))
-  _default_mode = EAGER_MODE
 
 
 def list_devices():

@@ -136,6 +136,8 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
       instruction->opcode() == HloOpcode::kCall ||
       instruction->opcode() == HloOpcode::kCustomCall ||
       instruction->opcode() == HloOpcode::kSelectAndScatter ||
+      instruction->opcode() == HloOpcode::kGetTupleElement ||
+      instruction->opcode() == HloOpcode::kBitcast ||
       (instruction->opcode() == HloOpcode::kConvolution &&
        PotentiallyImplementedAsEigenConvolution(*instruction)) ||
       PotentiallyImplementedAsEigenDot(*instruction) ||

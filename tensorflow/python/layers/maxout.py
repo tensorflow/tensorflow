@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gen_array_ops
@@ -50,6 +51,10 @@ def maxout(inputs, num_units, axis=-1, name=None):
    Raises:
     ValueError: if num_units is not multiple of number of features.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'use tf.contrib.layers.MaxOut instead')
   return MaxOut(num_units=num_units, axis=axis, name=name)(inputs)
 
 

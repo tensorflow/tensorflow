@@ -73,8 +73,6 @@ Iterator::Iterator(ExamplesIterable* iter, int64 example_idx)
   // Pre-size example features.
   example_.dense_float_features.resize(
       iter_->dense_float_column_values_.size());
-  example_.sparse_float_features.resize(
-      iter_->sparse_float_column_values_.size());
   example_.sparse_int_features.resize(iter_->sparse_int_column_values_.size());
 }
 

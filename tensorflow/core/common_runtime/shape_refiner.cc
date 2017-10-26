@@ -148,6 +148,7 @@ Status ShapeRefiner::InferShapesForFunction(
   }
 
   ShapeRefiner refiner(graph.versions().producer(), &function_library);
+  refiner.set_disable_constant_propagation(disable_constant_propagation_);
   refiner.set_function_library_for_shape_inference(&function_library);
   if (keep_nested_shapes) refiner.set_keep_nested_shape_inferences();
 

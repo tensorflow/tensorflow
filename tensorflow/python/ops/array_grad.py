@@ -397,7 +397,7 @@ def _GatherV2Grad(op, grad):
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
     if context.in_eager_mode():
-      params_tail_shape = params_shape.as_cpu_tensor()[1:]
+      params_tail_shape = params_shape.cpu()[1:]
     else:
       params_tail_shape = params_shape[1:]
     values_shape = array_ops.concat([indices_size, params_tail_shape], 0)

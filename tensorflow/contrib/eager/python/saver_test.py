@@ -22,6 +22,7 @@ import os
 from tensorflow.contrib.eager.python import saver as _saver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import graph_callable
+from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -29,7 +30,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import test
 
 
 class SaverTest(test.TestCase):
@@ -38,7 +38,7 @@ class SaverTest(test.TestCase):
     return '/device:GPU:0' if context.num_gpus() else '/device:CPU:0'
 
   def testBasics(self):
-    with context.eager_mode(), ops.device(self._dev()):
+    with ops.device(self._dev()):
       v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
       def model():
         return array_ops.constant(2.0) * v1
@@ -54,8 +54,42 @@ class SaverTest(test.TestCase):
       saver.restore(ckpt_prefix)
       self.assertEqual(v1.read_value().numpy(), 1.0)
 
-  def testRestoreOnCreate(self):
+  def testSameNameNoClobbering(self):
     with context.eager_mode(), ops.device(self._dev()):
+      # Note that this test purposefully uses Graphs rather than
+      # IsolateTest. Users are more likely to accidentally create the same
+      # variable name this way.
+      first_graph = ops.Graph()
+      with first_graph.as_default():
+        v1_first_graph = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      with ops.Graph().as_default():
+        v1_second_graph = resource_variable_ops.ResourceVariable(2.0, name='v1')
+        saver = _saver.Saver([v1_first_graph, v1_second_graph])
+      ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
+      with self.assertRaisesRegexp(ValueError, 'v1'):
+        saver.save(ckpt_prefix)
+
+  def testDifferentGraphError(self):
+    with context.eager_mode(), ops.device(self._dev()):
+      with ops.Graph().as_default():
+        v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      with ops.Graph().as_default():
+        saver = _saver.Saver([v1])
+        ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
+        with self.assertRaisesRegexp(ValueError, 'Graph'):
+          saver.save(ckpt_prefix)
+
+  def testSameObjectOK(self):
+    with context.eager_mode(), ops.device(self._dev()):
+      v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      # While different objects with the same shared_name are not good, passing
+      # in the same object multiple times is fine.
+      saver = _saver.Saver([v1, v1])
+      ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
+      saver.save(ckpt_prefix)
+
+  def testRestoreOnCreate(self):
+    with ops.device(self._dev()):
       def model(init_val):
         v1 = resource_variable_ops.ResourceVariable(init_val, name='v1')
         return array_ops.constant(1.0) * v1, v1
@@ -71,12 +105,9 @@ class SaverTest(test.TestCase):
           # Value is from checkpoint, but not from argument.
           ret, _ = model(2.0)
           self.assertEqual(ret.numpy(), 1.0)
-          # Create it a second time won't re-assign the checkpoint value.
-          v1_2 = resource_variable_ops.ResourceVariable(3.0, name='v1')
-          self.assertEqual(v1_2.read_value().numpy(), 3.0)
 
   def testRestoreNotFound(self):
-    with context.eager_mode(), ops.device(self._dev()):
+    with ops.device(self._dev()):
       def model(v):
         return array_ops.constant(1.0) * v
 
@@ -92,7 +123,7 @@ class SaverTest(test.TestCase):
           _ = model(resource_variable_ops.ResourceVariable(1.0, name='v2'))
 
   def testSaveRestoreGraphCallable(self):
-    with context.eager_mode(), ops.device(self._dev()):
+    with ops.device(self._dev()):
       @graph_callable.graph_callable(
           [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
       def model(x):
