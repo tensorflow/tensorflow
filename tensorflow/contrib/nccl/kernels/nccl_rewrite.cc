@@ -117,6 +117,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
   TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &dtype));
   int send_dev = node->assigned_device_name_index();
   int num_devices = 0;  // Number of distinct devices, incremented below.
+  std::vector<int> recv_index_map;  // Map device name index to stable index.
 
   // Map device name index to nodes that take the broadcast as input.
   std::vector<std::forward_list<NodeBuilder::NodeOut>> out_nodes_map;
@@ -126,9 +127,11 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
                       : edge->dst()->assigned_device_name_index();
     if (out_nodes_map.size() <= dst_dev) {
       out_nodes_map.resize(dst_dev + 1);
+      recv_index_map.resize(dst_dev + 1);
     }
     auto it = out_nodes_map.begin() + dst_dev;
     if (it->empty()) {
+      recv_index_map[dst_dev] = num_devices;
       ++num_devices;
     }
     it->emplace_front(NodeBuilder::NodeOut(edge->dst(), edge->dst_input()));
@@ -211,16 +214,18 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
     if (out_nodes_map[recv_dev].empty()) {
       continue;
     }
+    int recv_index = recv_index_map[recv_dev];
     if (is_fully_defined) {
       // If the shape is fully defined, define one const node per device.
-      NodeBuilder shape_builder(strings::StrCat(shape_name, recv_dev), "Const");
+      NodeBuilder shape_builder(strings::StrCat(shape_name, recv_index),
+                                "Const");
       shape_builder.Attr("value", tensor_proto).Attr("dtype", DT_INT32);
       TF_RETURN_IF_ERROR(shape_builder.Finalize(graph, &shape_node));
       shape_node->set_assigned_device_name_index(recv_dev);
     }
     Node* recv_node;
     TF_RETURN_IF_ERROR(
-        make_builder("_NcclBroadcastRecv", strings::StrCat("Recv_", recv_dev))
+        make_builder("_NcclBroadcastRecv", strings::StrCat("Recv_", recv_index))
             .Input(shape_node)
             .Finalize(graph, &recv_node));
     recv_node->set_assigned_device_name_index(recv_dev);

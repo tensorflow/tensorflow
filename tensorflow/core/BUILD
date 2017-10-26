@@ -163,6 +163,7 @@ CORE_PROTO_SRCS = [
     "framework/function.proto",
     "framework/graph.proto",
     "framework/graph_transfer_info.proto",
+    "framework/iterator.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
     "framework/node_def.proto",
@@ -1411,7 +1412,7 @@ cc_library(
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     defines = tf_additional_lib_defines() + [
-                  "SNAPPY",
+                  "TF_USE_SNAPPY",
               ] + tf_additional_verbs_lib_defines() +
               tf_additional_mpi_lib_defines() +
               tf_additional_gdr_lib_defines(),
@@ -3356,6 +3357,11 @@ tf_cc_test(
 filegroup(
     name = "base_api_def",
     data = glob(["api_def/base_api/*"]),
+)
+
+filegroup(
+    name = "python_api_def",
+    data = glob(["api_def/python_api/*"]),
 )
 
 tf_cc_test(

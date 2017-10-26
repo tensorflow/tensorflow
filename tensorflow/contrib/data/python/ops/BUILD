@@ -21,6 +21,19 @@ py_library(
 )
 
 py_library(
+    name = "iterator_ops",
+    srcs = [
+        "iterator_ops.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_library(
     name = "readers",
     srcs = [
         "readers.py",

@@ -557,7 +557,14 @@ class BaseSaverBuilder(object):
           if not isinstance(var, resource_variable_ops.ResourceVariable):
             raise ValueError("Can only save/restore ResourceVariable eager "
                              "mode is enabled, type: %s." % type(var))
-          names_to_saveables[var._shared_name] = var
+          set_var = names_to_saveables.setdefault(var._shared_name, var)
+          if set_var is not var:
+            raise ValueError(
+                ("Two different ResourceVariable objects with the same "
+                 "shared_name '%s' were passed to the Saver. This likely means "
+                 "that they were created in different Graphs or isolation "
+                 "contexts, and may not be checkpointed together.") % (
+                     var._shared_name,))
 
       # pylint: enable=protected-access
     return names_to_saveables

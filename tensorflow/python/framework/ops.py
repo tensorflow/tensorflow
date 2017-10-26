@@ -615,7 +615,12 @@ class _EagerTensorBase(Tensor):
     Returns:
       A numpy array that may share memory with the Tensor object. Any changes
       to one may be reflected in the other.
+
+    Raises:
+      ValueError: if the type of this Tensor is not representable in numpy.
     """
+    if self.dtype == dtypes.resource:
+      raise ValueError("Resource handles are not convertible to numpy.")
     return self.cpu()._numpy()  # pylint: disable=protected-access
 
   def __array__(self):
@@ -623,6 +628,15 @@ class _EagerTensorBase(Tensor):
 
   def _numpy(self):
     raise NotImplementedError()
+
+  def __copy__(self):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    return self
+
+  def __deepcopy__(self, memo):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    del memo
+    return self
 
   def _datatype_enum(self):
     raise NotImplementedError()
@@ -4559,7 +4573,7 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 _default_graph_stack = _DefaultGraphStack()
 
 
-def enable_eager_execution():
+def enable_eager_execution(config=None, device_policy=None):
   """Enables, for the rest of the lifetime of this program, eager execution.
 
   If not called immediately on startup risks creating breakage and bugs.
@@ -4574,8 +4588,24 @@ def enable_eager_execution():
   assert tf.multiply(6, 7).numpy() == 42
   ```
 
+  Args:
+    config: (Optional.) A `ConfigProto` protocol buffer with configuration
+     options for the Context. Note that a lot of these options may be
+     currently unimplemented or irrelevant when eager execution is enabled.
+    device_policy: (Optional.) What policy to use when trying to run an
+     operation on a device with inputs which are not on that device.
+     Valid values:
+       tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
+         correct.
+       tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+         right device but raises a warning.
+       tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+         hide performance problems.
+
   Raises:
-    ValueError: If this method has already been invoked in the current process.
+    ValueError: If trying to create a context after using graph operations
+     or if trying to create a context with nontrivial options which differ
+     from those of the existing context.
   """
   # pylint: disable=protected-access
   if context._default_mode == context.GRAPH_MODE:
@@ -4586,6 +4616,18 @@ def enable_eager_execution():
       raise ValueError(
           "tfe.enable_eager_execution has to be called at program startup.")
   context._default_mode = context.EAGER_MODE
+  if context._context is None:
+    context._context = context.Context(config=config,
+                                       device_policy=device_policy)
+  elif ((config is not None and config is not context._context._config)
+        or (device_policy is not None
+            and device_policy is not context._context._device_policy)):
+    raise ValueError("Trying to change the options of an active eager"
+                     " execution. Context config: %s, specified config:"
+                     " %s. Context device policy: %s; specified device"
+                     " policy: %s." % (config, context._context._config,
+                                       device_policy,
+                                       context._context._device_policy))
 
 
 def eager_run(main=None, argv=None):

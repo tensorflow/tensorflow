@@ -1978,6 +1978,7 @@ py_library(
         ":tensor_array_ops",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2638,6 +2639,7 @@ py_library(
         ":init_ops",
         ":io_ops",
         ":io_ops_gen",
+        ":layers_base",
         ":lib",
         ":lookup_ops",
         ":math_ops",
@@ -2656,6 +2658,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -4197,6 +4200,19 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     main = "client/session_benchmark.py",
+)
+
+cuda_py_test(
+    name = "nn_grad_test",
+    size = "small",
+    srcs = ["ops/nn_grad_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":nn_grad",
+        ":nn_ops",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_library(

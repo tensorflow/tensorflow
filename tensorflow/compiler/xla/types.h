@@ -35,6 +35,8 @@ using ::tensorflow::uint16;
 using ::tensorflow::uint32;
 using ::tensorflow::uint64;
 
+typedef std::complex<float> complex64;
+
 using ::Eigen::half;
 
 }  // namespace xla

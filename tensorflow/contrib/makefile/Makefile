@@ -14,7 +14,10 @@
 # Host compilation settings
 
 # Find where we're running from, so we can store generated files here.
-MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+ifeq ($(origin MAKEFILE_DIR), undefined)
+	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+endif
+
 HAS_GEN_HOST_PROTOC := \
 $(shell test -f $(MAKEFILE_DIR)/gen/protobuf-host/bin/protoc && echo "true" ||\
 echo "false")
@@ -71,6 +74,7 @@ HOST_LDOPTS += -L/usr/local/lib
 
 HOST_INCLUDES := \
 -I. \
+-I$(MAKEFILE_DIR)/../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
@@ -190,6 +194,10 @@ LIBFLAGS :=
 
 # If we're on OS X, make sure that globals aren't stripped out.
 ifeq ($(TARGET),OSX)
+ifeq ($(HAS_GEN_HOST_PROTOC),true)
+	LIBFLAGS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
+	export LD_LIBRARY_PATH=$(MAKEFILE_DIR)/gen/protobuf-host/lib
+endif
 	LDFLAGS += -all_load
 endif
 # Make sure that we don't strip global constructors on Linux.
@@ -502,6 +510,7 @@ $(wildcard tensorflow/core/platform/google/*) \
 $(wildcard tensorflow/core/platform/google/*/*) \
 $(wildcard tensorflow/core/platform/jpeg.*) \
 $(wildcard tensorflow/core/platform/png.*) \
+$(wildcard tensorflow/core/platform/s3/*) \
 $(wildcard tensorflow/core/platform/stream_executor.*) \
 $(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/user_ops/*.cu.cc) \

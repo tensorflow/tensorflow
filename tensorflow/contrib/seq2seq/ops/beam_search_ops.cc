@@ -53,11 +53,14 @@ REGISTER_OP("GatherTree")
     .Doc(R"doc(
 Calculates the full beams from the per-step ids and parent beam ids.
 
-This op implements the following mathematical equations:
+On CPU, if an out of bound parent id is found, an error is returned.
+On GPU, if an out of bound parent id is found, a -1 is stored in the
+corresponding output value and the execution for that beam returns early.
 
-```python
-TODO(ebrevdo): fill in
-```
+For a given beam, past the time step containing the first decoded `end_token`
+all values are filled in with `end_token`.
+
+TODO(ebrevdo): fill in the remainder of this docstring.
 
 step_ids: `[max_time, batch_size, beam_width]`.
 parent_ids: `[max_time, batch_size, beam_width]`.

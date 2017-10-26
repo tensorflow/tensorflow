@@ -117,7 +117,8 @@ class NcclTestCase(test.TestCase):
       inputs = [array_ops.placeholder(t.dtype, t.shape) for t in tensors]
       reduce_tensors = nccl_reduce(inputs, devices)
       losses = _DeviceTensors(tensors, [t.device for t in reduce_tensors])
-      grads = gradients.gradients(reduce_tensors, inputs, losses)
+      grads = gradients.gradients(
+          reduce_tensors, inputs, losses, colocate_gradients_with_ops=True)
       return [g for g in grads if g is not None]
 
     self._Test(_Gradient, numpy_fn)
@@ -159,7 +160,7 @@ class BroadcastTest(NcclTestCase):
   def testBroadcastSingleDevice(self):
     # Broadcasts on a single device are removed completely during rewrite.
     self._Test(_NcclBroadcast, lambda x, y: x,
-               (['/device:GPU:0', '/device:GPU:0']))
+               (['/device:GPU:0', '/device:GPU:0'],))
 
   def testBroadcastToCpuError(self):
     # Broadcasts to CPU is not supported.
@@ -167,10 +168,7 @@ class BroadcastTest(NcclTestCase):
         errors.NotFoundError,
         "No registered '_NcclBroadcastRecv' OpKernel for CPU devices"):
       self._Test(_NcclBroadcast, lambda x, y: x,
-                 (['/device:GPU:0', '/device:CPU:0']))
-
-  def testBroadcastGrad(self):
-    self._TestGradient(_NcclBroadcast, lambda x, y: x + y)
+                 (['/device:GPU:0', '/device:CPU:0'],))
 
 
 class CombinedTest(NcclTestCase):

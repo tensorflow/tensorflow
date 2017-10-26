@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import math_ops
@@ -32,6 +33,7 @@ from tensorflow.python.platform import test
 
 class ConfusionMatrixTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes()
   def testExample(self):
     """This is a test of the example provided in pydoc."""
     with self.test_session():
@@ -41,8 +43,8 @@ class ConfusionMatrixTest(test.TestCase):
           [0, 0, 1, 0, 0],
           [0, 0, 0, 0, 0],
           [0, 0, 0, 0, 1]
-      ], confusion_matrix.confusion_matrix(
-          labels=[1, 2, 4], predictions=[2, 2, 4]).eval())
+      ], self.evaluate(confusion_matrix.confusion_matrix(
+          labels=[1, 2, 4], predictions=[2, 2, 4])))
 
   def _testConfMatrix(self, labels, predictions, truth, weights=None,
                       num_classes=None):

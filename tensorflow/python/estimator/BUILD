@@ -543,7 +543,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:nn",
-        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:summary",

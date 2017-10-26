@@ -26,7 +26,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -49,6 +48,16 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
                                                    container=container)
   if graph_mode:
     return handle
+
+  # We do not want two distinct ResourceVariable objects for the same
+  # underlying resource in the runtime.
+  # When in eager mode, explicitly ensure so here. When in graph mode, it's
+  # ensured by always generating different variable names.
+  exists = gen_resource_variable_ops.var_is_initialized_op(handle)
+  if exists:
+    raise ValueError("variable object with name '%s' already created. Use "
+                     "get_variable() if reuse is desired." %
+                     shared_name)
   with context.graph_mode(), ops.Graph().as_default():
     h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                 shared_name=shared_name,
@@ -171,7 +180,7 @@ class ResourceVariable(variables.Variable):
 
     @compatibility(eager)
     When Eager Execution is enabled, the default for the `collections` argument
-    is None, which signifies that this Variable will not be added to any
+    is `None`, which signifies that this `Variable` will not be added to any
     collections.
     @end_compatibility
     """
@@ -248,8 +257,9 @@ class ResourceVariable(variables.Variable):
 
     @compatibility(eager)
     When Eager Execution is enabled, variables are never added to collections.
-    It is not implicitly added to the GLOBAL_VARIABLES or TRAINABLE_VARIABLES
-    collections, and the `collections` argument is ignored.
+    It is not implicitly added to the `GLOBAL_VARIABLES` or
+    `TRAINABLE_VARIABLES` collections, and the `collections` argument is
+    ignored.
     @end_compatibility
     """
     if initial_value is None:
@@ -270,6 +280,15 @@ class ResourceVariable(variables.Variable):
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     self._save_slice_info = None
     self._in_graph_mode = context.in_graph_mode()
+    # Save the graph's container prefix for error checking. Reading the value of
+    # the ResourceVariable from another Graph in Eager mode is an error.
+    self._container_prefix = ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
+    if not self._in_graph_mode and not name:
+      # TODO(ashankar,josh11b): make this unnecessary using the same
+      # logic as in layer
+      raise ValueError("Variables need to have explicit names when eager "
+                       "execution is enabled")
+
     with ops.control_dependencies(None):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
@@ -296,7 +315,7 @@ class ResourceVariable(variables.Variable):
               self._handle_device = (
                   self._handle.device if self._in_graph_mode else
                   context.get_default_context().device_name)
-              self._graph_shape = initial_value.get_shape()
+              self._shape = initial_value.get_shape()
           else:
             initial_value = initial_value()
             with ops.name_scope("Initializer"):
@@ -311,7 +330,7 @@ class ResourceVariable(variables.Variable):
             self._handle_device = (
                 self._handle.device if self._in_graph_mode else
                 context.get_default_context().device_name)
-            self._graph_shape = initial_value.get_shape()
+            self._shape = initial_value.get_shape()
         # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
@@ -336,7 +355,7 @@ class ResourceVariable(variables.Variable):
               graph_mode=self._in_graph_mode)
           self._handle_device = (self._handle.device if self._in_graph_mode else
                                  context.get_default_context().device_name)
-          self._graph_shape = initial_value.get_shape()
+          self._shape = initial_value.get_shape()
 
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
@@ -403,7 +422,7 @@ class ResourceVariable(variables.Variable):
     self._handle = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.variable_name, import_scope=import_scope))
-    self._graph_shape = tensor_shape.TensorShape(
+    self._shape = tensor_shape.TensorShape(
         self._handle.op.get_attr("shape"))
     self._handle_device = self._handle.device
     self._handle_name = self._handle.name
@@ -460,6 +479,12 @@ class ResourceVariable(variables.Variable):
         pass  # 'NoneType' object has no attribute 'eager_mode' when context has
               # been unloaded. Will catch other module unloads as well.
 
+  def __nonzero__(self):
+    return self.__bool__()
+
+  def __bool__(self):
+    return bool(self.read_value())
+
   @property
   def dtype(self):
     """The dtype of this variable."""
@@ -483,11 +508,7 @@ class ResourceVariable(variables.Variable):
   @property
   def shape(self):
     """The shape of this variable."""
-    if self._in_graph_mode:
-      return self._graph_shape
-    return tensor_shape.TensorShape(
-        tensor_util.constant_value(
-            gen_resource_variable_ops.variable_shape(self._handle)))
+    return self._shape
 
   @property
   def create(self):
@@ -577,7 +598,15 @@ class ResourceVariable(variables.Variable):
 
     Returns:
      the read operation.
+    Raises:
+      ValueError: if the ResourceVariable was created in another isolation
+        environment or graph.
     """
+    if (not self._in_graph_mode and
+        self._container_prefix != ops.get_default_graph()._container_prefix):  # pylint: disable=protected-access
+      raise ValueError(
+          "Attempted to read a variable from another isolation environment"
+          " or Graph")
     with ops.name_scope("Read"):
       # Ensure we read the variable in the same device as the handle.
       with ops.device(self._handle_device):

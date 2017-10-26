@@ -25,10 +25,12 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib import rnn as rnn_lib
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -881,6 +883,7 @@ class LSTMTest(test.TestCase):
     # Smoke test, this should not raise an error
     rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testDynamicRNNWithTupleStates(self):
     num_units = 3
     input_size = 5
@@ -888,13 +891,20 @@ class LSTMTest(test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
+    in_graph_mode = context.in_graph_mode()
     with self.test_session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
-      inputs = max_length * [
-          array_ops.placeholder(
-              dtypes.float32, shape=(None, input_size))
-      ]
+      if in_graph_mode:
+        inputs = max_length * [
+            array_ops.placeholder(
+                dtypes.float32, shape=(None, input_size))
+        ]
+      else:
+        inputs = max_length * [
+            constant_op.constant(
+                np.random.randn(batch_size, input_size).astype(np.float32))
+        ]
       inputs_c = array_ops.stack(inputs)
       cell = rnn_cell.LSTMCell(
           num_units,
@@ -924,21 +934,34 @@ class LSTMTest(test.TestCase):
       self.assertEqual(state_dynamic[0], state_dynamic.c)
       self.assertEqual(state_dynamic[1], state_dynamic.h)
 
-      variables_lib.global_variables_initializer().run()
+      if in_graph_mode:
+        variables_lib.global_variables_initializer().run()
+        input_value = np.random.randn(batch_size, input_size)
+        outputs_static = sess.run(
+            outputs_static, feed_dict={
+                inputs[0]: input_value
+            })
+        outputs_dynamic = sess.run(
+            outputs_dynamic, feed_dict={
+                inputs[0]: input_value
+            })
+        state_static = sess.run(
+            state_static, feed_dict={
+                inputs[0]: input_value
+            })
+        state_dynamic = sess.run(
+            state_dynamic, feed_dict={
+                inputs[0]: input_value
+            })
 
-      input_value = np.random.randn(batch_size, input_size)
-      outputs_static_v = sess.run(outputs_static,
-                                  feed_dict={inputs[0]: input_value})
-      outputs_dynamic_v = sess.run(outputs_dynamic,
-                                   feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
+      if in_graph_mode:
+        self.assertAllEqual(outputs_static, outputs_dynamic)
+      else:
+        self.assertAllEqual(
+            array_ops.stack(outputs_static).numpy(), outputs_dynamic.numpy())
+      self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
 
-      state_static_v = sess.run(state_static,
-                                feed_dict={inputs[0]: input_value})
-      state_dynamic_v = sess.run(state_dynamic,
-                                 feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
-
+  @test_util.run_in_graph_and_eager_modes()
   def testDynamicRNNWithNestedTupleStates(self):
     num_units = 3
     input_size = 5
@@ -946,13 +969,20 @@ class LSTMTest(test.TestCase):
     num_proj = 4
     max_length = 8
     sequence_length = [4, 6]
+    in_graph_mode = context.in_graph_mode()
     with self.test_session(graph=ops_lib.Graph()) as sess:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
-      inputs = max_length * [
-          array_ops.placeholder(
-              dtypes.float32, shape=(None, input_size))
-      ]
+      if in_graph_mode:
+        inputs = max_length * [
+            array_ops.placeholder(
+                dtypes.float32, shape=(None, input_size))
+        ]
+      else:
+        inputs = max_length * [
+            constant_op.constant(
+                np.random.randn(batch_size, input_size).astype(np.float32))
+        ]
       inputs_c = array_ops.stack(inputs)
 
       def _cell(i):
@@ -993,20 +1023,34 @@ class LSTMTest(test.TestCase):
             sequence_length=sequence_length,
             scope=scope)
 
-      variables_lib.global_variables_initializer().run()
+      if in_graph_mode:
+        input_value = np.random.randn(batch_size, input_size)
+        variables_lib.global_variables_initializer().run()
+        outputs_static = sess.run(
+            outputs_static, feed_dict={
+                inputs[0]: input_value
+            })
+        outputs_dynamic = sess.run(
+            outputs_dynamic, feed_dict={
+                inputs[0]: input_value
+            })
+        state_static = sess.run(
+            nest.flatten(state_static), feed_dict={
+                inputs[0]: input_value
+            })
+        state_dynamic = sess.run(
+            nest.flatten(state_dynamic), feed_dict={
+                inputs[0]: input_value
+            })
 
-      input_value = np.random.randn(batch_size, input_size)
-      outputs_static_v = sess.run(outputs_static,
-                                  feed_dict={inputs[0]: input_value})
-      outputs_dynamic_v = sess.run(outputs_dynamic,
-                                   feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(outputs_static_v, outputs_dynamic_v)
-
-      state_static_v = sess.run(nest.flatten(state_static),
-                                feed_dict={inputs[0]: input_value})
-      state_dynamic_v = sess.run(nest.flatten(state_dynamic),
-                                 feed_dict={inputs[0]: input_value})
-      self.assertAllEqual(np.hstack(state_static_v), np.hstack(state_dynamic_v))
+      if in_graph_mode:
+        self.assertAllEqual(outputs_static, outputs_dynamic)
+      else:
+        self.assertAllEqual(
+            array_ops.stack(outputs_static).numpy(), outputs_dynamic.numpy())
+        state_static = [s.numpy() for s in nest.flatten(state_static)]
+        state_dynamic = [s.numpy() for s in nest.flatten(state_dynamic)]
+      self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
 
   def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
     time_steps = 8
@@ -1015,85 +1059,108 @@ class LSTMTest(test.TestCase):
     input_size = 5
     batch_size = 2
 
-    input_values = np.random.randn(time_steps, batch_size, input_size)
+    input_values = np.random.randn(time_steps, batch_size, input_size).astype(
+        np.float32)
 
     if use_sequence_length:
       sequence_length = np.random.randint(0, time_steps, size=batch_size)
     else:
       sequence_length = None
 
-    ########### Step 1: Run static graph and generate readouts
-    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
-      concat_inputs = array_ops.placeholder(
-          dtypes.float32, shape=(time_steps, batch_size, input_size))
-      inputs = array_ops.unstack(concat_inputs)
+    in_graph_mode = context.in_graph_mode()
+
+    # TODO(b/68017812): Eager ignores operation seeds, so we need to create a
+    # single cell and reuse it across the static and dynamic RNNs. Remove this
+    # special case once is fixed.
+    if not in_graph_mode:
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
-
       cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
           initializer=initializer,
           num_proj=num_proj,
           state_is_tuple=False)
+
+    ########### Step 1: Run static graph and generate readouts
+    with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
+      if in_graph_mode:
+        concat_inputs = array_ops.placeholder(
+            dtypes.float32, shape=(time_steps, batch_size, input_size))
+      else:
+        concat_inputs = constant_op.constant(input_values)
+      inputs = array_ops.unstack(concat_inputs)
+      initializer = init_ops.random_uniform_initializer(
+          -0.01, 0.01, seed=self._seed)
+
+      # TODO(akshayka): Remove special case once b/68017812 is fixed.
+      if in_graph_mode:
+        cell = rnn_cell.LSTMCell(
+            num_units,
+            use_peepholes=True,
+            initializer=initializer,
+            num_proj=num_proj,
+            state_is_tuple=False)
 
       with variable_scope.variable_scope("dynamic_scope"):
         outputs_static, state_static = rnn.static_rnn(
             cell, inputs, sequence_length=sequence_length, dtype=dtypes.float32)
 
-      feeds = {concat_inputs: input_values}
+      if in_graph_mode:
+        # Generate gradients and run sessions to obtain outputs
+        feeds = {concat_inputs: input_values}
+        # Initialize
+        variables_lib.global_variables_initializer().run(feed_dict=feeds)
+        # Generate gradients of sum of outputs w.r.t. inputs
+        static_gradients = gradients_impl.gradients(
+            outputs_static + [state_static], [concat_inputs])
+        # Generate gradients of individual outputs w.r.t. inputs
+        static_individual_gradients = nest.flatten([
+            gradients_impl.gradients(y, [concat_inputs])
+            for y in [outputs_static[0], outputs_static[-1], state_static]
+        ])
+        # Generate gradients of individual variables w.r.t. inputs
+        trainable_variables = ops_lib.get_collection(
+            ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+        assert len(trainable_variables) > 1, (
+            "Count of trainable variables: %d" % len(trainable_variables))
+        # pylint: disable=bad-builtin
+        static_individual_variable_gradients = nest.flatten([
+            gradients_impl.gradients(y, trainable_variables)
+            for y in [outputs_static[0], outputs_static[-1], state_static]
+        ])
+        # Test forward pass
+        values_static = sess.run(outputs_static, feed_dict=feeds)
+        (state_value_static,) = sess.run((state_static,), feed_dict=feeds)
 
-      # Initialize
-      variables_lib.global_variables_initializer().run(feed_dict=feeds)
+        # Test gradients to inputs and variables w.r.t. outputs & final state
+        static_grad_values = sess.run(static_gradients, feed_dict=feeds)
 
-      # Generate gradients of sum of outputs w.r.t. inputs
-      static_gradients = gradients_impl.gradients(
-          outputs_static + [state_static], [concat_inputs])
+        static_individual_grad_values = sess.run(static_individual_gradients,
+                                                 feed_dict=feeds)
 
-      # Generate gradients of individual outputs w.r.t. inputs
-      static_individual_gradients = nest.flatten([
-          gradients_impl.gradients(y, [concat_inputs])
-          for y in [outputs_static[0], outputs_static[-1], state_static]
-      ])
-
-      # Generate gradients of individual variables w.r.t. inputs
-      trainable_variables = ops_lib.get_collection(
-          ops_lib.GraphKeys.TRAINABLE_VARIABLES)
-      assert len(trainable_variables) > 1, ("Count of trainable variables: %d" %
-                                            len(trainable_variables))
-      # pylint: disable=bad-builtin
-      static_individual_variable_gradients = nest.flatten([
-          gradients_impl.gradients(y, trainable_variables)
-          for y in [outputs_static[0], outputs_static[-1], state_static]
-      ])
-
-      # Test forward pass
-      values_static = sess.run(outputs_static, feed_dict=feeds)
-      (state_value_static,) = sess.run((state_static,), feed_dict=feeds)
-
-      # Test gradients to inputs and variables w.r.t. outputs & final state
-      static_grad_values = sess.run(static_gradients, feed_dict=feeds)
-
-      static_individual_grad_values = sess.run(static_individual_gradients,
-                                               feed_dict=feeds)
-
-      static_individual_var_grad_values = sess.run(
-          static_individual_variable_gradients, feed_dict=feeds)
+        static_individual_var_grad_values = sess.run(
+            static_individual_variable_gradients, feed_dict=feeds)
 
     ########## Step 2: Run dynamic graph and generate readouts
     with self.test_session(use_gpu=use_gpu, graph=ops_lib.Graph()) as sess:
-      concat_inputs = array_ops.placeholder(
-          dtypes.float32, shape=(time_steps, batch_size, input_size))
-      inputs = array_ops.unstack(concat_inputs)
+      if in_graph_mode:
+        concat_inputs = array_ops.placeholder(
+            dtypes.float32, shape=(time_steps, batch_size, input_size))
+      else:
+        concat_inputs = constant_op.constant(input_values)
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
 
-      cell = rnn_cell.LSTMCell(
-          num_units,
-          use_peepholes=True,
-          initializer=initializer,
-          num_proj=num_proj,
-          state_is_tuple=False)
+      # TODO(akshayka): Remove this special case once b/68017812 is
+      # fixed.
+      if in_graph_mode:
+        cell = rnn_cell.LSTMCell(
+            num_units,
+            use_peepholes=True,
+            initializer=initializer,
+            num_proj=num_proj,
+            state_is_tuple=False)
 
       with variable_scope.variable_scope("dynamic_scope"):
         outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
@@ -1104,72 +1171,83 @@ class LSTMTest(test.TestCase):
             dtype=dtypes.float32)
         split_outputs_dynamic = array_ops.unstack(outputs_dynamic, time_steps)
 
-      feeds = {concat_inputs: input_values}
+      if in_graph_mode:
+        feeds = {concat_inputs: input_values}
 
-      # Initialize
-      variables_lib.global_variables_initializer().run(feed_dict=feeds)
+        # Initialize
+        variables_lib.global_variables_initializer().run(feed_dict=feeds)
 
-      # Generate gradients of sum of outputs w.r.t. inputs
-      dynamic_gradients = gradients_impl.gradients(
-          split_outputs_dynamic + [state_dynamic], [concat_inputs])
+        # Generate gradients of sum of outputs w.r.t. inputs
+        dynamic_gradients = gradients_impl.gradients(
+            split_outputs_dynamic + [state_dynamic], [concat_inputs])
 
-      # Generate gradients of several individual outputs w.r.t. inputs
-      dynamic_individual_gradients = nest.flatten([
-          gradients_impl.gradients(y, [concat_inputs])
-          for y in
-          [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
-      ])
+        # Generate gradients of several individual outputs w.r.t. inputs
+        dynamic_individual_gradients = nest.flatten([
+            gradients_impl.gradients(y, [concat_inputs])
+            for y in
+            [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
+        ])
 
-      # Generate gradients of individual variables w.r.t. inputs
-      trainable_variables = ops_lib.get_collection(
-          ops_lib.GraphKeys.TRAINABLE_VARIABLES)
-      assert len(trainable_variables) > 1, ("Count of trainable variables: %d" %
-                                            len(trainable_variables))
-      dynamic_individual_variable_gradients = nest.flatten([
-          gradients_impl.gradients(y, trainable_variables)
-          for y in
-          [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
-      ])
+        # Generate gradients of individual variables w.r.t. inputs
+        trainable_variables = ops_lib.get_collection(
+            ops_lib.GraphKeys.TRAINABLE_VARIABLES)
+        assert len(trainable_variables) > 1, (
+            "Count of trainable variables: %d" % len(trainable_variables))
+        dynamic_individual_variable_gradients = nest.flatten([
+            gradients_impl.gradients(y, trainable_variables)
+            for y in
+            [split_outputs_dynamic[0], split_outputs_dynamic[-1], state_dynamic]
+        ])
 
-      # Test forward pass
-      values_dynamic = sess.run(split_outputs_dynamic, feed_dict=feeds)
-      (state_value_dynamic,) = sess.run((state_dynamic,), feed_dict=feeds)
+        # Test forward pass
+        values_dynamic = sess.run(split_outputs_dynamic, feed_dict=feeds)
+        (state_value_dynamic,) = sess.run((state_dynamic,), feed_dict=feeds)
 
-      # Test gradients to inputs and variables w.r.t. outputs & final state
-      dynamic_grad_values = sess.run(dynamic_gradients, feed_dict=feeds)
+        # Test gradients to inputs and variables w.r.t. outputs & final state
+        dynamic_grad_values = sess.run(dynamic_gradients, feed_dict=feeds)
 
-      dynamic_individual_grad_values = sess.run(dynamic_individual_gradients,
-                                                feed_dict=feeds)
+        dynamic_individual_grad_values = sess.run(dynamic_individual_gradients,
+                                                  feed_dict=feeds)
 
-      dynamic_individual_var_grad_values = sess.run(
-          dynamic_individual_variable_gradients, feed_dict=feeds)
+        dynamic_individual_var_grad_values = sess.run(
+            dynamic_individual_variable_gradients, feed_dict=feeds)
 
     ######### Step 3: Comparisons
+    if not in_graph_mode:
+      values_static = outputs_static
+      values_dynamic = split_outputs_dynamic
+      state_value_static = state_static
+      state_value_dynamic = state_dynamic
+
     self.assertEqual(len(values_static), len(values_dynamic))
     for (value_static, value_dynamic) in zip(values_static, values_dynamic):
       self.assertAllEqual(value_static, value_dynamic)
     self.assertAllEqual(state_value_static, state_value_dynamic)
 
-    self.assertAllEqual(static_grad_values, dynamic_grad_values)
+    if in_graph_mode:
 
-    self.assertEqual(
-        len(static_individual_grad_values), len(dynamic_individual_grad_values))
-    self.assertEqual(
-        len(static_individual_var_grad_values),
-        len(dynamic_individual_var_grad_values))
+      self.assertAllEqual(static_grad_values, dynamic_grad_values)
 
-    for i, (a, b) in enumerate(
-        zip(static_individual_grad_values, dynamic_individual_grad_values)):
-      tf_logging.info("Comparing individual gradients iteration %d" % i)
-      self.assertAllEqual(a, b)
+      self.assertEqual(
+          len(static_individual_grad_values),
+          len(dynamic_individual_grad_values))
+      self.assertEqual(
+          len(static_individual_var_grad_values),
+          len(dynamic_individual_var_grad_values))
 
-    for i, (a, b) in enumerate(
-        zip(static_individual_var_grad_values,
-            dynamic_individual_var_grad_values)):
-      tf_logging.info("Comparing individual variable gradients iteration %d" %
-                      i)
-      self.assertAllEqual(a, b)
+      for i, (a, b) in enumerate(
+          zip(static_individual_grad_values, dynamic_individual_grad_values)):
+        tf_logging.info("Comparing individual gradients iteration %d" % i)
+        self.assertAllEqual(a, b)
 
+      for i, (a, b) in enumerate(
+          zip(static_individual_var_grad_values,
+              dynamic_individual_var_grad_values)):
+        tf_logging.info("Comparing individual variable gradients iteration %d" %
+                        i)
+        self.assertAllEqual(a, b)
+
+  @test_util.run_in_graph_and_eager_modes()
   def testDynamicEquivalentToStaticRNN(self):
     self._testDynamicEquivalentToStaticRNN(
         use_gpu=False, use_sequence_length=False)

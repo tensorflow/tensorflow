@@ -192,8 +192,13 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
     # generally not working
     "${tensorflow_source_dir}/tensorflow/python/profiler/pprof_profiler_test.py"
+    # flaky test
+    "${tensorflow_source_dir}/tensorflow/python/profiler/internal/run_metadata_test.py"
     # Fails because uses data dependencies with bazel
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
+    # requires scipy
+    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
     # Takes very long to run without sharding (defined in bazel build file).
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"
     # Loading resources in contrib doesn't seem to work on Windows
@@ -216,6 +221,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/as_string_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/tensor_array_ops_test.py"  # Needs portpicker.
       # Numerical issues, calculations off.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/concat_op_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/wals_test.py"
@@ -281,6 +287,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/spacetodepth_op_test.py"  # QuantizeV2
       # Windows Path
       "${tensorflow_source_dir}/tensorflow/contrib/framework/python/ops/checkpoint_ops_test.py" #TODO: Fix path
+      "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/kmeans_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/estimators/kmeans_test.py"
       # Numpy upgrade needed?
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/bijectors/sinh_arcsinh_test.py"
       # Test should only be run manually

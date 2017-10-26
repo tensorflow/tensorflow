@@ -26,7 +26,6 @@ import threading
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
-from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
 
 GRAPH_MODE = 0
@@ -43,6 +42,10 @@ _device_parsing_cache = {}
 
 _MAXINT32 = 2**31 - 1
 
+DEVICE_PLACEMENT_EXPLICIT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_EXPLICIT
+DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
+DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
+
 
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
@@ -55,6 +58,7 @@ class _EagerContext(threading.local):
     self.mode = _default_mode
     self.scope_name = ""
     self.recording_summaries = False
+    self.summary_writer_resource = None
     self.scalar_cache = {}
 
 
@@ -63,22 +67,31 @@ class _EagerContext(threading.local):
 class Context(object):
   """Environment in which eager operations execute."""
 
-  def __init__(self, config=None):
+  def __init__(self, config=None, device_policy=None):
     """Creates a new Context.
 
     Args:
       config: (Optional.) A `ConfigProto` protocol buffer with configuration
-      options for the Context. Note that a lot of these options may be
-      currently unimplemented or irrelevant for EAGER mode.
+       options for the Context. Note that a lot of these options may be
+       currently unimplemented or irrelevant when eager execution is enabled.
+      device_policy: (Optional.) What policy to use when trying to run an
+       operation on a device with inputs which are not on that device.
+       Valid values:
+         tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
+           correct.
+         tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+           right device but raises a warning.
+         tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+           hide performance problems.
     """
     self._eager_context = _EagerContext()
     self._context_handle = None
     self._context_devices = None
-    self._summary_writer_resource = None
     self._post_execution_callbacks = []
     self._config = config
     self._seed = None
     self._initialize_lock = threading.Lock()
+    self._device_policy = device_policy
 
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
@@ -103,11 +116,19 @@ class Context(object):
       if self._context_handle is not None:
         return
       assert self._context_devices is None
-      opts = pywrap_tensorflow.TF_NewSessionOptions(
-          target=compat.as_bytes(""), config=self._config)
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
-        pywrap_tensorflow.TF_DeleteSessionOptions(opts)
+      opts = pywrap_tensorflow.TFE_NewContextOptions()
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          if self._config is not None:
+            config_str = self._config.SerializeToString()
+            pywrap_tensorflow.TFE_ContextOptionsSetConfig(
+                opts, config_str, len(config_str), status)
+          if self._device_policy is not None:
+            pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
+                opts, self._device_policy)
+          self._context_handle = pywrap_tensorflow.TFE_NewContext(opts, status)
+      finally:
+        pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       # Store list of devices
       self._context_devices = []
       with errors.raise_exception_on_not_ok_status() as status:
@@ -192,12 +213,12 @@ class Context(object):
   @property
   def summary_writer_resource(self):
     """Returns summary writer resource."""
-    return self._summary_writer_resource
+    return self._eager_context.summary_writer_resource
 
   @summary_writer_resource.setter
   def summary_writer_resource(self, resource):
     """Sets summary writer resource."""
-    self._summary_writer_resource = resource
+    self._eager_context.summary_writer_resource = resource
 
   @property
   def device_name(self):

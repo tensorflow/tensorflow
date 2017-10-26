@@ -63,8 +63,8 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         continue;
       }
 
-      // Broadcasts dramatically increase the size of constants with is often
-      // detrimental to performance and memory capacity so do not fold
+      // Broadcasts dramatically increase the size of constants, which is often
+      // detrimental to performance and memory capacity, so do not fold
       // broadcasts.
       if (instruction->opcode() == HloOpcode::kBroadcast) {
         continue;
