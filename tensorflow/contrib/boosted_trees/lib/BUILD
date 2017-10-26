@@ -82,6 +82,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "example_test",
+    size = "small",
+    srcs = ["utils/example_test.cc"],
+    deps = [
+        ":utils",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "batch_features_test",
     size = "small",
     srcs = ["utils/batch_features_test.cc"],

@@ -1799,6 +1799,17 @@ void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
   status->status = MessageToBuffer(def, output_graph_def);
 }
 
+void TF_GraphGetOpDef(TF_Graph* graph, const char* op_name,
+                      TF_Buffer* output_op_def, TF_Status* status) {
+  const OpDef* op_def;
+  {
+    mutex_lock l(graph->mu);
+    status->status = graph->graph.op_registry()->LookUpOpDef(op_name, &op_def);
+    if (!status->status.ok()) return;
+  }
+  status->status = MessageToBuffer(*op_def, output_op_def);
+}
+
 TF_ImportGraphDefOptions* TF_NewImportGraphDefOptions() {
   return new TF_ImportGraphDefOptions;
 }

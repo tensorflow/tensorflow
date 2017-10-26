@@ -215,7 +215,7 @@ def imperative_grad(
             and tensor_usage_counts[t] == 0
             and t not in id_sources):
           in_op = tensor_to_op[t]
-          if in_op is None:
+          if in_op is None or in_op == -1:
             continue
           if op_missing_tensor.get(in_op, 0) > 0:
             op_missing_tensor[in_op] -= 1

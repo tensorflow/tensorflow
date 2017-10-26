@@ -7,7 +7,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",
-        "//tensorflow/contrib/xla_tf_graph/...",
     ],
 )
 
@@ -171,6 +170,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
+        ":status_macros",
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
@@ -340,7 +340,6 @@ cc_library(
     hdrs = ["array.h"],
     deps = [
         ":types",
-        ":util",
         "//tensorflow/core:lib",
     ],
 )

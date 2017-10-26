@@ -201,17 +201,26 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
 
     case DT_COMPLEX64:
       if (conjugate) {
-        Transpose<Device, complex64, true>::run(d, in, perm, out);
+#if defined(__ANDROID__) and !defined(__clang__)
+        // Workaround for GCC compiler bug in Android toolchain.
+        return errors::Unimplemented(
+            "Conjugate transpose of complex64 not supported for GCC on "
+            "Android.");
+#else
+        Transpose<Device, complex64, /*conjugate=*/true>::run(d, in, perm, out);
+#endif
       } else {
-        Transpose<Device, complex64, false>::run(d, in, perm, out);
+        Transpose<Device, uint64>::run(d, in, perm, out);
       }
       break;
 
     case DT_COMPLEX128:
       if (conjugate) {
-        Transpose<Device, complex128, true>::run(d, in, perm, out);
+        Transpose<Device, complex128, /*conjugate=*/true>::run(d, in, perm,
+                                                               out);
       } else {
-        Transpose<Device, complex128, false>::run(d, in, perm, out);
+        Transpose<Device, complex128, /*conjugate=*/false>::run(d, in, perm,
+                                                                out);
       }
       break;
 

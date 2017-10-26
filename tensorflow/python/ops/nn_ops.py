@@ -2114,7 +2114,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
 def top_k(input, k=1, sorted=True, name=None):
   """Finds values and indices of the `k` largest entries for the last dimension.
 
-  If the input is a vector (rank-1), finds the `k` largest entries in the vector
+  If the input is a vector (rank=1), finds the `k` largest entries in the vector
   and outputs their values and indices as vectors.  Thus `values[j]` is the
   `j`-th largest entry in `input`, and its index is `indices[j]`.
 
@@ -2138,6 +2138,34 @@ def top_k(input, k=1, sorted=True, name=None):
     indices: The indices of `values` within the last dimension of `input`.
   """
   return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
+
+
+def nth_element(input, n, reverse=False, name=None):
+  r"""Finds values of the `n`-th order statistic for the last dmension.
+
+  If the input is a vector (rank-1), finds the entries which is the nth-smallest
+  value in the vector and outputs their values as scalar tensor.
+
+  For matrices (resp. higher rank input), computes the entries which is the
+  nth-smallest value in each row (resp. vector along the last dimension). Thus,
+
+      values.shape = input.shape[:-1]
+
+  Args:
+    input: 1-D or higher `Tensor` with last dimension at least `n+1`.
+    n: A `Tensor` of type `int32`.
+      0-D. Position of sorted vector to select along the last dimension (along
+      each row for matrices). Valid range of n is `[0, input.shape[:-1])`
+    reverse: An optional `bool`. Defaults to `False`.
+      When set to True, find the nth-largest value in the vector and vice
+      versa.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+    The `n`-th order statistic along each last dimensional slice.
+  """
+  return gen_nn_ops.nth_element(input, n, reverse=reverse, name=name)
 
 
 def conv1d(value, filters, stride, padding,

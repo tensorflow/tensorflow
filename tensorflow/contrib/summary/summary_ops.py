@@ -24,10 +24,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.training import training_util
-
+from tensorflow.python.util import tf_contextlib
 
 # Name for a collection which is expected to have at most a single boolean
 # Tensor. If this tensor is True the summary ops will record summaries.
@@ -38,7 +38,7 @@ def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
   should_record_collection = ops.get_collection(_SHOULD_RECORD_SUMMARIES_NAME)
   if not should_record_collection:
-    return constant_op.constant(False)
+    return False
   if len(should_record_collection) != 1:
     raise ValueError(
         "More than one tensor specified for whether summaries "
@@ -47,22 +47,50 @@ def should_record_summaries():
 
 
 # TODO(apassos) consider how to handle local step here.
+@tf_contextlib.contextmanager
 def record_summaries_every_n_global_steps(n):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
+  old = collection_ref[:]
   collection_ref[:] = [training_util.get_global_step() % n == 0]
+  yield
+  collection_ref[:] = old
 
 
+@tf_contextlib.contextmanager
 def always_record_summaries():
   """Sets the should_record_summaries Tensor to always true."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  collection_ref[:] = [constant_op.constant(True)]
+  old = collection_ref[:]
+  collection_ref[:] = [True]
+  yield
+  collection_ref[:] = old
 
 
+@tf_contextlib.contextmanager
 def never_record_summaries():
   """Sets the should_record_summaries Tensor to always false."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  collection_ref[:] = [constant_op.constant(False)]
+  old = collection_ref[:]
+  collection_ref[:] = [False]
+  yield
+  collection_ref[:] = old
+
+
+class SummaryWriter(object):
+
+  def __init__(self, resource):
+    self._resource = resource
+
+  def set_as_default(self):
+    context.context().summary_writer_resource = self._resource
+
+  @tf_contextlib.contextmanager
+  def as_default(self):
+    old = context.context().summary_writer_resource
+    context.context().summary_writer_resource = self._resource
+    yield
+    context.context().summary_writer_resource = old
 
 
 def create_summary_file_writer(logdir,
@@ -78,9 +106,11 @@ def create_summary_file_writer(logdir,
   if filename_suffix is None:
     filename_suffix = constant_op.constant("")
   resource = gen_summary_ops.summary_writer(shared_name=name)
+  # TODO(apassos) ensure the initialization op runs when in graph mode; consider
+  # calling session.run here.
   gen_summary_ops.create_summary_file_writer(resource, logdir, max_queue,
                                              flush_secs, filename_suffix)
-  context.context().summary_writer_resource = resource
+  return SummaryWriter(resource)
 
 
 def _nothing():
@@ -106,7 +136,7 @@ def summary_writer_function(name, tensor, function, family=None):
       function(tag, scope)
       return True
 
-  return control_flow_ops.cond(
+  return utils.smart_cond(
       should_record_summaries(), record, _nothing, name="")
 
 

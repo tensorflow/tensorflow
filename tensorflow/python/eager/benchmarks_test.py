@@ -104,7 +104,7 @@ def benchmark_matmul(shape, n, use_gpu=False):
   transpose_b = (shape[0] != shape[1])
   m = random_ops.random_uniform(shape)
   if use_gpu:
-    m = m.as_gpu_tensor()
+    m = m.gpu()
     # Warm up the GPU - the very first kernel invocation
     # seems to require a bunch of setup.
     math_ops.matmul(m, m, transpose_b=transpose_b)
@@ -113,7 +113,7 @@ def benchmark_matmul(shape, n, use_gpu=False):
     return "MatMul {}: {:30s}".format(shape, s)
 
   if not use_gpu:
-    a = m.as_cpu_tensor().numpy()
+    a = m.cpu().numpy()
     b = a.T if transpose_b else a
     with timer(label("np.dot"), iters=n) as iters:
       for _ in iters:

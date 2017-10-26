@@ -547,7 +547,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const auto& dnums = conv->convolution_dimension_numbers();
     const int64 num_spatial_dims = dnums.spatial_dimensions_size();
     CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
-    CHECK_GE(num_spatial_dims, 1);
+    CHECK_GE(num_spatial_dims, 0);
     CHECK_EQ(window.dimensions_size(), num_spatial_dims);
 
     const auto lhs_rank = ShapeUtil::Rank(lhs_shape);
@@ -1265,6 +1265,9 @@ HloEvaluator::HloEvaluator() {
   });
   typed_visitors_[F32] = MakeUnique<TypedVisitor<float>>(this);
   typed_visitors_[F64] = MakeUnique<TypedVisitor<double>>(this);
+  typed_visitors_[C64] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
+    return Unimplemented("unhandled primitive type: C64.");
+  });
   typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
     return Unimplemented("unhandled primitive type: TUPLE.");
   });

@@ -33,7 +33,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
+
+_DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
 def multi_class_head(n_classes,
@@ -265,6 +268,9 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
     unweighted_loss = losses.sigmoid_cross_entropy(
         multi_class_labels=processed_labels, logits=logits,
         reduction=losses.Reduction.NONE)
+    # Averages loss over classes.
+    unweighted_loss = math_ops.reduce_mean(
+        unweighted_loss, axis=-1, keep_dims=True)
     return head_lib.LossAndLabels(
         unweighted_loss=unweighted_loss,
         processed_labels=processed_labels)
@@ -284,22 +290,25 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
             pred_keys.PROBABILITIES: probabilities,
         }
       if mode == model_fn.ModeKeys.PREDICT:
+        classifier_output = head_lib._classification_output(  # pylint:disable=protected-access
+            scores=probabilities, n_classes=self._n_classes,
+            label_vocabulary=self._label_vocabulary)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
-                '': export_output.ClassificationOutput(scores=probabilities)
+                _DEFAULT_SERVING_KEY: classifier_output,
+                head_lib._CLASSIFY_SERVING_KEY: classifier_output,  # pylint:disable=protected-access
+                head_lib._PREDICT_SERVING_KEY: (  # pylint:disable=protected-access
+                    export_output.PredictOutput(predictions))
             })
 
       # Eval.
       unweighted_loss, processed_labels = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
-      # Averages loss over classes.
-      per_example_loss = math_ops.reduce_mean(
-          unweighted_loss, axis=-1, keep_dims=True)
       weights = head_lib._weights(features, self._weight_column)  # pylint:disable=protected-access
       training_loss = losses.compute_weighted_loss(
-          per_example_loss, weights=weights, reduction=losses.Reduction.SUM)
+          unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
@@ -309,7 +318,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                 labels=processed_labels,
                 probabilities=probabilities,
                 weights=weights,
-                per_example_loss=per_example_loss))
+                unweighted_loss=unweighted_loss))
 
       # Train.
       if train_op_fn is None:
@@ -330,16 +339,16 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         loss=training_loss,
         train_op=train_op_fn(training_loss))
 
-  def _eval_metric_ops(self, labels, probabilities, weights, per_example_loss):
+  def _eval_metric_ops(self, labels, probabilities, weights, unweighted_loss):
     """Returns a dict of metrics for eval_metric_ops."""
     with ops.name_scope(
-        None, 'metrics', [labels, probabilities, weights, per_example_loss]):
+        None, 'metrics', [labels, probabilities, weights, unweighted_loss]):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
           head_lib._summary_key(self._name, keys.LOSS_MEAN):  # pylint:disable=protected-access
               metrics_lib.mean(
-                  per_example_loss, weights=weights, name=keys.LOSS_MEAN),
+                  unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
           head_lib._summary_key(self._name, keys.AUC):  # pylint:disable=protected-access
               metrics_lib.auc(
                   labels=labels, predictions=probabilities, weights=weights,

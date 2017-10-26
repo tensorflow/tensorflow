@@ -47,6 +47,7 @@ See the @{$python/contrib.layers} guide.
 @@separable_conv2d
 @@separable_convolution2d
 @@softmax
+@@spatial_softmax
 @@stack
 @@unit_norm
 @@bow_encoder

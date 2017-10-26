@@ -61,8 +61,12 @@ class CropAndResizeOpTest : public OpsTestBase {
 
 REGISTER_TEST(float)
 REGISTER_TEST(double)
-REGISTER_TEST(int8)
 REGISTER_TEST(uint8)
+REGISTER_TEST(uint16)
+REGISTER_TEST(int8)
+REGISTER_TEST(int16)
+REGISTER_TEST(int32)
+REGISTER_TEST(int64)
 
 #undef REGISTER_TEST
 

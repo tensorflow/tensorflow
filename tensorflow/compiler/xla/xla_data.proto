@@ -48,6 +48,9 @@ enum PrimitiveType {
   F32 = 11;
   F64 = 12;
 
+  // Complex values of fixed width.
+  C64 = 15;
+
   // A tuple is a polymorphic sequence; e.g. a shape that holds different
   // sub-shapes. They are used for things like returning multiple values from a
   // computation; e.g. a computation that returns weights and biases may have a
@@ -305,6 +308,7 @@ message LiteralProto {
   repeated uint64 u64s = 7;
   repeated float f32s = 8;
   repeated double f64s = 9;
+  repeated float c64s = 12;  // Stored as interleaved real, imag floats.
   repeated LiteralProto tuple_literals = 10;
   bytes f16s = 11;  // Note: the F16s are encoded in little endian byte order
 }

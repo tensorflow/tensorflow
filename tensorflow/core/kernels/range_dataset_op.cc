@@ -112,19 +112,16 @@ class RangeDatasetOp : public DatasetOpKernel {
       }
 
      protected:
-      Status SaveInternal(OpKernelContext* ctx,
-                          IteratorBundleWriter* writer) override {
+      Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar<int64>(full_name("next"), next_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("next"), next_));
         return Status::OK();
       }
 
       Status RestoreInternal(OpKernelContext* ctx,
-                             IteratorBundleReader* reader) override {
+                             IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar<int64>(full_name("next"), &next_));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("next"), &next_));
         return Status::OK();
       }
 

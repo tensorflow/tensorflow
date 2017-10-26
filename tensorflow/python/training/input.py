@@ -27,12 +27,13 @@ import collections
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -146,6 +147,10 @@ def input_producer(input_tensor,
   Raises:
     ValueError: If the shape of the input cannot be inferred from the arguments.
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   with ops.name_scope(name, "input_producer", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
     element_shape = input_tensor.shape[1:].merge_with(element_shape)
@@ -413,22 +418,6 @@ def _as_original_type(original_tensors, tensor_list):
     return tensor_list
 
 
-def _smart_cond(pred, if_true, if_false):
-  """A `tf.cond` that does nothing when the condition is static."""
-  pred = ops.convert_to_tensor(pred)
-  static_pred = tensor_util.constant_value(pred)
-  if static_pred is not None:
-    if static_pred:
-      return if_true()
-    else:
-      return if_false()
-  else:
-    return control_flow_ops.cond(
-        pred,
-        if_true,
-        if_false)
-
-
 def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
                           shared_map_ops=None):
   """Store SparseTensors for feeding into batch, etc.
@@ -480,13 +469,13 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
     map_op_name = shared_map_op.name if shared_map_op else None
     def _maybe_store_sparse(t, map_op_name, keep_input):
       """Conditionally store a single sparse Tensor."""
-      return _smart_cond(
+      return utils.smart_cond(
           keep_input,
           lambda: _store_sparse(t, shared_name=map_op_name),
           lambda: constant_op.constant(-1, dtypes.int64))
     def _maybe_store_many_sparse(t, map_op_name, keep_input):
       """Conditionally store multiple sparse Tensors."""
-      out_tensor = _smart_cond(
+      out_tensor = utils.smart_cond(
           keep_input,
           lambda: _store_many_sparse(t, shared_name=map_op_name),
           lambda: -1 * array_ops.ones(array_ops.shape(t)[0:1], dtypes.int64))
@@ -667,7 +656,7 @@ def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
     enqueue_ops = [enqueue_fn(_select_which_to_enqueue(x, keep_input))
                    for x in tensor_list_list]
   else:
-    enqueue_ops = [_smart_cond(
+    enqueue_ops = [utils.smart_cond(
         keep_input,
         lambda: enqueue_fn(tl),  # pylint:disable=cell-var-from-loop
         control_flow_ops.no_op) for tl in tensor_list_list]
@@ -684,7 +673,7 @@ def _enqueue(queue, tensor_list, threads, enqueue_many, keep_input):
     enqueue_ops = [
         enqueue_fn(_select_which_to_enqueue(tensor_list, keep_input))] * threads
   else:
-    enqueue_ops = [_smart_cond(
+    enqueue_ops = [utils.smart_cond(
         keep_input,
         lambda: enqueue_fn(tensor_list),
         control_flow_ops.no_op)] * threads
@@ -701,6 +690,10 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
            allow_smaller_final_batch=False, shared_name=None,
            name=None):
   """Helper function for `batch` and `maybe_batch`."""
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "batch", list(tensor_list) + [keep_input]) as name:
     tensor_list = _validate(tensor_list)
@@ -734,6 +727,10 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
                 enqueue_many=False, shapes=None, dynamic_pad=False,
                 allow_smaller_final_batch=False, shared_name=None, name=None):
   """Helper function for `batch_join` and `maybe_batch_join`."""
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   tensor_list_list = _as_tensor_list_list(tensors_list)
   with ops.name_scope(name, "batch_join",
                       _flatten(tensor_list_list) + [keep_input]) as name:
@@ -764,6 +761,10 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
                    shapes=None, allow_smaller_final_batch=False,
                    shared_name=None, name=None):
   """Helper function for `shuffle_batch` and `maybe_shuffle_batch`."""
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "shuffle_batch",
                       list(tensor_list) + [keep_input]) as name:
@@ -804,6 +805,10 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
                         allow_smaller_final_batch=False, shared_name=None,
                         name=None):
   """Helper function for `shuffle_batch_join` and `maybe_shuffle_batch_join`."""
+  if context.in_eager_mode():
+    raise ValueError(
+        "Queue-using input pipelines are not supported when eager execution is"
+        " enabled. Please use tf.data to ingest data into your model instead.")
   tensor_list_list = _as_tensor_list_list(tensors_list)
   with ops.name_scope(name, "shuffle_batch_join",
                       _flatten(tensor_list_list) + [keep_input]) as name:

@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import copy
 
+import numpy as np
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -41,13 +43,13 @@ class BaseLayerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes()
   def testLayerProperties(self):
     layer = base_layers.Layer(name='my_layer')
-    self.assertListEqual(layer.variables, [])
-    self.assertListEqual(layer.trainable_variables, [])
-    self.assertListEqual(layer.non_trainable_variables, [])
+    self.assertEqual(layer.variables, [])
+    self.assertEqual(layer.trainable_variables, [])
+    self.assertEqual(layer.non_trainable_variables, [])
     if context.in_graph_mode():
       # updates, losses only suppported in GRAPH mode
-      self.assertListEqual(layer.updates, [])
-      self.assertListEqual(layer.losses, [])
+      self.assertEqual(layer.updates, [])
+      self.assertEqual(layer.losses, [])
     self.assertEqual(layer.built, False)
     layer = base_layers.Layer(name='my_layer', trainable=False)
     self.assertEqual(layer.trainable, False)
@@ -60,11 +62,11 @@ class BaseLayerTest(test.TestCase):
     variable = layer.add_variable(
         'my_var', [2, 2], initializer=init_ops.zeros_initializer())
     self.assertEqual(variable.name, 'my_layer/my_var:0')
-    self.assertListEqual(layer.variables, [variable])
-    self.assertListEqual(layer.trainable_variables, [variable])
-    self.assertListEqual(layer.non_trainable_variables, [])
+    self.assertEqual(layer.variables, [variable])
+    self.assertEqual(layer.trainable_variables, [variable])
+    self.assertEqual(layer.non_trainable_variables, [])
     if context.in_graph_mode():
-      self.assertListEqual(
+      self.assertEqual(
           layer.variables,
           ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
@@ -74,9 +76,9 @@ class BaseLayerTest(test.TestCase):
         'non_trainable_var', [2, 2],
         initializer=init_ops.zeros_initializer(),
         trainable=False)
-    self.assertListEqual(layer.variables, [variable, variable_2])
-    self.assertListEqual(layer.trainable_variables, [variable])
-    self.assertListEqual(layer.non_trainable_variables, [variable_2])
+    self.assertEqual(layer.variables, [variable, variable_2])
+    self.assertEqual(layer.trainable_variables, [variable])
+    self.assertEqual(layer.non_trainable_variables, [variable_2])
     if context.in_graph_mode():
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
@@ -105,8 +107,8 @@ class BaseLayerTest(test.TestCase):
       inputs = random_ops.random_uniform((5,), seed=1)
       layer.apply(inputs)
       layer.apply(inputs)
-      self.assertListEqual([v.name for v in layer.variables],
-                           ['my_layer/my_var:0'])
+      self.assertEqual([v.name for v in layer.variables],
+                       ['my_layer/my_var:0'])
 
       # Creating a layer with no scope leads to lazy construction of
       # the scope at apply() time.  It uses scope "<current scope>/base_name"
@@ -120,7 +122,7 @@ class BaseLayerTest(test.TestCase):
         # The variables were created outside of the Layer, and
         # reuse=True, so the Layer does not own them and they are not
         # stored in its collection.
-        self.assertListEqual(lazy_layer.variables, [])
+        self.assertEqual(lazy_layer.variables, [])
         self.assertEqual(lazy_layer._scope.name, 'new_scope/my_layer')
 
       # Creating a layer with no scope leads to lazy construction of
@@ -135,7 +137,7 @@ class BaseLayerTest(test.TestCase):
         # The variables were created outside of the Layer, and
         # reuse=True, so the Layer does not own them and they are not
         # stored in its collection.
-        self.assertListEqual(lazy_layer.variables, [])
+        self.assertEqual(lazy_layer.variables, [])
         self.assertEqual(lazy_layer._scope.name, 'new_scope')
 
       # Checking for graph equality is only done in GRAPH mode.
@@ -183,14 +185,14 @@ class BaseLayerTest(test.TestCase):
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
     self.assertEqual(outputs.op.name, 'my_layer/add')
-    self.assertListEqual([v.name
-                          for v in layer.variables], ['my_layer/my_var:0'])
+    self.assertEqual([v.name
+                      for v in layer.variables], ['my_layer/my_var:0'])
     with self.assertRaisesRegexp(ValueError,
                                  'my_layer/this_will_break_on_second_call'):
       layer.apply(inputs)
     # The list of variables hasn't changed.
-    self.assertListEqual([v.name
-                          for v in layer.variables], ['my_layer/my_var:0'])
+    self.assertEqual([v.name
+                      for v in layer.variables], ['my_layer/my_var:0'])
 
   @test_util.run_in_graph_and_eager_modes()
   def testDeepCopy(self):
@@ -435,8 +437,8 @@ class BaseLayerTest(test.TestCase):
     dense_layer.add_update(0, inputs=a)
     dense_layer.add_update(1, inputs=None)
 
-    self.assertListEqual(dense_layer.get_updates_for(a), [0])
-    self.assertListEqual(dense_layer.get_updates_for(None), [1])
+    self.assertEqual(dense_layer.get_updates_for(a), [0])
+    self.assertEqual(dense_layer.get_updates_for(None), [1])
 
   def test_get_losses_for(self):
     a = base_layers.Input(shape=(2,))
@@ -444,8 +446,8 @@ class BaseLayerTest(test.TestCase):
     dense_layer.add_loss(0, inputs=a)
     dense_layer.add_loss(1, inputs=None)
 
-    self.assertListEqual(dense_layer.get_losses_for(a), [0])
-    self.assertListEqual(dense_layer.get_losses_for(None), [1])
+    self.assertEqual(dense_layer.get_losses_for(a), [0])
+    self.assertEqual(dense_layer.get_losses_for(None), [1])
 
   def testTopologicalAttributes(self):
     # test layer attributes / methods related to cross-layer connectivity.
@@ -612,7 +614,7 @@ class NetworkTest(test.TestCase):
     a = base_layers.Input(shape=(32,), name='input_a')
     b = base_layers.Input(shape=(32,), name='input_b')
 
-    self.assertListEqual(a.get_shape().as_list(), [None, 32])
+    self.assertEqual(a.get_shape().as_list(), [None, 32])
     a_layer, a_node_index, a_tensor_index = a._keras_history
     b_layer, _, _ = b._keras_history
     self.assertEqual(len(a_layer._inbound_nodes), 1)
@@ -620,11 +622,11 @@ class NetworkTest(test.TestCase):
     node = a_layer._inbound_nodes[a_node_index]
     self.assertEqual(node.outbound_layer, a_layer)
 
-    self.assertListEqual(node.inbound_layers, [])
-    self.assertListEqual(node.input_tensors, [a])
-    self.assertListEqual(node.input_shapes, [(None, 32)])
-    self.assertListEqual(node.output_tensors, [a])
-    self.assertListEqual(node.output_shapes, [(None, 32)])
+    self.assertEqual(node.inbound_layers, [])
+    self.assertEqual(node.input_tensors, [a])
+    self.assertEqual(node.input_shapes, [(None, 32)])
+    self.assertEqual(node.output_tensors, [a])
+    self.assertEqual(node.output_shapes, [(None, 32)])
 
     dense = core_layers.Dense(16, name='dense_1')
     dense(a)
@@ -632,12 +634,12 @@ class NetworkTest(test.TestCase):
 
     self.assertEqual(len(dense._inbound_nodes), 2)
     self.assertEqual(len(dense._outbound_nodes), 0)
-    self.assertListEqual(dense._inbound_nodes[0].inbound_layers, [a_layer])
+    self.assertEqual(dense._inbound_nodes[0].inbound_layers, [a_layer])
     self.assertEqual(dense._inbound_nodes[0].outbound_layer, dense)
-    self.assertListEqual(dense._inbound_nodes[1].inbound_layers, [b_layer])
+    self.assertEqual(dense._inbound_nodes[1].inbound_layers, [b_layer])
     self.assertEqual(dense._inbound_nodes[1].outbound_layer, dense)
-    self.assertListEqual(dense._inbound_nodes[0].input_tensors, [a])
-    self.assertListEqual(dense._inbound_nodes[1].input_tensors, [b])
+    self.assertEqual(dense._inbound_nodes[0].input_tensors, [a])
+    self.assertEqual(dense._inbound_nodes[1].input_tensors, [b])
 
     # Test config
     config_0 = dense._inbound_nodes[0].get_config()
@@ -888,6 +890,68 @@ class NetworkTest(test.TestCase):
                           self.evaluate(getattr(b, '_keras_mask')))
       self.assertAllEqual(self.evaluate(a * mask), self.evaluate(b))
 
+
+class DeferredModeTest(test.TestCase):
+
+  def testDeferredTensorAttributes(self):
+    x = base_layers._DeferredTensor(shape=(None, 2), dtype='float32', name='x')
+    self.assertEqual(str(x),
+                     'DeferredTensor(\'x\', shape=(?, 2), dtype=float32)')
+    self.assertEqual(repr(x),
+                     '<_DeferredTensor \'x\' shape=(?, 2) dtype=float32>')
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testSimpleNetworkBuilding(self):
+    inputs = base_layers.Input(shape=(32,))
+    if context.in_eager_mode():
+      self.assertIsInstance(inputs, base_layers._DeferredTensor)
+      self.assertEqual(inputs.dtype.name, 'float32')
+      self.assertEqual(inputs.shape.as_list(), [None, 32])
+
+    x = core_layers.Dense(2)(inputs)
+    if context.in_eager_mode():
+      self.assertIsInstance(x, base_layers._DeferredTensor)
+      self.assertEqual(x.dtype.name, 'float32')
+      self.assertEqual(x.shape.as_list(), [None, 2])
+
+    outputs = core_layers.Dense(4)(x)
+    network = base_layers.Network(inputs, outputs)
+    self.assertIsInstance(network, base_layers.Network)
+
+    if context.in_eager_mode():
+      # It should be possible to call such a network on EagerTensors.
+      inputs = constant_op.constant(
+          np.random.random((10, 32)).astype('float32'))
+      outputs = network(inputs)
+      self.assertEqual(outputs.shape.as_list(), [10, 4])
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testMultiIONetworkbuilding(self):
+    input_a = base_layers.Input(shape=(32,))
+    input_b = base_layers.Input(shape=(16,))
+    a = core_layers.Dense(16)(input_a)
+
+    class AddLayer(base_layers.Layer):
+
+      def call(self, inputs):
+        return inputs[0] + inputs[1]
+
+      def _compute_output_shape(self, input_shape):
+        return input_shape[0]
+
+    c = AddLayer()([a, input_b])  # pylint: disable=not-callable
+    c = core_layers.Dense(2)(c)
+
+    network = base_layers.Network([input_a, input_b], [a, c])
+    if context.in_eager_mode():
+      a_val = constant_op.constant(
+          np.random.random((10, 32)).astype('float32'))
+      b_val = constant_op.constant(
+          np.random.random((10, 16)).astype('float32'))
+      outputs = network([a_val, b_val])
+      self.assertEqual(len(outputs), 2)
+      self.assertEqual(outputs[0].shape.as_list(), [10, 16])
+      self.assertEqual(outputs[1].shape.as_list(), [10, 2])
 
 if __name__ == '__main__':
   test.main()
