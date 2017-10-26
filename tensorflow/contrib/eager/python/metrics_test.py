@@ -44,6 +44,15 @@ class MetricsTest(test.TestCase):
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
 
+  def testInitVariables(self):
+    m = metrics.Mean()
+    m([1, 10, 100, 1000])
+    m([10000.0, 100000.0])
+    self.assertEqual(111111.0/6, m.result().numpy())
+    m.init_variables()
+    m(7)
+    self.assertEqual(7.0, m.result().numpy())
+
   def testWriteSummaries(self):
     m = metrics.Mean()
     m([1, 10, 100])
