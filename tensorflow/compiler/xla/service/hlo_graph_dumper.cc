@@ -342,6 +342,11 @@ class HloDotDumper {
 
   bool ShouldShowSubcomputation(const HloComputation* subcomp);
   bool ShouldShowFusionSubcomputation(const HloInstruction* instr);
+
+  // We omit some nodes from the graph, instead drawing them inlined into the
+  // nodes that use them.
+  bool ShouldMergeIntoUsers(const HloInstruction* instr) const;
+
   string DumpSubcomputation(const HloComputation* subcomp,
                             const HloInstruction* parent_instr);
   string DumpComputation(const HloComputation* comp);
@@ -352,7 +357,7 @@ class HloDotDumper {
   string GetInstructionNodeLabel(const HloInstruction* instr);
   string GetInstructionNodeMetadata(const HloInstruction* instr);
   string GetInstructionNodeExtraInfo(const HloInstruction* instr);
-  string GetInstructionNodeInlinedConstants(const HloInstruction* instr);
+  string GetInstructionNodeInlinedOperands(const HloInstruction* instr);
   void AddInstructionIncomingEdges(const HloInstruction* instr);
 
   // If instr has just one computation and it's trivial (e.g. "return param0 +
@@ -668,10 +673,40 @@ string HloDotDumper::DumpRootTag() {
                 to_id, node_body, node_shape, NodeColorAttributes(color));
 }
 
+bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
+  // If a node:
+  //
+  //  - is a tuple-shaped parameter,
+  //  - is not a parameter to a fusion node,
+  //  - has at least kMinUsersToOmit users shown, and
+  //  - all of the shown users are get-tuple-elements,
+  //
+  // then we omit it from the graph, merging it with its users.
+  //
+  // This helps us handle the common case where a while loop body has one big
+  // tuple-shaped parameter.
+  const int kMinUsersToOmit = 3;
+  return instr->opcode() == HloOpcode::kParameter &&
+         ShapeUtil::IsTuple(instr->shape()) && !instr->IsFused() &&
+         std::count_if(instr->users().begin(), instr->users().end(),
+                       [&](const HloInstruction* user) {
+                         return filter_.Show(user);
+                       }) > kMinUsersToOmit &&
+         std::all_of(instr->users().begin(), instr->users().end(),
+                     [&](const HloInstruction* user) {
+                       return !filter_.Show(user) ||
+                              user->opcode() == HloOpcode::kGetTupleElement;
+                     });
+}
+
 string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   // We don't display constants as separate nodes; they're merged into their
   // users.
   if (instr->opcode() == HloOpcode::kConstant) {
+    return "";
+  }
+  // Skip this node if it's merged into its users.
+  if (ShouldMergeIntoUsers(instr)) {
     return "";
   }
   // Omit the fusion node if its subcomputation is drawn, since the
@@ -689,7 +724,7 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   string node_label = GetInstructionNodeLabel(instr);
   string node_metadata = GetInstructionNodeMetadata(instr);
   string extra_info = GetInstructionNodeExtraInfo(instr);
-  string inlined_constants = GetInstructionNodeInlinedConstants(instr);
+  string inlined_constants = GetInstructionNodeInlinedOperands(instr);
   string trivial_subcomputation = GetInstructionTrivialComputationStr(instr);
   AddInstructionIncomingEdges(instr);
 
@@ -717,7 +752,7 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
                 NodeColorAttributes(color));
 }
 
-string HloDotDumper::GetInstructionNodeInlinedConstants(
+string HloDotDumper::GetInstructionNodeInlinedOperands(
     const HloInstruction* instr) {
   auto stringify_constant = [](const HloInstruction* constant) {
     if (ShapeUtil::IsEffectiveScalar(constant->shape())) {
@@ -746,16 +781,44 @@ string HloDotDumper::GetInstructionNodeInlinedConstants(
   std::vector<string> lines;
   for (int64 i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
-    if (operand->opcode() != HloOpcode::kConstant) {
-      continue;
+    optional<string> operand_str;
+    if (operand->opcode() == HloOpcode::kConstant) {
+      operand_str = stringify_constant(operand);
+    } else if (ShouldMergeIntoUsers(operand)) {
+      // Special case: If the operand is a parameter, use its parameter number
+      // rather than its name, because that's generally how people think of the
+      // node.
+      if (operand->opcode() == HloOpcode::kParameter) {
+        operand_str = Printf("Parameter %lld", operand->parameter_number());
+      } else {
+        operand_str = operand->name();
+      }
     }
-    lines.push_back(
-        Printf("<b>operand %lld</b> = %s", i, stringify_constant(operand)));
+
+    if (operand_str) {
+      if (instr->operand_count() > 1) {
+        lines.push_back(Printf("<b>operand %lld</b> = %s", i, *operand_str));
+      } else {
+        lines.push_back(Printf("<b>operand</b> = %s", *operand_str));
+      }
+    }
   }
   return Join(lines, "<br/>");
 }
 
 ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
+  const auto kParameterColor = kOrange;
+
+  // Special case: If this instruction has a parameter merged into it, paint it
+  // the same color as a parameter.
+  if (std::any_of(instr->operands().begin(), instr->operands().end(),
+                  [&](const HloInstruction* operand) {
+                    return operand->opcode() == HloOpcode::kParameter &&
+                           ShouldMergeIntoUsers(operand);
+                  })) {
+    return kParameterColor;
+  }
+
   // Pick different colors or shapes for instructions which are particularly
   // expensive (eg, dot) and those which are unusual in some way or unique
   // (eg, parameter).
@@ -845,7 +908,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReducePrecision:
       return kRed;
     case HloOpcode::kParameter:
-      return kOrange;
+      return kParameterColor;
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
@@ -1016,7 +1079,8 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
         ShouldShowFusionSubcomputation(from)) {
       from = from->fused_expression_root();
     }
-    if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant) {
+    if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant ||
+        ShouldMergeIntoUsers(from)) {
       return;
     }
     VLOG(2) << "Adding edge from " << from->name() << " to " << to->name()
