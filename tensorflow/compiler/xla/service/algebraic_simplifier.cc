@@ -1941,7 +1941,7 @@ Status AlgebraicSimplifierVisitor::HandleWhile(HloInstruction* while_op) {
     return Status::OK();
   }
 
-  // Remove while loops with static trip count of 1.
+  // Remove while loops with static trip count of 0.
   optional<int64> trip_count = GetLoopTripCount(while_op);
   if (trip_count && *trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
@@ -1956,8 +1956,10 @@ Status AlgebraicSimplifierVisitor::HandleWhile(HloInstruction* while_op) {
     changed_ = true;
     return Status::OK();
   }
+
+  // Transform while loops with static trip count of 1 into a call op, then
+  // inline the call.
   if (trip_count && *trip_count == 1) {
-    // Transform the while loop into a call op, then inline the call.
     auto computation = while_op->parent();
     auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
         while_op->shape(), while_op->operands(), while_op->while_body()));

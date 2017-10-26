@@ -2665,10 +2665,10 @@ class HloInstruction::FusionReusesParamElements {
  public:
   using UseKind = HloInstruction::UseKind;
 
-  // We could rather iterate backwards thru fused_instructions_ here, as it is
-  // in reverse postorder, and compute whether each fused instruction reuses
-  // the value of this parameter, which would save stack space but not allow
-  // us to finish early if we find a reuse.
+  // We could rather iterate backwards through fused_instructions_ here, as it
+  // is in reverse postorder, and compute whether each fused instruction reuses
+  // the value of this parameter, which would save stack space but not allow us
+  // to finish early if we find a reuse.
   static UseKind Compute(int64 i, const HloInstruction& hlo) {
     tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> memoization_cache;
     return ComputeInternal(i, hlo, &memoization_cache);
