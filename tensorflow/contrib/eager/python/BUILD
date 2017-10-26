@@ -35,6 +35,7 @@ cuda_py_test(
     additional_deps = [
         ":tfe",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:metrics",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
