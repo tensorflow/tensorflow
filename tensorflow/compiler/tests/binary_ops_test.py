@@ -707,6 +707,20 @@ class BinaryOpsTest(XLATestCase):
                [0, 0, 0, 0, 0, 0]],
               dtype=dtype))
 
+      self._testBinary(
+          lambda x, y: array_ops.pad(x, y, constant_values=7),
+          np.array(
+              [[1, 2, 3], [4, 5, 6]], dtype=dtype),
+          np.array(
+              [[0, 3], [2, 1]], dtype=np.int32),
+          expected=np.array(
+              [[7, 7, 1, 2, 3, 7],
+               [7, 7, 4, 5, 6, 7],
+               [7, 7, 7, 7, 7, 7],
+               [7, 7, 7, 7, 7, 7],
+               [7, 7, 7, 7, 7, 7]],
+              dtype=dtype))
+
   def testMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:

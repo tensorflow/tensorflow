@@ -680,6 +680,10 @@ class ResourceVariable(variables.Variable):
     """Unsupported."""
     raise NotImplementedError("ResourceVariable does not implement _ref()")
 
+  def set_shape(self, shape):
+    """Unsupported."""
+    raise NotImplementedError("ResourceVariable does not implement set_shape()")
+
   @staticmethod
   def _OverloadOperator(operator):  # pylint: disable=invalid-name
     """Defer an operator overload to `ops.Tensor`.
@@ -763,6 +767,27 @@ class ResourceVariable(variables.Variable):
       return self.read_value().op.inputs[0]
     else:
       return self.value()
+
+  def __iadd__(self, unused_other):
+    raise RuntimeError("Variable += value not supported.")
+
+  def __isub__(self, unused_other):
+    raise RuntimeError("Variable -= value not supported.")
+
+  def __imul__(self, unused_other):
+    raise RuntimeError("Variable *= value not supported.")
+
+  def __idiv__(self, unused_other):
+    raise RuntimeError("Variable /= value not supported.")
+
+  def __itruediv__(self, unused_other):
+    raise RuntimeError("Variable /= value not supported.")
+
+  def __irealdiv__(self, unused_other):
+    raise RuntimeError("Variable /= value not supported.")
+
+  def __ipow__(self, unused_other):
+    raise RuntimeError("Variable **= value not supported.")
 
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):

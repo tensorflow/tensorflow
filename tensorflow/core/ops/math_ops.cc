@@ -2258,7 +2258,14 @@ REGISTER_OP("HistogramFixedWidth")
     .Attr("T: {int32, int64, float32, float64}")
     .Attr("dtype: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->UnknownShapeOfRank(1));
+      const Tensor* nbins_input = c->input_tensor(2);
+      if (nbins_input != nullptr) {
+        int64 nbins;
+        TF_RETURN_IF_ERROR(c->GetScalarFromTensor(nbins_input, &nbins));
+        c->set_output(0, c->Vector(nbins));
+      } else {
+        c->set_output(0, c->UnknownShapeOfRank(1));
+      }
       return Status::OK();
     })
     .Doc(R"doc(

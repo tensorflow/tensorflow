@@ -133,8 +133,6 @@ HloOpcode TernaryOperationToHloOpcode(TernaryOperation triop) {
       return HloOpcode::kClamp;
     case TRIOP_SELECT:
       return HloOpcode::kSelect;
-    case TRIOP_UPDATE:
-      return HloOpcode::kUpdate;
     default:
       LOG(FATAL) << "unhandled operation " << triop;
   }

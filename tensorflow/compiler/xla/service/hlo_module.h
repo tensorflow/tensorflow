@@ -182,7 +182,8 @@ class HloModule {
 
  private:
   HloComputation* AddComputationInternal(
-      std::unique_ptr<HloComputation> computation);
+      std::unique_ptr<HloComputation> computation, bool is_entry,
+      bool uniquify_names);
 
   const string name_;
   HloModuleConfig config_;

@@ -191,8 +191,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
                 shape, dtype, use_placeholder=use_placeholder)
             op_log_abs_det = operator.log_abs_determinant()
-            mat_log_abs_det = math_ops.log(
-                math_ops.abs(linalg_ops.matrix_determinant(mat)))
+            _, mat_log_abs_det = linalg.slogdet(mat)
             if not use_placeholder:
               self.assertAllEqual(shape[:-2], op_log_abs_det.get_shape())
             op_log_abs_det_v, mat_log_abs_det_v = sess.run(

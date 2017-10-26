@@ -29,22 +29,23 @@ from tensorflow.python.training import saver as _saver
 
 def _init_from_checkpoint(self, *args, **kwargs):
   """Overrides default init by loading value from checkpoint."""
-  self.old_init(*args, **kwargs)
   # pylint: disable=protected-access
-  if self._shared_name not in self.ckpt_var_cache:
+  self._old_init(*args, **kwargs)
+  ckpt_name = self._map_func(self._shared_name)
+  if ckpt_name not in self._ckpt_var_cache:
     raise errors.NotFoundError(None, None,
-                               "%s not found in checkpoint" % self._shared_name)
+                               "%s not found in checkpoint" % ckpt_name)
 
-  val = self.ckpt_var_cache[self._shared_name]
+  val = self._ckpt_var_cache.get(ckpt_name, None)
   if val is not None:
-    self.assign(self.ckpt_var_cache[self._shared_name])
+    self.assign(val)
     # Avoid assigning for the second time.
-    self.ckpt_var_cache[self._shared_name] = None
+    self._ckpt_var_cache[ckpt_name] = None
   # pylint: enable=protected-access
 
 
 @contextlib.contextmanager
-def restore_variables_on_create(save_path):
+def restore_variables_on_create(save_path, map_func=None):
   """ContextManager that restores variables on creation.
 
     When save_path is None (e.g. No checkpoint), does nothing.
@@ -59,19 +60,31 @@ def restore_variables_on_create(save_path):
 
   Args:
     save_path: The checkpoint file prefix.
+    map_func: A function that given the variable name as argument
+        and returns a variable name in checkpoint for restore. If
+        None, use the variable with the same name in checkpoint to restore.
+        It's an error that the mapped variable name doesn't exist in
+        checkpoint.
 
   Yields:
     Nothing.
 
   Raises:
     NotFoundError: If the variable is not found in checkpoint.
-    ValueError: If not used in eager mode.
+    ValueError: If not used in eager mode or map_func is not callable.
   """
   if context.in_graph_mode():
     raise ValueError(
         "Currently, restore_variables_on_create can only be used with "
         "eager execution enabled.")
   if save_path:
+    if map_func is None:
+      map_func_wrapper = lambda self, x: x
+    else:
+      if not callable(map_func):
+        raise ValueError("map_func must be callaled.")
+      map_func_wrapper = lambda self, x: map_func(x)
+
     ckpt_var_cache = dict()
     reader = checkpoint_utils.load_checkpoint(save_path)
     for k, _ in checkpoint_utils.list_variables(save_path):
@@ -82,8 +95,10 @@ def restore_variables_on_create(save_path):
     assert old_init, "ResourceVariable misses _init_from_args method."
     setattr(resource_variable_ops.ResourceVariable, "_init_from_args",
             _init_from_checkpoint)
-    setattr(resource_variable_ops.ResourceVariable, "old_init", old_init)
-    setattr(resource_variable_ops.ResourceVariable, "ckpt_var_cache",
+    setattr(resource_variable_ops.ResourceVariable, "_old_init", old_init)
+    setattr(resource_variable_ops.ResourceVariable, "_map_func",
+            map_func_wrapper)
+    setattr(resource_variable_ops.ResourceVariable, "_ckpt_var_cache",
             ckpt_var_cache)
   try:
     yield
@@ -93,8 +108,9 @@ def restore_variables_on_create(save_path):
     if save_path:
       setattr(resource_variable_ops.ResourceVariable, "_init_from_args",
               old_init)
-      setattr(resource_variable_ops.ResourceVariable, "old_init", None)
-      setattr(resource_variable_ops.ResourceVariable, "ckpt_var_cache", None)
+      setattr(resource_variable_ops.ResourceVariable, "_old_init", None)
+      setattr(resource_variable_ops.ResourceVariable, "_map_func", None)
+      setattr(resource_variable_ops.ResourceVariable, "_ckpt_var_cache", None)
 
 
 class Saver(object):
@@ -104,7 +120,7 @@ class Saver(object):
     session is not needed.
 
   Args:
-    var_list: A list of variables.
+    var_list: Same as tf.train.Saver.
   """
 
   def __init__(self, var_list):

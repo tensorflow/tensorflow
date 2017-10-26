@@ -22,7 +22,6 @@ from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops.bijectors import AffineLinearOperator
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import normal
@@ -299,7 +298,10 @@ def _kl_brute_force(a, b, name=None):
   def squared_frobenius_norm(x):
     """Helper to make KL calculation slightly more readable."""
     # http://mathworld.wolfram.com/FrobeniusNorm.html
-    return math_ops.square(linalg_ops.norm(x, ord="fro", axis=[-2, -1]))
+    # The gradient of KL[p,q] is not defined when p==q. The culprit is
+    # linalg_ops.norm, i.e., we cannot use the commented out code.
+    # return math_ops.square(linalg_ops.norm(x, ord="fro", axis=[-2, -1]))
+    return math_ops.reduce_sum(math_ops.square(x), axis=[-2, -1])
 
   # TODO(b/35041439): See also b/35040945. Remove this function once LinOp
   # supports something like:

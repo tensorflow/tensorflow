@@ -56,6 +56,8 @@ TensorShapeProto GetTensorShape(const HloInstruction* instruction) {
   return tensor_shape;
 }
 
+string GetDeviceName(int device) { return StrCat("/device/XLA:", device); }
+
 }  // namespace
 
 void CleanNodeName(string* name) {
@@ -178,6 +180,10 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
     case HloOpcode::kCustomCall:
       attrs["custom_call_target"].set_s(instruction->custom_call_target());
       break;
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      attrs["channel_id"].set_i(instruction->channel_id());
+      break;
     default:
       break;
   }
@@ -192,6 +198,10 @@ Status HloTfGraphBuilder::AddInstruction(const HloInstruction* instruction) {
   NodeDef* node_def = graph_def_.add_node();
   node_def->set_name(GetNodeNameForInstruction(instruction));
   node_def->set_op(GetOpDefName(instruction));
+  if (instruction->device_assignment().has_device()) {
+    node_def->set_device(
+        GetDeviceName(instruction->device_assignment().device()));
+  }
   SetNodeAttrs(instruction, node_def);
   if (instruction->opcode() == HloOpcode::kFusion) {
     for (auto* fused_instruction : instruction->fused_instructions()) {
