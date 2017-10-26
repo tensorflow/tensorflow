@@ -49,7 +49,8 @@ class SummaryWriterInterface : public ResourceBase {
 // enqueue up to max_queue summaries, and flush at least every flush_millis
 // milliseconds. The summaries will be written to the directory specified by
 // logdir and with the filename suffixed by filename_suffix. The caller owns a
-// reference to result if the returned status is ok.
+// reference to result if the returned status is ok. The Env object must not
+// be destroyed until after the returned writer.
 Status CreateSummaryWriter(int max_queue, int flush_millis,
                            const string& logdir, const string& filename_suffix,
                            Env* env, SummaryWriterInterface** result);

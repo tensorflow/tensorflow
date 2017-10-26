@@ -349,8 +349,10 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       config=config)
 
   if checkpoint_dir:
-    all_hooks.append(basic_session_run_hooks.StepCounterHook(
-        output_dir=checkpoint_dir, every_n_steps=log_step_count_steps))
+    if log_step_count_steps and log_step_count_steps > 0:
+      all_hooks.append(
+          basic_session_run_hooks.StepCounterHook(
+              output_dir=checkpoint_dir, every_n_steps=log_step_count_steps))
 
     if (save_summaries_steps and save_summaries_steps > 0) or (
         save_summaries_secs and save_summaries_secs > 0):
