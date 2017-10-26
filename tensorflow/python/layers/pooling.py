@@ -148,6 +148,10 @@ def average_pooling1d(inputs, pool_size, strides,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.AveragePooling1D` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(
@@ -217,6 +221,10 @@ def max_pooling1d(inputs, pool_size, strides,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.MaxPooling1D` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(
@@ -362,6 +370,10 @@ def average_pooling2d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.AveragePooling2D` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(
@@ -434,6 +446,10 @@ def max_pooling2d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.MaxPooling2D` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(
@@ -592,6 +608,10 @@ def average_pooling3d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.AveragePooling3D` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(
@@ -668,6 +688,10 @@ def max_pooling3d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.MaxPooling3D` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(
