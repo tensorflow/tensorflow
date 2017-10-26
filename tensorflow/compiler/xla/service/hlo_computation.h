@@ -312,8 +312,7 @@ class HloComputation {
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction,
-      HloInstruction* fusion_instruction = nullptr);
+      HloInstruction* root_instruction, HloInstruction* fusion_instruction);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -358,11 +357,6 @@ class HloComputation {
       instruction_iterators_;
 
   std::vector<HloInstruction*> param_instructions_;
-
-  // Unique name generator for instruction identifiers. Instruction names should
-  // be unique per computation and this is enforced when instructions are added
-  // to the computation.
-  NameUniquer instruction_name_uniquer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloComputation);
 };
