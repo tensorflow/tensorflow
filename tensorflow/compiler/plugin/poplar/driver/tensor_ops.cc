@@ -13,6 +13,7 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
+#include <popstd/DynamicSlice.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -42,8 +43,8 @@ CreateSliceUpdateOp(poplar::Graph &graph,
                         "Invalid update slice start");
   }
 
-  /* We update in place.  If the tensor isn't acceptable for update in place
-   * then make a copy first */
+  // We try to update in-place but it is possible that the input is a constant
+  // tensor in which case we need to make a copy of it to update it.
   poplar::program::Sequence seq;
   if (!input.isParallelWriteable()) {
     poplar::Tensor copy;
@@ -129,8 +130,8 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
   std::string vertex_name =
           templateVertex("DynamicUpdateSlice", input.elementType());
 
-  /* We update in place.  If the tensor isn't acceptable for update in place
-   * then make a copy first */
+  // We try to update in-place but it is possible that the input is a constant
+  // tensor in which case we need to make a copy of it to update it.
   poplar::program::Sequence seq;
   if (!input.isParallelWriteable()) {
     poplar::Tensor copy;
@@ -145,24 +146,32 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
     input = copy;
   }
 
-  auto cs = graph.addComputeSet(inst->name());
+  // popstd::dynamicUpdate() expects unsigned integer offsets, whereas
+  // Tensorflow prefers signed int. Convert if necessary.
+  auto type = indices.elementType();
+  if (type == "signed" || type == "signed int" || type == "int") {
+    indices = indices.reinterpret("unsigned");
+  }
 
-  auto v = graph.addVertex(cs, vertex_name,
-                           {{"in", input.flatten()},
-                            {"update", update.flatten()},
-                            {"index_base", indices.flatten()}});
+  // `slice_dims` is the list of dimensions to slice on. popstd::dynamicUpdate()
+  // optimises the order. A possible future optimisation might be to omit
+  // dimensions that aren't actually sliced.
+  std::vector<std::size_t> slice_dims(inst->shape().dimensions_size());
+  std::iota(slice_dims.begin(), slice_dims.end(), 0);
 
-  auto in_shape = convert_array<std::vector<int>>(input.shape());
-  graph.setInitialValue(v["in_shape"], in_shape);
-
-  auto update_shape = convert_array<std::vector<int>>(update.shape());
-  graph.setInitialValue(v["update_shape"], update_shape);
-
-  graph.setTileMapping(v, 0);
+  // Add the dynamic update operations to `seq`. This automatically
+  // creates the required compute set.
+  popstd::dynamicUpdate(graph,
+                        input,
+                        update,
+                        indices,
+                        slice_dims,
+                        update.shape(),
+                        seq,
+                        vertex_name);
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, input));
 
-  seq.add(poplar::program::Execute(cs));
   return seq;
 }
 
@@ -183,26 +192,36 @@ CreateDynamicSliceOp(poplar::Graph &graph,
   std::string vertex_name =
           templateVertex("DynamicSlice", input.elementType());
 
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
+  // popstd::dynamicUpdate() expects unsigned integer offsets, whereas
+  // Tensorflow prefers signed int. Convert if necessary.
+  auto type = indices.elementType();
+  if (type == "signed" || type == "signed int" || type == "int") {
+    indices = indices.reinterpret("unsigned");
+  }
+
+  // `slice_dims` is the list of dimensions to slice on. popstd::dynamicUpdate()
+  // optimises the order. A possible future optimisation might be to omit
+  // dimensions that aren't actually sliced.
+  std::vector<std::size_t> slice_dims(inst->shape().dimensions_size());
+  std::iota(slice_dims.begin(), slice_dims.end(), 0);
+
+  // The program to execute the dynamic slice.
+  poplar::program::Sequence seq;
+
+  // Add the dynamic slice operations to `seq`. This automatically
+  // creates the required compute set.
+  poplar::Tensor out =
+    popstd::dynamicSlice(graph,
+                         input,
+                         indices,
+                         slice_dims,
+                         PoplarShapeFromXlaShape(output_shape),
+                         seq,
+                         vertex_name);
+
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
-  auto cs = graph.addComputeSet(inst->name());
-
-  auto v = graph.addVertex(cs, vertex_name,
-                           {{"in", input.flatten()},
-                            {"index_base", indices.flatten()},
-                            {"out", out.flatten()}});
-
-  auto in_shape = convert_array<std::vector<int>>(input.shape());
-  graph.setInitialValue(v["in_shape"], in_shape);
-
-  auto out_shape = convert_array<std::vector<int>>(out.shape());
-  graph.setInitialValue(v["out_shape"], out_shape);
-
-  graph.setTileMapping(v, 0);
-
-  return poplar::program::Execute(cs);
+  return seq;
 }
 
 }
