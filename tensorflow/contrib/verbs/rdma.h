@@ -107,6 +107,7 @@ class RdmaAdapter {
   ~RdmaAdapter();
   // Adapter name, e.g. mlx5_0.
   string name() const;
+  void StartPolling();
   void Process_CQ();
 
  protected:

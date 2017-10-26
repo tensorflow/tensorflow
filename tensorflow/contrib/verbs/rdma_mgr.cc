@@ -115,6 +115,99 @@ void RdmaMgr::SetupChannels() {
   }
 }
 
+#define PING_RECV_WRID 0
+#define PING_BUFF_SIZE 1024
+
+int RdmaMgr::PostRecv(RdmaChannel* rc, struct ibv_sge list) {
+  struct ibv_recv_wr wr, *bad_wr;
+  memset(&wr, 0, sizeof(wr));
+  wr.sg_list = &list;
+  wr.num_sge = 1;
+  wr.wr_id = PING_RECV_WRID;
+
+  return ibv_post_recv(rc->qp_, &wr, &bad_wr);
+}
+
+int RdmaMgr::PostSend(RdmaChannel* rc, struct ibv_sge list) {
+  struct ibv_send_wr wr, *bad_wr;
+  memset(&wr, 0, sizeof(wr));
+  wr.wr_id = (uint64_t)rc;
+  wr.sg_list = &list;
+  wr.num_sge = 1;
+  wr.opcode = IBV_WR_SEND;
+  wr.send_flags = IBV_SEND_SIGNALED;
+
+  return ibv_post_send(rc->qp_, &wr, &bad_wr);
+}
+
+// Check connectivity by pinging every channel
+bool RdmaMgr::ConnectivityCheck() {
+  int i, rcnt = 0, scnt = 0;
+  void* buff;
+  struct ibv_sge list;
+  buff = malloc(PING_BUFF_SIZE);
+  CHECK(buff) << "Malloc failed!";
+  struct ibv_mr* mr = ibv_reg_mr(rdma_adapter_->pd_, buff, PING_BUFF_SIZE,
+                                 IBV_ACCESS_LOCAL_WRITE);
+  CHECK(mr) << "Failed to register memory region";
+
+  memset(&list, 0, sizeof(list));
+  list.addr = (uintptr_t)buff;
+  list.length = PING_BUFF_SIZE;
+  list.lkey = mr->lkey;
+
+  for (const auto& p : channel_table_) {
+    string worker_name = p.first;
+    RdmaChannel* rc = p.second;
+
+    VLOG(2) << "Ping to " << worker_name;
+    CHECK(PostRecv(rc, list) == 0) << "Couldn't post receive from "
+                                   << worker_name << " with error "
+                                   << std::strerror(errno);
+    CHECK(PostSend(rc, list) == 0) << "Couldn't post send  to " << worker_name
+                                   << " with error: " << std::strerror(errno);
+    for (int i = 0; i < 100; i++) {
+      rc->Recv();
+    }
+  }
+
+  while (rcnt < num_remote_workers_ || scnt < num_remote_workers_) {
+    int ne;
+    do {
+      ne = ibv_poll_cq(rdma_adapter_->cq_, 2 * num_remote_workers_,
+                       rdma_adapter_->wc_);
+      CHECK(ne >= 0) << "poll CQ failed " << ne << "with error"
+                     << std::strerror(errno);
+    } while (ne < 1);
+
+    for (i = 0; i < ne; ++i) {
+      ibv_wc_status s = rdma_adapter_->wc_[i].status;
+      // recv complete
+      if ((int)rdma_adapter_->wc_[i].wr_id == PING_RECV_WRID) {
+        CHECK(s == IBV_WC_SUCCESS) << ": " << ibv_wc_status_str(
+                                                  rdma_adapter_->wc_[i].status)
+                                   << "(" << rdma_adapter_->wc_[i].status
+                                   << ") for PING_RECV_WRID";
+        ++rcnt;
+        // send complete
+      } else {
+        RdmaChannel* rc =
+            reinterpret_cast<RdmaChannel*>(rdma_adapter_->wc_[i].wr_id);
+        CHECK(s == IBV_WC_SUCCESS) << ": " << ibv_wc_status_str(
+                                                  rdma_adapter_->wc_[i].status)
+                                   << "(" << rdma_adapter_->wc_[i].status
+                                   << ") to " << rc->remote_name_;
+        ++scnt;
+      }
+    }  // for
+  }    // while
+  CHECK(rcnt == scnt) << "Connectivity check failed!";
+  ibv_dereg_mr(mr);
+  free(buff);
+  rdma_adapter_->StartPolling();
+  return (num_remote_workers_ == rcnt) && (num_remote_workers_ == scnt);
+}
+
 RdmaMgr::~RdmaMgr() {
   for (const auto& p : channel_table_) delete p.second;
   channel_table_.clear();

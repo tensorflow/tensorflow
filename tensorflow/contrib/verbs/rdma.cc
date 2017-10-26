@@ -147,7 +147,7 @@ ibv_device* set_device() {
     // check validity of input device
     CHECK(false) << "The device " << env_p_rdma_device << " wasn't found";
   } else {
-  // set default device
+    // set default device
     str_port_num = get_env_var("RDMA_DEVICE_PORT");
     CHECK(str_port_num.empty())
         << "RDMA_DEVICE should be provided if RDMA_DEVICE_PORT is set by user";
@@ -177,7 +177,7 @@ ibv_device* set_device() {
 // Returns:
 //   port to use
 uint8_t set_port(ibv_context* context) {
-  uint8_t port_num = 0; //0 is illegal port number
+  uint8_t port_num = 0;  // 0 is illegal port number
   string str_port_num;
   ibv_device_attr device_att;
   ibv_port_attr port_attr;
@@ -419,9 +419,6 @@ RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
                       0);
   CHECK(cq_) << "Failed to create completion queue";
   CHECK(!ibv_req_notify_cq(cq_, 0)) << "Failed to request CQ notification";
-  polling_thread_.reset(Env::Default()->StartThread(
-      ThreadOptions(), "RdmaAdapterCQThread", [this] { Process_CQ(); }));
-  VLOG(2) << "Start RdmaAdapter: " << name();
 }
 
 RdmaAdapter::~RdmaAdapter() {
@@ -431,6 +428,12 @@ RdmaAdapter::~RdmaAdapter() {
       << "Failed to destroy channel";
   CHECK(!ibv_dealloc_pd(pd_)) << "Failed to deallocate PD";
   CHECK(!ibv_close_device(context_)) << "Failed to release context";
+}
+
+void RdmaAdapter::StartPolling() {
+  polling_thread_.reset(Env::Default()->StartThread(
+      ThreadOptions(), "RdmaAdapterCQThread", [this] { Process_CQ(); }));
+  VLOG(2) << "Start RdmaAdapter: " << name();
 }
 
 string RdmaAdapter::name() const { return string(context_->device->name); }
@@ -632,11 +635,6 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
       buffer_table_.insert({index, message_buffers_[i]});
       buffer_index_name_table_.insert({index, buffer_names[i]});
       buffer_name_index_table_.insert({buffer_names[i], index});
-    }
-
-    // Initiate recv
-    for (int i = 0; i < 100; i++) {
-      Recv();
     }
   }
 }
