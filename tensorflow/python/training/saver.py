@@ -164,6 +164,7 @@ class BaseSaverBuilder(object):
 
     def __init__(self, var, slice_spec, name):
       self._var_device = var.device
+      self._var_shape = var.shape
       if isinstance(var, ops.Tensor):
         self.handle_op = var.op.inputs[0]
         tensor = var
@@ -194,8 +195,8 @@ class BaseSaverBuilder(object):
       # Copy the restored tensor to the variable's device.
       with ops.device(self._var_device):
         restored_tensor = array_ops.identity(restored_tensor)
-      return resource_variable_ops.assign_variable_op(
-          self.handle_op, restored_tensor)
+      return resource_variable_ops.shape_safe_assign_variable_handle(
+          self.handle_op, self._var_shape, restored_tensor)
 
   def __init__(self, write_version=saver_pb2.SaverDef.V2):
     self._write_version = write_version

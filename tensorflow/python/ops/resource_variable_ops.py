@@ -73,6 +73,15 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   return handle
 
 
+def shape_safe_assign_variable_handle(handle, shape, value, name=None):
+  """Helper that checks shape compatibility and assigns variable."""
+  value_tensor = ops.convert_to_tensor(value)
+  shape.assert_is_compatible_with(value_tensor.shape)
+  return gen_resource_variable_ops.assign_variable_op(handle,
+                                                      value_tensor,
+                                                      name=name)
+
+
 class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
@@ -755,10 +764,12 @@ class ResourceVariable(variables.Variable):
       return self.read_value()
 
   def assign(self, value, use_locking=None, name=None):
+    value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
+    self._shape.assert_is_compatible_with(value_tensor.shape)
     with ops.control_dependencies([
         gen_resource_variable_ops.assign_variable_op(
             self.handle,
-            ops.convert_to_tensor(value, dtype=self.dtype),
+            value_tensor,
             name=name)
     ]):
       return self.read_value()

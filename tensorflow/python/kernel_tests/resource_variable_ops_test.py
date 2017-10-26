@@ -305,8 +305,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with variable_scope.variable_scope("foo"):
         var = variable_scope.get_variable("x", shape=[1, 1],
                                           dtype=dtypes.float32)
-        assign = var.assign(np.zeros(shape=[2, 2]))
-        self.evaluate(assign)
+        with self.assertRaisesRegexp(ValueError,
+                                     "Shapes.*and.*are incompatible"):
+          assign = var.assign(np.zeros(shape=[2, 2]))
+          self.evaluate(assign)
 
   def testDtypeAfterFromProto(self):
     v = resource_variable_ops.ResourceVariable(2.0)
