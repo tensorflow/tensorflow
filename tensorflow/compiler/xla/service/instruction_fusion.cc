@@ -105,7 +105,6 @@ namespace xla {
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
-    case HloOpcode::kUpdate:
     case HloOpcode::kWhile:
     case HloOpcode::kSend:
     case HloOpcode::kRecv:

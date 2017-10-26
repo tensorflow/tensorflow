@@ -16,6 +16,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
@@ -388,6 +390,16 @@ class BackpropTest(test.TestCase):
 
     grad = backprop.gradients_function(f)
     self.assertAllEqual(grad(1.0)[0], 2.0)
+
+  def testPartial(self):
+
+    def f(x, y):
+      return x * y
+
+    part = functools.partial(f, constant_op.constant(2.0))
+    self.assertAllEqual(
+        backprop.gradients_function(part)(constant_op.constant(1.0))[0],
+        2.0)
 
   def testExceptionSafety(self):
 

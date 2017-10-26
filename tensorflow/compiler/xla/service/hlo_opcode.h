@@ -101,7 +101,6 @@ enum class HloOpcode {
   kTrace,
   kTranspose,
   kTuple,
-  kUpdate,
   kWhile,
 };
 

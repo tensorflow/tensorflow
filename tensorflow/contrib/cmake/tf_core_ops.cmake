@@ -43,6 +43,7 @@ set(tf_op_lib_names
     "state_ops"
     "stateless_random_ops"
     "string_ops"
+		"summary_ops"
     "training_ops"
 )
 

@@ -4869,6 +4869,7 @@ tf_kernel_library(
     deps = [
         ":concat_lib_hdrs",
         ":conv_ops",
+        ":cwise_op",
         ":eigen_helpers",
         ":image_resizer_state",
         ":ops_util",

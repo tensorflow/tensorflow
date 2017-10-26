@@ -30,7 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 template <typename T>
-Status TensorValueAt(Tensor t, int index, T* out) {
+Status TensorValueAt(Tensor t, int64 index, T* out) {
   switch (t.dtype()) {
     case DT_FLOAT:
       *out = t.flat<float>()(index);
@@ -210,20 +210,20 @@ Status NormalizeAndAddImages(const Tensor& tensor, int max_images, int h, int w,
 
 class SummaryWriterImpl : public SummaryWriterInterface {
  public:
-  SummaryWriterImpl(int max_queue, int flush_millis)
+  SummaryWriterImpl(int max_queue, int flush_millis, Env* env)
       : SummaryWriterInterface(),
         is_initialized_(false),
         max_queue_(max_queue),
-        flush_millis_(flush_millis) {}
+        flush_millis_(flush_millis),
+        env_(env) {}
 
-  Status Initialize(const string& logdir, const string& filename_suffix,
-                    Env* env) {
-    const Status is_dir = env->IsDirectory(logdir);
+  Status Initialize(const string& logdir, const string& filename_suffix) {
+    const Status is_dir = env_->IsDirectory(logdir);
     if (!is_dir.ok()) {
       if (is_dir.code() != tensorflow::error::NOT_FOUND) {
         return is_dir;
       }
-      TF_RETURN_IF_ERROR(env->CreateDir(logdir));
+      TF_RETURN_IF_ERROR(env_->CreateDir(logdir));
     }
     mutex_lock ml(mu_);
     events_writer_ =
@@ -231,7 +231,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
     if (!events_writer_->InitWithSuffix(filename_suffix)) {
       return errors::Unknown("Could not initialize events writer.");
     }
-    last_flush_ = Env::Default()->NowMicros();
+    last_flush_ = env_->NowMicros();
     is_initialized_ = true;
     return Status::OK();
   }
@@ -384,9 +384,9 @@ class SummaryWriterImpl : public SummaryWriterInterface {
  private:
   Status Enqueue(int64 global_step, const Summary& summary) {
     mutex_lock ml(mu_);
-    queue_.emplace_back(global_step, summary, Env::Default()->NowMicros());
+    queue_.emplace_back(global_step, summary, env_->NowMicros());
     if (queue_.size() >= max_queue_ ||
-        Env::Default()->NowMicros() - last_flush_ > 1000 * flush_millis_) {
+        env_->NowMicros() - last_flush_ > 1000 * flush_millis_) {
       return InternalFlush();
     }
     return Status::OK();
@@ -397,14 +397,14 @@ class SummaryWriterImpl : public SummaryWriterInterface {
       Event event;
       event.set_step(std::get<0>(e));
       *event.mutable_summary() = std::get<1>(e);
-      event.set_wall_time(std::get<2>(e));
+      event.set_wall_time(static_cast<double>(std::get<2>(e)) / 1.0e6);
       events_writer_->WriteEvent(event);
     }
     queue_.clear();
     if (!events_writer_->Flush()) {
       return errors::InvalidArgument("Could not flush events file.");
     }
-    last_flush_ = Env::Default()->NowMicros();
+    last_flush_ = env_->NowMicros();
     return Status::OK();
   }
 
@@ -412,6 +412,7 @@ class SummaryWriterImpl : public SummaryWriterInterface {
   const int max_queue_;
   const int flush_millis_;
   uint64 last_flush_;
+  Env* env_;
   using EventInfo = std::tuple<int64, Summary, int64>;
   mutex mu_;
   std::vector<EventInfo> queue_ GUARDED_BY(mu_);
@@ -424,8 +425,8 @@ class SummaryWriterImpl : public SummaryWriterInterface {
 Status CreateSummaryWriter(int max_queue, int flush_millis,
                            const string& logdir, const string& filename_suffix,
                            Env* env, SummaryWriterInterface** result) {
-  SummaryWriterImpl* w = new SummaryWriterImpl(max_queue, flush_millis);
-  const Status s = w->Initialize(logdir, filename_suffix, env);
+  SummaryWriterImpl* w = new SummaryWriterImpl(max_queue, flush_millis, env);
+  const Status s = w->Initialize(logdir, filename_suffix);
   if (!s.ok()) {
     w->Unref();
     *result = nullptr;

@@ -770,3 +770,23 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "d58bb2d6c8603f600d522b6104d6192a65339aa26cbba9f11ff5c4b36dedb928",
       strip_prefix = "bazel-toolchains-af4681c3d19f063f090222ec3d04108c4e0ca255",
   )
+
+  native.new_http_archive(
+      name = "arm_neon_2_x86_sse",
+      sha256 = "c8d90aa4357f8079d427e87a6f4c493da1fa4140aee926c05902d7ec1533d9a5",
+      strip_prefix = "ARM_NEON_2_x86_SSE-0f77d9d182265259b135dad949230ecbf1a2633d",
+      urls = [
+          "https://github.com/intel/ARM_NEON_2_x86_SSE/archive/0f77d9d182265259b135dad949230ecbf1a2633d.tar.gz",
+      ],
+      build_file = str(Label("//third_party:arm_neon_2_x86_sse.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "flatbuffers",
+      build_file = "third_party/flatbuffers/flatbuffers.BUILD",
+      strip_prefix = "flatbuffers-971a68110e4fc1bace10fcb6deeb189e7e1a34ce",
+      sha256 = "874088d2ee0d9f8524191f77209556415f03dd44e156276edf19e5b90ceb5f55",
+      urls = [
+          "https://github.com/google/flatbuffers/archive/971a68110e4fc1bace10fcb6deeb189e7e1a34ce.tar.gz",
+      ],
+  )
