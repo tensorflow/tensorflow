@@ -1921,6 +1921,7 @@ py_library(
         ":array_ops",
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
+        "//tensorflow/python/eager:context",
     ],
 )
 

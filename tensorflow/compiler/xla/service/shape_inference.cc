@@ -136,8 +136,6 @@ TernaryOperation OpcodeToTernaryOperation(HloOpcode opcode) {
       return TRIOP_CLAMP;
     case HloOpcode::kSelect:
       return TRIOP_SELECT;
-    case HloOpcode::kUpdate:
-      return TRIOP_UPDATE;
     default:
       LOG(FATAL) << "unhandled opcode " << opcode;
   }
@@ -822,14 +820,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InferClampShape(lhs, rhs, ehs);
     case TRIOP_SELECT:
       return InferSelectShape(lhs, rhs, ehs);
-    case TRIOP_UPDATE:
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(lhs, "lhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(rhs, "rhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(ehs, "ehs of ternary operation"));
-      return lhs;
     default:
       return InvalidArgument("unknown operation %s",
                              TernaryOperation_Name(operation).c_str());
