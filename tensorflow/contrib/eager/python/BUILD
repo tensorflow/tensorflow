@@ -18,6 +18,7 @@ py_library(
         ":saver",
         ":summary_writer",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:numerics",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop",

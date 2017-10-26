@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numerics
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -100,6 +101,13 @@ class TFETest(test_util.TensorFlowTestCase):
   def testNumGPUs(self):
     devices = tfe.list_devices()
     self.assertEqual(len(devices) - 1, tfe.num_gpus())
+
+  def testAddCheckNumericsOpsRaisesError(self):
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r'add_check_numerics_ops\(\) is not compatible with eager execution'):
+      numerics.add_check_numerics_ops()
+
 
 if __name__ == '__main__':
   tfe.enable_eager_execution()
