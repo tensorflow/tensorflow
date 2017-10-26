@@ -214,8 +214,8 @@ class LayerCollectionTest(test.TestCase):
       self.assertEqual(1, len(lc.losses))
 
       # Add logits to same loss function.
-      with self.assertRaises(NotImplementedError):
-        lc.register_categorical_predictive_distribution(logits, name='loss1')
+      lc.register_categorical_predictive_distribution(
+          logits, name='loss1', reuse=True)
       self.assertEqual(1, len(lc.losses))
 
       # Add another new loss function.
@@ -228,10 +228,57 @@ class LayerCollectionTest(test.TestCase):
       logits = linalg_ops.eye(2)
       lc = layer_collection.LayerCollection()
 
-      # Create a new loss function by name.
+      # Create a new loss function with default names.
       lc.register_categorical_predictive_distribution(logits)
       lc.register_categorical_predictive_distribution(logits)
       self.assertEqual(2, len(lc.losses))
+
+  def testCategoricalPredictiveDistributionMultipleMinibatches(self):
+    """Ensure multiple minibatches are registered."""
+    with ops.Graph().as_default():
+      batch_size = 3
+      output_size = 2
+      logits = array_ops.zeros([batch_size, output_size])
+      targets = array_ops.ones([batch_size], dtype=dtypes.int32)
+      lc = layer_collection.LayerCollection()
+
+      # Create a new loss function.
+      lc.register_categorical_predictive_distribution(
+          logits, targets=targets, name='loss1')
+
+      # Can add when reuse=True
+      lc.register_categorical_predictive_distribution(
+          logits, targets=targets, name='loss1', reuse=True)
+
+      # Can add when reuse=VARIABLE_SCOPE and reuse=True there.
+      with variable_scope.variable_scope(
+          variable_scope.get_variable_scope(), reuse=True):
+        lc.register_categorical_predictive_distribution(
+            logits,
+            targets=targets,
+            name='loss1',
+            reuse=layer_collection.VARIABLE_SCOPE)
+
+      # Can't add when reuse=False
+      with self.assertRaises(KeyError):
+        lc.register_categorical_predictive_distribution(
+            logits, targets=targets, name='loss1', reuse=False)
+
+      # Can't add when reuse=VARIABLE_SCOPE and reuse=False there.
+      with self.assertRaises(KeyError):
+        lc.register_categorical_predictive_distribution(
+            logits,
+            targets=targets,
+            name='loss1',
+            reuse=layer_collection.VARIABLE_SCOPE)
+
+      self.assertEqual(len(lc.losses), 1)
+      loss = lc.losses[0]
+
+      # Three successful registrations.
+      self.assertEqual(loss.params.shape.as_list(),
+                       [3 * batch_size, output_size])
+      self.assertEqual(loss.targets.shape.as_list(), [3 * batch_size])
 
   def testRegisterCategoricalPredictiveDistributionBatchSize1(self):
     with ops.Graph().as_default():
