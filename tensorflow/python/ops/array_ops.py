@@ -309,8 +309,8 @@ def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
-  This operation returns an integer representing the number of elements in
-  `input`.
+  Returns a 0-D `Tensor` representing the number of elements in `input`
+  of type `out_type`. Defaults to tf.int32.
 
   For example:
 
@@ -327,6 +327,10 @@ def size(input, name=None, out_type=dtypes.int32):
 
   Returns:
     A `Tensor` of type `out_type`. Defaults to tf.int32.
+    
+  @compatibility(numpy)
+  Equivalent to np.size()
+  @end_compatibility
   """
   return size_internal(input, name, optimize=True, out_type=out_type)
 
