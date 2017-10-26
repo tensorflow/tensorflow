@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -572,6 +573,29 @@ class ResourceVariable(variables.Variable):
       raise NotImplementedError(
           "numpy() is only available when eager execution is enabled.")
     return self.read_value().numpy()
+
+  def count_up_to(self, limit):
+    """Increments this variable until it reaches `limit`.
+
+    When that Op is run it tries to increment the variable by `1`. If
+    incrementing the variable would bring it above `limit` then the Op raises
+    the exception `OutOfRangeError`.
+
+    If no error is raised, the Op outputs the value of the variable before
+    the increment.
+
+    This is essentially a shortcut for `count_up_to(self, limit)`.
+
+    Args:
+      limit: value at which incrementing the variable raises an error.
+
+    Returns:
+      A `Tensor` that will hold the variable value before the increment. If no
+      other Op modifies this variable, the values produced will all be
+      distinct.
+    """
+    return gen_state_ops.resource_count_up_to(self.handle, limit=limit,
+                                              T=self.dtype)
 
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `ResourceVariable`.
