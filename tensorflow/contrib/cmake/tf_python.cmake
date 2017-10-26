@@ -640,6 +640,7 @@ add_python_module("tensorflow/contrib/reduce_slice_ops/ops")
 add_python_module("tensorflow/contrib/reduce_slice_ops/python")
 add_python_module("tensorflow/contrib/reduce_slice_ops/python/kernel_tests")
 add_python_module("tensorflow/contrib/reduce_slice_ops/python/ops")
+add_python_module("tensorflow/contrib/summary")
 
 # Generate the tensorflow.python.platform.build_info module.
 set(BUILD_INFO_PY "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/platform/build_info.py")
@@ -812,6 +813,8 @@ GENERATE_PYTHON_OP_LIB("stateless_random_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/stateless/gen_stateless_random_ops.py)
 GENERATE_PYTHON_OP_LIB("debug_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/debug/ops/gen_debug_ops.py)
+GENERATE_PYTHON_OP_LIB("summary_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/summary/gen_summary_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
