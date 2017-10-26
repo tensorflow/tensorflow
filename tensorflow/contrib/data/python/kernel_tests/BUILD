@@ -270,6 +270,7 @@ py_test(
     srcs = ["reader_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -283,6 +284,7 @@ py_test(
         "//tensorflow/python:lib",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
