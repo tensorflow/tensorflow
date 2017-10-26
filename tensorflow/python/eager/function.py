@@ -328,7 +328,7 @@ class _GraphModeFunction(object):
         (args + self._extra_inputs),
         backward_function)
 
-    return self._build_call_outputs(self._returns, real_outputs)
+    return self._build_call_outputs(real_outputs)
 
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
@@ -371,34 +371,25 @@ class _GraphModeFunction(object):
           attrs=None,
           ctx=ctx)
 
-    return self._build_call_outputs(self._returns, result)
+    return self._build_call_outputs(result)
 
-  def _build_call_outputs(self, func_outputs, result):
+  def _build_call_outputs(self, result):
     """Maps the fdef output list to actual output structure.
 
     Args:
-      func_outputs: The outputs originally defined by the graph function. It
-        could potentially be a nested structure.
       result: Output lists defined by FunctionDef.
     Returns:
       The actual call output.
     """
     if self._func_outputs is None:
       return None
-    if isinstance(self._func_outputs, ops.Tensor):
-      return result[0]
-
-    outputs = []
-    for o in func_outputs:
-      vo = o
-      if isinstance(vo, ops.Tensor):
-        outputs.append(result[self._returns_to_fedf_outputs[id(vo)]])
-      elif type(vo) in (tuple, list):
-        outputs.append(self._build_call_outputs(o, result))
-      else:
-        outputs.append(o)
-
-    return tuple(outputs) if type(func_outputs) is tuple else outputs
+    outputs_list = nest.flatten(self._func_outputs)
+    j = 0
+    for i, o in enumerate(outputs_list):
+      if o is not None:
+        outputs_list[i] = result[j]
+        j += 1
+    return nest.pack_sequence_as(self._func_outputs, outputs_list)
 
 
 def _get_defun_inputs(args):
