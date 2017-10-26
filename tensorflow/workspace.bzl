@@ -518,8 +518,8 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "grpc",
       urls = [
-         "http://mirror.bazel.build/github.com/grpc/grpc/archive/c563b583cb9b7fecc33971581368796d2df4759d.tar.gz",
-         "https://github.com/grpc/grpc/archive/c563b583cb9b7fecc33971581368796d2df4759d.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/c563b583cb9b7fecc33971581368796d2df4759d.tar.gz",
+          "https://github.com/grpc/grpc/archive/c563b583cb9b7fecc33971581368796d2df4759d.tar.gz",
       ],
      sha256 = "f2bf3a0769ddd830a1c63a81875c818e25ec93da83d6e00b6962eb4121a37527",
      strip_prefix = "grpc-c563b583cb9b7fecc33971581368796d2df4759d",
@@ -528,8 +528,8 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "com_google_absl",
       urls = [
-         "http://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
-         "https://github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
+          "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
+          "https://github.com/abseil/abseil-cpp/archive/cc4bed2d74f7c8717e31f9579214ab52a9c9c610.tar.gz",
       ],
      sha256 = "f1a7349f88d2846210c42e2f7271dabeee404c2a3b4198e34a797993e3569b03",
      strip_prefix = "abseil-cpp-cc4bed2d74f7c8717e31f9579214ab52a9c9c610",
