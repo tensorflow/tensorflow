@@ -100,8 +100,8 @@ ENTRY %add_constants () -> f32[] {
 R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module:
 
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
-  %v1 = f32[4]{0} parameter(0)
-  %v2 = f32[4]{0} parameter(1)
+  %v1 = f32[4]{0} parameter(0), device=1
+  %v2 = f32[4]{0} parameter(1), device=1
   %greater-than = pred[4]{0} greater-than(f32[4]{0} %v1, f32[4]{0} %v2)
   ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2)
 }
@@ -164,9 +164,9 @@ ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
 R"(HloModule TwoSendRecvBothWayRecvFist_module:
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = f32[] recv(), channel_id=15
-  ROOT %constant = f32[] constant(2.1)
-  %send = () send(f32[] %constant), channel_id=16
+  %recv = f32[] recv(), channel_id=15, device=1
+  ROOT %constant = f32[] constant(2.1), device=0
+  %send = () send(f32[] %constant), channel_id=16, device=0
 }
 
 )"
@@ -180,7 +180,7 @@ ENTRY %GetTupleElement.v4 () -> s32[] {
   %constant = f32[] constant(1.23)
   %constant.1 = s32[] constant(4)
   %tuple = (f32[], s32[]) tuple(f32[] %constant, s32[] %constant.1)
-  ROOT %get-tuple-element = s32[] get-tuple-element((f32[], s32[]) %tuple), index=1
+  ROOT %get-tuple-element = s32[] get-tuple-element((f32[], s32[]) %tuple), index=1, device=0
 }
 
 )"

@@ -2127,7 +2127,7 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
       HloInstruction::CreateConstant(Literal::CreateR1<float>({0.0f})));
   HloInstruction* one = call_builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR1<float>({1.0f})));
-  builder.AddInstruction(
+  call_builder.AddInstruction(
       HloInstruction::CreateCall(r1f32, {zero, one}, dot_computation.get()));
 
   auto module = CreateNewModule();

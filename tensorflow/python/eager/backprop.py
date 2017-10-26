@@ -400,7 +400,18 @@ def implicit_grad(f):
 
 
 def _get_arg_spec(f, params, param_args):
-  args = tf_inspect.getargspec(f).args
+  """The positions of the parameters of f to be differentiated in param_args."""
+  try:
+    args = tf_inspect.getargspec(f).args
+  except TypeError as e:
+    # TypeError can happen when f is a callable object.
+    if params is None:
+      return range(len(param_args))
+    elif all(isinstance(x, int) for x in params):
+      return params
+    raise ValueError("Either callable provided is not a function or could not "
+                     "inspect its arguments by name: %s. Original error: %s"
+                     % (f, e))
   if params is None:
     if not args:
       return range(len(param_args))

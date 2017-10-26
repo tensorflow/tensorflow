@@ -290,7 +290,9 @@ def _build_compatibility(compatibility):
   for key in sorted_keys:
 
     value = compatibility[key]
-    parts.append('\n\n#### %s compatibility\n%s\n' % (key, value))
+    # Dedent so that it does not trigger markdown code formatting.
+    value = textwrap.dedent(value)
+    parts.append('\n\n#### %s Compatibility\n%s\n' % (key.title(), value))
 
   return ''.join(parts)
 

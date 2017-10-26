@@ -18,6 +18,7 @@ py_library(
         ":saver",
         ":summary_writer",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:numerics",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:backprop",
@@ -35,6 +36,7 @@ cuda_py_test(
     additional_deps = [
         ":tfe",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:metrics",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",

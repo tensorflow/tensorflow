@@ -2526,3 +2526,24 @@ def gather(params, indices, validate_indices=None, name=None, axis=0):
 
 
 gather.__doc__ = gen_array_ops.gather_v2.__doc__
+
+
+# Define quantize_v2 here in order to make name the second-to-last attribute,
+# because round_mode was added later.
+def quantize_v2(input,
+                min_range,
+                max_range,
+                T,
+                mode="MIN_COMBINED",
+                name=None,
+                round_mode="HALF_AWAY_FROM_ZERO"):
+  return gen_array_ops.quantize_v2(input,
+                                   min_range,
+                                   max_range,
+                                   T=T,
+                                   mode=mode,
+                                   name=name,
+                                   round_mode=round_mode)
+
+
+quantize_v2.__doc__ = gen_array_ops.quantize_v2.__doc__

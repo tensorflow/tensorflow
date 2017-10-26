@@ -45,10 +45,37 @@ HloModule::HloModule(const string& name, const HloModuleConfig& config)
     : name_(name), config_(config) {}
 
 HloComputation* HloModule::AddComputationInternal(
-    std::unique_ptr<HloComputation> computation) {
-  computation->UniquifyName(&computation_name_uniquer_);
+    std::unique_ptr<HloComputation> computation, bool is_entry,
+    bool uniquify_names) {
+  if (is_entry) {
+    CHECK_EQ(nullptr, entry_computation_);
+    entry_computation_ = computation.get();
+
+    // If the module configuration has no entry layout computation set, create a
+    // default one based on the program shape.
+    if (!config_.has_entry_computation_layout()) {
+      config_.SetDefaultComputationLayout(
+          entry_computation_->ComputeProgramShape());
+    }
+  }
+
+  if (uniquify_names) {
+    computation->UniquifyName(&computation_name_uniquer_);
+    for (auto* instruction : computation->instructions()) {
+      instruction->UniquifyName(&instruction_name_uniquer_);
+    }
+  } else {
+    // Don't uniquify the names of the computation or instruction, but we must
+    // run the names through the uniquifiers to prevent future name collisions
+    // for computations and instructions created later.
+    computation_name_uniquer_.GetUniqueName(computation->name());
+    for (auto* instruction : computation->instructions()) {
+      instruction_name_uniquer_.GetUniqueName(instruction->name());
+    }
+  }
+
+  // Pick unique IDs for each instruction.
   for (auto* instruction : computation->instructions()) {
-    instruction->UniquifyName(&instruction_name_uniquer_);
     instruction->SetUniqueId(NewUniqueInstructionId());
   }
   computation->set_parent(this);
@@ -58,16 +85,8 @@ HloComputation* HloModule::AddComputationInternal(
 
 HloComputation* HloModule::AddEntryComputation(
     std::unique_ptr<HloComputation> computation) {
-  CHECK_EQ(nullptr, entry_computation_);
-  entry_computation_ = computation.get();
-
-  // If the module configuration has no entry layout computation set, create a
-  // default one based on the program shape.
-  if (!config_.has_entry_computation_layout()) {
-    config_.SetDefaultComputationLayout(
-        entry_computation_->ComputeProgramShape());
-  }
-  return AddComputationInternal(std::move(computation));
+  return AddComputationInternal(std::move(computation), /*is_entry=*/true,
+                                /*uniquify_names=*/true);
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
@@ -83,7 +102,8 @@ Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
 
 HloComputation* HloModule::AddEmbeddedComputation(
     std::unique_ptr<HloComputation> computation) {
-  return AddComputationInternal(std::move(computation));
+  return AddComputationInternal(std::move(computation), /*is_entry=*/false,
+                                /*uniquify_names=*/true);
 }
 
 void HloModule::ReplaceComputations(
@@ -199,15 +219,33 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     CHECK_NE(computation.get(), nullptr);
     TF_RET_CHECK(!ContainsKey(computation_map, computation->name()));
     string computation_name = computation->name();
-    if (proto.entry_computation_name() == computation_name) {
-      computation_map[computation_name] =
-          module->AddEntryComputation(std::move(computation));
-    } else {
-      computation_map[computation_name] =
-          module->AddEmbeddedComputation(std::move(computation));
-    }
+    // Don't uniquify names because we want names to be stable across
+    // serialization and deserialization.
+    computation_map[computation_name] = module->AddComputationInternal(
+        std::move(computation),
+        /*is_entry=*/proto.entry_computation_name() == computation_name,
+        /*uniquify_names=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
+
+  // Because we didn't uniquify the names, double-check that the instruction and
+  // computation names are unique from the proto.
+  tensorflow::gtl::FlatSet<string> computation_names;
+  tensorflow::gtl::FlatSet<string> instruction_names;
+  for (HloComputation* computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
+
+    TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
+        << "Computation name is not unique: " << computation->name();
+    computation_names.insert(computation->name());
+    for (HloInstruction* instruction : computation->instructions()) {
+      TF_RET_CHECK(!ContainsKey(instruction_names, instruction->name()))
+          << "Instruction name is not unique: " << instruction->name();
+      instruction_names.insert(instruction->name());
+    }
+  }
 
   return std::move(module);
 }

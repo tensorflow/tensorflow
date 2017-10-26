@@ -759,10 +759,6 @@ enum TernaryOperation {
   // true and operand1 if the predicate is false.
   TRIOP_SELECT = 1;
 
-  // Updates operand0 at index operand1 with value operand2 and outputs the
-  // updated value.
-  TRIOP_UPDATE = 2;
-
   // Given a min, max and an operand returns the operand if between min and max,
   // else returns min if operand is less than min or max if operand is greater
   // than max.
