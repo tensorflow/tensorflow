@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import clip_ops
@@ -29,7 +30,7 @@ class ClipTest(test.TestCase):
 
   # ClipByValue test
   def testClipByValue(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-5.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3])
       np_ans = [[-4.4, 2.0, 3.0], [4.0, 4.4, 4.4]]
       clip_value = 4.4
@@ -38,8 +39,72 @@ class ClipTest(test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
 
+  # [Tensor, Scalar, Scalar]
+  def testClipByValue0Type(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
+                  dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
+                  dtypes.uint8, dtypes.uint16]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+        np_ans = [[2, 2, 3], [4, 4, 4]]
+        clip_value_min = 2
+        clip_value_max = 4
+        ans = clip_ops.clip_by_value(x, clip_value_min, clip_value_max)
+        tf_ans = ans.eval()
+
+      self.assertAllClose(np_ans, tf_ans)
+
+  # [Tensor, Tensor, Scalar]
+  def testClipByValue1Type(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
+                  dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
+                  dtypes.uint8, dtypes.uint16]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+        np_ans = [[2, 2, 3], [4, 4, 4]]
+        clip_value_min = constant_op.constant([2, 2, 2, 3, 3, 3], shape=[2, 3],
+                                              dtype=dtype)
+        clip_value_max = 4
+        ans = clip_ops.clip_by_value(x, clip_value_min, clip_value_max)
+        tf_ans = ans.eval()
+
+      self.assertAllClose(np_ans, tf_ans)
+
+  # [Tensor, Scalar, Tensor]
+  def testClipByValue2Type(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
+                  dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
+                  dtypes.uint8, dtypes.uint16]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+        np_ans = [[4, 4, 4], [4, 5, 6]]
+        clip_value_min = 4
+        clip_value_max = constant_op.constant([6, 6, 6, 6, 6, 6], shape=[2, 3],
+                                              dtype=dtype)
+        ans = clip_ops.clip_by_value(x, clip_value_min, clip_value_max)
+        tf_ans = ans.eval()
+
+      self.assertAllClose(np_ans, tf_ans)
+
+  # [Tensor, Tensor, Tensor]
+  def testClipByValue3Type(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
+                  dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
+                  dtypes.uint8, dtypes.uint16]:
+      with self.test_session(use_gpu=True):
+        x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+        np_ans = [[2, 2, 3], [5, 5, 6]]
+        clip_value_min = constant_op.constant([2, 2, 2, 5, 5, 5], shape=[2, 3],
+                                              dtype=dtype)
+        clip_value_max = constant_op.constant([5, 5, 5, 7, 7, 7], shape=[2, 3],
+                                              dtype=dtype)
+        ans = clip_ops.clip_by_value(x, clip_value_min, clip_value_max)
+        tf_ans = ans.eval()
+
+      self.assertAllClose(np_ans, tf_ans)
+
   def testClipByValueBadShape(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-5.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3, 1])
       # Use a nonsensical shape.
       clip = constant_op.constant([1.0, 2.0])
@@ -51,7 +116,7 @@ class ClipTest(test.TestCase):
         tf_ans = ans.eval()
 
   def testClipByValueNonFinite(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([float('NaN'), float('Inf'), -float('Inf')])
       np_ans = [float('NaN'), 4.0, -4.0]
       clip_value = 4.0
@@ -63,7 +128,7 @@ class ClipTest(test.TestCase):
   # ClipByNorm tests
   def testClipByNormClipped(self):
     # Norm clipping when clip_norm < 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       # Norm of x = sqrt(3^2 + 4^2) = 5
       np_ans = [[-2.4, 0.0, 0.0], [3.2, 0.0, 0.0]]
@@ -79,7 +144,7 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans_tensor)
 
   def testClipByNormBadShape(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3, 1])
       # Use a nonsensical shape.
       clip = constant_op.constant([1.0, 2.0])
@@ -88,7 +153,7 @@ class ClipTest(test.TestCase):
 
   def testClipByNormNotClipped(self):
     # No norm clipping when clip_norm >= 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       # Norm of x = sqrt(3^2 + 4^2) = 5
       np_ans = [[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]]
@@ -100,7 +165,7 @@ class ClipTest(test.TestCase):
 
   def testClipByNormZero(self):
     # No norm clipping when norm = 0
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], shape=[2, 3])
       # Norm = 0, no changes
       np_ans = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
@@ -112,7 +177,7 @@ class ClipTest(test.TestCase):
 
   def testClipByNormClippedWithDim0(self):
     # Norm clipping when clip_norm < 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
       # Norm of x[:, 0] = sqrt(3^2 + 4^2) = 5, x[:, 2] = 3
       np_ans = [[-2.4, 0.0, 0.0], [3.2, 0.0, 3.0]]
@@ -124,7 +189,7 @@ class ClipTest(test.TestCase):
 
   def testClipByNormClippedWithDim1(self):
     # Norm clipping when clip_norm < 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
       # Norm of x[0, :] = 3, x[1, :] = sqrt(3^2 + 4^2) = 5
       np_ans = [[-3.0, 0.0, 0.0], [3.2, 0.0, 2.4]]
@@ -136,7 +201,7 @@ class ClipTest(test.TestCase):
 
   def testClipByNormNotClippedWithAxes(self):
     # No norm clipping when clip_norm >= 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 3.0], shape=[2, 3])
       # Norm of x[0, :] = 3, x[1, :] = sqrt(3^2 + 4^2) = 5
       np_ans = [[-3.0, 0.0, 0.0], [4.0, 0.0, 3.0]]
@@ -149,7 +214,7 @@ class ClipTest(test.TestCase):
   # ClipByGlobalNorm tests
   def testClipByGlobalNormClipped(self):
     # Norm clipping when clip_norm < 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x0 = constant_op.constant([-2.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       x1 = constant_op.constant([1.0, -2.0])
       # Global norm of x0 and x1 = sqrt(1 + 4^2 + 2^2 + 2^2) = 5
@@ -170,7 +235,7 @@ class ClipTest(test.TestCase):
 
   def testClipByGlobalNormClippedTensor(self):
     # Norm clipping when clip_norm < 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x0 = constant_op.constant([-2.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       x1 = constant_op.constant([1.0, -2.0])
       # Global norm of x0 and x1 = sqrt(1 + 4^2 + 2^2 + 2^2) = 5
@@ -191,7 +256,7 @@ class ClipTest(test.TestCase):
 
   def testClipByGlobalNormSupportsNone(self):
     # Norm clipping when clip_norm < 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x0 = constant_op.constant([-2.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       x1 = constant_op.constant([1.0, -2.0])
       # Global norm of x0 and x1 = sqrt(1 + 4^2 + 2^2 + 2^2) = 5
@@ -214,7 +279,7 @@ class ClipTest(test.TestCase):
 
   def testClipByGlobalNormWithIndexedSlicesClipped(self):
     # Norm clipping when clip_norm < 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x0 = constant_op.constant([-2.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       x1 = ops.IndexedSlices(
           constant_op.constant([1.0, -2.0]), constant_op.constant([3, 4]))
@@ -247,7 +312,7 @@ class ClipTest(test.TestCase):
 
   def testClipByGlobalNormNotClipped(self):
     # No norm clipping when clip_norm >= 5
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x0 = constant_op.constant([-2.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       x1 = constant_op.constant([1.0, -2.0])
       # Global norm of x0 and x1 = sqrt(1 + 4^2 + 2^2 + 2^2) = 5
@@ -266,7 +331,7 @@ class ClipTest(test.TestCase):
 
   def testClipByGlobalNormZero(self):
     # No norm clipping when norm = 0
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x0 = constant_op.constant([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], shape=[2, 3])
       x1 = constant_op.constant([0.0, 0.0])
       # Norm = 0, no changes
@@ -285,7 +350,7 @@ class ClipTest(test.TestCase):
 
   def testClipByAverageNormClipped(self):
     # Norm clipping when average clip_norm < 0.83333333
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       # Average norm of x = sqrt(3^2 + 4^2) / 6 = 0.83333333
       np_ans = [[-2.88, 0.0, 0.0], [3.84, 0.0, 0.0]]
@@ -297,7 +362,7 @@ class ClipTest(test.TestCase):
 
   def testClipByAverageNormClippedTensor(self):
     # Norm clipping when average clip_norm < 0.83333333
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       # Average norm of x = sqrt(3^2 + 4^2) / 6 = 0.83333333
       np_ans = [[-2.88, 0.0, 0.0], [3.84, 0.0, 0.0]]
@@ -309,7 +374,7 @@ class ClipTest(test.TestCase):
 
   def testClipByAverageNormNotClipped(self):
     # No norm clipping when average clip_norm >= 0.83333333
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3])
       # Average norm of x = sqrt(3^2 + 4^2) / 6 = 0.83333333
       np_ans = [[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]]
@@ -321,7 +386,7 @@ class ClipTest(test.TestCase):
 
   def testClipByAverageNormZero(self):
     # No norm clipping when average clip_norm = 0
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], shape=[2, 3])
       # Average norm = 0, no changes
       np_ans = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
