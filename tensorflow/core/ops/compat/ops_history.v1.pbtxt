@@ -27446,6 +27446,32 @@ op {
   is_stateful: true
 }
 op {
+  name: "ResourceCountUpTo"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "limit"
+    type: "int"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "ResourceGather"
   input_arg {
     name: "resource"

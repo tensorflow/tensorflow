@@ -22129,6 +22129,36 @@ op {
   is_stateful: true
 }
 op {
+  name: "ResourceCountUpTo"
+  input_arg {
+    name: "resource"
+    description: "Should be from a scalar `Variable` node."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "output"
+    description: "A copy of the input before increment. If nothing else modifies the\ninput, the values produced will all be distinct."
+    type_attr: "T"
+  }
+  attr {
+    name: "limit"
+    type: "int"
+    description: "If incrementing ref would bring it above limit, instead generates an\n\'OutOfRange\' error."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Increments variable pointed to by \'resource\' until it reaches \'limit\'."
+  is_stateful: true
+}
+op {
   name: "ResourceGather"
   input_arg {
     name: "resource"
