@@ -400,7 +400,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kBatchNormGrad:
-    case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",

@@ -115,7 +115,6 @@ HLO_MATCHER(Tanh);
 HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
-HLO_MATCHER(Update);
 HLO_MATCHER(While);
 #undef HLO_MATCHER
 }  // namespace opcode_matchers
