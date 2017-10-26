@@ -626,8 +626,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party:zlib.BUILD")),
   )
 
-
-
   native.bind(
       name = "zlib",
       actual = "@zlib_archive//:zlib",
