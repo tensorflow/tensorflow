@@ -28,12 +28,16 @@ limitations under the License.
 namespace tensorflow {
 
 class RdmaMgr {
+  friend class RdmaChannel;
+  friend class RdmaAdapter;
+
  public:
   explicit RdmaMgr(const WorkerEnv* const worker_env,
                    GrpcChannelCache* const channel_cache);
   ~RdmaMgr();
   RdmaChannel* FindChannel(const string& key);
   void SetupChannels();
+  bool ConnectivityCheck();
   const string& local_worker() { return local_worker_; }
 
  private:
@@ -44,7 +48,8 @@ class RdmaMgr {
   RdmaAdapter* rdma_adapter_;
   typedef std::unordered_map<string, RdmaChannel*> ChannelTable;
   ChannelTable channel_table_;
-
+  int PostSend(RdmaChannel* rc, struct ibv_sge list);
+  int PostRecv(RdmaChannel* rc, struct ibv_sge list);
   TF_DISALLOW_COPY_AND_ASSIGN(RdmaMgr);
 };
 
