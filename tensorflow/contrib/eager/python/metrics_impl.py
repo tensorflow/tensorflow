@@ -263,7 +263,7 @@ class Mean(Metric):
     """
     if weights is None:
       self.denom.assign_add(
-          math_ops.cast(array_ops.size(values), self.dtype))
+          math_ops.cast(array_ops.identity(array_ops.size(values)), self.dtype))
       values = math_ops.reduce_sum(values)
       self.numer.assign_add(math_ops.cast(values, self.dtype))
     else:
