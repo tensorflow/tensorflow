@@ -90,7 +90,7 @@ class Metric(object):
     # We create the variable scope now to get the unique name that will
     # be used as a variable prefix when build() calls add_variable().
     with variable_scope.variable_scope(
-        None, default_name=scope_name, use_resource=True, reuse=False) as scope:
+        scope_name, use_resource=True, reuse=False) as scope:
       pos = scope.name.rfind(scope_name)
       self._name = name + scope.name[pos + len(scope_name):]
       self._scope = scope
