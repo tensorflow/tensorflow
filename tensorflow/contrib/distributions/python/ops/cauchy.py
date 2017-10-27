@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
+import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -159,8 +159,8 @@ class Cauchy(distribution.Distribution):
 
   def _batch_shape(self):
     return array_ops.broadcast_static_shape(
-        self.loc.get_shape(),
-        self.scale.get_shape())
+        self.loc.shape,
+        self.scale.shape)
 
   def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
@@ -171,34 +171,30 @@ class Cauchy(distribution.Distribution):
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
     probs = random_ops.random_uniform(
-        shape=shape, minval=0., maxval=1., dtype=self.loc.dtype, seed=seed)
+        shape=shape, minval=0., maxval=1., dtype=self.dtype, seed=seed)
     return self._quantile(probs)
 
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
   def _cdf(self, x):
-    return 1/math.pi * math_ops.atan(self._z(x)) + 0.5
+    return math_ops.atan(self._z(x)) / np.pi + 0.5
 
   def _log_cdf(self, x):
-    return math_ops.log(self._cdf(x))
+    return math_ops.log1p(2 / np.pi * math_ops.atan(self._z(x))) - np.log(2)
 
   def _log_unnormalized_prob(self, x):
-    return -math_ops.log(1 + math_ops.square(self._z(x)))
+    return -math_ops.log1p(math_ops.square(self._z(x)))
 
   def _log_normalization(self):
-    scale = self.scale * array_ops.ones_like(self.loc)
-    return math.log(math.pi) + math_ops.log(scale)
+    return np.log(np.pi) + math_ops.log(self.scale)
 
   def _entropy(self):
-    scale = self.scale * array_ops.ones_like(self.loc)
-    return math.log(4 * math.pi) + math_ops.log(scale)
+    h = np.log(4 * np.pi) + math_ops.log(scale)
+    return h * array_ops.ones_like(self.loc)
 
   def _quantile(self, p):
-    return self.loc + self.scale * math_ops.tan(math.pi * (p - 0.5))
+    return self.loc + self.scale * math_ops.tan(np.pi * (p - 0.5))
 
   def _mode(self):
     return self.loc * array_ops.ones_like(self.scale)
@@ -213,40 +209,14 @@ class Cauchy(distribution.Distribution):
     with ops.name_scope("reconstruct", values=[z]):
       return z * self.scale + self.loc
 
-  def _log_survival_function(self, x):
-    return math_ops.log(self._survival_function(x))
-
-  def _survival_function(self, x):
-    return 1. - self._cdf(x)
-
   def _mean(self):
     if self.allow_nan_stats:
-      return constant_op.constant(float("nan"), shape=self.batch_shape)
+      return float("nan") * array_ops.ones(self.batch_shape_tensor())
     else:
       raise ValueError("`mean` is undefined for Cauchy distribution.")
 
   def _stddev(self):
     if self.allow_nan_stats:
-      return constant_op.constant(float("nan"), shape=self.batch_shape)
+      return float("nan") * array_ops.ones(self.batch_shape_tensor())
     else:
       raise ValueError("`stddev` is undefined for Cauchy distribution.")
-
-
-class CauchyWithSoftplusScale(Cauchy):
-  """Cauchy with softplus applied to `scale`."""
-
-  def __init__(self,
-               loc,
-               scale,
-               validate_args=False,
-               allow_nan_stats=True,
-               name="CauchyWithSoftplusScale"):
-    parameters = locals()
-    with ops.name_scope(name, values=[scale]):
-      super(CauchyWithSoftplusScale, self).__init__(
-          loc=loc,
-          scale=nn.softplus(scale, name="softplus_scale"),
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=name)
-    self._parameters = parameters

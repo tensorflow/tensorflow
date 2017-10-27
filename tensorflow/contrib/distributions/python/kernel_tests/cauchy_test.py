@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -86,14 +86,6 @@ class CauchyTest(test.TestCase):
     self._testParamStaticShapes(
         tensor_shape.TensorShape(sample_shape), sample_shape)
 
-  def testCauchyWithSoftplusScale(self):
-    with self.test_session():
-      loc = array_ops.zeros((10, 3))
-      rho = array_ops.ones((10, 3)) * -2.
-      cauchy = cauchy_lib.CauchyWithSoftplusScale(loc=loc, scale=rho)
-      self.assertAllEqual(loc.eval(), cauchy.loc.eval())
-      self.assertAllEqual(nn_ops.softplus(rho).eval(), cauchy.scale.eval())
-
   def testCauchyLogPDF(self):
     with self.test_session():
       batch_size = 6
@@ -104,16 +96,16 @@ class CauchyTest(test.TestCase):
 
       log_pdf = cauchy.log_prob(x)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
-                          log_pdf.get_shape())
+                          log_pdf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
                           log_pdf.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, log_pdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, log_pdf.shape)
       self.assertAllEqual(cauchy.batch_shape, log_pdf.eval().shape)
 
       pdf = cauchy.prob(x)
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), pdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), pdf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(), pdf.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, pdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, pdf.shape)
       self.assertAllEqual(cauchy.batch_shape, pdf.eval().shape)
 
       if not stats:
@@ -133,20 +125,20 @@ class CauchyTest(test.TestCase):
 
       log_pdf = cauchy.log_prob(x)
       log_pdf_values = log_pdf.eval()
-      self.assertEqual(log_pdf.get_shape(), (6, 2))
+      self.assertEqual(log_pdf.shape, (6, 2))
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
-                          log_pdf.get_shape())
+                          log_pdf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
                           log_pdf.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, log_pdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, log_pdf.shape)
       self.assertAllEqual(cauchy.batch_shape, log_pdf.eval().shape)
 
       pdf = cauchy.prob(x)
       pdf_values = pdf.eval()
-      self.assertEqual(pdf.get_shape(), (6, 2))
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), pdf.get_shape())
+      self.assertEqual(pdf.shape, (6, 2))
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), pdf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(), pdf_values.shape)
-      self.assertAllEqual(cauchy.batch_shape, pdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, pdf.shape)
       self.assertAllEqual(cauchy.batch_shape, pdf_values.shape)
 
       if not stats:
@@ -164,9 +156,9 @@ class CauchyTest(test.TestCase):
 
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
       cdf = cauchy.cdf(x)
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, cdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, cdf.shape)
       self.assertAllEqual(cauchy.batch_shape, cdf.eval().shape)
       if not stats:
         return
@@ -183,9 +175,9 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       sf = cauchy.survival_function(x)
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, sf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, sf.shape)
       self.assertAllEqual(cauchy.batch_shape, sf.eval().shape)
       if not stats:
         return
@@ -202,9 +194,9 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       cdf = cauchy.log_cdf(x)
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(), cdf.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, cdf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, cdf.shape)
       self.assertAllEqual(cauchy.batch_shape, cdf.eval().shape)
 
       if not stats:
@@ -242,9 +234,9 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       sf = cauchy.log_survival_function(x)
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(), sf.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, sf.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, sf.shape)
       self.assertAllEqual(cauchy.batch_shape, sf.eval().shape)
 
       if not stats:
@@ -260,10 +252,10 @@ class CauchyTest(test.TestCase):
 
       entropy = cauchy.entropy()
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
-                          entropy.get_shape())
+                          entropy.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(),
                           entropy.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, entropy.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, entropy.shape)
       self.assertAllEqual(cauchy.batch_shape, entropy.eval().shape)
 
       if not stats:
@@ -279,10 +271,10 @@ class CauchyTest(test.TestCase):
 
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
-      self.assertAllEqual((3,), cauchy.median().get_shape())
+      self.assertAllEqual((3,), cauchy.median().shape)
       self.assertAllEqual([7., 7, 7], cauchy.median().eval())
 
-      self.assertAllEqual((3,), cauchy.mode().get_shape())
+      self.assertAllEqual((3,), cauchy.mode().shape)
       self.assertAllEqual([7., 7, 7], cauchy.mode().eval())
 
   def testCauchyMean(self):
@@ -291,7 +283,7 @@ class CauchyTest(test.TestCase):
       scale = [7.]
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
-      self.assertAllEqual((3,), cauchy.mean().get_shape())
+      self.assertAllEqual((3,), cauchy.mean().shape)
       self.assertAllEqual([float("nan")] * 3, cauchy.mean().eval())
 
   def testCauchyNanMean(self):
@@ -313,9 +305,9 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
       x = cauchy.quantile(p)
 
-      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), x.get_shape())
+      self.assertAllEqual(cauchy.batch_shape_tensor().eval(), x.shape)
       self.assertAllEqual(cauchy.batch_shape_tensor().eval(), x.eval().shape)
-      self.assertAllEqual(cauchy.batch_shape, x.get_shape())
+      self.assertAllEqual(cauchy.batch_shape, x.shape)
       self.assertAllEqual(cauchy.batch_shape, x.eval().shape)
 
       if not stats:
@@ -330,7 +322,7 @@ class CauchyTest(test.TestCase):
       scale = [7.]
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
-      self.assertAllEqual((3,), cauchy.variance().get_shape())
+      self.assertAllEqual((3,), cauchy.variance().shape)
       self.assertAllEqual([float("nan")] * 3, cauchy.variance().eval())
 
   def testCauchyNanVariance(self):
@@ -350,7 +342,7 @@ class CauchyTest(test.TestCase):
       scale = [7.]
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
-      self.assertAllEqual((3,), cauchy.stddev().get_shape())
+      self.assertAllEqual((3,), cauchy.stddev().shape)
       self.assertAllEqual([float("nan")] * 3, cauchy.stddev().eval())
 
   def testCauchyNanStandardDeviation(self):
@@ -379,13 +371,13 @@ class CauchyTest(test.TestCase):
       expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
           tensor_shape.TensorShape(cauchy.batch_shape_tensor().eval()))
 
-      self.assertAllEqual(expected_shape, samples.get_shape())
+      self.assertAllEqual(expected_shape, samples.shape)
       self.assertAllEqual(expected_shape, sample_values.shape)
 
       expected_shape = (tensor_shape.TensorShape(
           [n.eval()]).concatenate(cauchy.batch_shape))
 
-      self.assertAllEqual(expected_shape, samples.get_shape())
+      self.assertAllEqual(expected_shape, samples.shape)
       self.assertAllEqual(expected_shape, sample_values.shape)
 
   def testCauchySampleMultiDimensional(self):
@@ -398,18 +390,18 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
       samples = cauchy.sample(n)
       sample_values = samples.eval()
-      self.assertEqual(samples.get_shape(), (100000, batch_size, 2))
+      self.assertEqual(samples.shape, (100000, batch_size, 2))
       self.assertAllClose(sample_values[:, 0, 0].median(), loc_v[0], atol=1e-1)
       self.assertAllClose(sample_values[:, 0, 1].median(), loc_v[1], atol=1e-1)
 
       expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
           tensor_shape.TensorShape(cauchy.batch_shape_tensor().eval()))
-      self.assertAllEqual(expected_shape, samples.get_shape())
+      self.assertAllEqual(expected_shape, samples.shape)
       self.assertAllEqual(expected_shape, sample_values.shape)
 
       expected_shape = (tensor_shape.TensorShape(
           [n.eval()]).concatenate(cauchy.batch_shape))
-      self.assertAllEqual(expected_shape, samples.get_shape())
+      self.assertAllEqual(expected_shape, samples.shape)
       self.assertAllEqual(expected_shape, sample_values.shape)
 
   def testCauchyNegativeLocFails(self):
