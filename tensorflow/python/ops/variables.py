@@ -118,14 +118,6 @@ class Variable(object):
   `trainable_variables()` returns the contents of this collection. The
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
-
-  @compatiblity(eager)
-  `tf.Variable` is not compatible with eager execution.  Use
-  `tfe.Variable` instead which is compatable with both eager execution
-  and graph construction.  See [the TensorFlow Eager Execution
-  guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
-  for details on how variables work in eager execution.
-  @end_compatiblity
   """
 
   def __init__(self,
@@ -197,6 +189,14 @@ class Variable(object):
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
       RuntimeError: If eager execution is enabled.
+
+    @compatibility(eager)
+    `tf.Variable` is not compatible with eager execution.  Use
+    `tfe.Variable` instead which is compatable with both eager execution
+    and graph construction.  See [the TensorFlow Eager Execution
+    guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
+    for details on how variables work in eager execution.
+    @end_compatibility
     """
     if not context.in_graph_mode():
       raise RuntimeError("tf.Variable not supported in Eager mode. "
