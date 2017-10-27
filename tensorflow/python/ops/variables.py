@@ -125,7 +125,7 @@ class Variable(object):
   and graph construction.  See [the TensorFlow Eager Execution
   guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
   for details on how variables work in eager execution.
-  @end_compatiblity
+  @end_compatibility
   """
 
   def __init__(self,
