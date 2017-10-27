@@ -60,9 +60,9 @@ py_library(
         "enumerate_ops.py",
         "error_ops.py",
         "grouping.py",
+        "interleave_ops.py",
         "resampling.py",
         "scan_ops.py",
-        "sloppy_ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
