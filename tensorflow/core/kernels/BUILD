@@ -1691,6 +1691,21 @@ tf_cc_tests(
     ],
 )
 
+tf_kernel_library(
+    name = "eye_functor",
+    hdrs = ["eye_functor.h"],
+    gpu_srcs = [
+        "eye_functor_gpu.cu.cc",
+        "eye_functor.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 0,
+)
+
 cc_library(
     name = "fifo_queue",
     srcs = ["fifo_queue.cc"],
@@ -2255,10 +2270,6 @@ tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
     hdrs = ["cuda_solvers.h"],
-    gpu_srcs = [
-        "cuda_solvers.h",
-        "cuda_solvers_gpu.cu.cc",
-    ],
     # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
@@ -2328,7 +2339,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([":eye_functor"]),
 )
 
 tf_kernel_library(
@@ -2356,6 +2367,7 @@ tf_kernel_library(
     prefix = "qr_op",
     deps = LINALG_DEPS + if_cuda([
         ":cwise_op",
+        ":eye_functor",
         ":matrix_band_part_op",
     ]),
 )
@@ -3818,7 +3830,7 @@ STATE_DEPS = [
 tf_kernel_library(
     name = "count_up_to_op",
     prefix = "count_up_to_op",
-    deps = STATE_DEPS,
+    deps = STATE_DEPS + [":variable_ops"],
 )
 
 tf_kernel_library(
@@ -5912,8 +5924,8 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "sloppy_interleave_dataset_op",
-    srcs = ["sloppy_interleave_dataset_op.cc"],
+    name = "parallel_interleave_dataset_op",
+    srcs = ["parallel_interleave_dataset_op.cc"],
     deps = [
         ":captured_function",
         ":dataset",
@@ -6150,6 +6162,7 @@ tf_kernel_library(
         ":map_and_batch_dataset_op",
         ":map_dataset_op",
         ":padded_batch_dataset_op",
+        ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
         ":range_dataset_op",
@@ -6158,7 +6171,6 @@ tf_kernel_library(
         ":scan_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
-        ":sloppy_interleave_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":sql_dataset_ops",
         ":take_dataset_op",

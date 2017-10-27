@@ -2012,13 +2012,18 @@ cuda_py_test(
         "//tensorflow/python:data_flow_ops_gen",
         "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
 )

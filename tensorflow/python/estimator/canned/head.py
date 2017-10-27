@@ -366,11 +366,11 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
       `tf.feature_column.numeric_column` defining feature column representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
-    label_vocabulary: A list of strings represents possible label values. If it
-      is not given, that means labels are already encoded as integer within
-      [0, n_classes). If given, labels must be string type and have any value in
-      `label_vocabulary`. Also there will be errors if vocabulary is not
-      provided and labels are string.
+    label_vocabulary: A list or tuple of strings representing possible label
+      values. If it is not given, that means labels are already encoded as an
+      integer within [0, n_classes). If given, labels must be of string type and
+      have any value in `label_vocabulary`. Note that errors will be raised if
+      `label_vocabulary` is not provided but labels are strings.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -382,8 +382,9 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
   """
   if label_vocabulary is not None and not isinstance(label_vocabulary,
                                                      (list, tuple)):
-    raise ValueError('label_vocabulary should be a list. Given type: {}'.format(
-        type(label_vocabulary)))
+    raise ValueError(
+        'label_vocabulary should be a list or a tuple. Given type: {}'.format(
+            type(label_vocabulary)))
 
   return _MultiClassHeadWithSoftmaxCrossEntropyLoss(n_classes, weight_column,
                                                     label_vocabulary, name)
@@ -437,8 +438,8 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
     """Converts labels to integer id space."""
     if self._label_vocabulary is None:
       if not labels.dtype.is_integer:
-        raise ValueError('Labels dtype should be integer '
-                         'Instead got %s.' % labels.dtype)
+        raise ValueError('Labels dtype should be integer. Instead got {}.'.
+                         format(labels.dtype))
       label_ids = labels
     else:
       if labels.dtype != dtypes.string:
@@ -520,7 +521,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
 
       # Train.
       if train_op_fn is None:
-        raise ValueError('train_op_fn can not be None.')
+        raise ValueError('train_op_fn cannot be None.')
     with ops.name_scope(''):
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS),
@@ -555,11 +556,11 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
       generated for each threshold value. This threshold is applied to the
       logistic values to determine the binary classification (i.e., above the
       threshold is `true`, below is `false`.
-    label_vocabulary: A list of strings represents possible label values. If it
-      is not given, that means labels are already encoded within [0, 1]. If
-      given, labels must be string type and have any value in
-      `label_vocabulary`. Also there will be errors if vocabulary is not
-      provided and labels are string.
+    label_vocabulary: A list or tuple of strings representing possible label
+      values. If it is not given, that means labels are already encoded within
+      [0, 1]. If given, labels must be string type and have any value in
+      `label_vocabulary`. Note that errors will be raised if `label_vocabulary`
+      is not provided but labels are strings.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -572,12 +573,13 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
   thresholds = tuple(thresholds) if thresholds else tuple()
   if label_vocabulary is not None and not isinstance(label_vocabulary,
                                                      (list, tuple)):
-    raise ValueError('label_vocabulary should be a list. Given type: {}'.format(
-        type(label_vocabulary)))
+    raise ValueError(
+        'label_vocabulary should be a list or tuple. Given type: {}'.format(
+            type(label_vocabulary)))
 
   for threshold in thresholds:
     if (threshold <= 0.0) or (threshold >= 1.0):
-      raise ValueError('thresholds not in (0, 1): %s.' % (thresholds,))
+      raise ValueError('thresholds not in (0, 1): {}.'.format((thresholds,)))
   return _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(
       weight_column=weight_column,
       thresholds=thresholds,

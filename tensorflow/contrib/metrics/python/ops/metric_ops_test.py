@@ -2131,7 +2131,7 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
             'recall': [1.0, 1.0, 0.0],
             'thresholds': [0.0, 0.5, 1.0],
         },
-        weights=[0.0, 0.5, 2.0, 0.0, 0.5, 1.0])
+        weights=[[0.0, 0.5, 2.0, 0.0, 0.5, 1.0]])
 
 
 class StreamingSpecificityAtSensitivityTest(test.TestCase):

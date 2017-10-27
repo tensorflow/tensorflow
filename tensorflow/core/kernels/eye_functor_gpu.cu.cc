@@ -17,11 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/eye_functor.h"
 
-#include <complex>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
@@ -30,26 +30,18 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Scalar>
-__global__ void EyeKernel(Cuda3DLaunchConfig config, int batch_size, int m,
-                          int n, Scalar* matrix_batch_ptr) {
-  const int matrix_size = m * n;
+__global__ void EyeKernel(int num_threads, int batch_size, int m, int n,
+                          Scalar* output_ptr) {
   const Scalar one = Scalar(1);
-  CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count, x) {
-    if (batch >= batch_size) {
-      break;
-    }
-    CUDA_AXIS_KERNEL_LOOP(row, config.virtual_thread_count, y) {
-      if (row >= m) {
-        break;
-      }
-      const int row_start = batch * matrix_size + row * n;
-      CUDA_AXIS_KERNEL_LOOP(col, config.virtual_thread_count, z) {
-        if (col >= n) {
-          break;
-        }
-        matrix_batch_ptr[row_start + col] = row == col ? one : Scalar();
-      }
-    }
+  const Scalar zero = Scalar(0);
+  CUDA_1D_KERNEL_LOOP(index, num_threads) {
+    // TODO(rmlarsen): Benchmark to see if it's just as fast to use mod (%),
+    // since it's easier to read.
+    const int global_row = index / n;
+    const int col = index - global_row * n;
+    const int batch = global_row / m;
+    const int row = global_row - batch * m;
+    output_ptr[index] = col == row ? one : zero;
   }
 }
 
@@ -60,11 +52,10 @@ struct EyeFunctor<GPUDevice, Scalar> {
     const int batch_size = matrix_batch.dimension(0);
     const int m = matrix_batch.dimension(1);
     const int n = matrix_batch.dimension(2);
-    Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(batch_size, m, n, device,
-                                                      EyeKernel<Scalar>, 0, 0);
+    CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
     EyeKernel<<<config.block_count, config.thread_per_block, 0,
-                device.stream()>>>(config, batch_size, m, n,
-                                   matrix_batch.data());
+                device.stream()>>>(config.virtual_thread_count, batch_size, m,
+                                   n, matrix_batch.data());
   }
 };
 

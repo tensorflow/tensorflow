@@ -33,6 +33,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/eye_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #endif
 

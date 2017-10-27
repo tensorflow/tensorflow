@@ -18,6 +18,7 @@ py_library(
         ":saver",
         ":summary_writer",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:numerics",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
@@ -49,8 +50,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
@@ -63,10 +66,11 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
-        "//tensorflow/contrib/data",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python/data",
         "//tensorflow/python/eager:test",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -75,7 +79,11 @@ py_library(
     srcs = ["saver.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -99,12 +107,14 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/summary:gen_summary_ops",
-        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary_op_util",
-        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -136,8 +146,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:layers_base",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
@@ -153,8 +162,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
+        "//tensorflow/contrib/summary:summary_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -202,6 +216,7 @@ py_library(
         "//tensorflow/python:layers_base",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:util",
+        "@six_archive//:six",
     ],
 )
 

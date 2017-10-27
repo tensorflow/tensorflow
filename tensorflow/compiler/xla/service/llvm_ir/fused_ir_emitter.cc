@@ -75,7 +75,7 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
 Status FusedIrEmitter::HandleConstant(HloInstruction* constant,
                                       const Literal& literal) {
   llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, ir_builder_);
+      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
   llvm::GlobalVariable* global = new llvm::GlobalVariable(
       *ir_builder_->GetInsertBlock()->getModule(), initializer->getType(),
       /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
@@ -101,7 +101,7 @@ Status FusedIrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element,
   // Emit code to lookup tuple element pointer, and store it in 'gte_values_'.
   llvm::Value* tuple_element_ptr = llvm_ir::EmitGetTupleElement(
       get_tuple_element->shape(), get_tuple_element->tuple_index(),
-      /*alignment=*/1, it->second, ir_builder_);
+      /*alignment=*/1, it->second, ir_builder_, module_);
   gte_values_.insert(std::make_pair(get_tuple_element, tuple_element_ptr));
   // Emit code to read base tuple element array (if non-tuple shaped).
   if (!ShapeUtil::IsTuple(get_tuple_element->shape())) {
@@ -134,7 +134,7 @@ Status FusedIrEmitter::HandleTuple(
   std::vector<llvm::Type*> operand_elemental_ir_types;
   for (HloInstruction* operand : operands) {
     operand_elemental_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(
-        operand->shape().element_type(), ir_builder_));
+        operand->shape().element_type(), module_));
   }
   generators_[tuple] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {

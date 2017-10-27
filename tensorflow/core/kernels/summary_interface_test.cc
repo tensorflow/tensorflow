@@ -12,11 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include <vector>
+#include "tensorflow/core/kernels/summary_interface.h"
 
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/kernels/summary_interface.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -43,8 +41,8 @@ class SummaryInterfaceTest : public ::testing::Test {
  protected:
   Status SummaryTestHelper(
       const string& test_name,
-      std::function<Status(SummaryWriterInterface*)> writer_fn,
-      std::function<void(const Event&)> test_fn) {
+      const std::function<Status(SummaryWriterInterface*)>& writer_fn,
+      const std::function<void(const Event&)>& test_fn) {
     static std::set<string>* tests = new std::set<string>();
     CHECK(tests->insert(test_name).second) << ": " << test_name;
 
@@ -180,6 +178,24 @@ TEST_F(SummaryInterfaceTest, WriteAudio) {
         EXPECT_EQ(e.summary().value(0).tag(), "name/audio");
         CHECK(e.summary().value(0).has_audio());
       }));
+}
+
+TEST_F(SummaryInterfaceTest, WriteEvent) {
+  TF_CHECK_OK(
+      SummaryTestHelper("event_test",
+                        [](SummaryWriterInterface* writer) {
+                          std::unique_ptr<Event> e{new Event};
+                          e->set_step(7);
+                          e->mutable_summary()->add_value()->set_tag("hi");
+                          TF_RETURN_IF_ERROR(writer->WriteEvent(std::move(e)));
+                          TF_RETURN_IF_ERROR(writer->Flush());
+                          return Status::OK();
+                        },
+                        [](const Event& e) {
+                          EXPECT_EQ(e.step(), 7);
+                          CHECK_EQ(e.summary().value_size(), 1);
+                          EXPECT_EQ(e.summary().value(0).tag(), "hi");
+                        }));
 }
 
 TEST_F(SummaryInterfaceTest, WallTime) {
