@@ -33,6 +33,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "abs";
     case HloOpcode::kAdd:
       return "add";
+    case HloOpcode::kAtan2:
+      return "atan2";
     case HloOpcode::kBatchNormTraining:
       return "batch-norm-training";
     case HloOpcode::kBatchNormInference:
@@ -47,6 +49,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "call";
     case HloOpcode::kClamp:
       return "clamp";
+    case HloOpcode::kComplex:
+      return "complex";
     case HloOpcode::kConcatenate:
       return "concatenate";
     case HloOpcode::kConstant:
@@ -87,6 +91,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "get-tuple-element";
     case HloOpcode::kGt:
       return "greater-than";
+    case HloOpcode::kImag:
+      return "imag";
     case HloOpcode::kIndex:
       return "index";
     case HloOpcode::kInfeed:
@@ -125,6 +131,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "parameter";
     case HloOpcode::kPower:
       return "power";
+    case HloOpcode::kReal:
+      return "real";
     case HloOpcode::kRecv:
       return "recv";
     case HloOpcode::kReduce:

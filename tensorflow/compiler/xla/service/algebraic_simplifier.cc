@@ -141,6 +141,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleConvert(HloInstruction* convert) override;
 
+  Status HandleReal(HloInstruction* real, HloInstruction* operand) override;
+  Status HandleImag(HloInstruction* imag, HloInstruction* operand) override;
+
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
 
@@ -963,6 +966,24 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   PrimitiveType dest_type = convert->shape().element_type();
   if (src_type == dest_type) {
     return ReplaceInstruction(convert, convert->mutable_operand(0));
+  }
+  return Status::OK();
+}
+
+// Real(Complex(r, i)) -> r
+Status AlgebraicSimplifierVisitor::HandleReal(HloInstruction* real,
+                                              HloInstruction* operand) {
+  if (operand->opcode() == HloOpcode::kComplex) {
+    return ReplaceInstruction(real, operand->mutable_operand(0));
+  }
+  return Status::OK();
+}
+
+// Imag(Complex(r, i)) -> i
+Status AlgebraicSimplifierVisitor::HandleImag(HloInstruction* imag,
+                                              HloInstruction* operand) {
+  if (operand->opcode() == HloOpcode::kComplex) {
+    return ReplaceInstruction(imag, operand->mutable_operand(1));
   }
   return Status::OK();
 }

@@ -50,6 +50,12 @@ namespace xla {
 
 namespace {
 
+template <typename T>
+struct is_complex_t : public std::false_type {};
+
+template <>
+struct is_complex_t<complex64> : public std::true_type {};
+
 template <typename OperandT>
 StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
                                            const Literal& lhs_literal,
@@ -101,6 +107,37 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
   return std::move(result);
 }
 
+template <>
+StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
+    const Shape& shape, HloOpcode opcode, const Literal& lhs_literal,
+    const Literal& rhs_literal) {
+  std::function<bool(complex64, complex64)> compare_op;
+  switch (opcode) {
+    case HloOpcode::kEq:
+      compare_op = [](complex64 lhs_el, complex64 rhs_el) {
+        return lhs_el == rhs_el;
+      };
+      break;
+    case HloOpcode::kNe:
+      compare_op = [](complex64 lhs_el, complex64 rhs_el) {
+        return lhs_el != rhs_el;
+      };
+      break;
+    default:
+      LOG(FATAL) << "unhandled HLO opcode for conversion to Comparison: "
+                 << HloOpcodeString(opcode);
+  }
+
+  auto result = Literal::CreateFromShape(shape);
+  TF_RETURN_IF_ERROR(result->Populate<bool>(
+      [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+        return compare_op(lhs_literal.Get<complex64>(multi_index),
+                          rhs_literal.Get<complex64>(multi_index));
+      }));
+
+  return std::move(result);
+}
+
 template <typename ReturnT, typename NativeT>
 StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
     HloInstruction* instruction,
@@ -138,7 +175,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     return Unimplemented("unhandled HLO ops for HloEvaluator: %s.",
                          HloOpcodeString(hlo_instruction->opcode()).c_str());
-  };
+  }
 
   // TODO(b/35950897): many of the stl functions used in the handlers are not
   // overloaded for every XLA primitive types.
@@ -156,7 +193,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   template <
       typename NativeT,
-      typename std::enable_if<std::is_signed<NativeT>::value>::type* = nullptr>
+      typename std::enable_if<std::is_signed<NativeT>::value ||
+                              is_complex_t<NativeT>::value>::type* = nullptr>
   Status HandleAbs(HloInstruction* abs, HloInstruction* operand) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[abs],
                         ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
@@ -169,12 +207,26 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return HandleAbs<ReturnT>(abs, operand);
   }
 
-  Status HandleRound(HloInstruction* round) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRound(HloInstruction* round) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[round],
                         ElementWiseUnaryOp(round, [](ReturnT elem_operand) {
                           return std::round(elem_operand);
                         }));
     return Status::OK();
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRound(HloInstruction* round) {
+    return InvalidArgument("Unsupported type for Round");
+  }
+
+  Status HandleRound(HloInstruction* round) override {
+    return HandleRound<ReturnT>(round);
   }
 
   Status HandleBroadcast(HloInstruction* broadcast) override {
@@ -205,15 +257,29 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           }
           return operand_to_broadcast.Get<ReturnT>(broadcast_indices);
         });
-  };
+  }
 
-  Status HandleCeil(HloInstruction* ceil, HloInstruction* operand) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleCeil(HloInstruction* ceil) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[ceil],
                         ElementWiseUnaryOp(ceil, [](ReturnT elem_operand) {
                           return std::ceil(elem_operand);
                         }));
     return Status::OK();
-  };
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleCeil(HloInstruction* ceil) {
+    return InvalidArgument("Unsupported type for Ceil");
+  }
+
+  Status HandleCeil(HloInstruction* ceil, HloInstruction* operand) override {
+    return HandleCeil<ReturnT>(ceil);
+  }
 
   Status HandleConvert(HloInstruction* convert) override {
     const HloInstruction* operand = convert->operand(0);
@@ -237,15 +303,29 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                           return std::exp(elem_operand);
                         }));
     return Status::OK();
-  };
+  }
 
-  Status HandleFloor(HloInstruction* floor, HloInstruction* operand) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleFloor(HloInstruction* floor) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[floor],
                         ElementWiseUnaryOp(floor, [](ReturnT elem_operand) {
                           return std::floor(elem_operand);
                         }));
     return Status::OK();
-  };
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleFloor(HloInstruction* floor) {
+    return InvalidArgument("Unsupported type for Floor");
+  }
+
+  Status HandleFloor(HloInstruction* floor, HloInstruction* operand) override {
+    return HandleFloor<ReturnT>(floor);
+  }
 
   Status HandleLog(HloInstruction* log, HloInstruction* operand) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[log],
@@ -253,15 +333,29 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                           return std::log(elem_operand);
                         }));
     return Status::OK();
-  };
+  }
 
-  Status HandleNot(HloInstruction* not_, HloInstruction* operand) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleNot(HloInstruction* not_) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[not_],
                         ElementWiseUnaryOp(not_, [](ReturnT elem_operand) {
                           return !elem_operand;
                         }));
     return Status::OK();
-  };
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleNot(HloInstruction* not_) {
+    return InvalidArgument("Unsupported type for Not");
+  }
+
+  Status HandleNot(HloInstruction* not_, HloInstruction* operand) override {
+    return HandleNot<ReturnT>(not_);
+  }
 
   Status HandleNegate(HloInstruction* negate,
                       HloInstruction* operand) override {
@@ -270,16 +364,36 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                           return -elem_operand;
                         }));
     return Status::OK();
-  };
+  }
 
-  Status HandleSign(HloInstruction* sign, HloInstruction* operand) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleSign(HloInstruction* sign) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[sign],
                         ElementWiseUnaryOp(sign, [](ReturnT elem_operand) {
                           return (ReturnT(0) < elem_operand) -
                                  (elem_operand < ReturnT(0));
                         }));
     return Status::OK();
-  };
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleSign(HloInstruction* sign) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[sign],
+                        ElementWiseUnaryOp(sign, [](ReturnT elem_operand) {
+                          auto abs_val = std::abs(elem_operand);
+                          return 0 == abs_val ? ReturnT(0)
+                                              : elem_operand / abs_val;
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleSign(HloInstruction* sign, HloInstruction* operand) override {
+    return HandleSign<ReturnT>(sign);
+  }
 
   Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[tanh],
@@ -287,7 +401,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                           return std::tanh(elem_operand);
                         }));
     return Status::OK();
-  };
+  }
 
   Status HandleMultiply(HloInstruction* multiply, HloInstruction* lhs,
                         HloInstruction* rhs) override {
@@ -297,7 +411,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           return lhs_elem * rhs_elem;
         }));
     return Status::OK();
-  };
+  }
 
   Status HandleSubtract(HloInstruction* subtract, HloInstruction* lhs,
                         HloInstruction* rhs) override {
@@ -307,7 +421,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           return lhs_elem - rhs_elem;
         }));
     return Status::OK();
-  };
+  }
 
   Status HandleAdd(HloInstruction* add, HloInstruction* lhs,
                    HloInstruction* rhs) override {
@@ -317,7 +431,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           return lhs_elem + rhs_elem;
         }));
     return Status::OK();
-  };
+  }
 
   Status HandleDivide(HloInstruction* divide, HloInstruction* lhs,
                       HloInstruction* rhs) override {
@@ -327,25 +441,53 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           return lhs_elem / rhs_elem;
         }));
     return Status::OK();
-  };
+  }
 
-  Status HandleMaximum(HloInstruction* maximum) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleMaximum(HloInstruction* maximum) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[maximum],
         ElementWiseBinaryOp(maximum, [](ReturnT lhs, ReturnT rhs) {
           return std::fmax(lhs, rhs);
         }));
     return Status::OK();
-  };
+  }
 
-  Status HandleMinimum(HloInstruction* minimum) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleMaximum(HloInstruction* maximum) {
+    return InvalidArgument("Unsupported type for Maximum");
+  }
+
+  Status HandleMaximum(HloInstruction* maximum) override {
+    return HandleMaximum<ReturnT>(maximum);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleMinimum(HloInstruction* minimum) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[minimum],
         ElementWiseBinaryOp(minimum, [](ReturnT lhs_el, ReturnT rhs_el) {
           return std::fmin(lhs_el, rhs_el);
         }));
     return Status::OK();
-  };
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleMinimum(HloInstruction* minimum) {
+    return InvalidArgument("Unsupported type for Minimum");
+  }
+
+  Status HandleMinimum(HloInstruction* minimum) override {
+    return HandleMinimum<ReturnT>(minimum);
+  }
 
   Status HandlePower(HloInstruction* power, HloInstruction* lhs,
                      HloInstruction* rhs) override {
@@ -355,37 +497,79 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           return std::pow(lhs_el, rhs_el);
         }));
     return Status::OK();
-  };
+  }
 
-  Status HandleRemainder(HloInstruction* remainder, HloInstruction* lhs,
-                         HloInstruction* rhs) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRemainder(HloInstruction* remainder) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[remainder],
         ElementWiseBinaryOp(remainder, [](ReturnT lhs_el, ReturnT rhs_el) {
           return std::fmod(lhs_el, rhs_el);
         }));
     return Status::OK();
-  };
+  }
 
-  Status HandleAnd(HloInstruction* and_, HloInstruction* lhs,
-                   HloInstruction* rhs) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRemainder(HloInstruction* remainder) {
+    return InvalidArgument("Unsupported type for Remainder");
+  }
+
+  Status HandleRemainder(HloInstruction* remainder, HloInstruction* lhs,
+                         HloInstruction* rhs) override {
+    return HandleRemainder<ReturnT>(remainder);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleAnd(HloInstruction* and_) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[and_],
         ElementWiseBinaryOp(and_, [](ReturnT lhs_el, ReturnT rhs_el) {
           return lhs_el && rhs_el;
         }));
     return Status::OK();
-  };
+  }
 
-  Status HandleOr(HloInstruction* or_, HloInstruction* lhs,
-                  HloInstruction* rhs) override {
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleAnd(HloInstruction* and_) {
+    return InvalidArgument("Unsupported type for And");
+  }
+
+  Status HandleAnd(HloInstruction* and_, HloInstruction* lhs,
+                   HloInstruction* rhs) override {
+    return HandleAnd<ReturnT>(and_);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleOr(HloInstruction* or_) {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[or_],
         ElementWiseBinaryOp(or_, [](ReturnT lhs_el, ReturnT rhs_el) {
           return lhs_el || rhs_el;
         }));
     return Status::OK();
-  };
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleOr(HloInstruction* or_) {
+    return InvalidArgument("Unsupported type for Or");
+  }
+
+  Status HandleOr(HloInstruction* or_, HloInstruction* lhs,
+                  HloInstruction* rhs) override {
+    return HandleOr<ReturnT>(or_);
+  }
 
   template <typename NativeT,
             typename std::enable_if<
@@ -474,8 +658,11 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return HandleShiftRightLogical<ReturnT>(shrl, lhs, rhs);
   }
 
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
   Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
-                     HloInstruction* arg, HloInstruction* max) override {
+                     HloInstruction* arg, HloInstruction* max) {
     std::function<ReturnT(ReturnT, ReturnT, ReturnT)> clamp_op =
         [](ReturnT low, ReturnT high, ReturnT value) {
           return std::fmax(low, std::fmin(value, high));
@@ -483,7 +670,20 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[clamp],
                         ElementWiseTernaryOp(clamp, std::move(clamp_op)));
     return Status::OK();
-  };
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
+                     HloInstruction* arg, HloInstruction* max) {
+    return InvalidArgument("Unsupported type for Clamp");
+  }
+
+  Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
+                     HloInstruction* arg, HloInstruction* max) override {
+    return HandleClamp<ReturnT>(clamp, min, arg, max);
+  }
 
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                       HloInstruction* on_true,
@@ -499,7 +699,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[select],
                         ElementWiseTernaryOp(select, std::move(select_op)));
     return Status::OK();
-  };
+  }
 
   Status HandleReverse(HloInstruction* reverse,
                        HloInstruction* operand) override {
@@ -529,7 +729,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     parent_->evaluated_[reverse] = std::move(result);
     return Status::OK();
-  };
+  }
 
   Status HandleConvolution(HloInstruction* conv, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override {
@@ -652,7 +852,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     parent_->evaluated_[conv] = std::move(result);
     return Status::OK();
-  };
+  }
 
   Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
                    HloInstruction* rhs) override {
@@ -719,7 +919,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     parent_->evaluated_[dot] = std::move(result);
     return Status::OK();
-  };
+  }
 
   Status HandlePad(HloInstruction* pad) override {
     CHECK(!ShapeUtil::IsTuple(pad->operand(0)->shape()));
@@ -788,7 +988,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     parent_->evaluated_[pad] = std::move(result);
     return Status::OK();
-  };
+  }
 
   Status HandleDynamicSlice(HloInstruction* dynamic_slice,
                             HloInstruction* operand,
@@ -841,7 +1041,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     }
 
     return Status::OK();
-  };
+  }
 
   Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                   HloInstruction* operand,
@@ -897,7 +1097,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     }
 
     return Status::OK();
-  };
+  }
 
   Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
                       HloInstruction* init_value,
@@ -985,7 +1185,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     parent_->evaluated_[reduce] = std::move(result);
     return Status::OK();
-  };
+  }
 
   Status HandleReduceWindow(HloInstruction* reduce_window,
                             HloInstruction* operand, const Window& window,
@@ -1072,7 +1272,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     parent_->evaluated_[reduce_window] = std::move(result);
     return Status::OK();
-  };
+  }
 
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override {
     const Shape& shape = slice->shape();
@@ -1101,7 +1301,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(func));
     parent_->evaluated_[slice] = std::move(result);
     return Status::OK();
-  };
+  }
 
  private:
   template <typename IndexT>
@@ -1244,35 +1444,33 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   HloEvaluator* parent_;
-};  // namespace xla
+};  // class HloEvaluator::TypedVisitor
 
 HloEvaluator::HloEvaluator() {
   typed_visitors_[PRED] = MakeUnique<TypedVisitor<bool>>(this);
   typed_visitors_[U8] = MakeUnique<TypedVisitor<uint8>>(this);
   typed_visitors_[U16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: U16.");
+    return Unimplemented("HloEvaluator: unhandled primitive type: U16.");
   });
   typed_visitors_[U32] = MakeUnique<TypedVisitor<uint32>>(this);
   typed_visitors_[U64] = MakeUnique<TypedVisitor<uint64>>(this);
   typed_visitors_[S8] = MakeUnique<TypedVisitor<int8>>(this);
   typed_visitors_[S16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: S16.");
+    return Unimplemented("HloEvaluator: unhandled primitive type: S16.");
   });
   typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
   typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
   typed_visitors_[F16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: F16.");
+    return Unimplemented("HloEvaluator: unhandled primitive type: F16.");
   });
   typed_visitors_[F32] = MakeUnique<TypedVisitor<float>>(this);
   typed_visitors_[F64] = MakeUnique<TypedVisitor<double>>(this);
-  typed_visitors_[C64] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: C64.");
-  });
+  typed_visitors_[C64] = MakeUnique<TypedVisitor<complex64>>(this);
   typed_visitors_[TUPLE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: TUPLE.");
+    return Unimplemented("HloEvaluator: unhandled primitive type: TUPLE.");
   });
   typed_visitors_[OPAQUE] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("unhandled primitive type: OPAQUE.");
+    return Unimplemented("HloEvaluator: unhandled primitive type: OPAQUE.");
   });
 }
 
@@ -1572,6 +1770,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare, HloOpcode opcode,
       TF_ASSIGN_OR_RETURN(
           evaluated_[compare],
           Compare<double>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
+    case C64: {
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<complex64>(compare->shape(), opcode,
+                                             lhs_literal, rhs_literal));
     } break;
     default:
       LOG(FATAL) << "HandleCompare: unknown primitive type: "
