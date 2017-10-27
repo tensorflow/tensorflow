@@ -122,16 +122,7 @@ class Layer(object):
     self._inbound_nodes = []
     self._outbound_nodes = []
 
-    # Determine layer name (non-unique).
-    if isinstance(name, vs.VariableScope):
-      base_name = name.name
-    else:
-      base_name = name
-      self._name = name
-    if not name:
-      base_name = _to_snake_case(self.__class__.__name__)
-      self._name = _unique_layer_name(base_name)
-    self._base_name = base_name
+    self._init_set_name(name)
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
@@ -146,6 +137,17 @@ class Layer(object):
     if 'input_shape' in kwargs:
       batch_size = kwargs.get('batch_size')
       self._batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
+
+  def _init_set_name(self, name):
+    # Determine layer name (non-unique).
+    if isinstance(name, vs.VariableScope):
+      base_name = name.name
+    else:
+      base_name = name
+      self._name = name
+    if not name:
+      self._name, base_name = self._make_unique_name()
+    self._base_name = base_name
 
   @property
   def dtype(self):
@@ -398,6 +400,12 @@ class Layer(object):
         the layer.
     """
     return input_shape
+
+  def _make_unique_name(self, name_uid_map=None, avoid_names=None):
+    base_name = _to_snake_case(self.__class__.__name__)
+    name = _unique_layer_name(base_name, name_uid_map=name_uid_map,
+                              avoid_names=avoid_names)
+    return (name, base_name)
 
   def _set_scope(self, scope=None):
     if self._scope is None:
@@ -1507,19 +1515,11 @@ class Network(Layer):
       # TODO(fchollet): check that all inputs and outputs are DeferredTensors.
       pass
 
-    # Set layer name and scope
-    if isinstance(name, vs.VariableScope):
-      base_name = name.name
-    else:
-      base_name = name
-      self._name = name
-    if not name:
-      base_name = _to_snake_case(self.__class__.__name__)
-      self._name = _unique_layer_name(base_name)
+    self._init_set_name(name)
     self._activity_regularizer = None
-    with vs.variable_scope(None, default_name=base_name) as captured_scope:
+    with vs.variable_scope(
+        None, default_name=self._base_name) as captured_scope:
       self._scope = captured_scope
-    self._base_name = base_name
     call_fn_args = estimator_util.fn_args(self.call)
     self._compute_previous_mask = ('mask' in call_fn_args or
                                    hasattr(self, 'compute_mask'))
@@ -2354,11 +2354,24 @@ def _collect_previous_mask(input_tensors):
 PER_GRAPH_LAYER_NAME_UIDS = weakref.WeakKeyDictionary()
 
 
-def _unique_layer_name(name):
+def _get_default_graph_uid_map():
+  graph = ops.get_default_graph()
+  name_uid_map = PER_GRAPH_LAYER_NAME_UIDS.get(graph, None)
+  if name_uid_map is None:
+    name_uid_map = collections.defaultdict(int)
+    PER_GRAPH_LAYER_NAME_UIDS[graph] = name_uid_map
+  return name_uid_map
+
+
+def _unique_layer_name(name, name_uid_map=None, avoid_names=None):
   """Makes a layer name (or arbitrary string) unique within a TensorFlow graph.
 
   Arguments:
     name: String name to make unique.
+    name_uid_map: An optional defaultdict(int) to use when creating unique
+      names. If None (default), uses a per-Graph dictionary.
+    avoid_names: An optional set or dict with names which should not be used. If
+      None (default) does not avoid any names.
 
   Returns:
     Unique string name.
@@ -2370,9 +2383,12 @@ def _unique_layer_name(name):
   _unique_layer_name('dense')  # dense_2
   ```
   """
-  graph = ops.get_default_graph()
-  if graph not in PER_GRAPH_LAYER_NAME_UIDS:
-    PER_GRAPH_LAYER_NAME_UIDS[graph] = collections.defaultdict(int)
-  layer_name_uids = PER_GRAPH_LAYER_NAME_UIDS[graph]
-  layer_name_uids[name] += 1
-  return name + '_' + str(layer_name_uids[name])
+  if name_uid_map is None:
+    name_uid_map = _get_default_graph_uid_map()
+  if avoid_names is None:
+    avoid_names = set()
+  proposed_name = None
+  while proposed_name is None or proposed_name in avoid_names:
+    name_uid_map[name] += 1
+    proposed_name = name + '_' + str(name_uid_map[name])
+  return proposed_name
