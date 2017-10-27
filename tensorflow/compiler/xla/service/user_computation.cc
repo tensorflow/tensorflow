@@ -55,6 +55,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kExp;
     case UNOP_FLOOR:
       return HloOpcode::kFloor;
+    case UNOP_IMAG:
+      return HloOpcode::kImag;
     case UNOP_IS_FINITE:
       return HloOpcode::kIsFinite;
     case UNOP_LOG:
@@ -63,6 +65,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kNot;
     case UNOP_NEGATE:
       return HloOpcode::kNegate;
+    case UNOP_REAL:
+      return HloOpcode::kReal;
     case UNOP_ROUND_NEAREST_AFZ:
       return HloOpcode::kRoundNearestAfz;
     case UNOP_SIGN:
@@ -80,6 +84,10 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
 
 HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
   switch (binop) {
+    case BINOP_ATAN2:
+      return HloOpcode::kAtan2;
+    case BINOP_COMPLEX:
+      return HloOpcode::kComplex;
     case BINOP_DOT:
       return HloOpcode::kDot;
     case BINOP_MUL:

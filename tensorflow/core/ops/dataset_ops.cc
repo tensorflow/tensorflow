@@ -285,11 +285,12 @@ f: A function mapping elements of `input_dataset`, concatenated with
   `output_types` and `output_shapes`.
 )doc");
 
-REGISTER_OP("SloppyInterleaveDataset")
+REGISTER_OP("ParallelInterleaveDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
     .Input("cycle_length: int64")
     .Input("block_length: int64")
+    .Input("sloppy: bool")
     .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")

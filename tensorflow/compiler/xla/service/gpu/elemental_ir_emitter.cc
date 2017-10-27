@@ -135,6 +135,10 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
   PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
   PrimitiveType output_type = op->shape().element_type();
   switch (op->opcode()) {
+    case HloOpcode::kAtan2:
+      return EmitLibdeviceMathCall("__nv_atan2", {lhs_value, rhs_value},
+                                   {lhs_input_type, rhs_input_type},
+                                   output_type);
     case HloOpcode::kRemainder: {
       return EmitLibdeviceMathCall("__nv_fmod", {lhs_value, rhs_value},
                                    {lhs_input_type, rhs_input_type},
@@ -226,6 +230,112 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
   }
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexUnaryOp(
+    const HloInstruction* op, llvm::Value* operand_value) const {
+  PrimitiveType input_type = op->operand(0)->shape().element_type();
+  PrimitiveType component_type =
+      primitive_util::IsComplexType(input_type)
+          ? primitive_util::ComplexComponentType(input_type)
+          : input_type;
+  auto real = [&](llvm::Value* x) {
+    return ir_builder_->CreateExtractValue(x, {0});
+  };
+  auto imag = [&](llvm::Value* x) {
+    return ir_builder_->CreateExtractValue(x, {1});
+  };
+
+  switch (op->opcode()) {
+    case HloOpcode::kLog: {
+      // log(a+bi) = .5*log(a^2+b^2) + i*atan2(b, a)
+      auto a = real(operand_value);
+      auto b = imag(operand_value);
+      llvm::Type* llvm_ty = a->getType();
+      auto sum_sq = ir_builder_->CreateFAdd(ir_builder_->CreateFMul(a, a),
+                                            ir_builder_->CreateFMul(b, b));
+      TF_ASSIGN_OR_RETURN(
+          auto log_sum_sq,
+          EmitLibdeviceMathCall("__nv_log", {sum_sq}, {component_type},
+                                component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto angle, EmitLibdeviceMathCall("__nv_atan2", {b, a},
+                                            {component_type, component_type},
+                                            component_type));
+      auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
+      return ComposeComplex(op, ir_builder_->CreateFMul(one_half, log_sum_sq),
+                            angle);
+    }
+    // TODO(b/65408531): Implement kPower on GPU, where atan2 is available.
+    // case HloOpcode::kPower:
+    // // (a+bi)^(c+di) = exp(i(c+di)*arg(a+bi)) * (a*a+b*b)^(0.5(c+di))
+    case HloOpcode::kExp: {
+      // e^(a+bi) = e^a*(cos(b)+sin(b)i)
+      auto b = imag(operand_value);
+      TF_ASSIGN_OR_RETURN(
+          auto exp_a, EmitLibdeviceMathCall("__nv_exp", {real(operand_value)},
+                                            {component_type}, component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto cos_b, EmitLibdeviceMathCall("__nv_cos", {b}, {component_type},
+                                            component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto sin_b, EmitLibdeviceMathCall("__nv_sin", {b}, {component_type},
+                                            component_type));
+      return ComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
+                            ir_builder_->CreateFMul(exp_a, sin_b));
+    }
+    case HloOpcode::kCos: {
+      // cos(a+bi) = .5(cos(a)*(e^-b+e^b) + i*sin(a)*(e^-b-e^b))
+      auto a = real(operand_value);
+      auto llvm_ty = a->getType();
+      TF_ASSIGN_OR_RETURN(
+          auto exp_b, EmitLibdeviceMathCall("__nv_exp", {imag(operand_value)},
+                                            {component_type}, component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto cos_a, EmitLibdeviceMathCall("__nv_cos", {a}, {component_type},
+                                            component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto sin_a, EmitLibdeviceMathCall("__nv_sin", {a}, {component_type},
+                                            component_type));
+      auto half_exp_b =
+          ir_builder_->CreateFMul(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
+      auto half_exp_neg_b =
+          ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
+      return ComposeComplex(
+          op,
+          ir_builder_->CreateFMul(
+              cos_a, ir_builder_->CreateFAdd(half_exp_neg_b, half_exp_b)),
+          ir_builder_->CreateFMul(
+              sin_a, ir_builder_->CreateFSub(half_exp_neg_b, half_exp_b)));
+    }
+
+    case HloOpcode::kSin: {
+      // sin(a+bi) = 0.5(sin(a)*(e^b+e^-b) + i*cos(a)*(e^b-e^-b)
+      auto a = real(operand_value);
+      auto llvm_ty = a->getType();
+      TF_ASSIGN_OR_RETURN(
+          auto exp_b, EmitLibdeviceMathCall("__nv_exp", {imag(operand_value)},
+                                            {component_type}, component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto cos_a, EmitLibdeviceMathCall("__nv_cos", {a}, {component_type},
+                                            component_type));
+      TF_ASSIGN_OR_RETURN(
+          auto sin_a, EmitLibdeviceMathCall("__nv_sin", {a}, {component_type},
+                                            component_type));
+      auto half_exp_b =
+          ir_builder_->CreateFMul(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
+      auto half_exp_neg_b =
+          ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
+      return ComposeComplex(
+          op,
+          ir_builder_->CreateFMul(
+              sin_a, ir_builder_->CreateFAdd(half_exp_b, half_exp_neg_b)),
+          ir_builder_->CreateFMul(
+              cos_a, ir_builder_->CreateFSub(half_exp_b, half_exp_neg_b)));
+    }
+    default:
+      return ElementalIrEmitter::EmitComplexUnaryOp(op, operand_value);
+  }
+}
+
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
     const string& callee_name,
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
@@ -235,13 +345,12 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
   std::vector<llvm::Type*> ir_input_types;
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, ir_builder_));
+        llvm_ir::PrimitiveTypeToIrType(input_type, module_));
   }
   llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type,
-                                     ir_builder_),  // The return type.
-      ir_input_types,                               // The parameter types.
-      false);                                       // No variadic arguments.
+      llvm_ir::PrimitiveTypeToIrType(output_type, module_),  // Return type.
+      ir_input_types,                                        // Parameter types.
+      false);  // No variadic arguments.
 
   // Declares the callee if it is not declared already.
   llvm::Function* callee = llvm::cast<llvm::Function>(
@@ -315,7 +424,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
         PrimitiveType operand_element_type = operand->shape().element_type();
         llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
-            llvm_ir::PrimitiveTypeToIrType(operand_element_type, ir_builder_),
+            llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
             "reduce_window_accum_ptr", ir_builder_);
         {
           TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
@@ -377,7 +486,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         const HloInstruction* operand = hlo->operand(0);
         llvm::Value* accum_ptr =
             ir_builder()->CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
-                hlo->shape().element_type(), ir_builder()));
+                hlo->shape().element_type(), module_));
         TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
                             operand_to_generator.at(hlo->operand(1))({}));
         ir_builder()->CreateStore(init_value, accum_ptr);

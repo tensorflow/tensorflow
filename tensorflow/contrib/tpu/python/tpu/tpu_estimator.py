@@ -1106,8 +1106,6 @@ class _EvalMetrics(object):
 
     if isinstance(eval_metrics[1], (tuple, list)):
       fn_args = util.fn_args(eval_metrics[0])
-      if 'self' in fn_args:
-        fn_args = tuple([arg for arg in fn_args if arg != 'self'])
       if len(eval_metrics[1]) != len(fn_args):
         raise RuntimeError(
             'In TPUEstimatorSpec.eval_metrics, length of tensors does not '

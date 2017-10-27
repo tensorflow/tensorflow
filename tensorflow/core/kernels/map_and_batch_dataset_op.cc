@@ -336,7 +336,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const std::unique_ptr<CapturedFunction> captured_func_;
-    const Eigen::ThreadPoolDevice* device_; // not owned
+    const Eigen::ThreadPoolDevice* device_;  // not owned
   };
 
   const int graph_def_version_;

@@ -49,7 +49,7 @@ enum PrimitiveType {
   F64 = 12;
 
   // Complex values of fixed width.
-  C64 = 15;
+  C64 = 15;  // Paired F32 (real, imag), as in std::complex<float>.
 
   // A tuple is a polymorphic sequence; e.g. a shape that holds different
   // sub-shapes. They are used for things like returning multiple values from a
@@ -667,6 +667,12 @@ enum UnaryOperation {
   // Elementwise, rounds x to nearest integral value, rounding half-way cases
   // away from zero.
   UNOP_ROUND_NEAREST_AFZ = 14;
+
+  // Elementwise, extract real component of complex x.
+  UNOP_REAL = 15;
+
+  // Elementwise, extract real component of complex x.
+  UNOP_IMAG = 16;
 }
 
 message UnaryOpRequest {
@@ -721,6 +727,12 @@ enum BinaryOperation {
   BINOP_SHIFT_LEFT = 20;
   BINOP_SHIFT_RIGHT_ARITHMETIC = 21;
   BINOP_SHIFT_RIGHT_LOGICAL = 22;
+
+  // Complex from real, imag.
+  BINOP_COMPLEX = 23;
+
+  // Computes the 4-quadrant arctangent of the y, x input arguments.
+  BINOP_ATAN2 = 24;
 }
 
 message BinaryOpRequest {
