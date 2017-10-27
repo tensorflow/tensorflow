@@ -383,6 +383,14 @@ class Tensor(_TensorLike):
       return None
     return tuple(shape)
 
+  def _rank(self):
+    """Integer rank of this Tensor, if known, else None.
+
+    Returns:
+      Integer rank or None
+    """
+    return self._shape.ndims
+
   def get_shape(self):
     """Alias of Tensor.shape."""
     return self.shape
@@ -661,6 +669,18 @@ class _EagerTensorBase(Tensor):
 
     Returns:
       tuple with the shape.
+    """
+    raise NotImplementedError()
+
+  def _rank(self):
+    """Integer rank of this Tensor.
+
+    Unlike regular Tensors, the rank is always known for EagerTensors.
+
+    This is more performant than len(self._shape_tuple())
+
+    Returns:
+      Integer rank
     """
     raise NotImplementedError()
 
