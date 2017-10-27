@@ -33,6 +33,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "abs";
     case HloOpcode::kAdd:
       return "add";
+    case HloOpcode::kAnd:
+      return "and";
     case HloOpcode::kAtan2:
       return "atan2";
     case HloOpcode::kBatchNormTraining:
@@ -103,12 +105,6 @@ string HloOpcodeString(HloOpcode opcode) {
       return "less-than-or-equal-to";
     case HloOpcode::kLog:
       return "log";
-    case HloOpcode::kAnd:
-      return "and";
-    case HloOpcode::kOr:
-      return "or";
-    case HloOpcode::kNot:
-      return "not";
     case HloOpcode::kLt:
       return "less-than";
     case HloOpcode::kMap:
@@ -123,6 +119,10 @@ string HloOpcodeString(HloOpcode opcode) {
       return "not-equal-to";
     case HloOpcode::kNegate:
       return "negate";
+    case HloOpcode::kNot:
+      return "not";
+    case HloOpcode::kOr:
+      return "or";
     case HloOpcode::kOutfeed:
       return "outfeed";
     case HloOpcode::kPad:
@@ -190,6 +190,7 @@ StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
   static auto* opcode_map = new tensorflow::gtl::FlatMap<string, HloOpcode>(
       {{"abs", HloOpcode::kAbs},
        {"add", HloOpcode::kAdd},
+       {"and", HloOpcode::kAnd},
        {"batch-norm-training", HloOpcode::kBatchNormTraining},
        {"batch-norm-inference", HloOpcode::kBatchNormInference},
        {"batch-norm-grad", HloOpcode::kBatchNormGrad},
@@ -222,16 +223,15 @@ StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
        {"is-finite", HloOpcode::kIsFinite},
        {"less-than-or-equal-to", HloOpcode::kLe},
        {"log", HloOpcode::kLog},
-       {"and", HloOpcode::kAnd},
-       {"or", HloOpcode::kOr},
-       {"not", HloOpcode::kNot},
        {"less-than", HloOpcode::kLt},
        {"map", HloOpcode::kMap},
        {"maximum", HloOpcode::kMaximum},
        {"minimum", HloOpcode::kMinimum},
        {"multiply", HloOpcode::kMultiply},
+       {"not", HloOpcode::kNot},
        {"not-equal-to", HloOpcode::kNe},
        {"negate", HloOpcode::kNegate},
+       {"or", HloOpcode::kOr},
        {"outfeed", HloOpcode::kOutfeed},
        {"pad", HloOpcode::kPad},
        {"parameter", HloOpcode::kParameter},
