@@ -367,11 +367,11 @@ OpTest::OpTest() {
 void OpTest::Repeatedly(const std::function<TestResult(void)>& fn) {
   int const max_repetitions = tf_xla_test_repetitions;
   int valid_test_runs = 0;
-  // We run up to 20 * max_repetitions times; the idea is that if we roll the
+  // We run up to 100 * max_repetitions times; the idea is that if we roll the
   // dice enough times we will find some valid parameters. We want to put an
   // upper limit on the number iterations just in case the probability of
   // finding feasible parameters is very low.
-  for (int i = 0; !HasFailure() && i < max_repetitions * 20 &&
+  for (int i = 0; !HasFailure() && i < max_repetitions * 100 &&
                   valid_test_runs < max_repetitions;
        ++i) {
     TestResult result = fn();
@@ -868,7 +868,7 @@ Tensor AsIntTensor(DataType dtype, const std::vector<int64>& values) {
 
 TEST_F(OpTest, Abs) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Abs").RandomInput(type).Attr("T", type));
   });
@@ -883,7 +883,7 @@ TEST_F(OpTest, Acosh) {
 
 TEST_F(OpTest, Add) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Add")
                                              .RandomInput(type, dims.first)
@@ -894,7 +894,7 @@ TEST_F(OpTest, Add) {
 
 TEST_F(OpTest, AddN) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     int n = std::uniform_int_distribution<int>(1, 5)(generator());
 
     auto shape = RandomDims();
@@ -921,6 +921,14 @@ TEST_F(OpTest, All) {
   });
 }
 
+TEST_F(OpTest, Angle) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Angle")
+                                             .RandomInput(DT_COMPLEX64)
+                                             .Attr("T", DT_COMPLEX64));
+  });
+}
+
 TEST_F(OpTest, Any) {
   Repeatedly([this]() {
     std::vector<int64> data_dims = RandomDims();
@@ -935,11 +943,11 @@ TEST_F(OpTest, Any) {
 
 TEST_F(OpTest, ApproximateEqual) {
   Repeatedly([this]() {
-    auto dims = RandomDims();
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto dims = BroadcastableDims();
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ApproximateEqual")
-                                             .RandomInput(type, dims)
-                                             .RandomInput(type, dims)
+                                             .RandomInput(type, dims.first)
+                                             .RandomInput(type, dims.second)
                                              .Attr("T", DT_FLOAT));
   });
 }
@@ -987,6 +995,16 @@ TEST_F(OpTest, Atanh) {
   Repeatedly([this]() {
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Atanh").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, Atan2) {
+  Repeatedly([this]() {
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Atan2")
+                                             .RandomInput(DT_FLOAT, dims.first)
+                                             .RandomInput(DT_FLOAT, dims.second)
+                                             .Attr("T", DT_FLOAT));
   });
 }
 
@@ -1085,7 +1103,7 @@ TEST_F(OpTest, AvgPool3DGrad) {
 
 TEST_F(OpTest, BatchMatMul) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     std::vector<int64> output_dims = RandomDims(2, 5, 0, 7);
     int64 ndims = output_dims.size();
     int64 inner_dim = RandomDim();
@@ -1138,7 +1156,7 @@ TEST_F(OpTest, BatchToSpace) {
     CHECK(crops.CopyFrom(AsIntTensor(DT_INT32, crop_vals),
                          TensorShape({num_block_dims, 2})));
 
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BatchToSpace")
                                              .RandomInput(type, input_dims)
                                              .Input(crops)
@@ -1176,7 +1194,7 @@ TEST_F(OpTest, BatchToSpaceND) {
     CHECK(crops.CopyFrom(AsIntTensor(DT_INT32, crop_vals),
                          TensorShape({num_block_dims, 2})));
 
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("BatchToSpaceND")
             .RandomInput(type, input_dims)
@@ -1192,7 +1210,7 @@ TEST_F(OpTest, BiasAdd) {
     auto x_dims = RandomDims(2, kDefaultMaxRank);
     auto y_dims = {x_dims[x_dims.size() - 1]};
     // TODO(phawkins): test both data formats.
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BiasAdd")
                                              .RandomInput(type, x_dims)
                                              .RandomInput(type, y_dims)
@@ -1203,7 +1221,7 @@ TEST_F(OpTest, BiasAdd) {
 TEST_F(OpTest, BiasAddGrad) {
   Repeatedly([this]() {
     // TODO(phawkins): test both data formats.
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("BiasAddGrad").RandomInput(type).Attr("T", type));
   });
@@ -1213,7 +1231,7 @@ TEST_F(OpTest, BiasAddV1) {
   Repeatedly([this]() {
     auto x_dims = RandomDims(2, kDefaultMaxRank);
     auto y_dims = {x_dims[x_dims.size() - 1]};
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BiasAddV1")
                                              .RandomInput(type, x_dims)
                                              .RandomInput(type, y_dims)
@@ -1246,7 +1264,7 @@ TEST_F(OpTest, BitwiseOr) {
 TEST_F(OpTest, BroadcastArgs) {
   Repeatedly([this]() {
     // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
-    // DataType type = Choose<DataType>({DT_INT32, DT_INT64});
+    // auto type = Choose<DataType>({DT_INT32, DT_INT64});
     DataType type = DT_INT32;
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(
@@ -1260,7 +1278,7 @@ TEST_F(OpTest, BroadcastArgs) {
 TEST_F(OpTest, BroadcastGradientArgs) {
   Repeatedly([this]() {
     // TODO(phawkins): only int32 seems to be implemented in Tensorflow.
-    // DataType type = Choose<DataType>({DT_INT32, DT_INT64});
+    // auto type = Choose<DataType>({DT_INT32, DT_INT64});
     DataType type = DT_INT32;
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(
@@ -1290,9 +1308,19 @@ TEST_F(OpTest, Ceil) {
   });
 }
 
+TEST_F(OpTest, Complex) {
+  Repeatedly([this]() {
+    auto dims = BroadcastableDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Complex")
+                                             .RandomInput(DT_FLOAT, dims.first)
+                                             .RandomInput(DT_FLOAT, dims.second)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Concat) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     int n = std::uniform_int_distribution<int>(2, 5)(generator());
 
     std::vector<int64> dims = RandomDims(1);
@@ -1329,6 +1357,14 @@ TEST_F(OpTest, ConcatOffset) {
       builder.Input(test::AsTensor<int32>(shape));
     }
     return ExpectTfAndXlaOutputsAreClose(builder);
+  });
+}
+
+TEST_F(OpTest, Conj) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Conj")
+                                             .RandomInput(DT_COMPLEX64)
+                                             .Attr("T", DT_COMPLEX64));
   });
 }
 
@@ -1471,7 +1507,7 @@ TEST_F(OpTest, Conv3DBackpropInput) {
         ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims);
     std::vector<int64> kernel = {d.kernel_dims[0], d.kernel_dims[1],
                                  d.kernel_dims[2], features_in, features_out};
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv3DBackpropInputV2")
             .Input(in_shape)
@@ -1485,7 +1521,7 @@ TEST_F(OpTest, Conv3DBackpropInput) {
 
 TEST_F(OpTest, Cos) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Cos").RandomInput(type).Attr("T", type));
   });
@@ -1493,7 +1529,7 @@ TEST_F(OpTest, Cos) {
 
 TEST_F(OpTest, Cosh) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Cosh").RandomInput(type).Attr("T", type));
   });
@@ -1506,7 +1542,7 @@ TEST_F(OpTest, DepthToSpace) {
     input_dims[1] = (input_dims[1] + (block - 1)) / block;
     input_dims[2] = (input_dims[2] + (block - 1)) / block;
     input_dims[3] *= block * block;
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("DepthToSpace")
                                              .RandomInput(type, input_dims)
                                              .Attr("T", type)
@@ -1597,7 +1633,7 @@ TEST_F(OpTest, DepthwiseConv2DBackpropInput) {
 TEST_F(OpTest, Diag) {
   if (1) return;
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> dims;
     // Diag causes a quadratic blowup in output size.
     int64 size;
@@ -1612,7 +1648,7 @@ TEST_F(OpTest, Diag) {
 
 TEST_F(OpTest, DiagPart) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     auto dims = RandomDims(1, 3);
     // Duplicate the random dims.
     std::vector<int64> doubled_dims(dims.size() * 2);
@@ -1626,7 +1662,7 @@ TEST_F(OpTest, DiagPart) {
 
 TEST_F(OpTest, Div) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Div")
                                              .RandomInput(type, dims.first)
@@ -1637,7 +1673,7 @@ TEST_F(OpTest, Div) {
 
 TEST_F(OpTest, DynamicStitch) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     int n = std::uniform_int_distribution<int>(2, 5)(generator());
     OpTestBuilder builder("DynamicStitch");
     builder.Attr("T", type);
@@ -1722,7 +1758,7 @@ TEST_F(OpTest, SeluGrad) {
 
 TEST_F(OpTest, Equal) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Equal")
                                              .RandomInput(type, dims.first)
@@ -1733,7 +1769,7 @@ TEST_F(OpTest, Equal) {
 
 TEST_F(OpTest, Exp) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Exp").RandomInput(type).Attr("T", type));
   });
@@ -1741,7 +1777,7 @@ TEST_F(OpTest, Exp) {
 
 TEST_F(OpTest, Expm1) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Expm1").RandomInput(type).Attr("T", type));
   });
@@ -1749,7 +1785,7 @@ TEST_F(OpTest, Expm1) {
 
 TEST_F(OpTest, ExpandDims) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> in_dims = RandomDims();
     Tensor dim(DT_INT32, TensorShape());
     std::uniform_int_distribution<int32> d(-1 - in_dims.size(), in_dims.size());
@@ -1763,7 +1799,7 @@ TEST_F(OpTest, ExpandDims) {
 
 TEST_F(OpTest, Fill) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> dims = RandomDims();
     std::vector<int32> shape(dims.begin(), dims.end());
     return ExpectTfAndXlaOutputsAreClose(
@@ -1794,7 +1830,7 @@ TEST_F(OpTest, FloorDiv) {
 
 TEST_F(OpTest, FloorMod) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("FloorMod")
                                              .RandomInput(type, dims.first)
@@ -1805,7 +1841,7 @@ TEST_F(OpTest, FloorMod) {
 
 TEST_F(OpTest, Greater) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Greater")
                                              .RandomInput(type, dims.first)
@@ -1816,12 +1852,20 @@ TEST_F(OpTest, Greater) {
 
 TEST_F(OpTest, GreaterEqual) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("GreaterEqual")
                                              .RandomInput(type, dims.first)
                                              .RandomInput(type, dims.second)
                                              .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, Imag) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Imag")
+                                             .RandomInput(DT_COMPLEX64)
+                                             .Attr("T", DT_COMPLEX64));
   });
 }
 
@@ -1843,7 +1887,7 @@ TEST_F(OpTest, L2Loss) {
 
 TEST_F(OpTest, Less) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Less")
                                              .RandomInput(type, dims.first)
@@ -1854,7 +1898,7 @@ TEST_F(OpTest, Less) {
 
 TEST_F(OpTest, LessEqual) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("LessEqual")
                                              .RandomInput(type, dims.first)
@@ -1870,7 +1914,7 @@ TEST_F(OpTest, LinSpace) {
       return test::AsScalar<int64>(x);
     };
     std::uniform_int_distribution<int> distribution(-50, 50);
-    DataType type = Choose<DataType>({DT_INT32, DT_INT64});
+    auto type = Choose<DataType>({DT_INT32, DT_INT64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("LinSpace")
             .RandomInput(DT_FLOAT, {})
@@ -1883,7 +1927,7 @@ TEST_F(OpTest, LinSpace) {
 
 TEST_F(OpTest, Log) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Log").RandomInput(type).Attr("T", type));
   });
@@ -1891,7 +1935,7 @@ TEST_F(OpTest, Log) {
 
 TEST_F(OpTest, Log1p) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Log1p").RandomInput(type).Attr("T", DT_FLOAT));
   });
@@ -1990,7 +2034,7 @@ TEST_F(OpTest, MatMul) {
       std::swap(b_dims[0], b_dims[1]);
     }
 
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatMul")
                                              .RandomInput(type, a_dims)
                                              .RandomInput(type, b_dims)
@@ -2002,7 +2046,7 @@ TEST_F(OpTest, MatMul) {
 
 TEST_F(OpTest, MatrixDiag) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixDiag")
                                              .RandomInput(type, RandomDims(1))
                                              .Attr("T", type));
@@ -2011,7 +2055,7 @@ TEST_F(OpTest, MatrixDiag) {
 
 TEST_F(OpTest, MatrixDiagPart) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("MatrixDiagPart")
                                              .RandomInput(type, RandomDims(2))
                                              .Attr("T", type));
@@ -2020,7 +2064,7 @@ TEST_F(OpTest, MatrixDiagPart) {
 
 TEST_F(OpTest, Max) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     std::vector<int64> data_dims = RandomDims();
     Tensor indices = RandomReductionIndices(data_dims.size());
     bool keep_dims = Choose<bool>({false, true});
@@ -2034,7 +2078,7 @@ TEST_F(OpTest, Max) {
 
 TEST_F(OpTest, Maximum) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Maximum")
                                              .RandomInput(type, dims.first)
@@ -2102,7 +2146,7 @@ TEST_F(OpTest, MaxPool3D) {
 
 TEST_F(OpTest, Mean) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     // TODO(phawkins): CPU and XLA differ output for reducing across a
     // size-0 dimension (nan vs 0). For now, require size >= 1.
     std::vector<int64> data_dims = RandomDims(0, kDefaultMaxRank, 1);
@@ -2118,7 +2162,7 @@ TEST_F(OpTest, Mean) {
 
 TEST_F(OpTest, Min) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     std::vector<int64> data_dims = RandomDims();
     Tensor indices = RandomReductionIndices(data_dims.size());
     bool keep_dims = Choose<bool>({false, true});
@@ -2132,7 +2176,7 @@ TEST_F(OpTest, Min) {
 
 TEST_F(OpTest, Minimum) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Minimum")
                                              .RandomInput(type, dims.first)
@@ -2153,7 +2197,7 @@ TEST_F(OpTest, Mod) {
 
 TEST_F(OpTest, Mul) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Mul")
                                              .RandomInput(type, dims.first)
@@ -2164,7 +2208,7 @@ TEST_F(OpTest, Mul) {
 
 TEST_F(OpTest, Neg) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Neg").RandomInput(type).Attr("T", type));
   });
@@ -2172,7 +2216,7 @@ TEST_F(OpTest, Neg) {
 
 TEST_F(OpTest, NotEqual) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("NotEqual")
                                              .RandomInput(type, dims.first)
@@ -2183,7 +2227,7 @@ TEST_F(OpTest, NotEqual) {
 
 TEST_F(OpTest, OneHot) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
 
     std::vector<int64> dims = RandomDims();
     int num_dims = dims.size();
@@ -2213,7 +2257,7 @@ TEST_F(OpTest, OneHot) {
 
 TEST_F(OpTest, OnesLike) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("OnesLike").RandomInput(type).Attr("T", type));
   });
@@ -2221,7 +2265,7 @@ TEST_F(OpTest, OnesLike) {
 
 TEST_F(OpTest, Pack) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     int n = std::uniform_int_distribution<int>(1, 5)(generator());
 
     std::vector<int64> dims = RandomDims();
@@ -2243,7 +2287,7 @@ TEST_F(OpTest, Pack) {
 // TODO(b/31741898): crashes on GPU.
 TEST_F(OpTest, Pad) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> t_dims = RandomDims();
 
     // TODO(b/31741996): re-enable DT_INT64 when bug is fixed.
@@ -2272,7 +2316,7 @@ TEST_F(OpTest, Pow) {
   // nontermination.
   Repeatedly([this]() {
     auto dims = BroadcastableDims();
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Pow")
                                              .RandomInput(type, dims.first)
                                              .RandomInput(type, dims.second)
@@ -2282,7 +2326,7 @@ TEST_F(OpTest, Pow) {
 
 TEST_F(OpTest, Prod) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     std::vector<int64> data_dims = RandomDims();
     Tensor indices = RandomReductionIndices(data_dims.size());
     bool keep_dims = Choose<bool>({false, true});
@@ -2316,15 +2360,23 @@ TEST_F(OpTest, Range) {
 
 TEST_F(OpTest, Rank) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Rank").RandomInput(type).Attr("T", type));
   });
 }
 
+TEST_F(OpTest, Real) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Real")
+                                             .RandomInput(DT_COMPLEX64)
+                                             .Attr("T", DT_COMPLEX64));
+  });
+}
+
 TEST_F(OpTest, RealDiv) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("RealDiv")
                                              .RandomInput(type, dims.first)
@@ -2335,7 +2387,7 @@ TEST_F(OpTest, RealDiv) {
 
 TEST_F(OpTest, Reciprocal) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Reciprocal").RandomInput(type).Attr("T", type));
   });
@@ -2344,7 +2396,7 @@ TEST_F(OpTest, Reciprocal) {
 TEST_F(OpTest, ReciprocalGrad) {
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims();
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ReciprocalGrad")
                                              .RandomInput(type, dims)
                                              .RandomInput(type, dims)
@@ -2387,7 +2439,7 @@ TEST_F(OpTest, ReluGrad) {
 
 TEST_F(OpTest, Reshape) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> dims = RandomDims();
     std::bernoulli_distribution random_bool;
     std::vector<int64> dims_before, dims_after;
@@ -2415,7 +2467,7 @@ TEST_F(OpTest, Reshape) {
 TEST_F(OpTest, Reverse) {
   Repeatedly([this]() {
     std::vector<int64> dims = RandomDims(1);
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     int64 rank = dims.size();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Reverse")
                                              .RandomInput(type, dims)
@@ -2426,7 +2478,7 @@ TEST_F(OpTest, Reverse) {
 
 TEST_F(OpTest, ReverseV2) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> data_dims = RandomDims();
     Tensor indices = RandomReductionIndices(data_dims.size());
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("ReverseV2")
@@ -2452,7 +2504,7 @@ TEST_F(OpTest, Round) {
 
 TEST_F(OpTest, Rsqrt) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Rsqrt").RandomInput(type).Attr("T", type));
   });
@@ -2461,7 +2513,7 @@ TEST_F(OpTest, Rsqrt) {
 TEST_F(OpTest, RsqrtGrad) {
   Repeatedly([this]() {
     auto dims = RandomDims();
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("RsqrtGrad")
                                              .RandomInput(type, dims)
                                              .RandomInput(type, dims)
@@ -2471,7 +2523,7 @@ TEST_F(OpTest, RsqrtGrad) {
 
 TEST_F(OpTest, Shape) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Shape").RandomInput(type).Attr("T", type));
   });
@@ -2479,7 +2531,7 @@ TEST_F(OpTest, Shape) {
 
 TEST_F(OpTest, ShapeN) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     int n = std::uniform_int_distribution<int>(1, 5)(generator());
     OpTestBuilder builder("ShapeN");
     builder.Attr("T", type);
@@ -2493,7 +2545,7 @@ TEST_F(OpTest, ShapeN) {
 
 TEST_F(OpTest, Sigmoid) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Sigmoid").RandomInput(type).Attr("T", type));
   });
@@ -2502,7 +2554,7 @@ TEST_F(OpTest, Sigmoid) {
 TEST_F(OpTest, SigmoidGrad) {
   Repeatedly([this]() {
     auto dims = RandomDims();
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SigmoidGrad")
                                              .RandomInput(type, dims)
                                              .RandomInput(type, dims)
@@ -2512,7 +2564,7 @@ TEST_F(OpTest, SigmoidGrad) {
 
 TEST_F(OpTest, Sign) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Sign").RandomInput(type).Attr("T", type));
   });
@@ -2520,7 +2572,7 @@ TEST_F(OpTest, Sign) {
 
 TEST_F(OpTest, Sin) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Sin").RandomInput(type).Attr("T", type));
   });
@@ -2528,7 +2580,7 @@ TEST_F(OpTest, Sin) {
 
 TEST_F(OpTest, Sinh) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Sinh").RandomInput(type).Attr("T", type));
   });
@@ -2536,7 +2588,7 @@ TEST_F(OpTest, Sinh) {
 
 TEST_F(OpTest, Size) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Size").RandomInput(type).Attr("T", type));
   });
@@ -2544,7 +2596,7 @@ TEST_F(OpTest, Size) {
 
 TEST_F(OpTest, Slice) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> data_dims = RandomDims();
 
     std::vector<int32> begin(data_dims.size()), size(data_dims.size());
@@ -2648,7 +2700,7 @@ TEST_F(OpTest, SpaceToBatch) {
     CHECK(paddings.CopyFrom(AsIntTensor(DT_INT32, padding_vals),
                             TensorShape({num_block_dims, 2})));
 
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SpaceToBatch")
                                              .RandomInput(type, input_dims)
                                              .Input(paddings)
@@ -2690,7 +2742,7 @@ TEST_F(OpTest, SpaceToBatchND) {
     CHECK(paddings.CopyFrom(AsIntTensor(DT_INT32, padding_vals),
                             TensorShape({num_block_dims, 2})));
 
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("SpaceToBatchND")
             .RandomInput(type, input_dims)
@@ -2767,7 +2819,7 @@ TEST_F(OpTest, SparseSoftmaxCrossEntropyWithLogits) {
 
 TEST_F(OpTest, Split) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> dims = RandomDims(1);
     std::uniform_int_distribution<int> ud;
     int32 dim = std::uniform_int_distribution<int32>(
@@ -2787,7 +2839,7 @@ TEST_F(OpTest, Split) {
 
 TEST_F(OpTest, Sqrt) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Sqrt").RandomInput(type).Attr("T", type));
   });
@@ -2796,7 +2848,7 @@ TEST_F(OpTest, Sqrt) {
 TEST_F(OpTest, SqrtGrad) {
   Repeatedly([this]() {
     auto dims = RandomDims();
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SqrtGrad")
                                              .RandomInput(type, dims)
                                              .RandomInput(type, dims)
@@ -2816,7 +2868,7 @@ TEST_F(OpTest, SquaredDifference) {
 
 TEST_F(OpTest, Square) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Square").RandomInput(type).Attr("T", type));
   });
@@ -2824,7 +2876,7 @@ TEST_F(OpTest, Square) {
 
 TEST_F(OpTest, Squeeze) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> t_dims = RandomDims(0, kDefaultMaxRank, 0, 5);
     std::bernoulli_distribution random_bool;
     std::vector<int> squeeze_dims;
@@ -2842,7 +2894,7 @@ TEST_F(OpTest, Squeeze) {
 
 TEST_F(OpTest, Sub) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Sub")
                                              .RandomInput(type, dims.first)
@@ -2853,7 +2905,7 @@ TEST_F(OpTest, Sub) {
 
 TEST_F(OpTest, Sum) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     std::vector<int64> data_dims = RandomDims();
     Tensor indices = RandomReductionIndices(data_dims.size());
     bool keep_dims = Choose<bool>({false, true});
@@ -2867,7 +2919,7 @@ TEST_F(OpTest, Sum) {
 
 TEST_F(OpTest, StridedSlice) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> data_dims = RandomDims();
     std::vector<int32> begin(data_dims.size()), end(data_dims.size());
     std::vector<int32> strides(data_dims.size());
@@ -2912,7 +2964,7 @@ TEST_F(OpTest, StridedSlice) {
 
 TEST_F(OpTest, StridedSliceGrad) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
 
     // Dimensions of the forward input.
     std::vector<int64> dims = RandomDims();
@@ -2965,7 +3017,7 @@ TEST_F(OpTest, StridedSliceGrad) {
 
 TEST_F(OpTest, Tan) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Tan").RandomInput(type).Attr("T", type));
   });
@@ -2973,7 +3025,7 @@ TEST_F(OpTest, Tan) {
 
 TEST_F(OpTest, Tanh) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Tanh").RandomInput(type).Attr("T", type));
   });
@@ -2982,7 +3034,7 @@ TEST_F(OpTest, Tanh) {
 TEST_F(OpTest, TanhGrad) {
   Repeatedly([this]() {
     auto dims = RandomDims();
-    DataType type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("TanhGrad")
                                              .RandomInput(type, dims)
                                              .RandomInput(type, dims)
@@ -2992,7 +3044,7 @@ TEST_F(OpTest, TanhGrad) {
 
 TEST_F(OpTest, Tile) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> t_dims = RandomDims(1);
     std::vector<int32> multiples(t_dims.size());
     for (int i = 0; i < t_dims.size(); ++i) {
@@ -3008,7 +3060,7 @@ TEST_F(OpTest, Tile) {
 
 TEST_F(OpTest, Transpose) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>(kAllXlaTypes);
+    auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> data_dims = RandomDims();
     std::vector<int32> perm(data_dims.size());
     std::iota(perm.begin(), perm.end(), 0);
@@ -3033,7 +3085,7 @@ TEST_F(OpTest, TruncateDiv) {
 
 TEST_F(OpTest, TruncateMod) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT});
     auto dims = BroadcastableDims();
     return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("TruncateMod")
                                              .RandomInput(type, dims.first)
@@ -3044,7 +3096,7 @@ TEST_F(OpTest, TruncateMod) {
 
 TEST_F(OpTest, ZerosLike) {
   Repeatedly([this]() {
-    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
+    auto type = Choose<DataType>({DT_INT32, DT_FLOAT, DT_COMPLEX64});
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ZerosLike").RandomInput(type).Attr("T", type));
   });

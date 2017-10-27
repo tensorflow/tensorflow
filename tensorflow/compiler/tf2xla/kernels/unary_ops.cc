@@ -45,7 +45,7 @@ XLAJIT_MAKE_UNARY(ComplexAbs, b->Abs(x));
 
 XLAJIT_MAKE_UNARY(Angle, b->Atan2(b->Imag(x), b->Real(x)));
 
-XLAJIT_MAKE_UNARY(Conj, b->Complex(b->Real(x), b->Neg(b->Imag(x))));
+XLAJIT_MAKE_UNARY(Conj, b->Conj(x));
 
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
