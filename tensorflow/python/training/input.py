@@ -146,9 +146,15 @@ def input_producer(input_tensor,
 
   Raises:
     ValueError: If the shape of the input cannot be inferred from the arguments.
+    RuntimeError: If called with eager execution enabled.
+
+  @compatibility(eager)
+  Queue-using input pipelines are not supported when eager execution is enabled.
+  Please use tf.data to ingest data into your model instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
-    raise ValueError(
+    raise RuntimeError(
         "Queue-using input pipelines are not supported when eager execution is"
         " enabled. Please use tf.data to ingest data into your model instead.")
   with ops.name_scope(name, "input_producer", [input_tensor]):
