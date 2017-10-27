@@ -119,7 +119,7 @@ class Variable(object):
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
 
-  @compatiblity(eager)
+  @compatibility(eager)
   `tf.Variable` is not compatible with eager execution.  Use
   `tfe.Variable` instead which is compatable with both eager execution
   and graph construction.  See [the TensorFlow Eager Execution
