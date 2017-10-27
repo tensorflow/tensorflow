@@ -52,7 +52,6 @@ from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 
 
 _VALID_MODEL_FN_ARGS = set(
@@ -925,9 +924,6 @@ def _verify_model_fn_args(model_fn, params):
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  if tf_inspect.ismethod(model_fn):
-    if 'self' in args:
-      args.remove('self')
   non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
