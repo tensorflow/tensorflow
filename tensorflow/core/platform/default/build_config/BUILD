@@ -201,8 +201,9 @@ cc_library(
     linkopts = if_ccpp([
         "-Wl,-rpath,../local_config_sycl/sycl/lib",
     ]),
-    deps = if_ccpp(["@local_config_sycl//sycl:syclrt"],
-                   ["@local_config_sycl//sycl:sycl_headers"],
+    deps = if_ccpp(
+        ["@local_config_sycl//sycl:syclrt"],
+        ["@local_config_sycl//sycl:sycl_headers"],
     ),
 )
 
