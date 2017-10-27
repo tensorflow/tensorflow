@@ -413,7 +413,8 @@ class Layer(object):
 
   def add_variable(self, name, shape, dtype=None,
                    initializer=None, regularizer=None,
-                   trainable=True, constraint=None):
+                   trainable=True, constraint=None,
+                   partitioner=None):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -426,9 +427,19 @@ class Layer(object):
         "trainable_variables" (e.g. variables, biases)
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
       constraint: constraint instance (callable).
+      partitioner: (optional) partitioner instance (callable).  If
+        provided, when the requested variable is created it will be split
+        into multiple partitions according to `partitioner`.  In this case,
+        an instance of `PartitionedVariable` is returned.  Available
+        partitioners include `tf.fixed_size_partitioner` and
+        `tf.variable_axis_size_partitioner`.  For more details, see the
+        documentation of `tf.get_variable` and the  "Variable Partitioners
+        and Sharding" section of the API guide.
 
     Returns:
-      The created variable.
+      The created variable.  Usually either a `Variable` or `ResourceVariable`
+      instance.  If `partitioner` is not `None`, a `PartitionedVariable`
+      instance is returned.
 
     Raises:
       RuntimeError: If called in Eager mode with regularizers.
@@ -455,7 +466,8 @@ class Layer(object):
                                    initializer=initializer,
                                    dtype=dtypes.as_dtype(dtype),
                                    constraint=constraint,
-                                   trainable=trainable and self.trainable)
+                                   trainable=trainable and self.trainable,
+                                   partitioner=partitioner)
         if variable in existing_variables:
           return variable
         if regularizer:
