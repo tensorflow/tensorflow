@@ -2225,7 +2225,6 @@ this op will block until it does.   This Op is optimized for
 performance.
     )doc");
 
-
 REGISTER_OP("StageSize")
     .Output("size: int32")
     .Attr("capacity: int >= 0 = 0")
@@ -2354,7 +2353,6 @@ REGISTER_OP("MapIncompleteSize")
 Op returns the number of incomplete elements in the underlying container.
     )doc");
 
-
 REGISTER_OP("MapClear")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2366,7 +2364,6 @@ REGISTER_OP("MapClear")
     .Doc(R"doc(
 Op removes all elements in the underlying container.
     )doc");
-
 
 // OrderedMap
 REGISTER_OP("OrderedMapStage")
