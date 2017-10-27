@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libzmq3-dev \
         pkg-config \
         python-dev \
-        python-pip \
         rsync \
         software-properties-common \
         unzip \
@@ -30,9 +29,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+    
+RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
+        python get-pip.py && \
+        rm get-pip.py
 
 RUN pip --no-cache-dir install --upgrade \
-        pip setuptools
+        setuptools
 
 RUN pip --no-cache-dir install \
         ipykernel \
