@@ -401,6 +401,13 @@ class BackpropTest(test.TestCase):
         backprop.gradients_function(part)(constant_op.constant(1.0))[0],
         2.0)
 
+  def testReturnSameThing(self):
+
+    def f(x):
+      return x, 2 * x
+
+    self.assertAllEqual(backprop.gradients_function(f)(1.0)[0], 3.0)
+
   def testExceptionSafety(self):
 
     def f(unused_x):
