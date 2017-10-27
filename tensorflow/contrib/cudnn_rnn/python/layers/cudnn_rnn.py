@@ -30,7 +30,7 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
 _cudnn_rnn_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
+    resource_loader.get_path_to_datafile("../ops/_cudnn_rnn_ops.so"))
 
 CUDNN_RNN_UNIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION
 CUDNN_RNN_BIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION
