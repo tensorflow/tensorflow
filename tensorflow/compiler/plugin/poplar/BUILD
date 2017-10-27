@@ -209,6 +209,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -218,6 +219,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -227,6 +229,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -236,6 +239,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -245,6 +249,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -254,6 +259,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -263,6 +269,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -272,6 +279,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -281,6 +289,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -290,6 +299,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(
@@ -299,6 +309,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    srcs_version = "PY2AND3",
 )
 
 test_suite(
