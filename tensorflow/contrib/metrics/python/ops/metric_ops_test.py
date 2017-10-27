@@ -6170,5 +6170,163 @@ class AggregateMetricMapTest(test.TestCase):
       self.assertEqual(4, names_to_values['m2'].eval())
 
 
+class CountTest(test.TestCase):
+
+  def setUp(self):
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.count(array_ops.ones([4, 3]))
+    _assert_local_variables(self, ['count/count:0'])
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    mean, _ = metrics.count(
+        array_ops.ones([4, 3]), metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [mean])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.count(
+        array_ops.ones([4, 3]), updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testBasic(self):
+    with self.test_session() as sess:
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      result, update_op = metrics.count(values)
+
+      sess.run(variables.local_variables_initializer())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAlmostEqual(8.0, sess.run(result), 5)
+
+  def testUpdateOpsReturnsCurrentValue(self):
+    with self.test_session() as sess:
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      result, update_op = metrics.count(values)
+
+      sess.run(variables.local_variables_initializer())
+
+      self.assertAlmostEqual(2.0, sess.run(update_op), 5)
+      self.assertAlmostEqual(4.0, sess.run(update_op), 5)
+      self.assertAlmostEqual(6.0, sess.run(update_op), 5)
+      self.assertAlmostEqual(8.0, sess.run(update_op), 5)
+
+      self.assertAlmostEqual(8.0, sess.run(result), 5)
+
+  def test1dWeightedValues(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [0.5])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [1.2])
+      weights = weights_queue.dequeue()
+
+      result, update_op = metrics.count(values, weights)
+
+      variables.local_variables_initializer().run()
+      for _ in range(4):
+        update_op.eval()
+      self.assertAlmostEqual(3.4, result.eval(), 5)
+
+  def test1dWeightedValues_placeholders(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      feed_values = ((0, 1), (-4.2, 9.1), (6.5, 0), (-3.2, 4.0))
+      values = array_ops.placeholder(dtype=dtypes_lib.float32)
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1,))
+      _enqueue_vector(sess, weights_queue, 0.5, shape=(1,))
+      _enqueue_vector(sess, weights_queue, 0, shape=(1,))
+      _enqueue_vector(sess, weights_queue, 0, shape=(1,))
+      _enqueue_vector(sess, weights_queue, 1.2, shape=(1,))
+      weights = weights_queue.dequeue()
+
+      result, update_op = metrics.count(values, weights)
+
+      variables.local_variables_initializer().run()
+      for i in range(4):
+        update_op.eval(feed_dict={values: feed_values[i]})
+      self.assertAlmostEqual(3.4, result.eval(), 5)
+
+  def test2dWeightedValues(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
+      _enqueue_vector(sess, weights_queue, [1.1, 1])
+      _enqueue_vector(sess, weights_queue, [1, 0])
+      _enqueue_vector(sess, weights_queue, [0, 1])
+      _enqueue_vector(sess, weights_queue, [0, 0])
+      weights = weights_queue.dequeue()
+
+      result, update_op = metrics.count(values, weights)
+
+      variables.local_variables_initializer().run()
+      for _ in range(4):
+        update_op.eval()
+      self.assertAlmostEqual(4.1, result.eval(), 5)
+
+  def test2dWeightedValues_placeholders(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      feed_values = ((0, 1), (-4.2, 9.1), (6.5, 0), (-3.2, 4.0))
+      values = array_ops.placeholder(dtype=dtypes_lib.float32)
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = data_flow_ops.FIFOQueue(
+          4, dtypes=dtypes_lib.float32, shapes=(2,))
+      _enqueue_vector(sess, weights_queue, [1.1, 1], shape=(2,))
+      _enqueue_vector(sess, weights_queue, [1, 0], shape=(2,))
+      _enqueue_vector(sess, weights_queue, [0, 1], shape=(2,))
+      _enqueue_vector(sess, weights_queue, [0, 0], shape=(2,))
+      weights = weights_queue.dequeue()
+
+      result, update_op = metrics.count(values, weights)
+
+      variables.local_variables_initializer().run()
+      for i in range(4):
+        update_op.eval(feed_dict={values: feed_values[i]})
+      self.assertAlmostEqual(4.1, result.eval(), 5)
+
+
 if __name__ == '__main__':
   test.main()
