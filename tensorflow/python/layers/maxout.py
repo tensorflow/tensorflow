@@ -50,6 +50,10 @@ def maxout(inputs, num_units, axis=-1, name=None):
 
    Raises:
     ValueError: if num_units is not multiple of number of features.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.MaxOut` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(

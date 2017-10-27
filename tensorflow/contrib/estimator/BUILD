@@ -190,7 +190,8 @@ py_test(
     deps = [
         ":logit_fns",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:session",
         "//tensorflow/python/estimator:model_fn",
     ],
 )

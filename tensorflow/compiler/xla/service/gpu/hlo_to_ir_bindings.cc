@@ -102,7 +102,7 @@ void HloToIrBindings::EmitBasePointersForHlos(
               slice_result.ConsumeValueOrDie();
           if (slice.allocation()->is_thread_local()) {
             llvm::Type* pointee_type =
-                llvm_ir::ShapeToIrType(non_io_hlo->shape(), ir_builder_);
+                llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
             BindHloToIrValue(*non_io_hlo,
                              ir_builder_->CreateAlloca(pointee_type), index);
           } else {
@@ -124,18 +124,18 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
   if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
     return llvm_ir::EmitGetTupleElement(
         gte->shape(), gte->tuple_index(), /*alignment=*/1,
-        GetTypedIrValue(*gte->operand(0), {}, base_ptr), ir_builder_);
+        GetTypedIrValue(*gte->operand(0), {}, base_ptr), ir_builder_, module_);
   }
   return llvm_ir::EmitGetTupleElement(
       gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr), ir_builder_);
+      EmitGetTupleElement(gte->operand(0), base_ptr), ir_builder_, module_);
 }
 
 llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
                                               const ShapeIndex& shape_index,
                                               llvm::Value* ir_value) {
   llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
-      ShapeUtil::GetSubshape(hlo.shape(), shape_index), ir_builder_);
+      ShapeUtil::GetSubshape(hlo.shape(), shape_index), module_);
   llvm::Type* dest_type = pointee_type->getPointerTo();
 
   llvm::Value* typed_ir_value;

@@ -23,6 +23,7 @@ import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -288,7 +289,16 @@ class Supervisor(object):
 
     Returns:
       A `Supervisor`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    `Supervisor`s are not supported when eager execution is enabled.
+    @end_compatibility
     """
+    if context.in_eager_mode():
+      raise RuntimeError("Supervisors are compatible with eager execution.")
     # Set default values of arguments.
     if graph is None:
       graph = ops.get_default_graph()
@@ -735,7 +745,17 @@ class Supervisor(object):
 
     Returns:
       The list of threads started for the `QueueRunners`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    Queues are not compatible with eager execution. To ingest data when eager
+    execution is enabled, use the `tf.data` API.
+    @end_compatibility
     """
+    if context.in_eager_mode():
+      raise RuntimeError("Queues are not compatible with eager execution.")
     if queue_runners is None:
       queue_runners = self._graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS)
     threads = []

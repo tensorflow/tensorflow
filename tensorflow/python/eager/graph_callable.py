@@ -156,8 +156,8 @@ class _VariableCapturingScope(object):
       graph_mode_resource = v.variable.handle
       if initializer is None:
         initializer = _default_initializer(name, shape, dtype)
-      resource_variable_ops.assign_variable_op(
-          graph_mode_resource, initializer(shape, dtype))
+      resource_variable_ops.shape_safe_assign_variable_handle(
+          graph_mode_resource, v.variable.shape, initializer(shape, dtype))
       return v.variable
 
     scope = variable_scope.get_variable_scope()

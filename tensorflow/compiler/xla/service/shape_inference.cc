@@ -53,6 +53,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_EXP;
     case HloOpcode::kFloor:
       return UNOP_FLOOR;
+    case HloOpcode::kImag:
+      return UNOP_IMAG;
     case HloOpcode::kIsFinite:
       return UNOP_IS_FINITE;
     case HloOpcode::kLog:
@@ -61,6 +63,8 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_NOT;
     case HloOpcode::kNegate:
       return UNOP_NEGATE;
+    case HloOpcode::kReal:
+      return UNOP_REAL;
     case HloOpcode::kRoundNearestAfz:
       return UNOP_ROUND_NEAREST_AFZ;
     case HloOpcode::kSign:
@@ -81,6 +85,10 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
 // opcode.
 BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
   switch (opcode) {
+    case HloOpcode::kAtan2:
+      return BINOP_ATAN2;
+    case HloOpcode::kComplex:
+      return BINOP_COMPLEX;
     case HloOpcode::kDot:
       return BINOP_DOT;
     case HloOpcode::kMultiply:
@@ -307,19 +315,41 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   switch (operation) {
     case UNOP_FLOOR:
     case UNOP_CEIL:
+      if (!ShapeUtil::ElementIsFloating(arg)) {
+        return InvalidArgument(
+            "expected element type in shape to be floating for floor/ceil "
+            "operation; got %s",
+            PrimitiveType_Name(arg.element_type()).c_str());
+      }
+      return arg;
     case UNOP_COS:
     case UNOP_SIN:
     case UNOP_EXP:
     case UNOP_LOG:
     case UNOP_TANH:
-      if (!ShapeUtil::ElementIsFloating(arg)) {
+      if (!ShapeUtil::ElementIsFloating(arg) &&
+          !ShapeUtil::ElementIsComplex(arg)) {
         return InvalidArgument(
-            "expected element type in shape to be floating for exp/log/tanh "
-            "operation; got %s",
+            "expected element type in shape to be floating or complex for "
+            "sin/cos/exp/log/tanh operation; got %s",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
+    case UNOP_REAL:
+    case UNOP_IMAG:
+      if (!ShapeUtil::ElementIsComplex(arg)) {
+        return InvalidArgument(
+            "expected element type in shape to be complex for real/imag "
+            "operation; got %s",
+            PrimitiveType_Name(arg.element_type()).c_str());
+      }
+      return ShapeUtil::ChangeElementType(arg, F32);
     case UNOP_ABS:
+      if (ShapeUtil::ElementIsComplex(arg)) {
+        return ShapeUtil::ChangeElementType(
+            arg, primitive_util::ComplexComponentType(arg.element_type()));
+      }
+      return arg;
     case UNOP_NEGATE:
     case UNOP_ROUND_NEAREST_AFZ:
     case UNOP_SIGN:
@@ -751,6 +781,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     case BINOP_MIN:
     case BINOP_SUB:
     case BINOP_ADD:
+    case BINOP_ATAN2:
     case BINOP_POW:
     case BINOP_DIV:
     case BINOP_REM:
@@ -761,6 +792,22 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
 
+    case BINOP_COMPLEX: {
+      if (!ShapeUtil::ElementIsFloating(lhs)) {
+        return InvalidArgument(
+            "expected element type in shape to be floating for complex compose "
+            "operation; got %s",
+            PrimitiveType_Name(lhs.element_type()).c_str());
+      }
+      TF_ASSIGN_OR_RETURN(const Shape& shape,
+                          InferElementwiseBinaryOpShape(operation, lhs, rhs,
+                                                        broadcast_dimensions));
+      if (lhs.element_type() == F32) {
+        return ShapeUtil::ChangeElementType(shape, C64);
+      } else {
+        return Unimplemented("complex component type not supported");
+      }
+    }
     case BINOP_AND:
     case BINOP_OR:
       if (lhs.element_type() != PRED &&

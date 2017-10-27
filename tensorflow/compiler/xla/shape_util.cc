@@ -272,6 +272,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     case U16:
     case U32:
     case U64:
+    case C64:
     case TUPLE:
     case OPAQUE:
       return false;

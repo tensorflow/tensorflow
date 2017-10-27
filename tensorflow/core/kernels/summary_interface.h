@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SUMMARY_INTERFACE_H_
 #define TENSORFLOW_CORE_KERNELS_SUMMARY_INTERFACE_H_
 
+#include <memory>
 
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
 
@@ -43,6 +45,8 @@ class SummaryWriterInterface : public ResourceBase {
 
   virtual Status WriteAudio(int64 global_step, Tensor t, const string& tag,
                             int max_outputs_, float sample_rate) = 0;
+
+  virtual Status WriteEvent(std::unique_ptr<Event> e) = 0;
 };
 
 // Creates a SummaryWriterInterface instance which writes to a file. It will

@@ -146,6 +146,14 @@ class TPUReplicateContext(control_flow_ops.ControlFlowContext):
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
 
+  @property
+  def grad_state(self):
+    # Define the gradient loop state associated with the TPUReplicateContext to
+    # be None as the TPUReplicateContext does not get nested nor does the
+    # grad_state outside the TPUReplicateContext affect the graph inside so the
+    # grad_state should be as if this is the top-level gradient state.
+    return None
+
 
 def replicate(computation,
               inputs=None,
