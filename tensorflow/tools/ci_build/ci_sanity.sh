@@ -426,6 +426,72 @@ do_code_link_check() {
   tensorflow/tools/ci_build/code_link_check.sh
 }
 
+# List .h|.cc files changed in the last non-merge git commit that still exist,
+# i.e., not removed.
+# Usage: get_clang_files_to_check [--incremental]
+get_clang_files_to_check() {
+  if [[ "$1" == "--incremental" ]]; then
+    CHANGED_CLANG_FILES=$(get_changed_files_in_last_non_merge_git_commit | \
+                       grep '.*\.h$\|.*\.cc$')
+
+    # Do not include files removed in the last non-merge commit.
+    CLANG_FILES=""
+    for CLANG_FILE in ${CHANGED_CLANG_FILES}; do
+      if [[ -f "${CLANG_FILE}" ]]; then
+        CLANG_FILES="${CLANG_FILES} ${CLANG_FILE}"
+      fi
+    done
+
+    echo "${CLANG_FILES}"
+  else
+    find tensorflow -name '*.h' -o -name '*.cc'
+  fi
+}
+
+do_clang_format_check() {
+  if [[ $# != "0" ]] && [[ $# != "1" ]]; then
+    echo "Invalid syntax when invoking do_clang_format_check"
+    echo "Usage: do_clang_format_check [--incremental]"
+    return 1
+  fi
+
+  if [[ "$1" == "--incremental" ]]; then
+    CLANG_SRC_FILES=$(get_clang_files_to_check --incremental)
+
+    if [[ -z "${CLANG_SRC_FILES}" ]]; then
+      echo "do_clang_format_check will NOT run due to --incremental flag and "\
+"due to the absence of Python code changes in the last commit."
+      return 0
+    fi
+  elif [[ -z "$1" ]]; then
+    # TODO (yongtang): Always pass --incremental until all files have
+    # been sanitized gradually. Then this --incremental could be removed.
+    CLANG_SRC_FILES=$(get_clang_files_to_check --incremental)
+  else
+    echo "Invalid syntax for invoking do_clang_format_check"
+    echo "Usage: do_clang_format_check [--incremental]"
+    return 1
+  fi
+
+  CLANG_FORMAT=${CLANG_FORMAT:-clang-format-3.8}
+
+  success=1
+  for filename in $CLANG_SRC_FILES; do
+    $CLANG_FORMAT --style=google $filename | diff $filename - > /dev/null
+    if [ ! $? -eq 0 ]; then
+      success=0
+      echo File $filename is not properly formatted with "clang-format "\
+"--style=google"
+    fi
+  done
+
+  if [ $success == 0 ]; then
+    echo Clang format check fails.
+    exit 1
+  fi
+  echo Clang format check success.
+}
+
 do_check_load_py_test() {
   BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:check_load_py_test"
   ${BUILD_CMD}
@@ -439,7 +505,7 @@ do_check_load_py_test() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_clang_format_check")
 SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links")
 
 INCREMENTAL_FLAG=""

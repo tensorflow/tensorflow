@@ -235,7 +235,9 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
       .Attr("T: {half, float, double, complex64, complex128}") \
       .SetShapeFn(shape_inference::UnchangedShape)
 
-REGISTER_OP("Neg").UNARY().Doc(R"doc(
+REGISTER_OP("Neg")
+    .UNARY()
+    .Doc(R"doc(
 Computes numerical negative value element-wise.
 I.e., \\(y = -x\\).
 )doc");
@@ -258,155 +260,217 @@ is the corresponding input gradient.
 )doc")
     .Deprecated(17, "Use ReciprocalGrad");
 
-REGISTER_OP("Reciprocal").UNARY().Doc(R"doc(
+REGISTER_OP("Reciprocal")
+    .UNARY()
+    .Doc(R"doc(
 Computes the reciprocal of x element-wise.
 I.e., \\(y = 1 / x\\).
 )doc");
 
-REGISTER_OP("ReciprocalGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("ReciprocalGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the inverse of `x` wrt its input.
 
 Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Square").UNARY().Doc(R"doc(
+REGISTER_OP("Square")
+    .UNARY()
+    .Doc(R"doc(
 Computes square of x element-wise.
 I.e., \\(y = x * x = x^2\\).
 )doc");
 
-REGISTER_OP("Sqrt").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Sqrt")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes square root of x element-wise.
 I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 )doc");
 
-REGISTER_OP("SqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("SqrtGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the sqrt of `x` wrt its input.
 
 Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Rsqrt").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Rsqrt")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes reciprocal of square root of x element-wise.
 I.e., \\(y = 1 / \sqrt{x}\\).
 )doc");
 
-REGISTER_OP("Round").UNARY().Doc(R"doc(
+REGISTER_OP("Round")
+    .UNARY()
+    .Doc(R"doc(
 Rounds the values of a tensor to the nearest integer, element-wise.
 
 Rounds half to even.  Also known as bankers rounding. If you want to round
 according to the current system rounding mode use std::cint.
 )doc");
 
-REGISTER_OP("RsqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("RsqrtGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the rsqrt of `x` wrt its input.
 
 Specifically, `grad = dy * -0.5 * y^3`, where `y = rsqrt(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Exp").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Exp")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes exponential of x element-wise.  \\(y = e^x\\).
 )doc");
 
-REGISTER_OP("Expm1").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Expm1")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes exponential of x - 1 element-wise.
 I.e., \\(y = (\exp x) - 1\\).
 )doc");
 
-REGISTER_OP("Log").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Log")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes natural logarithm of x element-wise.
 I.e., \\(y = \log_e x\\).
 )doc");
 
-REGISTER_OP("Log1p").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Log1p")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
 )doc");
 
-REGISTER_OP("Sinh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Sinh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes hyperbolic sine of x element-wise.
 )doc");
 
-REGISTER_OP("Cosh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Cosh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes hyperbolic cosine of x element-wise.
 )doc");
 
-REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Tanh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
 
-REGISTER_OP("Asinh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Asinh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes inverse hyperbolic sine of x element-wise.
 )doc");
 
-REGISTER_OP("Acosh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Acosh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes inverse hyperbolic cosine of x element-wise.
 )doc");
 
-REGISTER_OP("Atanh").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Atanh")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes inverse hyperbolic tangent of x element-wise.
 )doc");
 
-REGISTER_OP("TanhGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("TanhGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient for the tanh of `x` wrt its input.
 
 Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`
 is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Lgamma").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Lgamma")
+    .UNARY_REAL()
+    .Doc(R"doc(
 Computes the log of the absolute value of `Gamma(x)` element-wise.
 )doc");
 
-REGISTER_OP("Digamma").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Digamma")
+    .UNARY_REAL()
+    .Doc(R"doc(
 Computes Psi, the derivative of Lgamma (the log of the absolute value of
 `Gamma(x)`), element-wise.
 )doc");
 
-REGISTER_OP("Erf").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Erf")
+    .UNARY_REAL()
+    .Doc(R"doc(
 Computes the Gauss error function of `x` element-wise.
 )doc");
 
-REGISTER_OP("Erfc").UNARY_REAL().Doc(R"doc(
+REGISTER_OP("Erfc")
+    .UNARY_REAL()
+    .Doc(R"doc(
 Computes the complementary error function of `x` element-wise.
 )doc");
 
-REGISTER_OP("Sigmoid").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Sigmoid")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes sigmoid of `x` element-wise.
 
 Specifically, `y = 1 / (1 + exp(-x))`.
 )doc");
 
-REGISTER_OP("SigmoidGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+REGISTER_OP("SigmoidGrad")
+    .UNARY_GRADIENT_COMPLEX()
+    .Doc(R"doc(
 Computes the gradient of the sigmoid of `x` wrt its input.
 
 Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
 `dy` is the corresponding input gradient.
 )doc");
 
-REGISTER_OP("Sin").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Sin")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes sin of x element-wise.
 )doc");
 
-REGISTER_OP("Cos").UNARY_COMPLEX().Doc(R"doc(
+REGISTER_OP("Cos")
+    .UNARY_COMPLEX()
+    .Doc(R"doc(
 Computes cos of x element-wise.
 )doc");
 
-REGISTER_OP("Tan").UNARY().Doc(R"doc(
+REGISTER_OP("Tan")
+    .UNARY()
+    .Doc(R"doc(
 Computes tan of x element-wise.
 )doc");
 
-REGISTER_OP("Asin").UNARY().Doc(R"doc(
+REGISTER_OP("Asin")
+    .UNARY()
+    .Doc(R"doc(
 Computes asin of x element-wise.
 )doc");
 
-REGISTER_OP("Acos").UNARY().Doc(R"doc(
+REGISTER_OP("Acos")
+    .UNARY()
+    .Doc(R"doc(
 Computes acos of x element-wise.
 )doc");
 
-REGISTER_OP("Atan").UNARY().Doc(R"doc(
+REGISTER_OP("Atan")
+    .UNARY()
+    .Doc(R"doc(
 Computes atan of x element-wise.
 )doc");
 
@@ -942,28 +1006,36 @@ beta function.
       .Attr("T: realnumbertype") \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("Less").COMPARISON().Doc(R"doc(
+REGISTER_OP("Less")
+    .COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x < y) element-wise.
 
 *NOTE*: `Less` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("LessEqual").COMPARISON().Doc(R"doc(
+REGISTER_OP("LessEqual")
+    .COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x <= y) element-wise.
 
 *NOTE*: `LessEqual` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("Greater").COMPARISON().Doc(R"doc(
+REGISTER_OP("Greater")
+    .COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x > y) element-wise.
 
 *NOTE*: `Greater` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("GreaterEqual").COMPARISON().Doc(R"doc(
+REGISTER_OP("GreaterEqual")
+    .COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x >= y) element-wise.
 
 *NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
@@ -985,14 +1057,18 @@ Returns the truth value of (x >= y) element-wise.
           "quint8, qint8, qint32, string, bool, complex128}")           \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("Equal").EQUALITY_COMPARISON().Doc(R"doc(
+REGISTER_OP("Equal")
+    .EQUALITY_COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x == y) element-wise.
 
 *NOTE*: `Equal` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("NotEqual").EQUALITY_COMPARISON().Doc(R"doc(
+REGISTER_OP("NotEqual")
+    .EQUALITY_COMPARISON()
+    .Doc(R"doc(
 Returns the truth value of (x != y) element-wise.
 
 *NOTE*: `NotEqual` supports broadcasting. More about broadcasting
@@ -1030,14 +1106,18 @@ Returns the truth value of NOT x element-wise.
       .SetIsCommutative() \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
-REGISTER_OP("LogicalAnd").BINARY_LOGICAL().Doc(R"doc(
+REGISTER_OP("LogicalAnd")
+    .BINARY_LOGICAL()
+    .Doc(R"doc(
 Returns the truth value of x AND y element-wise.
 
 *NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("LogicalOr").BINARY_LOGICAL().Doc(R"doc(
+REGISTER_OP("LogicalOr")
+    .BINARY_LOGICAL()
+    .Doc(R"doc(
 Returns the truth value of x OR y element-wise.
 
 *NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
@@ -1977,12 +2057,12 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   T limit = limit_t->scalar<T>()();
   T delta = delta_t->scalar<T>()();
   if (start > limit && delta > 0) {
-    return errors::InvalidArgument(
-        "Requires start <= limit when delta > 0: ", start, "/", limit);
+    return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
+                                   start, "/", limit);
   }
   if (start < limit && delta < 0) {
-    return errors::InvalidArgument(
-        "Requires start >= limit when delta < 0: ", start, "/", limit);
+    return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
+                                   start, "/", limit);
   }
   if (delta == 0) {
     return errors::InvalidArgument("Requires delta != 0");
