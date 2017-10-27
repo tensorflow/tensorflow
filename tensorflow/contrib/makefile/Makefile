@@ -44,6 +44,11 @@ ifdef HEXAGON_LIBS
 	endif
 endif # HEXAGON_LIBS
 
+# If ANDROID_TYPES is not set assume __ANDROID_TYPES_SLIM__
+ifeq ($(ANDROID_TYPES),)
+	ANDROID_TYPES := -D__ANDROID_TYPES_SLIM__
+endif
+
 # Try to figure out the host system
 HOST_OS :=
 ifeq ($(OS),Windows_NT)
@@ -216,7 +221,7 @@ ifeq ($(TARGET),LINUX)
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
-	CXXFLAGS += -D__ANDROID_TYPES_SLIM__ -DRASPBERRY_PI
+	CXXFLAGS += $(ANDROID_TYPES) -DRASPBERRY_PI
 	LDFLAGS := -Wl,--no-whole-archive
 	LIBS += -ldl -lpthread
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
@@ -338,7 +343,7 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -362,7 +367,7 @@ ifeq ($(TARGET),IOS)
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -385,7 +390,7 @@ ifeq ($(TARGET),IOS)
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONEOS_SYSROOT}
@@ -409,7 +414,7 @@ ifeq ($(TARGET),IOS)
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}
@@ -432,7 +437,7 @@ ifeq ($(TARGET),IOS)
 		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
-		-D__ANDROID_TYPES_SLIM__ \
+		$(ANDROID_TYPES) \
 		-fno-exceptions \
 		-isysroot \
 		${IPHONESIMULATOR_SYSROOT}

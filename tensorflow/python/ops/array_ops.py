@@ -309,8 +309,8 @@ def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
-  This operation returns an integer representing the number of elements in
-  `input`.
+  Returns a 0-D `Tensor` representing the number of elements in `input`
+  of type `out_type`. Defaults to tf.int32.
 
   For example:
 
@@ -327,6 +327,10 @@ def size(input, name=None, out_type=dtypes.int32):
 
   Returns:
     A `Tensor` of type `out_type`. Defaults to tf.int32.
+    
+  @compatibility(numpy)
+  Equivalent to np.size()
+  @end_compatibility
   """
   return size_internal(input, name, optimize=True, out_type=out_type)
 
@@ -2526,3 +2530,24 @@ def gather(params, indices, validate_indices=None, name=None, axis=0):
 
 
 gather.__doc__ = gen_array_ops.gather_v2.__doc__
+
+
+# Define quantize_v2 here in order to make name the second-to-last attribute,
+# because round_mode was added later.
+def quantize_v2(input,
+                min_range,
+                max_range,
+                T,
+                mode="MIN_COMBINED",
+                name=None,
+                round_mode="HALF_AWAY_FROM_ZERO"):
+  return gen_array_ops.quantize_v2(input,
+                                   min_range,
+                                   max_range,
+                                   T=T,
+                                   mode=mode,
+                                   name=name,
+                                   round_mode=round_mode)
+
+
+quantize_v2.__doc__ = gen_array_ops.quantize_v2.__doc__

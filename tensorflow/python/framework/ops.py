@@ -4694,6 +4694,24 @@ def get_default_graph():
   return _default_graph_stack.get_default()
 
 
+def get_name_scope():
+  """Returns the current name scope in the default_graph.
+
+  For example:
+
+  ```python
+  with tf.name_scope('scope1'):
+    with tf.name_scope('scope2'):
+      print(tf.get_name_scope())
+  ```
+  would print the string `scope1/scope2`.
+
+  Returns:
+    A string representing the current name scope.
+  """
+  return get_default_graph().get_name_scope()
+
+
 def _assert_same_graph(original_item, item):
   """Fail if the 2 items are from different graphs.
 
@@ -5018,6 +5036,10 @@ class name_scope(object):  # pylint: disable=invalid-name
       return foo_op(..., name=scope)
   ```
   """
+
+  @property
+  def name(self):
+    return self._name
 
   def __init__(self, name, default_name=None, values=None):
     """Initialize the context manager.

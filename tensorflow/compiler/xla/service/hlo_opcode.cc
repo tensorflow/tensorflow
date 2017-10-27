@@ -173,8 +173,6 @@ string HloOpcodeString(HloOpcode opcode) {
       return "transpose";
     case HloOpcode::kTuple:
       return "tuple";
-    case HloOpcode::kUpdate:
-      return "update";
     case HloOpcode::kWhile:
       return "while";
   }
@@ -254,7 +252,6 @@ StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
        {"trace", HloOpcode::kTrace},
        {"transpose", HloOpcode::kTranspose},
        {"tuple", HloOpcode::kTuple},
-       {"update", HloOpcode::kUpdate},
        {"while", HloOpcode::kWhile}});
   auto it = opcode_map->find(opcode_name);
   if (it == opcode_map->end()) {
