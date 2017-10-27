@@ -21,12 +21,14 @@ import gc
 from tensorflow.contrib.eager.python import network
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.training import training_util
 
 
 # pylint: disable=not-callable
@@ -41,6 +43,29 @@ class MyNetwork(network.Network):
 
 
 class NetworkTest(test.TestCase):
+
+  def _save_modify_load_network_built(self, net, global_step=None):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_path = net.save(
+        save_path=checkpoint_directory, global_step=global_step)
+    input_value = constant_op.constant([[42.0]])
+    original_output = self.evaluate(net(input_value))
+    for var in net.variables:
+      self.evaluate(var.assign(var + 1.))
+    self.assertGreater(
+        self.evaluate(net(input_value)),
+        original_output)
+    # Either the returned explicit checkpoint path or the directory should work.
+    net.restore(save_path=checkpoint_directory)
+    self.assertAllEqual(
+        original_output,
+        self.evaluate(net(input_value)))
+    for var in net.variables:
+      self.evaluate(var.assign(var + 2.))
+    net.restore(save_path=checkpoint_path)
+    self.assertAllEqual(
+        original_output,
+        self.evaluate(net(input_value)))
 
   @test_util.run_in_graph_and_eager_modes()
   def testTrainableAttribute(self):
@@ -59,6 +84,264 @@ class NetworkTest(test.TestCase):
     # TODO(josh11b): Support passing Python values to networks.
     result = net(constant_op.constant([[2.0]]))
     self.assertEqual(34.0, self.evaluate(result))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNetworkSaveRestoreAlreadyBuilt(self):
+    net = MyNetwork(name="abcd")
+    with self.assertRaisesRegexp(
+        ValueError, "Attempt to save the Network before it was first called"):
+      net.save(self.get_temp_dir())
+    net(constant_op.constant([[2.0]]))
+    self.evaluate(net.trainable_variables[0].assign([[17.0]]))
+    self._save_modify_load_network_built(net, global_step=None)
+    self._save_modify_load_network_built(net, global_step=10)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testSaveRestoreDefaultGlobalStep(self):
+    net = MyNetwork(name="abcd")
+    net(constant_op.constant([[2.0]]))
+    self.evaluate(net.variables[0].assign([[3.]]))
+    default_global_step = training_util.get_or_create_global_step()
+    self.evaluate(default_global_step.assign(4242))
+    save_path = net.save(self.get_temp_dir())
+    self.assertIn("abcd-4242", save_path)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNetworkSaveAndRestoreIntoUnbuilt(self):
+    save_dir = self.get_temp_dir()
+    net1 = MyNetwork()
+    test_input = constant_op.constant([[2.0]])
+    net1(test_input)
+    self.evaluate(net1.trainable_variables[0].assign([[17.0]]))
+    save_path = net1.save(save_dir)
+    # With a pre-build restore we should have the same value.
+    net2 = MyNetwork()
+    net2.restore(save_path)
+    self.assertAllEqual(self.evaluate(net1(test_input)),
+                        self.evaluate(net2(test_input)))
+    self.assertIsNot(net1.variables[0], net2.variables[0])
+    self.assertAllEqual(self.evaluate(net1.variables[0]),
+                        self.evaluate(net2.variables[0]))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testLoadIntoUnbuiltSharedLayer(self):
+
+    class Owner(network.Network):
+
+      def __init__(self, name=None):
+        super(Owner, self).__init__(name=name)
+        self.first = self.track_layer(core.Dense(
+            1, name="first_layer", use_bias=False))
+
+      def call(self, x):
+        return self.first(x)
+
+    first_owner = Owner()
+
+    class User(network.Network):
+
+      def __init__(self, use_layer, name=None):
+        super(User, self).__init__(name=name)
+        self.first = self.track_layer(use_layer)
+        self.second = self.track_layer(core.Dense(
+            1, name="second_layer", use_bias=False))
+
+      def call(self, x):
+        return self.second(self.first(x))
+
+    class LikeUserButNotSharing(network.Network):
+
+      def __init__(self, name=None):
+        super(LikeUserButNotSharing, self).__init__(name=name)
+        self.first = self.track_layer(core.Dense(
+            1, name="first_layer", use_bias=False))
+        self.second = self.track_layer(core.Dense(
+            1, name="second_layer", use_bias=False))
+
+      def call(self, x):
+        return self.second(self.first(x))
+
+    checkpoint_creator = LikeUserButNotSharing(name="checkpoint_creator")
+    one = constant_op.constant([[1.0]])
+    checkpoint_creator(one)
+    self.assertEqual(2, len(checkpoint_creator.variables))
+    self.evaluate(checkpoint_creator.variables[0].assign([[5.]]))
+    self.evaluate(checkpoint_creator.variables[1].assign([[6.]]))
+    # Re-map the variable names so that with default restore mapping we'll
+    # attempt to restore into the unbuilt Layer.
+    name_mapping = {
+        "checkpoint_creator/first_layer/kernel": "owner_1/first_layer/kernel",
+        "checkpoint_creator/second_layer/kernel": "second_layer/kernel",
+    }
+    save_path = checkpoint_creator.save(
+        self.get_temp_dir(),
+        map_func=lambda full_name: name_mapping[full_name])
+    load_into = User(use_layer=first_owner.first)
+    load_into.restore(save_path)
+    self.assertEqual(0, len(first_owner.variables))
+    self.assertAllEqual(self.evaluate(checkpoint_creator(one)),
+                        self.evaluate(load_into(one)))
+    self.assertEqual(1, len(first_owner.variables))
+    self.assertAllEqual([[5.]], self.evaluate(load_into.variables[0]))
+    self.assertAllEqual([[6.]], self.evaluate(load_into.variables[1]))
+    first_owner(one)
+    self.assertAllEqual([[5.]], self.evaluate(first_owner.variables[0]))
+
+    # Try again with a garbage collected parent.
+    first_owner = Owner()
+    load_into = User(use_layer=first_owner.first)
+    del first_owner
+    gc.collect()
+    def _restore_map_func(original_name):
+      if original_name.startswith("owner_1"):
+        return original_name.replace("owner_1", "owner_2")
+      else:
+        return "user_2/" + original_name
+    with self.assertRaisesRegexp(ValueError, "garbage collected"):
+      load_into.restore(save_path, map_func=_restore_map_func)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testRestoreIntoSubNetwork(self):
+
+    class Parent(network.Network):
+
+      def __init__(self, name=None):
+        super(Parent, self).__init__(name=name)
+        self.first = self.track_layer(MyNetwork())
+        self.second = self.track_layer(MyNetwork())
+
+      def call(self, x):
+        return self.first(self.second(x))
+
+    one = constant_op.constant([[3.]])
+    whole_model_saver = Parent()
+    whole_model_saver(one)
+    self.evaluate(whole_model_saver.variables[0].assign([[15.]]))
+    self.evaluate(whole_model_saver.variables[1].assign([[16.]]))
+    whole_model_checkpoint = whole_model_saver.save(self.get_temp_dir())
+
+    save_from = MyNetwork()
+    save_from(one)
+    self.evaluate(save_from.variables[0].assign([[5.]]))
+    checkpoint = save_from.save(self.get_temp_dir())
+    save_into_parent = Parent()
+    save_into_parent.restore(whole_model_checkpoint)
+    save_into_parent.first.restore(checkpoint)
+    save_into_parent.first.restore(checkpoint)  # deferred loading multiple
+                                                # times is fine
+    save_into_parent(one)  # deferred loading
+    self.assertAllEqual([[5.]], self.evaluate(save_into_parent.variables[0]))
+    self.assertAllEqual([[16.]], self.evaluate(save_into_parent.variables[1]))
+
+    # Try again with the opposite ordering, and we should get different results
+    # (deferred restoration should happen the same way non-deferred happens,
+    # with later restorations overwriting older ones).
+    save_into_parent = Parent()
+    save_into_parent.first.restore(checkpoint)  # deferred loading multiple
+                                                # times is fine
+    save_into_parent.restore(whole_model_checkpoint)
+    save_into_parent(one)  # deferred loading
+    # We've overwritten the sub-Network restore.
+    self.assertAllEqual([[15.]], self.evaluate(save_into_parent.variables[0]))
+    self.assertAllEqual([[16.]], self.evaluate(save_into_parent.variables[1]))
+
+    self.evaluate(save_into_parent.variables[0].assign([[3.]]))
+    self.evaluate(save_into_parent.variables[1].assign([[4.]]))
+    save_into_parent.second.restore(checkpoint)
+    self.assertAllEqual([[5.]], self.evaluate(save_into_parent.variables[1]))
+    with self.assertRaisesRegexp(errors_impl.NotFoundError,
+                                 "not found in checkpoint"):
+      # The checkpoint is incompatible.
+      save_into_parent.restore(checkpoint)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testCustomMapCollisionErrors(self):
+
+    class Parent(network.Network):
+
+      def __init__(self, name=None):
+        super(Parent, self).__init__(name=name)
+        self.first = self.track_layer(MyNetwork())
+        self.second = self.track_layer(MyNetwork())
+
+      def call(self, x):
+        return self.first(self.second(x))
+
+    make_checkpoint = Parent()
+    one = constant_op.constant([[1.]])
+    make_checkpoint(one)
+    self.evaluate(make_checkpoint.variables[0].assign([[2.]]))
+    self.evaluate(make_checkpoint.variables[1].assign([[3.]]))
+    with self.assertRaisesRegexp(
+        ValueError,
+        "The map_func passed to Network.save for the Network 'parent_1' "
+        "resulted in two variables named 'foo'"):
+      make_checkpoint.save(self.get_temp_dir(), map_func=lambda n: "foo")
+    checkpoint = make_checkpoint.first.save(
+        self.get_temp_dir(), map_func=lambda n: "foo")
+    loader = Parent()
+    loader.restore(checkpoint, map_func=lambda n: "foo")
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("The map_func passed to Network.restore for the Network"
+         " 'parent_2' resulted in two variables named 'foo'")):
+      loader(one)
+    loader = Parent()
+    loader(one)
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("The map_func passed to Network.restore for the Network"
+         " 'parent_3' resulted in two variables named 'foo'")):
+      loader.restore(checkpoint, map_func=lambda n: "foo")
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testDefaultMapCollisionErrors(self):
+
+    one = constant_op.constant([[1.]])
+    first = core.Dense(1, name="dense_1", use_bias=False)
+    first(one)
+
+    class Parent(network.Network):
+
+      def __init__(self, name=None):
+        super(Parent, self).__init__(name=name)
+        self.first = self.track_layer(first)
+        self.second = self.track_layer(core.Dense(1, use_bias=False))
+
+      def call(self, x):
+        return self.first(self.second(x))
+
+    make_checkpoint = Parent()
+    one = constant_op.constant([[1.]])
+    make_checkpoint(one)
+    self.evaluate(make_checkpoint.variables[0].assign([[2.]]))
+    self.evaluate(make_checkpoint.variables[1].assign([[3.]]))
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("The default checkpoint variable name mapping strategy for Network "
+         "'parent_1' resulted in a naming conflict.")):
+      make_checkpoint.save(self.get_temp_dir())
+
+    class Compatible(network.Network):
+
+      def __init__(self, name=None):
+        super(Compatible, self).__init__(name=name)
+        self.first = self.track_layer(core.Dense(1, use_bias=False))
+
+      def call(self, x):
+        return self.first(x)
+
+    successful_checkpoint = Compatible()
+    successful_checkpoint(one)
+    self.evaluate(successful_checkpoint.variables[0].assign([[-1.]]))
+    checkpoint_path = successful_checkpoint.save(self.get_temp_dir())
+    load_checkpoint = Parent()
+    load_checkpoint(one)
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("The default checkpoint variable name mapping strategy for Network "
+         "'parent_2' resulted in a naming conflict.")):
+      load_checkpoint.restore(checkpoint_path)
 
   def testNoReferenceCyclesAfterCall(self):
 
