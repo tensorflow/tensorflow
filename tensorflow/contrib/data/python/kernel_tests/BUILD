@@ -302,11 +302,8 @@ py_test(
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
