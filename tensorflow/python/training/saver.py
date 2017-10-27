@@ -1510,18 +1510,17 @@ class Saver(object):
     It requires a session in which the graph was launched.  The variables to
     save must also have been initialized.
 
-    The method returns the path of the newly created checkpoint file.  This
-    path can be passed directly to a call to `restore()`.
+    The method returns the path prefix of the newly created checkpoint files.
+    This string can be passed directly to a call to `restore()`.
 
     Args:
-      sess: A Session to use to save the variables. None in eager mode.
-      save_path: String.  Path to the checkpoint filename.  If the saver is
-        `sharded`, this is the prefix of the sharded checkpoint filename.
+      sess: A Session to use to save the variables.
+      save_path: String.  Prefix of filenames created for the checkpoint.
       global_step: If provided the global step number is appended to
-        `save_path` to create the checkpoint filename. The optional argument
+        `save_path` to create the checkpoint filenames. The optional argument
         can be a `Tensor`, a `Tensor` name or an integer.
       latest_filename: Optional name for the protocol buffer file that will
-        contains the list of most recent checkpoint filenames.  That file,
+        contains the list of most recent checkpoints.  That file,
         kept in the same directory as the checkpoint files, is automatically
         managed by the saver to keep track of recent checkpoints.  Defaults to
         'checkpoint'.
@@ -1532,7 +1531,7 @@ class Saver(object):
         `CheckpointStateProto`.
 
     Returns:
-      A string: path at which the variables were saved.  If the saver is
+      A string: path prefix used for the checkpoint files.  If the saver is
         sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
         is the number of shards created.
       If the saver is empty, returns None.
