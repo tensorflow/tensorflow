@@ -100,7 +100,7 @@ to all API functions in the same context.  For example:
   when run, will apply those gradients to a set of variables.
 
 Most programs rely solely on the default graph. However,
-see [Dealing with multiple graphs](#dealing-with-multiple-graphs) for more
+see [Dealing with multiple graphs](#programming_with_multiple_graphs) for more
 advanced use cases. High-level APIs such as the @{tf.estimator.Estimator} API
 manage the default graph on your behalf, and--for example--may create different
 graphs for training and evaluation.
