@@ -569,5 +569,17 @@ class BackpropTest(test.TestCase):
         var.assign_sub(lr*grad)
     self.assertAllEqual(losses, [4.0, 3., 2., 1., 0.])
 
+  def testCustomGradientIdentity(self):
+
+    @custom_gradient.custom_gradient
+    def my_identity(x):
+
+      def grad(dresult):
+        return [2 * dresult]
+
+      return x, grad
+
+    self.assertAllEqual(backprop.gradients_function(my_identity)(1.0)[0], 2.0)
+
 if __name__ == '__main__':
   test.main()
