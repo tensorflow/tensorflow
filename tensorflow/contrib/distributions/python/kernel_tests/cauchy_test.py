@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
-import math
-
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import cauchy as cauchy_lib
@@ -89,7 +87,7 @@ class CauchyTest(test.TestCase):
     with self.test_session():
       batch_size = 6
       loc = constant_op.constant([3.0] * batch_size)
-      scale = constant_op.constant([math.sqrt(10.0)] * batch_size)
+      scale = constant_op.constant([np.sqrt(10.0)] * batch_size)
       x = np.array([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0], dtype=np.float32)
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
@@ -117,7 +115,7 @@ class CauchyTest(test.TestCase):
     with self.test_session():
       batch_size = 6
       loc = constant_op.constant([[3.0, -3.0]] * batch_size)
-      scale = constant_op.constant([[math.sqrt(10.0), math.sqrt(15.0)]] *
+      scale = constant_op.constant([[np.sqrt(10.0), np.sqrt(15.0)]] *
                                    batch_size)
       x = np.array([[-2.5, 2.5, 4.0, 0.0, -1.0, 2.0]], dtype=np.float32).T
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
@@ -283,7 +281,7 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       self.assertAllEqual((3,), cauchy.mean().shape)
-      self.assertAllEqual([float("nan")] * 3, cauchy.mean().eval())
+      self.assertAllEqual([np.nan] * 3, cauchy.mean().eval())
 
   def testCauchyNanMean(self):
     with self.test_session():
@@ -322,7 +320,7 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       self.assertAllEqual((3,), cauchy.variance().shape)
-      self.assertAllEqual([float("nan")] * 3, cauchy.variance().eval())
+      self.assertAllEqual([np.nan] * 3, cauchy.variance().eval())
 
   def testCauchyNanVariance(self):
     with self.test_session():
@@ -342,7 +340,7 @@ class CauchyTest(test.TestCase):
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       self.assertAllEqual((3,), cauchy.stddev().shape)
-      self.assertAllEqual([float("nan")] * 3, cauchy.stddev().eval())
+      self.assertAllEqual([np.nan] * 3, cauchy.stddev().eval())
 
   def testCauchyNanStandardDeviation(self):
     with self.test_session():

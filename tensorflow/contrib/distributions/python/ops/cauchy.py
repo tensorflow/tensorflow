@@ -210,12 +210,14 @@ class Cauchy(distribution.Distribution):
 
   def _mean(self):
     if self.allow_nan_stats:
-      return float("nan") * array_ops.ones(self.batch_shape_tensor())
+      return array_ops.fill(self.batch_shape_tensor(),
+                            self.dtype.as_numpy_dtype(np.nan))
     else:
       raise ValueError("`mean` is undefined for Cauchy distribution.")
 
   def _stddev(self):
     if self.allow_nan_stats:
-      return float("nan") * array_ops.ones(self.batch_shape_tensor())
+      return array_ops.fill(self.batch_shape_tensor(),
+                            self.dtype.as_numpy_dtype(np.nan))
     else:
       raise ValueError("`stddev` is undefined for Cauchy distribution.")
