@@ -2298,7 +2298,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
         ":data_flow_ops_gen",
+        ":dtypes",
+        ":errors",
         ":framework_ops",
         ":math_ops",
         ":tensor_shape",

@@ -59,6 +59,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     for (auto& invariant_checker : invariant_checkers_) {
       VLOG(1) << "    Invariant checker " << invariant_checker->name();
       StatusOr<bool> changed_status = invariant_checker->Run(module);
+      VLOG(1) << "    Invariant checker done " << invariant_checker->name();
       if (!changed_status.ok()) {
         VLOG(2) << "Module failed invariant check:";
         XLA_VLOG_LINES(2, module->ToString());

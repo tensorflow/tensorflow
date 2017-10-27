@@ -342,7 +342,8 @@ class LayerCollection(object):
                                                    logits,
                                                    seed=None,
                                                    targets=None,
-                                                   name=None):
+                                                   name=None,
+                                                   reuse=VARIABLE_SCOPE):
     """Registers a categorical predictive distribution.
 
     Args:
@@ -355,15 +356,46 @@ class LayerCollection(object):
         (Default: None)
       name: (OPTIONAL) str or None. Unique name for this loss function. If None,
         a new name is generated. (Default: None)
+      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
+        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: If reuse=True and name != None.
+      ValueError: If reuse=True and seed != None.
+      KeyError: If reuse=True and no existing LossFunction with 'name' found.
+      KeyError: If reuse=False and existing LossFunction with 'name' found.
     """
     name = name or self._graph.unique_name(
         "register_categorical_predictive_distribution")
-    if name in self._loss_dict:
-      raise NotImplementedError(
-          "Adding logits to an existing LossFunction not yet supported.")
-    loss = lf.CategoricalLogitsNegativeLogProbLoss(
-        logits, targets=targets, seed=seed)
-    self._loss_dict[name] = loss
+
+    if reuse == VARIABLE_SCOPE:
+      reuse = variable_scope.get_variable_scope().reuse
+
+    if reuse:
+      if name is None:
+        raise ValueError(
+            "If reuse is enabled, loss function's name must be set.")
+      if seed is not None:
+        raise ValueError(
+            "Seed can only be specified at LossFunction instantiation.")
+
+      loss = self._loss_dict.get(name, None)
+
+      if loss is None:
+        raise KeyError(
+            "Unable to find loss function named {}. Create a new LossFunction "
+            "with reuse=False.".format(name))
+
+      loss.register_additional_minibatch(logits, targets=targets)
+    else:
+      if name in self._loss_dict:
+        raise KeyError(
+            "Loss function named {} already exists. Set reuse=True to append "
+            "another minibatch.".format(name))
+      loss = lf.CategoricalLogitsNegativeLogProbLoss(
+          logits, targets=targets, seed=seed)
+      self._loss_dict[name] = loss
 
   def register_normal_predictive_distribution(self,
                                               mean,

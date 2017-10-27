@@ -453,7 +453,7 @@ input_fn = tf.estimator.inputs.numpy_input_fn(
 train_input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
+    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1, shuffle=False)
 
 # train
 estimator.train(input_fn=input_fn, steps=1000)

@@ -26,6 +26,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.training import training_util
@@ -57,7 +59,8 @@ def record_summaries_every_n_global_steps(n):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
-  collection_ref[:] = [training_util.get_global_step() % n == 0]
+  with ops.device("cpu:0"):
+    collection_ref[:] = [math_ops.equal(training_util.get_global_step() % n, 0)]
   yield
   collection_ref[:] = old
 
@@ -97,13 +100,17 @@ class SummaryWriter(object):
 
   @tf_contextlib.contextmanager
   def as_default(self):
-    old = context.context().summary_writer_resource
-    context.context().summary_writer_resource = self._resource
-    yield
-    # Flushes the summary writer in eager mode or in graph functions, but not in
-    # legacy graph mode (you're on your own there).
-    gen_summary_ops.flush_summary_writer(self._resource)
-    context.context().summary_writer_resource = old
+    if self._resource is None:
+      yield
+    else:
+      old = context.context().summary_writer_resource
+      context.context().summary_writer_resource = self._resource
+      yield
+      # Flushes the summary writer in eager mode or in graph functions, but not
+      # in legacy graph mode (you're on your own there).
+      with ops.device("cpu:0"):
+        gen_summary_ops.flush_summary_writer(self._resource)
+      context.context().summary_writer_resource = old
 
 
 def create_summary_file_writer(logdir,
@@ -111,21 +118,40 @@ def create_summary_file_writer(logdir,
                                flush_secs=None,
                                filename_suffix=None,
                                name=None):
-  """Creates a summary file writer in the current context."""
-  if max_queue is None:
-    max_queue = constant_op.constant(10)
-  if flush_secs is None:
-    flush_secs = constant_op.constant(120)
-  if filename_suffix is None:
-    filename_suffix = constant_op.constant("")
-  resource = gen_summary_ops.summary_writer(shared_name=name)
-  # TODO(apassos) ensure the initialization op runs when in graph mode; consider
-  # calling session.run here.
-  ops.add_to_collection(
-      _SUMMARY_WRITER_INIT_COLLECTION_NAME,
-      gen_summary_ops.create_summary_file_writer(resource, logdir, max_queue,
-                                                 flush_secs, filename_suffix))
-  return SummaryWriter(resource)
+  """Creates a summary file writer in the current context.
+
+  Args:
+    logdir: a string, or None. If a string, creates a summary file writer
+     which writes to the directory named by the string. If None, returns
+     a mock object which acts like a summary writer but does nothing,
+     useful to use as a context manager.
+    max_queue: the largest number of summaries to keep in a queue; will
+     flush once the queue gets bigger than this.
+    flush_secs: the largest interval (in seconds) between flushes.
+    filename_suffix: optional suffix for the event file name.
+    name: name for the summary writer.
+
+  Returns:
+    Either a summary writer or an empty object which can be used as a
+    summary writer.
+  """
+  if logdir is None:
+    return SummaryWriter(None)
+  with ops.device("cpu:0"):
+    if max_queue is None:
+      max_queue = constant_op.constant(10)
+    if flush_secs is None:
+      flush_secs = constant_op.constant(120)
+    if filename_suffix is None:
+      filename_suffix = constant_op.constant("")
+    resource = gen_summary_ops.summary_writer(shared_name=name)
+    # TODO(apassos) ensure the initialization op runs when in graph mode;
+    # consider calling session.run here.
+    ops.add_to_collection(
+        _SUMMARY_WRITER_INIT_COLLECTION_NAME,
+        gen_summary_ops.create_summary_file_writer(resource, logdir, max_queue,
+                                                   flush_secs, filename_suffix))
+    return SummaryWriter(resource)
 
 
 def _nothing():
@@ -168,6 +194,8 @@ def summary_writer_function(name, tensor, function, family=None):
       with ops.control_dependencies([function(tag, scope)]):
         return constant_op.constant(True)
 
+  if context.context().summary_writer_resource is None:
+    return control_flow_ops.no_op()
   with ops.device("cpu:0"):
     op = utils.smart_cond(
         should_record_summaries(), record, _nothing, name="")

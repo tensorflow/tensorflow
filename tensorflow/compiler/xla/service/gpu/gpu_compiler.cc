@@ -151,6 +151,7 @@ tensorflow::Status OptimizeHloModule(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
       pass.AddPass<TupleSimplifier>();
+      pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
     }

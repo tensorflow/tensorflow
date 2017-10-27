@@ -90,8 +90,8 @@ def restore_variables_on_create(save_path, map_func=None):
     for k, _ in checkpoint_utils.list_variables(save_path):
       ckpt_var_cache[k] = reader.get_tensor(k)
 
-    old_init = getattr(
-        resource_variable_ops.ResourceVariable, "_init_from_args", None)
+    old_init = getattr(resource_variable_ops.ResourceVariable,
+                       "_init_from_args", None)
     assert old_init, "ResourceVariable misses _init_from_args method."
     setattr(resource_variable_ops.ResourceVariable, "_init_from_args",
             _init_from_checkpoint)
@@ -114,42 +114,54 @@ def restore_variables_on_create(save_path, map_func=None):
 
 
 class Saver(object):
-  """A simple tf.train.Saver adapter for eager mode.
-
-    save and restore API are similar to the tf.train.Saver, except that
-    session is not needed.
-
-  Args:
-    var_list: Same as tf.train.Saver.
+  """A tf.train.Saver adapter for use when eager execution is enabled.
   """
 
   def __init__(self, var_list):
+    """A  tf.train.Saver adapter for use when eager execution is enabled.
+
+      The API, and on-disk format, mimic tf.train.Saver except that no
+      Session is needed.
+
+    Args:
+      var_list: The list of variables that will be saved and restored. Either a
+        list of `tfe.Variable` objects, or a dictionary mapping names to
+        `tfe.Variable` objects.
+
+    Raises:
+      RuntimeError: if invoked when eager execution has not been enabled.
+    """
     if context.in_graph_mode():
-      raise ValueError("Currently, tfe.Saver can only be used when eager "
-                       "execution is enabled. Use tf.train.Saver when "
-                       "building graphs.")
+      raise RuntimeError("tfe.Saver can only be used when eager "
+                         "execution is enabled. Use tf.train.Saver when "
+                         "building graphs.")
     self._saver = _saver.Saver(var_list=var_list)
 
-  def save(self, save_path, global_step=None):
+  def save(self, file_prefix, global_step=None):
     """Saves variables.
 
     Args:
-      save_path: See save method in tf.train.Saver.
-      global_step: See save method in tf.train.Saver.
+      file_prefix: Path prefix of files created for the checkpoint.
+      global_step: If provided the global step number is appended to file_prefix
+        to create the checkpoint filename. The optional argument can be a
+        Tensor, a Variable, or an integer.
 
     Returns:
-      See save method in tf.train.Saver.
+      A string: prefix of filenames created for the checkpoint. This may be
+       an extension of file_prefix that is suitable to pass as an argument
+       to a subsequent call to `restore()`.
     """
     with ops.device("/device:CPU:0"):
-      return self._saver.save(None, save_path, write_meta_graph=False,
-                              global_step=global_step)
+      return self._saver.save(
+          None, file_prefix, write_meta_graph=False, global_step=global_step)
 
-  def restore(self, save_path):
+  def restore(self, file_prefix):
     """Restores previously saved variables.
 
     Args:
-      save_path: See restore method in tf.train.Saver.
+      file_prefix: Path prefix where parameters were previously saved.
+        Typically obtained from a previous `save()` call, or from
+        @{tf.train.latest_checkpoint}.
     """
     with ops.device("/device:CPU:0"):
-      self._saver.restore(None, save_path)
-
+      self._saver.restore(None, file_prefix)

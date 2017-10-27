@@ -913,6 +913,17 @@ ComputationDataHandle ComputationBuilder::CustomCall(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::Complex(
+    const ComputationDataHandle& real, const ComputationDataHandle& imag,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_COMPLEX, real, imag, broadcast_dimensions);
+}
+
+ComputationDataHandle ComputationBuilder::Conj(
+    const ComputationDataHandle& operand) {
+  return Complex(Real(operand), Neg(Imag(operand)));
+}
+
 ComputationDataHandle ComputationBuilder::Add(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
@@ -995,6 +1006,12 @@ ComputationDataHandle ComputationBuilder::Abs(
   return UnaryOp(UNOP_ABS, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Atan2(
+    const ComputationDataHandle& y, const ComputationDataHandle& x,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_ATAN2, y, x, broadcast_dimensions);
+}
+
 ComputationDataHandle ComputationBuilder::Exp(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_EXP, operand);
@@ -1038,6 +1055,16 @@ ComputationDataHandle ComputationBuilder::Sin(
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Real(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_REAL, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Imag(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_IMAG, operand);
 }
 
 ComputationDataHandle ComputationBuilder::IsFinite(

@@ -23,6 +23,10 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 generate_backend_suites()
 
@@ -581,11 +585,12 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "randomized_tests",
+    size = "large",
     # This test is randomized, so only run it if explicitly requested.
     tags = [
         "manual",
         "notap",
-    ],
+    ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
 

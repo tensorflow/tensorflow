@@ -723,6 +723,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@com_google_guava"],
   )
 
+  java_import_external(
+      name = "javax_validation",
+      jar_sha256 = "e459f313ebc6db2483f8ceaad39af07086361b474fa92e40f442e8de5d9895dc",
+      jar_urls = [
+          "http://repo1.maven.org/maven2/javax/validation/validation-api/1.0.0.GA/validation-api-1.0.0.GA.jar",
+      ],
+      licenses = ["notice"],  # Apache 2.0
+  )
+
   native.new_http_archive(
       name = "com_google_pprof",
       urls = [

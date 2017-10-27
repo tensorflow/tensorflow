@@ -85,6 +85,10 @@ class DfsHloVisitor {
   virtual Status HandleCopy(HloInstruction* copy) {
     return HandleElementwiseUnary(copy);
   }
+  virtual Status HandleComplex(HloInstruction* complex, HloInstruction* real,
+                               HloInstruction* imag) {
+    return HandleElementwiseBinary(complex);
+  }
   virtual Status HandleMultiply(HloInstruction* multiply, HloInstruction* lhs,
                                 HloInstruction* rhs) {
     return HandleElementwiseBinary(multiply);
@@ -122,6 +126,10 @@ class DfsHloVisitor {
   virtual Status HandleAbs(HloInstruction* abs, HloInstruction* operand) {
     return HandleElementwiseUnary(abs);
   }
+  virtual Status HandleAtan2(HloInstruction* atan2, HloInstruction* y,
+                             HloInstruction* x) {
+    return HandleElementwiseBinary(atan2);
+  }
   virtual Status HandleRound(HloInstruction* round) {
     return HandleElementwiseUnary(round);
   }
@@ -151,6 +159,12 @@ class DfsHloVisitor {
   }
   virtual Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) {
     return HandleElementwiseUnary(tanh);
+  }
+  virtual Status HandleReal(HloInstruction* real, HloInstruction* operand) {
+    return HandleElementwiseUnary(real);
+  }
+  virtual Status HandleImag(HloInstruction* imag, HloInstruction* operand) {
+    return HandleElementwiseUnary(imag);
   }
   virtual Status HandleIsFinite(HloInstruction* is_finite,
                                 HloInstruction* operand) {

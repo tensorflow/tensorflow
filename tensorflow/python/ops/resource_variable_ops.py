@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -70,6 +71,15 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     # the handle is captured by an eager mode function.
     handle._handle_data = h._handle_data  # pylint: disable=protected-access
   return handle
+
+
+def shape_safe_assign_variable_handle(handle, shape, value, name=None):
+  """Helper that checks shape compatibility and assigns variable."""
+  value_tensor = ops.convert_to_tensor(value)
+  shape.assert_is_compatible_with(value_tensor.shape)
+  return gen_resource_variable_ops.assign_variable_op(handle,
+                                                      value_tensor,
+                                                      name=name)
 
 
 class ResourceVariable(variables.Variable):
@@ -573,6 +583,29 @@ class ResourceVariable(variables.Variable):
           "numpy() is only available when eager execution is enabled.")
     return self.read_value().numpy()
 
+  def count_up_to(self, limit):
+    """Increments this variable until it reaches `limit`.
+
+    When that Op is run it tries to increment the variable by `1`. If
+    incrementing the variable would bring it above `limit` then the Op raises
+    the exception `OutOfRangeError`.
+
+    If no error is raised, the Op outputs the value of the variable before
+    the increment.
+
+    This is essentially a shortcut for `count_up_to(self, limit)`.
+
+    Args:
+      limit: value at which incrementing the variable raises an error.
+
+    Returns:
+      A `Tensor` that will hold the variable value before the increment. If no
+      other Op modifies this variable, the values produced will all be
+      distinct.
+    """
+    return gen_state_ops.resource_count_up_to(self.handle, limit=limit,
+                                              T=self.dtype)
+
   def _set_save_slice_info(self, save_slice_info):
     """Sets the slice info for this `ResourceVariable`.
 
@@ -731,10 +764,12 @@ class ResourceVariable(variables.Variable):
       return self.read_value()
 
   def assign(self, value, use_locking=None, name=None):
+    value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
+    self._shape.assert_is_compatible_with(value_tensor.shape)
     with ops.control_dependencies([
         gen_resource_variable_ops.assign_variable_op(
             self.handle,
-            ops.convert_to_tensor(value, dtype=self.dtype),
+            value_tensor,
             name=name)
     ]):
       return self.read_value()

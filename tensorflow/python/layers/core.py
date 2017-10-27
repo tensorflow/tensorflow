@@ -234,6 +234,10 @@ def dense(
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Dense` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(
@@ -343,6 +347,10 @@ def dropout(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Dropout` instead.
+  @end_compatibility
   """
   if context.in_eager_mode():
     raise ValueError(
