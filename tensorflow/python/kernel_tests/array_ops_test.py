@@ -1063,11 +1063,11 @@ class InvertPermutationTest(test_util.TensorFlowTestCase):
 
   def testInvertPermutation(self):
     for dtype in [dtypes.int32, dtypes.int64]:
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
-        v = array_ops.invert_permutation(x)
-        self.assertAllEqual(v.get_shape(), [5])
-        self.assertAllEqual(v.eval(), [2, 4, 3, 0, 1])
+        y = array_ops.invert_permutation(x)
+        self.assertAllEqual(y.get_shape(), [5])
+        self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
 
 
 if __name__ == "__main__":
