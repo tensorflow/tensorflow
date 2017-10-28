@@ -95,7 +95,13 @@ REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                             .TypeConstraint<int32>("T")
                             .HostMemory("x")
                             .HostMemory("y"),
-                        InvertPermutationOp);
+                        InvertPermutationOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int64>("T")
+                            .HostMemory("x")
+                            .HostMemory("y"),
+                        InvertPermutationOp<int64>);
 #endif  // TENSORFLOW_USE_SYCL
 
 namespace {
