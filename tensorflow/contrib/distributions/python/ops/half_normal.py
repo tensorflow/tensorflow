@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The Folded Normal distribution class."""
+"""The Half Normal distribution class."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -35,87 +35,64 @@ from tensorflow.python.ops.distributions import special_math
 
 
 __all__ = [
-    "FoldedNormal",
+    "HalfNormal",
 ]
 
 
-class FoldedNormal(distribution.Distribution):
-  """The Folded Normal distribution with loc `loc` and scale `scale`.
+class HalfNormal(distribution.Distribution):
+  """The Half Normal distribution with scale `scale`.
 
   #### Mathematical details
 
-  The folded normal is a transformation of the normal distribution. So
-  if some random variable `X` has normal distribution,
+  The half normal is a transformation of a centered normal distribution.
+  If some random variable `X` has normal distribution,
   ```none
-  X ~ Normal(loc, scale)
+  X ~ Normal(0.0, scale)
   Y = |X|
   ```
-  Then `Y` will have folded normal distribution. The probability density function (pdf) is:
+  Then `Y` will have half normal distribution. The probability density function (pdf) is:
 
   ```none
-  # for x > 0
-  pdf(x; loc, scale) = (1 / (scale * sqrt(2 *pi)) *
-    ( exp(-0.5 * ((x - loc) /scale) ** 2) +
-      exp(-0.5 * ((x + loc) /scale) ** 2) )
+  pdf(x; scale, x > 0) = sqrt(2) / (scale * sqrt(pi) *
+    exp(- 1/2 * (x / scale) ** 2)
   )
   ```
-
-  Where `loc = mu` is the mean and `scale = sigma` is the std. deviation of
-  the underlying normal distribution.
-
-  When `loc = 0.0`, the resulting distribution is known also as the half
-  normal distribution, and is a common scale prior in bayesian statistics.
+  Where `scale = sigma` is the standard deviation of the underlying normal
+  distribution.
 
   #### Examples
 
   Examples of initialization of one or a batch of distributions.
 
   ```python
-  # Define a single scalar FoldedNormal distribution.
-  dist = tf.contrib.distributions.FoldedNormal(loc=0., scale=3.)
+  # Define a single scalar HalfNormal distribution.
+  dist = tf.contrib.distributions.HalfNormal(scale=3.0)
 
   # Evaluate the cdf at 1, returning a scalar.
   dist.cdf(1.)
 
-  # Define a batch of two scalar valued FoldedNormals.
-  # The first has location 1 and scale 11, the second 2 and 22.
-  dist = tf.distributions.FoldedNormal(loc=[1, 2.], scale=[11, 22.])
+  # Define a batch of two scalar valued HalfNormals.
+  # The first has scale 11.0, the second 22.0
+  dist = tf.distributions.HalfNormal(scale=[11.0, 22.0])
 
-  # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
+  # Evaluate the pdf of the first distribution on 1.0, and the second on 1.5,
   # returning a length two tensor.
-  dist.prob([0, 1.5])
+  dist.prob([1.0, 1.5])
 
   # Get 3 samples, returning a 3 x 2 tensor.
   dist.sample([3])
   ```
 
-  Arguments are broadcast when possible.
-
-  ```python
-  # Define a batch of two scalar valued FoldedNormals.
-  # Both have location 1, but different scales.
-  dist = tf.contrib.distributions.FoldedNormal(loc=1., scale=[11, 22.])
-
-  # Evaluate the pdf of both distributions on the same point, 3.0,
-  # returning a length 2 tensor.
-  dist.prob(3.0)
-  ```
-
   """
 
   def __init__(self,
-               loc,
                scale,
                validate_args=False,
                allow_nan_stats=True,
-               name="FoldedNormal"):
-    """Construct FoldedNormals with location and scale `loc` and `scale`.
-
-    The parameters `loc` and `scale` must be shaped in a way that supports
-    broadcasting (e.g. `loc + scale` is a valid operation).
+               name="HalfNormal"):
+    """Construct HalfNormals with scale `scale`.
 
     Args:
-      loc: Floating point tensor; the locations of the distribution(s).
       scale: Floating point tensor; the scales of the distribution(s).
         Must contain only positive values.
       validate_args: Python `bool`, default `False`. When `True` distribution
@@ -127,18 +104,13 @@ class FoldedNormal(distribution.Distribution):
         indicate the result is undefined. When `False`, an exception is raised
         if one or more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
-
-    Raises:
-      TypeError: if `loc` and `scale` have different `dtype`.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]):
+    with ops.name_scope(name, values=[scale]):
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
-        self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        check_ops.assert_same_float_dtype([self._loc, self._scale])
-    super(FoldedNormal, self).__init__(
+    super(HalfNormal, self).__init__(
         dtype=self._scale.dtype,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
@@ -149,14 +121,7 @@ class FoldedNormal(distribution.Distribution):
 
   @staticmethod
   def _param_shapes(sample_shape):
-    return dict(
-        zip(("loc", "scale"), ([ops.convert_to_tensor(
-            sample_shape, dtype=dtypes.int32)] * 2)))
-
-  @property
-  def loc(self):
-    """Distribution parameter for the location."""
-    return self._loc
+    return {'scale': ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
 
   @property
   def scale(self):
@@ -164,14 +129,10 @@ class FoldedNormal(distribution.Distribution):
     return self._scale
 
   def _batch_shape_tensor(self):
-    return array_ops.broadcast_dynamic_shape(
-        array_ops.shape(self.loc),
-        array_ops.shape(self.scale))
+    return array_ops.shape(self.scale)
 
   def _batch_shape(self):
-    return array_ops.broadcast_static_shape(
-        self.loc.get_shape(),
-        self.scale.get_shape())
+    return self.scale.shape
 
   def _event_shape_tensor(self):
     return constant_op.constant([], dtype=dtypes.int32)
@@ -186,10 +147,7 @@ class FoldedNormal(distribution.Distribution):
     return math_ops.log(self._prob(x))
 
   def _prob(self, x):
-    coeff = 1 / (self.scale * math.sqrt(2 * math.pi))
-    pos_portion = math_ops.exp(-0.5 * math_ops.square(self._pos_z))
-    neg_portion = math_ops.exp(-0.5 * math_ops.square(self._neg_z))
-    return coeff * (pos_portion + neg_portion)
+    pass
 
   def _log_cdf(self, x):
     pass
@@ -223,13 +181,3 @@ class FoldedNormal(distribution.Distribution):
 
   def _mode(self):
     pass
-
-  def _pos_z(self, x):
-    """Standardize input `x` to a unit normal."""
-    with ops.name_scope("standardize", values=[x]):
-      return (x - self.loc) / self.scale
-
-  def _neg_z(self, x):
-    """Standardize input `x` to a unit normal around -self.loc."""
-    with ops.name_scope("standardize_neg", values=[x]):
-      return (x + self.loc) / self.scale
