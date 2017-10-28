@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 __all__ = [
+    "erfinv",
     "ndtr",
     "ndtri",
     "log_ndtr",
