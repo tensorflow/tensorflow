@@ -1,0 +1,91 @@
+package(
+    default_visibility = ["//visibility:private"],
+)
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
+
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+tf_custom_op_library(
+    name = "python/ops/_kafka_ops.so",
+    srcs = [
+        "kernels/kafka_reader_ops.cc",
+        "ops/kafka_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:reader_base",
+        "//tensorflow/core/kernels:bounds_check_lib",
+        "@kafka//:kafka",
+    ],
+)
+
+tf_kernel_library(
+    name = "kafka_kernels",
+    srcs = ["kernels/kafka_reader_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:bounds_check_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["kafka_ops"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "kafka_ops",
+    deps = [":kafka_ops_op_lib"],
+)
+
+tf_custom_op_py_library(
+    name = "kafka",
+    srcs = [
+        "__init__.py",
+        "python/ops/kafka_reader_ops.py",
+    ],
+    dso = [
+        ":python/ops/_kafka_ops.so",
+    ],
+    kernels = [
+        ":kafka_kernels",
+        ":kafka_ops_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kafka_ops",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+    ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
