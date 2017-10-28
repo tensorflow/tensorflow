@@ -19,9 +19,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/nccl:nccl_ops",
+        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
     ],
 )
 

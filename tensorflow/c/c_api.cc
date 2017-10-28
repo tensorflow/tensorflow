@@ -1799,6 +1799,17 @@ void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
   status->status = MessageToBuffer(def, output_graph_def);
 }
 
+void TF_GraphGetOpDef(TF_Graph* graph, const char* op_name,
+                      TF_Buffer* output_op_def, TF_Status* status) {
+  const OpDef* op_def;
+  {
+    mutex_lock l(graph->mu);
+    status->status = graph->graph.op_registry()->LookUpOpDef(op_name, &op_def);
+    if (!status->status.ok()) return;
+  }
+  status->status = MessageToBuffer(*op_def, output_op_def);
+}
+
 TF_ImportGraphDefOptions* TF_NewImportGraphDefOptions() {
   return new TF_ImportGraphDefOptions;
 }
@@ -1854,18 +1865,18 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
     return;
   }
   const int last_node_id = graph->graph.num_node_ids();
-  std::vector<std::pair<Node*, int>> return_outputs_vec;
-  status->status = tensorflow::ImportGraphDef(
-      opts->opts, def, &graph->graph, &graph->refiner, &return_outputs_vec);
+  tensorflow::ImportGraphDefResults results;
+  status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
+                                              &graph->refiner, &results);
   if (!status->status.ok()) return;
   for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
     auto* node = graph->graph.FindNodeId(i);
     if (node != nullptr) graph->name_map[node->name()] = node;
   }
-  DCHECK_EQ(return_outputs_vec.size(), num_return_outputs);
+  DCHECK_EQ(results.return_tensors.size(), num_return_outputs);
   for (int i = 0; i < num_return_outputs; ++i) {
-    return_outputs[i].oper = ToOperation(return_outputs_vec[i].first);
-    return_outputs[i].index = return_outputs_vec[i].second;
+    return_outputs[i].oper = ToOperation(results.return_tensors[i].first);
+    return_outputs[i].index = results.return_tensors[i].second;
   }
 }
 
@@ -1945,11 +1956,11 @@ Status CopyGraph(Graph* src_graph, Graph* dst_graph,
   }
 
   // TOOD(skyewm): change to OutputTensor
-  std::vector<std::pair<Node*, int>> return_tensors;
+  tensorflow::ImportGraphDefResults results;
   TF_RETURN_IF_ERROR(
-      ImportGraphDef(opts, gdef, dst_graph, dst_refiner, &return_tensors));
+      ImportGraphDef(opts, gdef, dst_graph, dst_refiner, &results));
 
-  for (const auto& pair : return_tensors) {
+  for (const auto& pair : results.return_tensors) {
     return_nodes->emplace_back(pair.first, pair.second);
   }
   return Status::OK();

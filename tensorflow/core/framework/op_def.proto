@@ -11,6 +11,7 @@ import "tensorflow/core/framework/types.proto";
 
 // Defines an operation. A NodeDef in a GraphDef specifies an Op by
 // using the "op" field which should match the name of a OpDef.
+// LINT.IfChange
 message OpDef {
   // Op names starting with an underscore are reserved for internal use.
   // Names should be CamelCase and match the regexp "[A-Z][a-zA-Z0-9_]*".
@@ -141,6 +142,8 @@ message OpDef {
   // input.
   bool allows_uninitialized_input = 19;  // for Assign, etc.
 };
+// LINT.ThenChange(
+//     https://www.tensorflow.org/code/tensorflow/core/framework/op_def_util.cc)
 
 // Information about version-dependent deprecation of an op
 message OpDeprecation {

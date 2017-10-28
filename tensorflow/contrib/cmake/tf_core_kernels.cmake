@@ -33,6 +33,8 @@ else(tensorflow_BUILD_ALL_KERNELS)
      "${tensorflow_source_dir}/tensorflow/core/kernels/matmul_op.cc"
      "${tensorflow_source_dir}/tensorflow/core/kernels/no_op.h"
      "${tensorflow_source_dir}/tensorflow/core/kernels/no_op.cc"
+     "${tensorflow_source_dir}/tensorflow/core/kernels/ops_util.h"
+     "${tensorflow_source_dir}/tensorflow/core/kernels/ops_util.cc"
      "${tensorflow_source_dir}/tensorflow/core/kernels/sendrecv_ops.h"
      "${tensorflow_source_dir}/tensorflow/core/kernels/sendrecv_ops.cc"
   )
@@ -40,7 +42,6 @@ endif(tensorflow_BUILD_ALL_KERNELS)
 
 if(tensorflow_BUILD_CONTRIB_KERNELS)
   set(tf_contrib_kernels_srcs
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/ensemble_optimizer_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/model_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/prediction_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/kernels/quantile_ops.cc"
@@ -60,13 +61,14 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/learner/stochastic/handlers/sparse-quantized-feature-column-handler.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/models/multiple_additive_trees.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/lib/trees/decision_tree.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/ensemble_optimizer_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/model_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/prediction_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/quantile_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/split_handler_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/training_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/kernels/cudnn_rnn_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/ops/cudnn_rnn_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/masked_matmul_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/wals_solver_ops.cc"
@@ -76,6 +78,13 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       #"${tensorflow_source_dir}/tensorflow/contrib/ffmpeg/encode_audio_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/kernels/zero_initializer_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/variable_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/adjust_hsv_in_yiq_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/bipartite_match_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/image_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/single_image_random_dot_stereograms_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/image/ops/distort_image_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/image/ops/image_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/image/ops/single_image_random_dot_stereograms_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/kernels/sparse_feature_cross_kernel.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/sparse_feature_cross_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
@@ -169,6 +178,7 @@ endif(WIN32)
 file(GLOB_RECURSE tf_core_gpu_kernels_srcs
     "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/framework/kernels/zero_initializer_op_gpu.cu.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/image/kernels/*.cu.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/*.cu.cc"
 )

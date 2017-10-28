@@ -34,17 +34,18 @@ namespace tensorflow {
 // declared.
 class XlaCompilationAllocator;
 
-// Deliberately don't register the device factory because we *never*
-// want soft placement to put Ops on an JIT device. Tests can include
-// the tla_jit_test_deps target which registers the factory, and when
-// using JIT in practice, the device is created manually not using a
-// factory.
-
 // This is a 'dummy' TensorFlow device that is only used to execute a
 // subgraph of XLA compilation Ops to construct a compiled version
 // of the subgraph's computation. It has a 'dummy' allocator that
 // backs each Tensor with metadata indicating the computation the
 // Tensor represents.
+//
+// We deliberately don't register a device factory because we *never*
+// want placement to put Ops on a compilation device. The device is created
+// manually, not using a factory.
+//
+// XLA compilation is not thread-safe. OpKernels registered on the
+// XlaCompilationDevice must not use threads or concurrency.
 class XlaCompilationDevice : public LocalDevice {
  public:
   XlaCompilationDevice(const SessionOptions& options, DeviceType type);

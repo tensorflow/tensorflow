@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include <Python.h>
 
@@ -44,38 +45,64 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status);
 
-// Convert a TFE_TensorHandle to a Python numpy.ndarray object.
-//
-// The two may share underlying storage so changes to one may reflect in the
-// other.
-PyObject* TFE_Py_TensorHandleToNumpy(TFE_TensorHandle* h, TF_Status* status);
-
-// Convert a Python numpy.ndarray object to a TFE_TensorHandle.
-//
-// The two may share underlying storage so changes to one may reflect in the
-// other.
-TFE_TensorHandle* TFE_Py_NumpyToTensorHandle(PyObject* obj);
-
-// Convert a Python sequence value to a TFE_TensorHandle.
-//
-// The dtype of the result is determined by the type of values found
-// in *obj, *dtype is the desired type but it is only considered a
-// hint. *dtype should be an integer representing the desired DataType
-// enum value, or Py_None.  Unlike TFE_Py_NumpyToTensorHandle, this
-// always makes a copy.  Returns nullptr and raises an exception on
-// error.
-// TODO(josh11b): Cast to dtype automatically.
-TFE_TensorHandle* TFE_Py_SequenceToTensorHandle(PyObject* obj, PyObject* dtype);
-
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
 
-// Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using the
-// class registered via TFE_Py_RegisterExceptionClass) and returns -1.
-int TFE_Py_MaybeRaiseException(TF_Status* status);
+// Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
+// `exception` if not nullptr, else using the class registered via
+// TFE_Py_RegisterExceptionClass), and returns -1.
+int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception);
+
+// Returns 0 if 'status' is ok. Otherwise, raises an exception (using
+// `exception` if not nullptr, else using the class registered via
+// TFE_Py_RegisterExceptionClass), and returns -1.
+int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
+                                  PyObject* exception);
 
 // Returns the string associated with the passed-in python object.
 char* TFE_GetPythonString(PyObject* o);
+
+// Returns a unique id on each call.
+int64_t get_uid();
+
+// Wraps the output of get_uid as a Python Long object. Ownership is passed to
+// the caller.
+PyObject* TFE_Py_UID();
+
+// Deleter for Context objects, called from the Capsule that owns it.
+void TFE_DeleteContextCapsule(PyObject* context);
+
+// Returns true if o is an instance of EagerTensor, but not a subclass. Else
+// returns false.
+bool EagerTensor_CheckExact(const PyObject* o);
+
+// Helper function to construct a new EagerTensor from a TFE_TensorHandle.
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle);
+
+// Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
+TFE_TensorHandle* EagerTensorHandle(const PyObject* o);
+
+// Creates the `EagerTensor` class by subclassing `base_class` and returns the
+// newly created type, or nullptr on error.
+PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
+
+PyObject* TFE_Py_NewTape();
+PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors);
+void TFE_Py_TapeWatch(PyObject* tape, tensorflow::int64 tensor_id);
+void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id);
+
+// Records an operation in the gradient tape. `tape` should point to an object
+// returned by TFE_Py_NewTape. op_type is a string for the operation type, used
+// in the backprop code. output_tensors should be a list of python ops.Tensor
+// objects. input_tensor_ids should be a list of python integers with the ids of
+// the input tensors of the recorded operation. backward_function should be the
+// function to be called during backprop to, given the gradients of the output
+// tensors, produce the gradients of the input tensors.
+void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
+                                PyObject* output_tensors,
+                                PyObject* input_tensor_ids,
+                                PyObject* backward_function);
+PyObject* TFE_Py_TapeExport(PyObject* tape);
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

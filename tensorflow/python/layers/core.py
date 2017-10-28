@@ -107,7 +107,9 @@ class Dense(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(Dense, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(Dense, self).__init__(trainable=trainable, name=name,
+                                activity_regularizer=activity_regularizer,
+                                **kwargs)
     self.units = units
     self.activation = activation
     self.use_bias = use_bias
@@ -115,7 +117,6 @@ class Dense(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.activity_regularizer = activity_regularizer
     self.kernel_constraint = kernel_constraint
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(min_ndim=2)
@@ -230,7 +231,18 @@ def dense(
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Dense` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Dense instead.')
   layer = Dense(units,
                 activation=activation,
                 use_bias=use_bias,
@@ -332,7 +344,18 @@ def dropout(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Dropout` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Dropout instead.')
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
 
@@ -359,7 +382,8 @@ class Flatten(base.Layer):
 
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
-    outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+    if context.in_graph_mode():
+      outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
     return outputs
 
   def _compute_output_shape(self, input_shape):

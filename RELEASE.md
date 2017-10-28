@@ -1,6 +1,51 @@
 # Release 1.4.0
 
 ## Major Features And Improvements
+* `tf.keras` is now part of the core TensorFlow API.
+* [`tf.data`](http://tensorflow.org/programmers_guide/datasets) is now part of
+  the core TensorFlow API.
+  * The API is now subject to backwards compatibility guarantees.
+  * For a guide to migrating from the `tf.contrib.data` API, see the
+    [README](https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/contrib/data/README.md).
+  * Major new features include `Dataset.from_generator()` (for building an input
+    pipeline from a Python generator), and the `Dataset.apply()` method for
+    applying custom transformation functions.
+  * Several custom transformation functions have been added, including
+    `tf.contrib.data.batch_and_drop_remainder()` and
+    `tf.contrib.data.sloppy_interleave()`.
+* Add `train_and_evaluate` for simple distributed `Estimator` training.
+* Add `tf.spectral.dct` for computing the DCT-II.
+* Add Mel-Frequency Cepstral Coefficient support to `tf.contrib.signal`
+  (with GPU and gradient support).
+* Add a self-check on `import tensorflow` for Windows DLL issues.
+* Add NCHW support to `tf.depth_to_space` on GPU.
+* SinhArcsinh (scalar) distribution added to `contrib.distributions`.
+* Make `GANEstimator` opensource.
+* `Estimator.export_savedmodel()` now includes all valid serving signatures
+  that can be constructed from the Serving Input Receiver and all available
+  ExportOutputs. For instance, a classifier may provide regression- and
+  prediction-flavored outputs, in addition to the classification-flavored one.
+  Building signatures from these allows TF Serving to honor requests using the
+  different APIs (Classify, Regress, and Predict). Furthermore,
+  `serving_input_receiver_fn()` may now specify alternative subsets of nodes
+  that may act as inputs. This allows, for instance, producing a prediction
+  signature for a classifier that accepts raw `Tensors` instead of a serialized
+  `tf.Example`.
+* Add `tf.contrib.bayesflow.hmc`.
+* Add `tf.contrib.distributions.MixtureSameFamily`.
+* Make `Dataset.shuffle()` always reshuffles after each iteration by default.
+* Add `tf.contrib.bayesflow.metropolis_hastings`.
+* Add `log_rate` parameter to `tf.contrib.distributions.Poisson`.
+* Extend `tf.contrib.distributions.bijector` API to handle some non-injective
+  transforms.
+* Java:
+  * Generics (e.g., `Tensor<Integer>`) for improved type-safety
+    (courtesy @andrewcmyers).
+  * Support for multi-dimensional string tensors.
+  * Support loading of custom operations (e.g. many in `tf.contrib`) on Linux
+    and OS X
+* All our prebuilt binaries have been built with CUDA 8 and cuDNN 6.
+  We anticipate releasing TensorFlow 1.5 with CUDA 9 and cuDNN 7.
 
 ## Bug Fixes and Other Changes
 * `tf.nn.rnn_cell.DropoutWrapper` is now more careful about dropping out LSTM
@@ -12,6 +57,57 @@
 * Removed `tf.contrib.training.python_input`.  The same behavior, in a more
   flexible and reproducible package, is available via the new
   `tf.contrib.data.Dataset.from_generator` method!
+* Fix `tf.contrib.distributions.Affine` incorrectly computing log-det-jacobian.
+* Fix `tf.random_gamma` incorrectly handling non-batch, scalar draws.
+* Resolved a race condition in TensorForest TreePredictionsV4Op.
+* Google Cloud Storage file system and Hadoop file system support are now
+  default build options.
+* Custom op libraries must link against libtensorflow_framework.so
+  (installed at `tf.sysconfig.get_lib()`).
+
+## Breaking Changes to the API
+* The signature of the `tf.contrib.data.rejection_resample()` function has been
+  changed. It now returns a function that can be used as an argument to
+  `Dataset.apply()`.
+* Remove `tf.contrib.data.Iterator.from_dataset()` method. Use
+  `Dataset.make_initializable_iterator()` instead.
+* Remove seldom used and unnecessary `tf.contrib.data.Iterator.dispose_op()`.
+* Reorder some TFGAN loss functions in a non-backwards compatible way.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4d55397500, Abdullah Alrasheed, abenmao, Adam Salvail, Aditya Dhulipala, Ag Ramesh,
+Akimasa Kimura, Alan Du, Alan Yee, Alexander, Amit Kushwaha, Amy, Andrei Costinescu,
+Andrei Nigmatulin, Andrew Erlichson, Andrew Myers, Andrew Stepanov, Androbin, AngryPowman,
+Anish Shah, Anton Daitche, Artsiom Chapialiou, asdf2014, Aseem Raj Baranwal, Ash Hall,
+Bart Kiers, Batchu Venkat Vishal, ben, Ben Barsdell, Bill Piel, Carl Thomé, Catalin Voss,
+Changming Sun, Chengzhi Chen, Chi Zeng, Chris Antaki, Chris Donahue, Chris Oelmueller,
+Chris Tava, Clayne Robison, Codrut, Courtial Florian, Dalmo Cirne, Dan J, Darren Garvey,
+David Kristoffersson, David Norman, David RöThlisberger, DavidNorman, Dhruv, DimanNe,
+Dorokhov, Duncan Mac-Vicar P, EdwardDixon, EMCP, error.d, FAIJUL, Fan Xia,
+Francois Xavier, Fred Reiss, Freedom" Koan-Sin Tan, Fritz Obermeyer, Gao, Xiang,
+Guenther Schmuelling, Guo Yejun (郭叶军), Hans Gaiser, HectorSVC, Hyungsuk Yoon,
+James Pruegsanusak, Jay Young, Jean Wanka, Jeff Carpenter, Jeremy Rutman, Jeroen BéDorf,
+Jett Jones, Jimmy Jia, jinghuangintel, jinze1994, JKurland, Joel Hestness, joetoth,
+John B Nelson, John Impallomeni, John Lawson, Jonas, Jonathan Dekhtiar, joshkyh, Jun Luan,
+Jun Mei, Kai Sasaki, Karl Lessard, karl@kubx.ca, Kb Sriram, Kenichi Ueno, Kevin Slagle,
+Kongsea, Lakshay Garg, lhlmgr, Lin Min, liu.guangcong, Loki Der Quaeler, Louie Helm,
+lucasmoura, Luke Iwanski, Lyndon White, Mahmoud Abuzaina, Marcel Puyat, Mark Aaron Shirley,
+Michele Colombo, MtDersvan, Namrata-Ibm, Nathan Luehr, Naurril, Nayana Thorat, Nicolas Lopez,
+Niranjan Hasabnis, Nolan Liu, Nouce, Oliver Hennigh, osdamv, Patrik Erdes,
+Patryk Chrabaszcz, Pavel Christof, Penghao Cen, postBG, Qingqing Cao, Qingying Chen, qjivy,
+Raphael, Rasmi, raymondxyang, Renze Yu, resec, Roffel, Ruben Vereecken, Ryohei Kuroki,
+sandipmgiri, Santiago Castro, Scott Kirkland, Sean Vig, Sebastian Raschka, Sebastian Weiss,
+Sergey Kolesnikov, Sergii Khomenko, Shahid, Shivam Kotwalia, Stuart Berg, Sumit Gouthaman,
+superzerg, Sven Mayer, tetris, Ti Zhou, Tiago Freitas Pereira, Tian Jin, Tomoaki Oiki,
+Vaibhav Sood, vfdev, Vivek Rane, Vladimir Moskva, wangqr, Weber Xie, Will Frey,
+Yan Facai (颜发才), yanivbl6, Yaroslav Bulatov, Yixing Lao, Yong Tang, youkaichao,
+Yuan (Terry) Tang, Yue Zhang, Yuxin Wu, Ziming Dong, ZxYuan, 黄璞
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 # Release 1.3.0
 

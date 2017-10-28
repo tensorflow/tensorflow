@@ -285,6 +285,7 @@ def _fused_batch_norm(
     ValueError: If the rank of `inputs` is neither 2 or 4.
     ValueError: If rank or `C` dimension of `inputs` is undefined.
   """
+  # TODO(reedwm): Add support for fp16 inputs.
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with variable_scope.variable_scope(
@@ -462,7 +463,8 @@ def batch_norm(inputs,
                scope=None,
                renorm=False,
                renorm_clipping=None,
-               renorm_decay=0.99):
+               renorm_decay=0.99,
+               adjustment=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -545,6 +547,17 @@ def batch_norm(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `decay` is still applied
       to get the means and variances for inference.
+    adjustment: A function taking the `Tensor` containing the (dynamic) shape of
+      the input tensor and returning a pair (scale, bias) to apply to the
+      normalized values (before gamma and beta), only during training. For
+      example,
+        `adjustment = lambda shape: (
+          tf.random_uniform(shape[-1:], 0.93, 1.07),
+          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+      will scale the normalized value by up to 7% up or down, then shift the
+      result by up to 0.1 (with independent scaling and bias for each feature
+      but shared across all examples), and finally apply gamma and/or beta. If
+      `None`, no adjustment is applied.
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -568,7 +581,10 @@ def batch_norm(inputs,
   #   implementation in normalization_layers.BatchNormalization.
   inputs = ops.convert_to_tensor(inputs)
   rank = inputs.get_shape().ndims
-  possible_to_fuse = batch_weights is None and not renorm and rank in [2, 4]
+  possible_to_fuse = (batch_weights is None and
+                      not renorm and
+                      rank in [2, 4] and
+                      adjustment is None)
   if fused and possible_to_fuse and (
       zero_debias_moving_mean or rank == 2 or
       updates_collections is not ops.GraphKeys.UPDATE_OPS):
@@ -635,6 +651,7 @@ def batch_norm(inputs,
           renorm=renorm,
           renorm_clipping=renorm_clipping,
           renorm_momentum=renorm_decay,
+          adjustment=adjustment,
           name=sc.name,
           _scope=sc,
           _reuse=reuse,
@@ -1731,13 +1748,14 @@ class GDN(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(GDN, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(GDN, self).__init__(trainable=trainable, name=name,
+                              activity_regularizer=activity_regularizer,
+                              **kwargs)
     self.inverse = inverse
     self._beta_min = beta_min
     self._gamma_init = gamma_init
     self._reparam_offset = reparam_offset
     self.data_format = data_format
-    self.activity_regularizer = activity_regularizer
     self._channel_axis()  # trigger ValueError early
     self.input_spec = base.InputSpec(min_ndim=3, max_ndim=5)
 

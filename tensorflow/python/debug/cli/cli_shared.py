@@ -214,18 +214,22 @@ def error(msg):
       RL("ERROR: " + msg, COLOR_RED)])
 
 
-def _get_fetch_name(fetch):
-  """Obtain the name or string representation of a fetch.
+def get_graph_element_name(elem):
+  """Obtain the name or string representation of a graph element.
+
+  If the graph element has the attribute "name", return name. Otherwise, return
+  a __str__ representation of the graph element. Certain graph elements, such as
+  `SparseTensor`s, do not have the attribute "name".
 
   Args:
-    fetch: The fetch in question.
+    elem: The graph element in question.
 
   Returns:
     If the attribute 'name' is available, return the name. Otherwise, return
     str(fetch).
   """
 
-  return fetch.name if hasattr(fetch, "name") else str(fetch)
+  return elem.name if hasattr(elem, "name") else str(elem)
 
 
 def _get_fetch_names(fetches):
@@ -250,7 +254,7 @@ def _get_fetch_names(fetches):
   else:
     # This ought to be a Tensor, an Operation or a Variable, for which the name
     # attribute should be available. (Bottom-out condition of the recursion.)
-    lines.append(_get_fetch_name(fetches))
+    lines.append(get_graph_element_name(fetches))
 
   return lines
 
@@ -330,23 +334,20 @@ def get_run_start_intro(run_call_count,
   else:
     feed_dict_lines = []
     for feed_key in feed_dict:
-      if isinstance(feed_key, six.string_types):
-        feed_key_name = feed_key
-      elif hasattr(feed_key, "name"):
-        feed_key_name = feed_key.name
-      else:
-        feed_key_name = str(feed_key)
+      feed_key_name = get_graph_element_name(feed_key)
       feed_dict_line = debugger_cli_common.RichLine("  ")
       feed_dict_line += debugger_cli_common.RichLine(
           feed_key_name,
-          debugger_cli_common.MenuItem(None, "pf %s" % feed_key_name))
+          debugger_cli_common.MenuItem(None, "pf '%s'" % feed_key_name))
+      # Surround the name string with quotes, because feed_key_name may contain
+      # spaces in some cases, e.g., SparseTensors.
       feed_dict_lines.append(feed_dict_line)
   feed_dict_lines = debugger_cli_common.rich_text_lines_from_rich_line_list(
       feed_dict_lines)
 
   out = debugger_cli_common.RichTextLines(_HORIZONTAL_BAR)
   if is_callable_runner:
-    out.append("Running a runner returned by Session.make_callabe()")
+    out.append("Running a runner returned by Session.make_callable()")
   else:
     out.append("Session.run() call #%d:" % run_call_count)
     out.append("")
@@ -445,7 +446,7 @@ def get_run_short_description(run_call_count,
   description = "run #%d: " % run_call_count
 
   if isinstance(fetches, (ops.Tensor, ops.Operation, variables.Variable)):
-    description += "1 fetch (%s); " % _get_fetch_name(fetches)
+    description += "1 fetch (%s); " % get_graph_element_name(fetches)
   else:
     # Could be (nested) list, tuple, dict or namedtuple.
     num_fetches = len(_get_fetch_names(fetches))

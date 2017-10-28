@@ -1169,8 +1169,8 @@ def _parse_single_sequence_example_raw(serialized,
 
 
 # Swap `name` and `na_value` for backward compatibility.
-def decode_csv(records, record_defaults, field_delim=',',
-               use_quote_delim=True, name=None, na_value=''):
+def decode_csv(records, record_defaults, field_delim=",",
+               use_quote_delim=True, name=None, na_value=""):
   # pylint: disable=protected-access
   """Convert CSV records to tensors. Each column maps to one tensor.
 
@@ -1182,7 +1182,8 @@ def decode_csv(records, record_defaults, field_delim=',',
     records: A `Tensor` of type `string`.
       Each string is a record/row in the csv and all records should have
       the same format.
-    record_defaults: A list of `Tensor` objects with types from: `float32`, `int32`, `int64`, `string`.
+    record_defaults: A list of `Tensor` objects with specific types.
+      Acceptable types are `float32`, `float64`, `int32`, `int64`, `string`.
       One tensor per column of the input record, with either a
       scalar default value for that column or empty if the column is required.
     field_delim: An optional `string`. Defaults to `","`.

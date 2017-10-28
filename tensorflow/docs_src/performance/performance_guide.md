@@ -36,7 +36,7 @@ the difference in examples per second for the full model and the trivial model
 is minimal then the input pipeline is likely a bottleneck. Below are some other
 approaches to identifying issues:
 
-*   Check if a GPU is underutilized by running `watch -n 2 nvidia-smi`. If GPU
+*   Check if a GPU is underutilized by running `nvidia-smi -l 2`. If GPU
     utilization is not approaching 80-100%, then the input pipeline may be the
     bottleneck.
 *   Generate a timeline and look for large blocks of white space (waiting). An
@@ -87,13 +87,47 @@ the Dataset API is still strongly recommended. Try to avoid the following:
 sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 ```
 
+#### Fused decode and crop
+
+If inputs are JPEG images that also require cropping, use fused
+@{tf.image.decode_and_crop_jpeg} to speed up preprocessing.
+`tf.image.decode_and_crop_jpeg` only decodes the part of
+the image within the crop window. This significantly speeds up the process if
+the crop window is much smaller than the full image. For imagenet data, this
+approach could speed up the input pipeline by up to 30%.
+
+Example Usage:
+
+```python
+def _image_preprocess_fn(image_buffer):
+    # image_buffer 1-D string Tensor representing the raw JPEG image buffer.
+
+    # Extract image shape from raw JPEG image buffer.
+    image_shape = tf.image.extract_jpeg_shape(image_buffer)
+
+    # Get a crop window with distorted bounding box.
+    sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
+      image_shape, ...)
+    bbox_begin, bbox_size, distort_bbox = sample_distorted_bounding_box
+
+    # Decode and crop image.
+    offset_y, offset_x, _ = tf.unstack(bbox_begin)
+    target_height, target_width, _ = tf.unstack(bbox_size)
+    crop_window = tf.stack([offset_y, offset_x, target_height, target_width])
+    cropped_image = tf.image.decode_and_crop_jpeg(image, crop_window)
+```
+
+`tf.image.decode_and_crop_jpeg` is available on all platforms. There is no speed
+up on Windows due to the use of `libjpeg` vs. `libjpeg-turbo` on other
+platforms.
+
 #### Use large files
 
 Reading large numbers of small files significantly impacts I/O performance.
 One approach to get maximum I/O throughput is to preprocess input data into
 larger (~100MB) `TFRecord` files. For smaller data sets (200MB-1GB), the best
 approach is often to load the entire data set into memory. The document
-[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/slim#Data)
+[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/research/slim#Data)
 includes information and scripts for creating `TFRecords` and this
 [script](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10_estimator/generate_cifar10_tfrecords.py)
 converts the CIFAR-10 data set into `TFRecords`.

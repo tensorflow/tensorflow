@@ -165,8 +165,38 @@ def tf_library(name, graph, config,
       tags=tags,
   )
 
+  # Rule that runs tfcompile to produce the SessionModule proto, useful for
+  # debugging.  TODO(b/64813587): Once the SessionModule proto is
+  # deterministic, move this into the main rule above.
+  session_module_pb = name + "_session_module.pb"
+  native.genrule(
+      name=(name + "_session_module"),
+      srcs=[
+          tfcompile_graph,
+          config,
+      ],
+      outs=[
+          session_module_pb,
+      ],
+      cmd=("$(location " + tfcompile_tool + ")" +
+           " --graph=$(location " + tfcompile_graph + ")" +
+           " --config=$(location " + config + ")" +
+           " --entry_point=" + ep +
+           " --cpp_class=" + cpp_class +
+           " --target_triple=" + target_llvm_triple() +
+           " --out_session_module=$(@D)/" + session_module_pb +
+           " " + (tfcompile_flags or "")),
+      tools=[tfcompile_tool],
+      visibility=visibility,
+      testonly=testonly,
+      local=1,
+      tags=tags,
+  )
+
   # The cc_library rule packaging up the header and object file, and needed
   # kernel implementations.
+  need_xla_data_proto = (tfcompile_flags and
+                         tfcompile_flags.find("--gen_program_shape") != -1)
   native.cc_library(
       name=name,
       srcs=[object_file],
@@ -177,14 +207,13 @@ def tf_library(name, graph, config,
           # These deps are required by all tf_library targets even if
           # include_standard_runtime_deps is False.  Without them, the
           # generated code will fail to compile.
-          "//tensorflow/compiler/aot:runtime",
-          "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
-          "//tensorflow/compiler/xla:executable_run_options",
+          "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
           "//tensorflow/core:framework_lite",
-      ] + (include_standard_runtime_deps and [
+      ] + (need_xla_data_proto and [
+          # If we're generating the program shape, we must depend on the proto.
+          "//tensorflow/compiler/xla:xla_data_proto",
+      ] or []) + (include_standard_runtime_deps and [
           # TODO(cwhipkey): only depend on kernel code that the model actually needed.
-          "//tensorflow/compiler/tf2xla/kernels:gather_op_kernel_float_int32",
-          "//tensorflow/compiler/tf2xla/kernels:gather_op_kernel_float_int64",
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
           "//tensorflow/compiler/xla/service/cpu:cpu_runtime_avx",
@@ -291,7 +320,6 @@ def tf_library(name, graph, config,
         ]),
         tags=tags,
     )
-
 
 def target_llvm_triple():
   """Returns the target LLVM triple to be used for compiling the target."""

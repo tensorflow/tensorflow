@@ -28,6 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import textwrap
 
 
 def build_md_page(page_info):
@@ -289,7 +290,9 @@ def _build_compatibility(compatibility):
   for key in sorted_keys:
 
     value = compatibility[key]
-    parts.append('\n\n#### %s compatibility\n%s\n' % (key, value))
+    # Dedent so that it does not trigger markdown code formatting.
+    value = textwrap.dedent(value)
+    parts.append('\n\n#### %s Compatibility\n%s\n' % (key.title(), value))
 
   return ''.join(parts)
 
@@ -300,7 +303,7 @@ def _build_function_details(function_details):
   for detail in function_details:
     sub = []
     sub.append('#### ' + detail.keyword + ':\n\n')
-    sub.append(detail.header)
+    sub.append(textwrap.dedent(detail.header))
     for key, value in detail.items:
       sub.append('* <b>`%s`</b>: %s' % (key, value))
     parts.append(''.join(sub))

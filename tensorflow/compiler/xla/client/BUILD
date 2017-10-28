@@ -41,7 +41,9 @@ cc_library(
     srcs = ["padding.cc"],
     hdrs = ["padding.h"],
     deps = [
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )

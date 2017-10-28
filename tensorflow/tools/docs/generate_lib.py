@@ -503,6 +503,7 @@ class DocGenerator(object):
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
 
+    root_title = getattr(flags, 'root_title', 'TensorFlow')
     guide_index = _build_guide_index(
         os.path.join(flags.src_dir, 'api_guides/python'))
 
@@ -510,7 +511,11 @@ class DocGenerator(object):
                                             guide_index, flags.base_dir)
     output_dir = os.path.join(flags.output_dir, 'api_docs/python')
 
-    write_docs(output_dir, parser_config, yaml_toc=self.yaml_toc)
+    write_docs(
+        output_dir,
+        parser_config,
+        yaml_toc=self.yaml_toc,
+        root_title=root_title)
     _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
 
     parser_config.reference_resolver.log_errors()

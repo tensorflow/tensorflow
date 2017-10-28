@@ -117,7 +117,9 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 // the caller takes the ownership of returned executors.
 Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
-                          const DebugOptions& debug_options, Item* item) {
+                          const DebugOptions& debug_options,
+                          DistributedFunctionLibraryRuntime* cluster_flr,
+                          Item* item) {
   item->session = session;
   item->lib_def.reset(
       new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library()));
@@ -132,7 +134,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, gdef.versions().producer(),
-      item->lib_def.get(), graph_options.optimizer_options()));
+      item->lib_def.get(), graph_options.optimizer_options(), cluster_flr));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -271,9 +273,12 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
 Status GraphMgr::Register(const string& session, const GraphDef& gdef,
                           const GraphOptions& graph_options,
-                          const DebugOptions& debug_options, string* handle) {
+                          const DebugOptions& debug_options,
+                          DistributedFunctionLibraryRuntime* cluster_flr,
+                          string* handle) {
   Item* item = new Item;
-  Status s = InitItem(session, gdef, graph_options, debug_options, item);
+  Status s =
+      InitItem(session, gdef, graph_options, debug_options, cluster_flr, item);
   if (!s.ok()) {
     item->Unref();
     return s;

@@ -34,6 +34,9 @@ struct ConstantFoldingOptions {
   // outputs.
   const std::unordered_map<string, std::vector<PartialTensorShape>>* shape_map =
       nullptr;  // not owned
+  // The maximum size of each constant created during constant folding
+  // optimization.
+  int64 max_constant_size_in_bytes = 10 * 1024 * 1024;
 };
 
 // Perform constant folding optimization on "graph".

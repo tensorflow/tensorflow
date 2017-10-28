@@ -21,12 +21,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
 
 
 class _Conv(base.Layer):
@@ -99,8 +101,9 @@ class _Conv(base.Layer):
                trainable=True,
                name=None,
                **kwargs):
-    super(_Conv, self).__init__(trainable=trainable,
-                                name=name, **kwargs)
+    super(_Conv, self).__init__(trainable=trainable, name=name,
+                                activity_regularizer=activity_regularizer,
+                                **kwargs)
     self.rank = rank
     self.filters = filters
     self.kernel_size = utils.normalize_tuple(kernel_size, rank, 'kernel_size')
@@ -115,7 +118,6 @@ class _Conv(base.Layer):
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
     self.bias_regularizer = bias_regularizer
-    self.activity_regularizer = activity_regularizer
     self.kernel_constraint = kernel_constraint
     self.bias_constraint = bias_constraint
     self.input_spec = base.InputSpec(ndim=self.rank + 2)
@@ -151,16 +153,18 @@ class _Conv(base.Layer):
       self.bias = None
     self.input_spec = base.InputSpec(ndim=self.rank + 2,
                                      axes={channel_axis: input_dim})
-    self.built = True
-
-  def call(self, inputs):
-    outputs = nn.convolution(
-        input=inputs,
-        filter=self.kernel,
+    self._convolution_op = nn_ops.Convolution(
+        input_shape,
+        filter_shape=self.kernel.get_shape(),
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=self.padding.upper(),
-        data_format=utils.convert_data_format(self.data_format, self.rank + 2))
+        data_format=utils.convert_data_format(self.data_format,
+                                              self.rank + 2))
+    self.built = True
+
+  def call(self, inputs):
+    outputs = self._convolution_op(inputs, self.kernel)
 
     if self.use_bias:
       if self.data_format == 'channels_first':
@@ -379,7 +383,18 @@ def conv1d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv1D` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv1D instead.')
   layer = Conv1D(
       filters=filters,
       kernel_size=kernel_size,
@@ -579,7 +594,18 @@ def conv2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv2D` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv2D instead.')
   layer = Conv2D(
       filters=filters,
       kernel_size=kernel_size,
@@ -781,7 +807,18 @@ def conv3d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv3D` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv3D instead.')
   layer = Conv3D(
       filters=filters,
       kernel_size=kernel_size,
@@ -1100,7 +1137,18 @@ def separable_conv2d(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.SeparableConv2d` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.SeparableConv2D instead.')
   layer = SeparableConv2D(
       filters=filters,
       kernel_size=kernel_size,
@@ -1395,7 +1443,18 @@ def conv2d_transpose(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv2DTranspose` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv2DTranspose instead.')
   layer = Conv2DTranspose(
       filters=filters,
       kernel_size=kernel_size,
@@ -1706,7 +1765,18 @@ def conv3d_transpose(inputs,
 
   Returns:
     Output tensor.
+
+  Raises:
+    ValueError: if eager execution is enabled.
+
+  @compatibility(eager)
+  Not compatible with eager execution. Use `tf.layers.Conv3DTranspose` instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise ValueError(
+        'Functional layers are currently not compatible with eager execution.'
+        'Use tf.layers.Conv3DTranspose instead.')
   layer = Conv3DTranspose(
       filters=filters,
       kernel_size=kernel_size,
