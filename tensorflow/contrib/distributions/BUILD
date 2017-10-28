@@ -914,6 +914,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "reshape_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/reshape_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "sigmoid_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/sigmoid_test.py"],
