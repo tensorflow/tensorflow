@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
+import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -53,7 +53,7 @@ class HalfNormal(distribution.Distribution):
   Then `Y` will have half normal distribution. The probability density function (pdf) is:
 
   ```none
-  pdf(x; scale, x > 0) = sqrt(2) / (scale * sqrt(pi) *
+  pdf(x; scale, x > 0) = sqrt(2) / (scale * sqrt(pi)) *
     exp(- 1/2 * (x / scale) ** 2)
   )
   ```
@@ -73,7 +73,7 @@ class HalfNormal(distribution.Distribution):
 
   # Define a batch of two scalar valued HalfNormals.
   # The first has scale 11.0, the second 22.0
-  dist = tf.distributions.HalfNormal(scale=[11.0, 22.0])
+  dist = tf.contrib.distributions.HalfNormal(scale=[11.0, 22.0])
 
   # Evaluate the pdf of the first distribution on 1.0, and the second on 1.5,
   # returning a length two tensor.
@@ -84,7 +84,6 @@ class HalfNormal(distribution.Distribution):
   ```
 
   """
-
   def __init__(self,
                scale,
                validate_args=False,
@@ -116,7 +115,7 @@ class HalfNormal(distribution.Distribution):
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
-        graph_parents=[self._loc, self._scale],
+        graph_parents=[self._scale],
         name=name)
 
   @staticmethod
@@ -141,43 +140,29 @@ class HalfNormal(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    pass
+    shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)
+    sampled = random_ops.random_normal(
+        shape=shape, mean=0., stddev=1., dtype=self.dtype, seed=seed)
+    return math_ops.abs(sampled * self.scale)
 
   def _log_prob(self, x):
-    return math_ops.log(self._prob(x))
-
-  def _prob(self, x):
-    pass
-
-  def _log_cdf(self, x):
-    pass
+    logcoeff = math_ops.log(np.sqrt(2) / self.scale / np.sqrt(np.pi))
+    return logcoeff - 0.5 * (x / self.scale) ** 2
 
   def _cdf(self, x):
-    pass
-
-  def _log_survival_function(self, x):
-    pass
-
-  def _survival_function(self, x):
-    pass
-
-  def _log_unnormalized_prob(self, x):
-    pass
-
-  def _log_normalization(self):
-    pass
+    return math_ops.erf(x / self.scale / np.sqrt(2.0))
 
   def _entropy(self):
-    pass
+    return 0.5 * math_ops.log(np.pi * self.scale ** 2.0 / 2.0) + 0.5
 
   def _mean(self):
-    pass
+    return self.scale * np.sqrt(2.0) / np.sqrt(np.pi)
 
   def _quantile(self, p):
-    pass
-
-  def _stddev(self):
-    pass
+    return np.sqrt(2.0) * self.scale * special_math.erfinv(p)
 
   def _mode(self):
-    pass
+    return array_ops.zeros(self.batch_shape_tensor())
+
+  def _variance(self):
+    return self.scale ** 2.0 * (1.0 - 2.0 / np.pi)
