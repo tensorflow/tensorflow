@@ -1943,7 +1943,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
   if not callable(false_fn):
     raise TypeError('`false_fn` must be callable.')
 
-  pred_value = constant_value(pred)
+  pred_value = smart_constant_value(pred)
   if pred_value is not None:
     if pred_value:
       return true_fn()
@@ -1953,7 +1953,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
     return cond(pred, true_fn=true_fn, false_fn=false_fn, name=name)
 
 
-def constant_value(pred):
+def smart_constant_value(pred):
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
   Arguments:

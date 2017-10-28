@@ -92,6 +92,8 @@ from tensorflow.contrib.framework.python.ops import *
 
 from tensorflow.python.framework.ops import prepend_name_scope
 from tensorflow.python.framework.ops import strip_name_scope
+from tensorflow.python.ops.control_flow_ops import smart_cond
+from tensorflow.python.ops.control_flow_ops import smart_constant_value
 
 from tensorflow.python.util.all_util import remove_undocumented
 

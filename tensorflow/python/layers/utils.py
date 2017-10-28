@@ -25,6 +25,15 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 
+# pylint: disable=invalid-name
+# Function alias of smart_cond
+smart_cond = control_flow_ops.smart_cond
+
+# Function alias of smart_constant_value to determine a scalar (Python
+# bool, TensorFlow boolean variable or tensor) has a boolean value.
+constant_value = control_flow_ops.smart_constant_value
+# pylint: enable=invalid-name
+
 
 def convert_data_format(data_format, ndim):
   if data_format == 'channels_last':
@@ -175,40 +184,3 @@ def deconv_output_length(input_length, filter_size, padding, stride):
   elif padding == 'full':
     input_length -= (stride + filter_size - 2)
   return input_length
-
-
-def smart_cond(pred, fn1, fn2, name=None):
-  """Return either `fn1()` or `fn2()` based on the boolean predicate `pred`.
-
-  If `pred` is a bool or has a constant value, we return either `fn1()`
-  or `fn2()`, otherwise we use `tf.cond` to dynamically route to both.
-
-  Arguments:
-    pred: A scalar determining whether to return the result of `fn1` or `fn2`.
-    fn1: The callable to be performed if pred is true.
-    fn2: The callable to be performed if pred is false.
-    name: Optional name prefix when using `tf.cond`.
-
-  Returns:
-    Tensors returned by the call to either `fn1` or `fn2`.
-
-  Raises:
-    TypeError: If `fn1` or `fn2` is not callable.
-  """
-  return control_flow_ops.smart_cond(pred, fn1, fn2, name)
-
-
-def constant_value(pred):
-  """Return the bool value for `pred`, or None if `pred` had a dynamic value.
-
-  Arguments:
-    pred: A scalar, either a Python bool or a TensorFlow boolean variable
-      or tensor.
-
-  Returns:
-    True or False if `pred` has a constant boolean value, None otherwise.
-
-  Raises:
-    TypeError: If `pred` is not a Variable, Tensor or bool.
-  """
-  return control_flow_ops.constant_value(pred)
