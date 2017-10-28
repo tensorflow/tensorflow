@@ -54,8 +54,7 @@ class InvertPermutationOp : public OpKernel {
                 FastBoundsCheck(Tin.size(), std::numeric_limits<int32>::max()),
                 errors::InvalidArgument("permutation of nonnegative int32s "
                                         "must have <= int32 max elements"));
-    const T N =
-        static_cast<T>(Tin.size());  // Safe: bounds-checked above.
+    const T N = static_cast<T>(Tin.size());  // Safe: bounds-checked above.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
@@ -72,9 +71,12 @@ class InvertPermutationOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER( Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int32>("T"), InvertPermutationOp<int32>);
-REGISTER_KERNEL_BUILDER( Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int64>("T"), InvertPermutationOp<int64>);
-
+REGISTER_KERNEL_BUILDER(
+    Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+    InvertPermutationOp<int32>);
+REGISTER_KERNEL_BUILDER(
+    Name("InvertPermutation").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
+    InvertPermutationOp<int64>);
 
 REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                             .Device(DEVICE_GPU)
