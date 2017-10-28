@@ -30,7 +30,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
-from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import special_math
 
 
@@ -50,7 +49,8 @@ class HalfNormal(distribution.Distribution):
   X ~ Normal(0.0, scale)
   Y = |X|
   ```
-  Then `Y` will have half normal distribution. The probability density function (pdf) is:
+  Then `Y` will have half normal distribution. The probability density
+  function (pdf) is:
 
   ```none
   pdf(x; scale, x > 0) = sqrt(2) / (scale * sqrt(pi)) *

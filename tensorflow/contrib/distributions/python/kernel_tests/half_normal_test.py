@@ -27,7 +27,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.contrib.distributions.python.ops import half_normal as hn_lib
 from tensorflow.python.platform import test
@@ -246,7 +245,6 @@ class HalfNormalTest(test.TestCase):
       halfnorm = hn_lib.HalfNormal(scale=scale)
 
       sample = halfnorm.sample(n)
-      sample_values = samples.eval()
 
       self.assertEqual(sample.eval().shape, (100000,))
       self.assertAllClose(sample.eval().std(), np.sqrt(3.0), atol=1e-1)
