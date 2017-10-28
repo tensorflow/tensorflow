@@ -145,12 +145,14 @@ class HalfNormal(distribution.Distribution):
         shape=shape, mean=0., stddev=1., dtype=self.dtype, seed=seed)
     return math_ops.abs(sampled * self.scale)
 
-  def _log_prob(self, x):
-    logcoeff = math_ops.log(np.sqrt(2) / self.scale / np.sqrt(np.pi))
-    return logcoeff - 0.5 * (x / self.scale) ** 2
+  def _prob(self, x):
+    coeff = np.sqrt(2) / self.scale / np.sqrt(np.pi)
+    pdf = coeff * tf.exp(- 0.5 * (x / self.scale) ** 2)
+    return pdf * math_ops.cast(x >= 0, self.dtype)
 
   def _cdf(self, x):
-    return math_ops.erf(x / self.scale / np.sqrt(2.0))
+    truncated_x = nn.relu(x)
+    return math_ops.erf(truncated_x / self.scale / np.sqrt(2.0))
 
   def _entropy(self):
     return 0.5 * math_ops.log(np.pi * self.scale ** 2.0 / 2.0) + 0.5
