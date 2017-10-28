@@ -761,10 +761,14 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
       return Printf("%s (%s)", constant->literal().GetAsString(elem_idx),
                     ShapeUtil::HumanString(constant->shape()));
     }
+    string constant_name;
     if (tensorflow::StringPiece(constant->name()).starts_with("%constant")) {
-      return constant->name();
+      constant_name = constant->name();
+    } else {
+      constant_name = StrCat("constant ", constant->name());
     }
-    return StrCat("constant ", constant->name());
+    return Printf("%s %s", constant_name,
+                  ShapeUtil::HumanString(constant->shape()));
   };
 
   // Special case: If instr is a parameter to a fusion node, check whether the
