@@ -460,7 +460,7 @@ do_clang_format_check() {
 
     if [[ -z "${CLANG_SRC_FILES}" ]]; then
       echo "do_clang_format_check will NOT run due to --incremental flag and "\
-"due to the absence of Python code changes in the last commit."
+"due to the absence of .h or .cc code changes in the last commit."
       return 0
     fi
   elif [[ -z "$1" ]]; then
