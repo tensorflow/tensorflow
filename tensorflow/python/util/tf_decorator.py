@@ -23,8 +23,8 @@ often provide.
 decorator is stateless, or can capture all of the variables it needs to work
 with through lexical closure, this is the simplest option. Create your wrapper
 function as usual, but instead of returning it, return
-`tf_decorator.make_decorator(your_wrapper)`. This will attach some decorator
-introspection metadata onto your wrapper and return it.
+`tf_decorator.make_decorator(target, your_wrapper)`. This will attach some
+decorator introspection metadata onto your wrapper and return it.
 
 Example:
 
@@ -32,7 +32,7 @@ Example:
     def wrapper(*args, **kwargs):
       print('hello')
       return target(*args, **kwargs)
-    return tf_decorator.make_decorator(wrapper)
+    return tf_decorator.make_decorator(target, wrapper)
 
 2. Derive from TFDecorator. If your decorator needs to be stateful, you can
 implement it in terms of a TFDecorator. Store whatever state you need in your

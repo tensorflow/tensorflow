@@ -145,16 +145,16 @@ class CudnnSupport : public dnn::DnnSupport {
                      ScratchAllocator* workspace_allocator) override;
 
   bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) override;
+      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) override;
+      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmDesc::Index>* out_algorithms) override;
+      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<float>& x,

@@ -118,6 +118,8 @@ typedef enum TF_DataType {
   TF_HALF = 19,
   TF_RESOURCE = 20,
   TF_VARIANT = 21,
+  TF_UINT32 = 22,
+  TF_UINT64 = 23,
 } TF_DataType;
 
 // TF_DataTypeSize returns the sizeof() for the underlying type corresponding
@@ -862,6 +864,13 @@ TF_CAPI_EXPORT extern void TF_GraphToGraphDef(TF_Graph* graph,
                                               TF_Buffer* output_graph_def,
                                               TF_Status* status);
 
+// Returns the serialized OpDef proto with name `op_name`, or a bad status if no
+// such op exists. This can return OpDefs of functions copied into the graph.
+TF_CAPI_EXPORT extern void TF_GraphGetOpDef(TF_Graph* graph,
+                                            const char* op_name,
+                                            TF_Buffer* output_op_def,
+                                            TF_Status* status);
+
 // TF_ImportGraphDefOptions holds options that can be passed to
 // TF_GraphImportGraphDef.
 typedef struct TF_ImportGraphDefOptions TF_ImportGraphDefOptions;
@@ -1144,7 +1153,7 @@ TF_CAPI_EXPORT extern TF_Function* TF_FunctionImportFunctionDef(
     const void* proto, size_t proto_len, TF_Status* status);
 
 // Sets function attribute named `attr_name` to value stored in `proto`.
-// If this attribute is already set to another value, it is overriden.
+// If this attribute is already set to another value, it is overridden.
 // `proto` should point to a sequence of bytes of length `proto_len`
 // representing a binary serialization of an AttrValue protocol
 // buffer.

@@ -54,6 +54,19 @@ xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
   return b->ConstantLiteral(xla::Literal::One(type));
 }
 
+xla::ComputationDataHandle XlaHelpers::Epsilon(xla::ComputationBuilder* b,
+                                               DataType data_type) {
+  switch (data_type) {
+    case DT_FLOAT:
+      return b->ConstantR0<float>(std::numeric_limits<float>::epsilon());
+    case DT_DOUBLE:
+      return b->ConstantR0<double>(std::numeric_limits<double>::epsilon());
+    default:
+      LOG(FATAL) << "Unsupported type in XlaHelpers::Epsilon: "
+                 << DataTypeString(data_type);
+  }
+}
+
 xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     xla::ComputationBuilder* b, DataType data_type, int64 value) {
   xla::Literal literal;
@@ -83,6 +96,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
       break;
     case xla::F64:
       literal = *xla::Literal::CreateR0<double>(value);
+      break;
+    case xla::C64:
+      literal = *xla::Literal::CreateR0<complex64>(value);
       break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
@@ -118,6 +134,9 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
       break;
     case xla::F64:
       return b->ConstantR0<double>(value);
+      break;
+    case xla::C64:
+      return b->ConstantR0<complex64>(value);
       break;
     default:
       LOG(FATAL) << "unhandled element type " << type;

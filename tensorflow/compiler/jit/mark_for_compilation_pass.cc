@@ -560,6 +560,7 @@ Status MarkForCompilationPass::RunImpl(
         name = strings::StrCat("cluster_", cluster_sequence_num++);
       }
       n->AddAttr(kXlaClusterAttr, name);
+      VLOG(3) << "Assigning node " << n->name() << " to cluster " << name;
     }
   }
 

@@ -25,6 +25,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":summary_ops",
+        ":summary_test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
@@ -43,12 +44,22 @@ py_library(
     deps = [
         ":gen_summary_ops",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:summary_op_util",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "summary",
+    srcs = ["summary.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":summary_ops",
     ],
 )
 
@@ -62,4 +73,18 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+# NOTE: target cannot be testonly because it needs to be in the pip
+# package. Sigh.
+py_library(
+    name = "summary_test_util",
+    srcs = ["summary_test_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+    ],
 )

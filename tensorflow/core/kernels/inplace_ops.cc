@@ -34,7 +34,7 @@ namespace functor {
 template <typename Device, typename T>
 Status DoParallelConcatUpdate(const Device& d, const Tensor& value,
                               int32 loc, Tensor* output) {
-  auto Tvalue = value.flat_outer_dims<T>();
+  auto Tvalue = value.shaped<T, 2>({1, value.NumElements()});
   auto Toutput = output->flat_outer_dims<T>();
   auto nrows = Toutput.dimension(0);
   auto r = (loc % nrows + nrows) % nrows;  // Guard index range.

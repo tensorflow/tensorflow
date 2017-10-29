@@ -9,7 +9,7 @@ py_library(
     srcs = ["dataset_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":iterator",
+        ":iterator_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
@@ -41,8 +41,8 @@ py_library(
 )
 
 py_library(
-    name = "iterator",
-    srcs = ["iterator.py"],
+    name = "iterator_ops",
+    srcs = ["iterator_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:dataset_ops_gen",

@@ -33,7 +33,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
 
-
 # Whether to initialize covariance estimators at a zero matrix (or the identity
 # matrix).
 INIT_COVARIANCES_AT_ZERO = False
@@ -49,6 +48,25 @@ EIGENVALUE_DECOMPOSITION_THRESHOLD = 2
 # be at least as large as this value before they are used to compute inverses or
 # matrix powers. Must be nonnegative.
 EIGENVALUE_CLIPPING_THRESHOLD = 0.0
+
+
+def set_global_constants(init_covariances_at_zero=None, zero_debias=None,
+                         eigenvalue_decomposition_threshold=None,
+                         eigenvalue_clipping_threshold=None):
+  """Sets various global constants used by the classes in this module."""
+  global INIT_COVARIANCES_AT_ZERO
+  global ZERO_DEBIAS
+  global EIGENVALUE_DECOMPOSITION_THRESHOLD
+  global EIGENVALUE_CLIPPING_THRESHOLD
+
+  if init_covariances_at_zero is not None:
+    INIT_COVARIANCES_AT_ZERO = init_covariances_at_zero
+  if zero_debias is not None:
+    ZERO_DEBIAS = zero_debias
+  if eigenvalue_decomposition_threshold is not None:
+    EIGENVALUE_DECOMPOSITION_THRESHOLD = eigenvalue_decomposition_threshold
+  if eigenvalue_clipping_threshold is not None:
+    EIGENVALUE_CLIPPING_THRESHOLD = eigenvalue_clipping_threshold
 
 
 def inverse_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
@@ -298,7 +316,7 @@ class InverseProvidingFactor(FisherFactor):
       self.register_eigendecomp()  # ensures self._eigendecomp is set
       eigenvalues, eigenvectors = self._eigendecomp  # pylint: disable=unpacking-non-sequence
 
-      # the matrix self._cov is positive semidefinite by construction, but the
+      # The matrix self._cov is positive semidefinite by construction, but the
       # numerical eigenvalues could be negative due to numerical errors, so here
       # we clip them to be at least EIGENVALUE_CLIPPING_THRESHOLD.
       clipped_eigenvalues = math_ops.maximum(eigenvalues,
@@ -410,19 +428,36 @@ class NaiveDiagonalFactor(DiagonalFactor):
 
 
 class FullyConnectedDiagonalFactor(DiagonalFactor):
-  """FisherFactor for a diagonal approx of a fully-connected layer's Fisher."""
+  r"""FisherFactor for a diagonal approx of a fully-connected layer's Fisher.
+
+  Given in = [batch_size, input_size] and out_grad = [batch_size, output_size],
+  approximates the covariance as,
+
+    Cov(in, out) = (1/batch_size) \sum_{i} outer(in[i], out_grad[i]) ** 2.0
+
+  where the square is taken element-wise.
+  """
 
   # TODO(jamesmartens): add units tests for this class
 
   def __init__(self, inputs, outputs_grads, has_bias=False):
+    """Instantiate FullyConnectedDiagonalFactor.
+
+    Args:
+      inputs: Tensor of shape [batch_size, input_size]. Inputs to fully
+        connected layer.
+      outputs_grads: List of Tensors of shape [batch_size, output_size].
+        Gradient of loss with respect to layer's preactivations.
+      has_bias: bool. If True, append '1' to each input.
+    """
     self._outputs_grads = outputs_grads
     self._batch_size = array_ops.shape(inputs)[0]
     self._orig_tensors_name = scope_string_from_params((inputs,) +
                                                        tuple(outputs_grads))
 
     # Note that we precompute the required operations on the inputs since the
-    # inputs don't change with the 'idx' argument to _compute_new_cov.  Only
-    # the target entry of _outputs_grads changes with idx.
+    # inputs don't change with the 'idx' argument to _compute_new_cov.  (Only
+    # the target entry of _outputs_grads changes with idx.)
     if has_bias:
       inputs = _append_homog(inputs)
     self._squared_inputs = math_ops.square(inputs)
@@ -484,8 +519,8 @@ class ConvDiagonalFactor(DiagonalFactor):
                                                      + tuple(outputs_grads))
 
     # Note that we precompute the required operations on the inputs since the
-    # inputs don't change with the 'idx' argument to _compute_new_cov.  Only
-    # the target entry of _outputs_grads changes with idx.
+    # inputs don't change with the 'idx' argument to _compute_new_cov.  (Only
+    # the target entry of _outputs_grads changes with idx.)
     filter_height, filter_width, _, _ = self._filter_shape
     patches = array_ops.extract_image_patches(
         inputs,
@@ -526,9 +561,8 @@ class ConvDiagonalFactor(DiagonalFactor):
 
   def _convdiag_sum_of_squares(self, patches, outputs_grad):
     # This computes the sum of the squares of the per-training-case "gradients".
-    # It does this simply by computing a giant tensor containing all of these
-    # them, doing an entry-wise square, and them summing along the batch
-    # dimension.
+    # It does this simply by computing a giant tensor containing all of these,
+    # doing an entry-wise square, and them summing along the batch dimension.
     case_wise_gradients = special_math_ops.einsum("bijk,bijl->bkl", patches,
                                                   outputs_grad)
     return math_ops.reduce_sum(math_ops.square(case_wise_gradients), axis=0)
@@ -539,6 +573,14 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
   """
 
   def __init__(self, tensors, has_bias=False):
+    """Instantiate FullyConnectedKroneckerFactor.
+
+    Args:
+      tensors: List of Tensors of shape [batch_size, n]. Represents either a
+        layer's inputs or its output's gradients.
+      has_bias: bool. If True, assume this factor is for the layer's inputs and
+        append '1' to each row.
+    """
     # The tensor argument is either a tensor of input activations or a tensor of
     # output pre-activation gradients.
     self._has_bias = has_bias

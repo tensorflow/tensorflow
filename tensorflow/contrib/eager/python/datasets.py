@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Support for tf.contrib.data when eager execution is enabled."""
+"""Iteration over tf.data.Datasets when eager execution is enabled."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,6 +23,8 @@ import threading
 from tensorflow.python.data.util import nest
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import resource_variable_ops
 
@@ -39,20 +41,23 @@ def _iterator_shared_name():
 
 
 class Iterator(object):
-  """An iterator producing tf.Tensor objects from a tf.contrib.data.Dataset."""
+  """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
 
   def __init__(self, dataset):
     """Creates a new iterator over the given dataset.
 
     For example:
     ```python
-    dataset = tf.contrib.data.Dataset.range(4)
+    dataset = tf.data.Dataset.range(4)
     for x in Iterator(dataset):
       print(x)
     ```
 
+    Tensors produced will be placed on the device on which this iterator object
+    was created.
+
     Args:
-      dataset: A `tf.contrib.data.Dataset` object.
+      dataset: A `tf.data.Dataset` object.
 
     Raises:
       RuntimeError: When invoked without eager execution enabled.
@@ -60,22 +65,27 @@ class Iterator(object):
 
     if not context.in_eager_mode():
       raise RuntimeError(
-          "{} objects only make sense when eager execution is enabled".format(
-              type(self)))
-    ds_variant = dataset._as_variant_tensor()  # pylint: disable=protected-access
-    self._output_types = dataset.output_types
-    self._flat_output_types = nest.flatten(dataset.output_types)
-    self._flat_output_shapes = nest.flatten(dataset.output_shapes)
-    self._resource = gen_dataset_ops.iterator(
-        container="",
-        shared_name=_iterator_shared_name(),
-        output_types=self._flat_output_types,
-        output_shapes=self._flat_output_shapes)
-    gen_dataset_ops.make_iterator(ds_variant, self._resource)
+          "{} objects can only be used when eager execution is enabled, use "
+          "tf.data.Dataset.make_iterator or "
+          "tf.data.Dataset.make_one_shot_iterator for graph construction".
+          format(type(self)))
+    with ops.device("/device:CPU:0"):
+      ds_variant = dataset._as_variant_tensor()  # pylint: disable=protected-access
+      self._output_types = dataset.output_types
+      self._flat_output_types = nest.flatten(dataset.output_types)
+      self._flat_output_shapes = nest.flatten(dataset.output_shapes)
+      self._resource = gen_dataset_ops.iterator(
+          container="",
+          shared_name=_iterator_shared_name(),
+          output_types=self._flat_output_types,
+          output_shapes=self._flat_output_shapes)
+      gen_dataset_ops.make_iterator(ds_variant, self._resource)
+    self._device = context.context().device_name
 
   def __del__(self):
     if self._resource is not None:
-      resource_variable_ops.destroy_resource_op(self._resource)
+      with ops.device("/device:CPU:0"):
+        resource_variable_ops.destroy_resource_op(self._resource)
     self._resource = None
 
   def __iter__(self):
@@ -87,10 +97,19 @@ class Iterator(object):
   def next(self):
     """Return the next tf.Tensor from the dataset."""
     try:
-      ret = gen_dataset_ops.iterator_get_next(
-          self._resource,
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
-      return nest.pack_sequence_as(self._output_types, ret)
+      # TODO(ashankar): Consider removing this ops.device() contextmanager
+      # and instead mimic ops placement in graphs: Operations on resource
+      # handles execute on the same device as where the resource is placed.
+      with ops.device("/device:CPU:0"):
+        ret = gen_dataset_ops.iterator_get_next(
+            self._resource,
+            output_types=self._flat_output_types,
+            output_shapes=self._flat_output_shapes)
     except errors.OutOfRangeError:
       raise StopIteration
+    # Copies tensors from CPU to the current device if necessary.
+    # TODO(rohanj): This should be replaced by the mechanism to have the
+    # runtime's threads copy tensors to the destination device.
+    with ops.device(self._device):
+      ret = [array_ops.identity(x) for x in ret]
+      return nest.pack_sequence_as(self._output_types, ret)

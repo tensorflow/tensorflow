@@ -26,13 +26,14 @@ import sys
 import threading
 
 import numpy as np
-
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import context
@@ -46,10 +47,10 @@ from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
+from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
-from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 # Temporary global switch determining if we should enable the work-in-progress
@@ -75,13 +76,13 @@ def tensor_id(tensor):
   return tensor._id  # pylint: disable=protected-access
 
 
-def _in_gpu_device(ctx):
-  return "GPU" == ctx.device_spec.device_type
+class _NullContextmanager(object):
 
+  def __enter__(self):
+    pass
 
-@tf_contextlib.contextmanager
-def _null_contextmanager():
-  yield
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    return False  # False values do not suppress exceptions
 
 
 def _override_helper(clazz_object, operator, func):
@@ -171,16 +172,20 @@ def register_dense_tensor_like_type(tensor_type):
   _TENSOR_LIKE_TYPES = tuple(list(_TENSOR_LIKE_TYPES) + [tensor_type])
 
 
-_uid_counter = 0
-_uid_lock = threading.Lock()
-
-
 def uid():
   """A unique (within this program execution) integer."""
-  with _uid_lock:
-    global _uid_counter
-    _uid_counter += 1
-    return _uid_counter
+  return c_api.TFE_Py_UID()
+
+
+def numpy_text(tensor, is_repr=False):
+  """Human readable representation of a tensor's numpy value."""
+  if tensor.dtype.is_numpy_compatible:
+    text = repr(tensor.numpy()) if is_repr else str(tensor.numpy())
+  else:
+    text = "<unprintable>"
+  if "\n" in text:
+    text = "\n" + text
+  return text
 
 
 # NOTE(ebrevdo): Do not subclass this.  If you do, I will break you on purpose.
@@ -378,6 +383,14 @@ class Tensor(_TensorLike):
       return None
     return tuple(shape)
 
+  def _rank(self):
+    """Integer rank of this Tensor, if known, else None.
+
+    Returns:
+      Integer rank or None
+    """
+    return self._shape.ndims
+
   def get_shape(self):
     """Alias of Tensor.shape."""
     return self.shape
@@ -413,6 +426,7 @@ class Tensor(_TensorLike):
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
+    # TODO(skyewm): call C API
     self._shape = self._shape.merge_with(shape)
 
   @property
@@ -584,155 +598,23 @@ class Tensor(_TensorLike):
     return ret
 
 
-def _eager_cast(tensor_handle, src_type_enum, dest_type_enum, ctx):
-  """Cast tensor_handle from src_type_enum to dest_type_enum."""
-  # pylint: disable=protected-access
-  try:
-    out_handle, = c_api.TFE_Py_Execute(
-        ctx._handle, b"/job:localhost/replica:0/task:0/device:CPU:0", b"Cast",
-        [tensor_handle], (b"SrcT", src_type_enum, b"DstT", dest_type_enum), 1)
-  except core._NotOkStatusException as e:
-    six.raise_from(core._status_to_exception(e.code, e.message), None)
-  # pylint: enable=protected-access
-  # TODO(josh11b): Should we support tracing or post_execution_callbacks here?
-  return out_handle
-
-
-# TODO(agarwal): rename to TensorHandle.
-class EagerTensor(Tensor):
-  """A TensorFlow Eager Tensor."""
-
-  def __init__(self, value, ctx, dtype=None):  # pylint: disable=super-init-not-called
-    """Creates a Tensor object from a Python object or numpy array.
-
-    May share storage with the numpy array, in which case changes to the numpy
-    object will reflect
-    in the Tensor.
-
-    Arguments:
-      value: A numpy.array or a Python object to create a Tensor for.
-      ctx: The value of context.context().
-      dtype: TensorFlow dtype for the returned Tensor. If None, one will be
-        automatically selected.
-    """
-    # TODO(ashankar): Evaluate if we can and perhaps share code with
-    # tf.constant defined in
-    # https://www.tensorflow.org/code/tensorflow/python/framework/constant_op.py
-    self._id = uid()
-    # pylint: disable=protected-access
-    if isinstance(value, np.ndarray):
-      if dtype is not None:
-        npt = dtype.as_numpy_dtype
-        if npt != value.dtype:
-          value = value.astype(npt)
-      try:
-        value = np.asarray(value, order="C")
-        self._handle = c_api.TFE_Py_NumpyToTensorHandle(value)
-      except core._NotOkStatusException as e:
-        six.raise_from(core._status_to_exception(e.code, e.message), None)
-      dtype = dtypes.as_dtype(c_api.TFE_TensorHandleDataType(self._handle))
-    else:
-      dtype_enum = None if dtype is None else dtype.as_datatype_enum
-      try:
-        self._handle = c_api.TFE_Py_SequenceToTensorHandle(value, dtype_enum)
-      except core._NotOkStatusException as e:
-        six.raise_from(core._status_to_exception(e.code, e.message), None)
-
-      dtype_enum = c_api.TFE_TensorHandleDataType(self._handle)
-      dtype_actual = dtypes.as_dtype(dtype_enum)
-      if dtype is not None and dtype != dtype_actual:
-        self._handle = _eager_cast(self._handle, dtype_enum,
-                                   dtype.as_datatype_enum, ctx)
-      else:
-        dtype = dtype_actual
-    # pylint: enable=protected-access
-
-    # Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
-    # memory.  This change approximates the same behavior for eager execution -
-    # keeping int32 tensors in host memory.
-    #
-    # We do so to preclude the need for callers into such kernels from having to
-    # explicitly place the int32 tensors in host memory. For example, prior to
-    # this change one needed:
-    #
-    # with tf.device('/gpu:0'):
-    #   ...  # code here
-    #   with tf.device('/cpu:0'):
-    #     shape = tf.constant(...)
-    #   y = tf.random_uniform(shape)
-    #
-    # Without the CPU device block tfe.ops.random_uniform would fail since the
-    # kernel expects the shape in host memory.
-    #
-    # After this change, we simplify the code:
-    #
-    # with tf.device('/gpu:0'):
-    #   y = tf.random_uniform(...)
-    #
-    # The approximation is not exact there are GPU kernels which do not
-    # require host memory for int32 tensors. This will lead to a discrepancy
-    # between eager and graph execution.
-    # TODO(ashankar): Fix this.
-    if _in_gpu_device(ctx) and dtype != dtypes.int32:
-      # pylint: disable=protected-access
-      device_name = ctx.device_name
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._handle = c_api.TFE_TensorHandleCopyToDevice(
-            self._handle, ctx._handle, device_name, status)
-      # pylint: enable=protected-access
-
-    self._dtype = dtype
-
-    # This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
-    # be None for tensors of type other than DT_REOSURCE. For DT_RESOURCE
-    # tensors, this will contain a serialized HandleData proto with shape
-    # inference metadata about shapes and dtypes of resources accessible from
-    # this handle.
-    self._handle_data = None
-    if core.active_trace() is not None:
-      core.active_trace().record_tensor("MANUAL",
-                                        tensor_id(self), self.device,
-                                        self.shape.num_elements())
-
-  def __del__(self):
-    try:
-      tape.delete_trace(self)
-      if c_api is not None and c_api.TFE_DeleteTensorHandle is not None:
-        c_api.TFE_DeleteTensorHandle(self._handle)
-      if core.active_trace() is not None:
-        core.active_trace().delete_tensor(tensor_id(self))
-    except (AttributeError, TypeError):
-      # Sometimes deletion during program shutdown throws exception as other
-      # modules are no longer available.
-      pass
-
-  def _numpy_text(self, is_repr=False):
-    if self.dtype.is_numpy_compatible:
-      numpy_text = repr(self.numpy()) if is_repr else str(self.numpy())
-    else:
-      numpy_text = "<unprintable>"
-    if "\n" in numpy_text:
-      numpy_text = "\n" + numpy_text
-    return numpy_text
-
-  def __str__(self):
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (self._numpy_text(),
-                                                  self.shape,
-                                                  self.dtype.name)
-
-  def __repr__(self):
-    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
-        self._id, self.shape, self.dtype.name, self._numpy_text(is_repr=True))
+# TODO(agarwal): consider getting rid of this.
+class _EagerTensorBase(Tensor):
+  """Base class for EagerTensor."""
 
   @staticmethod
-  def _override_operator(name, func):
-    setattr(EagerTensor, name, func)
+  def _delete_trace(tid):
+    """Helper function to be called by __del__ of the subclass."""
+    tape.delete_trace(tid)
+
+  @property
+  def dtype(self):
+    # Note: using the intern table directly here as this is
+    # performance-sensitive in some models.
+    return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def numpy(self):
     """Returns a numpy array with the same contents as the Tensor.
-
-    The contents of the Tensor must be backed by host memory. The
-    as_cpu_tensor() method can be used ensure that this is true.
 
     TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
     buffer but instead always explicitly copy? Note that currently it may or may
@@ -741,70 +623,39 @@ class EagerTensor(Tensor):
     Returns:
       A numpy array that may share memory with the Tensor object. Any changes
       to one may be reflected in the other.
+
+    Raises:
+      ValueError: if the type of this Tensor is not representable in numpy.
     """
-    # TODO(ashankar): This with status business seems expensive. Profile/avoid?
-    cpu = self.as_cpu_tensor()
-    with errors.raise_exception_on_not_ok_status() as status:
-      return c_api.TFE_Py_TensorHandleToNumpy(cpu._handle, status)  # pylint: disable=protected-access
+    if self.dtype == dtypes.resource:
+      raise ValueError("Resource handles are not convertible to numpy.")
+    return self.cpu()._numpy()  # pylint: disable=protected-access
 
-  def _copy(self, ctx=None, device_name=None):
-    """Copies tensor to dest device."""
-    # pylint: disable=protected-access
-    # Creates a new tensor on the dest device.
-    if ctx is None:
-      ctx = context.context()
-    if device_name is None:
-      device_name = ctx.device_name
-    with errors.raise_exception_on_not_ok_status() as status:
-      h = c_api.TFE_TensorHandleCopyToDevice(self._handle, ctx._handle,
-                                             device_name, status)
-    new_tensor = _tensor_from_handle(h)
-    if core.active_trace() is not None:
-      core.active_trace().record_tensor("COPY",
-                                        tensor_id(new_tensor),
-                                        new_tensor.device,
-                                        new_tensor.shape.num_elements())
+  # __int__ and  __float__ may copy the tensor to CPU and
+  # only work for scalars; values are cast as per numpy.
+  def __int__(self):
+    return int(self.numpy())
 
-    # Record the copy on tape and define backprop copy as well.
-    if not context.in_graph_mode():
-      self_device = self.device
-      def grad_fun(dresult):
-        with errors.raise_exception_on_not_ok_status() as status:
-          grad_h = c_api.TFE_TensorHandleCopyToDevice(
-              dresult._handle, ctx._handle, self_device, status)
-        return _tensor_from_handle(grad_h)
-      tape.record_operation("_copy", [new_tensor], [self], [], grad_fun)
-    return new_tensor
-    # pylint: enable=protected-access
+  def __float__(self):
+    return float(self.numpy())
 
-  def _dup(self):
-    return self._copy(device_name=self.device)
+  def __array__(self):
+    return np.array(self.numpy())
 
-  @property
-  def device(self):
-    return c_api.TFE_TensorHandleDeviceName(self._handle)
+  def _numpy(self):
+    raise NotImplementedError()
 
-  @property
-  def dtype(self):
-    return self._dtype
+  def __copy__(self):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    return self
 
-  @property
-  def shape(self):
-    """The shape of this Tensor as a TensorShape object."""
-    n = c_api.TFE_TensorHandleNumDims(self._handle)
-    # As of May 2017, TFE_TensorHandle objects were always backed by concrete
-    # tensors (which have a valid, known shape).  There were vague plans to
-    # change this so that the Tensor class can also represent Tensors that have
-    # not yet been computed.
-    # If that happens, handle that (e.g., if n < 0: return tensor_shape(None))
-    # and also handle -1s returned by TFE_TensorHandleDim.
-    assert n >= 0, "See comment in source code"
-    return tensor_shape.TensorShape(
-        [c_api.TFE_TensorHandleDim(self._handle, x) for x in range(n)])
+  def __deepcopy__(self, memo):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    del memo
+    return self
 
-  def get_shape(self):
-    """Alias of Tensor.shape."""
-    return self.shape
+  def _datatype_enum(self):
+    raise NotImplementedError()
 
   def _shape_tuple(self):
     """The shape of this Tensor, as a tuple.
@@ -819,25 +670,84 @@ class EagerTensor(Tensor):
     Returns:
       tuple with the shape.
     """
-    n = c_api.TFE_TensorHandleNumDims(self._handle)
-    # As of May 2017, TFE_TensorHandle objects were always backed by concrete
-    # tensors (which have a valid, known shape).  There were vague plans to
-    # change this so that the Tensor class can also represent Tensors that have
-    # not yet been computed.
-    # If that happens, handle that (e.g., if n < 0: return tensor_shape(None))
-    # and also handle -1s returned by TFE_TensorHandleDim.
-    assert n >= 0, "See comment in source code"
-    return tuple(c_api.TFE_TensorHandleDim(self._handle, x) for x in range(n))
+    raise NotImplementedError()
+
+  def _rank(self):
+    """Integer rank of this Tensor.
+
+    Unlike regular Tensors, the rank is always known for EagerTensors.
+
+    This is more performant than len(self._shape_tuple())
+
+    Returns:
+      Integer rank
+    """
+    raise NotImplementedError()
+
+  def _copy_to_device(self, context, device):  # pylint: disable=redefined-outer-name
+    raise NotImplementedError()
+
+  def __str__(self):
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self),
+                                                  self.shape,
+                                                  self.dtype.name)
+
+  def __repr__(self):
+    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
+        self._id, self.shape, self.dtype.name, numpy_text(self, is_repr=True))
+
+  @staticmethod
+  def _override_operator(name, func):
+    setattr(_EagerTensorBase, name, func)
+
+  def _copy(self, ctx=None, device_name=None):
+    """Copies tensor to dest device."""
+    # pylint: disable=protected-access
+    # Creates a new tensor on the dest device.
+    if ctx is None:
+      ctx = context.context()
+    if device_name is None:
+      device_name = ctx.device_name
+    # pylint: disable=protected-access
+    try:
+      new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
+    except core._NotOkStatusException as e:
+      six.raise_from(core._status_to_exception(e.code, e.message), None)
+    if core.active_trace() is not None:
+      core.active_trace().record_tensor("COPY",
+                                        tensor_id(new_tensor),
+                                        new_tensor.device,
+                                        new_tensor.shape.num_elements())
+
+    # Record the copy on tape and define backprop copy as well.
+    if not context.in_graph_mode():
+      self_device = self.device
+      def grad_fun(dresult):
+        return [dresult._copy(device_name=self_device)]
+      tape.record_operation("_copy", [new_tensor], [self], grad_fun)
+    return new_tensor
+    # pylint: enable=protected-access
+
+  def _dup(self):
+    return self._copy(device_name=self.device)
+
+  @property
+  def shape(self):
+    return tensor_shape.TensorShape(self._shape_tuple())
+
+  def get_shape(self):
+    """Alias of Tensor.shape."""
+    return self.shape
 
   def _shape_as_list(self):
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
 
-  def as_cpu_tensor(self):
+  def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
 
-  def as_gpu_tensor(self, gpu_index=0):
+  def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
     Arguments:
@@ -857,30 +767,33 @@ class EagerTensor(Tensor):
     if self.dtype != dtypes.bool:
       raise ValueError(
           "Non-boolean tensor %s cannot be converted to boolean." % repr(self))
-    return bool(self.as_cpu_tensor().numpy())
+    return bool(self.cpu().numpy())
 
   def __nonzero__(self):
     return self.__bool__()
 
+  def set_shape(self, shape):
+    if not self.shape.is_compatible_with(shape):
+      raise ValueError(
+          "EagerTensor's shape %s is not compatible with supplied shape %s" %
+          (self.shape, shape))
+
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
-    raise NotImplementedError("op not supported for Eager Tensors.")
+    raise AttributeError("op not supported for Eager Tensors.")
 
   @property
   def graph(self):
-    raise NotImplementedError("graph not supported for Eager Tensors.")
+    raise AttributeError("graph not supported for Eager Tensors.")
 
   @property
   def name(self):
-    raise NotImplementedError("name not supported for Eager Tensors.")
-
-  def set_shape(self, shape):
-    raise NotImplementedError("set_shape not supported for Eager Tensors.")
+    raise AttributeError("name not supported for Eager Tensors.")
 
   @property
   def value_index(self):
-    raise NotImplementedError("value_index not supported for Eager Tensors.")
+    raise AttributeError("value_index not supported for Eager Tensors.")
 
   def consumers(self):
     raise NotImplementedError("consumers not supported for Eager Tensors.")
@@ -899,35 +812,9 @@ class EagerTensor(Tensor):
     raise NotImplementedError("eval not supported for Eager Tensors.")
 
 
-def _tensor_from_handle(handle):
-  """'Private' constructor for the Tensor object.
-
-  The existence of a 'handle' is an implementation detail that should be hidden
-  from users of this module.  Functions within this module do need to create a
-  Tensor object from a handle though.
-
-  One option would be to have an __init__(self, handle) method on the
-  Tensor class, but that would make the existence and use of a handle
-  'public'.
-
-  Instead, this function avoids exposing a Tensor.__init__ that understands
-  handles and yet allows functions within this module to create Tensor
-  objects from a handle.
-
-  Arguments:
-    handle: A valid TFE_TensorHandle object.
-
-  Returns:
-    A Tensor object.
-  """
-  # pylint: disable=protected-access
-  t = EagerTensor.__new__(EagerTensor)
-  t._id = uid()
-  t._handle = handle
-  t._dtype = dtypes.as_dtype(c_api.TFE_TensorHandleDataType(handle))
-  t._handle_data = None
-  return t
-  # pylint: enable=protected-access
+# This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
+# registers it with the current module.
+EagerTensor = c_api.TFE_Py_InitEagerTensor(_EagerTensorBase)
 
 
 def _TensorTensorConversionFunction(t, dtype=None, name=None, as_ref=False):
@@ -1050,10 +937,6 @@ def internal_convert_to_tensor(value,
       # argument.  We exepct that the C runtime will do that checking
       # when we execute the kernel.
       return value
-    values = nest.flatten(value)
-    if (len(values) > 1 and
-        any(isinstance(v, EagerTensor) for v in values)):
-      raise TypeError("Cannot convert to a eager tensor.")
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -1963,15 +1846,19 @@ class Operation(object):
       TypeError: if ops is not a list of Operations.
       ValueError: if any op in ops is from a different graph.
     """
-    assert not self._c_op, (
-        "Operation._add_control_inputs doesn't work with C API")
-    if ops:
+    if self._c_op:
       for op in ops:
         if not isinstance(op, Operation):
           raise TypeError("op must be an Operation: %s" % op)
-        _assert_same_graph(self, op)
-        self._control_inputs.append(op)
-      self._recompute_node_def()
+        c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
+    else:
+      if ops:
+        for op in ops:
+          if not isinstance(op, Operation):
+            raise TypeError("op must be an Operation: %s" % op)
+          _assert_same_graph(self, op)
+          self._control_inputs.append(op)
+        self._recompute_node_def()
 
   def _add_control_input(self, op):
     """Add a new control input to this operation.
@@ -1984,6 +1871,8 @@ class Operation(object):
       ValueError: if op is from a different graph.
     """
     if self._c_op:
+      if not isinstance(op, Operation):
+        raise TypeError("op must be an Operation: %s" % op)
       c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
     else:
       self._add_control_inputs([op])
@@ -2039,6 +1928,7 @@ class Operation(object):
     """The list of `Tensor` objects representing the data inputs of this op."""
     if self._c_op:
       tf_outputs = c_api.GetOperationInputs(self._c_op)
+      # TODO(skyewm): return Operation._InputList
       # pylint: disable=protected-access
       return [self.graph._get_tensor_by_tf_output(tf_output)
               for tf_output in tf_outputs]
@@ -2136,7 +2026,19 @@ class Operation(object):
       protocol buffer.
     """
     # pylint: enable=line-too-long
-    return self._op_def
+    if self._c_op:
+      with errors.raise_exception_on_not_ok_status() as status:
+        with c_api_util.tf_buffer() as buf:
+          # pylint: disable=protected-access
+          c_api.TF_GraphGetOpDef(self._graph._c_graph,
+                                 compat.as_bytes(self.type), buf, status)
+          # pylint: enable=protected-access
+          data = c_api.TF_GetBuffer(buf)
+      op_def = op_def_pb2.OpDef()
+      op_def.ParseFromString(compat.as_bytes(data))
+      return op_def
+    else:
+      return self._op_def
 
   @property
   def traceback(self):
@@ -2655,7 +2557,14 @@ class Graph(object):
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
     # Resource container.
-    self._container = ""
+    if context.in_graph_mode():
+      self._container_prefix = ""
+    else:
+      # In Eager mode, isolate resources (particularly ResourceVariables) in
+      # Graphs by default. This prevents unintended variable sharing. Graph mode
+      # gets this kind of isolation from Sessions.
+      self._container_prefix = "eager-execution-%d/" % (uid(),)
+    self._container = self._container_prefix
     self._registered_ops = op_def_registry.get_registered_ops()
 
     # TODO(skyewm): fold as much of the above as possible into the C
@@ -2976,19 +2885,14 @@ class Graph(object):
       ValueError: if another function is defined with the same name.
     """
     name = function.name
-    previous = self._functions.get(name, None)
-    if previous:
-      raise ValueError("Another function is already defined with that name")
     # Sanity checks on gradient definition.
     if (function.grad_func_name is not None) and (function.python_grad_func is
                                                   not None):
       raise ValueError("Gradient defined twice for function %s" % name)
-    # Need a new-enough consumer to support the functions we add to the graph.
-    if self._graph_def_versions.min_consumer < 12:
-      self._graph_def_versions.min_consumer = 12
-    self._functions[name] = function
+
+    # Add function to graph
+    # pylint: disable=protected-access
     if self._c_graph:
-      # pylint: disable=protected-access
       assert function._c_func, (
           "Cannot add function created without C API support to graph "
           "created with C API support")
@@ -2996,7 +2900,26 @@ class Graph(object):
         gradient = function._grad_func._c_func if function._grad_func else None
         c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient,
                                    status)
-      # pylint: enable=protected-access
+    else:
+      # If there is already a function with the same name, raise an error
+      # if bodies are different. Else, do nothing. The C API version above
+      # has the same behavior.
+      previous = self._functions.get(name, None)
+      if previous:
+        # This check is not ideal as we can have a hash collision with only
+        # 32 bits in the hash, but the non C API mode is being deprecated.
+        # Don't bother changing it now.
+        if previous._hash_str == function._hash_str:
+          return
+        else:
+          raise ValueError("Another function is already defined with that name")
+    # pylint: enable=protected-access
+
+    self._functions[name] = function
+
+    # Need a new-enough consumer to support the functions we add to the graph.
+    if self._graph_def_versions.min_consumer < 12:
+      self._graph_def_versions.min_consumer = 12
 
   @property
   def building_function(self):
@@ -3953,7 +3876,7 @@ class Graph(object):
     """
     original_container = self._container
     try:
-      self._container = container_name
+      self._container = self._container_prefix + container_name
       yield self._container
     finally:
       self._container = original_container
@@ -4435,7 +4358,7 @@ def colocate_with(op, ignore_existing=False):
     if op is not None:
       return device(op.device)
     else:
-      return _null_contextmanager()
+      return _NullContextmanager()
 
 
 def control_dependencies(control_inputs):
@@ -4457,7 +4380,7 @@ def control_dependencies(control_inputs):
   if context.in_graph_mode():
     return get_default_graph().control_dependencies(control_inputs)
   else:
-    return _null_contextmanager()
+    return _NullContextmanager()
 
 
 class _DefaultStack(threading.local):
@@ -4492,14 +4415,17 @@ class _DefaultStack(threading.local):
       self.stack.append(default)
       yield default
     finally:
-      if self._enforce_nesting:
-        if self.stack[-1] is not default:
-          raise AssertionError(
-              "Nesting violated for default stack of %s objects" %
-              type(default))
-        self.stack.pop()
-      else:
-        self.stack.remove(default)
+      # stack may be empty if reset() was called
+      if self.stack:
+        if self._enforce_nesting:
+          if self.stack[-1] is not default:
+            raise AssertionError(
+                "Nesting violated for default stack of %s objects" %
+                type(default))
+          self.stack.pop()
+        else:
+          self.stack.remove(default)
+
 
 _default_session_stack = _DefaultStack()  # pylint: disable=protected-access
 
@@ -4675,6 +4601,91 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 _default_graph_stack = _DefaultGraphStack()
 
 
+def enable_eager_execution(config=None, device_policy=None):
+  """Enables, for the rest of the lifetime of this program, eager execution.
+
+  If not called immediately on startup risks creating breakage and bugs.
+
+  Example:
+  ```python
+  tfe.enable_eager_execution()
+
+  # After eager execution is enabled, operations are executed as they are
+  # defined and `Tensor`s hold concrete values, which can be accessed as
+  # `numpy.ndarray`s through the `numpy()` method.
+  assert tf.multiply(6, 7).numpy() == 42
+  ```
+
+  Args:
+    config: (Optional.) A `ConfigProto` protocol buffer with configuration
+     options for the Context. Note that a lot of these options may be
+     currently unimplemented or irrelevant when eager execution is enabled.
+    device_policy: (Optional.) What policy to use when trying to run an
+     operation on a device with inputs which are not on that device.
+     Valid values:
+       tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
+         correct.
+       tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+         right device but raises a warning.
+       tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+         hide performance problems.
+
+  Raises:
+    ValueError: If trying to create a context after using graph operations
+     or if trying to create a context with nontrivial options which differ
+     from those of the existing context.
+  """
+  # pylint: disable=protected-access
+  if context._default_mode == context.GRAPH_MODE:
+    graph_mode_has_been_used = (
+        _default_session_stack.stack or
+        _default_graph_stack._global_default_graph is not None)
+    if graph_mode_has_been_used:
+      raise ValueError(
+          "tfe.enable_eager_execution has to be called at program startup.")
+  context._default_mode = context.EAGER_MODE
+  if context._context is None:
+    context._context = context.Context(config=config,
+                                       device_policy=device_policy)
+  elif ((config is not None and config is not context._context._config)
+        or (device_policy is not None
+            and device_policy is not context._context._device_policy)):
+    raise ValueError("Trying to change the options of an active eager"
+                     " execution. Context config: %s, specified config:"
+                     " %s. Context device policy: %s; specified device"
+                     " policy: %s." % (config, context._context._config,
+                                       device_policy,
+                                       context._context._device_policy))
+
+
+def eager_run(main=None, argv=None):
+  """Runs the program with an optional main function and argv list.
+
+  The program will run with eager execution enabled.
+
+  Example:
+  ```python
+  import tensorflow as tf
+  # Import subject to future changes:
+  from tensorflow.contrib.eager.python import tfe
+
+  def main(_):
+    u = tf.constant(6.0)
+    v = tf.constant(7.0)
+    print(u * v)
+
+  if __name__ == "__main__":
+    tfe.run()
+  ```
+
+  Args:
+    main: the main function to run.
+    argv: the arguments to pass to it.
+  """
+  enable_eager_execution()
+  app.run(main, argv)
+
+
 def reset_default_graph():
   """Clears the default graph stack and resets the global default graph.
 
@@ -4709,6 +4720,24 @@ def get_default_graph():
     The default `Graph` being used in the current thread.
   """
   return _default_graph_stack.get_default()
+
+
+def get_name_scope():
+  """Returns the current name scope in the default_graph.
+
+  For example:
+
+  ```python
+  with tf.name_scope('scope1'):
+    with tf.name_scope('scope2'):
+      print(tf.get_name_scope())
+  ```
+  would print the string `scope1/scope2`.
+
+  Returns:
+    A string representing the current name scope.
+  """
+  return get_default_graph().get_name_scope()
 
 
 def _assert_same_graph(original_item, item):
@@ -4929,9 +4958,10 @@ class GraphKeys(object):
 
   @decorator_utils.classproperty
   def VARIABLES(cls):  # pylint: disable=no-self-argument
-    logging.warning("VARIABLES collection name is deprecated, "
-                    "please use GLOBAL_VARIABLES instead; "
-                    "VARIABLES will be removed after 2017-03-02.")
+    logging.log_first_n(logging.WARN,
+                        "VARIABLES collection name is deprecated, please use "
+                        "GLOBAL_VARIABLES instead; VARIABLES will be removed "
+                        "after 2017-03-02.", 1)
     return cls.GLOBAL_VARIABLES
 
 
@@ -4945,6 +4975,10 @@ def add_to_collection(name, value):
     name: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
     value: The value to add to the collection.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
 
@@ -4959,6 +4993,10 @@ def add_to_collections(names, value):
     names: The key for the collections. The `GraphKeys` class
       contains many standard names for collections.
     value: The value to add to the collections.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
 
@@ -4978,6 +5016,10 @@ def get_collection_ref(key):
     list if no value has been added to that collection.  Note that this returns
     the collection list itself, which can be modified in place to change the
     collection.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   return get_default_graph().get_collection_ref(key)
 
@@ -5002,6 +5044,10 @@ def get_collection(key, scope=None):
     an empty list if no value has been added to that collection. The
     list contains the values in the order under which they were
     collected.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   return get_default_graph().get_collection(key, scope)
 
@@ -5011,10 +5057,11 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
-# pylint: disable=g-doc-return-or-yield
-@tf_contextlib.contextmanager
-def name_scope(name, default_name=None, values=None):
-  """Returns a context manager for use when defining a Python op.
+# Named like a function for backwards compatibility with the
+# @tf_contextlib.contextmanager version, which was switched to a class to avoid
+# some object creation overhead.
+class name_scope(object):  # pylint: disable=invalid-name
+  """A context manager for use when defining a Python op.
 
   This context manager validates that the given `values` are from the
   same graph, makes that graph the default graph, and pushes a
@@ -5033,48 +5080,68 @@ def name_scope(name, default_name=None, values=None):
       # Define some computation that uses `a`, `b`, and `c`.
       return foo_op(..., name=scope)
   ```
-
-  Args:
-    name: The name argument that is passed to the op function.
-    default_name: The default name to use if the `name` argument is `None`.
-    values: The list of `Tensor` arguments that are passed to the op function.
-
-  Returns:
-    A context manager for use in defining Python ops. Yields the name scope.
-
-  Raises:
-    ValueError: if neither `name` nor `default_name` is provided
-      but `values` are.
   """
-  name = default_name if name is None else name
-  ctx = context.context()
-  if ctx.in_eager_mode():
-    old_name = ctx.scope_name
-    if name is None:
-      scope_name = ""
+
+  @property
+  def name(self):
+    return self._name
+
+  def __init__(self, name, default_name=None, values=None):
+    """Initialize the context manager.
+
+    Args:
+      name: The name argument that is passed to the op function.
+      default_name: The default name to use if the `name` argument is `None`.
+      values: The list of `Tensor` arguments that are passed to the op function.
+    """
+    self._name = default_name if name is None else name
+    self._default_name = default_name
+    self._values = values
+    self._ctx = context.context()
+    self._in_eager_mode = self._ctx.in_eager_mode()
+
+  def __enter__(self):
+    """Start the scope block.
+
+    Returns:
+      The scope name.
+
+    Raises:
+      ValueError: if neither `name` nor `default_name` is provided
+        but `values` are.
+    """
+    if self._in_eager_mode:
+      self._old_name = self._ctx.scope_name
+      if self._name:
+        scope_name = (self._old_name + self._name + "/"
+                      if self._old_name else self._name + "/")
+      else:
+        scope_name = ""
+      self._ctx.scope_name = scope_name
+      return scope_name
     else:
-      scope_name = "%s%s/" % (old_name, name) if old_name else "%s/" % name
-    ctx.scope_name = scope_name
-    try:
-      yield scope_name
-    finally:
-      ctx.scope_name = old_name
-  else:
-    if name is None and values is not None:
-      # We only raise an error if values is not None (provided) because
-      # currently tf.name_scope(None) (values=None then) is sometimes used as an
-      # idiom to reset to top scope.
-      raise ValueError(
-          "At least one of name (%s) and default_name (%s) must be provided." %
-          (name, default_name))
-    if values is None:
-      values = []
-    g = _get_graph_from_inputs(values)
-    with g.as_default(), g.name_scope(name) as scope:
-      yield scope
+      if self._name is None and self._values is not None:
+        # We only raise an error if values is not None (provided) because
+        # currently tf.name_scope(None) (values=None then) is sometimes used as
+        # an idiom to reset to top scope.
+        raise ValueError(
+            "At least one of name (%s) and default_name (%s) must be provided."
+            % (self._name, self._default_name))
+      if self._values is None:
+        self._values = []
+      g = _get_graph_from_inputs(self._values)
+      self._g_manager = g.as_default()
+      self._g_manager.__enter__()
+      self._name_scope = g.name_scope(self._name)
+      return self._name_scope.__enter__()
 
-
-# pylint: enable=g-doc-return-or-yield
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    if self._in_eager_mode:
+      self._ctx.scope_name = self._old_name
+    else:
+      self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
+      self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
+    return False  # False values do not suppress exceptions
 
 
 def strip_name_scope(name, export_scope):

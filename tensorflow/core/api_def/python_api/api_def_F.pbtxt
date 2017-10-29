@@ -1,0 +1,21 @@
+op {
+  graph_op_name: "FFT"
+  endpoint {
+    name: "fft"
+  }
+  endpoint {
+    name: "spectral.fft"
+  }
+}
+op {
+  graph_op_name: "FractionalAvgPool"
+  endpoint {
+    name: "nn.fractional_avg_pool"
+  }
+}
+op {
+  graph_op_name: "FractionalMaxPool"
+  endpoint {
+    name: "nn.fractional_max_pool"
+  }
+}

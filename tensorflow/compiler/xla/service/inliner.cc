@@ -76,8 +76,7 @@ Status InlinerVisitor::HandleMap(
   // Only inlining functions that are simply a single operation until a better
   // profitability model for inlining is defined.
   if (hlo_query::AllOperandsAreParameters(root)) {
-    if (root.opcode() == HloOpcode::kUpdate ||
-        root.opcode() == HloOpcode::kFusion ||
+    if (root.opcode() == HloOpcode::kFusion ||
         root.opcode() == HloOpcode::kIndex ||
         root.opcode() == HloOpcode::kParameter ||
         root.opcode() == HloOpcode::kTrace) {
@@ -90,8 +89,12 @@ Status InlinerVisitor::HandleMap(
     // different than the map shape. Hence, a broadcast is needed, else the
     // cloned operand with new shape and operands work.
     if (root.opcode() != HloOpcode::kConstant) {
+      std::vector<HloInstruction*> params;
+      for (int64 o = 0; o < root.operands().size(); o++) {
+        params.push_back(operands[root.operand(o)->parameter_number()]);
+      }
       HloInstruction* placed_instruction = computation_->AddInstruction(
-          root.CloneWithNewOperands(map->shape(), operands));
+          root.CloneWithNewOperands(map->shape(), params));
       TF_RETURN_IF_ERROR(
           computation_->ReplaceInstruction(map, placed_instruction));
     } else {

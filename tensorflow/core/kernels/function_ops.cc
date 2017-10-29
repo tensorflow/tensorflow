@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -293,7 +294,8 @@ class RemoteCallOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
     AttrValueMap attr_values = func_.attr();
     AttrValue v;
-    const string& target_device = target->scalar<string>()();
+    const string& target_device =
+        DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()());
     v.set_s(target_device);
     AddAttr("_target", v, &attr_values);
 

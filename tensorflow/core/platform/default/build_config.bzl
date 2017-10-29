@@ -28,6 +28,76 @@ def tf_deps(deps, suffix):
 
   return tf_deps
 
+# Modified from @cython//:Tools/rules.bzl
+def pyx_library(
+    name,
+    deps=[],
+    py_deps=[],
+    srcs=[],
+    **kwargs):
+  """Compiles a group of .pyx / .pxd / .py files.
+
+  First runs Cython to create .cpp files for each input .pyx or .py + .pxd
+  pair. Then builds a shared object for each, passing "deps" to each cc_binary
+  rule (includes Python headers by default). Finally, creates a py_library rule
+  with the shared objects and any pure Python "srcs", with py_deps as its
+  dependencies; the shared objects can be imported like normal Python files.
+
+  Args:
+    name: Name for the rule.
+    deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
+    py_deps: Pure Python dependencies of the final library.
+    srcs: .py, .pyx, or .pxd files to either compile or pass through.
+    **kwargs: Extra keyword arguments passed to the py_library.
+  """
+  # First filter out files that should be run compiled vs. passed through.
+  py_srcs = []
+  pyx_srcs = []
+  pxd_srcs = []
+  for src in srcs:
+    if src.endswith(".pyx") or (src.endswith(".py")
+                                and src[:-3] + ".pxd" in srcs):
+      pyx_srcs.append(src)
+    elif src.endswith(".py"):
+      py_srcs.append(src)
+    else:
+      pxd_srcs.append(src)
+    if src.endswith("__init__.py"):
+      pxd_srcs.append(src)
+
+  # Invoke cython to produce the shared object libraries.
+  cpp_outs = [src.split(".")[0] + ".cpp" for src in pyx_srcs]
+  native.genrule(
+      name = name + "_cython_translation",
+      srcs = pyx_srcs,
+      outs = cpp_outs,
+      cmd = ("PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS)"
+             # Rename outputs to expected location.
+             + """ && python -c 'import shutil, sys; n = len(sys.argv); [shutil.copyfile(src.split(".")[0] + ".cpp", dst) for src, dst in zip(sys.argv[1:], sys.argv[1+n//2:])]' $(SRCS) $(OUTS)"""),
+      tools = ["@cython//:cython_binary"] + pxd_srcs,
+  )
+
+  shared_objects = []
+  for src in pyx_srcs:
+    stem = src.split(".")[0]
+    shared_object_name = stem + ".so"
+    native.cc_binary(
+        name=shared_object_name,
+        srcs=[stem + ".cpp"],
+        deps=deps + ["//util/python:python_headers"],
+        linkshared = 1,
+    )
+    shared_objects.append(shared_object_name)
+
+  # Now create a py_library with these shared objects as data.
+  native.py_library(
+      name=name,
+      srcs=py_srcs,
+      deps=py_deps,
+      srcs_version = "PY2AND3",
+      data=shared_objects,
+      **kwargs
+  )
 
 def _proto_cc_hdrs(srcs, use_grpc_plugin=False):
   ret = [s[:-len(".proto")] + ".pb.h" for s in srcs]
@@ -299,7 +369,6 @@ def tf_additional_proto_srcs():
 def tf_additional_all_protos():
   return ["//tensorflow/core:protos_all"]
 
-
 def tf_protos_all_impl():
   return ["//tensorflow/core:protos_all_cc_impl"]
 
@@ -394,6 +463,11 @@ def tf_additional_core_deps():
   }) + select({
       "//tensorflow:with_hdfs_support": [
           "//tensorflow/core/platform/hadoop:hadoop_file_system",
+      ],
+      "//conditions:default": [],
+  }) + select({
+      "//tensorflow:with_s3_support": [
+          "//tensorflow/core/platform/s3:s3_file_system",
       ],
       "//conditions:default": [],
   })

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python wrappers for Datasets and Iterators."""
+"""Python wrappers for Datasets."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -23,8 +23,7 @@ import threading
 
 import numpy as np
 
-from tensorflow.python.data.ops import iterator
-from tensorflow.python.data.ops.iterator import Iterator  # pylint: disable=unused-import
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -75,7 +74,7 @@ class Dataset(object):
     ```
 
     Args:
-      shared_name: (Optional.) If non-empty, the returnediterator will be
+      shared_name: (Optional.) If non-empty, the returned iterator will be
         shared under the given name across multiple sessions that share the
         same devices (e.g. when using a remote server).
 
@@ -92,9 +91,8 @@ class Dataset(object):
     with ops.colocate_with(iterator_resource):
       initializer = gen_dataset_ops.make_iterator(
           self._as_variant_tensor(), iterator_resource)
-    return iterator.Iterator(
-        iterator_resource, initializer, self.output_types,
-        self.output_shapes)
+    return iterator_ops.Iterator(iterator_resource, initializer,
+                                 self.output_types, self.output_shapes)
 
   def make_one_shot_iterator(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
@@ -113,7 +111,7 @@ class Dataset(object):
 
     _make_dataset.add_to_graph(ops.get_default_graph())
 
-    return iterator.Iterator(
+    return iterator_ops.Iterator(
         gen_dataset_ops.one_shot_iterator(
             dataset_factory=_make_dataset,
             output_types=nest.flatten(self.output_types),
@@ -203,7 +201,10 @@ class Dataset(object):
       with self._lock:
         ret = self._next_id
         self._next_id += 1
-      return ret
+      # NOTE(mrry): Explicitly create an array of `np.int64` because implicit
+      # casting in `py_func()` will create an array of `np.int32` on Windows,
+      # leading to a runtime error.
+      return np.array(ret, dtype=np.int64)
 
     def get_iterator(self, iterator_id):
       return self._iterators[iterator_id]
@@ -306,8 +307,9 @@ class Dataset(object):
         # their values.
         # pylint: disable=protected-access
         ret_arrays = [
-            script_ops.FuncRegistry._convert(ret)
-            for ret in nest.flatten_up_to(output_types, values)
+            script_ops.FuncRegistry._convert(ret, dtype=dtype.as_numpy_dtype)
+            for ret, dtype in zip(nest.flatten_up_to(output_types, values),
+                                  flattened_types)
         ]
         # pylint: enable=protected-access
 
@@ -933,6 +935,16 @@ class ZipDataset(Dataset):
   def __init__(self, datasets):
     """See `Dataset.zip()` for details."""
     super(ZipDataset, self).__init__()
+    for ds in nest.flatten(datasets):
+      if not isinstance(ds, Dataset):
+        if isinstance(ds, list):
+          message = ("The argument to `Dataset.zip()` must be a nested "
+                     "structure of `Dataset` objects. Nested structures do not "
+                     "support Python lists; please use a tuple instead.")
+        else:
+          message = ("The argument to `Dataset.zip()` must be a nested "
+                     "structure of `Dataset` objects.")
+        raise TypeError(message)
     self._datasets = datasets
 
   def _as_variant_tensor(self):
@@ -1045,21 +1057,21 @@ class RangeDataset(Dataset):
   def _parse_args(self, *args):
     if len(args) == 1:
       self._start = self._build_tensor(0, "start")
-      self._stop = args[0]
+      self._stop = self._build_tensor(args[0], "stop")
       self._step = self._build_tensor(1, "step")
     elif len(args) == 2:
-      self._start = args[0]
-      self._stop = args[1]
+      self._start = self._build_tensor(args[0], "start")
+      self._stop = self._build_tensor(args[1], "stop")
       self._step = self._build_tensor(1, "step")
     elif len(args) == 3:
-      self._start = args[0]
-      self._stop = args[1]
-      self._step = args[2]
+      self._start = self._build_tensor(args[0], "start")
+      self._stop = self._build_tensor(args[1], "stop")
+      self._step = self._build_tensor(args[2], "step")
     else:
       raise ValueError("Invalid arguments to RangeDataset: %s" % str(args))
 
   def _build_tensor(self, int64_value, name):
-    return constant_op.constant(int64_value, dtype=dtypes.int64, name=name)
+    return ops.convert_to_tensor(int64_value, dtype=dtypes.int64, name=name)
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.range_dataset(
@@ -1205,7 +1217,8 @@ class BatchDataset(Dataset):
     """See `Dataset.batch()` for details."""
     super(BatchDataset, self).__init__()
     self._input_dataset = input_dataset
-    self._batch_size = batch_size
+    self._batch_size = ops.convert_to_tensor(batch_size, dtype=dtypes.int64,
+                                             name="batch_size")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.batch_dataset(
@@ -1273,7 +1286,8 @@ class PaddedBatchDataset(Dataset):
     """See `Dataset.batch()` for details."""
     super(PaddedBatchDataset, self).__init__()
     self._input_dataset = input_dataset
-    self._batch_size = batch_size
+    self._batch_size = ops.convert_to_tensor(batch_size, dtype=dtypes.int64,
+                                             name="batch_size")
     padding_values = (padding_values if padding_values is not None else
                       self._default_padding(input_dataset))
     self._padded_shapes = nest.map_structure_up_to(
@@ -1497,8 +1511,10 @@ class InterleaveDataset(Dataset):
     self._map_func = tf_map_func
     self._map_func.add_to_graph(ops.get_default_graph())
 
-    self._cycle_length = ops.convert_to_tensor(cycle_length, dtype=dtypes.int64)
-    self._block_length = ops.convert_to_tensor(block_length, dtype=dtypes.int64)
+    self._cycle_length = ops.convert_to_tensor(cycle_length, dtype=dtypes.int64,
+                                               name="cycle_length")
+    self._block_length = ops.convert_to_tensor(block_length, dtype=dtypes.int64,
+                                               name="block_length")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.interleave_dataset(
@@ -1575,7 +1591,8 @@ class PrefetchDataset(Dataset):
     """See `Dataset.prefetch()` for details."""
     super(PrefetchDataset, self).__init__()
     self._input_dataset = input_dataset
-    self._buffer_size = ops.convert_to_tensor(buffer_size, dtype=dtypes.int64)
+    self._buffer_size = ops.convert_to_tensor(buffer_size, dtype=dtypes.int64,
+                                              name="buffer_size")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.prefetch_dataset(

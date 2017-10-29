@@ -42,6 +42,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
@@ -84,26 +85,49 @@ def _eager_identity(tensor, ctx):
   return result
 
 
-def convert_to_eager_tensor(t, ctx, dtype=None):
-  """Converts the given `value` to an `EagerTensor`."""
-  if isinstance(t, ops.EagerTensor):
-    if dtype is not None and t.dtype != dtype:
-      raise TypeError("Expected tensor with type %r not %r" % (dtype, t.dtype))
-    return t
-  if isinstance(t, (int, float)):
+def convert_to_eager_tensor(value, ctx, dtype=None):
+  """Converts the given `value` to an `EagerTensor`.
+
+  Note that this function could return cached copies of created constants for
+  performance reasons.
+
+  Args:
+    value: value to convert to EagerTensor.
+    ctx: value of context.context().
+    dtype: optional desired dtype of the converted EagerTensor.
+
+  Returns:
+    EagerTensor created from value.
+
+  Raises:
+    TypeError: if `dtype` is not compatible with the type of t.
+  """
+  if isinstance(value, ops.EagerTensor):
+    if dtype is not None and value.dtype != dtype:
+      raise TypeError("Expected tensor with type %r not %r" % (
+          dtype, value.dtype))
+    return value
+  if dtype is not None:
+    try:
+      dtype = dtype.as_datatype_enum
+    except AttributeError:
+      dtype = dtypes.as_dtype(dtype).as_datatype_enum
+  device = ctx.device_name
+  handle = ctx._handle  # pylint: disable=protected-access
+  if isinstance(value, (float,) + six.integer_types):
     # Use a scalar cache. This will put each scalar of each type only once on
     # each device. Scalars don't use much device memory but copying scalars can
     # trigger memcpys which are slow.
-    device = ctx.device_name
-    cache_key = device, t, dtype, type(t)
+    cache_key = device, value, dtype, type(value)
     scalar_cache = ctx.scalar_cache()
     tensor = scalar_cache.get(cache_key, None)
     if tensor is not None:
       return tensor
-    value = ops.EagerTensor(t, ctx, dtype=dtype)
-    scalar_cache[cache_key] = value
-    return value
-  return ops.EagerTensor(t, ctx, dtype=dtype)
+    t = ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+    scalar_cache[cache_key] = t
+    return t
+  else:
+    return ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
 
 
 def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
@@ -152,13 +176,13 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
     A Constant Tensor.
 
   Raises:
-    TypeError if shape is incorrectly specified or unsupported.
+    TypeError: if shape is incorrectly specified or unsupported.
   """
   ctx = context.context()
   if not ctx.in_graph_mode():
-    if shape is None:
-      return convert_to_eager_tensor(value, ctx, dtype)
     t = convert_to_eager_tensor(value, ctx, dtype)
+    if shape is None:
+      return t
     shape = tensor_shape.as_shape(shape)
     if shape == t.shape:
       return t
@@ -174,7 +198,7 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
         # We don't have a Fill kernel for bool dtype on GPU. So we first run
         # Fill on CPU and then copy to GPU if needed.
         with ops.device("/device:CPU:0"):
-          x = _eager_fill(shape.as_list(), t.as_cpu_tensor(), ctx)
+          x = _eager_fill(shape.as_list(), t.cpu(), ctx)
         return _eager_identity(x, ctx)
       else:
         return _eager_fill(shape.as_list(), t, ctx)

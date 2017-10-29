@@ -129,19 +129,6 @@ TEST_F(BatchFeaturesTest, SparseFloatFeatures_IncompatibleShape) {
                                 {sparse_float_feature_shape}, {}, {}, {}));
 }
 
-TEST_F(BatchFeaturesTest, SparseFloatFeatures_Multivalent) {
-  BatchFeatures batch_features(2);
-  auto sparse_float_feature_indices = AsTensor<int64>({0, 0, 1, 0}, {2, 2});
-  auto sparse_float_feature_values = AsTensor<float>({3.0f, 7.0f});
-  auto sparse_float_feature_shape = AsTensor<int64>({2, 2});
-  auto expected_error =
-      InvalidArgument("Sparse float features may not be multi-valent.");
-  EXPECT_EQ(expected_error, batch_features.Initialize(
-                                {}, {sparse_float_feature_indices},
-                                {sparse_float_feature_values},
-                                {sparse_float_feature_shape}, {}, {}, {}));
-}
-
 TEST_F(BatchFeaturesTest, SparseIntFeatures_WrongShapeIndices) {
   BatchFeatures batch_features(2);
   auto sparse_int_feature_indices = AsTensor<int64>({0, 0, 1, 0});

@@ -47,11 +47,11 @@ public final class Tensor<T> implements AutoCloseable {
   /**
    * Creates a Tensor from a Java object.
    *
-   * <p>A {@code Tensor} is a multi-dimensional array of elements of a limited set of types ({@link
-   * types}), so not all Java objects can be converted to a {@code Tensor}. In particular, the
-   * argument {@code obj} must be either a primitive (float, double, int, long, boolean, byte) or a
-   * multi-dimensional array of one of those primitives. The argument {@code type} specifies how to
-   * interpret the first argument as a TensorFlow type. For example:
+   * <p>A {@code Tensor} is a multi-dimensional array of elements of a limited set of types. Not all
+   * Java objects can be converted to a {@code Tensor}. In particular, the argument {@code obj} must
+   * be either a primitive (float, double, int, long, boolean, byte) or a multi-dimensional array of
+   * one of those primitives. The argument {@code type} specifies how to interpret the first
+   * argument as a TensorFlow type. For example:
    *
    * <pre>{@code
    * // Valid: A 64-bit integer scalar.
@@ -94,8 +94,9 @@ public final class Tensor<T> implements AutoCloseable {
    * Tensor<String> m = Tensor.create(matrix, String.class);
    * }</pre>
    *
-   * @param obj The object to convert to a Tensor<T>. Note that whether the it is compatible with
-   *     the type T is not checked by the type system.
+   * @param obj The object to convert to a {@code Tensor<T>}. Note that whether it is compatible
+   *     with the type T is not checked by the type system. For type-safe creation of tensors, use
+   *     {@link Tensors}.
    * @param type The class object representing the type T.
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system.
@@ -174,7 +175,7 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>Creates a Tensor with the given shape by copying elements from the buffer (starting from its
    * current position) into the tensor. For example, if {@code shape = {2,3} } (which represents a
-   * 2×3 matrix) then the buffer must have 6 elements remaining, which will be consumed by this
+   * 2x3 matrix) then the buffer must have 6 elements remaining, which will be consumed by this
    * method.
    *
    * @param shape the tensor shape.
@@ -228,7 +229,8 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
+   * API</a>.
    *
    * @param <T> the tensor element type
    * @param type the tensor element type, represented as a class object.
@@ -248,7 +250,8 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
+   * API</a>.
    *
    * @param <T> The tensor element type
    * @param type the tensor element type, specified as a DataType. This must agree with T.
@@ -457,7 +460,7 @@ public final class Tensor<T> implements AutoCloseable {
    * @param dst the destination buffer
    * @throws BufferOverflowException If there is insufficient space in the given buffer for the data
    *     in this tensor
-   * @throws IllegalArgumentException If the tensor datatype is not {@link Integer}
+   * @throws IllegalArgumentException If the tensor data type is not {@link Integer}
    */
   public void writeTo(IntBuffer dst) {
     if (dtype != DataType.INT32) {
@@ -632,16 +635,26 @@ public final class Tensor<T> implements AutoCloseable {
     classDataTypes.put(Boolean.class, DataType.BOOL);
   }
 
+  /** The class for the data type to which Java object o corresponds. */
+  private static Class<?> baseObjType(Object o) {
+    Class<?> c = o.getClass();
+    while (c.isArray()) {
+      c = c.getComponentType();
+    }
+    return c;
+  }
+
   /**
    * The default TensorFlow data type to which Java object o corresponds. Some Java objects
    * represent more than one TensorFlow data type; for example, 'byte' can represent both {@code
    * uint8} and {@code string}, with the latter being the default interpretation.
    */
   private static DataType dataTypeOf(Object o) {
-    Class<?> c = o.getClass();
-    while (c.isArray()) {
-      c = c.getComponentType();
-    }
+    Class<?> c = baseObjType(o);
+    return dataTypeFromClass(c);
+  }
+
+  private static DataType dataTypeFromClass(Class<?> c) {
     DataType ret = classDataTypes.get(c);
     if (ret != null) {
       return ret;
@@ -702,11 +715,13 @@ public final class Tensor<T> implements AutoCloseable {
 
   /** Returns whether the object {@code obj} can represent a tensor with data type {@code dtype}. */
   private static boolean objectCompatWithType(Object obj, DataType dtype) {
-    /*  TODO(andrewmyers): Probably should not be built using dataTypeOf, which
-     *  is a somewhat questionable method once we allow a given Java type, such as byte, to
-     *  be used to initialize multiple tensor types.
-     */
-    DataType dto = dataTypeOf(obj);
+    Class<?> c = baseObjType(obj);
+    DataType dto = dataTypeFromClass(c);
+    int nd = numDimensions(obj, dto);
+    if (!c.isPrimitive() && c != String.class && nd != 0) {
+      throw new IllegalArgumentException(
+          "cannot create non-scalar Tensors from arrays of boxed values");
+    }
     if (dto.equals(dtype)) {
       return true;
     }

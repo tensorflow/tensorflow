@@ -28,8 +28,11 @@ from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.deterministic import *
+from tensorflow.contrib.distributions.python.ops.distribution_util import fill_triangular
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.distribution_util import reduce_weighted_logsumexp
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
+from tensorflow.contrib.distributions.python.ops.distribution_util import tridiag
 from tensorflow.contrib.distributions.python.ops.estimator import *
 from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.independent import *
@@ -51,6 +54,7 @@ from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.sinh_arcsinh import *
 from tensorflow.contrib.distributions.python.ops.test_util import *
 from tensorflow.contrib.distributions.python.ops.vector_diffeomixture import *
 from tensorflow.contrib.distributions.python.ops.vector_exponential_diag import *
@@ -83,19 +87,6 @@ _allowed_symbols = [
     'ConditionalTransformedDistribution',
     'FULLY_REPARAMETERIZED',
     'NOT_REPARAMETERIZED',
-    'Affine',
-    'AffineLinearOperator',
-    'Bijector',
-    'Chain',
-    'CholeskyOuterProduct',
-    'Exp',
-    'Identity',
-    'Inline',
-    'Invert',
-    'PowerTransform',
-    'SigmoidCentered',
-    'SoftmaxCentered',
-    'Softplus',
     'ReparameterizationType',
     'Distribution',
     'Binomial',
@@ -125,6 +116,7 @@ _allowed_symbols = [
     'NormalWithSoftplusScale',
     'Poisson',
     'PoissonLogNormalQuadratureCompound',
+    'SinhArcsinh',
     'StudentT',
     'StudentTWithAbsDfSoftplusScale',
     'Uniform',
@@ -151,13 +143,14 @@ _allowed_symbols = [
     'RelaxedOneHotCategorical',
     'kl_divergence',
     'RegisterKL',
-    'matrix_diag_transform',
     'fill_triangular',
+    'matrix_diag_transform',
+    'reduce_weighted_logsumexp',
+    'softplus_inverse',
+    'tridiag',
     'normal_conjugates_known_scale_posterior',
     'normal_conjugates_known_scale_predictive',
-    'softplus_inverse',
     'percentile',
-    'reduce_weighted_logsumexp',
     'assign_moving_mean_variance',
     'assign_log_moving_mean_exp',
     'moving_mean_variance',

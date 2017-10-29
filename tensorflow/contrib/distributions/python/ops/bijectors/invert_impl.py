@@ -60,6 +60,10 @@ class Invert(bijector_lib.Bijector):
       name: Python `str`, name given to ops managed by this object.
     """
 
+    if not bijector._is_injective:  # pylint: disable=protected-access
+      raise NotImplementedError(
+          "Invert is not implemented for non-injective bijectors.")
+
     self._bijector = bijector
     super(Invert, self).__init__(
         event_ndims=bijector.event_ndims,

@@ -36,17 +36,17 @@ class CurvatureMatrixVectorProductComputer(object):
   For example, the Fisher associated with a log-prob loss w.r.t. the
   parameters.
 
-  The vecs argument to each method are lists of tensors that must be the
+  The 'vecs' argument to each method are lists of tensors that must be the
   size as the corresponding ones from "wrt_tensors".  They represent
   the vector being multiplied.
 
   "factors" of the matrix M are defined as matrices B such that B*B^T = M.
-  Methods that multiply by the factor B take a "loss_inner_vecs" argument
-  instead of vecs, which must be a list of tensors with shapes given by the
+  Methods that multiply by the factor B take a 'loss_inner_vecs' argument
+  instead of 'vecs', which must be a list of tensors with shapes given by the
   corresponding XXX_inner_shapes property.
 
   Note that matrix-vector products are not normalized by the batch size, nor
-  are any damping terms added to the results.  These things can easily be
+  are any damping terms added to the results.  These things can be easily
   applied externally, if desired.
 
   See for example: www.cs.utoronto.ca/~jmartens/docs/HF_book_chapter.pdf
@@ -61,7 +61,8 @@ class CurvatureMatrixVectorProductComputer(object):
     Args:
       losses: A list of LossFunction instances whose sum defines the total loss.
       wrt_tensors: A list of Tensors to compute the differential quantities
-        defining the matrices with respect to (see class description).
+        (defining the matrices) with respect to.  See class description for more
+        info.
     """
     self._losses = losses
     self._inputs_to_losses = list(loss.inputs for loss in losses)
@@ -73,24 +74,23 @@ class CurvatureMatrixVectorProductComputer(object):
     return math_ops.add_n(tuple(loss.evaluate() for loss in self._losses))
 
   # Jacobian multiplication functions:
-  # NOTE: These implementations use tf.gradients and thus aren't actually
-  # computing partial derivatives, but total derivatives instead (despite what
-  # the documentation for tf.gradients says).  Because we require partial
-  # derivatives for Jacobians this implementation will only be correct if the
-  # partial derivatives are equal to the full derivatives.  This happens as long
-  # as the elements of wrt_tensors don't depend on each other in the graph.  If
-  # these tensors are standard neural network parameters this will be true.
   def _multiply_jacobian(self, vecs):
     """Multiply vecs by the Jacobian of losses."""
+    # We stop gradients at wrt_tensors to produce partial derivatives (which is
+    # what we want for Jacobians).
     jacobian_vecs_flat = utils.fwd_gradients(
-        self._inputs_to_losses_flat, self._wrt_tensors, grad_xs=vecs)
+        self._inputs_to_losses_flat, self._wrt_tensors, grad_xs=vecs,
+        stop_gradients=self._wrt_tensors)
     return nest.pack_sequence_as(self._inputs_to_losses, jacobian_vecs_flat)
 
   def _multiply_jacobian_transpose(self, loss_vecs):
     """Multiply vecs by the transpose Jacobian of losses."""
     loss_vecs_flat = nest.flatten(loss_vecs)
+    # We stop gradients at wrt_tensors to produce partial derivatives (which is
+    # what we want for Jacobians).
     return gradients_impl.gradients(
-        self._inputs_to_losses_flat, self._wrt_tensors, grad_ys=loss_vecs_flat)
+        self._inputs_to_losses_flat, self._wrt_tensors, grad_ys=loss_vecs_flat,
+        stop_gradients=self._wrt_tensors)
 
   # Losses Fisher/Hessian multiplication functions:
   def _multiply_loss_fisher(self, loss_vecs):

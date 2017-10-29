@@ -210,6 +210,18 @@ tf_cc_binary(
     ],
 )
 
+tf_cc_binary(
+    name = "hlo_proto_to_json",
+    srcs = ["hlo_proto_to_json.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 
 filegroup(

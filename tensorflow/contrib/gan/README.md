@@ -51,9 +51,10 @@ network to evaluate your unconditional generative model. You can also also use
 your own pretrained classifier for more specific performance numbers, or use
 other methods for evaluating conditional generative models.
 
-* [examples](https://github.com/tensorflow/models/tree/master/gan/):
+* examples (coming soon):
 See examples of how to use TFGAN to make GAN training easier, or use the more complicated examples to jumpstart your
-own project.
+own project. These include unconditional and conditional GANs, InfoGANs,
+adversarial losses on existing networks, and image-to-image translation.
 
 ## Training a GAN model
 
