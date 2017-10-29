@@ -16,7 +16,7 @@
 
 set -ex
 
-LLVM_SVN_REVISION="299268"
+LLVM_SVN_REVISION="314281"
 CLANG_TMP_DIR=/tmp/clang-build
 
 mkdir "$CLANG_TMP_DIR"

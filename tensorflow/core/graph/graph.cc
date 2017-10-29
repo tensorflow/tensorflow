@@ -293,6 +293,11 @@ Graph::Graph(const OpRegistryInterface* ops)
 
 Graph::Graph(const FunctionLibraryDefinition& flib_def)
     : Graph(flib_def.default_registry()) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (flib_def.ToProto().function_size() > 0 &&
+      versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
   Status s = ops_.AddLibrary(flib_def);
   CHECK(s.ok()) << s.error_message();
 }
@@ -419,6 +424,35 @@ void Graph::RemoveEdge(const Edge* e) {
   --num_edges_;
 }
 
+const Edge* Graph::AddControlEdge(Node* source, Node* dest,
+                                  bool allow_duplicates) {
+  if (!allow_duplicates) {
+    for (const Edge* edge : dest->in_edges()) {
+      if (edge->IsControlEdge() && edge->src() == source) {
+        // The requested edge already exists.
+        return nullptr;
+      }
+    }
+  }
+  // Modify dest's NodeDef if necessary.
+  if (!source->IsSource() && !dest->IsSink() && !allow_duplicates) {
+    // Check if this input is already in dest's NodeDef.
+    const string new_input = strings::StrCat("^", source->name());
+    bool input_exists = false;
+    for (const string& input : dest->props_->node_def.input()) {
+      if (input == new_input) {
+        input_exists = true;
+        break;
+      }
+    }
+    if (!input_exists) {
+      dest->MaybeCopyOnWrite();
+      dest->props_->node_def.add_input(new_input);
+    }
+  }
+  return AddEdge(source, kControlSlot, dest, kControlSlot);
+}
+
 Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
                          int dst_index) {
   TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
@@ -448,6 +482,10 @@ const Edge* Graph::FindEdge(const Node* dst, int index) {
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (fdef_lib.function_size() > 0 && versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
   return ops_.AddLibrary(fdef_lib);
 }
 

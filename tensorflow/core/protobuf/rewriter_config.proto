@@ -23,6 +23,10 @@ message RewriterConfig {
     DEFAULT = 0;
     ON = 1;
     OFF = 2;
+    // Enable some aggressive optimizations that use assumptions that TF graphs
+    // may break. For example, assume the shape of a placeholder matches its
+    // actual feed.
+    AGGRESSIVE = 3;
   }
 
   // Optimize tensor layouts

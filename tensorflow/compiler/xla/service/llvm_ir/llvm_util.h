@@ -127,11 +127,11 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
 
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::IRBuilder<>* ir_builder);
+                                  llvm::Module* module);
 
 // Returns the LLVM type which represents the given XLA shape. For example,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder);
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
@@ -149,7 +149,7 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
-                                           llvm::IRBuilder<>* ir_builder);
+                                           llvm::Module* module);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
@@ -226,12 +226,6 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 // program (the constant pointer is burned in to the program).
 void EmitLogging(const char* tag, llvm::Value* value,
                  llvm::IRBuilder<>* ir_builder);
-
-// Adds TBAA metadata to a load or store instruction using the given shape as
-// it's type.  The is_pointer_to parameter is used to indicate whether or not
-// this instruction loads or stores a pointer to an array.
-void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
-                           bool is_pointer_to);
 
 // Adds alignment metadata to a load instruction using the given alignment.
 // The alignment refers to the result of the load, not the load itself.

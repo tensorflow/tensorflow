@@ -194,7 +194,7 @@ class DistributedOptimizer(tf.train.Optimizer):
 
     See Optimizer.compute_gradients() for more info.
 
-    In DistributedOptimizer, compute_gradients() is overriden to also
+    In DistributedOptimizer, compute_gradients() is overridden to also
     allreduce the gradients before returning them.
     """
     gradients = (super(DistributedOptimizer, self)

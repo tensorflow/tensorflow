@@ -126,8 +126,8 @@ class MultiHeadTest(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        (_DEFAULT_SERVING_KEY, _DEFAULT_SERVING_KEY + '/head1', 'head1',
-         _DEFAULT_SERVING_KEY + '/head2', 'head2'),
+        (_DEFAULT_SERVING_KEY, 'head1', 'classification/head1', 'predict/head1',
+         'head2', 'classification/head2', 'predict/head2'),
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.

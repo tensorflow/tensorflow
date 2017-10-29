@@ -272,7 +272,7 @@ them destroys their meaning.
 
 There are several other parameters you can try adjusting to see if they help
 your results. The `--learning_rate` controls the magnitude of the updates to the
-final layer during training. Intuitively if this is smaller than the learning
+final layer during training. Intuitively if this is smaller then the learning
 will take longer, but it can end up helping the overall precision. That's not
 always the case though, so you need to experiment carefully to see what works
 for your case. The `--train_batch_size` controls how many images are examined

@@ -116,8 +116,8 @@ def _lstm_block_cell(x,
     if cell_size is None:
       raise ValueError("cell_size from `cs_prev` should not be None.")
     wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
-    wco = wci
     wcf = wci
+    wco = wci
 
   # pylint: disable=protected-access
   return gen_lstm_ops.lstm_block_cell(
@@ -126,8 +126,8 @@ def _lstm_block_cell(x,
       h_prev=h_prev,
       w=w,
       wci=wci,
-      wco=wco,
       wcf=wcf,
+      wco=wco,
       b=b,
       forget_bias=forget_bias,
       cell_clip=cell_clip if cell_clip is not None else -1,
@@ -201,8 +201,8 @@ def _block_lstm(seq_len_max,
     h_prev = zero_state
   if wci is None:
     wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
-    wco = wci
     wcf = wci
+    wco = wci
 
   # pylint: disable=protected-access
   i, cs, f, o, ci, co, h = gen_lstm_ops.block_lstm(
@@ -212,8 +212,8 @@ def _block_lstm(seq_len_max,
       h_prev=h_prev,
       w=w,
       wci=wci,
-      wco=wco,
       wcf=wcf,
+      wco=wco,
       b=b,
       forget_bias=forget_bias,
       cell_clip=cell_clip if cell_clip is not None else -1,
@@ -233,7 +233,7 @@ _lstm_block_cell_grad_outputs = ["cs_prev_grad", "dicfo"]
 @ops.RegisterGradient("LSTMBlockCell")
 def _LSTMBlockCellGrad(op, *grad):
   """Gradient for LSTMBlockCell."""
-  (x, cs_prev, h_prev, w, wci, wco, wcf, b) = op.inputs
+  (x, cs_prev, h_prev, w, wci, wcf, wco, b) = op.inputs
   (i, cs, f, o, ci, co, _) = op.outputs
   (_, cs_grad, _, _, _, _, h_grad) = grad
 
@@ -293,13 +293,13 @@ def _LSTMBlockCellGrad(op, *grad):
 @ops.RegisterGradient("BlockLSTM")
 def _BlockLSTMGrad(op, *grad):
   """Gradient for BlockLSTM."""
-  seq_len_max, x, cs_prev, h_prev, w, wci, wco, wcf, b = op.inputs
+  seq_len_max, x, cs_prev, h_prev, w, wci, wcf, wco, b = op.inputs
   i, cs, f, o, ci, co, h = op.outputs
 
   cs_grad = grad[1]
   h_grad = grad[6]
 
-  (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wco_grad, wcf_grad,
+  (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad, wco_grad,
    b_grad) = gen_lstm_ops.block_lstm_grad(
        seq_len_max,
        x,
@@ -307,8 +307,8 @@ def _BlockLSTMGrad(op, *grad):
        h_prev,
        w,
        wci,
-       wco,
        wcf,
+       wco,
        b,
        i,
        cs,
@@ -321,8 +321,10 @@ def _BlockLSTMGrad(op, *grad):
        h_grad,
        use_peephole=op.get_attr("use_peephole"))
 
-  return [None, x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wco_grad,
-          wcf_grad, b_grad]
+  return [
+      None, x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
+      wco_grad, b_grad
+  ]
 
 
 class LSTMBlockCell(rnn_cell_impl.RNNCell):
@@ -367,8 +369,8 @@ class LSTMBlockCell(rnn_cell_impl.RNNCell):
         "W": "kernel",
         "b": "bias",
         "wci": "w_i_diag",
-        "wco": "w_o_diag",
         "wcf": "w_f_diag",
+        "wco": "w_o_diag",
         "scope": "lstm_cell"
     }
 
@@ -396,10 +398,10 @@ class LSTMBlockCell(rnn_cell_impl.RNNCell):
           initializer=init_ops.constant_initializer(0.0))
       if self._use_peephole:
         wci = vs.get_variable(self._names["wci"], [self._num_units])
-        wco = vs.get_variable(self._names["wco"], [self._num_units])
         wcf = vs.get_variable(self._names["wcf"], [self._num_units])
+        wco = vs.get_variable(self._names["wco"], [self._num_units])
       else:
-        wci = wco = wcf = array_ops.zeros([self._num_units])
+        wci = wcf = wco = array_ops.zeros([self._num_units])
       (cs_prev, h_prev) = states_prev
       (_, cs, _, _, _, _, h) = _lstm_block_cell(
           x,
@@ -408,8 +410,8 @@ class LSTMBlockCell(rnn_cell_impl.RNNCell):
           w,
           b,
           wci=wci,
-          wco=wco,
           wcf=wcf,
+          wco=wco,
           forget_bias=self._forget_bias,
           cell_clip=self._cell_clip,
           use_peephole=self._use_peephole)
@@ -644,10 +646,10 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
         dtype=dtype)
     if self._use_peephole:
       wci = vs.get_variable("w_i_diag", [self._num_units], dtype=dtype)
-      wco = vs.get_variable("w_o_diag", [self._num_units], dtype=dtype)
       wcf = vs.get_variable("w_f_diag", [self._num_units], dtype=dtype)
+      wco = vs.get_variable("w_o_diag", [self._num_units], dtype=dtype)
     else:
-      wci = wco = wcf = array_ops.zeros([self._num_units], dtype=dtype)
+      wci = wcf = wco = array_ops.zeros([self._num_units], dtype=dtype)
 
     if sequence_length is None:
       max_seq_len = math_ops.to_int64(time_len)
@@ -661,8 +663,8 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
         h_prev=initial_output,
         w=w,
         wci=wci,
-        wco=wco,
         wcf=wcf,
+        wco=wco,
         b=b,
         forget_bias=self._forget_bias,
         cell_clip=self._cell_clip,

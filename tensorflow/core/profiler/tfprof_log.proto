@@ -8,10 +8,17 @@ import "tensorflow/core/framework/attr_value.proto";
 message CodeDef {
   repeated Trace traces = 1;
   message Trace {
-    string file = 1;
+    string file = 1 [deprecated = true];  // deprecated by file_id.
+    int64 file_id = 6;
+
     int32 lineno = 2;
-    string function = 3;
-    string line = 4;
+
+    string function = 3 [deprecated = true];  // deprecated by function_id.
+    int64 function_id = 7;
+
+    string line = 4 [deprecated = true];  // deprecated line_id.
+    int64 line_id = 8;
+
     int32 func_start_line = 5;
   }
 }
@@ -32,6 +39,10 @@ message OpLogEntry {
 
 message OpLogProto {
   repeated OpLogEntry log_entries = 1;
+
+  // Maps from id of CodeDef file,function,line to its string
+  // In the future can also map other id of other fields to string.
+  map<int64, string> id_to_string = 2;
 }
 
 // A proto representation of the profiler's profile.
@@ -44,6 +55,10 @@ message ProfileProto {
   bool has_trace = 2;
   // Traced steps.
   repeated int64 steps = 3;
+
+  // Maps from id of CodeDef file,function,line to its string
+  // In the future can also map other id of other fields to string.
+  map<int64, string> id_to_string = 4;
 }
 
 message ProfileNode {

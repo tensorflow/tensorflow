@@ -163,6 +163,7 @@ CORE_PROTO_SRCS = [
     "framework/function.proto",
     "framework/graph.proto",
     "framework/graph_transfer_info.proto",
+    "framework/iterator.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
     "framework/node_def.proto",
@@ -510,6 +511,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
+        ":lib_internal",
         ":op_gen_overrides_proto_cc",
         ":protos_all_cc",
     ],
@@ -651,14 +653,15 @@ cc_library(
         ":image_ops_op_lib",
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
-        ":lookup_ops_op_lib",
         ":logging_ops_op_lib",
+        ":lookup_ops_op_lib",
         ":math_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
+        ":resource_variable_ops_op_lib",
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
@@ -780,6 +783,7 @@ cc_library(
         "//tensorflow/core/kernels:dataset_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:histogram_op",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:linalg",
@@ -888,6 +892,7 @@ cc_library(
         ":test",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:constant_op",
+        "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
     ],
 )
@@ -1396,6 +1401,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/platform.h",
     "platform/protobuf_internal.h",
     "platform/setround.h",
+    "platform/snappy.h",
     "platform/tensor_coding.h",
     "platform/tracing.h",
 ]
@@ -1406,7 +1412,7 @@ cc_library(
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     defines = tf_additional_lib_defines() + [
-                  "SNAPPY",
+                  "TF_USE_SNAPPY",
               ] + tf_additional_verbs_lib_defines() +
               tf_additional_mpi_lib_defines() +
               tf_additional_gdr_lib_defines(),
@@ -1938,6 +1944,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
 tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [
+        "common_runtime/accumulate_n_optimizer.cc",
         "common_runtime/allocator_retry.cc",
         "common_runtime/bfc_allocator.cc",
         "common_runtime/build_graph_options.cc",
@@ -2121,6 +2128,7 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
     "common_runtime/gpu/gpu_init.h",
+    "common_runtime/gpu/gpu_managed_allocator.h",
     "common_runtime/gpu/gpu_stream_util.h",
     "common_runtime/gpu/gpu_util.h",
     "common_runtime/gpu/pool_allocator.h",
@@ -2135,6 +2143,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
+        "common_runtime/gpu/gpu_managed_allocator.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
         "common_runtime/gpu/gpu_util_platform_specific.cc",
@@ -2171,6 +2180,7 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
+        ":stream_executor",
         "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
 )
@@ -2253,7 +2263,6 @@ cc_library(
         "lib/io/block_builder.h",
         "lib/io/format.h",
         "lib/random/philox_random_test_utils.h",
-        "platform/snappy.h",
     ],
     deps = [
         ":lib",
@@ -2500,6 +2509,7 @@ tf_cc_test(
     srcs = ["framework/op_gen_lib_test.cc"],
     deps = [
         ":op_gen_lib",
+        ":protos_all_cc",
         ":test",
         ":test_main",
     ],
@@ -2667,6 +2677,22 @@ tf_cc_tests(
 )
 
 tf_cc_test_mkl(
+    name = "mkl_runtime_tests",
+    size = "small",
+    srcs = ["common_runtime/mkl_cpu_allocator_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":framework",
+        ":framework_internal",
+        ":test",
+        ":test_main",
+        ":testlib",
+    ],
+)
+
+tf_cc_test_mkl(
     name = "mkl_related_tests",
     size = "small",
     srcs = [
@@ -2693,7 +2719,20 @@ tf_cc_test_mkl(
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
-    ],
+    ] + if_mkl([
+        "//tensorflow/core/kernels:mkl_aggregate_ops",
+        "//tensorflow/core/kernels:mkl_concat_op",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_cwise_ops_common",
+        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_identity_op",
+        "//tensorflow/core/kernels:mkl_input_conversion_op",
+        "//tensorflow/core/kernels:mkl_lrn_op",
+        "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_relu_op",
+        "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
+    ]),
 )
 
 tf_cc_tests_gpu(
@@ -3312,6 +3351,41 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:example_parsing_ops",
+    ],
+)
+
+filegroup(
+    name = "base_api_def",
+    data = glob(["api_def/base_api/*"]),
+)
+
+filegroup(
+    name = "python_api_def",
+    data = glob(["api_def/python_api/*"]),
+)
+
+tf_cc_test(
+    name = "api_test",
+    srcs = ["api_def/api_test.cc"],
+    data = [
+        ":base_api_def",
+        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":op_gen_lib",
+        ":op_gen_overrides_proto_cc",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
     ],
 )
 

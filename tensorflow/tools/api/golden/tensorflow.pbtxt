@@ -393,6 +393,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "name_scope"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "newaxis"
     mtype: "<type \'NoneType\'>"
   }
@@ -497,6 +501,14 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "uint32"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint64"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "uint8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -507,6 +519,10 @@ tf_module {
   member {
     name: "user_ops"
     mtype: "<type \'module\'>"
+  }
+  member {
+    name: "variable_scope"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "variance_scaling_initializer"
@@ -1338,7 +1354,7 @@ tf_module {
   }
   member_method {
     name: "matrix_transpose"
-    argspec: "args=[\'a\', \'name\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\'], "
+    argspec: "args=[\'a\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\', \'False\'], "
   }
   member_method {
     name: "matrix_triangular_solve"
@@ -1379,10 +1395,6 @@ tf_module {
   member_method {
     name: "multiply"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "name_scope"
-    argspec: "args=[\'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "negative"
@@ -1469,8 +1481,12 @@ tf_module {
     argspec: "args=[\'input\', \'full_matrices\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "quantize"
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'None\'], "
+  }
+  member_method {
     name: "quantize_v2"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\', \'round_mode\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'HALF_AWAY_FROM_ZERO\'], "
   }
   member_method {
     name: "quantized_concat"
@@ -1978,7 +1994,7 @@ tf_module {
   }
   member_method {
     name: "transpose"
-    argspec: "args=[\'a\', \'perm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'transpose\'], "
+    argspec: "args=[\'a\', \'perm\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'None\', \'transpose\', \'False\'], "
   }
   member_method {
     name: "truediv"
@@ -2027,10 +2043,6 @@ tf_module {
   member_method {
     name: "variable_op_scope"
     argspec: "args=[\'values\', \'name_or_scope\', \'default_name\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "variable_scope"
-    argspec: "args=[\'name_or_scope\', \'default_name\', \'values\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "variables_initializer"

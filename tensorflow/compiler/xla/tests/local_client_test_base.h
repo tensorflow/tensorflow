@@ -128,8 +128,8 @@ class LocalClientTestBase : public ::testing::Test {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  // The allocator must live as long as the service which lives until the end of
-  // the process, so make the allocator static.
+  // The allocator must live as long as the service, which lives until the end
+  // of the process. So make the allocator static.
   static TestAllocator* allocator_;
 
   perftools::gputools::StreamExecutor* stream_executor_;

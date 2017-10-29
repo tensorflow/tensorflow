@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -47,7 +47,7 @@ AlgebraicSimplifier::ValidBitcastCallback non_bitcasting_callback() {
   return [](const Shape&, const Shape&) { return false; };
 }
 
-class AlgebraicSimplifierTest : public HloTestBase {
+class AlgebraicSimplifierTest : public HloVerifiedTestBase {
  public:
   // Makes a computation that contains a loop that runs num_iters times.
   HloComputation* MakeSimpleLoop(HloModule* module, int num_iters);
@@ -353,6 +353,42 @@ TEST_F(AlgebraicSimplifierTest, DivOfPower) {
               op::Multiply(param0, op::Power(param1, op::Negate(param2))));
 }
 
+// Test that broadcasting is done on the right step when simplifying A/pow(B,C)
+// to A*pow(B,-C).
+TEST_F(AlgebraicSimplifierTest, DivOfBroadcastingPower) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {7});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r1f32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0f32, "param2"));
+  HloInstruction* power = builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kPower, param1, param2));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kDivide, param0, power));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Divide(param0, op::Power(param1, param2)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  ASSERT_THAT(computation->root_instruction(),
+              op::Multiply(param0, op::Power(param1, op::Negate(param2))));
+
+  const HloInstruction* negate =
+      computation->root_instruction()->operand(1)->operand(1);
+  const Shape& negate_shape = negate->shape();
+  EXPECT_EQ(0, negate_shape.dimensions_size());
+}
+
 // Test that A/1 is simplified to A for a scalar.
 TEST_F(AlgebraicSimplifierTest, DivOneScalar) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -395,6 +431,56 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
+}
+
+// Test that real(complex(r,i)) is simplified to r.
+TEST_F(AlgebraicSimplifierTest, RealOfComplex) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
+  HloInstruction* cplx = builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::ChangeElementType(r2f32, C64),
+                                   HloOpcode::kComplex, param0, param1));
+  HloInstruction* real = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kReal, cplx));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root, real);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+// Test that imag(complex(r,i)) is simplified to i.
+TEST_F(AlgebraicSimplifierTest, ImagOfComplex) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
+  HloInstruction* cplx = builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::ChangeElementType(r2f32, C64),
+                                   HloOpcode::kComplex, param0, param1));
+  HloInstruction* imag = builder.AddInstruction(
+      HloInstruction::CreateUnary(r2f32, HloOpcode::kImag, cplx));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root, imag);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param1);
 }
 
 // Test that get_element(make_tuple({A,B}),1) is simplified to B
@@ -1077,6 +1163,54 @@ TEST_F(AlgebraicSimplifierTest, ReshapeToScalarNotHoistedAfterEffectiveUnary) {
               op::Maximum(op::Reshape(param), zero));
 }
 
+// Regression test for a bug where if we failed to sink a reshape, we'd set the
+// 'changed' bit in AlgebraicSimplifier to false.
+TEST_F(AlgebraicSimplifierTest, FailureToSinkReshapeDoesntAffectChangedBit) {
+  HloComputation::Builder builder(TestName());
+
+  // This add (param0 + 0) can be simplified.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "param0")),
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          Literal::CreateR2<float>({{0, 0}, {0, 0}})))));
+
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {4}), add));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+}
+
+// Regression test for a bug where if we failed to sink a reshape, we'd set the
+// 'changed' bit in AlgebraicSimplifier to false.
+TEST_F(AlgebraicSimplifierTest, FailureToSinkBroadcastDoesntAffectChangedBit) {
+  HloComputation::Builder builder(TestName());
+
+  // This add (param0 + 0) can be simplified.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "param0")),
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          Literal::CreateR2<float>({{0, 0}, {0, 0}})))));
+
+  builder.AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(F32, {2, 2, 2}), add, /*broadcast_dimensions=*/{0}));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
@@ -1530,7 +1664,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     for (int i = 0; i < strlen(options.dim_order); ++i) {
       char ch = options.dim_order[i];
       if (ch == 'N') {
-        dnums.set_batch_dimension(i);
+        dnums.set_input_batch_dimension(i);
+        dnums.set_output_batch_dimension(i);
         in_dims.push_back(options.in_batch);
       } else if (ch == 'H') {
         dnums.set_spatial_dimensions(0, i);
@@ -1539,7 +1674,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         dnums.set_spatial_dimensions(1, i);
         in_dims.push_back(options.in_width);
       } else if (ch == 'C') {
-        dnums.set_feature_dimension(i);
+        dnums.set_input_feature_dimension(i);
+        dnums.set_output_feature_dimension(i);
         in_dims.push_back(options.in_channels);
         in_channel_idx = i;
       }
@@ -2041,7 +2177,7 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
       HloInstruction::CreateConstant(Literal::CreateR1<float>({0.0f})));
   HloInstruction* one = call_builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR1<float>({1.0f})));
-  builder.AddInstruction(
+  call_builder.AddInstruction(
       HloInstruction::CreateCall(r1f32, {zero, one}, dot_computation.get()));
 
   auto module = CreateNewModule();
@@ -2163,6 +2299,29 @@ TEST_F(AlgebraicSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
                                  non_bitcasting_callback());
   EXPECT_FALSE(simplifier.Run(&module).ValueOrDie());
+}
+
+// A dynamic-slice is trivial if its start indices are all zeroes and the size
+// of its input equals the size of its output.  In this case, the dynamic slice
+// is equal to its input.
+TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
+  HloComputation::Builder builder(TestName());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "slice_from")),
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR1<int>({0, 0, 0}))),
+      /*slice_sizes=*/{10, 100, 1000}));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Parameter());
 }
 
 // A dynamic-update-slice is trivial if its start indices are all zeroes and the

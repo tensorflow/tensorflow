@@ -20,6 +20,7 @@ limitations under the License.
 #include <stack>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -54,14 +55,18 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kExp;
     case UNOP_FLOOR:
       return HloOpcode::kFloor;
+    case UNOP_IMAG:
+      return HloOpcode::kImag;
     case UNOP_IS_FINITE:
       return HloOpcode::kIsFinite;
     case UNOP_LOG:
       return HloOpcode::kLog;
-    case UNOP_LOGICAL_NOT:
-      return HloOpcode::kLogicalNot;
+    case UNOP_NOT:
+      return HloOpcode::kNot;
     case UNOP_NEGATE:
       return HloOpcode::kNegate;
+    case UNOP_REAL:
+      return HloOpcode::kReal;
     case UNOP_ROUND_NEAREST_AFZ:
       return HloOpcode::kRoundNearestAfz;
     case UNOP_SIGN:
@@ -79,6 +84,10 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
 
 HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
   switch (binop) {
+    case BINOP_ATAN2:
+      return HloOpcode::kAtan2;
+    case BINOP_COMPLEX:
+      return HloOpcode::kComplex;
     case BINOP_DOT:
       return HloOpcode::kDot;
     case BINOP_MUL:
@@ -111,10 +120,16 @@ HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
       return HloOpcode::kPower;
     case BINOP_REM:
       return HloOpcode::kRemainder;
-    case BINOP_LOGICAL_OR:
-      return HloOpcode::kLogicalOr;
-    case BINOP_LOGICAL_AND:
-      return HloOpcode::kLogicalAnd;
+    case BINOP_OR:
+      return HloOpcode::kOr;
+    case BINOP_AND:
+      return HloOpcode::kAnd;
+    case BINOP_SHIFT_LEFT:
+      return HloOpcode::kShiftLeft;
+    case BINOP_SHIFT_RIGHT_ARITHMETIC:
+      return HloOpcode::kShiftRightArithmetic;
+    case BINOP_SHIFT_RIGHT_LOGICAL:
+      return HloOpcode::kShiftRightLogical;
     default:
       LOG(FATAL) << "unhandled operation " << binop;
   }
@@ -126,8 +141,6 @@ HloOpcode TernaryOperationToHloOpcode(TernaryOperation triop) {
       return HloOpcode::kClamp;
     case TRIOP_SELECT:
       return HloOpcode::kSelect;
-    case TRIOP_UPDATE:
-      return HloOpcode::kUpdate;
     default:
       LOG(FATAL) << "unhandled operation " << triop;
   }
@@ -1837,10 +1850,17 @@ UserComputation::GetEmbeddedComputations(
   XLA_VLOG_LINES(3, session_computation_.DebugString());
 
   std::vector<VersionedComputationHandle> computations;
+  std::vector<int64> sorted_handles;
   for (const auto& handle_request : session_computation_.requests()) {
-    int64 handle_value = handle_request.first;
+    sorted_handles.push_back(handle_request.first);
+  }
+  std::sort(sorted_handles.begin(), sorted_handles.end());
+  for (int64 handle : sorted_handles) {
+    const auto& handle_request = session_computation_.requests().find(handle);
+    CHECK(handle_request != session_computation_.requests().end());
+    int64 handle_value = handle_request->first;
     if (handle_value <= version) {
-      const OperationRequest& request = handle_request.second;
+      const OperationRequest& request = handle_request->second;
       switch (request.request().op_case()) {
         case OpRequest::kCallRequest: {
           CHECK_EQ(1, request.embedded_computation_versions_size());

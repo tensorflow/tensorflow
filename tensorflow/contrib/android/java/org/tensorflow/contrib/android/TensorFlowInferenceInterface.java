@@ -35,8 +35,8 @@ import org.tensorflow.Graph;
 import org.tensorflow.Operation;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
-import org.tensorflow.Tensors;
 import org.tensorflow.TensorFlow;
+import org.tensorflow.Tensors;
 import org.tensorflow.types.UInt8;
 
 /**

@@ -35,6 +35,7 @@ constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
 constexpr char kRecv[] = "_Recv";
+constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
 constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
@@ -165,6 +166,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kSend, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
@@ -292,21 +294,21 @@ Costs OpLevelCostEstimator::PredictCosts(const OpContext& op_context) const {
   return costs;
 }
 
-std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
+OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
     const DeviceProperties& device) const {
   double gflops = -1;
-  double bandwidth = -1;
+  double gb_per_sec = -1;
 
   if (device.type() == "CPU") {
     // Check if vector instructions are available, and refine performance
     // prediction based on this.
     // Frequencies are stored in MHz in the DeviceProperties.
     gflops = device.num_cores() * device.frequency() * 1e-3;
-    if (bandwidth < 0) {
+    if (gb_per_sec < 0) {
       if (device.bandwidth() > 0) {
-        bandwidth = device.bandwidth() / 1e6;
+        gb_per_sec = device.bandwidth() / 1e6;
       } else {
-        bandwidth = 32;
+        gb_per_sec = 32;
       }
     }
   } else if (device.type() == "GPU") {
@@ -328,15 +330,15 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
     gflops = device.num_cores() * device.frequency() * 1e-3 *
              cores_per_multiprocessor * kOpsPerMac;
     if (device.bandwidth() > 0) {
-      bandwidth = device.bandwidth() / 1e6;
+      gb_per_sec = device.bandwidth() / 1e6;
     } else {
-      bandwidth = 100;
+      gb_per_sec = 100;
     }
   }
-  VLOG(1) << "Device: " << device.type() << " GFLOPS: " << gflops
-          << " Bandwidth: " << bandwidth;
+  VLOG(1) << "Device: " << device.type() << " gflops: " << gflops
+          << " gb_per_sec: " << gb_per_sec;
 
-  return std::make_pair(gflops, bandwidth);
+  return {gflops, gb_per_sec};
 }
 
 Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
@@ -382,8 +384,8 @@ Costs OpLevelCostEstimator::DummyExecutionTime(
 
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
     double operations, const OpInfo& op_features) const {
-  std::pair<double, double> device_perf = GetDeviceInfo(op_features.device());
-  Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.first));
+  DeviceInfo device_perf = GetDeviceInfo(op_features.device());
+  Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.gigaops));
   VLOG(1) << "Op:" << op_features.op() << " GOps:" << operations / 1e9
           << " Execution Time (ns):" << compute_cost.count();
 
@@ -394,7 +396,8 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
       CalculateOutputSize(op_features, &found_unknown_shapes);
   double total_io_size = total_input_size + total_output_size;
 
-  Costs::NanoSeconds memory_cost(std::ceil(total_io_size / device_perf.second));
+  Costs::NanoSeconds memory_cost(
+      std::ceil(total_io_size / device_perf.gb_per_sec));
   VLOG(1) << "Op:" << op_features.op() << " Size (KB):" << (total_io_size) / 1e3
           << " Memory Time (ns):" << memory_cost.count();
 

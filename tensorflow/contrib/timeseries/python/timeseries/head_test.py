@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
-from tensorflow.contrib.timeseries.python.timeseries import model
 from tensorflow.contrib.timeseries.python.timeseries import head as ts_head_lib
+from tensorflow.contrib.timeseries.python.timeseries import model
 from tensorflow.contrib.timeseries.python.timeseries import state_management
 
 from tensorflow.python.estimator import estimator_lib

@@ -85,6 +85,10 @@ class DfsHloVisitor {
   virtual Status HandleCopy(HloInstruction* copy) {
     return HandleElementwiseUnary(copy);
   }
+  virtual Status HandleComplex(HloInstruction* complex, HloInstruction* real,
+                               HloInstruction* imag) {
+    return HandleElementwiseBinary(complex);
+  }
   virtual Status HandleMultiply(HloInstruction* multiply, HloInstruction* lhs,
                                 HloInstruction* rhs) {
     return HandleElementwiseBinary(multiply);
@@ -122,6 +126,10 @@ class DfsHloVisitor {
   virtual Status HandleAbs(HloInstruction* abs, HloInstruction* operand) {
     return HandleElementwiseUnary(abs);
   }
+  virtual Status HandleAtan2(HloInstruction* atan2, HloInstruction* y,
+                             HloInstruction* x) {
+    return HandleElementwiseBinary(atan2);
+  }
   virtual Status HandleRound(HloInstruction* round) {
     return HandleElementwiseUnary(round);
   }
@@ -152,22 +160,42 @@ class DfsHloVisitor {
   virtual Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) {
     return HandleElementwiseUnary(tanh);
   }
+  virtual Status HandleReal(HloInstruction* real, HloInstruction* operand) {
+    return HandleElementwiseUnary(real);
+  }
+  virtual Status HandleImag(HloInstruction* imag, HloInstruction* operand) {
+    return HandleElementwiseUnary(imag);
+  }
   virtual Status HandleIsFinite(HloInstruction* is_finite,
                                 HloInstruction* operand) {
     return HandleElementwiseUnary(is_finite);
   }
-  virtual Status HandleLogicalAnd(HloInstruction* logical_and,
-                                  HloInstruction* lhs, HloInstruction* rhs) {
-    return HandleElementwiseBinary(logical_and);
+  virtual Status HandleAnd(HloInstruction* and_, HloInstruction* lhs,
+                           HloInstruction* rhs) {
+    return HandleElementwiseBinary(and_);
   }
-  virtual Status HandleLogicalNot(HloInstruction* logical_not,
-                                  HloInstruction* operand) {
-    return HandleElementwiseUnary(logical_not);
+  virtual Status HandleNot(HloInstruction* not_, HloInstruction* operand) {
+    return HandleElementwiseUnary(not_);
   }
-  virtual Status HandleLogicalOr(HloInstruction* logical_or,
+  virtual Status HandleOr(HloInstruction* or_, HloInstruction* lhs,
+                          HloInstruction* rhs) {
+    return HandleElementwiseBinary(or_);
+  }
+  virtual Status HandleShiftLeft(HloInstruction* shift_left,
                                  HloInstruction* lhs, HloInstruction* rhs) {
-    return HandleElementwiseBinary(logical_or);
+    return HandleElementwiseBinary(shift_left);
   }
+  virtual Status HandleShiftRightArithmetic(
+      HloInstruction* shift_right_arithmetic, HloInstruction* lhs,
+      HloInstruction* rhs) {
+    return HandleElementwiseBinary(shift_right_arithmetic);
+  }
+  virtual Status HandleShiftRightLogical(HloInstruction* shift_right_logical,
+                                         HloInstruction* lhs,
+                                         HloInstruction* rhs) {
+    return HandleElementwiseBinary(shift_right_logical);
+  }
+
   virtual Status HandleReducePrecision(HloInstruction* reduce_precision) {
     return HandleElementwiseUnary(reduce_precision);
   }

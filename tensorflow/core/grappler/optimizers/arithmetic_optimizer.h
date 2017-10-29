@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -27,7 +28,9 @@ namespace grappler {
 // run a model.
 class ArithmeticOptimizer : public GraphOptimizer {
  public:
-  ArithmeticOptimizer() {}
+  ArithmeticOptimizer() : opt_level_(RewriterConfig::ON) {}
+  explicit ArithmeticOptimizer(RewriterConfig::Toggle opt_level)
+      : opt_level_(opt_level) {}
   ~ArithmeticOptimizer() override {}
 
   string name() const override { return "arithmetic_optimizer"; };
@@ -45,8 +48,9 @@ class ArithmeticOptimizer : public GraphOptimizer {
   // transposes.
   void SimplifyArithmeticOps(GraphDef* optimized_graph) const;
   // Tries to simplify the expression that roots at `node` and replaces the uses
-  // of `node` to the simplified expression. Returns the simplified node or
-  // nullptr if no simplification is performed.
+  // of `node` to the simplified expression. Returns the name of the simplified
+  // tensor (e.g. "split:1") or an emtpy string if no simplification is
+  // performed.
   //
   // `node_map` stores the mapping from node names to NodeDef*, and will be
   // updated according to the rewrite.
@@ -54,11 +58,17 @@ class ArithmeticOptimizer : public GraphOptimizer {
   // `new_nodes` will be populated with the new nodes this function creates and
   // updates. The caller can push these nodes into the simplification queue to
   // optimize them further.
-  const NodeDef* TrySimplifyAndReplaceUses(
+  //
+  // TODO(jingyue): This interface is not suitable for optimizing nodes with
+  // multiple output tensors. We should pass in a tensor name instead of a
+  // NodeDef.
+  string TrySimplifyAndReplaceUses(
       const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
       std::vector<const NodeDef*>* new_nodes) const;
 
   std::unordered_set<string> nodes_to_preserve_;
+
+  RewriterConfig::Toggle opt_level_;
 };
 
 }  // end namespace grappler

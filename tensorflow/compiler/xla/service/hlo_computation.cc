@@ -373,13 +373,14 @@ string HloComputation::ToString(int nested_level) const {
   for (int i = 0; i < nested_level; i++) {
     s << "    ";
   }
-  s << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
-    << " { \n";
+  s << "%" << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
+    << " {\n";
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     for (int i = 0; i < nested_level; i++) {
       s << "    ";
     }
-    s << "  " << instruction->ToString() << "\n";
+    s << "  " << (instruction == root_instruction_ ? "ROOT " : "")
+      << instruction->ToString() << "\n";
     if (instruction->opcode() == HloOpcode::kFusion) {
       s << instruction->fused_instructions_computation()->ToString(
                nested_level + 1)
@@ -400,7 +401,36 @@ HloComputationProto HloComputation::ToProto() const {
     HloInstructionProto instruction_proto = instruction->ToProto();
     proto.add_instructions()->Swap(&instruction_proto);
   }
+  proto.set_root_name(root_instruction()->name());
   return proto;
+}
+
+/* static */ StatusOr<std::unique_ptr<HloComputation>>
+HloComputation::CreateFromProto(
+    HloModule* module, const HloComputationProto& proto,
+    tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map,
+    HloInstruction* fusion_instruction) {
+  std::vector<std::unique_ptr<HloInstruction>> instructions;
+  tensorflow::gtl::FlatMap<string, HloInstruction*> instruction_map;
+  int64 parameter_count = 0;
+  for (const HloInstructionProto& instruction_proto : proto.instructions()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloInstruction> instruction,
+        HloInstruction::CreateFromProto(module, instruction_proto,
+                                        instruction_map, computation_map));
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      parameter_count++;
+    }
+    TF_RET_CHECK(!ContainsKey(instruction_map, instruction->name()));
+    instruction_map[instruction->name()] = instruction.get();
+    instructions.push_back(std::move(instruction));
+  }
+
+  TF_RET_CHECK(!proto.root_name().empty());
+  TF_RET_CHECK(ContainsKey(instruction_map, proto.root_name()));
+  HloInstruction* root = instruction_map.at(proto.root_name());
+  return WrapUnique(new HloComputation(
+      proto.name(), parameter_count, &instructions, root, fusion_instruction));
 }
 
 void HloComputation::FuseInstructionsInto(

@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg_impl as _linalg
 
 
 @ops.RegisterGradient("MatrixInverse")
@@ -76,8 +77,38 @@ def _CholeskyGrad(op, grad):
   grad_a = math_ops.matmul(
       math_ops.matmul(l_inverse, middle, adjoint_a=True), l_inverse)
 
-  grad_a += math_ops.conj(array_ops.matrix_transpose(grad_a))
+  grad_a += _linalg.adjoint(grad_a)
   return grad_a * 0.5
+
+
+@ops.RegisterGradient("Qr")
+def _QrGrad(op, dq, dr):
+  """Gradient for Qr."""
+  q, r = op.outputs
+  if q.dtype.is_complex:
+    raise NotImplementedError("QrGrad not implemented for dtype: %s" % q.dtype)
+  if (r.shape.ndims is None or r.shape.as_list()[-2] is None or
+      r.shape.as_list()[-1] is None):
+    raise NotImplementedError("QrGrad not implemented with dynamic shapes.")
+  if r.shape[-2].value != r.shape[-1].value:
+    raise NotImplementedError("QrGrad not implemented when ncols > nrows "
+                              "or full_matrices is true and ncols != nrows.")
+
+  qdq = math_ops.matmul(q, dq, adjoint_a=True)
+  qdq_ = qdq - _linalg.adjoint(qdq)
+  rdr = math_ops.matmul(r, dr, adjoint_b=True)
+  rdr_ = rdr - _linalg.adjoint(rdr)
+  tril = array_ops.matrix_band_part(qdq_ + rdr_, -1, 0)
+
+  def _TriangularSolve(x, r):
+    """Equiv to matmul(x, adjoint(matrix_inverse(r))) if r is upper-tri."""
+    return _linalg.adjoint(
+        linalg_ops.matrix_triangular_solve(
+            r, _linalg.adjoint(x), lower=False, adjoint=False))
+
+  grad_a = math_ops.matmul(q, dr + _TriangularSolve(tril, r))
+  grad_b = _TriangularSolve(dq - math_ops.matmul(q, qdq), r)
+  return grad_a + grad_b
 
 
 @ops.RegisterGradient("MatrixSolve")
@@ -104,7 +135,7 @@ def _MatrixSolveLsGrad(op, grad):
   #   b) Implement a symmetric rank-k update op instead of computing
   #      x*z + transpose(x*z). This pattern occurs other places in TensorFlow.
 
-  def _overdetermined(op, grad):
+  def _Overdetermined(op, grad):
     """Gradients for the overdetermined case of MatrixSolveLs.
 
     This is the backprop for the solution to the normal equations of the first
@@ -129,7 +160,7 @@ def _MatrixSolveLsGrad(op, grad):
     grad_b = math_ops.matmul(a, z)
     return (grad_a, grad_b, None)
 
-  def _underdetermined(op, grad):
+  def _Underdetermined(op, grad):
     """Gradients for the underdetermined case of MatrixSolveLs.
 
     This is the backprop for the solution to the normal equations of the second
@@ -161,16 +192,16 @@ def _MatrixSolveLsGrad(op, grad):
   matrix_shape = op.inputs[0].get_shape()[-2:]
   if matrix_shape.is_fully_defined():
     if matrix_shape[-2] >= matrix_shape[-1]:
-      return _overdetermined(op, grad)
+      return _Overdetermined(op, grad)
     else:
-      return _underdetermined(op, grad)
+      return _Underdetermined(op, grad)
   else:
     # We have to defer determining the shape to runtime and use
     # conditional execution of the appropriate graph.
     matrix_shape = array_ops.shape(op.inputs[0])[-2:]
     return control_flow_ops.cond(matrix_shape[-2] >= matrix_shape[-1],
-                                 lambda: _overdetermined(op, grad),
-                                 lambda: _underdetermined(op, grad))
+                                 lambda: _Overdetermined(op, grad),
+                                 lambda: _Underdetermined(op, grad))
 
 
 @ops.RegisterGradient("MatrixTriangularSolve")
@@ -229,8 +260,124 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
                                    adjoint_b=True))
     # The forward op only depends on the lower triangular part of a, so here we
     # symmetrize and take the lower triangle
-    grad_a = array_ops.matrix_band_part(
-        grad_a + math_ops.conj(array_ops.matrix_transpose(grad_a)), -1, 0)
+    grad_a = array_ops.matrix_band_part(grad_a + _linalg.adjoint(grad_a), -1, 0)
     grad_a = array_ops.matrix_set_diag(grad_a,
                                        0.5 * array_ops.matrix_diag_part(grad_a))
+    return grad_a
+
+
+@ops.RegisterGradient("Svd")
+def _SvdGrad(op, grad_s, grad_u, grad_v):
+  """Gradient for Svd based on Giles' algorithm. Reference at top of file."""
+
+  if op.get_attr("compute_uv") and not op.get_attr("full_matrices"):
+    raise NotImplementedError(
+        "SVD gradient is not implemented for compute_uv=True and "
+        "full_matrices=False.")
+
+  a = op.inputs[0]
+  a_shape = a.get_shape().with_rank_at_least(2)
+
+  if op.get_attr("compute_uv"):
+    # TODO(rmlarsen): Make this work with complex types.
+    if a.dtype.is_complex:
+      raise NotImplementedError(
+          "SVD gradient is not implemented for complex types and "
+          "compute_uv=True.")
+    grad_u_shape = grad_u.get_shape().with_rank_at_least(2)
+    grad_v_shape = grad_v.get_shape().with_rank_at_least(2)
+    m = a_shape[-2].merge_with(grad_u_shape[-2])
+    n = a_shape[-1].merge_with(grad_v_shape[-2])
+    batch_shape = a_shape[:-2].merge_with(grad_u_shape[:-2]).merge_with(
+        grad_v_shape[:-2])
+    a_shape = batch_shape.concatenate([m, n])
+
+  m = a_shape[-2].value
+  n = a_shape[-1].value
+  # TODO(rmlarsen): Make this work with placeholders.
+  if m is None or n is None:
+    raise NotImplementedError(
+        "SVD gradient has not been implemented for input with unknown "
+        "inner matrix shape.")
+
+  if not op.get_attr("full_matrices") or not op.get_attr("compute_uv"):
+    s, u, v = linalg_ops.svd(a, compute_uv=True, full_matrices=True)
+  else:
+    s = op.outputs[0]
+    u = op.outputs[1]
+    v = op.outputs[2]
+
+  use_adjoint = False
+  if m > n:
+    # Compute the gradient for A^H = V * S^T * U^H, and (implicitly) take the
+    # Hermitian transpose of the gradient at the end.
+    use_adjoint = True
+    m, n = n, m
+    u, v = v, u
+    grad_u, grad_v = grad_v, grad_u
+
+  with ops.control_dependencies([grad_s, grad_u, grad_v]):
+    grad_s_mat = array_ops.matrix_diag(grad_s)
+    if not op.get_attr("compute_uv"):
+      if use_adjoint:
+        grad_a = math_ops.matmul(
+            v[..., :, :m], math_ops.matmul(u, grad_s_mat), adjoint_b=True)
+      else:
+        grad_a = math_ops.matmul(u,
+                                 math_ops.matmul(
+                                     grad_s_mat, v[..., :, :m], adjoint_b=True))
+      grad_a.set_shape(a_shape)
+      return grad_a
+
+    # TODO(rmlarsen): Define a gradient that is numerically stable for
+    # abs(m-n) > 1. Currently this does not work because there are effectively
+    # multiple singular values with value zero. I am not sure if this is a true
+    # instability or if it simply throws off the finite difference gradient
+    # checker.
+    if abs(m - n) > 1:
+      raise NotImplementedError(
+          "svd gradient is not implemented for abs(m - n) > 1")
+    s_mat = array_ops.matrix_diag(s)
+    s2 = math_ops.square(s)
+
+    # NOTICE: Because of the term involving f, the gradient becomes
+    # infinite (or NaN in practice) when singular values are not unique.
+    # Mathematically this should not be surprising, since for (k-fold)
+    # degenerate singular values, the corresponding singular vectors are
+    # only defined up a (k-dimensional) subspace. In practice, this can
+    # lead to numerical instability when singular values are close but not
+    # exactly equal.
+    f = array_ops.matrix_set_diag(
+        math_ops.reciprocal(
+            array_ops.expand_dims(s2, -2) - array_ops.expand_dims(s2, -1)),
+        array_ops.zeros_like(s))
+    s_inv_mat = array_ops.matrix_diag(math_ops.reciprocal(s))
+    u_gu = math_ops.matmul(u, grad_u, adjoint_a=True)
+    v_gv = math_ops.matmul(v, grad_v, adjoint_a=True)
+
+    if m == n:
+      f_u = f * u_gu
+      f_v = f * v_gv
+    else:
+      dv2 = array_ops.matrix_transpose(v_gv[..., m:n, :m]) - v_gv[..., :m, m:n]
+      f_u = f * u_gu
+      f_v = f * v_gv[..., :m, :m]
+
+    grad_a_nouv = (
+        grad_s_mat + math_ops.matmul(f_u + _linalg.adjoint(f_u), s_mat) +
+        math_ops.matmul(s_mat, f_v + _linalg.adjoint(f_v)))
+
+    if m != n:
+      grad_a_nouv = array_ops.concat(
+          [grad_a_nouv, math_ops.matmul(s_inv_mat, dv2)], -1)
+
+    if use_adjoint:
+      # Use (U X V^H)^H = V (U X)^H.
+      grad_a = math_ops.matmul(
+          v, math_ops.matmul(u, grad_a_nouv), adjoint_b=True)
+    else:
+      grad_a = math_ops.matmul(u,
+                               math_ops.matmul(grad_a_nouv, v, adjoint_b=True))
+
+    grad_a.set_shape(a_shape)
     return grad_a
