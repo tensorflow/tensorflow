@@ -56,6 +56,8 @@ class KafkaReader : public ReaderBase {
         return errors::InvalidArgument("Invalid parameters: ", current_work());
       }
     }
+    offset_ = topic_offset_;
+
     topic_limit_ = -1;
     if (parts.size() > 3) {
       if (!strings::safe_strto64(parts[3], &topic_limit_)) {
@@ -113,7 +115,8 @@ class KafkaReader : public ReaderBase {
 
   Status ReadLocked(string* key, string* value, bool* produced,
                     bool* at_end) override {
-    if (topic_limit_ >= 0 && topic_offset_ >= topic_limit_) {
+    if (topic_limit_ >= 0 &&
+        (topic_offset_ >= topic_limit_ || offset_ >= topic_limit_)) {
       *at_end = true;
       return Status::OK();
     }
@@ -132,6 +135,8 @@ class KafkaReader : public ReaderBase {
         *value = std::string(static_cast<const char*>(message->payload()),
                              message->len());
         *produced = true;
+        // Sync offset
+        offset_ = message->offset();
         return Status::OK();
       } else if (message->err() == RdKafka::ERR__PARTITION_EOF) {
         if (eof_) {
@@ -166,6 +171,7 @@ class KafkaReader : public ReaderBase {
   int64 topic_limit_;
   std::unique_ptr<RdKafka::Consumer> consumer_;  // must outlive topic_
   std::unique_ptr<RdKafka::Topic> topic_;
+  int64 offset_;
 };
 
 class KafkaReaderOp : public ReaderOpKernel {
