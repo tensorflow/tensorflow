@@ -11,6 +11,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 tf_custom_op_library(
     name = "python/ops/_kafka_ops.so",
@@ -75,6 +76,22 @@ tf_custom_op_py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+    ],
+)
+
+tf_py_test(
+    name = "kafka_test",
+    srcs = ["python/kernel_tests/kafka_test.py"],
+    additional_deps = [
+        ":kafka",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+    tags = [
+        "manual",
     ],
 )
 
