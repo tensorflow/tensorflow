@@ -823,12 +823,126 @@ class BNTest(test.TestCase):
         self.assertAllClose(y_train, yt_val_train, atol=1e-5)
         self.assertAllClose(y_test, yt_val_test, atol=1e-5)
 
-  def testGhostBNVirtualBatch1(self):
+  def testAdjustment(self):
+    shape = (4, 3)
+    xt = array_ops.placeholder(dtypes.float32, shape)
+    momentum = 0.99
+    gamma = 2.
+    beta = 3.
+    epsilon = 0.001
+    adjust_scale = random_ops.random_uniform(shape[-1:], 0.5, 1.5)
+    adjust_bias = random_ops.random_uniform(shape[-1:], -.2, .2)
+    bn = normalization_layers.BatchNormalization(
+        axis=1,
+        gamma_initializer=init_ops.constant_initializer(gamma),
+        beta_initializer=init_ops.constant_initializer(beta),
+        epsilon=epsilon,
+        momentum=momentum,
+        adjustment=lambda _: (adjust_scale, adjust_bias))
+    training = array_ops.placeholder(dtypes.bool)
+    yt = bn.apply(xt, training=training)
+
+    moving_mean = 0.
+    moving_variance = 1.
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      for _ in range(5):
+        x = np.random.random(shape)
+        yt_val_train, adj_scale_val, adj_bias_val = sess.run(
+            [yt, adjust_scale, adjust_bias] + bn.updates,
+            feed_dict={xt: x, training: True})[:3]
+        yt_val_test = sess.run([yt] + bn.updates,
+                               feed_dict={xt: x, training: False})[0]
+
+        mean = x.mean(0)
+        variance = x.var(0)
+        y_train = (((x - mean) / (variance + epsilon) ** 0.5) * adj_scale_val +
+                   adj_bias_val) * gamma + beta
+        moving_mean += (mean - moving_mean) * (1. - momentum)
+        moving_variance += (variance - moving_variance) * (1. - momentum)
+
+        y_test = ((x - moving_mean) / (moving_variance + epsilon) ** 0.5 *
+                  gamma) + beta
+
+        self.assertAllClose(y_train, yt_val_train, atol=1e-5)
+        self.assertAllClose(y_test, yt_val_test, atol=1e-5)
+
+  def testRenormWithAdjustment(self):
+    shape = (4, 3)
+    xt = array_ops.placeholder(dtypes.float32, shape)
+    momentum = 0.99
+    renorm_momentum = 0.8
+    rmax = 1.1
+    rmin = 0.9
+    dmax = 0.1
+    gamma = 2.
+    beta = 3.
+    epsilon = 0.001
+    adjust_scale = random_ops.random_uniform(shape[-1:], 0.5, 1.5)
+    adjust_bias = random_ops.random_uniform(shape[-1:], -.2, .2)
+    bn = normalization_layers.BatchNormalization(
+        axis=1,
+        gamma_initializer=init_ops.constant_initializer(gamma),
+        beta_initializer=init_ops.constant_initializer(beta),
+        epsilon=epsilon,
+        momentum=momentum,
+        renorm=True,
+        renorm_clipping={'rmax': rmax, 'rmin': rmin, 'dmax': dmax},
+        renorm_momentum=renorm_momentum,
+        adjustment=lambda _: (adjust_scale, adjust_bias))
+    training = array_ops.placeholder(dtypes.bool)
+    yt = bn.apply(xt, training=training)
+
+    moving_mean = 0.
+    moving_variance = 1.
+    renorm_mean = renorm_stddev = 0.
+    renorm_weight = 0.
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      for _ in range(5):
+        x = np.random.random(shape)
+        yt_val_train, adj_scale_val, adj_bias_val = sess.run(
+            [yt, adjust_scale, adjust_bias] + bn.updates,
+            feed_dict={xt: x, training: True})[:3]
+        yt_val_test = sess.run([yt] + bn.updates,
+                               feed_dict={xt: x, training: False})[0]
+
+        mean = x.mean(0)
+        stddev = np.sqrt(x.var(0) + epsilon)
+        adj_mean = renorm_mean + (1. - renorm_weight) * mean
+        adj_stddev = renorm_stddev + (1. - renorm_weight) * stddev
+        r = (stddev / adj_stddev).clip(rmin, rmax)
+        d = ((mean - adj_mean) / adj_stddev).clip(-dmax, dmax)
+        y_train = (((x - mean) / stddev * r + d) * adj_scale_val +
+                   adj_bias_val) * gamma + beta
+        renorm_mean += (mean - renorm_mean) * (1. - renorm_momentum)
+        renorm_stddev += (stddev - renorm_stddev) * (1. - renorm_momentum)
+        renorm_weight += (1. - renorm_weight) * (1. - renorm_momentum)
+        moving_mean += (renorm_mean / renorm_weight -
+                        moving_mean) * (1. - momentum)
+        moving_variance += ((renorm_stddev / renorm_weight) ** 2 - epsilon -
+                            moving_variance) * (1. - momentum)
+
+        y_test = ((x - moving_mean) / (moving_variance + epsilon) ** 0.5 *
+                  gamma) + beta
+
+        self.assertAllClose(y_train, yt_val_train, atol=1e-5)
+        self.assertAllClose(y_test, yt_val_test, atol=1e-5)
+
+  def testGhostBNNegativeVirtualBatch(self):
+    shape = [6, 5, 4, 3]
+    inp = random_ops.random_uniform(shape, seed=1)
+
+    with self.assertRaises(ValueError):
+      normalization_layers.batch_normalization(
+          inp, virtual_batch_size=-1)
+
+  def testGhostBNVirtualBatchFull(self):
     shape = [6, 5, 4, 3]
     inp = random_ops.random_uniform(shape, seed=1)
     out1 = normalization_layers.batch_normalization(inp)
     out2 = normalization_layers.batch_normalization(
-        inp, num_virtual_batches=1)
+        inp, virtual_batch_size=6)
 
     self.assertListEqual(
         out1.shape.as_list(), out2.shape.as_list())
@@ -841,19 +955,11 @@ class BNTest(test.TestCase):
 
       self.assertAllClose(y1, y2, atol=1e-5)
 
-  def testGhostBNNegativeVirtualBatch(self):
-    shape = [6, 5, 4, 3]
-    inp = random_ops.random_uniform(shape, seed=1)
-
-    with self.assertRaises(ValueError):
-      normalization_layers.batch_normalization(
-          inp, num_virtual_batches=-1)
-
   def testGhostBNInputOutputShapesMatch(self):
     shape = [6, 4, 3]
     inp = random_ops.random_uniform(shape, seed=1)
     out = normalization_layers.batch_normalization(
-        inp, num_virtual_batches=2)
+        inp, virtual_batch_size=3)
     self.assertListEqual(out.shape.as_list(), shape)
 
   def testGhostBNUnknownBatchSize(self):
@@ -861,7 +967,7 @@ class BNTest(test.TestCase):
     tf_shape = [None, 5, 4]
     inp = array_ops.placeholder(dtypes.float32, tf_shape)
     out = normalization_layers.batch_normalization(
-        inp, num_virtual_batches=5)
+        inp, virtual_batch_size=2)
 
     with self.test_session(use_gpu=True) as sess:
       sess.run(variables.global_variables_initializer())
@@ -873,7 +979,7 @@ class BNTest(test.TestCase):
 
   def testGhostBN2Dims(self):
     shape = [6, 2]
-    num_virtual_batches = 2
+    virtual_batch_size = 3
     beta = 2.
     gamma = 3.
     momentum = 0.8
@@ -888,10 +994,11 @@ class BNTest(test.TestCase):
         epsilon=epsilon,
         beta_initializer=init_ops.constant_initializer(beta),
         gamma_initializer=init_ops.constant_initializer(gamma),
-        num_virtual_batches=num_virtual_batches)
+        virtual_batch_size=virtual_batch_size)
     out = bn.apply(inp, training=is_training)
-    ghost_shape = ([shape[0] // num_virtual_batches,
-                    num_virtual_batches, shape[1]])
+    ghost_shape = ([virtual_batch_size,
+                    shape[0] // virtual_batch_size,
+                    shape[1]])
 
     with self.test_session(use_gpu=True) as sess:
       sess.run(variables.global_variables_initializer())
@@ -899,10 +1006,14 @@ class BNTest(test.TestCase):
         x = np.random.random(shape)
 
         sub_batched = np.reshape(x, ghost_shape)
-        means = np.mean(sub_batched, axis=0)
-        variances = np.var(sub_batched, axis=0)
-        moving_means = moving_means * momentum + means * (1. - momentum)
-        moving_vars = moving_vars * momentum + variances * (1. - momentum)
+        means = np.mean(sub_batched, axis=0, keepdims=True)
+        variances = np.var(sub_batched, axis=0, keepdims=True)
+
+        avg_means = np.mean(means, axis=1, keepdims=True)
+        avg_variances = np.mean(variances, axis=1, keepdims=True)
+
+        moving_means = moving_means * momentum + avg_means * (1. - momentum)
+        moving_vars = moving_vars * momentum + avg_variances * (1. - momentum)
 
         y_train = ((sub_batched - means) /
                    (variances + epsilon) ** 0.5 * gamma) + beta
@@ -921,13 +1032,13 @@ class BNTest(test.TestCase):
 
   def testGhostBN4DimsAxis3(self):
     shape = [6, 10, 10, 3]
-    num_virtual_batches = 3
+    virtual_batch_size = 2
     beta = 2.
     gamma = 3.
     momentum = 0.8
     epsilon = 1e-3
-    moving_means = np.zeros([1, 3, 1, 1, 3], dtype=np.float32)
-    moving_vars = np.ones([1, 3, 1, 1, 3], dtype=np.float32)
+    moving_means = np.zeros([1, 1, 1, 1, 3], dtype=np.float32)
+    moving_vars = np.ones([1, 1, 1, 1, 3], dtype=np.float32)
 
     inp = array_ops.placeholder(dtypes.float32, shape)
     is_training = array_ops.placeholder(dtypes.bool)
@@ -937,9 +1048,9 @@ class BNTest(test.TestCase):
         epsilon=epsilon,
         beta_initializer=init_ops.constant_initializer(beta),
         gamma_initializer=init_ops.constant_initializer(gamma),
-        num_virtual_batches=num_virtual_batches)
+        virtual_batch_size=virtual_batch_size)
     out = bn.apply(inp, training=is_training)
-    ghost_shape = ([shape[0] // num_virtual_batches, num_virtual_batches] +
+    ghost_shape = ([virtual_batch_size, shape[0] // virtual_batch_size] +
                    shape[1:])
 
     with self.test_session(use_gpu=True) as sess:
@@ -950,8 +1061,12 @@ class BNTest(test.TestCase):
         sub_batched = np.reshape(x, ghost_shape)
         means = np.mean(sub_batched, axis=(0, 2, 3), keepdims=True)
         variances = np.var(sub_batched, axis=(0, 2, 3), keepdims=True)
-        moving_means = moving_means * momentum + means * (1. - momentum)
-        moving_vars = moving_vars * momentum + variances * (1. - momentum)
+
+        avg_means = np.mean(means, axis=1, keepdims=True)
+        avg_variances = np.mean(variances, axis=1, keepdims=True)
+
+        moving_means = moving_means * momentum + avg_means * (1. - momentum)
+        moving_vars = moving_vars * momentum + avg_variances * (1. - momentum)
 
         y_train = ((sub_batched - means) /
                    (variances + epsilon) ** 0.5 * gamma) + beta
@@ -970,13 +1085,13 @@ class BNTest(test.TestCase):
 
   def testGhostBN4DimsAxis1(self):
     shape = [6, 3, 10, 10]
-    num_virtual_batches = 3
+    virtual_batch_size = 2
     beta = 2.
     gamma = 3.
     momentum = 0.8
     epsilon = 1e-3
-    moving_means = np.zeros([1, 3, 3, 1, 1], dtype=np.float32)
-    moving_vars = np.ones([1, 3, 3, 1, 1], dtype=np.float32)
+    moving_means = np.zeros([1, 1, 3, 1, 1], dtype=np.float32)
+    moving_vars = np.ones([1, 1, 3, 1, 1], dtype=np.float32)
 
     inp = array_ops.placeholder(dtypes.float32, shape)
     is_training = array_ops.placeholder(dtypes.bool)
@@ -986,10 +1101,10 @@ class BNTest(test.TestCase):
         epsilon=epsilon,
         beta_initializer=init_ops.constant_initializer(beta),
         gamma_initializer=init_ops.constant_initializer(gamma),
-        num_virtual_batches=num_virtual_batches,
+        virtual_batch_size=virtual_batch_size,
         fused=False)      # NCHW is unsupported by CPU fused batch norm
     out = bn.apply(inp, training=is_training)
-    ghost_shape = ([shape[0] // num_virtual_batches, num_virtual_batches] +
+    ghost_shape = ([virtual_batch_size, shape[0] // virtual_batch_size] +
                    shape[1:])
 
     with self.test_session(use_gpu=True) as sess:
@@ -1000,8 +1115,162 @@ class BNTest(test.TestCase):
         sub_batched = np.reshape(x, ghost_shape)
         means = np.mean(sub_batched, axis=(0, 3, 4), keepdims=True)
         variances = np.var(sub_batched, axis=(0, 3, 4), keepdims=True)
-        moving_means = moving_means * momentum + means * (1. - momentum)
-        moving_vars = moving_vars * momentum + variances * (1. - momentum)
+
+        avg_means = np.mean(means, axis=1, keepdims=True)
+        avg_variances = np.mean(variances, axis=1, keepdims=True)
+
+        moving_means = moving_means * momentum + avg_means * (1. - momentum)
+        moving_vars = moving_vars * momentum + avg_variances * (1. - momentum)
+
+        y_train = ((sub_batched - means) /
+                   (variances + epsilon) ** 0.5 * gamma) + beta
+        y_test = ((sub_batched - moving_means) /
+                  (moving_vars + epsilon) ** 0.5 * gamma) + beta
+
+        y_train = np.reshape(y_train, shape)
+        y_test = np.reshape(y_test, shape)
+
+        y_val_train, _, _ = sess.run([out] + bn.updates,
+                                     feed_dict={inp: x, is_training: True})
+        y_val_test = sess.run(out, feed_dict={inp: x, is_training: False})
+
+        self.assertAllClose(y_train, y_val_train, atol=1e-2)
+        self.assertAllClose(y_test, y_val_test, atol=1e-2)
+
+  def testMultiAxisInvalid(self):
+    shape = [6, 5, 4, 3]
+    inp = random_ops.random_uniform(shape, seed=1)
+
+    with self.assertRaises(ValueError):
+      normalization_layers.batch_normalization(
+          inp, axis=[1, 4])    # out of bounds
+
+    with self.assertRaises(ValueError):
+      normalization_layers.batch_normalization(
+          inp, axis=[-5, 1])   # out of bounds
+
+    with self.assertRaises(ValueError):
+      normalization_layers.batch_normalization(
+          inp, axis=[1, 2, 1])   # duplicate
+
+  def test3DInputMultiAxis12(self):
+    epsilon = 1e-3
+    bn = normalization_layers.BatchNormalization(
+        axis=[1, 2], epsilon=epsilon, momentum=0.9)
+    inputs = variables.Variable(
+        np.random.random((5, 4, 3)) + 100, dtype=dtypes.float32)
+    training = array_ops.placeholder(dtype='bool')
+    outputs = bn.apply(inputs, training=training)
+
+    with self.test_session() as sess:
+      # Test training with placeholder learning phase.
+      sess.run(variables.global_variables_initializer())
+
+      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+
+      for _ in range(100):
+        np_output, _, _ = sess.run([outputs] + bn.updates,
+                                   feed_dict={training: True})
+        # Verify that the axis is normalized during training.
+        normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+      # Verify that the statistics are updated during training.
+      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      np_inputs = sess.run(inputs)
+      mean = np.mean(np_inputs, axis=0, keepdims=True)
+      std = np.std(np_inputs, axis=0, keepdims=True)
+      variance = np.square(std)
+      self.assertAllClose(mean, moving_mean, atol=1e-2)
+      self.assertAllClose(variance, moving_var, atol=1e-2)
+
+      # Test inference with placeholder learning phase.
+      np_output = sess.run(outputs, feed_dict={training: False})
+
+      # Verify that the axis is normalized during inference.
+      normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+  def test5DInputMultiAxis123(self):
+    epsilon = 1e-3
+    bn = normalization_layers.BatchNormalization(
+        axis=[1, 2, 3], epsilon=epsilon, momentum=0.9)
+    inputs = variables.Variable(
+        np.random.random((5, 3, 4, 4, 3)) + 100, dtype=dtypes.float32)
+    training = array_ops.placeholder(dtype='bool')
+    outputs = bn.apply(inputs, training=training)
+
+    with self.test_session() as sess:
+      # Test training with placeholder learning phase.
+      sess.run(variables.global_variables_initializer())
+
+      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+
+      for _ in range(100):
+        np_output, _, _ = sess.run([outputs] + bn.updates,
+                                   feed_dict={training: True})
+        # Verify that the axis is normalized during training.
+        normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+      # Verify that the statistics are updated during training.
+      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      np_inputs = sess.run(inputs)
+      mean = np.mean(np_inputs, axis=(0, 4), keepdims=True)
+      std = np.std(np_inputs, axis=(0, 4), keepdims=True)
+      variance = np.square(std)
+      self.assertAllClose(mean, moving_mean, atol=1e-2)
+      self.assertAllClose(variance, moving_var, atol=1e-2)
+
+      # Test inference with placeholder learning phase.
+      np_output = sess.run(outputs, feed_dict={training: False})
+
+      # Verify that the axis is normalized during inference.
+      normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+  def testGhostBN5DimsMultiAxis14(self):
+    shape = [6, 3, 10, 10, 4]
+    virtual_batch_size = 3
+    beta = 2.
+    gamma = 3.
+    momentum = 0.8
+    epsilon = 1e-3
+    moving_means = np.zeros([1, 1, 3, 1, 1, 4], dtype=np.float32)
+    moving_vars = np.ones([1, 1, 3, 1, 1, 4], dtype=np.float32)
+
+    inp = array_ops.placeholder(dtypes.float32, shape)
+    is_training = array_ops.placeholder(dtypes.bool)
+    bn = normalization_layers.BatchNormalization(
+        axis=[1, 4],
+        momentum=momentum,
+        epsilon=epsilon,
+        beta_initializer=init_ops.constant_initializer(beta),
+        gamma_initializer=init_ops.constant_initializer(gamma),
+        virtual_batch_size=virtual_batch_size,
+        fused=False)
+    out = bn.apply(inp, training=is_training)
+    ghost_shape = ([virtual_batch_size, shape[0] // virtual_batch_size] +
+                   shape[1:])
+
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      for _ in range(5):
+        x = np.random.random(shape)
+
+        sub_batched = np.reshape(x, ghost_shape)
+        means = np.mean(sub_batched, axis=(0, 3, 4), keepdims=True)
+        variances = np.var(sub_batched, axis=(0, 3, 4), keepdims=True)
+
+        avg_means = np.mean(means, axis=1, keepdims=True)
+        avg_variances = np.mean(variances, axis=1, keepdims=True)
+
+        moving_means = moving_means * momentum + avg_means * (1. - momentum)
+        moving_vars = moving_vars * momentum + avg_variances * (1. - momentum)
 
         y_train = ((sub_batched - means) /
                    (variances + epsilon) ** 0.5 * gamma) + beta

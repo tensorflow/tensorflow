@@ -48,6 +48,9 @@ enum PrimitiveType {
   F32 = 11;
   F64 = 12;
 
+  // Complex values of fixed width.
+  C64 = 15;  // Paired F32 (real, imag), as in std::complex<float>.
+
   // A tuple is a polymorphic sequence; e.g. a shape that holds different
   // sub-shapes. They are used for things like returning multiple values from a
   // computation; e.g. a computation that returns weights and biases may have a
@@ -305,6 +308,7 @@ message LiteralProto {
   repeated uint64 u64s = 7;
   repeated float f32s = 8;
   repeated double f64s = 9;
+  repeated float c64s = 12;  // Stored as interleaved real, imag floats.
   repeated LiteralProto tuple_literals = 10;
   bytes f16s = 11;  // Note: the F16s are encoded in little endian byte order
 }
@@ -392,13 +396,17 @@ message DynamicUpdateSliceRequest {
 }
 
 message ConvolutionDimensionNumbers {
-  // The number of the dimension that represents batch in the input
-  // (lhs) and output.
-  int64 batch_dimension = 1;
+  // The number of the dimension that represents batch in the input.
+  int64 input_batch_dimension = 7;
 
-  // The number of the dimension that represents features in the input
-  // (lhs) and output.
-  int64 feature_dimension = 2;
+  // The number of the dimension that represents features in the input.
+  int64 input_feature_dimension = 8;
+
+  // The number of the dimension that represents batch in the output.
+  int64 output_batch_dimension = 9;
+
+  // The number of the dimension that represents features in the output.
+  int64 output_feature_dimension = 10;
 
   // The dimension numbers for the spatial dimensions that the window
   // moves through in the input (lhs) and output.
@@ -617,8 +625,8 @@ message WhileRequest {
 enum UnaryOperation {
   UNOP_INVALID = 0;
 
-  // Elementwise, logical negation
-  UNOP_LOGICAL_NOT = 1;
+  // Elementwise, logical negation on booleans and bitwise negation on ints.
+  UNOP_NOT = 1;
 
   // Elementwise, computes e^x.
   UNOP_EXP = 2;
@@ -659,6 +667,12 @@ enum UnaryOperation {
   // Elementwise, rounds x to nearest integral value, rounding half-way cases
   // away from zero.
   UNOP_ROUND_NEAREST_AFZ = 14;
+
+  // Elementwise, extract real component of complex x.
+  UNOP_REAL = 15;
+
+  // Elementwise, extract real component of complex x.
+  UNOP_IMAG = 16;
 }
 
 message UnaryOpRequest {
@@ -706,9 +720,19 @@ enum BinaryOperation {
   // Remainder operation.
   BINOP_REM = 17;
 
-  // Logical operators
-  BINOP_LOGICAL_AND = 18;
-  BINOP_LOGICAL_OR = 19;
+  // Element-wise, logical operators on booleans and bitwise operators on ints.
+  BINOP_AND = 18;
+  BINOP_OR = 19;
+
+  BINOP_SHIFT_LEFT = 20;
+  BINOP_SHIFT_RIGHT_ARITHMETIC = 21;
+  BINOP_SHIFT_RIGHT_LOGICAL = 22;
+
+  // Complex from real, imag.
+  BINOP_COMPLEX = 23;
+
+  // Computes the 4-quadrant arctangent of the y, x input arguments.
+  BINOP_ATAN2 = 24;
 }
 
 message BinaryOpRequest {
@@ -746,10 +770,6 @@ enum TernaryOperation {
   // Given a predicate and two operands, selects operand0 if the predicate is
   // true and operand1 if the predicate is false.
   TRIOP_SELECT = 1;
-
-  // Updates operand0 at index operand1 with value operand2 and outputs the
-  // updated value.
-  TRIOP_UPDATE = 2;
 
   // Given a min, max and an operand returns the operand if between min and max,
   // else returns min if operand is less than min or max if operand is greater

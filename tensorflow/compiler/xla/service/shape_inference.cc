@@ -53,14 +53,18 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
       return UNOP_EXP;
     case HloOpcode::kFloor:
       return UNOP_FLOOR;
+    case HloOpcode::kImag:
+      return UNOP_IMAG;
     case HloOpcode::kIsFinite:
       return UNOP_IS_FINITE;
     case HloOpcode::kLog:
       return UNOP_LOG;
-    case HloOpcode::kLogicalNot:
-      return UNOP_LOGICAL_NOT;
+    case HloOpcode::kNot:
+      return UNOP_NOT;
     case HloOpcode::kNegate:
       return UNOP_NEGATE;
+    case HloOpcode::kReal:
+      return UNOP_REAL;
     case HloOpcode::kRoundNearestAfz:
       return UNOP_ROUND_NEAREST_AFZ;
     case HloOpcode::kSign:
@@ -81,6 +85,10 @@ UnaryOperation OpcodeToUnaryOperation(HloOpcode opcode) {
 // opcode.
 BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
   switch (opcode) {
+    case HloOpcode::kAtan2:
+      return BINOP_ATAN2;
+    case HloOpcode::kComplex:
+      return BINOP_COMPLEX;
     case HloOpcode::kDot:
       return BINOP_DOT;
     case HloOpcode::kMultiply:
@@ -113,10 +121,16 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
       return BINOP_POW;
     case HloOpcode::kRemainder:
       return BINOP_REM;
-    case HloOpcode::kLogicalOr:
-      return BINOP_LOGICAL_OR;
-    case HloOpcode::kLogicalAnd:
-      return BINOP_LOGICAL_AND;
+    case HloOpcode::kOr:
+      return BINOP_OR;
+    case HloOpcode::kAnd:
+      return BINOP_AND;
+    case HloOpcode::kShiftLeft:
+      return BINOP_SHIFT_LEFT;
+    case HloOpcode::kShiftRightArithmetic:
+      return BINOP_SHIFT_RIGHT_ARITHMETIC;
+    case HloOpcode::kShiftRightLogical:
+      return BINOP_SHIFT_RIGHT_LOGICAL;
     default:
       LOG(FATAL) << "unhandled opcode " << opcode;
   }
@@ -130,8 +144,6 @@ TernaryOperation OpcodeToTernaryOperation(HloOpcode opcode) {
       return TRIOP_CLAMP;
     case HloOpcode::kSelect:
       return TRIOP_SELECT;
-    case HloOpcode::kUpdate:
-      return TRIOP_UPDATE;
     default:
       LOG(FATAL) << "unhandled opcode " << opcode;
   }
@@ -303,30 +315,53 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   switch (operation) {
     case UNOP_FLOOR:
     case UNOP_CEIL:
+      if (!ShapeUtil::ElementIsFloating(arg)) {
+        return InvalidArgument(
+            "expected element type in shape to be floating for floor/ceil "
+            "operation; got %s",
+            PrimitiveType_Name(arg.element_type()).c_str());
+      }
+      return arg;
     case UNOP_COS:
     case UNOP_SIN:
     case UNOP_EXP:
     case UNOP_LOG:
     case UNOP_TANH:
-      if (!ShapeUtil::ElementIsFloating(arg)) {
+      if (!ShapeUtil::ElementIsFloating(arg) &&
+          !ShapeUtil::ElementIsComplex(arg)) {
         return InvalidArgument(
-            "expected element type in shape to be floating for exp/log/tanh "
-            "operation; got %s",
+            "expected element type in shape to be floating or complex for "
+            "sin/cos/exp/log/tanh operation; got %s",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
+    case UNOP_REAL:
+    case UNOP_IMAG:
+      if (!ShapeUtil::ElementIsComplex(arg)) {
+        return InvalidArgument(
+            "expected element type in shape to be complex for real/imag "
+            "operation; got %s",
+            PrimitiveType_Name(arg.element_type()).c_str());
+      }
+      return ShapeUtil::ChangeElementType(arg, F32);
     case UNOP_ABS:
+      if (ShapeUtil::ElementIsComplex(arg)) {
+        return ShapeUtil::ChangeElementType(
+            arg, primitive_util::ComplexComponentType(arg.element_type()));
+      }
+      return arg;
     case UNOP_NEGATE:
     case UNOP_ROUND_NEAREST_AFZ:
     case UNOP_SIGN:
     case UNOP_SORT:
       return arg;
 
-    case UNOP_LOGICAL_NOT:
-      if (arg.element_type() != PRED) {
+    case UNOP_NOT:
+      if (arg.element_type() != PRED &&
+          !primitive_util::IsIntegralType(arg.element_type())) {
         return InvalidArgument(
-            "expected pred element type in argument to logical-not operation; "
-            "got %s",
+            "expected pred or an integral element type in argument to not "
+            "operation; got %s",
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
@@ -457,7 +492,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   }
   if (ShapeUtil::Rank(operand_shape) != padding_config.dimensions_size()) {
     return InvalidArgument(
-        "the rank of the operand and the padding configuration do not match.");
+        "The rank of the operand and the padding configuration do not match: "
+        "%s vs %s",
+        ShapeUtil::HumanString(operand_shape).c_str(),
+        padding_config.ShortDebugString().c_str());
   }
   if (operand_shape.element_type() != padding_value_shape.element_type()) {
     return InvalidArgument(
@@ -743,24 +781,44 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     case BINOP_MIN:
     case BINOP_SUB:
     case BINOP_ADD:
+    case BINOP_ATAN2:
     case BINOP_POW:
     case BINOP_DIV:
     case BINOP_REM:
     case BINOP_MUL:
+    case BINOP_SHIFT_LEFT:
+    case BINOP_SHIFT_RIGHT_ARITHMETIC:
+    case BINOP_SHIFT_RIGHT_LOGICAL:
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
 
-    case BINOP_LOGICAL_AND:
-    case BINOP_LOGICAL_OR:
-      if (lhs.element_type() != PRED) {
+    case BINOP_COMPLEX: {
+      if (!ShapeUtil::ElementIsFloating(lhs)) {
         return InvalidArgument(
-            "expected pred element type in argument to logical and/or "
+            "expected element type in shape to be floating for complex compose "
             "operation; got %s",
+            PrimitiveType_Name(lhs.element_type()).c_str());
+      }
+      TF_ASSIGN_OR_RETURN(const Shape& shape,
+                          InferElementwiseBinaryOpShape(operation, lhs, rhs,
+                                                        broadcast_dimensions));
+      if (lhs.element_type() == F32) {
+        return ShapeUtil::ChangeElementType(shape, C64);
+      } else {
+        return Unimplemented("complex component type not supported");
+      }
+    }
+    case BINOP_AND:
+    case BINOP_OR:
+      if (lhs.element_type() != PRED &&
+          !primitive_util::IsIntegralType(lhs.element_type())) {
+        return InvalidArgument(
+            "expected pred or integral type in argument to and/or operation; "
+            "got %s",
             PrimitiveType_Name(lhs.element_type()).c_str());
       }
       return InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                            broadcast_dimensions);
-
     case BINOP_EQ:
     case BINOP_GE:
     case BINOP_GT:
@@ -809,14 +867,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InferClampShape(lhs, rhs, ehs);
     case TRIOP_SELECT:
       return InferSelectShape(lhs, rhs, ehs);
-    case TRIOP_UPDATE:
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(lhs, "lhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(rhs, "rhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(ehs, "ehs of ternary operation"));
-      return lhs;
     default:
       return InvalidArgument("unknown operation %s",
                              TernaryOperation_Name(operation).c_str());
@@ -1372,14 +1422,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         "Window: %s",
         window.DebugString().c_str());
   }
-  int num_spatial_dims = dnums.spatial_dimensions_size();
-  if (num_spatial_dims < 1) {
-    return InvalidArgument(
-        "Convolution requires at least one spatial dimension.\n"
-        "Window: %s",
-        window.DebugString().c_str());
-  }
 
+  const int num_spatial_dims = dnums.spatial_dimensions_size();
   if (window.dimensions_size() != num_spatial_dims) {
     return InvalidArgument(
         "Window must have same number of dimensions as dimension numbers.\n"
@@ -1387,7 +1431,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         window.DebugString().c_str(), dnums.DebugString().c_str());
   }
 
-  int num_dims = num_spatial_dims + 2;
+  const int num_dims = num_spatial_dims + 2;
   if (ShapeUtil::Rank(lhs) != num_dims) {
     return InvalidArgument(
         "The LHS argument to a convolution should have rank %d.\n"
@@ -1406,8 +1450,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   // Verifies that the input and window dimensions are a permutation of
   // the dimension numbers.
   std::vector<int64> input_dnums(num_dims);
-  input_dnums[0] = dnums.batch_dimension();
-  input_dnums[1] = dnums.feature_dimension();
+  input_dnums[0] = dnums.input_batch_dimension();
+  input_dnums[1] = dnums.input_feature_dimension();
   std::copy(dnums.spatial_dimensions().begin(),
             dnums.spatial_dimensions().end(), input_dnums.begin() + 2);
   std::sort(input_dnums.begin(), input_dnums.end());
@@ -1447,8 +1491,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int i = 0; i < num_spatial_dims; ++i) {
     input_spatial_dims[i] = lhs.dimensions(dnums.spatial_dimensions(i));
   }
-  const int64 input_features = lhs.dimensions(dnums.feature_dimension());
-  const int64 input_batch = lhs.dimensions(dnums.batch_dimension());
+  const int64 input_features = lhs.dimensions(dnums.input_feature_dimension());
+  const int64 input_batch = lhs.dimensions(dnums.input_batch_dimension());
 
   std::vector<int64> kernel_spatial_dims(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
@@ -1490,8 +1534,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                              /*allow_negative_padding=*/true));
 
   std::vector<int64> dimensions(num_dims);
-  dimensions[dnums.batch_dimension()] = input_batch;
-  dimensions[dnums.feature_dimension()] = kernel_output_features;
+  dimensions[dnums.output_batch_dimension()] = input_batch;
+  dimensions[dnums.output_feature_dimension()] = kernel_output_features;
   for (int i = 0; i < num_spatial_dims; ++i) {
     dimensions[dnums.spatial_dimensions(i)] = window_output_shape.dimensions(i);
   }
@@ -1894,11 +1938,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
   Shape inferred_shape =
       ShapeUtil::MakeShape(operand.element_type(), new_sizes);
+  VLOG(3) << "Reshape inferred shape: "
+          << ShapeUtil::HumanString(inferred_shape);
 
   if (ShapeUtil::ElementsIn(operand) != ShapeUtil::ElementsIn(inferred_shape)) {
     return InvalidArgument(
-        "reshape operation has mismatched element counts: from=%lld to=%lld",
-        ShapeUtil::ElementsIn(operand), ShapeUtil::ElementsIn(inferred_shape));
+        "reshape operation has mismatched element counts: from=%lld (%s) "
+        "to=%lld (%s)",
+        ShapeUtil::ElementsIn(operand), ShapeUtil::HumanString(operand).c_str(),
+        ShapeUtil::ElementsIn(inferred_shape),
+        ShapeUtil::HumanString(inferred_shape).c_str());
   }
 
   std::vector<int64> indices(ShapeUtil::Rank(operand));

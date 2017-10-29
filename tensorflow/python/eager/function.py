@@ -47,6 +47,28 @@ _scoped_captures = threading.local()
 _scoped_captures.tensors = None
 
 
+def make_function_def(graph, operations, inputs, outputs):
+  """Makes function def where accesses to resources are serialized."""
+  last_op_using_resource_tensor = {}
+
+  # TODO(apassos) probably control flow has to be handled delicately here as in
+  # if a resource is accessed inside a control flow context we need the control
+  # dependency to point to something outside the context which is guaranteed to
+  # happen after the access.
+  #
+  # TODO(apassos) this should do some form of alias analysis as ops which
+  # forward the resources such as Identity and Switch can cause serialization to
+  # fail.
+  for op in operations:
+    for t in op.inputs:
+      if t.dtype == dtypes.resource:
+        if t.name in last_op_using_resource_tensor:
+          op._add_control_input(last_op_using_resource_tensor[t.name])  # pylint: disable=protected-access
+        last_op_using_resource_tensor[t.name] = op
+  return graph_to_function_def.graph_to_function_def(
+      graph, operations, inputs, outputs)
+
+
 @contextlib.contextmanager
 def capture_tensors(captures):
   old = _scoped_captures.__dict__.get("tensors", None)
@@ -55,6 +77,22 @@ def capture_tensors(captures):
     yield
   finally:
     _scoped_captures.tensors = old
+
+
+def capture_value(tensor_map, value, dtype, name):
+  """Capture a value from outside the function, to pass in as an extra arg."""
+  captured_value = tensor_map.get(ops.tensor_id(value), None)
+  if captured_value is None:
+    captured_value = graph_placeholder(
+        dtype=dtype or value.dtype, shape=value.shape, name=name)
+    if captured_value.dtype == dtypes.resource:
+      captured_value._handle_data = value._handle_data  # pylint: disable=protected-access
+    tensor_map[ops.tensor_id(value)] = (value, captured_value)
+  else:
+    captured_value = captured_value[1]
+  tape.record_operation("captured_value", [captured_value], [value],
+                        lambda x: [x])
+  return captured_value
 
 
 def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
@@ -78,18 +116,33 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
   if tensor_map is None:
     # Capturing is not enabled.
     return constant_op.constant(value.numpy())
-  captured_value = tensor_map.get(ops.tensor_id(value), None)
-  if captured_value is None:
-    captured_value = graph_placeholder(
-        dtype=dtype or value.dtype, shape=value.shape, name=name)
-    if captured_value.dtype == dtypes.resource:
-      captured_value._handle_data = value._handle_data  # pylint: disable=protected-access
-    tensor_map[ops.tensor_id(value)] = (value, captured_value)
-  else:
-    captured_value = captured_value[1]
-  tape.record_operation("captured_value", [captured_value], [value], [],
-                        lambda x: x)
-  return captured_value
+  return capture_value(tensor_map, value, dtype, name)
+
+
+class CapturingGraph(ops.Graph):
+
+  def __init__(self, captures):
+    super(CapturingGraph, self).__init__()
+    self._building_function = True
+    self.captures = captures
+
+  def create_op(
+      self,
+      op_type,
+      inputs,
+      dtypes,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_shapes=True,
+      compute_device=True):
+    for i, inp in enumerate(inputs):
+      if inp.graph is not self:
+        inputs[i] = capture_value(self.captures, inp, inp.dtype, inp.op.name)
+    return super(CapturingGraph, self).create_op(
+        op_type, inputs, dtypes, input_types, name, attrs, op_def,
+        compute_shapes, compute_device)
 
 
 # TODO(apassos): it'd be really nice if we could scope this registration.
@@ -217,14 +270,14 @@ class _GraphModeFunction(object):
             grad_ys=self._out_grad_placeholders)
         shapes = [x.shape for x in in_gradients if x is not None]
     captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
-    forward_function_def = graph_to_function_def.graph_to_function_def(
+    forward_function_def = make_function_def(
         self._graph, self._ops, self._input_placeholders,
         filtered_outputs + captures)
     self._forward_fdef = _DefinedFunction(forward_function_def)
     _register_with_name(_forward_name(self._func_name), forward_function_def)
     backward_outputs = [x for x in in_gradients if x is not None]
     all_inputs = self._out_grad_placeholders + captures
-    backward_function_def = graph_to_function_def.graph_to_function_def(
+    backward_function_def = make_function_def(
         self._graph, [x.op for x in self._out_grad_placeholders
                      ] + list(sorted(c.known_ops, key=lambda x: x.name)),
         all_inputs, backward_outputs)
@@ -266,14 +319,16 @@ class _GraphModeFunction(object):
     real_outputs = outputs[:len(self._returns)]
     side_outputs = outputs[len(self._returns):]
 
+    def backward_function(*args):
+      return self._backward_function(*(list(args) + side_outputs))
+
     tape.record_operation(
         signature.name,
         real_outputs,
         (args + self._extra_inputs),
-        side_outputs,
-        self._backward_function)
+        backward_function)
 
-    return self._build_call_outputs(self._returns, real_outputs)
+    return self._build_call_outputs(real_outputs)
 
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
@@ -292,6 +347,9 @@ class _GraphModeFunction(object):
       g = ops.get_default_graph()
       if self._fdef.name not in g._functions:  # pylint: disable=protected-access
         g._add_function(self._fdef)  # pylint: disable=protected-access
+      for f in self._graph._functions.values():  # pylint: disable=protected-access
+        if f.name not in g._functions:  # pylint: disable=protected-access
+          g._add_function(f)  # pylint: disable=protected-access
       signature = self._fdef.definition.signature
       args = list(tensor_inputs) + self._extra_inputs
       op = g.create_op(
@@ -301,6 +359,8 @@ class _GraphModeFunction(object):
           name="FunctionCall",
           compute_shapes=False)
       result = op.outputs
+      if not result:
+        return op
       for i, s in enumerate(self._output_shapes):
         result[i].set_shape(s)
     else:
@@ -311,34 +371,25 @@ class _GraphModeFunction(object):
           attrs=None,
           ctx=ctx)
 
-    return self._build_call_outputs(self._returns, result)
+    return self._build_call_outputs(result)
 
-  def _build_call_outputs(self, func_outputs, result):
+  def _build_call_outputs(self, result):
     """Maps the fdef output list to actual output structure.
 
     Args:
-      func_outputs: The outputs originally defined by the graph function. It
-        could potentially be a nested structure.
       result: Output lists defined by FunctionDef.
     Returns:
       The actual call output.
     """
     if self._func_outputs is None:
       return None
-    if isinstance(self._func_outputs, ops.Tensor):
-      return result[0]
-
-    outputs = []
-    for o in func_outputs:
-      vo = o
-      if isinstance(vo, ops.Tensor):
-        outputs.append(result[self._returns_to_fedf_outputs[id(vo)]])
-      elif type(vo) in (tuple, list):
-        outputs.append(self._build_call_outputs(o, result))
-      else:
-        outputs.append(o)
-
-    return tuple(outputs) if type(func_outputs) is tuple else outputs
+    outputs_list = nest.flatten(self._func_outputs)
+    j = 0
+    for i, o in enumerate(outputs_list):
+      if o is not None:
+        outputs_list[i] = result[j]
+        j += 1
+    return nest.pack_sequence_as(self._func_outputs, outputs_list)
 
 
 def _get_defun_inputs(args):
@@ -357,7 +408,8 @@ def _get_defun_inputs(args):
 def _defun_internal(name, func, args, kwds):
   """Defines and returns graph-mode version of func."""
   with context.graph_mode():
-    tmp_graph = ops.Graph()
+    captures = {}
+    tmp_graph = CapturingGraph(captures)
     # Copy the graph collections to ensure summaries and other things work. This
     # lets the function access (but not mutate) collections of the containing
     # graph, such as the global step and the summary writer collections.
@@ -368,7 +420,6 @@ def _defun_internal(name, func, args, kwds):
     with tmp_graph.as_default():
       func_inputs = _get_defun_inputs(args)
 
-      captures = {}
       with capture_tensors(captures):
         func_outputs = func(*func_inputs, **kwds)
       ids = list(sorted(captures.keys()))
@@ -386,7 +437,7 @@ def _defun_internal(name, func, args, kwds):
   all_inputs = flat_inputs + list(extra_placeholders)
 
   func_def_outputs = [x for x in outputs_list if x is not None]
-  inference_function_def = graph_to_function_def.graph_to_function_def(
+  inference_function_def = make_function_def(
       tmp_graph, tmp_graph.get_operations(), all_inputs, func_def_outputs)
   # Register any other functions defined in the graph
   # TODO(ashankar): Oh lord, forgive me for this lint travesty.

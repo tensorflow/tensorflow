@@ -162,6 +162,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   }
 
   IrEmitterContext* ir_emitter_context_;
+  llvm::Module* module_;
 
   // The following fields track the IR emission state. According to LLVM memory
   // management rules, their memory is owned by the module.
@@ -339,8 +340,12 @@ class IrEmitterUnnested : public IrEmitter {
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
   std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
 
-  // Returns a CopyThunk that calls host-to-device cuMemcpy to implement `inst`.
-  std::unique_ptr<Thunk> BuildCopyThunk(const HloInstruction* inst);
+  // Returns a thunk that calls host-to-device cuMemcpy to implement `inst`.
+  std::unique_ptr<Thunk> BuildHostToDeviceCopyThunk(const HloInstruction* inst);
+
+  // Returns a thunk that calls device-to-device cuMemcpy to implement `inst`.
+  std::unique_ptr<Thunk> BuildDeviceToDeviceCopyThunk(
+      const HloInstruction* inst);
 
   // Returns an InfeedThunk that performs device-to-device memcpy to implement
   // `inst`.

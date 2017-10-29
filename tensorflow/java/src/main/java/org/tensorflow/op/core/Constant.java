@@ -134,10 +134,11 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    *
    * <p>Creates a Constant with the provided shape of any type where the constant data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
+   * API</a>.
    *
    * @param scope is a scope used to add the underlying operation.
-   * @param dataType the tensor datatype.
+   * @param type the tensor datatype.
    * @param shape the tensor shape.
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the

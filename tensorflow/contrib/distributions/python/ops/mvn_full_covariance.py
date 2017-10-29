@@ -174,8 +174,8 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
             covariance_matrix = control_flow_ops.with_dependencies(
                 [assert_symmetric], covariance_matrix)
           # No need to validate that covariance_matrix is non-singular.
-          # LinearOperatorTriL has an assert_non_singular method that is called
-          # by the Bijector.
+          # LinearOperatorLowerTriangular has an assert_non_singular method that
+          # is called by the Bijector.
           # However, cholesky() ignores the upper triangular part, so we do need
           # to separately assert symmetric.
           scale_tril = linalg_ops.cholesky(covariance_matrix)

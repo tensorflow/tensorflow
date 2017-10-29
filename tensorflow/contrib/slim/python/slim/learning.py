@@ -552,7 +552,8 @@ def train(train_op,
           sync_optimizer=None,
           session_config=None,
           session_wrapper=None,
-          trace_every_n_steps=None):
+          trace_every_n_steps=None,
+          ignore_live_threads=False):
   """Runs a training loop using a TensorFlow supervisor.
 
   When the sync_optimizer is supplied, gradient updates are applied
@@ -615,6 +616,9 @@ def train(train_op,
     trace_every_n_steps: produce and save a `Timeline` in Chrome trace format
       and add it to the summaries every `trace_every_n_steps`. If None, no trace
       information will be produced or saved.
+    ignore_live_threads: If `True` ignores threads that remain running after
+      a grace period when stopping the supervisor, instead of raising a
+      RuntimeError.
 
   Returns:
     the value of the loss function after training.
@@ -772,7 +776,10 @@ def train(train_op,
         if logdir and sv.is_chief:
           logging.info('Finished training! Saving model to disk.')
           sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-          sv.stop(threads, close_summary_writer=True)
+          sv.stop(
+              threads,
+              close_summary_writer=True,
+              ignore_live_threads=ignore_live_threads)
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the

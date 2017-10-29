@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_overrides.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
@@ -393,4 +394,221 @@ const OpGenOverride* OpGenOverrideMap::ApplyOverride(OpDef* op_def) const {
   return &proto;
 }
 
+namespace {
+
+// Initializes given ApiDef with data in OpDef.
+void InitApiDefFromOpDef(const OpDef& op_def, ApiDef* api_def) {
+  api_def->set_graph_op_name(op_def.name());
+  api_def->set_visibility(ApiDef::VISIBLE);
+
+  auto* endpoint = api_def->add_endpoint();
+  endpoint->set_name(op_def.name());
+  if (op_def.has_deprecation()) {
+    endpoint->set_deprecation_version(op_def.deprecation().version());
+  }
+
+  for (const auto& op_in_arg : op_def.input_arg()) {
+    auto* api_in_arg = api_def->add_in_arg();
+    api_in_arg->set_name(op_in_arg.name());
+    api_in_arg->set_rename_to(op_in_arg.name());
+    api_in_arg->set_description(op_in_arg.description());
+
+    *api_def->add_arg_order() = op_in_arg.name();
+  }
+  for (const auto& op_out_arg : op_def.output_arg()) {
+    auto* api_out_arg = api_def->add_out_arg();
+    api_out_arg->set_name(op_out_arg.name());
+    api_out_arg->set_rename_to(op_out_arg.name());
+    api_out_arg->set_description(op_out_arg.description());
+  }
+  for (const auto& op_attr : op_def.attr()) {
+    auto* api_attr = api_def->add_attr();
+    api_attr->set_name(op_attr.name());
+    api_attr->set_rename_to(op_attr.name());
+    if (op_attr.has_default_value()) {
+      *api_attr->mutable_default_value() = op_attr.default_value();
+    }
+    api_attr->set_description(op_attr.description());
+  }
+  api_def->set_summary(op_def.summary());
+  api_def->set_description(op_def.description());
+}
+
+// Updates base_arg based on overrides in new_arg.
+void MergeArg(ApiDef::Arg* base_arg, const ApiDef::Arg& new_arg) {
+  if (!new_arg.rename_to().empty()) {
+    base_arg->set_rename_to(new_arg.rename_to());
+  }
+  if (!new_arg.description().empty()) {
+    base_arg->set_description(new_arg.description());
+  }
+}
+
+// Updates base_attr based on overrides in new_attr.
+void MergeAttr(ApiDef::Attr* base_attr, const ApiDef::Attr& new_attr) {
+  if (!new_attr.rename_to().empty()) {
+    base_attr->set_rename_to(new_attr.rename_to());
+  }
+  if (new_attr.has_default_value()) {
+    *base_attr->mutable_default_value() = new_attr.default_value();
+  }
+  if (!new_attr.description().empty()) {
+    base_attr->set_description(new_attr.description());
+  }
+}
+
+// Updates base_api_def based on overrides in new_api_def.
+Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
+  // Merge visibility
+  if (new_api_def.visibility() != ApiDef::DEFAULT_VISIBILITY) {
+    base_api_def->set_visibility(new_api_def.visibility());
+  }
+  // Merge endpoints
+  if (new_api_def.endpoint_size() > 0) {
+    base_api_def->clear_endpoint();
+    std::copy(
+        new_api_def.endpoint().begin(), new_api_def.endpoint().end(),
+        protobuf::RepeatedFieldBackInserter(base_api_def->mutable_endpoint()));
+  }
+  // Merge args
+  for (const auto& new_arg : new_api_def.in_arg()) {
+    bool found_base_arg = false;
+    for (int i = 0; i < base_api_def->in_arg_size(); ++i) {
+      auto* base_arg = base_api_def->mutable_in_arg(i);
+      if (base_arg->name() == new_arg.name()) {
+        MergeArg(base_arg, new_arg);
+        found_base_arg = true;
+        break;
+      }
+    }
+    if (!found_base_arg) {
+      return errors::FailedPrecondition("Argument ", new_arg.name(),
+                                        " not defined in base api for ",
+                                        base_api_def->graph_op_name());
+    }
+  }
+  for (const auto& new_arg : new_api_def.out_arg()) {
+    bool found_base_arg = false;
+    for (int i = 0; i < base_api_def->out_arg_size(); ++i) {
+      auto* base_arg = base_api_def->mutable_out_arg(i);
+      if (base_arg->name() == new_arg.name()) {
+        MergeArg(base_arg, new_arg);
+        found_base_arg = true;
+        break;
+      }
+    }
+    if (!found_base_arg) {
+      return errors::FailedPrecondition("Argument ", new_arg.name(),
+                                        " not defined in base api for ",
+                                        base_api_def->graph_op_name());
+    }
+  }
+  // Merge arg order
+  if (new_api_def.arg_order_size() > 0) {
+    // Validate that new arg_order is correct.
+    if (new_api_def.arg_order_size() != base_api_def->arg_order_size()) {
+      return errors::FailedPrecondition(
+          "Invalid number of arguments ", new_api_def.arg_order_size(), " for ",
+          base_api_def->graph_op_name(),
+          ". Expected: ", base_api_def->arg_order_size());
+    }
+    if (!std::is_permutation(new_api_def.arg_order().begin(),
+                             new_api_def.arg_order().end(),
+                             base_api_def->arg_order().begin())) {
+      return errors::FailedPrecondition(
+          "Invalid arg_order: ", str_util::Join(new_api_def.arg_order(), ", "),
+          " for ", base_api_def->graph_op_name(),
+          ". All elements in arg_order override must match base arg_order: ",
+          str_util::Join(base_api_def->arg_order(), ", "));
+    }
+    base_api_def->clear_arg_order();
+    std::copy(
+        new_api_def.arg_order().begin(), new_api_def.arg_order().end(),
+        protobuf::RepeatedFieldBackInserter(base_api_def->mutable_arg_order()));
+  }
+  // Merge attributes
+  for (const auto& new_attr : new_api_def.attr()) {
+    bool found_base_attr = false;
+    for (int i = 0; i < base_api_def->attr_size(); ++i) {
+      auto* base_attr = base_api_def->mutable_attr(i);
+      if (base_attr->name() == new_attr.name()) {
+        MergeAttr(base_attr, new_attr);
+        found_base_attr = true;
+        break;
+      }
+    }
+    if (!found_base_attr) {
+      return errors::FailedPrecondition("Attribute ", new_attr.name(),
+                                        " not defined in base api for ",
+                                        base_api_def->graph_op_name());
+    }
+  }
+  // Merge summary
+  if (!new_api_def.summary().empty()) {
+    base_api_def->set_summary(new_api_def.summary());
+  }
+  // Merge description
+  auto description = new_api_def.description().empty()
+                         ? base_api_def->description()
+                         : new_api_def.description();
+
+  if (!new_api_def.description_prefix().empty()) {
+    description =
+        strings::StrCat(new_api_def.description_prefix(), "\n", description);
+  }
+  if (!new_api_def.description_suffix().empty()) {
+    description =
+        strings::StrCat(description, "\n", new_api_def.description_suffix());
+  }
+  base_api_def->set_description(description);
+  return Status::OK();
+}
+}  // namespace
+
+ApiDefMap::ApiDefMap(const OpList& op_list) {
+  for (const auto& op : op_list.op()) {
+    ApiDef api_def;
+    InitApiDefFromOpDef(op, &api_def);
+    map_[op.name()] = api_def;
+  }
+}
+
+ApiDefMap::~ApiDefMap() {}
+
+Status ApiDefMap::LoadFileList(Env* env, const std::vector<string>& filenames) {
+  for (const auto& filename : filenames) {
+    TF_RETURN_IF_ERROR(LoadFile(env, filename));
+  }
+  return Status::OK();
+}
+
+Status ApiDefMap::LoadFile(Env* env, const string& filename) {
+  if (filename.empty()) return Status::OK();
+  string contents;
+  TF_RETURN_IF_ERROR(ReadFileToString(env, filename, &contents));
+  TF_RETURN_IF_ERROR(LoadApiDef(contents));
+  return Status::OK();
+}
+
+Status ApiDefMap::LoadApiDef(const string& api_def_file_contents) {
+  const string contents = PBTxtFromMultiline(api_def_file_contents);
+  ApiDefs api_defs;
+  protobuf::TextFormat::ParseFromString(contents, &api_defs);
+  for (const auto& api_def : api_defs.op()) {
+    // Check if the op definition is already loaded.
+    if (map_.find(api_def.graph_op_name()) != map_.end()) {
+      // Overwrite current api def with data in api_def.
+      TF_RETURN_IF_ERROR(MergeApiDefs(&map_[api_def.graph_op_name()], api_def));
+    } else {
+      return errors::FailedPrecondition(
+          "Unexpected ApiDef override: ", api_def.graph_op_name(),
+          " is not defined in base ApiDef.");
+    }
+  }
+  return Status::OK();
+}
+
+const tensorflow::ApiDef* ApiDefMap::GetApiDef(const string& name) const {
+  return gtl::FindOrNull(map_, name);
+}
 }  // namespace tensorflow

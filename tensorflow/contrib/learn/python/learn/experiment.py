@@ -149,16 +149,16 @@ class Experiment(object):
 
     Args:
       estimator: Object implementing Estimator interface, which could be a
-        combination of ${tf.contrib.learn.Trainable} and
-        ${tf.contrib.learn.Evaluable} (deprecated), or
-        ${tf.estimator.`Estimator}.
+        combination of @{tf.contrib.learn.Trainable} and
+        @{tf.contrib.learn.Evaluable} (deprecated), or
+        @{tf.estimator.Estimator}.
       train_input_fn: function, returns features and labels for training.
       eval_input_fn: function, returns features and labels for evaluation. If
         `eval_steps` is `None`, this should be configured only to produce for a
         finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
         is used. This should be `None` if the `estimator` is
-        ${tf.estimator.Estimator}. If metrics are provided they will be
+        @{tf.estimator.Estimator}. If metrics are provided they will be
         *appended* to the default set.
       train_steps: Perform this many steps of training. `None`, the default,
         means train forever.

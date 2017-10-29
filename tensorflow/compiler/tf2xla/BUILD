@@ -87,6 +87,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -102,11 +103,13 @@ cc_library(
         "xla_helpers.cc",
         "xla_op_kernel.cc",
         "xla_op_registry.cc",
+        "graph_compiler.cc",
         "xla_cpu_backend.cc",
     ] + if_cuda_is_configured([
         "xla_gpu_backend.cc",
     ]),
     hdrs = [
+        "graph_compiler.h",
         "xla_compilation_device.h",
         "xla_compiler.h",
         "xla_context.h",
@@ -117,6 +120,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
+        ":const_analysis",
         ":dump_graph",
         ":functionalize_control_flow",
         "//tensorflow/compiler/xla:literal_util",
@@ -224,7 +228,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -253,6 +256,7 @@ tf_cc_test(
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -347,6 +351,7 @@ cc_library(
     hdrs = ["functionalize_control_flow.h"],
     deps = [
         "//tensorflow/compiler/jit:graph_to_functiondef",
+        "//tensorflow/compiler/jit:union_find",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:functional_ops",
         "//tensorflow/compiler/xla:status_macros",
@@ -354,6 +359,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -371,6 +377,7 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla/cc:functional_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:ops",

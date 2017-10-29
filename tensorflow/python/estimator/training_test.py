@@ -19,19 +19,33 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
+import glob
 import json
+import os
 import random
+import shutil
+import tempfile
 import time
+
+import numpy as np
 
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import exporter as exporter_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.estimator import training
+from tensorflow.python.estimator.canned import dnn
+from tensorflow.python.estimator.canned import prediction_keys
+from tensorflow.python.estimator.export import export as export_lib
+from tensorflow.python.estimator.inputs import numpy_io
+from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary_iterator
+from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_run_hook
@@ -679,37 +693,145 @@ class TrainingExecutorRunChiefTest(_TrainingExecutorTrainingTest,
       mock_sleep.assert_not_called()
 
 
-class TrainingExecutorRunMasterTest(_TrainingExecutorTrainingTest,
-                                    test.TestCase):
+class TrainingExecutorRunMasterTest(test.TestCase):
   """Tests run_chief of _TrainingExecutor."""
 
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    _TrainingExecutorTrainingTest.__init__(
-        self,
-        run_config=_create_run_config_with_cluster_spec(_TF_CONFIG_FOR_MASTER))
+  def setUp(self):
+    self._run_config = _create_run_config_with_cluster_spec(
+        _TF_CONFIG_FOR_MASTER)
 
   @test.mock.patch.object(server_lib, 'Server')
   def test_no_delay_for_master(self, _):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.evaluate = lambda *args, **kw: {ops.GraphKeys.GLOBAL_STEP: 123}
     mock_est.config = self._run_config
-    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
-    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec, max_steps=123)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec, exporters=[])
 
     executor = training._TrainingExecutor(mock_est, mock_train_spec,
                                           mock_eval_spec)
 
     with test.mock.patch.object(time, 'sleep') as mock_sleep:
-      self._run_task(executor)
+      executor.run_master()
       mock_sleep.assert_not_called()
 
+  @test.mock.patch.object(time, 'sleep')
   @test.mock.patch.object(server_lib, 'Server')
-  def test_run_master_triggers_evaluate(self, _):
+  def test_train_with_train_spec(self, mock_server, unused_mock_sleep):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.evaluate = lambda *args, **kw: {ops.GraphKeys.GLOBAL_STEP: 123}
+    mock_est.config = self._run_config
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=2, hooks=[_FakeHook()])
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec, exporters=[])
+    mock_server_instance = mock_server.return_value
+
+    executor = training._TrainingExecutor(mock_est, train_spec, mock_eval_spec)
+    executor.run_master()
+
+    mock_server.assert_called_with(
+        mock_est.config.cluster_spec,
+        job_name=mock_est.config.task_type,
+        task_index=mock_est.config.task_id,
+        config=test.mock.ANY,
+        start=False)
+
+    self.assertTrue(mock_server_instance.start.called)
+
+    mock_est.train.assert_called_with(input_fn=train_spec.input_fn,
+                                      max_steps=train_spec.max_steps,
+                                      hooks=train_spec.hooks,
+                                      saving_listeners=test.mock.ANY)
+    mock_est.export_savedmodel.assert_not_called()
+
+  @test.mock.patch.object(time, 'sleep')
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_no_server_startup_in_google(self, mock_server, unused_mock_sleep):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.evaluate = lambda *args, **kw: {ops.GraphKeys.GLOBAL_STEP: 123}
+    mock_est.config = self._run_config
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec, max_steps=123)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec, exporters=[])
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec,
+                                          mock_eval_spec)
+    tf_config = {'TF_CONFIG': json.dumps(_TF_CONFIG_FOR_GOOGLE)}
+    with test.mock.patch.dict('os.environ', tf_config):
+      executor.run_master()
+      mock_server.assert_not_called()
+
+  def test_fail_with_empty_cluster_spec(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = None
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = 'worker'
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(
+          mock_est, mock_train_spec, mock_eval_spec).run_master()
+
+  def test_fail_with_empty_master(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.master = ''
+    mock_est.config.task_type = 'worker'
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(
+          mock_est, mock_train_spec, mock_eval_spec).run_master()
+
+  def test_fail_with_empty_task_type(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = ''
+    mock_est.config.task_id = 2
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(
+          mock_est, mock_train_spec, mock_eval_spec).run_master()
+
+  def test_fail_with_none_task_id(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_eval_spec = test.mock.Mock(spec=training.EvalSpec)
+
+    mock_est.config = test.mock.PropertyMock(spec=run_config_lib.RunConfig)
+    mock_est.config.cluster_spec = {'worker': 'dummy'}
+    mock_est.config.master = 'grpc://...'
+    mock_est.config.task_type = 'worker'
+    mock_est.config.task_id = None
+
+    with self.assertRaisesRegexp(RuntimeError,
+                                 _INVALID_CONFIG_FOR_STD_SERVER_MSG):
+      training._TrainingExecutor(
+          mock_est, mock_train_spec, mock_eval_spec).run_master()
+
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_run_master_triggers_evaluate_and_export(self, _):
 
     def estimator_train(saving_listeners, *args, **kwargs):
       #  There shalt be a saving_listener.  Estimator is going to call
       # `after_save`.
       del args, kwargs
+      saving_listeners[0].begin()
       saving_listeners[0].after_save(session=None, global_step_value=None)
 
     mock_est = test.mock.Mock(
@@ -717,18 +839,14 @@ class TrainingExecutorRunMasterTest(_TrainingExecutorTrainingTest,
     mock_est.latest_checkpoint.return_value = 'checkpoint_path/'
     mock_est.config = self._run_config
 
-    def export(estimator, *args, **kwargs):
-      del args, kwargs
-      estimator.export_was_called = True
-
     exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
     exporter.name = 'see_whether_export_is_called'
-    exporter.export = export
 
     train_spec = training.TrainSpec(input_fn=lambda: 1, max_steps=300)
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1, steps=2, exporters=exporter)
-    mock_est.evaluate.return_value = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+    eval_result = {_GLOBAL_STEP_KEY: train_spec.max_steps}
+    mock_est.evaluate.return_value = eval_result
 
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     executor.run_master()
@@ -739,7 +857,109 @@ class TrainingExecutorRunMasterTest(_TrainingExecutorTrainingTest,
         steps=eval_spec.steps,
         checkpoint_path='checkpoint_path/',
         hooks=eval_spec.hooks)
-    self.assertTrue(mock_est.export_was_called)
+    self.assertEqual(1, exporter.export.call_count)
+    exporter.export.assert_called_with(
+        estimator=mock_est,
+        export_path=os.path.join('path/', 'export', exporter.name),
+        checkpoint_path='checkpoint_path/',
+        eval_result=eval_result,
+        is_the_final_export=True)
+
+  @test.mock.patch.object(basic_session_run_hooks, 'SecondOrStepTimer')
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_run_master_throttle_eval(self, _, mock_timer_class):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+
+    mock_timer = test.mock.Mock()
+    mock_timer_class.return_value = mock_timer
+
+    def estimator_train(saving_listeners, *args, **kwargs):
+      del args, kwargs
+      saving_listeners[0].begin()
+
+      # Call three times.
+      mock_timer.should_trigger_for_step.return_value = True
+      saving_listeners[0].after_save(session=None, global_step_value=None)
+
+      mock_timer.should_trigger_for_step.return_value = False
+      saving_listeners[0].after_save(session=None, global_step_value=None)
+
+      mock_timer.should_trigger_for_step.return_value = True
+      saving_listeners[0].after_save(session=None, global_step_value=None)
+
+    mock_est.train = estimator_train
+    mock_est.latest_checkpoint.side_effect = ['ckpt1', 'ckpt2']
+    mock_est.config = self._run_config
+
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_whether_export_is_called'
+
+    train_spec = training.TrainSpec(input_fn=lambda: 1, max_steps=300)
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, steps=2, exporters=exporter, throttle_secs=10)
+
+    mock_est.evaluate.side_effect = [
+        {_GLOBAL_STEP_KEY: train_spec.max_steps //2},
+        {_GLOBAL_STEP_KEY: train_spec.max_steps}
+    ]
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_master()
+
+    self.assertEqual(2, mock_est.evaluate.call_count)
+    self.assertEqual(2, exporter.export.call_count)
+
+    is_final_export_list = [call[1]['is_the_final_export']
+                            for call in exporter.export.call_args_list]
+    self.assertEqual([False, True], is_final_export_list)
+
+  @test.mock.patch.object(basic_session_run_hooks, 'SecondOrStepTimer')
+  @test.mock.patch.object(server_lib, 'Server')
+  def test_run_master_throttle_eval_which_skips_final_ckpt(
+      self, _, mock_timer_class):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+
+    mock_timer = test.mock.Mock()
+    mock_timer_class.return_value = mock_timer
+
+    def estimator_train(saving_listeners, *args, **kwargs):
+      del args, kwargs
+      saving_listeners[0].begin()
+
+      # Call two times.
+      mock_timer.should_trigger_for_step.return_value = True
+      saving_listeners[0].after_save(session=None, global_step_value=None)
+
+      # The final ckpt is skipped by the timer. It will be picked up the final
+      # export check in the code.
+      mock_timer.should_trigger_for_step.return_value = False
+      saving_listeners[0].after_save(session=None, global_step_value=None)
+
+    mock_est.train = estimator_train
+    mock_est.latest_checkpoint.side_effect = ['ckpt1', 'ckpt2']
+    mock_est.config = self._run_config
+
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_whether_export_is_called'
+
+    train_spec = training.TrainSpec(input_fn=lambda: 1, max_steps=300)
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1, steps=2, exporters=exporter, throttle_secs=10)
+
+    mock_est.evaluate.side_effect = [
+        {_GLOBAL_STEP_KEY: train_spec.max_steps //2},
+        {_GLOBAL_STEP_KEY: train_spec.max_steps}
+    ]
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_master()
+
+    self.assertEqual(2, mock_est.evaluate.call_count)
+    self.assertEqual(2, exporter.export.call_count)
+
+    is_final_export_list = [call[1]['is_the_final_export']
+                            for call in exporter.export.call_args_list]
+    self.assertEqual([False, True], is_final_export_list)
 
 
 class TrainingExecutorRunEvaluatorTest(test.TestCase):
@@ -790,6 +1010,19 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
     exporter.name = 'see_how_many_times_export_is_called'
 
+    mock_est.times_export_was_called = 0
+    mock_est.times_final_export_was_called = 0
+    def export(estimator, export_path, checkpoint_path, eval_result,
+               is_the_final_export):
+      del export_path, checkpoint_path, eval_result
+      estimator.times_export_was_called += 1
+      # final_export is happend at the end.
+      self.assertEqual(0, estimator.times_final_export_was_called)
+      if is_the_final_export:
+        estimator.times_final_export_was_called += 1
+
+    exporter.export = export
+
     eval_spec = training.EvalSpec(
         input_fn=lambda: 1,
         start_delay_secs=0,
@@ -800,7 +1033,48 @@ class TrainingExecutorRunEvaluatorTest(test.TestCase):
     executor.run_evaluator()
 
     self.assertEqual(2, mock_est.evaluate.call_count)
-    self.assertEqual(2, exporter.export.call_count)
+    self.assertEqual(2, mock_est.times_export_was_called)
+    self.assertEqual(1, mock_est.times_final_export_was_called)
+
+  def test_final_export_is_true_in_the_end(self):
+    training_max_step = 200
+
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator)
+    mock_est.model_dir = compat.as_bytes(test.get_temp_dir())
+    mock_est.evaluate.side_effect = [
+        {_GLOBAL_STEP_KEY: training_max_step // 2},
+        {_GLOBAL_STEP_KEY: training_max_step}
+    ]
+    mock_est.latest_checkpoint.side_effect = ['path_1', 'path_2']
+
+    mock_train_spec = test.mock.Mock(spec=training.TrainSpec)
+    mock_train_spec.max_steps = training_max_step
+
+    mock_est.times_export_fn_was_called = 0
+    mock_est.times_the_final_export_was_true = 0
+    def export(estimator, export_path, checkpoint_path, eval_result,
+               is_the_final_export):
+      del export_path, checkpoint_path, eval_result
+      estimator.times_export_fn_was_called += 1
+      if is_the_final_export:
+        estimator.times_the_final_export_was_true += 1
+
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_how_many_times_export_is_called'
+    exporter.export = export
+
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1,
+        start_delay_secs=0,
+        throttle_secs=0,
+        exporters=exporter)
+
+    executor = training._TrainingExecutor(mock_est, mock_train_spec, eval_spec)
+    executor.run_evaluator()
+
+    self.assertEqual(2, mock_est.evaluate.call_count)
+    self.assertEqual(2, mock_est.times_export_fn_was_called)
+    self.assertEqual(1, mock_est.times_the_final_export_was_true)
 
   def test_skip_evaluation_due_to_ckpt(self):
     training_max_step = 200
@@ -1082,9 +1356,15 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
 
     mock_est.times_export_was_called = 0
-    def export(estimator, *args, **kwargs):
-      del args, kwargs
+    mock_est.times_final_export_was_called = 0
+    def export(estimator, export_path, checkpoint_path, eval_result,
+               is_the_final_export):
+      del export_path, checkpoint_path, eval_result
       estimator.times_export_was_called += 1
+      # final_export is happend at the end.
+      self.assertEqual(0, estimator.times_final_export_was_called)
+      if is_the_final_export:
+        estimator.times_final_export_was_called += 1
 
     exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
     exporter.name = 'see_how_many_times_export_is_called'
@@ -1112,6 +1392,7 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     self.assertEqual(3, mock_est.train.call_count)
     self.assertEqual(3, mock_est.evaluate.call_count)
     self.assertEqual(3, mock_est.times_export_was_called)
+    self.assertEqual(1, mock_est.times_final_export_was_called)
 
   def test_handles_no_new_checkpoint_found(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
@@ -1133,6 +1414,47 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
     with self.assertRaisesRegexp(RuntimeError, _STALE_CHECKPOINT_MSG):
       executor.run_local()
+
+  def test_final_export_is_true_in_the_end(self):
+    mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
+    mock_est.latest_checkpoint = self.unique_checkpoint_every_time_fn
+
+    mock_est.times_export_fn_was_called = 0
+    mock_est.times_the_final_export_was_true = 0
+    def export(estimator, export_path, checkpoint_path, eval_result,
+               is_the_final_export):
+      del export_path, checkpoint_path, eval_result
+      estimator.times_export_fn_was_called += 1
+      if is_the_final_export:
+        estimator.times_the_final_export_was_true += 1
+
+    exporter = test.mock.PropertyMock(spec=exporter_lib.Exporter)
+    exporter.name = 'see_how_many_times_export_is_called'
+    exporter.export = export
+
+    train_spec = training.TrainSpec(
+        input_fn=lambda: 1, max_steps=300, hooks=[_FakeHook()])
+    eval_spec = training.EvalSpec(
+        input_fn=lambda: 1,
+        hooks=[_FakeHook()],
+        throttle_secs=100,
+        exporters=exporter)
+    # should be called 3 times.
+    mock_est.evaluate.side_effect = [{
+        _GLOBAL_STEP_KEY: train_spec.max_steps - 100
+    }, {
+        _GLOBAL_STEP_KEY: train_spec.max_steps - 50
+    }, {
+        _GLOBAL_STEP_KEY: train_spec.max_steps
+    }]
+
+    executor = training._TrainingExecutor(mock_est, train_spec, eval_spec)
+    executor.run_local()
+
+    self.assertEqual(3, mock_est.train.call_count)
+    self.assertEqual(3, mock_est.evaluate.call_count)
+    self.assertEqual(3, mock_est.times_export_fn_was_called)
+    self.assertEqual(1, mock_est.times_the_final_export_was_true)
 
   def test_train_and_evaluate_args(self):
     mock_est = test.mock.Mock(spec=estimator_lib.Estimator, model_dir='path/')
@@ -1228,6 +1550,136 @@ class TrainingExecutorRunLocalTest(test.TestCase):
     with self.assertRaisesRegexp(RuntimeError,
                                  _MISSING_GLOBAL_STEP_IN_EVAL_RESULT_ERR):
       executor.run_local()
+
+
+class TrainAndEvaluateIntegrationTest(test.TestCase):
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def _as_label(self, data_in_float):
+    return np.rint(data_in_float).astype(np.int64)
+
+  def _get_exporter(self, name, fc):
+    feature_spec = feature_column.make_parse_example_spec(fc)
+    serving_input_receiver_fn = (
+        export_lib.build_parsing_serving_input_receiver_fn(feature_spec))
+    return exporter_lib.LatestExporter(
+        name, serving_input_receiver_fn=serving_input_receiver_fn)
+
+  def _extract_loss_and_global_step(self, event_folder):
+    """Returns the loss and global step in last event."""
+    event_paths = glob.glob(os.path.join(event_folder, 'events*'))
+
+    loss = None
+    global_step_count = None
+
+    for e in summary_iterator.summary_iterator(event_paths[-1]):
+      current_loss = None
+      for v in e.summary.value:
+        if v.tag == 'loss':
+          current_loss = v.simple_value
+
+      # If loss is not found, global step is meaningless.
+      if current_loss is None:
+        continue
+
+      current_global_step = e.step
+      if global_step_count is None or current_global_step > global_step_count:
+        global_step_count = current_global_step
+        loss = current_loss
+
+    return (loss, global_step_count)
+
+  def test_complete_flow_with_non_distributed_configuration(self):
+    n_classes = 3
+    input_dimension = 2
+    batch_size = 10
+
+    eval_name = 'foo'
+    exporter_name = 'saved_model_exporter'
+
+    # max_steps should be larger than save_summary_steps
+    max_steps = 10
+    save_summary_steps = 2
+
+    data = np.linspace(
+        0., n_classes - 1., batch_size * input_dimension, dtype=np.float32)
+    x_data = data.reshape(batch_size, input_dimension)
+    y_data = np.reshape(self._as_label(data[:batch_size]), (batch_size, 1))
+
+    # learn y = x
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'x': x_data},
+        y=y_data,
+        batch_size=batch_size,
+        num_epochs=None,
+        shuffle=True)
+
+    eval_input_fn = numpy_io.numpy_input_fn(
+        x={'x': x_data},
+        y=y_data,
+        batch_size=batch_size,
+        num_epochs=1,
+        shuffle=False)
+
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x={'x': x_data},
+        batch_size=batch_size,
+        shuffle=False)
+
+    feature_columns = [
+        feature_column.numeric_column('x', shape=(input_dimension,))]
+
+    est = dnn.DNNClassifier(
+        hidden_units=(2, 2),
+        feature_columns=feature_columns,
+        n_classes=n_classes,
+        config=run_config_lib.RunConfig(save_summary_steps=save_summary_steps),
+        model_dir=self._model_dir)
+
+    train_spec = training.TrainSpec(input_fn=train_input_fn,
+                                    max_steps=max_steps)
+
+    eval_spec = training.EvalSpec(
+        name=eval_name, input_fn=eval_input_fn, steps=None,
+        exporters=self._get_exporter(exporter_name, feature_columns),
+        throttle_secs=2)
+
+    training.train_and_evaluate(est, train_spec, eval_spec)
+
+    # Make sure nothing is stuck in limbo.
+    writer_cache.FileWriterCache.clear()
+
+    # Examine the training events. Use a range to check global step to avoid
+    # flakyness due to global step race condition.
+    training_loss, training_global_step = self._extract_loss_and_global_step(
+        est.model_dir)
+    self.assertIsNotNone(training_loss)
+    self.assertTrue(
+        max_steps - save_summary_steps < training_global_step <= max_steps)
+
+    # Examine the eval events. The global step should be accurate.
+    eval_loss, eval_global_step = self._extract_loss_and_global_step(
+        event_folder=os.path.join(est.model_dir, 'eval_' + eval_name))
+    self.assertIsNotNone(eval_loss)
+    self.assertEqual(max_steps, eval_global_step)
+
+    # Examine the export folder.
+    export_dir = os.path.join(os.path.join(est.model_dir, 'export'),
+                              exporter_name)
+    self.assertTrue(gfile.Exists(export_dir))
+
+    # Examine the ckpt for predict.
+    predicted_proba = np.array([
+        x[prediction_keys.PredictionKeys.PROBABILITIES]
+        for x in est.predict(predict_input_fn)
+    ])
+    self.assertAllEqual((batch_size, n_classes), predicted_proba.shape)
 
 
 if __name__ == '__main__':

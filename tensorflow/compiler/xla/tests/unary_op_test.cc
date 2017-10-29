@@ -41,7 +41,11 @@ class UnaryOpTest : public ClientLibraryTestBase {
     auto arg = builder.ConstantR1<T>({});
     auto abs = builder.Abs(arg);
 
-    ComputeAndCompareR1<T>(&builder, {}, {});
+    if (primitive_util::NativeToPrimitiveType<T>() == C64) {
+      ComputeAndCompareR1<float>(&builder, {}, {});
+    } else {
+      ComputeAndCompareR1<T>(&builder, {}, {});
+    }
   }
 
   template <typename T>
@@ -80,14 +84,58 @@ int UnaryOpTest::inf<int>() {
   return 2147483647;
 }
 
+template <>
+void UnaryOpTest::AbsTestHelper<complex64>() {
+  ComputationBuilder builder(client_, TestName());
+  auto arg = builder.ConstantR1<complex64>({{-2, 0},
+                                            {0, 25},
+                                            {0, 0},
+                                            {-0.3f, 0.4f},
+                                            {0, inf<float>()},
+                                            {-inf<float>(), 0}});
+  auto abs = builder.Abs(arg);
+
+  std::unique_ptr<Literal> expected =
+      Literal::CreateR1<float>({2, 25, 0, 0.5, inf<float>(), inf<float>()});
+  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+}
+
+template <>
+void UnaryOpTest::SignTestHelper<complex64>() {
+  ComputationBuilder builder(client_, TestName());
+  auto arg = builder.ConstantR1<complex64>(
+      {{-2, 0}, {0, 25}, {0, 0}, {static_cast<float>(-0.0), 0}, {-1, 1}});
+  auto sign = builder.Sign(arg);
+
+  std::unique_ptr<Literal> expected = Literal::CreateR1<complex64>(
+      {{-1, 0}, {0, 1}, {0, 0}, {0, 0}, {-std::sqrt(0.5f), std::sqrt(0.5f)}});
+  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+}
+
+template <>
+void UnaryOpTest::SignAbsTestHelper<complex64>() {
+  ComputationBuilder builder(client_, TestName());
+  auto arg =
+      builder.ConstantR1<complex64>({{-2, 0}, {0, 25}, {0, 0}, {-0.4, 0.3}});
+  auto sign = builder.Sign(arg);
+  auto abs = builder.Abs(arg);
+  builder.Sub(builder.Mul(sign, builder.ConvertElementType(abs, C64)), arg);
+
+  std::unique_ptr<Literal> expected =
+      Literal::CreateR1<complex64>({0, 0, 0, 0});
+  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
+}
+
 XLA_TEST_F(UnaryOpTest, AbsTestR1Size0) {
   AbsSize0TestHelper<int>();
   AbsSize0TestHelper<float>();
+  AbsSize0TestHelper<complex64>();
 }
 
 XLA_TEST_F(UnaryOpTest, AbsTestR1) {
   AbsTestHelper<int>();
   AbsTestHelper<float>();
+  AbsTestHelper<complex64>();
 }
 
 XLA_TEST_F(UnaryOpTest, AbsTestR0) {
@@ -98,34 +146,44 @@ XLA_TEST_F(UnaryOpTest, AbsTestR0) {
   auto absf = builder.Abs(argf);
   auto argf0 = builder.ConstantR0<float>(-0.0f);
   auto absf0 = builder.Abs(argf0);
-  builder.Add(absf0, builder.Add(absf, builder.ConvertElementType(
-                                           absi, PrimitiveType::F32)));
+  auto argc = builder.ConstantR0<complex64>({-0.3f, 0.4f});
+  auto absc = builder.Abs(argc);
+  builder.Add(builder.Add(absc, absf0),
+              builder.Add(absf, builder.ConvertElementType(absi, F32)));
 
-  ComputeAndCompareR0<float>(&builder, 8.0f, {});
+  ComputeAndCompareR0<float>(&builder, 8.5f, {});
 }
 
 XLA_TEST_F(UnaryOpTest, SignTestR0) {
   ComputationBuilder builder(client_, TestName());
   auto argi = builder.ConstantR0<int>(-5);
-  auto absi = builder.Sign(argi);
+  auto sgni = builder.Sign(argi);  // -1
   auto argf = builder.ConstantR0<float>(-4.0f);
-  auto absf = builder.Sign(argf);
+  auto sgnf = builder.Sign(argf);  // -1
   auto argf0 = builder.ConstantR0<float>(-0.0f);
-  auto absf0 = builder.Sign(argf0);
-  builder.Add(absf0, builder.Add(absf, builder.ConvertElementType(
-                                           absi, PrimitiveType::F32)));
+  auto sgnf0 = builder.Sign(argf0);  // 0
+  auto argc = builder.ConstantR0<complex64>({-.3, .4});
+  auto sgnc = builder.Sign(argc);  // (-.6, .8)
+  builder.Add(sgnc, builder.ConvertElementType(
+                        builder.Add(builder.Add(sgnf0, sgnf),
+                                    builder.ConvertElementType(sgni, F32)),
+                        C64));
 
-  ComputeAndCompareR0<float>(&builder, -2.0f, {});
+  std::unique_ptr<Literal> expected =
+      Literal::CreateR0<complex64>({-2.6f, 0.8f});
+  ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
 }
 
 XLA_TEST_F(UnaryOpTest, SignTestR1) {
   SignTestHelper<int>();
   SignTestHelper<float>();
+  SignTestHelper<complex64>();
 }
 
 XLA_TEST_F(UnaryOpTest, SignAbsTestR1) {
   SignAbsTestHelper<int>();
   SignAbsTestHelper<float>();
+  SignAbsTestHelper<complex64>();
 }
 
 XLA_TEST_F(UnaryOpTest, UnsignedAbsTestR1) {

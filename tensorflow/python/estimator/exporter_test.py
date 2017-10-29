@@ -30,28 +30,30 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
-class SavedModelExporterTest(test.TestCase):
+class LatestExporterTest(test.TestCase):
 
   def test_error_out_if_exports_to_keep_is_zero(self):
-    def _serving_input_fn():
+    def _serving_input_receiver_fn():
       pass
+
     with self.assertRaisesRegexp(ValueError, "positive number"):
-      exporter_lib.SavedModelExporter(
-          name="saved_model_exporter",
-          serving_input_fn=_serving_input_fn,
+      exporter = exporter_lib.LatestExporter(
+          name="latest_exporter",
+          serving_input_receiver_fn=_serving_input_receiver_fn,
           exports_to_keep=0)
+      self.assertEqual("latest_exporter", exporter.name)
 
-  def test_saved_model_exporter(self):
+  def test_latest_exporter(self):
 
-    def _serving_input_fn():
+    def _serving_input_receiver_fn():
       pass
 
     export_dir_base = tempfile.mkdtemp() + "export/"
     gfile.MkDir(export_dir_base)
 
-    exporter = exporter_lib.SavedModelExporter(
-        name="saved_model_exporter",
-        serving_input_fn=_serving_input_fn,
+    exporter = exporter_lib.LatestExporter(
+        name="latest_exporter",
+        serving_input_receiver_fn=_serving_input_receiver_fn,
         assets_extra={"from/path": "to/path"},
         as_text=False,
         exports_to_keep=5)
@@ -59,12 +61,45 @@ class SavedModelExporterTest(test.TestCase):
     estimator.export_savedmodel.return_value = "export_result_path"
 
     export_result = exporter.export(estimator, export_dir_base,
-                                    "checkpoint_path", {})
+                                    "checkpoint_path", {}, False)
 
     self.assertEqual("export_result_path", export_result)
     estimator.export_savedmodel.assert_called_with(
         export_dir_base,
-        _serving_input_fn,
+        _serving_input_receiver_fn,
+        assets_extra={"from/path": "to/path"},
+        as_text=False,
+        checkpoint_path="checkpoint_path")
+
+  def test_only_the_last_export_is_saved(self):
+
+    def _serving_input_receiver_fn():
+      pass
+
+    export_dir_base = tempfile.mkdtemp() + "export/"
+    gfile.MkDir(export_dir_base)
+
+    exporter = exporter_lib.FinalExporter(
+        name="latest_exporter",
+        serving_input_receiver_fn=_serving_input_receiver_fn,
+        assets_extra={"from/path": "to/path"},
+        as_text=False)
+    estimator = test.mock.Mock(spec=estimator_lib.Estimator)
+    estimator.export_savedmodel.return_value = "export_result_path"
+
+    export_result = exporter.export(estimator, export_dir_base,
+                                    "checkpoint_path", {}, False)
+
+    self.assertFalse(estimator.export_savedmodel.called)
+    self.assertEqual(None, export_result)
+
+    export_result = exporter.export(estimator, export_dir_base,
+                                    "checkpoint_path", {}, True)
+
+    self.assertEqual("export_result_path", export_result)
+    estimator.export_savedmodel.assert_called_with(
+        export_dir_base,
+        _serving_input_receiver_fn,
         assets_extra={"from/path": "to/path"},
         as_text=False,
         checkpoint_path="checkpoint_path")
@@ -82,17 +117,17 @@ class SavedModelExporterTest(test.TestCase):
     self.assertTrue(gfile.Exists(export_dir_3))
     self.assertTrue(gfile.Exists(export_dir_4))
 
-    def _serving_input_fn():
+    def _serving_input_receiver_fn():
       return array_ops.constant([1]), None
 
-    exporter = exporter_lib.SavedModelExporter(
-        name="saved_model_exporter",
-        serving_input_fn=_serving_input_fn,
+    exporter = exporter_lib.LatestExporter(
+        name="latest_exporter",
+        serving_input_receiver_fn=_serving_input_receiver_fn,
         exports_to_keep=2)
     estimator = test.mock.Mock(spec=estimator_lib.Estimator)
     # Garbage collect all but the most recent 2 exports,
     # where recency is determined based on the timestamp directory names.
-    exporter.export(estimator, export_dir_base, None, None)
+    exporter.export(estimator, export_dir_base, None, None, False)
 
     self.assertFalse(gfile.Exists(export_dir_1))
     self.assertFalse(gfile.Exists(export_dir_2))

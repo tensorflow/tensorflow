@@ -29,6 +29,7 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Sublime Tensorflow - A plugin for Sublime Text](https://github.com/baptisteArnaud/Sublime-Tensorflow)
 * [Edward - A library for probabilistic modeling, inference, and criticism](http://edwardlib.org) ([Github](https://github.com/blei-lab/edward), [Forum](https://discourse.edwardlib.org))
 * [GPflow - Gaussian processes in TensorFlow](https://github.com/GPflow/GPflow)
+* [CS 20SI: Tensorflow for Deep Learning Research](https://web.stanford.edu/class/cs20si/) - Please note, this course was designed with TensorFlow v0.12, so some of the notes may be out of date - but it's still a great resource.
 
 ## TensorFlow Communities Around the World
 

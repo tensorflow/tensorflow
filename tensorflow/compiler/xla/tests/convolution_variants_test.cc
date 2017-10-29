@@ -974,10 +974,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x2x1x1Input1x2x3x1GeneralPadding) {
 
   ConvolutionDimensionNumbers dnums;
   // NHWC input format.
-  dnums.set_batch_dimension(0);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
   dnums.add_spatial_dimensions(1);
   dnums.add_spatial_dimensions(2);
-  dnums.set_feature_dimension(3);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
 
   // Tensorflow filter shape: [ H, W, inC, outC ]
   dnums.add_kernel_spatial_dimensions(0);
@@ -1014,10 +1016,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1GeneralPadding) {
 
   ConvolutionDimensionNumbers dnums;
   // NHWC input format.
-  dnums.set_batch_dimension(0);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
   dnums.add_spatial_dimensions(1);
   dnums.add_spatial_dimensions(2);
-  dnums.set_feature_dimension(3);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
 
   // Tensorflow filter shape: [ H, W, inC, outC ]
   dnums.add_kernel_spatial_dimensions(0);
@@ -1054,10 +1058,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x1x1Input1x2x3x1NoPadding) {
 
   ConvolutionDimensionNumbers dnums;
   // NHWC input format.
-  dnums.set_batch_dimension(0);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
   dnums.add_spatial_dimensions(1);
   dnums.add_spatial_dimensions(2);
-  dnums.set_feature_dimension(3);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
 
   // Tensorflow filter shape: [ H, W, inC, outC ]
   dnums.add_kernel_spatial_dimensions(0);
@@ -1091,10 +1097,12 @@ XLA_TEST_F(ConvolutionVariantsTest, Filter1x1x2x3Input1x2x3x2NoPadding) {
 
   ConvolutionDimensionNumbers dnums;
   // NHWC input format.
-  dnums.set_batch_dimension(0);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
   dnums.add_spatial_dimensions(1);
   dnums.add_spatial_dimensions(2);
-  dnums.set_feature_dimension(3);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
 
   // Tensorflow filter shape: [ H, W, inC, outC ]
   dnums.add_kernel_spatial_dimensions(0);

@@ -47,56 +47,53 @@ def _profiled_run(self,
   """Overwrites the session.run()."""
   # pylint: disable=protected-access
   # Count the session steps.
-  with self.profile_context._new_step():
+  with self.profile_context._new_step() as step:
     # Fast path if no need for profiling.
-    if self.profile_context._is_fast_path():
-      return self._profiler_run_internal(
-          fetches, feed_dict, options, run_metadata)
+    if not self.profile_context._is_fast_path():
+      # Maybe trace this step.
+      if self.profile_context._should_trace():
+        # Enable tracing, perform auto profiling or auto dump.
+        if not run_metadata:
+          run_metadata = config_pb2.RunMetadata()
 
-    step = self.profile_context._step
+        if not options:
+          options = config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE)
+          old_trace_level = options.trace_level
+        else:
+          old_trace_level = options.trace_level
+          options.trace_level = config_pb2.RunOptions.FULL_TRACE
 
-    # Maybe trace this step.
-    if self.profile_context._should_trace():
-      # Enable tracing, perform auto profiling or auto dump.
-      if not run_metadata:
-        run_metadata = config_pb2.RunMetadata()
+        ret = self._profiler_run_internal(
+            fetches, feed_dict, options, run_metadata)
 
-      if not options:
-        options = config_pb2.RunOptions(
-            trace_level=config_pb2.RunOptions.FULL_TRACE)
-        old_trace_level = options.trace_level
+        self.profile_context.profiler._graph = self.graph
+        self.profile_context.profiler.add_step(step, run_metadata)
+        options.trace_level = old_trace_level
       else:
-        old_trace_level = options.trace_level
-        options.trace_level = config_pb2.RunOptions.FULL_TRACE
+        ret = self._profiler_run_internal(fetches, feed_dict, options)
 
-      ret = self._profiler_run_internal(
-          fetches, feed_dict, options, run_metadata)
+      # Maybe dump profile.
+      self.profile_context._maybe_dump()
 
-      self.profile_context.profiler._graph = self.graph
-      self.profile_context.profiler.add_step(step, run_metadata)
-      options.trace_level = old_trace_level
-    else:
-      ret = self._profiler_run_internal(fetches, feed_dict, options)
-
-    # Maybe dump profile.
-    self.profile_context._maybe_dump()
-
-    # Maybe profile:
-    to_profiles = self.profile_context._profile_candidates()
-    for to_prof in to_profiles:
-      cmd, opts, _ = to_prof
-      if cmd == 'graph':
-        self.profile_context.profiler.profile_graph(opts)
-      elif cmd == 'scope':
-        self.profile_context.profiler.profile_name_scope(opts)
-      elif cmd == 'op':
-        self.profile_context.profiler.profile_operations(opts)
-      elif cmd == 'code':
-        self.profile_context.profiler.profile_python(opts)
-      else:
-        raise ValueError('Unknown cmd: %s\n' % cmd)
-
-    return ret
+      # Maybe profile:
+      to_profiles = self.profile_context._profile_candidates()
+      for to_prof in to_profiles:
+        cmd, opts, _ = to_prof
+        if cmd == 'graph':
+          self.profile_context.profiler.profile_graph(opts)
+        elif cmd == 'scope':
+          self.profile_context.profiler.profile_name_scope(opts)
+        elif cmd == 'op':
+          self.profile_context.profiler.profile_operations(opts)
+        elif cmd == 'code':
+          self.profile_context.profiler.profile_python(opts)
+        else:
+          raise ValueError('Unknown cmd: %s\n' % cmd)
+      return ret
+  # Fast no lock path.
+  return self._profiler_run_internal(
+      fetches, feed_dict, options, run_metadata)
   # pylint: enable=protected-access
 
 
@@ -183,10 +180,9 @@ class ProfileContext(object):
   @property
   def profiler(self):
     """Returns the current profiler object."""
-    with self._lock:
-      if not self._profiler:
-        self._profiler = model_analyzer.Profiler(ops.get_default_graph())
-      return self._profiler
+    if not self._profiler:
+      self._profiler = model_analyzer.Profiler(ops.get_default_graph())
+    return self._profiler
 
   def trace_next_step(self):
     """Enables tracing and add traces to profiler at next step."""
@@ -222,10 +218,11 @@ class ProfileContext(object):
 
   @contextlib.contextmanager
   def _new_step(self):
-    yield
-    self._step += 1
-    self._trace_next_step = False
-    self._dump_next_step = False
+    with self._lock:
+      yield self._step
+      self._step += 1
+      self._trace_next_step = False
+      self._dump_next_step = False
 
   def _profile_candidates(self):
     to_profile = []

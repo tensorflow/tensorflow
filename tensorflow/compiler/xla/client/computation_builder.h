@@ -138,6 +138,11 @@ class ComputationBuilder {
   ComputationDataHandle ConstantR2(
       std::initializer_list<std::initializer_list<NativeT>> values);
   template <typename NativeT>
+  ComputationDataHandle ConstantFromArrayWithLayout(
+      const Array<NativeT>& values, const Layout& layout);
+  template <typename NativeT>
+  ComputationDataHandle ConstantFromArray(const Array<NativeT>& values);
+  template <typename NativeT>
   ComputationDataHandle ConstantR2FromArray2DWithLayout(
       const Array2D<NativeT>& values, const Layout& layout);
   template <typename NativeT>
@@ -200,6 +205,16 @@ class ComputationBuilder {
   // operand with dimensions {x=256, y=2, z=2, p=32} can be collapsed to
   // {x=1024, y=32} by collapsing dims {0, 1, 2}. Collapsing dimensions must
   // be a consecutive, in-order subsequence of the operand dimensions.
+  //
+  // Note that collapsing a single dimension does nothing:
+  //
+  //    {256} collapsing {0} => {256}
+  //    {1} collapsing {0} => {1}
+  //
+  // Collapsing multiple dimensions produces a single result dimension:
+  //
+  //    {256, 2} collapsing {0,1} => {512}
+  //    {256, 2, 3} collapsing {0,1} => {512, 3}
   //
   // This could potentially cause data to be moved -- it provides a more
   // structured form of reshaping than an arbitrary Reshape operation.
@@ -344,7 +359,8 @@ class ComputationBuilder {
   // Creates a ConvolutionDimensionNumbers with the given arguments. Returns an
   // error if either the input or the weight dimension numbers have conflicts.
   static StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
-      int64 batch, int64 feature, int64 first_spatial, int64 second_spatial,
+      int64 input_batch, int64 input_feature, int64 output_batch,
+      int64 output_feature, int64 first_spatial, int64 second_spatial,
       int64 kernel_output_feature, int64 kernel_input_feature,
       int64 kernel_first_spatial, int64 kernel_second_spatial);
 
@@ -415,6 +431,14 @@ class ComputationBuilder {
   // of the operands is a scalar, or an explicit broadcast dimension is given
   // (see g3doc for more details).
 
+  // Enqueues a complex compose instruction onto the computation.
+  ComputationDataHandle Complex(
+      const ComputationDataHandle& real, const ComputationDataHandle& imag,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
+  // Enqueues a complex conjugate instruction onto the computation.
+  ComputationDataHandle Conj(const ComputationDataHandle& operand);
+
   // Enqueues an add instruction onto the computation.
   ComputationDataHandle Add(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
@@ -451,15 +475,25 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Element-wise logical operators
-  ComputationDataHandle LogicalAnd(
+  ComputationDataHandle And(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
-  ComputationDataHandle LogicalOr(
+  ComputationDataHandle Or(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
-  ComputationDataHandle LogicalNot(const ComputationDataHandle& lhs);
+  ComputationDataHandle Not(const ComputationDataHandle& operand);
+
+  ComputationDataHandle ShiftLeft(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+  ComputationDataHandle ShiftRightArithmetic(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+  ComputationDataHandle ShiftRightLogical(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
 
   // Reduces an array among the provided dimensions, given "computation" as a
   // reduction operator.
@@ -516,6 +550,11 @@ class ComputationBuilder {
   // Enqueues an abs instruction onto the computation.
   ComputationDataHandle Abs(const ComputationDataHandle& operand);
 
+  // Enqueues a atan2 instruction onto the computation.
+  ComputationDataHandle Atan2(
+      const ComputationDataHandle& y, const ComputationDataHandle& x,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
   // Enqueues an exp instruction onto the computation.
   ComputationDataHandle Exp(const ComputationDataHandle& operand);
 
@@ -543,6 +582,12 @@ class ComputationBuilder {
 
   // Enqueues a tanh instruction onto the computation.
   ComputationDataHandle Tanh(const ComputationDataHandle& operand);
+
+  // Enqueues a real-part instruction onto the computation.
+  ComputationDataHandle Real(const ComputationDataHandle& operand);
+
+  // Enqueues an imaginary-part instruction onto the computation.
+  ComputationDataHandle Imag(const ComputationDataHandle& operand);
 
   // Enqueues a float32 sqrt instruction onto the computation.
   // (float32 is specified as there is an implicit float32 0.5f constant
@@ -889,48 +934,54 @@ ComputationDataHandle ComputationBuilder::ConstantR2(
 }
 
 template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantFromArrayWithLayout(
+    const Array<NativeT>& values, const Layout& layout) {
+  return ConstantOp([&values, &layout](Literal* literal) {
+    literal->PopulateFromArrayWithLayout(values, layout);
+  });
+}
+
+template <typename NativeT>
+ComputationDataHandle ComputationBuilder::ConstantFromArray(
+    const Array<NativeT>& values) {
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateFromArray(values); });
+}
+
+template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR2FromArray2DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR2FromArray2D(values); });
+  return ConstantFromArray(values);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR3FromArray3DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3D(
     const Array3D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR3FromArray3D(values); });
+  return ConstantFromArray(values);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateR4FromArray4DWithLayout(values, layout);
-  });
+  return ConstantFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4D(
     const Array4D<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR4FromArray4D(values); });
+  return ConstantFromArray(values);
 }
 
 }  // namespace xla

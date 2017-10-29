@@ -124,7 +124,7 @@ def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
       with this shared_name. Otherwise, the node name is used instead.
 
   Returns:
-    A variable tensor.1;5A
+    A variable tensor.
   """
   return gen_state_ops._variable_v2(shape=shape,
                                     dtype=dtype,
@@ -275,3 +275,25 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
         ref, value, use_locking=use_locking, name=name,
         validate_shape=validate_shape)
   return ref.assign(value)
+
+
+def count_up_to(ref, limit, name=None):
+  r"""Increments 'ref' until it reaches 'limit'.
+
+  Args:
+    ref: A Variable. Must be one of the following types: `int32`, `int64`.
+      Should be from a scalar `Variable` node.
+    limit: An `int`.
+      If incrementing ref would bring it above limit, instead generates an
+      'OutOfRange' error.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `ref`.
+    A copy of the input before increment. If nothing else modifies the
+    input, the values produced will all be distinct.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.count_up_to(ref, limit=limit, name=name)
+  return gen_state_ops.resource_count_up_to(
+      ref.handle, limit, T=ref.dtype, name=name)

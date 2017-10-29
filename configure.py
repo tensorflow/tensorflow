@@ -963,6 +963,19 @@ def set_monolithic():
   write_to_bazelrc('build --define framework_shared_object=true')
 
 
+def create_android_bazelrc_configs():
+  # Flags for --config=android
+  write_to_bazelrc('build:android --crosstool_top=//external:android/crosstool')
+  write_to_bazelrc(
+      'build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain')
+  # Flags for --config=android_arm
+  write_to_bazelrc('build:android_arm --config=android')
+  write_to_bazelrc('build:android_arm --cpu=armeabi-v7a')
+  # Flags for --config=android_arm64
+  write_to_bazelrc('build:android_arm64 --config=android')
+  write_to_bazelrc('build:android_arm64 --cpu=arm64-v8a')
+
+
 def main():
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
@@ -976,6 +989,7 @@ def main():
   run_gen_git_source(environ_cp)
 
   if is_windows():
+    environ_cp['TF_NEED_S3'] = '0'
     environ_cp['TF_NEED_GCP'] = '0'
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
@@ -988,9 +1002,11 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
   set_build_var(environ_cp, 'TF_NEED_GCP', 'Google Cloud Platform',
-                'with_gcp_support', False, 'gcp')
+                'with_gcp_support', True, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
-                'with_hdfs_support', False, 'hdfs')
+                'with_hdfs_support', True, 'hdfs')
+  set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
+                'with_s3_support', True, 's3')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
@@ -1030,7 +1046,7 @@ def main():
   set_cc_opt_flags(environ_cp)
   set_mkl()
   set_monolithic()
-
+  create_android_bazelrc_configs()
 
 if __name__ == '__main__':
   main()

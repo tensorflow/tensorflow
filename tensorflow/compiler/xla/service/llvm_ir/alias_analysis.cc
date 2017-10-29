@@ -92,7 +92,16 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
 llvm::MDNode* AliasAnalysis::GetAliasDomain() {
   llvm::MDBuilder metadata_builder(*context_);
   if (alias_domain_ == nullptr) {
-    alias_domain_ = metadata_builder.createAnonymousAliasScopeDomain();
+    // We use createAliasScopeDomain rather than createAnonymousAliasScopeDomain
+    // so that when functions get inlined, we continue using the one domain,
+    // rather than duplicating it (and thus having two AA domains in one
+    // function).
+    //
+    // A side-effect of this is that if you ever compile two HLO modules in the
+    // same LLVM module, they'll have the same alias scope domain.  This isn't a
+    // problem because the two HLO modules will never interact with one another.
+    alias_domain_ =
+        metadata_builder.createAliasScopeDomain("XLA global AA domain");
   }
   return alias_domain_;
 }
