@@ -179,6 +179,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
             response->AddRecv(key, val);
           }
         }
+        if (collector) collector->Finalize();
         delete collector;
         delete out;
         done(s);

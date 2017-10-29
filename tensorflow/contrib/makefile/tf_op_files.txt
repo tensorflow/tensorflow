@@ -170,6 +170,8 @@ tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_bitwise_xor.cc
 tensorflow/core/kernels/cwise_op_bitwise_or.cc
 tensorflow/core/kernels/cwise_op_bitwise_and.cc
+tensorflow/core/kernels/cwise_op_left_shift.cc
+tensorflow/core/kernels/cwise_op_right_shift.cc
 tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_add_1.cc
 tensorflow/core/kernels/cwise_op_abs.cc
@@ -262,3 +264,4 @@ tensorflow/core/kernels/spacetobatch_functor.cc
 tensorflow/core/kernels/spacetobatch_op.cc
 tensorflow/core/kernels/batchtospace_op.cc
 tensorflow/core/kernels/warn_about_ints.cc
+tensorflow/core/kernels/segment_reduction_ops.cc

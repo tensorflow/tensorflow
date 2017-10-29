@@ -1637,7 +1637,7 @@ TEST(GcsFileSystemTest, Stat_Object) {
   FileStatistics stat;
   TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
   EXPECT_EQ(1010, stat.length);
-  EXPECT_EQ(1461971724896, stat.mtime_nsec / 1000 / 1000);
+  EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
   EXPECT_FALSE(stat.is_directory);
 }
 
@@ -1771,7 +1771,7 @@ TEST(GcsFileSystemTest, Stat_Cache) {
     FileStatistics stat;
     TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
     EXPECT_EQ(1010, stat.length);
-    EXPECT_EQ(1461971724896, stat.mtime_nsec / 1000 / 1000);
+    EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
     EXPECT_FALSE(stat.is_directory);
     TF_EXPECT_OK(fs.Stat("gs://bucket/subfolder", &stat));
     EXPECT_EQ(0, stat.length);

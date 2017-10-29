@@ -190,8 +190,8 @@ def main(unused_args):
 
   # Calculate accuracy.
   test_input_fn = tf.estimator.inputs.numpy_input_fn(
-      x={X_FEATURE: mnist.train.images},
-      y=mnist.train.labels.astype(np.int32),
+      x={X_FEATURE: mnist.test.images},
+      y=mnist.test.labels.astype(np.int32),
       num_epochs=1,
       shuffle=False)
   scores = classifier.evaluate(input_fn=test_input_fn)

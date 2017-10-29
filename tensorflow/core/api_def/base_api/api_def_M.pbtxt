@@ -1,0 +1,749 @@
+op {
+  graph_op_name: "MakeIterator"
+  endpoint {
+    name: "MakeIterator"
+  }
+  summary: "Makes a new iterator from the given `dataset` and stores it in `iterator`."
+  description: <<END
+This operation may be executed multiple times. Each execution will reset the
+iterator in `iterator` to the first element of `dataset`.
+END
+}
+op {
+  graph_op_name: "MapClear"
+  endpoint {
+    name: "MapClear"
+  }
+  summary: "Op removes all elements in the underlying container."
+}
+op {
+  graph_op_name: "MapDataset"
+  endpoint {
+    name: "MapDataset"
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+}
+op {
+  graph_op_name: "MapIncompleteSize"
+  endpoint {
+    name: "MapIncompleteSize"
+  }
+  summary: "Op returns the number of incomplete elements in the underlying container."
+}
+op {
+  graph_op_name: "MapPeek"
+  endpoint {
+    name: "MapPeek"
+  }
+  summary: "Op peeks at the values at the specified key.  If the"
+  description: <<END
+underlying container does not contain this key
+this op will block until it does.
+END
+}
+op {
+  graph_op_name: "MapSize"
+  endpoint {
+    name: "MapSize"
+  }
+  summary: "Op returns the number of elements in the underlying container."
+}
+op {
+  graph_op_name: "MapStage"
+  endpoint {
+    name: "MapStage"
+  }
+  summary: "Stage (key, values) in the underlying container which behaves like a hashtable."
+}
+op {
+  graph_op_name: "MapUnstage"
+  endpoint {
+    name: "MapUnstage"
+  }
+  summary: "Op removes and returns the values associated with the key"
+  description: <<END
+from the underlying container.   If the underlying container
+does not contain this key, the op will block until it does.
+END
+}
+op {
+  graph_op_name: "MapUnstageNoKey"
+  endpoint {
+    name: "MapUnstageNoKey"
+  }
+  summary: "Op removes and returns a random (key, value)"
+  description: <<END
+from the underlying container.   If the underlying container
+does not contain elements, the op will block until it does.
+END
+}
+op {
+  graph_op_name: "MatMul"
+  endpoint {
+    name: "MatMul"
+  }
+  summary: "Multiply the matrix \"a\" by the matrix \"b\"."
+  description: <<END
+The inputs must be two-dimensional matrices and the inner dimension of
+"a" (after being transposed if transpose_a is true) must match the
+outer dimension of "b" (after being transposed if transposed_b is
+true).
+
+*Note*: The default kernel implementation for MatMul on GPUs uses
+cublas.
+END
+}
+op {
+  graph_op_name: "MatchingFiles"
+  endpoint {
+    name: "MatchingFiles"
+  }
+  summary: "Returns the set of files matching one or more glob patterns."
+  description: <<END
+Note that this routine only supports wildcard characters in the
+basename portion of the pattern, not in the directory portion.
+END
+}
+op {
+  graph_op_name: "MatrixBandPart"
+  endpoint {
+    name: "MatrixBandPart"
+  }
+  summary: "Copy a tensor setting everything outside a central band in each innermost matrix"
+  description: <<END
+to zero.
+
+The `band` part is computed as follows:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor with the same shape where
+
+`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
+
+The indicator function
+
+`in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&
+                 (num_upper < 0 || (n-m) <= num_upper)`.
+
+For example:
+
+```
+# if 'input' is [[ 0,  1,  2, 3]
+                 [-1,  0,  1, 2]
+                 [-2, -1,  0, 1]
+                 [-3, -2, -1, 0]],
+
+tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+                                       [-1,  0,  1, 2]
+                                       [ 0, -1,  0, 1]
+                                       [ 0,  0, -1, 0]],
+
+tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+                                      [-1,  0,  1, 0]
+                                      [-2, -1,  0, 1]
+                                      [ 0, -2, -1, 0]]
+```
+
+Useful special cases:
+
+```
+ tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+```
+END
+}
+op {
+  graph_op_name: "MatrixDeterminant"
+  endpoint {
+    name: "MatrixDeterminant"
+  }
+  summary: "Computes the determinant of one or more square matrices."
+  description: <<END
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. The output is a tensor containing the determinants
+for all input submatrices `[..., :, :]`.
+END
+}
+op {
+  graph_op_name: "MatrixDiag"
+  endpoint {
+    name: "MatrixDiag"
+  }
+  summary: "Returns a batched diagonal tensor with a given batched diagonal values."
+  description: <<END
+Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+
+For example:
+
+```
+# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+and diagonal.shape = (2, 4)
+
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+                                     [0, 2, 0, 0]
+                                     [0, 0, 3, 0]
+                                     [0, 0, 0, 4]],
+                                    [[5, 0, 0, 0]
+                                     [0, 6, 0, 0]
+                                     [0, 0, 7, 0]
+                                     [0, 0, 0, 8]]]
+
+which has shape (2, 4, 4)
+```
+END
+}
+op {
+  graph_op_name: "MatrixDiagPart"
+  endpoint {
+    name: "MatrixDiagPart"
+  }
+  summary: "Returns the batched diagonal part of a batched tensor."
+  description: <<END
+This operation returns a tensor with the `diagonal` part
+of the batched `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:
+
+`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
+
+The input must be at least a matrix.
+
+For example:
+
+```
+# 'input' is [[[1, 0, 0, 0]
+               [0, 2, 0, 0]
+               [0, 0, 3, 0]
+               [0, 0, 0, 4]],
+              [[5, 0, 0, 0]
+               [0, 6, 0, 0]
+               [0, 0, 7, 0]
+               [0, 0, 0, 8]]]
+
+and input.shape = (2, 4, 4)
+
+tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+which has shape (2, 4)
+```
+END
+}
+op {
+  graph_op_name: "MatrixInverse"
+  endpoint {
+    name: "MatrixInverse"
+  }
+  summary: "Computes the inverse of one or more square invertible matrices or their"
+  description: <<END
+adjoints (conjugate transposes).
+
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. The output is a tensor of the same shape as the input
+containing the inverse for all input submatrices `[..., :, :]`.
+
+The op uses LU decomposition with partial pivoting to compute the inverses.
+
+If a matrix is not invertible there is no guarantee what the op does. It
+may detect the condition and raise an exception or it may simply return a
+garbage result.
+END
+}
+op {
+  graph_op_name: "MatrixSetDiag"
+  endpoint {
+    name: "MatrixSetDiag"
+  }
+  summary: "Returns a batched matrix tensor with new batched diagonal values."
+  description: <<END
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the main diagonal of the
+innermost matrices.  These will be overwritten by the values in `diagonal`.
+
+The output is computed as follows:
+
+Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
+tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
+
+  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+END
+}
+op {
+  graph_op_name: "MatrixSolve"
+  endpoint {
+    name: "MatrixSolve"
+  }
+  summary: "Solves systems of linear equations."
+  description: <<END
+`Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is
+a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
+satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `True` then each output matrix satisfies
+`adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
+END
+}
+op {
+  graph_op_name: "MatrixSolveLs"
+  endpoint {
+    name: "MatrixSolveLs"
+  }
+  summary: "Solves one or more linear least-squares problems."
+  description: <<END
+`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
+form real or complex matrices of size `[M, N]`. `Rhs` is a tensor of the same
+type as `matrix` and shape `[..., M, K]`.
+The output is a tensor shape `[..., N, K]` where each output matrix solves
+each of the equations
+`matrix[..., :, :]` * `output[..., :, :]` = `rhs[..., :, :]`
+in the least squares sense.
+
+We use the following notation for (complex) matrix and right-hand sides
+in the batch:
+
+`matrix`=\\(A \in \mathbb{C}^{m \times n}\\),
+`rhs`=\\(B  \in \mathbb{C}^{m \times k}\\),
+`output`=\\(X  \in \mathbb{C}^{n \times k}\\),
+`l2_regularizer`=\\(\lambda \in \mathbb{R}\\).
+
+If `fast` is `True`, then the solution is computed by solving the normal
+equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
+\\(X = (A^H A + \lambda I)^{-1} A^H B\\), which solves the least-squares
+problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k} } ||A Z - B||_F^2 +
+\lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is computed as
+\\(X = A^H (A A^H + \lambda I)^{-1} B\\), which (for \\(\lambda = 0\\)) is the
+minimum-norm solution to the under-determined linear system, i.e.
+\\(X = \mathrm{argmin}_{Z \in \mathbb{C}^{n \times k} } ||Z||_F^2 \\),
+subject to \\(A Z = B\\). Notice that the fast path is only numerically stable
+when \\(A\\) is numerically full rank and has a condition number
+\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach} } }\\) or\\(\lambda\\) is
+sufficiently large.
+
+If `fast` is `False` an algorithm based on the numerically robust complete
+orthogonal decomposition is used. This computes the minimum-norm
+least-squares solution, even when \\(A\\) is rank deficient. This path is
+typically 6-7 times slower than the fast path. If `fast` is `False` then
+`l2_regularizer` is ignored.
+END
+}
+op {
+  graph_op_name: "MatrixTriangularSolve"
+  endpoint {
+    name: "MatrixTriangularSolve"
+  }
+  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
+  description: <<END
+backsubstitution.
+
+`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
+square matrices. If `lower` is `True` then the strictly upper triangular part
+of each inner-most matrix is assumed to be zero and not accessed.
+If `lower` is False then the strictly lower triangular part of each inner-most
+matrix is assumed to be zero and not accessed.
+`rhs` is a tensor of shape `[..., M, K]`.
+
+The output is a tensor of shape `[..., M, K]`. If `adjoint` is
+`True` then the innermost matrices in `output` satisfy matrix equations
+`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `False` then the strictly then the  innermost matrices in
+`output` satisfy matrix equations
+`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
+END
+}
+op {
+  graph_op_name: "Max"
+  endpoint {
+    name: "Max"
+  }
+  summary: "Computes the maximum of elements across dimensions of a tensor."
+  description: <<END
+Reduces `input` along the dimensions given in `reduction_indices`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+END
+}
+op {
+  graph_op_name: "MaxPool"
+  endpoint {
+    name: "MaxPool"
+  }
+  summary: "Performs max pooling on the input."
+}
+op {
+  graph_op_name: "MaxPool3D"
+  endpoint {
+    name: "MaxPool3D"
+  }
+  summary: "Performs 3D max pooling on the input."
+}
+op {
+  graph_op_name: "MaxPool3DGrad"
+  endpoint {
+    name: "MaxPool3DGrad"
+  }
+  summary: "Computes gradients of max pooling function."
+}
+op {
+  graph_op_name: "MaxPool3DGradGrad"
+  endpoint {
+    name: "MaxPool3DGradGrad"
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
+}
+op {
+  graph_op_name: "MaxPoolGrad"
+  endpoint {
+    name: "MaxPoolGrad"
+  }
+  summary: "Computes gradients of the maxpooling function."
+}
+op {
+  graph_op_name: "MaxPoolGradGrad"
+  endpoint {
+    name: "MaxPoolGradGrad"
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
+}
+op {
+  graph_op_name: "MaxPoolGradGradV2"
+  endpoint {
+    name: "MaxPoolGradGradV2"
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
+}
+op {
+  graph_op_name: "MaxPoolGradGradWithArgmax"
+  endpoint {
+    name: "MaxPoolGradGradWithArgmax"
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
+}
+op {
+  graph_op_name: "MaxPoolGradV2"
+  endpoint {
+    name: "MaxPoolGradV2"
+  }
+  summary: "Computes gradients of the maxpooling function."
+}
+op {
+  graph_op_name: "MaxPoolGradWithArgmax"
+  endpoint {
+    name: "MaxPoolGradWithArgmax"
+  }
+  summary: "Computes gradients of the maxpooling function."
+}
+op {
+  graph_op_name: "MaxPoolV2"
+  endpoint {
+    name: "MaxPoolV2"
+  }
+  summary: "Performs max pooling on the input."
+}
+op {
+  graph_op_name: "MaxPoolWithArgmax"
+  endpoint {
+    name: "MaxPoolWithArgmax"
+  }
+  summary: "Performs max pooling on the input and outputs both max values and indices."
+  description: <<END
+The indices in `argmax` are flattened, so that a maximum value at position
+`[b, y, x, c]` becomes flattened index
+`((b * height + y) * width + x) * channels + c`.
+
+The indices returned are always in `[0, height) x [0, width)` before flattening,
+even if padding is involved and the mathematically correct answer is outside
+(either negative or too large).  This is a bug, but fixing it is difficult to do
+in a safe backwards compatible way, especially due to flattening.
+END
+}
+op {
+  graph_op_name: "Maximum"
+  endpoint {
+    name: "Maximum"
+  }
+  summary: "Returns the max of x and y (i.e. x > y ? x : y) element-wise."
+  description: <<END
+*NOTE*: `Maximum` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "Mean"
+  endpoint {
+    name: "Mean"
+  }
+  summary: "Computes the mean of elements across dimensions of a tensor."
+  description: <<END
+Reduces `input` along the dimensions given in `reduction_indices`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+END
+}
+op {
+  graph_op_name: "Merge"
+  endpoint {
+    name: "Merge"
+  }
+  summary: "Forwards the value of an available tensor from `inputs` to `output`."
+  description: <<END
+`Merge` waits for at least one of the tensors in `inputs` to become available.
+It is usually combined with `Switch` to implement branching.
+
+`Merge` forwards the first tensor to become available to `output`, and sets
+`value_index` to its index in `inputs`.
+END
+}
+op {
+  graph_op_name: "MergeSummary"
+  endpoint {
+    name: "MergeSummary"
+  }
+  summary: "Merges summaries."
+  description: <<END
+This op creates a
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+protocol buffer that contains the union of all the values in the input
+summaries.
+
+When the Op is run, it reports an `InvalidArgument` error if multiple values
+in the summaries to merge use the same tag.
+END
+}
+op {
+  graph_op_name: "MergeV2Checkpoints"
+  endpoint {
+    name: "MergeV2Checkpoints"
+  }
+  summary: "V2 format specific: merges the metadata files of sharded checkpoints.  The"
+  description: <<END
+result is one logical checkpoint, with one physical metadata file and renamed
+data files.
+
+Intended for "grouping" multiple checkpoints in a sharded checkpoint setup.
+
+If delete_old_dirs is true, attempts to delete recursively the dirname of each
+path in the input checkpoint_prefixes.  This is useful when those paths are non
+user-facing temporary locations.
+END
+}
+op {
+  graph_op_name: "Mfcc"
+  endpoint {
+    name: "Mfcc"
+  }
+  summary: "Transforms a spectrogram into a form that\'s useful for speech recognition."
+  description: <<END
+Mel Frequency Cepstral Coefficients are a way of representing audio data that's
+been effective as an input feature for machine learning. They are created by
+taking the spectrum of a spectrogram (a 'cepstrum'), and discarding some of the
+higher frequencies that are less significant to the human ear. They have a long
+history in the speech recognition world, and https://en.wikipedia.org/wiki/Mel-frequency_cepstrum
+is a good resource to learn more.
+END
+}
+op {
+  graph_op_name: "Min"
+  endpoint {
+    name: "Min"
+  }
+  summary: "Computes the minimum of elements across dimensions of a tensor."
+  description: <<END
+Reduces `input` along the dimensions given in `reduction_indices`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+END
+}
+op {
+  graph_op_name: "Minimum"
+  endpoint {
+    name: "Minimum"
+  }
+  summary: "Returns the min of x and y (i.e. x < y ? x : y) element-wise."
+  description: <<END
+*NOTE*: `Minimum` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "MirrorPad"
+  endpoint {
+    name: "MirrorPad"
+  }
+  summary: "Pads a tensor with mirrored values."
+  description: <<END
+This operation pads a `input` with mirrored values according to the `paddings`
+you specify. `paddings` is an integer tensor with shape `[n, 2]`, where n is
+the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+how many values to add before the contents of `input` in that dimension, and
+`paddings[D, 1]` indicates how many values to add after the contents of `input`
+in that dimension. Both `paddings[D, 0]` and `paddings[D, 1]` must be no greater
+than `input.dim_size(D)` (or `input.dim_size(D) - 1`) if `copy_border` is true
+(if false, respectively).
+
+The padded size of each dimension D of the output is:
+
+`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+
+For example:
+
+```
+# 't' is [[1, 2, 3], [4, 5, 6]].
+# 'paddings' is [[1, 1]], [2, 2]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
+                      [2, 1, 1, 2, 3, 3, 2]
+                      [5, 4, 4, 5, 6, 6, 5]
+                      [5, 4, 4, 5, 6, 6, 5]]
+```
+END
+}
+op {
+  graph_op_name: "MirrorPadGrad"
+  endpoint {
+    name: "MirrorPadGrad"
+  }
+  summary: "Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor."
+  description: <<END
+This operation folds the padded areas of `input` by `MirrorPad` according to the
+`paddings` you specify. `paddings` must be the same as `paddings` argument
+given to the corresponding `MirrorPad` op.
+
+The folded size of each dimension D of the output is:
+
+`input.dim_size(D) - paddings(D, 0) - paddings(D, 1)`
+
+For example:
+
+```
+# 't' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].
+# 'paddings' is [[0, 1]], [0, 1]].
+# 'mode' is SYMMETRIC.
+# rank of 't' is 2.
+pad(t, paddings) ==> [[ 1,  5]
+                      [11, 28]]
+```
+END
+}
+op {
+  graph_op_name: "Mod"
+  endpoint {
+    name: "Mod"
+  }
+  summary: "Returns element-wise remainder of division. This emulates C semantics in that"
+  description: <<END
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
+
+*NOTE*: `Mod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "Mul"
+  endpoint {
+    name: "Mul"
+  }
+  summary: "Returns x * y element-wise."
+  description: <<END
+*NOTE*: `Mul` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}
+op {
+  graph_op_name: "Multinomial"
+  endpoint {
+    name: "Multinomial"
+  }
+  summary: "Draws samples from a multinomial distribution."
+}
+op {
+  graph_op_name: "MutableDenseHashTable"
+  endpoint {
+    name: "MutableDenseHashTable"
+  }
+  summary: "Creates an empty hash table that uses tensors as the backing store."
+  description: <<END
+It uses "open addressing" with quadratic reprobing to resolve
+collisions.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+END
+}
+op {
+  graph_op_name: "MutableDenseHashTableV2"
+  endpoint {
+    name: "MutableDenseHashTableV2"
+  }
+  summary: "Creates an empty hash table that uses tensors as the backing store."
+  description: <<END
+It uses "open addressing" with quadratic reprobing to resolve
+collisions.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+END
+}
+op {
+  graph_op_name: "MutableHashTable"
+  endpoint {
+    name: "MutableHashTable"
+  }
+  summary: "Creates an empty hash table."
+  description: <<END
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+END
+}
+op {
+  graph_op_name: "MutableHashTableOfTensors"
+  endpoint {
+    name: "MutableHashTableOfTensors"
+  }
+  summary: "Creates an empty hash table."
+  description: <<END
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a vector. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+END
+}
+op {
+  graph_op_name: "MutableHashTableOfTensorsV2"
+  endpoint {
+    name: "MutableHashTableOfTensorsV2"
+  }
+  summary: "Creates an empty hash table."
+  description: <<END
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a vector. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+END
+}
+op {
+  graph_op_name: "MutableHashTableV2"
+  endpoint {
+    name: "MutableHashTableV2"
+  }
+  summary: "Creates an empty hash table."
+  description: <<END
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+END
+}

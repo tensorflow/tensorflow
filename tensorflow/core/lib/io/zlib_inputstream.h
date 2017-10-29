@@ -132,6 +132,9 @@ class ZlibInputStream : public InputStreamInterface {
   // Returns the size of [next_unread_byte_, z_stream_->next_out)
   size_t NumUnreadBytes() const;
 
+  // Number of *uncompressed* bytes that have been read from this stream.
+  int64 bytes_read_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(ZlibInputStream);
 };
 

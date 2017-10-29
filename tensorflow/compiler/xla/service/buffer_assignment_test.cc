@@ -1179,7 +1179,7 @@ TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
   auto assignment = RunBufferAssignment(module.get());
 
   EXPECT_EQ(3, assignment->Allocations().size());
-  // Buffers for call are co-located with the sub-computation.
+  // Buffers for call are colocated with the sub-computation.
   EXPECT_EQ(GetAllocation(*assignment, call, /*index=*/{}),
             GetAllocation(*assignment, sub_tuple, /*index=*/{}));
   EXPECT_EQ(GetAllocation(*assignment, call, /*index=*/{0}),
@@ -1238,7 +1238,7 @@ TEST_F(BufferAssignmentTest, TupleChainedCallAsOutput) {
 
   auto assignment = RunBufferAssignment(module.get());
 
-  // Buffers for call are co-located with the sub-computations.
+  // Buffers for call are colocated with the sub-computations.
   EXPECT_EQ(GetAllocation(*assignment, a_call, /*index=*/{}),
             GetAllocation(*assignment, b_call, /*index=*/{}));
   EXPECT_EQ(GetAllocation(*assignment, b_call, /*index=*/{}),

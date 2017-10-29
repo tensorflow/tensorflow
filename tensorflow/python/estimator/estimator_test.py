@@ -29,6 +29,7 @@ import six
 from google.protobuf import text_format
 
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
@@ -862,6 +863,43 @@ class _StepCounterHook(session_run_hook.SessionRunHook):
     return self._steps
 
 
+class EstimatorGetVariablesTest(test.TestCase):
+
+  def test_model_should_be_trained(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='one')
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    with self.assertRaisesRegexp(ValueError, 'not find trained model'):
+      est.get_variable_names()
+    with self.assertRaisesRegexp(ValueError, 'not find trained model'):
+      est.get_variable_value('one')
+
+  def test_get_variable_utils(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='one')
+      variables.Variable(3., name='three')
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(input_fn=dummy_input_fn, steps=1)
+    self.assertEqual(
+        set(['one', 'three', 'global_step']), set(est.get_variable_names()))
+    self.assertEqual(1., est.get_variable_value('one'))
+    self.assertEqual(3., est.get_variable_value('three'))
+
+
 class EstimatorEvaluateTest(test.TestCase):
 
   def test_input_fn_args(self):
@@ -1175,7 +1213,50 @@ class EstimatorPredictTest(test.TestCase):
       next(est.predict(dummy_input_fn))
       self.assertRegexpMatches(
           str(mock_log.call_args),
-          'Input graph does not contain a QueueRunner.')
+          'Input graph does not.*contain a QueueRunner.')
+
+  def test_skip_warn_if_dataset_returns_features(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]))
+
+    def _input_fn():
+      it = dataset_ops.Dataset.from_tensors([1]).make_one_shot_iterator()
+      return it.get_next()
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      next(est.predict(_input_fn))
+      # The warning should not have keyword QueueRunner.
+      self.assertRegexpMatches(str(mock_log.call_args), '^((?!QueueRunner).)*$')
+
+  def test_skip_warn_if_dataset_returns_features_dict(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]))
+
+    def _input_fn():
+      it = dataset_ops.Dataset.from_tensors([1]).make_one_shot_iterator()
+      features = {'age': it.get_next()}
+      return features
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      next(est.predict(_input_fn))
+      # The warning should not have keyword QueueRunner.
+      self.assertRegexpMatches(str(mock_log.call_args), '^((?!QueueRunner).)*$')
 
   def test_input_fn_can_return_just_features(self):
 

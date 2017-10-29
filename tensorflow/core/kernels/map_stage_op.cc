@@ -111,15 +111,21 @@ class StagingMap : public ResourceBase {
   void notify_inserters_if_bounded(std::unique_lock<std::mutex>* lock) {
     if (has_capacity() || has_memory_limit()) {
       lock->unlock();
-      full_.notify_one();
+      // Notify all inserters. The removal of an element
+      // may make memory available for many inserters
+      // to insert new elements
+      full_.notify_all();
     }
   }
 
-  // Notify any removers waiting to extract values
+  // Notify all removers waiting to extract values
   // that data is now available
   void notify_removers(std::unique_lock<std::mutex>* lock) {
     lock->unlock();
-    not_empty_.notify_one();
+    // Notify all removers. This is because they are
+    // waiting for specific keys to appear in the map
+    // so we don't know which one to wake up.
+    not_empty_.notify_all();
   }
 
   bool has_capacity() const { return capacity_ > 0; }

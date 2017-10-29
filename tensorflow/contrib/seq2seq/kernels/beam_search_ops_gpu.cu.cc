@@ -29,28 +29,48 @@ template <typename T>
 __global__ void GatherTreeOpKernel(const int32 batch_size, const int32 max_time,
                                    const int32 beam_width, const T* step_ids,
                                    const T* parent_ids,
-                                   const T* sequence_length, T* beams) {
+                                   const int32* max_sequence_lengths,
+                                   const T end_token, T* beams) {
   CUDA_1D_KERNEL_LOOP(i, batch_size * beam_width) {
     const int32 batch = i / beam_width;
     const int32 beam = i % beam_width;
 
-    const int32 seq_len_b = ldg(sequence_length + batch * beam_width + beam);
-    if (seq_len_b <= 0) continue;
+    const int32 max_seq_len_b =
+        Eigen::numext::mini(max_time, ldg(max_sequence_lengths + batch));
+    if (max_seq_len_b <= 0) {
+      continue;
+    }
 
 #define GET_IX(time_ix, beam_ix) \
   (batch_size * beam_width * (time_ix) + beam_width * batch + (beam_ix))
-    const int32 initial_beam_ix = GET_IX(seq_len_b - 1, beam);
+    const int32 initial_beam_ix = GET_IX(max_seq_len_b - 1, beam);
     beams[initial_beam_ix] = ldg(step_ids + initial_beam_ix);
     int32 parent = ldg(parent_ids + initial_beam_ix);
-    for (int32 level = seq_len_b - 2; level >= 0; --level) {
+    bool found_bad = false;
+    for (int32 level = max_seq_len_b - 2; level >= 0; --level) {
       const int32 level_beam_ix = GET_IX(level, beam);
       const int32 level_parent_ix = GET_IX(level, parent);
       if (parent < 0 || parent > beam_width) {
         beams[level_beam_ix] = -1;
         parent = -1;
+        found_bad = true;
       } else {
         beams[level_beam_ix] = ldg(step_ids + level_parent_ix);
         parent = ldg(parent_ids + level_parent_ix);
+      }
+    }
+    // Not necessary when using a BeamSearchDecoder, but necessary
+    // when a user feeds in possibly broken trajectory (i.e., non-eos
+    // entries in a beam following eos entries).
+    if (!found_bad) {
+      bool finished = false;
+      for (int32 time = 0; time < max_seq_len_b; ++time) {
+        const int32 level_beam_ix = GET_IX(time, beam);
+        if (finished) {
+          beams[level_beam_ix] = end_token;
+        } else if (beams[level_beam_ix] == end_token) {
+          finished = true;
+        }
       }
     }
 #undef GET_IX
@@ -62,20 +82,23 @@ struct GatherTree<GPUDevice, T> {
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
                   typename TTypes<T, 3>::ConstTensor step_ids,
                   typename TTypes<T, 3>::ConstTensor parent_ids,
-                  typename TTypes<T>::ConstMatrix sequence_length,
-                  typename TTypes<T, 3>::Tensor beams) {
+                  TTypes<int32>::ConstVec max_sequence_length,
+                  const T end_token, typename TTypes<T, 3>::Tensor beams) {
     const int32 max_time = parent_ids.dimension(0);
     const int32 batch_size = parent_ids.dimension(1);
     const int32 beam_width = parent_ids.dimension(2);
-    // First kernel launch to zero things out
-    beams.device(d) = beams.constant(T(-1));
+    // First kernel launch to "zero" things out
+    beams.device(d) = beams.constant(end_token);
 
     CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * beam_width, d);
     // clang-format off
     GatherTreeOpKernel<T>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             batch_size, max_time, beam_width,
-            step_ids.data(), parent_ids.data(), sequence_length.data(),
+            step_ids.data(),
+            parent_ids.data(),
+            max_sequence_length.data(),
+            end_token,
             beams.data());
     // clang-format on
   }

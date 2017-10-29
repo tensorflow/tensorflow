@@ -146,7 +146,12 @@ class QueueBase(object):
 
     Raises:
       ValueError: If one of the arguments is invalid.
+      ValueError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise ValueError(
+          "Queues are not supported in TensorFlow with eager execution. "
+          "Instead, use tf.data to get data into your model.")
     self._dtypes = dtypes
     if shapes is not None:
       if len(shapes) != len(dtypes):

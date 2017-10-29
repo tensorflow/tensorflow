@@ -41,6 +41,12 @@ namespace {
   };                                                                   \
   REGISTER_XLA_OP(Name(#NAME), NAME##Op);
 
+XLAJIT_MAKE_UNARY(ComplexAbs, b->Abs(x));
+
+XLAJIT_MAKE_UNARY(Angle, b->Atan2(b->Imag(x), b->Real(x)));
+
+XLAJIT_MAKE_UNARY(Conj, b->Conj(x));
+
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
 
@@ -87,7 +93,8 @@ XLAJIT_MAKE_UNARY(Log, b->Log(x));
 // TODO(b/34703906): use a more accurate implementation of log1p.
 XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
 
-XLAJIT_MAKE_UNARY(LogicalNot, b->LogicalNot(x));
+XLAJIT_MAKE_UNARY(Invert, b->Not(x));
+XLAJIT_MAKE_UNARY(LogicalNot, b->Not(x));
 XLAJIT_MAKE_UNARY(Neg, b->Neg(x));
 
 // Implements Banker's rounding: numbers that are equidistant between two
@@ -104,9 +111,9 @@ static xla::ComputationDataHandle Round(xla::ComputationBuilder* b,
   auto nearest_even_int =
       b->Sub(round_val, b->Mul(two, b->Floor(b->Mul(half, x))));
   auto is_odd = b->Eq(nearest_even_int, one);
-  return b->Select(b->LogicalOr(b->Gt(fraction, half),
-                                b->LogicalAnd(b->Eq(fraction, half), is_odd)),
-                   b->Add(round_val, one), round_val);
+  return b->Select(
+      b->Or(b->Gt(fraction, half), b->And(b->Eq(fraction, half), is_odd)),
+      b->Add(round_val, one), round_val);
 }
 
 XLAJIT_MAKE_UNARY(Rint, Round(b, input_type(0), x));
@@ -160,6 +167,9 @@ XLAJIT_MAKE_UNARY(Sqrt,
 XLAJIT_MAKE_UNARY(Square, b->Mul(x, x));
 XLAJIT_MAKE_UNARY(Tan, b->Div(b->Sin(x), b->Cos(x)));
 XLAJIT_MAKE_UNARY(Tanh, b->Tanh(x));
+
+XLAJIT_MAKE_UNARY(Real, b->Real(x));
+XLAJIT_MAKE_UNARY(Imag, b->Imag(x));
 
 #undef XLAJIT_MAKE_UNARY
 

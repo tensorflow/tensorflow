@@ -24,6 +24,18 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "ffmpeg_lib_utility_test",
+    srcs = ["ffmpeg_lib_utility_test.cc"],
+    deps = [
+        ":ffmpeg_lib",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "ffmpeg_lib_installed_test",
     srcs = ["ffmpeg_lib_test.cc"],
     args = [
