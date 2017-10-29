@@ -401,6 +401,13 @@ class BackpropTest(test.TestCase):
         backprop.gradients_function(part)(constant_op.constant(1.0))[0],
         2.0)
 
+  def testReturnSameThing(self):
+
+    def f(x):
+      return x, 2 * x
+
+    self.assertAllEqual(backprop.gradients_function(f)(1.0)[0], 3.0)
+
   def testExceptionSafety(self):
 
     def f(unused_x):
@@ -568,6 +575,18 @@ class BackpropTest(test.TestCase):
       for (grad, var) in grads_and_vars:
         var.assign_sub(lr*grad)
     self.assertAllEqual(losses, [4.0, 3., 2., 1., 0.])
+
+  def testCustomGradientIdentity(self):
+
+    @custom_gradient.custom_gradient
+    def my_identity(x):
+
+      def grad(dresult):
+        return [2 * dresult]
+
+      return x, grad
+
+    self.assertAllEqual(backprop.gradients_function(my_identity)(1.0)[0], 2.0)
 
 if __name__ == '__main__':
   test.main()
