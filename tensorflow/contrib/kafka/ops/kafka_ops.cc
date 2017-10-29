@@ -24,7 +24,8 @@ REGISTER_OP("KafkaReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Attr("servers: string")
-    .Attr("eof: bool = False")
+    .Attr("group: string")
+    .Attr("eof: bool")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(2));
@@ -39,6 +40,7 @@ container: If non-empty, this reader is placed in the given container.
 shared_name: If non-empty, this reader is named in the given bucket
   with this shared_name. Otherwise, the node name is used instead.
 servers: The list of bootstrap servers, separated by ','.
+group: The consumer group id.
 eof: If True, the kafka reader will stop on EOF.
 )doc");
 

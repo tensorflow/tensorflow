@@ -34,15 +34,16 @@ class KafkaReader(io_ops.ReaderBase):
   See ReaderBase for supported methods.
   """
 
-  def __init__(self, servers="localhost", eof=False, name=None):
+  def __init__(self, servers="localhost", group=None, eof=False, name=None):
     """Create a KafkaReader.
 
     Args:
       servers: A list of bootstrap servers.
+      group: The consumer group id.
       eof: If True, the kafka reader will stop on EOF.
       name: A name for the operation (optional).
     """
-    rr = gen_kafka_ops.kafka_reader(servers=servers, eof=eof, name=name)
+    rr = gen_kafka_ops.kafka_reader(servers=servers, group=group, eof=eof, name=name)
     super(KafkaReader, self).__init__(rr)
 
 ops.RegisterShape("KafkaReader")(common_shapes.call_cpp_shape_fn)

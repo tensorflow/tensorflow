@@ -31,9 +31,11 @@ namespace tensorflow {
 
 class KafkaReader : public ReaderBase {
  public:
-  KafkaReader(const string& servers, const bool eof, const string& name)
+  KafkaReader(const string& servers, const string& group, const bool eof,
+              const string& name)
       : ReaderBase(strings::StrCat("KafkaReader '", name, "'")),
         servers_(servers),
+        group_(group),
         eof_(eof) {}
 
   Status OnWorkStartedLocked() override {
@@ -73,6 +75,12 @@ class KafkaReader : public ReaderBase {
     if (result != RdKafka::Conf::CONF_OK) {
       return errors::Internal("Failed to set bootstrap.servers ", servers_, ":",
                               errstr);
+    }
+    if (group_.length() != 0) {
+      RdKafka::Conf::ConfResult result = conf->set("group.id", group_, errstr);
+      if (result != RdKafka::Conf::CONF_OK) {
+        return errors::Internal("Failed to set group.id ", group_, ":", errstr);
+      }
     }
 
     consumer_.reset(RdKafka::Consumer::create(conf.get(), errstr));
@@ -150,6 +158,7 @@ class KafkaReader : public ReaderBase {
 
  private:
   std::string servers_;
+  std::string group_;
   bool eof_;
   std::string topic_str_;
   int32 topic_partition_;
@@ -165,10 +174,12 @@ class KafkaReaderOp : public ReaderOpKernel {
       : ReaderOpKernel(context) {
     std::string servers;
     OP_REQUIRES_OK(context, context->GetAttr("servers", &servers));
+    std::string group;
+    OP_REQUIRES_OK(context, context->GetAttr("group", &group));
     bool eof;
     OP_REQUIRES_OK(context, context->GetAttr("eof", &eof));
-    SetReaderFactory([this, servers, eof]() {
-      return new KafkaReader(servers, eof, name());
+    SetReaderFactory([this, servers, group, eof]() {
+      return new KafkaReader(servers, group, eof, name());
     });
   }
 };
