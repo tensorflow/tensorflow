@@ -4975,6 +4975,10 @@ def add_to_collection(name, value):
     name: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
     value: The value to add to the collection.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
 
@@ -4989,6 +4993,10 @@ def add_to_collections(names, value):
     names: The key for the collections. The `GraphKeys` class
       contains many standard names for collections.
     value: The value to add to the collections.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
 
@@ -5008,6 +5016,10 @@ def get_collection_ref(key):
     list if no value has been added to that collection.  Note that this returns
     the collection list itself, which can be modified in place to change the
     collection.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   return get_default_graph().get_collection_ref(key)
 
@@ -5032,6 +5044,10 @@ def get_collection(key, scope=None):
     an empty list if no value has been added to that collection. The
     list contains the values in the order under which they were
     collected.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   return get_default_graph().get_collection(key, scope)
 

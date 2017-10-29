@@ -23,7 +23,10 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import independent as independent_lib
 from tensorflow.contrib.distributions.python.ops import mvn_diag as mvn_diag_lib
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import bernoulli as bernoulli_lib
 from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -42,13 +45,16 @@ stats = try_import("scipy.stats")
 
 class ProductDistributionTest(test.TestCase):
 
+  def setUp(self):
+    self._rng = np.random.RandomState(42)
+
   def testSampleAndLogProbUnivariate(self):
     loc = np.float32([-1., 1])
     scale = np.float32([0.1, 0.5])
     with self.test_session() as sess:
       ind = independent_lib.Independent(
           distribution=normal_lib.Normal(loc=loc, scale=scale),
-          reduce_batch_ndims=1)
+          reinterpreted_batch_ndims=1)
 
       x = ind.sample([4, 5])
       log_prob_x = ind.log_prob(x)
@@ -71,7 +77,7 @@ class ProductDistributionTest(test.TestCase):
           distribution=mvn_diag_lib.MultivariateNormalDiag(
               loc=loc,
               scale_identity_multiplier=scale),
-          reduce_batch_ndims=1)
+          reinterpreted_batch_ndims=1)
 
       x = ind.sample([4, 5])
       log_prob_x = ind.log_prob(x)
@@ -96,7 +102,7 @@ class ProductDistributionTest(test.TestCase):
           distribution=mvn_diag_lib.MultivariateNormalDiag(
               loc=loc,
               scale_identity_multiplier=scale),
-          reduce_batch_ndims=1)
+          reinterpreted_batch_ndims=1)
 
       x = ind.sample(int(n_samp), seed=42)
       sample_mean = math_ops.reduce_mean(x, axis=0)
@@ -119,6 +125,59 @@ class ProductDistributionTest(test.TestCase):
       self.assertAllClose(sample_std_, actual_std_, rtol=0.02, atol=0.)
       self.assertAllClose(sample_entropy_, actual_entropy_, rtol=0.01, atol=0.)
       self.assertAllClose(loc, actual_mode_, rtol=1e-6, atol=0.)
+
+  def _testMnistLike(self, static_shape):
+    sample_shape = [4, 5]
+    batch_shape = [10]
+    image_shape = [28, 28, 1]
+    logits = 3 * self._rng.random_sample(
+        batch_shape + image_shape).astype(np.float32) - 1
+
+    def expected_log_prob(x, logits):
+      return (x * logits - np.log1p(np.exp(logits))).sum(-1).sum(-1).sum(-1)
+
+    with self.test_session() as sess:
+      logits_ph = array_ops.placeholder(
+          dtypes.float32, shape=logits.shape if static_shape else None)
+      ind = independent_lib.Independent(
+          distribution=bernoulli_lib.Bernoulli(logits=logits_ph))
+      x = ind.sample(sample_shape)
+      log_prob_x = ind.log_prob(x)
+      [
+          x_,
+          actual_log_prob_x,
+          ind_batch_shape,
+          ind_event_shape,
+          x_shape,
+          log_prob_x_shape,
+      ] = sess.run([
+          x,
+          log_prob_x,
+          ind.batch_shape_tensor(),
+          ind.event_shape_tensor(),
+          array_ops.shape(x),
+          array_ops.shape(log_prob_x),
+      ], feed_dict={logits_ph: logits})
+
+      if static_shape:
+        ind_batch_shape = ind.batch_shape
+        ind_event_shape = ind.event_shape
+        x_shape = x.shape
+        log_prob_x_shape = log_prob_x.shape
+
+      self.assertAllEqual(batch_shape, ind_batch_shape)
+      self.assertAllEqual(image_shape, ind_event_shape)
+      self.assertAllEqual(sample_shape + batch_shape + image_shape, x_shape)
+      self.assertAllEqual(sample_shape + batch_shape, log_prob_x_shape)
+      self.assertAllClose(expected_log_prob(x_, logits),
+                          actual_log_prob_x,
+                          rtol=1e-6, atol=0.)
+
+  def testMnistLikeStaticShape(self):
+    self._testMnistLike(static_shape=True)
+
+  def testMnistLikeDynamicShape(self):
+    self._testMnistLike(static_shape=False)
 
 
 if __name__ == "__main__":

@@ -45,11 +45,12 @@ HloRunner::ReadModuleFromHloProtoFile(const char* filename,
   HloProto proto;
   TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
                                                  filename, &proto));
-  HloModuleConfig config;
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig config,
+      HloModule::CreateModuleConfigFromProto(proto.hlo_module()));
   config.set_debug_options(debug_options);
-  TF_ASSIGN_OR_RETURN(auto module, HloModule::CreateFromProto(
-                                       proto.hlo_module(),
-                                       VersionedComputationHandle(), config));
+  TF_ASSIGN_OR_RETURN(auto module,
+                      HloModule::CreateFromProto(proto.hlo_module(), config));
   return std::move(module);
 }
 
