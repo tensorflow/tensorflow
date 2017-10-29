@@ -167,6 +167,7 @@ sh_binary(
             "//tensorflow/contrib/slim/python/slim/data:data_pip",
             "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
             "//tensorflow/contrib/specs:specs",
+            "//tensorflow/contrib/summary:summary_test_util",
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
             "//tensorflow/contrib/timeseries:timeseries_pip",
