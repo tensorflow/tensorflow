@@ -26,9 +26,8 @@ py_test(
     deps = [
         ":summary_ops",
         ":summary_test_util",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:function",
@@ -43,12 +42,15 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_summary_ops",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:layers_base",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:summary_op_util",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
     ],
 )

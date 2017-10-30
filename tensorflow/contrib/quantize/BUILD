@@ -29,6 +29,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":graph_matcher",
+        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -75,6 +76,7 @@ py_library(
         ":input_to_ops",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
@@ -87,7 +89,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":fold_batch_norms",
-        ":graph_matcher",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -208,6 +209,7 @@ py_library(
         ":fold_batch_norms",
         ":quantize",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
 )
