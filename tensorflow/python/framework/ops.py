@@ -4339,11 +4339,18 @@ def device(device_name_or_function):
   Returns:
     A context manager that specifies the default device to use for newly
     created ops.
+
+  Raises:
+    RuntimeError: If eager execution is enabled and a function is passed in.
   """
   if context.in_graph_mode():
     return get_default_graph().device(device_name_or_function)
   else:
     # TODO(agarwal): support device functions in EAGER mode.
+    if callable(device_name_or_function):
+      raise RuntimeError(
+          "tf.device does not support functions when eager execution "
+          "is enabled.")
     return context.device(device_name_or_function)
 
 
