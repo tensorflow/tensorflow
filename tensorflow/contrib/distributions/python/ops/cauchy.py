@@ -189,7 +189,7 @@ class Cauchy(distribution.Distribution):
     return np.log(np.pi) + math_ops.log(self.scale)
 
   def _entropy(self):
-    h = np.log(4 * np.pi) + math_ops.log(scale)
+    h = np.log(4 * np.pi) + math_ops.log(self.scale)
     return h * array_ops.ones_like(self.loc)
 
   def _quantile(self, p):

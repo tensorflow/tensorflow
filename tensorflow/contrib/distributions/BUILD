@@ -134,7 +134,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["python/kernel_tests/cauchy_test.py"],
     additional_deps = [
-        "//tensorflow/python/ops/distributions",
+        ":distributions_py",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

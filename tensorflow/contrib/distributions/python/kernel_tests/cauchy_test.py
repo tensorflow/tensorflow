@@ -244,7 +244,7 @@ class CauchyTest(test.TestCase):
   def testCauchyEntropy(self):
     with self.test_session():
       loc = np.array([1.0, 1.0, 1.0])
-      scale = np.array([[1.0, 2.0, 3.0]]).T
+      scale = np.array([[1.0, 2.0, 3.0]])
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
       entropy = cauchy.entropy()
@@ -260,16 +260,13 @@ class CauchyTest(test.TestCase):
       expected_entropy = stats.cauchy(loc, scale).entropy()
       self.assertAllClose(expected_entropy, entropy.eval())
 
-  def testCauchyMedianAndMode(self):
+  def testCauchyMode(self):
     with self.test_session():
       # Mu will be broadcast to [7, 7, 7].
       loc = [7.]
       scale = [11., 12., 13.]
 
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
-
-      self.assertAllEqual((3,), cauchy.median().shape)
-      self.assertAllEqual([7., 7, 7], cauchy.median().eval())
 
       self.assertAllEqual((3,), cauchy.mode().shape)
       self.assertAllEqual([7., 7, 7], cauchy.mode().eval())
@@ -294,10 +291,10 @@ class CauchyTest(test.TestCase):
 
   def testCauchyQuantile(self):
     with self.test_session():
-      batch_size = 52
+      batch_size = 50
       loc = self._rng.randn(batch_size)
       scale = self._rng.rand(batch_size) + 1.0
-      p = np.linspace(0., 1.0, batch_size - 2).astype(np.float64)
+      p = np.linspace(0.000001, 0.999999, batch_size).astype(np.float64)
 
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
       x = cauchy.quantile(p)
@@ -363,7 +360,7 @@ class CauchyTest(test.TestCase):
       sample_values = samples.eval()
 
       self.assertEqual(sample_values.shape, (100000,))
-      self.assertAllClose(sample_values.median(), loc_v, atol=1e-1)
+      self.assertAllClose(np.median(sample_values), loc_v, atol=1e-1)
 
       expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
           tensor_shape.TensorShape(cauchy.batch_shape_tensor().eval()))
@@ -388,8 +385,10 @@ class CauchyTest(test.TestCase):
       samples = cauchy.sample(n)
       sample_values = samples.eval()
       self.assertEqual(samples.shape, (100000, batch_size, 2))
-      self.assertAllClose(sample_values[:, 0, 0].median(), loc_v[0], atol=1e-1)
-      self.assertAllClose(sample_values[:, 0, 1].median(), loc_v[1], atol=1e-1)
+      self.assertAllClose(np.median(sample_values[:, 0, 0]),
+                          loc_v[0], atol=1e-1)
+      self.assertAllClose(np.median(sample_values[:, 0, 1]),
+                          loc_v[1], atol=1e-1)
 
       expected_shape = tensor_shape.TensorShape([n.eval()]).concatenate(
           tensor_shape.TensorShape(cauchy.batch_shape_tensor().eval()))
@@ -405,7 +404,7 @@ class CauchyTest(test.TestCase):
     with self.test_session():
       cauchy = cauchy_lib.Cauchy(loc=[1.], scale=[-5.], validate_args=True)
       with self.assertRaisesOpError("Condition x > 0 did not hold"):
-        cauchy.median().eval()
+        cauchy.mode().eval()
 
   def testCauchyShape(self):
     with self.test_session():
