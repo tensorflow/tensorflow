@@ -177,14 +177,13 @@ tf_custom_op_py_library(
     deps = [
         ":batch_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:util",
     ],
 )
 

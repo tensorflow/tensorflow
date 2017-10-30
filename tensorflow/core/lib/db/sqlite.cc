@@ -18,14 +18,13 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-namespace db {
 
 /* static */
-Status Sqlite::Open(const string& uri, std::unique_ptr<Sqlite>* db) {
+xla::StatusOr<std::shared_ptr<Sqlite>> Sqlite::Open(const string& uri) {
   sqlite3* sqlite = nullptr;
   Status s = MakeStatus(sqlite3_open(uri.c_str(), &sqlite));
   if (s.ok()) {
-    *db = std::unique_ptr<Sqlite>(new Sqlite(sqlite));
+    return std::shared_ptr<Sqlite>(new Sqlite(sqlite));
   }
   return s;
 }
@@ -87,6 +86,9 @@ Sqlite::~Sqlite() {
 }
 
 Status Sqlite::Close() {
+  if (db_ == nullptr) {
+    return Status::OK();
+  }
   // If Close is explicitly called, ordering must be correct.
   Status s = MakeStatus(sqlite3_close(db_));
   if (s.ok()) {
@@ -95,23 +97,42 @@ Status Sqlite::Close() {
   return s;
 }
 
-std::unique_ptr<SqliteStatement> Sqlite::Prepare(const string& sql) {
+SqliteStatement Sqlite::Prepare(const string& sql) {
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(db_, sql.c_str(), sql.size() + 1, &stmt, nullptr);
-  return std::unique_ptr<SqliteStatement>(new SqliteStatement(stmt, rc));
+  if (rc == SQLITE_OK) {
+    return {stmt, SQLITE_OK, std::unique_ptr<string>(nullptr)};
+  } else {
+    return {nullptr, rc, std::unique_ptr<string>(new string(sql))};
+  }
 }
 
-SqliteStatement::SqliteStatement(sqlite3_stmt* stmt, int error)
-    : stmt_(stmt), error_(error) {}
+Status SqliteStatement::status() const {
+  Status s = Sqlite::MakeStatus(error_);
+  if (!s.ok()) {
+    if (stmt_ != nullptr) {
+      errors::AppendToMessage(&s, sqlite3_sql(stmt_));
+    } else {
+      errors::AppendToMessage(&s, *prepare_error_sql_);
+    }
+  }
+  return s;
+}
 
-SqliteStatement::~SqliteStatement() {
-  int rc = sqlite3_finalize(stmt_);
-  if (rc != SQLITE_OK) {
-    LOG(ERROR) << "destruct sqlite3_stmt: " << Sqlite::MakeStatus(rc);
+void SqliteStatement::CloseOrLog() {
+  if (stmt_ != nullptr) {
+    int rc = sqlite3_finalize(stmt_);
+    if (rc != SQLITE_OK) {
+      LOG(ERROR) << "destruct sqlite3_stmt: " << Sqlite::MakeStatus(rc);
+    }
+    stmt_ = nullptr;
   }
 }
 
 Status SqliteStatement::Close() {
+  if (stmt_ == nullptr) {
+    return Status::OK();
+  }
   int rc = sqlite3_finalize(stmt_);
   if (rc == SQLITE_OK) {
     stmt_ = nullptr;
@@ -121,8 +142,10 @@ Status SqliteStatement::Close() {
 }
 
 void SqliteStatement::Reset() {
-  sqlite3_reset(stmt_);
-  sqlite3_clear_bindings(stmt_);
+  if (TF_PREDICT_TRUE(stmt_ != nullptr)) {
+    sqlite3_reset(stmt_);
+    sqlite3_clear_bindings(stmt_);  // not nullptr friendly
+  }
   error_ = SQLITE_OK;
 }
 
@@ -163,5 +186,4 @@ Status SqliteStatement::StepAndReset() {
   return s;
 }
 
-}  // namespace db
 }  // namespace tensorflow

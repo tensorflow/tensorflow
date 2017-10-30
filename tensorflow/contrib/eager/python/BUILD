@@ -67,6 +67,7 @@ py_test(
     deps = [
         ":datasets",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python/data",
@@ -143,12 +144,11 @@ py_library(
     deps = [
         "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
@@ -169,7 +169,6 @@ py_test(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
@@ -190,6 +189,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "@six_archive//:six",
     ],
 )
 
@@ -212,11 +212,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:layers_base",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:util",
-        "@six_archive//:six",
     ],
 )
 
@@ -227,9 +225,12 @@ py_test(
     deps = [
         ":network",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:test",
     ],
 )

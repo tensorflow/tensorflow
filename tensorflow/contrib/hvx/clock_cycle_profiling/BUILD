@@ -52,13 +52,9 @@ tf_cc_binary(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
         "//conditions:default": [
-            "//tensorflow/core:core_cpu",
             "//tensorflow/core:lib",
-            "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
-            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
-            "//tensorflow/core:test",
         ],
     }),
 )

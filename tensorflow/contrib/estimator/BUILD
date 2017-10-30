@@ -82,7 +82,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:util",

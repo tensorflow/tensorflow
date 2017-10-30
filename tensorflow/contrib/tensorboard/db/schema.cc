@@ -15,13 +15,11 @@ limitations under the License.
 #include "tensorflow/contrib/tensorboard/db/schema.h"
 
 namespace tensorflow {
-namespace db {
 namespace {
 
 class SqliteSchema {
  public:
-  explicit SqliteSchema(Sqlite* db) : db_(db) {}
-  ~SqliteSchema() { db_ = nullptr; }
+  explicit SqliteSchema(std::shared_ptr<Sqlite> db) : db_(std::move(db)) {}
 
   /// \brief Creates Tensors table.
   ///
@@ -371,18 +369,18 @@ class SqliteSchema {
 
   Status Run(const char* sql) {
     auto stmt = db_->Prepare(sql);
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(stmt->StepAndReset(), sql);
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(stmt.StepAndReset(), sql);
     return Status::OK();
   }
 
  private:
-  Sqlite* db_;
+  std::shared_ptr<Sqlite> db_;
 };
 
 }  // namespace
 
-Status SetupTensorboardSqliteDb(Sqlite* db) {
-  SqliteSchema s(db);
+Status SetupTensorboardSqliteDb(std::shared_ptr<Sqlite> db) {
+  SqliteSchema s(std::move(db));
   TF_RETURN_IF_ERROR(s.CreateTensorsTable());
   TF_RETURN_IF_ERROR(s.CreateTensorChunksTable());
   TF_RETURN_IF_ERROR(s.CreateTagsTable());
@@ -408,5 +406,4 @@ Status SetupTensorboardSqliteDb(Sqlite* db) {
   return Status::OK();
 }
 
-}  // namespace db
 }  // namespace tensorflow

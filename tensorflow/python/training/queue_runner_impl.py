@@ -44,6 +44,11 @@ class QueueRunner(object):
   and reporting exceptions, etc.
 
   The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
+
+  @compatibility(eager)
+  QueueRunners are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, queue=None, enqueue_ops=None, close_op=None,
@@ -80,7 +85,13 @@ class QueueRunner(object):
       ValueError: If both `queue_runner_def` and `queue` are both specified.
       ValueError: If `queue` or `enqueue_ops` are not provided when not
         restoring from `queue_runner_def`.
+      RuntimeError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "QueueRunners are not supported when eager execution is enabled. "
+          "Instead, please use tf.data to get data into your model.")
+
     if queue_runner_def:
       if queue or enqueue_ops:
         raise ValueError("queue_runner_def and queue are mutually exclusive.")
