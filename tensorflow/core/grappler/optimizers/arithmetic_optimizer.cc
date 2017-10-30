@@ -31,6 +31,12 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+static bool IsInvolution(const NodeDef& node) {
+  const std::unordered_set<string> involution_ops = {"Conj", "Reciprocal",
+                                                     "Neg", "LogicalNot"};
+  return involution_ops.count(node.op()) > 0;
+}
+
 bool AreInversePermutations(gtl::ArraySlice<int32> a,
                             gtl::ArraySlice<int32> b) {
   if (a.size() != b.size()) {
@@ -394,10 +400,20 @@ void ArithmeticOptimizer::DedupComputations(GraphDef* optimized_graph) const {
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
     std::vector<const NodeDef*>* new_nodes) const {
-  // Remove inverse transposes.
-  if (node->op() == "Transpose") {
+  // Remove involutions applied twice.
+  if (IsInvolution(*node)) {
+    // An involution is a function f(x) that is its own inverse,
+    // i.e. f(f(x)) = x.
     const NodeDef* input = node_map->GetNode(node->input(0));
-    if (input->op() == "Transpose") {
+    if (input->op() == node->op()) {
+      return input->input(0);
+    }
+  }
+
+  // Remove inverse transposes.
+  if (node->op() == "Transpose" || node->op() == "ConjugateTranspose") {
+    const NodeDef* input = node_map->GetNode(node->input(0));
+    if (input->op() == node->op()) {
       const NodeDef* node_perm = node_map->GetNode(node->input(1));
       const NodeDef* input_perm = node_map->GetNode(input->input(1));
       std::vector<int> node_perm_values;
