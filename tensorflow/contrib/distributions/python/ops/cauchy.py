@@ -44,7 +44,7 @@ class Cauchy(distribution.Distribution):
   The probability density function (pdf) is,
 
   ```none
-  pdf(x; loc, scale) = 1 / (pi*scale*(1+((x-loc)/scale)**2))
+  pdf(x; loc, scale) = 1 / (pi * scale * (1 + ((x - loc) / scale)**2))
   ```
   where `loc` is the location, and `scale` is the scale.
 
