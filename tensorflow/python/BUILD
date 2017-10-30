@@ -3792,6 +3792,7 @@ py_library(
         ":summary_op_util",
         ":summary_ops",
         ":util",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
