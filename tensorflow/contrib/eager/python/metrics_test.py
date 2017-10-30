@@ -121,9 +121,10 @@ class MetricsTest(test.TestCase):
     # accidentally share state.
     m1 = metrics.Mean()
     m1(0)
-    with self.assertRaises(ValueError):
-      m2 = metrics.Mean()
-      m2(2)
+    m2 = metrics.Mean()
+    m2(2)
+    self.assertAllEqual(0.0, m1.result())
+    self.assertAllEqual(2.0, m2.result())
 
   def testNamesWithSpaces(self):
     # Verify two metrics with the same class and name don't

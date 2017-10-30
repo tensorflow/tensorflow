@@ -54,6 +54,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                                    0,
                                                    dtype=dtypes.int32)).run()
 
+  def testEagerNameNotIdentity(self):
+    with context.eager_mode():
+      v0 = resource_variable_ops.ResourceVariable(1.0, name="a")
+      v1 = resource_variable_ops.ResourceVariable(2.0, name="a")
+      self.assertAllEqual(v0.numpy(), 1.0)
+      self.assertAllEqual(v1.numpy(), 2.0)
+
+  def testEagerNameNotNeeded(self):
+    with context.eager_mode():
+      v0 = resource_variable_ops.ResourceVariable(1.0)
+      self.assertAllEqual(v0.numpy(), 1.0)
+
   def testReadVariableDtypeMismatchEager(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(
@@ -332,39 +344,38 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
         _ = w.value().op.get_attr("_class")
 
-  @test_util.run_in_graph_and_eager_modes()
   def testSharedName(self):
-    v = resource_variable_ops.ResourceVariable(300.0, name="var4")
-    self.evaluate(variables.global_variables_initializer())
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(300.0, name="var4")
+      variables.global_variables_initializer().run()
 
-    w = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var4",
-        # Needed in Eager since we get a unique container name by default.
-        container=ops.get_default_graph()._container)
-    w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
-    self.assertEqual(300.0, self.evaluate(w_read))
+      w = resource_variable_ops.var_handle_op(
+          dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var4",
+          # Needed in Eager since we get a unique container name by default.
+          container=ops.get_default_graph()._container)
+      w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
+      self.assertEqual(300.0, w_read.eval())
 
-    x = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
-        container=ops.get_default_graph()._container)
-    with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
-      x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
-      self.evaluate(x_read)
+      x = resource_variable_ops.var_handle_op(
+          dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
+          container=ops.get_default_graph()._container)
+      with self.assertRaisesOpError("Resource .*/var5/.* does not exist"):
+        resource_variable_ops.read_variable_op(x, v.dtype.base_dtype).eval()
 
-  @test_util.run_in_graph_and_eager_modes()
   def testSharedNameWithNamescope(self):
-    with ops.name_scope("foo"):
-      v = resource_variable_ops.ResourceVariable(300.0, name="var6")
-      self.assertEqual("foo/var6", v._shared_name)  # pylint: disable=protected-access
-      self.assertEqual("foo/var6:0", v.name)
-      self.evaluate(variables.global_variables_initializer())
+    with self.test_session():
+      with ops.name_scope("foo"):
+        v = resource_variable_ops.ResourceVariable(300.0, name="var6")
+        self.assertEqual("foo/var6", v._shared_name)  # pylint: disable=protected-access
+        self.assertEqual("foo/var6:0", v.name)
+        self.evaluate(variables.global_variables_initializer())
 
-    w = resource_variable_ops.var_handle_op(
-        dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var6",
-        # Needed in Eager since we get a unique container name by default.
-        container=ops.get_default_graph()._container)
-    w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
-    self.assertEqual(300.0, self.evaluate(w_read))
+      w = resource_variable_ops.var_handle_op(
+          dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="foo/var6",
+          # Needed in Eager since we get a unique container name by default.
+          container=ops.get_default_graph()._container)
+      w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
+      self.assertEqual(300.0, self.evaluate(w_read))
 
   @test_util.run_in_graph_and_eager_modes()
   def testShape(self):
@@ -468,24 +479,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                                                    name="var8")
       var.__del__()
       with self.assertRaisesRegexp(errors.NotFoundError,
-                                   r"Resource .*\/var8\/.* does not exist."):
+                                   r"Resource .* does not exist."):
         resource_variable_ops.destroy_resource_op(var._handle,
                                                   ignore_lookup_error=False)
-
-  def testSharingViaResourceVariableObject(self):
-    with context.eager_mode():
-      _ = resource_variable_ops.ResourceVariable(1.0, name="var0")
-      with self.assertRaisesRegexp(ValueError,
-                                   "'var0' already created"):
-        _ = resource_variable_ops.ResourceVariable(2.0, name="var0")
-      with ops.Graph().as_default():
-        _ = resource_variable_ops.ResourceVariable(2.0, name="var0")
-
-  def testVariableNameMissing(self):
-    with context.eager_mode():
-      with self.assertRaisesRegexp(ValueError,
-                                   "Variables need to have explicit names"):
-        _ = resource_variable_ops.ResourceVariable(1.0)
 
 
 if __name__ == "__main__":

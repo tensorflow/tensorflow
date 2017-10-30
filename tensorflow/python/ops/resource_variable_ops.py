@@ -43,6 +43,10 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   container = ops.get_default_graph()._container  # pylint: disable=protected-access
   if container is None:
     container = ""
+  if not graph_mode:
+    # When in eager mode use a uid for the shared_name, to prevent accidental
+    # sharing.
+    shared_name = str(ops.uid())
   handle = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                    shared_name=shared_name,
                                                    name=name,
@@ -293,12 +297,6 @@ class ResourceVariable(variables.Variable):
     # Save the graph's container prefix for error checking. Reading the value of
     # the ResourceVariable from another Graph in Eager mode is an error.
     self._container_prefix = ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
-    if not self._in_graph_mode and not name:
-      # TODO(ashankar,josh11b): make this unnecessary using the same
-      # logic as in layer
-      raise ValueError("Variables need to have explicit names when eager "
-                       "execution is enabled")
-
     with ops.control_dependencies(None):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
