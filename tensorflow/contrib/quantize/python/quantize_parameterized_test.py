@@ -355,7 +355,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           padding='SAME',
           strides=stride,
           data_format='NHWC',
-          name=scope + '/convolution_Fold')
+          name=scope + '/Conv2D_Fold')
       bn_bias = (graph.get_operation_by_name(scope + '/BatchNorm/batchnorm/sub')
                  .outputs[0])
       add_fold = math_ops.add(conv_fold, bn_bias, name=scope + '/add_fold')
