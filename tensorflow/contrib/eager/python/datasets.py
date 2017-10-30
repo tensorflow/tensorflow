@@ -84,7 +84,7 @@ class Iterator(object):
 
   def __del__(self):
     if self._resource is not None:
-      with ops.device("/device:CPU:0"):
+      with ops.device("/device:CPU:0"), context.eager_mode():
         resource_variable_ops.destroy_resource_op(self._resource)
     self._resource = None
 
