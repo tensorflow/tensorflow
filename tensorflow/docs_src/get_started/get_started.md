@@ -383,7 +383,7 @@ train_input_fn = tf.estimator.inputs.numpy_input_fn(
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
     {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
 
-# We can invoke 1000 training steps by invoking the  method and passing the
+# We can invoke 1000 training steps by invoking the method and passing the
 # training data set.
 estimator.train(input_fn=input_fn, steps=1000)
 
