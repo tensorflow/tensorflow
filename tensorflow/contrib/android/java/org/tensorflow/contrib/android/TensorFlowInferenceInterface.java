@@ -289,9 +289,12 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, boolean[] src, long... dims) {
+    byte[] b = new byte[src.length];
+    
     for (int i = 0; i < src.length; i++) {
       b[i] = src[i] ? (byte) 1 : (byte) 0;
     }
+
     addFeed(inputName, Tensor.create(Boolean.class, dims, ByteBuffer.wrap(b)));
   }
 
