@@ -52,6 +52,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@restore_variables_on_create
 @@Variable
 @@get_optimizer_variables
+@@EagerVariableStore
 
 @@in_eager_mode
 @@in_graph_mode
@@ -100,6 +101,7 @@ from tensorflow.python.framework.ops import eager_run as run
 from tensorflow.python.framework.test_util import IsolateTest
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
+from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.util.all_util import remove_undocumented
 
 defun = function.defun

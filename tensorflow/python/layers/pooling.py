@@ -148,15 +148,7 @@ def average_pooling1d(inputs, pool_size, strides,
 
   Raises:
     ValueError: if eager execution is enabled.
-
-  @compatibility(eager)
-  Not compatible with eager execution. Use `tf.layers.AveragePooling1D` instead.
-  @end_compatibility
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.AveragePooling1D instead.')
   layer = AveragePooling1D(pool_size=pool_size,
                            strides=strides,
                            padding=padding,
@@ -221,15 +213,7 @@ def max_pooling1d(inputs, pool_size, strides,
 
   Raises:
     ValueError: if eager execution is enabled.
-
-  @compatibility(eager)
-  Not compatible with eager execution. Use `tf.layers.MaxPooling1D` instead.
-  @end_compatibility
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.MaxPooling1D instead.')
   layer = MaxPooling1D(pool_size=pool_size,
                        strides=strides,
                        padding=padding,
@@ -370,15 +354,7 @@ def average_pooling2d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
-
-  @compatibility(eager)
-  Not compatible with eager execution. Use `tf.layers.AveragePooling2D` instead.
-  @end_compatibility
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.AveragePooling2D instead.')
   layer = AveragePooling2D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
                            name=name)
@@ -446,15 +422,7 @@ def max_pooling2d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
-
-  @compatibility(eager)
-  Not compatible with eager execution. Use `tf.layers.MaxPooling2D` instead.
-  @end_compatibility
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.MaxPooling2D instead.')
   layer = MaxPooling2D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,
                        name=name)
@@ -608,15 +576,7 @@ def average_pooling3d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
-
-  @compatibility(eager)
-  Not compatible with eager execution. Use `tf.layers.AveragePooling3D` instead.
-  @end_compatibility
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.AveragePooling3D instead.')
   layer = AveragePooling3D(pool_size=pool_size, strides=strides,
                            padding=padding, data_format=data_format,
                            name=name)
@@ -688,15 +648,7 @@ def max_pooling3d(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
-
-  @compatibility(eager)
-  Not compatible with eager execution. Use `tf.layers.MaxPooling3D` instead.
-  @end_compatibility
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.MaxPooling3D instead.')
   layer = MaxPooling3D(pool_size=pool_size, strides=strides,
                        padding=padding, data_format=data_format,
                        name=name)
