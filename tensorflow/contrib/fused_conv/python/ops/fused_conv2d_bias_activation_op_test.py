@@ -159,9 +159,12 @@ class FusedConv2DBiasActivationTest(test.TestCase):
   def _DtypesToTest(self, use_gpu):
     return [dtypes.float32]
 
+  def _FilterFormatsToTest(self, use_gpu):
+    return ["HWIO", "OIHW"]
+
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, bias,
                             strides, padding, activation_mode, data_format,
-                            dtype):
+                            filter_format, dtype):
     """Verifies the output values of the convolution function.
 
     Args:
@@ -174,6 +177,7 @@ class FusedConv2DBiasActivationTest(test.TestCase):
       padding: Padding type.
       activation_mode: Activation mode.
       data_format: Format of the data tensors.
+      filter_format: Filter format to use for the fused convolution.
       dtype: Data type for inputs and outputs.
     Returns:
       Symbolic tensor value and reference value that can be used to
@@ -192,6 +196,9 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     with self.test_session(use_gpu=True):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
+      fused_t2 = t2
+      if filter_format == "OIHW":
+        fused_t2 = HwioToOihw(t2)
       t3 = constant_op.constant(x3, shape=[bias_size], dtype=dtype)
       strides = [1] + strides + [1]
       if data_format == "NCHW":
@@ -199,11 +206,12 @@ class FusedConv2DBiasActivationTest(test.TestCase):
         strides = test_util.NHWCToNCHW(strides)
       output = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
           t1,
-          t2,
+          fused_t2,
           t3,
           strides=strides,
           padding=padding,
           data_format=data_format,
+          filter_format=filter_format,
           activation_mode=activation_mode)
       ref_conv_output = nn_ops.conv2d(
           t1, t2, strides=strides, padding=padding, data_format=data_format)
@@ -268,9 +276,10 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     ref_tensors = []
     for (data_format, use_gpu) in GetTestConfigs():
       for dtype in self._DtypesToTest(use_gpu):
-        result, expected = self._SetupValuesForDevice(
-            tensor_in_sizes, filter_in_sizes, bias, strides, padding, "Relu",
-            data_format, dtype)
+        for filter_format in self._FilterFormatsToTest(use_gpu):
+          result, expected = self._SetupValuesForDevice(
+              tensor_in_sizes, filter_in_sizes, bias, strides, padding, "Relu",
+              data_format, filter_format, dtype)
         tensors.append(result)
         ref_tensors.append(expected)
       with self.test_session() as sess:
@@ -605,6 +614,10 @@ def NchwToNchwVectC(in_tensor):
   assert c % 4 == 0
   t = array_ops.reshape(in_tensor, [n, c // 4, 4, h, w])
   return array_ops.transpose(t, [0, 1, 3, 4, 2])
+
+
+def HwioToOihw(in_tensor):
+  return array_ops.transpose(in_tensor, [3, 2, 0, 1])
 
 
 def SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,

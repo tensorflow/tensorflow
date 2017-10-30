@@ -66,6 +66,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python/ops/distributions",
         "@six_archive//:six",
     ],
@@ -89,6 +90,7 @@ py_library(
         ":utils",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
     ],
 )
 

@@ -64,6 +64,7 @@ py_test(
     name = "kernel_estimators_test",
     srcs = ["python/kernel_estimators_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":kernel_methods",
         "//tensorflow/contrib/layers:layers_py",

@@ -368,11 +368,11 @@ def self_adjoint_eigvals(tensor, name=None):
 
 
 def svd(tensor, full_matrices=False, compute_uv=True, name=None):
-  """Computes the singular value decompositions of one or more matrices.
+  r"""Computes the singular value decompositions of one or more matrices.
 
   Computes the SVD of each inner matrix in `tensor` such that
-  `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :,
-  :])`
+  `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) *
+   transpose(conj(v[..., :, :]))`
 
   ```python
   # a is a tensor.
@@ -406,9 +406,25 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
       `[..., N, N]`. Not returned if `compute_uv` is `False`.
 
   @compatibility(numpy)
-  Mostly equivalent to numpy.linalg.svd, except that the order of output
-  arguments here is `s`, `u`, `v` when `compute_uv` is `True`, as opposed to
-  `u`, `s`, `v` for numpy.linalg.svd.
+  Mostly equivalent to numpy.linalg.svd, except that
+    * The order of output  arguments here is `s`, `u`, `v` when `compute_uv` is
+      `True`, as opposed to `u`, `s`, `v` for numpy.linalg.svd.
+    * full_matrices is `False` by default as opposed to `True` for
+       numpy.linalg.svd.
+    * tf.linalg.svd uses the standard definition of the SVD
+      \\(A = U \Sigma V^H\\), such that the left singular vectors of `a` are
+      the columns of `u`, while the right singular vectors of `a` are the
+      columns of `v`. On the other hand, numpy.linalg.svd returns the adjoint
+      \\(V^H\\) as the third output argument.
+  ```python
+  import tensorflow as tf
+  import numpy as np
+  s, u, v = tf.linalg.svd(a)
+  tf_a_approx = tf.matmul(u, tf.matmul(tf.linalg.diag(s), v, adjoint_v=True))
+  u, s, v_adj = np.linalg.svd(a, full_matrices=False)
+  np_a_approx = np.dot(u, np.dot(np.diag(s), v_adj))
+  # tf_a_approx and np_a_approx should be numerically close.
+  ````
   @end_compatibility
   """
   # pylint: disable=protected-access

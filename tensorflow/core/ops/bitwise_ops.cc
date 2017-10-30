@@ -56,35 +56,45 @@ representation of that entry.
 8- or 16-bit inputs and then aggregate the resulting counts.
 )doc");
 
-REGISTER_OP("BitwiseAnd").BINARY_BITWISE().Doc(R"doc(
+REGISTER_OP("BitwiseAnd")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
 Elementwise computes the bitwise AND of `x` and `y`.
 
 The result will have those bits set, that are set in both `x` and `y`. The
 computation is performed on the underlying representations of `x` and `y`.
 )doc");
 
-REGISTER_OP("BitwiseOr").BINARY_BITWISE().Doc(R"doc(
+REGISTER_OP("BitwiseOr")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
 Elementwise computes the bitwise OR of `x` and `y`.
 
 The result will have those bits set, that are set in `x`, `y` or both. The
 computation is performed on the underlying representations of `x` and `y`.
 )doc");
 
-REGISTER_OP("BitwiseXor").BINARY_BITWISE().Doc(R"doc(
+REGISTER_OP("BitwiseXor")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
 Elementwise computes the bitwise XOR of `x` and `y`.
 
 The result will have those bits set, that are different in `x` and `y`. The
 computation is performed on the underlying representations of `x` and `y`.
 )doc");
 
-REGISTER_OP("LeftShift").BINARY_BITWISE().Doc(R"doc(
+REGISTER_OP("LeftShift")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
 Elementwise computes the bitwise left-shift of `x` and `y`.
 
 If `y` is negative, or greater than or equal to the width of `x` in bits the
 result is implementation defined.
 )doc");
 
-REGISTER_OP("RightShift").BINARY_BITWISE().Doc(R"doc(
+REGISTER_OP("RightShift")
+    .BINARY_BITWISE()
+    .Doc(R"doc(
 Elementwise computes the bitwise right-shift of `x` and `y`.
 
 Performs a logical shift for unsigned integer types, and an arithmetic shift

@@ -302,7 +302,7 @@ class Array {
   }
 
   // Advances the specified set of indexes and returns true if we haven't
-  // wrapped around (i.e. result isnt {0, 0, ...}).
+  // wrapped around (i.e. result isn't {0, 0, ...}).
   bool next_index(std::vector<int64>* index) const {
     CHECK_EQ(index->size(), sizes_.size());
     for (int64 i = sizes_.size() - 1; i >= 0; --i) {

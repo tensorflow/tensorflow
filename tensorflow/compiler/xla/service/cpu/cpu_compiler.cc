@@ -282,6 +282,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_simplification=*/false);
     pass.AddPass<TupleSimplifier>();
+    pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
   }

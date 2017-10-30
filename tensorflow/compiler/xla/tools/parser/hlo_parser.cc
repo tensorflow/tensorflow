@@ -235,11 +235,13 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSort:
@@ -256,6 +258,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
     case HloOpcode::kSubtract:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kComplex:
     case HloOpcode::kEq:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
@@ -400,7 +404,6 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kBatchNormGrad:
-    case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",

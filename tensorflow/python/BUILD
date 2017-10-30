@@ -897,6 +897,7 @@ py_library(
         ":tensor_shape",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -1921,6 +1922,7 @@ py_library(
         ":array_ops",
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -2297,7 +2299,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
         ":data_flow_ops_gen",
+        ":dtypes",
+        ":errors",
         ":framework_ops",
         ":math_ops",
         ":tensor_shape",

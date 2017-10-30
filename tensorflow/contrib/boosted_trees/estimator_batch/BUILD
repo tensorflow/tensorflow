@@ -124,6 +124,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":model",
+        "//tensorflow/contrib/boosted_trees:losses",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:math_ops",
     ],
 )

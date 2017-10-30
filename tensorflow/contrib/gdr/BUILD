@@ -119,7 +119,6 @@ cc_library(
         ":gdr_memory_manager",
         ":gdr_rendezvous_mgr",
         ":gdr_worker",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
     alwayslink = 1,

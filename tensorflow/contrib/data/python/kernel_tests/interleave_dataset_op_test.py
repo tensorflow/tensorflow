@@ -25,7 +25,7 @@ import time
 from six.moves import zip_longest
 
 from tensorflow.contrib.data.python.ops import dataset_ops
-from tensorflow.contrib.data.python.ops import sloppy_ops
+from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
@@ -34,12 +34,13 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
-class SloppyInterleaveDatasetTest(test.TestCase):
+class ParallelInterleaveDatasetTest(test.TestCase):
 
   def setUp(self):
     self.input_values = array_ops.placeholder(dtypes.int64, shape=[None])
     self.cycle_length = array_ops.placeholder(dtypes.int64, shape=[])
     self.block_length = array_ops.placeholder(dtypes.int64, shape=[])
+    self.sloppy = array_ops.placeholder(dtypes.bool, shape=[])
 
     self.repeat_count = 2
 
@@ -69,9 +70,9 @@ class SloppyInterleaveDatasetTest(test.TestCase):
 
     self.dataset = (dataset_ops.Dataset.from_tensor_slices(self.input_values)
                     .repeat(self.repeat_count).apply(
-                        sloppy_ops.sloppy_interleave(
+                        interleave_ops.parallel_interleave(
                             interleave_fn, self.cycle_length,
-                            self.block_length)))
+                            self.block_length, self.sloppy)))
     self.iterator = self.dataset.make_initializable_iterator()
     self.init_op = self.iterator.initializer
     self.next_element = self.iterator.get_next()
@@ -161,7 +162,7 @@ class SloppyInterleaveDatasetTest(test.TestCase):
     for i in range(4, 7):
       self.write_coordination_events[i].set()
 
-  def testSingleThreaded(self):
+  def _testSingleThreaded(self, sloppy=False):
     # cycle_length=1,block_length=1 acts like `Dataset.interleave()` and
     # `Dataset.flat_map()` and is single-threaded. No synchronization required.
     with self.test_session() as sess:
@@ -171,7 +172,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [4, 5, 6],
               self.cycle_length: 1,
-              self.block_length: 1
+              self.block_length: 1,
+              self.sloppy: sloppy
           })
 
       for expected_element in self._interleave(
@@ -182,7 +184,13 @@ class SloppyInterleaveDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
-  def testTwoThreadsNoContention(self):
+  def testSingleThreaded(self):
+    self._testSingleThreaded()
+
+  def testSingleThreadedSloppy(self):
+    self._testSingleThreaded(sloppy=True)
+
+  def _testTwoThreadsNoContention(self, sloppy=False):
     # num_threads > 1.
     # Explicit coordination should result in `Dataset.interleave()` behavior
     with self.test_session() as sess:
@@ -193,7 +201,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [4, 5, 6],
               self.cycle_length: 2,
-              self.block_length: 1
+              self.block_length: 1,
+              self.sloppy: sloppy
           })
       for i, expected_element in enumerate(
           self._interleave([[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 2,
@@ -205,6 +214,52 @@ class SloppyInterleaveDatasetTest(test.TestCase):
         if not done_first_event:
           self.read_coordination_events[expected_element].acquire()
           done_first_event = True
+        self.assertEqual(expected_element * expected_element, actual_element,
+                         "At index %s: %s expected, got: %s" %
+                         (i, expected_element, actual_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(self.next_element)
+
+  def testTwoThreadsNoContention(self):
+    self._testTwoThreadsNoContention()
+
+  def testTwoThreadsNoContentionSloppy(self):
+    self._testTwoThreadsNoContention(sloppy=True)
+
+  def _testTwoThreadsNoContentionWithRaces(self, sloppy=False):
+    """Tests where all the workers race in producing elements.
+
+    Note: this is in contrast with the prevous test which carefully sequences
+    the execution of the map functions.
+
+    Args:
+      sloppy: Whether to be sloppy or not.
+    """
+    with self.test_session() as sess:
+      self._clear_coordination_events()
+      done_first_event = False
+      sess.run(
+          self.init_op,
+          feed_dict={
+              self.input_values: [4, 5, 6],
+              self.cycle_length: 2,
+              self.block_length: 1,
+              self.sloppy: sloppy,
+          })
+      for i, expected_element in enumerate(
+          self._interleave([[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 2,
+                           1)):
+        if done_first_event:  # First event starts the worker threads.
+          self._allow_all_map_threads()
+          self.read_coordination_events[expected_element].acquire()
+        else:
+          self.write_coordination_events[expected_element].set()
+        time.sleep(0.1)  # Sleep to consistently "avoid" the race condition.
+        actual_element = sess.run(self.next_element)
+        if not done_first_event:
+          done_first_event = True
+          self.assertTrue(
+              self.read_coordination_events[expected_element].acquire(False))
         self.assertEqual(expected_element * expected_element, actual_element,
                          "At index %s: %s expected, got: %s" %
                          (i, expected_element, actual_element))
@@ -212,42 +267,12 @@ class SloppyInterleaveDatasetTest(test.TestCase):
         sess.run(self.next_element)
 
   def testTwoThreadsNoContentionWithRaces(self):
-    """Tests where all the workers race in producing elements.
+    self._testTwoThreadsNoContentionWithRaces()
 
-    Note: this is in contrast with the prevous test which carefully sequences
-    the execution of the map functions.
-    """
-    with self.test_session() as sess:
-      self._clear_coordination_events()
-      done_first_event = False
-      sess.run(
-          self.init_op,
-          feed_dict={
-              self.input_values: [4, 5, 6],
-              self.cycle_length: 2,
-              self.block_length: 1
-          })
-      for i, expected_element in enumerate(
-          self._interleave([[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 2,
-                           1)):
-        if done_first_event:  # First event starts the worker threads.
-          self._allow_all_map_threads()
-          self.read_coordination_events[expected_element].acquire()
-        else:
-          self.write_coordination_events[expected_element].set()
-        time.sleep(0.1)  # Sleep to consistently "avoid" the race condition.
-        actual_element = sess.run(self.next_element)
-        if not done_first_event:
-          done_first_event = True
-          self.assertTrue(
-              self.read_coordination_events[expected_element].acquire(False))
-        self.assertEqual(expected_element * expected_element, actual_element,
-                         "At index %s: %s expected, got: %s" %
-                         (i, expected_element, actual_element))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(self.next_element)
+  def testTwoThreadsNoContentionWithRacesSloppy(self):
+    self._testTwoThreadsNoContentionWithRaces(sloppy=True)
 
-  def testTwoThreadsNoContentionBlockLength(self):
+  def _testTwoThreadsNoContentionBlockLength(self, sloppy=False):
     # num_threads > 1.
     # Explicit coordination should result in `Dataset.interleave()` behavior
     with self.test_session() as sess:
@@ -258,7 +283,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [4, 5, 6],
               self.cycle_length: 2,
-              self.block_length: 2
+              self.block_length: 2,
+              self.sloppy: sloppy
           })
       for i, expected_element in enumerate(
           self._interleave([[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 2,
@@ -276,11 +302,21 @@ class SloppyInterleaveDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
-  def testTwoThreadsNoContentionWithRacesAndBlocking(self):
+  def testTwoThreadsNoContentionBlockLength(self):
+    self._testTwoThreadsNoContentionBlockLength()
+
+  def testTwoThreadsNoContentionBlockLengthSloppy(self):
+    self._testTwoThreadsNoContentionBlockLength(sloppy=True)
+
+  def _testTwoThreadsNoContentionWithRacesAndBlocking(self, sloppy=False):
     """Tests where all the workers race in producing elements.
 
     Note: this is in contrast with the prevous test which carefully sequences
     the execution of the map functions.
+
+
+    Args:
+      sloppy: Whether to be sloppy or not.
     """
     with self.test_session() as sess:
       self._clear_coordination_events()
@@ -290,7 +326,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [4, 5, 6],
               self.cycle_length: 2,
-              self.block_length: 2
+              self.block_length: 2,
+              self.sloppy: sloppy
           })
       for i, expected_element in enumerate(
           self._interleave([[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 2,
@@ -312,7 +349,13 @@ class SloppyInterleaveDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
-  def testEmptyInput(self):
+  def testTwoThreadsNoContentionWithRacesAndBlocking(self):
+    self._testTwoThreadsNoContentionWithRacesAndBlocking()
+
+  def testTwoThreadsNoContentionWithRacesAndBlockingSloppy(self):
+    self._testTwoThreadsNoContentionWithRacesAndBlocking(sloppy=True)
+
+  def _testEmptyInput(self, sloppy=False):
     with self.test_session() as sess:
       # Empty input.
       self._clear_coordination_events()
@@ -321,12 +364,19 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [],
               self.cycle_length: 2,
-              self.block_length: 3
+              self.block_length: 3,
+              self.sloppy: sloppy
           })
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
-  def testNonEmptyInputIntoEmptyOutputs(self):
+  def testEmptyInput(self):
+    self._testEmptyInput()
+
+  def testEmptyInputSloppy(self):
+    self._testEmptyInput(sloppy=True)
+
+  def _testNonEmptyInputIntoEmptyOutputs(self, sloppy=False):
     # Non-empty input leading to empty output.
     with self.test_session() as sess:
       self._clear_coordination_events()
@@ -335,12 +385,19 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [0, 0, 0],
               self.cycle_length: 2,
-              self.block_length: 3
+              self.block_length: 3,
+              self.sloppy: sloppy
           })
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
-  def testPartiallyEmptyOutputs(self):
+  def testNonEmptyInputIntoEmptyOutputs(self):
+    self._testNonEmptyInputIntoEmptyOutputs()
+
+  def testNonEmptyInputIntoEmptyOutputsSloppy(self):
+    self._testNonEmptyInputIntoEmptyOutputs(sloppy=True)
+
+  def _testPartiallyEmptyOutputs(self, sloppy=False):
     # Mixture of non-empty and empty interleaved datasets.
     with self.test_session() as sess:
       self._clear_coordination_events()
@@ -350,7 +407,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [4, 0, 6],
               self.cycle_length: 2,
-              self.block_length: 1
+              self.block_length: 1,
+              self.sloppy: sloppy,
           })
       for i, expected_element in enumerate(
           self._interleave([[4] * 4, [], [6] * 6] * self.repeat_count, 2, 1)):
@@ -367,7 +425,13 @@ class SloppyInterleaveDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
-  def testDelayedOutput(self):
+  def testPartiallyEmptyOutputs(self):
+    self._testPartiallyEmptyOutputs()
+
+  def testPartiallyEmptyOutputsSloppy(self):
+    self._testPartiallyEmptyOutputs(sloppy=True)
+
+  def testDelayedOutputSloppy(self):
     # Explicitly control the sequence of events to ensure we correctly avoid
     # head-of-line blocking.
     with self.test_session() as sess:
@@ -377,7 +441,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [4, 5, 6],
               self.cycle_length: 2,
-              self.block_length: 1
+              self.block_length: 1,
+              self.sloppy: True,
           })
 
       mis_ordering = [
@@ -391,7 +456,7 @@ class SloppyInterleaveDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
-  def testBlockLengthWithContention(self):
+  def testBlockLengthWithContentionSloppy(self):
     with self.test_session() as sess:
       self._clear_coordination_events()
       done_first_event = False
@@ -400,7 +465,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [4, 5, 6],
               self.cycle_length: 2,
-              self.block_length: 3
+              self.block_length: 3,
+              self.sloppy: True
           })
       # Test against a generating sequence that differs from the uncontended
       # case, in order to prove sloppy correctness.
@@ -422,7 +488,7 @@ class SloppyInterleaveDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
 
-  def testEarlyExit(self):
+  def _testEarlyExit(self, sloppy=False):
     # Exiting without consuming all input should not block
     with self.test_session() as sess:
       self._clear_coordination_events()
@@ -431,7 +497,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
           feed_dict={
               self.input_values: [4, 5, 6],
               self.cycle_length: 3,
-              self.block_length: 2
+              self.block_length: 2,
+              self.sloppy: sloppy
           })
       for i in range(4, 7):
         self.write_coordination_events[i].set()
@@ -445,7 +512,13 @@ class SloppyInterleaveDatasetTest(test.TestCase):
         self.read_coordination_events[i].acquire()
         self.write_coordination_events[i].set()
 
-  def testTooManyReaders(self):
+  def testEarlyExit(self):
+    self._testEarlyExit()
+
+  def testEarlyExitSloppy(self):
+    self._testEarlyExit(sloppy=True)
+
+  def _testTooManyReaders(self, sloppy=False):
 
     def interleave_fn(x):
       dataset = dataset_ops.Dataset.from_tensors(x)
@@ -455,8 +528,8 @@ class SloppyInterleaveDatasetTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices([4, 5, 6])
     dataset = dataset.repeat(self.repeat_count)
     dataset = dataset.apply(
-        sloppy_ops.sloppy_interleave(interleave_fn, cycle_length=16,
-                                     block_length=2))
+        interleave_ops.parallel_interleave(
+            interleave_fn, cycle_length=16, block_length=2, sloppy=sloppy))
     iterator = dataset.make_one_shot_iterator()
 
     with self.test_session() as sess:
@@ -468,6 +541,11 @@ class SloppyInterleaveDatasetTest(test.TestCase):
         [[4] * 4, [5] * 5, [6] * 6] * self.repeat_count, 1, 2)
     self.assertItemsEqual(output_values, expected_values)
 
+  def testTooManyReaders(self):
+    self._testTooManyReaders()
+
+  def testTooManyReadersSloppy(self):
+    self._testTooManyReaders(sloppy=True)
 
 if __name__ == "__main__":
   test.main()
