@@ -871,6 +871,11 @@ TF_CAPI_EXPORT extern void TF_GraphGetOpDef(TF_Graph* graph,
                                             TF_Buffer* output_op_def,
                                             TF_Status* status);
 
+// Returns the serialized VersionDef proto for this graph.
+TF_CAPI_EXPORT extern void TF_GraphVersions(TF_Graph* graph,
+                                            TF_Buffer* output_version_def,
+                                            TF_Status* status);
+
 // TF_ImportGraphDefOptions holds options that can be passed to
 // TF_GraphImportGraphDef.
 typedef struct TF_ImportGraphDefOptions TF_ImportGraphDefOptions;

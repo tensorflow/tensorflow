@@ -2713,7 +2713,16 @@ class Graph(object):
       A `VersionDef`.
     """
     # pylint: enable=line-too-long
-    return self._graph_def_versions
+    if self._c_graph:
+      with errors.raise_exception_on_not_ok_status() as status:
+        with c_api_util.tf_buffer() as buf:
+          c_api.TF_GraphVersions(self._c_graph, buf, status)
+          data = c_api.TF_GetBuffer(buf)
+      version_def = versions_pb2.VersionDef()
+      version_def.ParseFromString(compat.as_bytes(data))
+      return version_def
+    else:
+      return self._graph_def_versions
 
   @property
   def seed(self):

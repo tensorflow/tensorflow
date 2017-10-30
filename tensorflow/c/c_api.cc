@@ -81,6 +81,7 @@ using tensorflow::TensorBuffer;
 using tensorflow::TensorId;
 using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
+using tensorflow::VersionDef;
 using tensorflow::error::Code;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
@@ -1807,6 +1808,16 @@ void TF_GraphGetOpDef(TF_Graph* graph, const char* op_name,
     if (!status->status.ok()) return;
   }
   status->status = MessageToBuffer(*op_def, output_op_def);
+}
+
+void TF_GraphVersions(TF_Graph* graph, TF_Buffer* output_version_def,
+                      TF_Status* status) {
+  VersionDef versions;
+  {
+    mutex_lock l(graph->mu);
+    versions = graph->graph.versions();
+  }
+  status->status = MessageToBuffer(versions, output_version_def);
 }
 
 TF_ImportGraphDefOptions* TF_NewImportGraphDefOptions() {
