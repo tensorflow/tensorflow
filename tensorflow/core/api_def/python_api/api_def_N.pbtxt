@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "Neg"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "NegTrain"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "NonMaxSuppression"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "NonMaxSuppressionV2"
+  visibility: HIDDEN
+}

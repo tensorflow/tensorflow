@@ -4035,6 +4035,12 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "hidden_ops",
+    srcs = ["ops/hidden_ops.txt"],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
 cuda_py_test(
     name = "accumulate_n_benchmark",
     size = "large",
