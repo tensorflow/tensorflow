@@ -23,10 +23,26 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
 
 
 class ClipTest(test.TestCase):
+
+  def testClipByValueGradient(self):
+    inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
+    outputs_1 = clip_ops.clip_by_value(inputs, 0.5, 3.5)
+    min_val = constant_op.constant([0.5, 0.5, 0.5, 0.5], dtype=dtypes.float32)
+    max_val = constant_op.constant([3.5, 3.5, 3.5, 3.5], dtype=dtypes.float32)
+    outputs_2 = clip_ops.clip_by_value(inputs, min_val, max_val)
+    with self.test_session():
+      error_1 = gradient_checker.compute_gradient_error(inputs, [4],
+                                                        outputs_1, [4])
+      self.assertLess(error_1, 1e-4)
+
+      error_2 = gradient_checker.compute_gradient_error(inputs, [4],
+                                                        outputs_2, [4])
+      self.assertLess(error_2, 1e-4)
 
   # ClipByValue test
   def testClipByValue(self):
