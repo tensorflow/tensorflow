@@ -20,15 +20,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-namespace db {
 namespace {
 
 TEST(SchemaTest, SmokeTestTensorboardSchema) {
-  std::unique_ptr<Sqlite> db;
-  TF_ASSERT_OK(Sqlite::Open(":memory:", &db));
-  TF_ASSERT_OK(SetupTensorboardSqliteDb(db.get()));
+  auto db = Sqlite::Open(":memory:").ValueOrDie();
+  TF_ASSERT_OK(SetupTensorboardSqliteDb(db));
 }
 
 }  // namespace
-}  // namespace db
 }  // namespace tensorflow

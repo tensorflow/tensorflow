@@ -110,7 +110,7 @@ struct ImportGraphDefOptions {
   // Unlike `return_tensors`, `input_map` has no effect on the nodes
   // returned. `return_nodes` must be empty if `skip_mapped_nodes` is true.
   // TODO(skyewm): make this work with `skip_mapped_nodes` if there's a need.
-  std::vector<StringPiece> return_nodes;
+  std::vector<string> return_nodes;
 
   // TODO(ashankar): Enable handling of GraphDefs produced by newer binaries
   // with ops that are not defined in the binary calling ImportGraphDef.

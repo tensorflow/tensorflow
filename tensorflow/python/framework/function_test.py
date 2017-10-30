@@ -864,6 +864,24 @@ class FunctionTest(test.TestCase):
         [result])
     self.assertEqual(len(f.signature.input_arg), 3)
 
+  def testGradientWithIntegerFunctionArgument(self):
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def Foo(t, x):
+      return x[t]
+
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(dtypes.float32)
+      t = constant_op.constant(0, dtypes.int32)
+      out = Foo(t, inp)
+      dinp, = gradients_impl.gradients(out, [inp])
+
+    x = np.zeros((2,)).astype(np.float32)
+    with session.Session(graph=g) as sess:
+      self.assertAllClose(
+          np.array([1.0, 0.0]).astype(np.float32),
+          sess.run(dinp, {inp: x}))
+
 
 @test_util.with_c_api
 class FunctionsFromProtos(test.TestCase):
