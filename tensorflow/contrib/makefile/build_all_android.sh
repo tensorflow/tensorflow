@@ -26,7 +26,7 @@ usage() {
   echo "-x [hexagon library path] copy and hexagon libraries in the specified path"
   echo "-a [architecture] Architecture of target android [default=armeabi-v7a] \
 (supported architecture list: \
-arm64-v8a armeabi armeabi-v7a mips mips64 x86 x86_64)"
+arm64-v8a armeabi armeabi-v7a mips mips64 x86 x86_64 tegra)"
   exit 1
 }
 
@@ -49,6 +49,26 @@ while getopts "Es:t:Tx:a:" opt_name; do
   esac
 done
 shift $((OPTIND - 1))
+
+if [ "$ARCH" == "tegra" ]; then
+    if [[ -z "${JETPACK}" ]]; then
+        export JETPACK="$HOME/JetPack_Android_3.0"
+    fi
+    if [ ! -d ${JETPACK} ]; then
+        echo "Can't find Jetpack at ${JETPACK}"
+        echo "Set JETPACK=<path to Jetpack Android> to specify a non-default Jetpack path"
+        exit -1
+    fi
+    if [ ! -d ${JETPACK}/cuda ]; then
+        ln -s $(ls -d ${JETPACK}/cuda-*/|sort -r|head -n1) ${JETPACK}/cuda
+    fi
+    if [ ! -d ${JETPACK}/cuda ]; then
+        ln -s $(ls -d ${JETPACK}/cuda-*/|sort -r|head -n1) ${JETPACK}/cuda
+    fi
+
+    export BUILD_FOR_TEGRA=1
+    ARCH="arm64-v8a"
+fi
 
 # Make sure we're in the correct directory, at the root of the source tree.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"

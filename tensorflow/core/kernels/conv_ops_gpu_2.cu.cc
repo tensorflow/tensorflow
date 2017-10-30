@@ -26,11 +26,15 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 template struct functor::InflatePadAndShuffle<GPUDevice, float, 4, int>;
+#ifndef NVIDIA_TEGRA
 template struct functor::InflatePadAndShuffle<GPUDevice, float, 4,
                                               Eigen::DenseIndex>;
+#endif
 template struct functor::InflatePadAndShuffle<GPUDevice, Eigen::half, 4, int>;
+#ifndef NVIDIA_TEGRA
 template struct functor::InflatePadAndShuffle<GPUDevice, Eigen::half, 4,
                                               Eigen::DenseIndex>;
+#endif
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

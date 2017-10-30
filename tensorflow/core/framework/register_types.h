@@ -90,7 +90,7 @@ limitations under the License.
 // Only string, half, float, int32, int64, bool, and quantized types
 // supported.
 #define TF_CALL_float(m) m(float)
-#define TF_CALL_double(m)
+#define TF_CALL_double(m) m(double)
 #define TF_CALL_int32(m) m(::tensorflow::int32)
 #define TF_CALL_uint32(m)
 #define TF_CALL_uint8(m)
@@ -100,7 +100,7 @@ limitations under the License.
 #define TF_CALL_string(m) m(string)
 #define TF_CALL_resource(m)
 #define TF_CALL_variant(m)
-#define TF_CALL_complex64(m)
+#define TF_CALL_complex64(m) m(::tensorflow::complex64)
 #define TF_CALL_int64(m) m(::tensorflow::int64)
 #define TF_CALL_uint64(m)
 #define TF_CALL_bool(m) m(bool)
@@ -108,12 +108,12 @@ limitations under the License.
 #define TF_CALL_qint8(m) m(::tensorflow::qint8)
 #define TF_CALL_quint8(m) m(::tensorflow::quint8)
 #define TF_CALL_qint32(m) m(::tensorflow::qint32)
-#define TF_CALL_bfloat16(m)
+#define TF_CALL_bfloat16(m) m(::tensorflow::bfloat16)
 #define TF_CALL_qint16(m) m(::tensorflow::qint16)
 
 #define TF_CALL_quint16(m) m(::tensorflow::quint16)
 #define TF_CALL_uint16(m)
-#define TF_CALL_complex128(m)
+#define TF_CALL_complex128(m) m(::tensorflow::complex128)
 #define TF_CALL_half(m) m(Eigen::half)
 
 #else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
