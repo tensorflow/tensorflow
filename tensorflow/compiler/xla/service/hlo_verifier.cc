@@ -359,7 +359,10 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckShape(const HloInstruction* instruction,
                     const StatusOr<Shape>& expected_shape_status) {
     if (!expected_shape_status.ok()) {
-      return expected_shape_status.status();
+      Status s = expected_shape_status.status();
+      tensorflow::errors::AppendToMessage(&s, ", for instruction ",
+                                          instruction->ToString());
+      return s;
     }
     return CheckShape(instruction, expected_shape_status.ValueOrDie());
   }
