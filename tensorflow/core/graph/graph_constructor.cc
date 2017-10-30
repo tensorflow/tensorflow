@@ -90,7 +90,7 @@ class GraphConstructor {
     bool skip_mapped_nodes;
     std::vector<string> control_dependencies;
     std::vector<TensorId> return_tensors;
-    std::vector<StringPiece> return_nodes;
+    std::vector<string> return_nodes;
 
     // TODO(ashankar): This bool exists to separate out functionality required
     // to make ImportGraphDef a close equivalent of Python's import_graph_def
