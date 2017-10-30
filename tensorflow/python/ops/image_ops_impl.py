@@ -1513,7 +1513,8 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       # Generate a single distorted bounding box.
       begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
           tf.shape(image),
-          bounding_boxes=bounding_boxes)
+          bounding_boxes=bounding_boxes,
+          min_object_covered=0.1)
 
       # Draw the bounding box in an image summary.
       image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
@@ -1541,7 +1542,7 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       seed.
     seed2: An optional `int`. Defaults to `0`.
       A second seed to avoid seed collision.
-    min_object_covered: An optional `float`. Defaults to `0.1`.
+    min_object_covered: A Tensor of type `float32`. Defaults to `0.1`.
       The cropped area of the image must contain at least this
       fraction of any bounding box supplied. The value of this parameter should be
       non-negative. In the case of 0, the cropped area does not need to overlap
