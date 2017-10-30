@@ -483,6 +483,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         resource_variable_ops.destroy_resource_op(var._handle,
                                                   ignore_lookup_error=False)
 
+  def testScatterUpdate(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable([1.0, 2.0], name="update")
+      state_ops.scatter_update(v, [1], [3.0])
+      self.assertAllEqual([1.0, 3.0], v.numpy())
+
 
 if __name__ == "__main__":
   test.main()
