@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,24 +43,27 @@ class KafkaReader : public ReaderBase {
     if (parts.size() < 1) {
       return errors::InvalidArgument("Invalid parameters: ", current_work());
     }
-    topic_str_ = parts[0];
-    topic_partition_ = 0;
+    string topic = parts[0];
+    int32 partition = 0;
     if (parts.size() > 1) {
-      if (!strings::safe_strto32(parts[1], &topic_partition_)) {
+      if (!strings::safe_strto32(parts[1], &partition)) {
         return errors::InvalidArgument("Invalid parameters: ", current_work());
       }
     }
-    topic_offset_ = 0;
+    int64 offset = 0;
     if (parts.size() > 2) {
-      if (!strings::safe_strto64(parts[2], &topic_offset_)) {
+      if (!strings::safe_strto64(parts[2], &offset)) {
         return errors::InvalidArgument("Invalid parameters: ", current_work());
       }
     }
-    offset_ = topic_offset_;
 
-    topic_limit_ = -1;
+    topic_partition_.reset(
+        RdKafka::TopicPartition::create(topic, partition, offset));
+
+    offset_ = topic_partition_->offset();
+    limit_ = -1;
     if (parts.size() > 3) {
-      if (!strings::safe_strto64(parts[3], &topic_limit_)) {
+      if (!strings::safe_strto64(parts[3], &limit_)) {
         return errors::InvalidArgument("Invalid parameters: ", current_work());
       }
     }
@@ -73,62 +76,63 @@ class KafkaReader : public ReaderBase {
     std::string errstr;
 
     RdKafka::Conf::ConfResult result =
-        conf->set("bootstrap.servers", servers_, errstr);
+        conf->set("default_topic_conf", topic_conf.get(), errstr);
+    if (result != RdKafka::Conf::CONF_OK) {
+      return errors::Internal("Failed to set default_topic_conf:", errstr);
+    }
+
+    result = conf->set("bootstrap.servers", servers_, errstr);
     if (result != RdKafka::Conf::CONF_OK) {
       return errors::Internal("Failed to set bootstrap.servers ", servers_, ":",
                               errstr);
     }
-    if (group_.length() != 0) {
-      RdKafka::Conf::ConfResult result = conf->set("group.id", group_, errstr);
-      if (result != RdKafka::Conf::CONF_OK) {
-        return errors::Internal("Failed to set group.id ", group_, ":", errstr);
-      }
+    result = conf->set("group.id", group_, errstr);
+    if (result != RdKafka::Conf::CONF_OK) {
+      return errors::Internal("Failed to set group.id ", group_, ":", errstr);
     }
 
-    consumer_.reset(RdKafka::Consumer::create(conf.get(), errstr));
+    consumer_.reset(RdKafka::KafkaConsumer::create(conf.get(), errstr));
     if (!consumer_.get()) {
       return errors::Internal("Failed to create consumer:", errstr);
     }
 
-    topic_.reset(RdKafka::Topic::create(consumer_.get(), topic_str_,
-                                        topic_conf.get(), errstr));
-    if (!topic_.get()) {
-      return errors::Internal("Failed to create topic:", errstr);
+    std::vector<RdKafka::TopicPartition*> partitions;
+    partitions.emplace_back(topic_partition_.get());
+    RdKafka::ErrorCode err = consumer_->assign(partitions);
+    if (err != RdKafka::ERR_NO_ERROR) {
+      return errors::Internal(
+          "Failed to assign partition [", topic_partition_->topic(), ", ",
+          topic_partition_->partition(), ", ", topic_partition_->offset(), "]:",
+          RdKafka::err2str(err));
     }
 
-    RdKafka::ErrorCode resp =
-        consumer_->start(topic_.get(), topic_partition_, topic_offset_);
-    if (resp != RdKafka::ERR_NO_ERROR) {
-      return errors::Internal("Failed to start consumer:",
-                              RdKafka::err2str(resp));
-    }
     return Status::OK();
   }
 
   Status OnWorkFinishedLocked() override {
-    consumer_->stop(topic_.get(), topic_partition_);
-    consumer_->poll(1000);
-    topic_.reset(nullptr);
+    consumer_->unassign();
+    consumer_->close();
     consumer_.reset(nullptr);
     return Status::OK();
   }
 
   Status ReadLocked(string* key, string* value, bool* produced,
                     bool* at_end) override {
-    if (topic_limit_ >= 0 &&
-        (topic_offset_ >= topic_limit_ || offset_ >= topic_limit_)) {
+    if (limit_ >= 0 &&
+        (topic_partition_->offset() >= limit_ || offset_ >= limit_)) {
       *at_end = true;
       return Status::OK();
     }
     while (true) {
-      std::unique_ptr<RdKafka::Message> message(
-          consumer_->consume(topic_.get(), topic_partition_, 1000));
+      std::unique_ptr<RdKafka::Message> message(consumer_->consume(1000));
       if (message->err() == RdKafka::ERR_NO_ERROR) {
         if (message->key()) {
-          *key = strings::StrCat(topic_str_, ":", topic_partition_, ":",
+          *key = strings::StrCat(topic_partition_->topic(), ":",
+                                 topic_partition_->partition(), ":",
                                  message->offset(), ":", *message->key());
         } else {
-          *key = strings::StrCat(topic_str_, ":", topic_partition_, ":",
+          *key = strings::StrCat(topic_partition_->topic(), ":",
+                                 topic_partition_->partition(), ":",
                                  message->offset());
         }
 
@@ -143,7 +147,6 @@ class KafkaReader : public ReaderBase {
           *at_end = true;
           return Status::OK();
         }
-
       } else if (message->err() != RdKafka::ERR__TIMED_OUT) {
         return errors::Internal("Failed to consume:", message->errstr());
       }
@@ -154,9 +157,8 @@ class KafkaReader : public ReaderBase {
   }
 
   Status ResetLocked() override {
-    consumer_->stop(topic_.get(), topic_partition_);
-    consumer_->poll(1000);
-    topic_.reset(nullptr);
+    consumer_->unassign();
+    consumer_->close();
     consumer_.reset(nullptr);
     return ReaderBase::ResetLocked();
   }
@@ -165,12 +167,9 @@ class KafkaReader : public ReaderBase {
   std::string servers_;
   std::string group_;
   bool eof_;
-  std::string topic_str_;
-  int32 topic_partition_;
-  int64 topic_offset_;
-  int64 topic_limit_;
-  std::unique_ptr<RdKafka::Consumer> consumer_;  // must outlive topic_
-  std::unique_ptr<RdKafka::Topic> topic_;
+  int64 limit_;
+  std::unique_ptr<RdKafka::KafkaConsumer> consumer_;
+  std::unique_ptr<RdKafka::TopicPartition> topic_partition_;
   int64 offset_;
 };
 
