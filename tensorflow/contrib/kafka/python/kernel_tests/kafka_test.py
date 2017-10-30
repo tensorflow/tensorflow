@@ -49,7 +49,7 @@ class KafkaReaderTest(test.TestCase):
       threads = queue_runner_impl.start_queue_runners(coord=coord)
       for i in range(10):
         v = sess.run([key, value])
-        self.assertAllEqual(v, ['test:0:'+str(i), 'D'+str(i)])
+        self.assertAllEqual(v, [str(i), 'D'+str(i)])
       coord.request_stop()
       coord.join(threads)
 

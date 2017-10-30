@@ -127,13 +127,9 @@ class KafkaReader : public ReaderBase {
       std::unique_ptr<RdKafka::Message> message(consumer_->consume(1000));
       if (message->err() == RdKafka::ERR_NO_ERROR) {
         if (message->key()) {
-          *key = strings::StrCat(topic_partition_->topic(), ":",
-                                 topic_partition_->partition(), ":",
-                                 message->offset(), ":", *message->key());
+          *key = strings::StrCat(message->offset(), ":", *message->key());
         } else {
-          *key = strings::StrCat(topic_partition_->topic(), ":",
-                                 topic_partition_->partition(), ":",
-                                 message->offset());
+          *key = strings::StrCat(message->offset());
         }
 
         *value = std::string(static_cast<const char*>(message->payload()),
