@@ -228,7 +228,7 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   // Does not take ownership of data.
   explicit VariantTensorDataWriter(VariantTensorData* data) : data_(data) {}
 
-  Status WriteScalar(StringPiece key, const int64& val) override {
+  Status WriteScalar(StringPiece key, const int64 val) override {
     return WriteScalarInternal(key, val);
   }
 
