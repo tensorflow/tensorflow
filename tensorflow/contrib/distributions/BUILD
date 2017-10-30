@@ -132,7 +132,7 @@ cuda_py_test(
 cuda_py_test(
     name = "cauchy_test",
     size = "medium",
-    srcs = ["cauchy_test.py"],
+    srcs = ["python/kernel_tests/cauchy_test.py"],
     additional_deps = [
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
