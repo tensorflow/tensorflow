@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.contrib.summary import gen_summary_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -272,3 +274,8 @@ def audio(name, tensor, sample_rate, max_outputs, family=None):
         name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
+
+
+def eval_dir(model_dir, name=None):
+  """Construct a logdir for an eval summary writer."""
+  return os.path.join(model_dir, "eval" if not name else "eval_" + name)
