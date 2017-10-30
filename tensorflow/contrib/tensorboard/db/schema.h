@@ -15,19 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORBOARD_DB_SCHEMA_H_
 #define TENSORFLOW_CONTRIB_TENSORBOARD_DB_SCHEMA_H_
 
+#include <memory>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 
 namespace tensorflow {
-namespace db {
 
 /// \brief Creates TensorBoard SQLite tables and indexes.
 ///
 /// If they are already created, this has no effect. If schema
 /// migrations are necessary, they will be performed with logging.
-Status SetupTensorboardSqliteDb(Sqlite* db);
+Status SetupTensorboardSqliteDb(std::shared_ptr<Sqlite> db);
 
-}  // namespace db
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_TENSORBOARD_DB_SCHEMA_H_

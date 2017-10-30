@@ -1642,17 +1642,16 @@ class KernelLabelTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b"My label is: overload_2", overload_2.eval())
 
 
+@test_util.with_c_api
 class AsGraphDefTest(test_util.TensorFlowTestCase):
 
   def testGraphDefVersion(self):
     """Test that the graphdef version is plumbed through to kernels."""
-    for version in range(versions.GRAPH_DEF_VERSION_MIN_PRODUCER,
-                         versions.GRAPH_DEF_VERSION + 2):
-      with ops.Graph().as_default() as g:
-        g.graph_def_versions.producer = version
-        with self.test_session(graph=g):
-          v = test_ops.graph_def_version().eval()
-          self.assertEqual(version, v)
+    with ops.Graph().as_default() as g:
+      version = g.graph_def_versions.producer
+      with self.test_session(graph=g):
+        v = test_ops.graph_def_version().eval()
+        self.assertEqual(version, v)
 
   def testAddShapes(self):
     with ops.Graph().as_default() as g:

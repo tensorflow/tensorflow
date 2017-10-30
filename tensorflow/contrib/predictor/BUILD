@@ -25,7 +25,10 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [":predictor_factories"],
+    deps = [
+        ":predictor_factories",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_library(
@@ -58,7 +61,6 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python/saved_model:signature_def_utils",
     ],
 )
 

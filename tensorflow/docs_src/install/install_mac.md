@@ -1,6 +1,11 @@
 # Installing TensorFlow on macOS
 
-This guide explains how to install TensorFlow on macOS.
+This guide explains how to install TensorFlow on macOS. Although these
+instructions might also work on other macOS variants, we have only
+tested (and we only support) these instructions on machines meeting the
+following requirements:
+
+  * macOS X 10.11 (El Capitan) or higher
 
 Note: As of version 1.2, TensorFlow no longer provides GPU support on macOS.
 
