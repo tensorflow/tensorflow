@@ -1794,14 +1794,9 @@ StatusOr<Computation> ComputationBuilder::Build() {
 
 void ComputationBuilder::AddCommonFieldsToOpRequest(OpRequest* request) const {
   *request->mutable_metadata() = metadata_;
-  *request->mutable_device_assignment() = device_assignment_;
-}
-
-void ComputationBuilder::ClearDeviceAssignment() { device_assignment_.Clear(); }
-
-void ComputationBuilder::SetDeviceAssignment(
-    const OpDeviceAssignment& assignment) {
-  device_assignment_ = assignment;
+  if (sharding_) {
+    *request->mutable_sharding() = *sharding_;
+  }
 }
 
 /* static */ ConvolutionDimensionNumbers

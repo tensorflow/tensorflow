@@ -204,6 +204,8 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(HloModule);
   KEYWORD(ENTRY);
   KEYWORD(ROOT);
+  KEYWORD(maximal);
+  KEYWORD(replicated);
 
 #undef KEYWORD
 

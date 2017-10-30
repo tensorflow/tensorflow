@@ -133,6 +133,7 @@ cc_library(
         "hlo_instruction.cc",
         "hlo_module.cc",
         "hlo_opcode.cc",
+        "hlo_sharding.cc",
     ],
     hdrs = [
         "dfs_hlo_visitor.h",
@@ -141,6 +142,7 @@ cc_library(
         "hlo_instruction.h",
         "hlo_module.h",
         "hlo_opcode.h",
+        "hlo_sharding.h",
     ],
     deps = [
         ":hlo_module_config",
@@ -148,6 +150,7 @@ cc_library(
         ":hlo_reachability",
         ":name_uniquer",
         ":versioned_computation_handle",
+        "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_tree",
@@ -225,6 +228,22 @@ cc_library(
 tf_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:protobuf_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_sharding_test",
+    srcs = ["hlo_sharding_test.cc"],
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:literal_util",

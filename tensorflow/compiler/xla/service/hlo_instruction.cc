@@ -1212,6 +1212,9 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(
     }
   }
   clone->set_parent(parent_);
+  if (has_sharding()) {
+    clone->set_sharding(sharding());
+  }
   return clone;
 }
 
@@ -1889,8 +1892,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (opcode() == HloOpcode::kGetTupleElement) {
     extra.push_back(StrCat("index=", tuple_index()));
   }
-  if (device_assignment_.has_device()) {
-    extra.push_back(StrCat("device=", device_assignment_.device()));
+  if (has_sharding()) {
+    extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
   if (!control_successors_.empty()) {
     extra.push_back(StrCat(
