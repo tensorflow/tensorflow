@@ -48,7 +48,6 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@Iterator
 @@Network
 @@Saver
-@@SummaryWriter
 @@restore_variables_on_create
 @@Variable
 @@get_optimizer_variables
@@ -78,7 +77,6 @@ from tensorflow.contrib.eager.python.network import Network
 from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
-from tensorflow.contrib.eager.python.summary_writer import SummaryWriter
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import function
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_EXPLICIT
