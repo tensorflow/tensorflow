@@ -1,6 +1,13 @@
 # Installing TensorFlow on Windows
 
-This guide explains how to install TensorFlow on Windows.
+This guide explains how to install TensorFlow on Windows. Although these
+instructions might also work on other Windows variants, we have only
+tested (and we only support) these instructions on machines meeting the
+following requirements:
+
+  * 64-bit, x86 desktops or laptops
+  * Windows 7 or later
+
 
 ## Determine which TensorFlow to install
 

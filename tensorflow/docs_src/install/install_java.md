@@ -6,18 +6,20 @@ Java application. This guide explains how to install
 [TensorFlow for Java](https://www.tensorflow.org/api_docs/java/reference/org/tensorflow/package-summary)
 and use it in a Java application.
 
-**WARNING:** The TensorFlow Java API is *not* covered by the TensorFlow
+Warning: The TensorFlow Java API is *not* covered by the TensorFlow
 [API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
 
 
 ## Supported Platforms
 
-TensorFlow for Java is supported on the following operating systems:
+This guide explains how to install TensorFlow for Java.  Although these
+instructions might also work on other variants, we have only tested
+(and we only support) these instructions on machines meeting the
+following requirements:
 
-  * Linux
-  * Mac OS X
-  * Windows
-  * Android
+  * Ubuntu 14.04 or higher; 64-bit, x86
+  * macOS X 10.11 (El Capitan) or higher
+  * Windows 7 or higher; 64-bit, x86
 
 The installation instructions for Android are in a separate
 [Android TensorFlow Support page](https://www.tensorflow.org/code/tensorflow/contrib/android).
@@ -81,14 +83,14 @@ As an example, these steps will create a Maven project that uses TensorFlow:
           public static void main(String[] args) throws Exception {
             try (Graph g = new Graph()) {
               final String value = "Hello from " + TensorFlow.version();
-     
+
               // Construct the computation graph with a single operation, a constant
               // named "MyConst" with a value "value".
               try (Tensor t = Tensor.create(value.getBytes("UTF-8"))) {
                 // The Java API doesn't yet include convenience functions for adding operations.
                 g.opBuilder("Const", "MyConst").setAttr("dtype", t.dataType()).setAttr("value", t).build();
               }
-     
+
               // Execute the "MyConst" operation in a Session.
               try (Session s = new Session(g);
                    Tensor output = s.runner().fetch("MyConst").run().get(0)) {
@@ -117,9 +119,9 @@ This section describes how to use TensorFlow using the `java` and `javac`
 commands from a JDK installation. If your project uses Apache Maven, then
 refer to the simpler instructions above instead.
 
-### Install on Linux or Mac OS
+### Install on Linux or macOS
 
-Take the following steps to install TensorFlow for Java on Linux or Mac OS:
+Take the following steps to install TensorFlow for Java on Linux or macOS:
 
   1. Download
      [libtensorflow.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-1.4.0-rc0.jar),
@@ -130,7 +132,7 @@ Take the following steps to install TensorFlow for Java on Linux or Mac OS:
      "Determine which TensorFlow to install" in one of the following guides:
 
      * @{$install_linux#determine_which_tensorflow_to_install$Installing TensorFlow on Linux}
-     * @{$install_mac#determine_which_tensorflow_to_install$Installing TensorFlow on Mac OS}
+     * @{$install_mac#determine_which_tensorflow_to_install$Installing TensorFlow on macOS}
 
   3. Download and extract the appropriate Java Native Interface (JNI)
      file for your operating system and processor support by running the
@@ -212,7 +214,7 @@ two files are available to the JVM:
   * the extracted JNI library
 
 For example, the following command line executes the `HelloTF` program on Linux
-and Mac OS X:
+and macOS X:
 
 <pre><b>java -cp libtensorflow-1.4.0-rc0.jar:. -Djava.library.path=./jni HelloTF</b></pre>
 
