@@ -315,9 +315,9 @@ class LayerCollection(object):
                       approx=APPROX_KRONECKER_NAME):
 
     if approx == APPROX_KRONECKER_NAME:
-      self.register_block(params,
-                          fb.ConvKFCBasicFB(self, params, inputs, outputs,
-                                            strides, padding))
+      block = fb.ConvKFCBasicFB(self, params, strides, padding)
+      block.register_additional_minibatch(inputs, outputs)
+      self.register_block(params, block)
     elif approx == APPROX_DIAGONAL_NAME:
       block = fb.ConvDiagonalFB(self, params, strides, padding)
       block.register_additional_minibatch(inputs, outputs)
