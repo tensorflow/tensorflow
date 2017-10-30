@@ -29,6 +29,7 @@ import six
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
+from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util
@@ -52,7 +53,6 @@ from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 
 
 _VALID_MODEL_FN_ARGS = set(
@@ -88,6 +88,10 @@ class Estimator(object):
   None of `Estimator`'s methods can be overridden in subclasses (its
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None):
@@ -130,10 +134,15 @@ class Estimator(object):
               Keys are names of parameters, values are basic python types.
 
     Raises:
+      RuntimeError: If eager execution is enabled.
       ValueError: parameters of `model_fn` don't match `params`.
       ValueError: if this is called via a subclass and if that class overrides
         a member of `Estimator`.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          'Estimators are not supported when eager execution is enabled.')
+
     Estimator._assert_members_are_not_overridden(self)
 
     if config is None:
@@ -925,9 +934,6 @@ def _verify_model_fn_args(model_fn, params):
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  if tf_inspect.ismethod(model_fn):
-    if 'self' in args:
-      args.remove('self')
   non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
@@ -1020,4 +1026,3 @@ def _has_dataset_or_queue_runner(maybe_tensor):
 
   # Now, check queue.
   return ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS)
-

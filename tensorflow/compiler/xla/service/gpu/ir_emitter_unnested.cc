@@ -757,8 +757,8 @@ Status IrEmitterUnnested::EmitColumnReduction(
   auto loop_body_emitter =
       [=](const llvm_ir::IrArray::Index& tile_index) -> Status {
     // Emit the loop body that reduces one tile.
-    llvm::Type* element_ir_type = llvm_ir::PrimitiveTypeToIrType(
-        input_shape.element_type(), &ir_builder_);
+    llvm::Type* element_ir_type =
+        llvm_ir::PrimitiveTypeToIrType(input_shape.element_type(), module_);
     llvm::Value* partial_reduction_result_address = ir_builder_.CreateAlloca(
         element_ir_type, /*ArraySize=*/nullptr, "partial_reduction_result");
     {
@@ -973,7 +973,7 @@ Status IrEmitterUnnested::EmitRowReduction(
       [=](const llvm_ir::IrArray::Index& tile_index) -> Status {
     // Emit the loop body that reduces one tile.
     llvm::Type* element_ir_type = llvm_ir::PrimitiveTypeToIrType(
-        input_shape.element_type(), &ir_builder_);
+        input_shape.element_type(), ir_emitter_context_->llvm_module());
     llvm::Value* partial_reduction_result_address = ir_builder_.CreateAlloca(
         element_ir_type, /*ArraySize=*/nullptr, "partial_reduction_result");
     {
@@ -1360,7 +1360,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     // boolean flag if the value is initialized. The initialized_flag is set
     // false.
     llvm::Value* selected_value_address = llvm_ir::EmitAllocaAtFunctionEntry(
-        llvm_ir::PrimitiveTypeToIrType(operand_element_type, &ir_builder_),
+        llvm_ir::PrimitiveTypeToIrType(operand_element_type,
+                                       ir_emitter_context_->llvm_module()),
         "selected_value_address", &ir_builder_);
     llvm::Value* selected_index_address =
         llvm_ir::EmitAllocaAtFunctionEntryWithCount(
@@ -1440,7 +1441,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     llvm::Value* operand_address =
         operand_array.EmitArrayElementAddress(operand_index, &ir_builder_);
     llvm::Value* select_return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-        llvm_ir::PrimitiveTypeToIrType(PRED, &ir_builder_),
+        llvm_ir::PrimitiveTypeToIrType(PRED,
+                                       ir_emitter_context_->llvm_module()),
         "select_return_buffer", &ir_builder_);
     TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
         *select_and_scatter->select(),
@@ -1450,8 +1452,10 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     // If the 'select' function returns false, update the selected value and the
     // index to the currently visiting operand.
     llvm::Value* cond = ir_builder_.CreateICmpNE(
-        result, llvm::ConstantInt::get(
-                    llvm_ir::PrimitiveTypeToIrType(PRED, &ir_builder_), 0),
+        result,
+        llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(
+                                   PRED, ir_emitter_context_->llvm_module()),
+                               0),
         "boolean_predicate");
     llvm_ir::LlvmIfData if_select_lhs =
         llvm_ir::EmitIfThenElse(cond, "if-select-lhs", &ir_builder_);
@@ -1877,7 +1881,8 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
   }
   ir_builder_.SetInsertPoint(ir_builder_.GetInsertBlock()->getTerminator());
-  llvm_ir::EmitTuple(GetIrArray(hlo), tuple_operand_ptrs, &ir_builder_);
+  llvm_ir::EmitTuple(GetIrArray(hlo), tuple_operand_ptrs, &ir_builder_,
+                     module_);
   return Status::OK();
 }
 

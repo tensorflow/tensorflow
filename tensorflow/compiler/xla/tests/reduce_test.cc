@@ -502,8 +502,8 @@ XLA_TEST_F(ReduceTest, AddReduce2DScalarToR0) {
   ComputationBuilder builder(client_, TestName());
   auto add = CreateScalarAddComputation(F32, &builder);
   auto scalar = builder.ConstantR0<float>(42.0);
-  auto broacasted = builder.Broadcast(scalar, {500, 500});
-  builder.Reduce(broacasted, builder.ConstantR0<float>(0.0f), add, {0, 1});
+  auto broadcasted = builder.Broadcast(scalar, {500, 500});
+  builder.Reduce(broadcasted, builder.ConstantR0<float>(0.0f), add, {0, 1});
 
   float expected = 42.0f * static_cast<float>(500 * 500);
   ComputeAndCompareR0<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -514,8 +514,8 @@ XLA_TEST_F(ReduceTest, MaxReduce2DScalarToR0) {
   ComputationBuilder builder(client_, TestName());
   auto max = CreateScalarMaxComputation(F32, &builder);
   auto scalar = builder.ConstantR0<float>(42.0);
-  auto broacasted = builder.Broadcast(scalar, {500, 500});
-  builder.Reduce(broacasted, builder.ConstantR0<float>(0.0f), max, {0, 1});
+  auto broadcasted = builder.Broadcast(scalar, {500, 500});
+  builder.Reduce(broadcasted, builder.ConstantR0<float>(0.0f), max, {0, 1});
 
   float expected = 42.0f;
   ComputeAndCompareR0<float>(&builder, expected, {}, ErrorSpec(0.0001));

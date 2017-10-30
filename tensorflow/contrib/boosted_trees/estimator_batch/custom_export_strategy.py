@@ -149,6 +149,8 @@ def convert_to_universal_format(dtec, sorted_feature_names,
           split = gtflow_node.sparse_float_binary_split_default_left.split
           node.default_direction = (
               generic_tree_model_pb2.BinaryNode.LEFT)
+          # TODO(nponomareva): adjust this id assignement when we allow multi-
+          # column sparse tensors.
           feature_id = split.feature_column + num_dense
           inequality_test = node.inequality_left_child_test
           inequality_test.feature_id.id.value = sorted_feature_names[feature_id]
@@ -159,6 +161,8 @@ def convert_to_universal_format(dtec, sorted_feature_names,
           split = gtflow_node.sparse_float_binary_split_default_right.split
           node.default_direction = (
               generic_tree_model_pb2.BinaryNode.RIGHT)
+          # TODO(nponomareva): adjust this id assignement when we allow multi-
+          # column sparse tensors.
           feature_id = split.feature_column + num_dense
           inequality_test = node.inequality_left_child_test
           inequality_test.feature_id.id.value = sorted_feature_names[feature_id]

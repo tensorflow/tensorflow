@@ -41,15 +41,17 @@ enum class TokKind {
   // Keywords
   kw_HloModule,
   kw_ENTRY,
+  kw_ROOT,
   kw_true,
   kw_false,
 
   // Typed tokens.
-  kName,     // %foo
-  kShape,    // f32[2,3]{1,0}
-  kOpcode,   // add
-  kInt,      // 42
-  kDecimal,  // 4.2
+  kName,           // %foo
+  kAttributeName,  // dimensions=
+  kShape,          // f32[2,3]{1,0}
+  kOpcode,         // add
+  kInt,            // 42
+  kDecimal,        // 4.2
 };
 
 }  // namespace tools

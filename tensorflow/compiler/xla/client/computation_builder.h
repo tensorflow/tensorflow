@@ -431,6 +431,14 @@ class ComputationBuilder {
   // of the operands is a scalar, or an explicit broadcast dimension is given
   // (see g3doc for more details).
 
+  // Enqueues a complex compose instruction onto the computation.
+  ComputationDataHandle Complex(
+      const ComputationDataHandle& real, const ComputationDataHandle& imag,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
+  // Enqueues a complex conjugate instruction onto the computation.
+  ComputationDataHandle Conj(const ComputationDataHandle& operand);
+
   // Enqueues an add instruction onto the computation.
   ComputationDataHandle Add(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
@@ -542,6 +550,11 @@ class ComputationBuilder {
   // Enqueues an abs instruction onto the computation.
   ComputationDataHandle Abs(const ComputationDataHandle& operand);
 
+  // Enqueues a atan2 instruction onto the computation.
+  ComputationDataHandle Atan2(
+      const ComputationDataHandle& y, const ComputationDataHandle& x,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
   // Enqueues an exp instruction onto the computation.
   ComputationDataHandle Exp(const ComputationDataHandle& operand);
 
@@ -569,6 +582,12 @@ class ComputationBuilder {
 
   // Enqueues a tanh instruction onto the computation.
   ComputationDataHandle Tanh(const ComputationDataHandle& operand);
+
+  // Enqueues a real-part instruction onto the computation.
+  ComputationDataHandle Real(const ComputationDataHandle& operand);
+
+  // Enqueues an imaginary-part instruction onto the computation.
+  ComputationDataHandle Imag(const ComputationDataHandle& operand);
 
   // Enqueues a float32 sqrt instruction onto the computation.
   // (float32 is specified as there is an implicit float32 0.5f constant

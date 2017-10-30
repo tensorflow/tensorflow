@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 set(tf_op_lib_names
+    "audio_ops"
     "array_ops"
     "bitwise_ops"
     "candidate_sampling_ops"
@@ -43,6 +44,7 @@ set(tf_op_lib_names
     "state_ops"
     "stateless_random_ops"
     "string_ops"
+		"summary_ops"
     "training_ops"
 )
 

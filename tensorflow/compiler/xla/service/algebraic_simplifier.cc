@@ -141,6 +141,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleConvert(HloInstruction* convert) override;
 
+  Status HandleReal(HloInstruction* real, HloInstruction* operand) override;
+  Status HandleImag(HloInstruction* imag, HloInstruction* operand) override;
+
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
 
@@ -523,11 +526,16 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
   // A/pow(B,C) => A*pow(B,-C)
   if (rhs->opcode() == HloOpcode::kPower) {
     VLOG(10) << "transform [A/pow(B,C) => A*pow(B,-C)]: " << divide->ToString();
+    // The output shape of the created negate operator should be the same as the
+    // input.
+    const Shape& negate_shape = rhs->operand(1)->shape();
     HloInstruction* negate =
         computation_->AddInstruction(HloInstruction::CreateUnary(
-            divide->shape(), HloOpcode::kNegate, rhs->mutable_operand(1)));
+            negate_shape, HloOpcode::kNegate, rhs->mutable_operand(1)));
+    // And the power operator should retain the output shape of the old one.
+    const Shape& new_power_shape = rhs->shape();
     HloInstruction* new_power = computation_->AddInstruction(
-        HloInstruction::CreateBinary(divide->shape(), HloOpcode::kPower,
+        HloInstruction::CreateBinary(new_power_shape, HloOpcode::kPower,
                                      rhs->mutable_operand(0), negate));
     return ReplaceWithNewInstruction(
         divide, HloInstruction::CreateBinary(
@@ -958,6 +966,24 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   PrimitiveType dest_type = convert->shape().element_type();
   if (src_type == dest_type) {
     return ReplaceInstruction(convert, convert->mutable_operand(0));
+  }
+  return Status::OK();
+}
+
+// Real(Complex(r, i)) -> r
+Status AlgebraicSimplifierVisitor::HandleReal(HloInstruction* real,
+                                              HloInstruction* operand) {
+  if (operand->opcode() == HloOpcode::kComplex) {
+    return ReplaceInstruction(real, operand->mutable_operand(0));
+  }
+  return Status::OK();
+}
+
+// Imag(Complex(r, i)) -> i
+Status AlgebraicSimplifierVisitor::HandleImag(HloInstruction* imag,
+                                              HloInstruction* operand) {
+  if (operand->opcode() == HloOpcode::kComplex) {
+    return ReplaceInstruction(imag, operand->mutable_operand(1));
   }
   return Status::OK();
 }
@@ -1936,7 +1962,7 @@ Status AlgebraicSimplifierVisitor::HandleWhile(HloInstruction* while_op) {
     return Status::OK();
   }
 
-  // Remove while loops with static trip count of 1.
+  // Remove while loops with static trip count of 0.
   optional<int64> trip_count = GetLoopTripCount(while_op);
   if (trip_count && *trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
@@ -1951,8 +1977,10 @@ Status AlgebraicSimplifierVisitor::HandleWhile(HloInstruction* while_op) {
     changed_ = true;
     return Status::OK();
   }
+
+  // Transform while loops with static trip count of 1 into a call op, then
+  // inline the call.
   if (trip_count && *trip_count == 1) {
-    // Transform the while loop into a call op, then inline the call.
     auto computation = while_op->parent();
     auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
         while_op->shape(), while_op->operands(), while_op->while_body()));

@@ -143,12 +143,13 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":distort_image_ops",
+        ":single_image_random_dot_stereograms_py",
         "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:util",
     ],
 )
 

@@ -85,7 +85,7 @@ class ReadVariableOp : public OpKernel {
                 errors::NotFound(
                     "Error while reading resource variable ", handle.name(),
                     " from Container: ", handle.container(),
-                    ". This could mean that the variable was not initialized. ",
+                    ". This could mean that the variable was uninitialized. ",
                     status.ToString()));
 
     core::ScopedUnref s(variable);

@@ -41,6 +41,12 @@ bool PotentiallyImplementedAsEigenConvolution(
       ShapeUtil::HasZeroElements(kernel_shape)) {
     return false;
   }
+  // TODO(b/65408531): Explore using Eigen dot for complex64 type.
+  if (ShapeUtil::ElementIsComplex(input_shape) ||
+      ShapeUtil::ElementIsComplex(kernel_shape)) {
+    return false;
+  }
+
   const ConvolutionDimensionNumbers& dnums =
       convolution.convolution_dimension_numbers();
   // Only 1D and 2D convolutions are supported at the moment.

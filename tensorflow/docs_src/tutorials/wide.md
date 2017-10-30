@@ -383,7 +383,7 @@ API:
 ```python
 # set num_epochs to None to get infinite stream of data.
 m.train(
-    input_fn=input_fn(train_file_name, num_epochs=None, shuffle=True),
+    input_fn=input_fn(train_file.name, num_epochs=None, shuffle=True),
     steps=train_steps)
 ```
 
@@ -392,7 +392,7 @@ the labels of the holdout data:
 
 ```python
 results = m.evaluate(
-    input_fn=input_fn(test_file_name, num_epochs=1, shuffle=False),
+    input_fn=input_fn(test_file.name, num_epochs=1, shuffle=False),
     steps=None)
 print("model directory = %s" % model_dir)
 for key in sorted(results):

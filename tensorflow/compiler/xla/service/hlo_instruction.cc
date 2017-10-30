@@ -219,10 +219,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSort:
@@ -241,26 +243,28 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   // Only certain opcodes are supported with CreateBinary: opcodes of binary
   // instructions with no auxiliary fields.
   switch (opcode) {
-    case (HloOpcode::kAdd):
-    case (HloOpcode::kDivide):
-    case (HloOpcode::kDot):
-    case (HloOpcode::kEq):
-    case (HloOpcode::kGe):
-    case (HloOpcode::kGt):
-    case (HloOpcode::kLe):
-    case (HloOpcode::kLt):
-    case (HloOpcode::kMaximum):
-    case (HloOpcode::kMinimum):
-    case (HloOpcode::kMultiply):
-    case (HloOpcode::kNe):
-    case (HloOpcode::kPower):
-    case (HloOpcode::kRemainder):
-    case (HloOpcode::kSubtract):
-    case (HloOpcode::kAnd):
-    case (HloOpcode::kOr):
-    case (HloOpcode::kShiftLeft):
-    case (HloOpcode::kShiftRightArithmetic):
-    case (HloOpcode::kShiftRightLogical):
+    case HloOpcode::kAdd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kDivide:
+    case HloOpcode::kComplex:
+    case HloOpcode::kDot:
+    case HloOpcode::kEq:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kLe:
+    case HloOpcode::kLt:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNe:
+    case HloOpcode::kPower:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
       break;
     default:
       LOG(FATAL) << "Invalid binary instruction opcode "
@@ -716,10 +720,12 @@ void HloInstruction::MergeFusionInstructionIntoMultiOutput(
 
   // Fuse the root instruction and generate multiple outputs.
   FuseInstructionIntoMultiOutput(unfused_root);
+  TF_CHECK_OK(unfused_root->parent()->RemoveInstruction(unfused_root));
   // The rest instructions are of normal fusing.
   for (int64 i = 1; i < unfused_instructions.size(); i++) {
     auto instruction = unfused_instructions[i];
     FuseInstruction(instruction);
+    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
 }
 
@@ -976,11 +982,13 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSort:
@@ -990,6 +998,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     // Binary ops.
     case HloOpcode::kAdd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
     case HloOpcode::kSubtract:
@@ -1154,7 +1164,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
-    case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
@@ -1402,10 +1411,12 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kAtan2:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kComplex:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kCrossReplicaSum:
@@ -1416,6 +1427,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kFloor:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
@@ -1429,6 +1441,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
     case HloOpcode::kPower:
+    case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
@@ -1539,7 +1552,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
-    case HloOpcode::kUpdate:
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
       return false;
@@ -1853,16 +1865,20 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   }
 
   if (opcode() == HloOpcode::kWhile) {
-    extra.push_back(StrCat("condition=", while_condition()->name()));
-    extra.push_back(StrCat("body=", while_body()->name()));
+    extra.push_back(StrCat("condition=%", while_condition()->name()));
+    extra.push_back(StrCat("body=%", while_body()->name()));
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
-    extra.push_back(StrCat("select=", select()->name()));
-    extra.push_back(StrCat("scatter=", scatter()->name()));
+    extra.push_back(StrCat("select=%", select()->name()));
+    extra.push_back(StrCat("scatter=%", scatter()->name()));
+  } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
+             opcode() == HloOpcode::kReduceWindow ||
+             opcode() == HloOpcode::kReduce) {
+    extra.push_back(StrCat("to_apply=%", to_apply()->name()));
   } else if (!called_computations().empty()) {
     extra.push_back(StrCat(
         "calls=", Join(called_computations(), ", ",
                        [](string* out, const HloComputation* computation) {
-                         StrAppend(out, computation->name());
+                         StrAppend(out, "%", computation->name());
                        })));
   }
 
@@ -1872,6 +1888,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
 
   if (opcode() == HloOpcode::kGetTupleElement) {
     extra.push_back(StrCat("index=", tuple_index()));
+  }
+  if (device_assignment_.has_device()) {
+    extra.push_back(StrCat("device=", device_assignment_.device()));
   }
   if (!control_successors_.empty()) {
     extra.push_back(StrCat(
@@ -2110,6 +2129,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this, operands_[0]);
+    case HloOpcode::kAtan2:
+      return visitor->HandleAtan2(this, operands_[0], operands_[1]);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
     case HloOpcode::kBatchNormTraining:
@@ -2133,6 +2154,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kLt:
     case HloOpcode::kNe:
       return visitor->HandleCompare(this, opcode_, operands_[0], operands_[1]);
+    case HloOpcode::kComplex:
+      return visitor->HandleComplex(this, operands_[0], operands_[1]);
     case HloOpcode::kAdd:
       return visitor->HandleAdd(this, operands_[0], operands_[1]);
     case HloOpcode::kDivide:
@@ -2207,6 +2230,10 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleCos(this, operands_[0]);
     case HloOpcode::kSin:
       return visitor->HandleSin(this, operands_[0]);
+    case HloOpcode::kReal:
+      return visitor->HandleReal(this, operands_[0]);
+    case HloOpcode::kImag:
+      return visitor->HandleImag(this, operands_[0]);
     case HloOpcode::kIsFinite:
       return visitor->HandleIsFinite(this, operands_[0]);
     case HloOpcode::kNot:
@@ -2256,7 +2283,6 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     // These opcodes are not handled here.
     case HloOpcode::kIndex:
     case HloOpcode::kTrace:
-    case HloOpcode::kUpdate:
       break;
   }
   return Unimplemented("unhandled HloOpcode for DfsHloVisitor: %s",
@@ -2299,7 +2325,7 @@ static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
   //
   // We need to keep track of both the id and the instruction because
   // instructions can get deleted while they are on the stack, so we
-  // can't always use the (potentiall dead) instruction object to grab
+  // can't always use the (potentially dead) instruction object to grab
   // its id.
   DFSStack dfs_stack;
   dfs_stack.emplace_back(root->unique_id(), root);
@@ -2499,6 +2525,7 @@ bool HloInstruction::IsElementwiseBinary() const {
     // Binary elementwise operations. If you update this, please update
     // IsElementwise() accordingly.
     case HloOpcode::kAdd:
+    case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kGe:
@@ -2531,6 +2558,7 @@ bool HloInstruction::IsElementwise() const {
 
     // Unary elementwise operations.
     case HloOpcode::kAbs:
+    case HloOpcode::kAtan2:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
@@ -2538,10 +2566,12 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -2551,6 +2581,7 @@ bool HloInstruction::IsElementwise() const {
     // Binary elementwise operations, the same as in IsElementwiseBinary().
     // If you update this, please update IsElementwiseBinary() accordingly.
     case HloOpcode::kAdd:
+    case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kGe:
@@ -2659,10 +2690,10 @@ class HloInstruction::FusionReusesParamElements {
  public:
   using UseKind = HloInstruction::UseKind;
 
-  // We could rather iterate backwards thru fused_instructions_ here, as it is
-  // in reverse postorder, and compute whether each fused instruction reuses
-  // the value of this parameter, which would save stack space but not allow
-  // us to finish early if we find a reuse.
+  // We could rather iterate backwards through fused_instructions_ here, as it
+  // is in reverse postorder, and compute whether each fused instruction reuses
+  // the value of this parameter, which would save stack space but not allow us
+  // to finish early if we find a reuse.
   static UseKind Compute(int64 i, const HloInstruction& hlo) {
     tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> memoization_cache;
     return ComputeInternal(i, hlo, &memoization_cache);

@@ -76,8 +76,7 @@ Status InlinerVisitor::HandleMap(
   // Only inlining functions that are simply a single operation until a better
   // profitability model for inlining is defined.
   if (hlo_query::AllOperandsAreParameters(root)) {
-    if (root.opcode() == HloOpcode::kUpdate ||
-        root.opcode() == HloOpcode::kFusion ||
+    if (root.opcode() == HloOpcode::kFusion ||
         root.opcode() == HloOpcode::kIndex ||
         root.opcode() == HloOpcode::kParameter ||
         root.opcode() == HloOpcode::kTrace) {

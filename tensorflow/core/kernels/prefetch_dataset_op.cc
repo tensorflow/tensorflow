@@ -59,7 +59,6 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
     Dataset(const DatasetBase* input, int64 buffer_size,
             IteratorContext::Params ctx_params)
         : input_(input),
-
           buffer_size_(buffer_size),
           ctx_params_(std::move(ctx_params)) {
       input_->Ref();

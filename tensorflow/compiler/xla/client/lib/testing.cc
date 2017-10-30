@@ -79,6 +79,24 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape) {
           }));
       break;
     }
+    case S64: {
+      std::uniform_int_distribution<int64> generator(
+          std::numeric_limits<int64>::lowest(),
+          std::numeric_limits<int64>::max());
+      TF_CHECK_OK(literal->Populate<int64>(
+          [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
+            return generator(engine);
+          }));
+      break;
+    }
+    case PRED: {
+      std::uniform_int_distribution<int> generator(0, 1);
+      TF_CHECK_OK(literal->Populate<bool>(
+          [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
+            return generator(engine);
+          }));
+      break;
+    }
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
                            ShapeUtil::HumanString(shape).c_str());

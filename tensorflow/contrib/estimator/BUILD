@@ -134,6 +134,7 @@ py_library(
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/estimator:util",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
     ],
@@ -154,6 +155,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
@@ -188,7 +190,8 @@ py_test(
     deps = [
         ":logit_fns",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:session",
         "//tensorflow/python/estimator:model_fn",
     ],
 )

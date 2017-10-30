@@ -285,11 +285,12 @@ f: A function mapping elements of `input_dataset`, concatenated with
   `output_types` and `output_shapes`.
 )doc");
 
-REGISTER_OP("SloppyInterleaveDataset")
+REGISTER_OP("ParallelInterleaveDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
     .Input("cycle_length: int64")
     .Input("block_length: int64")
+    .Input("sloppy: bool")
     .Output("handle: variant")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
@@ -598,24 +599,6 @@ This operation may be executed multiple times. Each execution will reset the
 iterator in `iterator` to the first element of `dataset`.
 )doc");
 
-REGISTER_OP("SaveIterator")
-    .Input("iterator: resource")
-    .Input("path: string")
-    .SetShapeFn(shape_inference::NoOutputs)
-    .Doc(R"doc(
-Saves the state of the `iterator` at `path`.
-
-This state can be restored using "RestoreIterator".
-)doc");
-
-REGISTER_OP("RestoreIterator")
-    .Input("iterator: resource")
-    .Input("path: string")
-    .SetShapeFn(shape_inference::NoOutputs)
-    .Doc(R"doc(
-Restores the state of the `iterator` from the checkpoint saved at `path` using "SaveIterator".
-)doc");
-
 REGISTER_OP("OneShotIterator")
     .Output("handle: resource")
     .Attr("dataset_factory: func")
@@ -735,6 +718,30 @@ output_types: If specified, defines the type of each tuple component in an
   element produced by the resulting iterator.
 output_shapes: If specified, defines the shape of each tuple component in an
   element produced by the resulting iterator.
+)doc");
+
+REGISTER_OP("SerializeIterator")
+    .Input("resource_handle: resource")
+    .Output("serialized: variant")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Converts the given `resource_handle` representing an iterator to a variant tensor.
+
+resource_handle: A handle to an iterator resource.
+serialized: A variant tensor storing the state of the iterator contained in the
+  resource.
+)doc");
+
+REGISTER_OP("DeserializeIterator")
+    .Input("resource_handle: resource")
+    .Input("serialized: variant")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Converts the given variant tensor to an iterator and stores it in the given resource.
+
+resource_handle: A handle to an iterator resource.
+serialized: A variant tensor storing the state of the iterator contained in the
+  resource.
 )doc");
 
 }  // namespace tensorflow
