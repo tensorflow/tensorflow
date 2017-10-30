@@ -22,7 +22,7 @@ Each element in the Tensor has the same data type, and the data type is always
 known. The shape (that is, the number of dimensions it has and the size of each
 dimension) might be only partially known. Most operations produce tensors of
 fully-known shapes if the shapes of their inputs are also fully known, but in
-some cases it's only possible to find the shape of a tensor at graph execution
+some cases, it's only possible to find the shape of a tensor at graph execution
 time.
 
 Some types of tensors are special, and these will be covered in other
@@ -36,7 +36,7 @@ units of the Programmer's guide. The main ones are:
 With the exception of `tf.Variable`, the value of a tensor is immutable, which
 means that in the context of a single execution tensors only have a single
 value. However, evaluating the same tensor twice can return different values;
-for example that tensor can be the result of reading data from disk, or
+for example, that tensor can be the result of reading data from disk, or
 generating a random number.
 
 ## Rank
@@ -312,7 +312,7 @@ print t  # This will print the symbolic tensor when the graph is being built.
 
 This code prints the `tf.Tensor` object (which represents deferred computation)
 and not its value. Instead, TensorFlow provides the `tf.Print` operation, which
-returns its first tensor argument unchanged while printing the set of
+returns it's first tensor argument unchanged while printing the set of
 `tf.Tensor`s it is passed as the second argument.
 
 To correctly use `tf.Print` its return value must be used. See the example below
