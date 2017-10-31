@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -107,6 +108,18 @@ class AtrousConvolutionTest(test.TestCase):
       self.assertAllClose(y1_eval, y2_eval, rtol=1e-2, atol=1e-2)
 
     add_check(check, y1, y2)
+
+  def test_unknown_spatial_dims_for_channel_last_format(self):
+    x = array_ops.placeholder(dtypes.float32, [1, None, None, 10])
+    w = array_ops.zeros([3, 3, 10, 20])
+    y = nn_ops.convolution(x, w, "VALID", dilation_rate=[2, 2], data_format="NHWC")
+    self.assertEqual(y.shape.as_list(), [1, None, None, 20])
+
+  def test_unknown_spatial_dims_for_channel_first_format(self):
+    x = array_ops.placeholder(dtypes.float32, [1, 10, None, None])
+    w = array_ops.zeros([3, 3, 10, 20])
+    y = nn_ops.convolution(x, w, "VALID", dilation_rate=[2, 2], data_format="NCHW")
+    self.assertEqual(y.shape.as_list(), [1, 20, None, None])
 
   @test_util.run_in_graph_and_eager_modes()
   def testAtrousConvolution2D(self):
