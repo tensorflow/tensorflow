@@ -48,8 +48,6 @@ class RdmaMgr {
   RdmaAdapter* rdma_adapter_;
   typedef std::unordered_map<string, RdmaChannel*> ChannelTable;
   ChannelTable channel_table_;
-  int PostSend(RdmaChannel* rc, struct ibv_sge list);
-  int PostRecv(RdmaChannel* rc, struct ibv_sge list);
   TF_DISALLOW_COPY_AND_ASSIGN(RdmaMgr);
 };
 

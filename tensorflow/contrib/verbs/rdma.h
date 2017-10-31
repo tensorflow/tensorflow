@@ -162,6 +162,15 @@ class RdmaChannel {
   void RemoveRecvCallback(const string& key);
   void RunRecvCallback(const string& key);
   static const int kNumMessageBuffers = 4;
+  static const int PingRecvWrid = 0;
+
+ private:
+  static const int PingBuffSize = 1024;
+  char ping_buff_[PingBuffSize];
+  struct ibv_mr* mr_;
+  struct ibv_sge ping_sge_list_;
+  int PingPostRecv();
+  int PingPostSend();
 
  protected:
   const RdmaAdapter* adapter_;
