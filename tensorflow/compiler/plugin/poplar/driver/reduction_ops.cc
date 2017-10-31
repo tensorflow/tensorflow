@@ -107,10 +107,10 @@ IsPoplibsPool(const HloInstruction* inst,
       window.dimensions(0).stride() != 1 ||
       window.dimensions(0).padding_low() != 0 ||
       window.dimensions(0).padding_high() != 0 ||
-      window.dimensions(3).size() != 1 ||
-      window.dimensions(3).stride() != 1 ||
-      window.dimensions(3).padding_low() != 0 ||
-      window.dimensions(3).padding_high() != 0) {
+      window.dimensions(1).size() != 1 ||
+      window.dimensions(1).stride() != 1 ||
+      window.dimensions(1).padding_low() != 0 ||
+      window.dimensions(1).padding_high() != 0) {
     return false;
   }
 
@@ -419,20 +419,20 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
 
     const Window& window(pooling_inst->window());
     std::vector<std::size_t> kernel_shape = {
-            (std::size_t)window.dimensions(1).size(),
-            (std::size_t)window.dimensions(2).size()
+            (std::size_t)window.dimensions(2).size(),
+            (std::size_t)window.dimensions(3).size()
     };
     std::vector<unsigned> stride = {
-            (unsigned)window.dimensions(1).stride(),
-            (unsigned)window.dimensions(2).stride()
+            (unsigned)window.dimensions(2).stride(),
+            (unsigned)window.dimensions(3).stride()
     };
     std::vector<int> padding_lower = {
-            (int)window.dimensions(1).padding_low(),
-            (int)window.dimensions(2).padding_low()
+            (int)window.dimensions(2).padding_low(),
+            (int)window.dimensions(3).padding_low()
     };
     std::vector<int> padding_upper = {
-            (int)window.dimensions(1).padding_high(),
-            (int)window.dimensions(2).padding_high()
+            (int)window.dimensions(2).padding_high(),
+            (int)window.dimensions(3).padding_high()
     };
 
     out = popnn::pooling::pool(graph, reduction_type,
