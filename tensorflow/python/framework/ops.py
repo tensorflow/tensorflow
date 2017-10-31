@@ -2056,6 +2056,19 @@ class Operation(object):
         self._traceback,
         include_func_start_lineno=True)
 
+  def _set_attr(self, attr_name, attr_value):
+    """Private method used to set an attribute in the node_def."""
+    if not _USE_C_API:
+      assert "_set_attr not supported with _USE_C_API == False"
+      return
+    buf = c_api.TF_NewBufferFromString(
+        compat.as_bytes(attr_value.SerializeToString()))
+    try:
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf, status)  # pylint: disable=protected-access
+    finally:
+      c_api.TF_DeleteBuffer(buf)
+
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
 
@@ -2068,6 +2081,20 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
+    if _USE_C_API:
+      try:
+        # TODO(b/65162920): remove this try/except block when all attrs are
+        # implemented to use the _set_attr method instead of node_def.attr.
+        with errors.raise_exception_on_not_ok_status() as status:
+          metadata = c_api.TF_OperationGetAttrMetadata(self._c_op, name, status)
+          if metadata.type == c_api.TF_ATTR_INT and metadata.is_list == 0:
+            return c_api.TF_OperationGetAttrInt(self._c_op, name, status)
+      except errors.InvalidArgumentError:
+        # Colocation ops are failing to find attrs begininning with "_*". They
+        # should fall through to the not-CAPI logic until the attribute is set
+        # via the C-API always.
+        pass
+
     fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
     if name not in self._node_def.attr:
       raise ValueError("No attr named '" + name + "' in " + str(self._node_def))

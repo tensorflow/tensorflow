@@ -357,36 +357,58 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual("<tf.Operation 'op1' type=None>", repr(op))
 
   def testGetAttr(self):
-    # TODO(skyewm): implement get_attr with C API
-    if ops._USE_C_API: return
+    # TODO(b/65162920): implement all tests for get_attr with C API
+    if ops._USE_C_API:
+      op = test_ops.int_attr().op
+      self.assertEqual(op.get_attr("foo"), 1)
 
-    list_value = attr_value_pb2.AttrValue.ListValue()
-    list_value.type.append(types_pb2.DT_STRING)
-    list_value.type.append(types_pb2.DT_DOUBLE)
-    op = ops.Operation(
-        ops._NodeDef(
-            "None",
-            "op1",
-            attrs={
-                "value": attr_value_pb2.AttrValue(i=32),
-                "dtype": attr_value_pb2.AttrValue(type=types_pb2.DT_INT32),
-                "list": attr_value_pb2.AttrValue(list=list_value),
-                "func": attr_value_pb2.AttrValue(
-                    func=attr_value_pb2.NameAttrList())
-            }), ops.Graph(), [], [dtypes.int32])
-    self.assertEqual(32, op.get_attr("value"))
-    self.assertEqual("", op.get_attr("func").name)
+      op_str = test_ops.string_list_attr(a=["z"], b="y")
+      self.assertEqual(op_str.get_attr("a"), [b"z"])
+      self.assertEqual(op_str.get_attr("b"), b"y")
 
-    d = op.get_attr("dtype")
-    # First check that d is a DType, because the assertEquals will
-    # work no matter what since DType overrides __eq__
-    self.assertIsInstance(d, dtypes.DType)
-    self.assertEqual(dtypes.int32, d)
+    else:
+      list_value = attr_value_pb2.AttrValue.ListValue()
 
-    l = op.get_attr("list")
-    for x in l:
-      self.assertIsInstance(x, dtypes.DType)
-    self.assertEqual([dtypes.string, dtypes.double], l)
+      list_value.type.append(types_pb2.DT_STRING)
+      list_value.type.append(types_pb2.DT_DOUBLE)
+      op = ops.Operation(
+          ops._NodeDef(
+              "None",
+              "op1",
+              attrs={
+                  "value":
+                      attr_value_pb2.AttrValue(i=32),
+                  "dtype":
+                      attr_value_pb2.AttrValue(type=types_pb2.DT_INT32),
+                  "list":
+                      attr_value_pb2.AttrValue(list=list_value),
+                  "func":
+                      attr_value_pb2.AttrValue(
+                          func=attr_value_pb2.NameAttrList())
+              }), ops.Graph(), [], [dtypes.int32])
+      self.assertEqual(32, op.get_attr("value"))
+      self.assertEqual("", op.get_attr("func").name)
+
+      d = op.get_attr("dtype")
+      # First check that d is a DType, because the assertEquals will
+      # work no matter what since DType overrides __eq__
+      self.assertIsInstance(d, dtypes.DType)
+      self.assertEqual(dtypes.int32, d)
+
+      l = op.get_attr("list")
+      for x in l:
+        self.assertIsInstance(x, dtypes.DType)
+      self.assertEqual([dtypes.string, dtypes.double], l)
+
+  # TODO(b/65162920): remove this test when users who are directly mutating the
+  # node_def have been updated to proper usage.
+  def testSetAttr(self):
+    if not ops._USE_C_API:
+      return
+    op = test_ops.int_attr().op
+    op._set_attr("foo", attr_value_pb2.AttrValue(i=2))
+    # TODO(skyewm): add node_def check
+    self.assertEqual(op.get_attr("foo"), 2)
 
   # TODO(nolivia): test all error cases
   def testAddControlInput(self):
