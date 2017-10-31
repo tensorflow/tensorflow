@@ -1070,7 +1070,7 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     lines.push_back(Printf("[%p]", instr));
   }
   if (profile_ != nullptr) {
-    double hlo_cycles_executed = profile_->GetProfileResult(*instr);
+    double hlo_cycles_executed = profile_->GetCyclesTakenBy(*instr);
     double total_cycles_executed =
         profile_->total_cycles_executed(*instr->parent());
     if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {

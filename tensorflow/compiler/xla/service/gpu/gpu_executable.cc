@@ -88,7 +88,7 @@ class HloExecutionProfiler {
     if (do_profile_) {
       stream_->ThenStopTimer(per_op_timer_.get());
       stream_->BlockHostUntilDone();
-      profile_->AddProfileResult(
+      profile_->SetCyclesTakenBy(
           hlo_instruction, per_op_timer_->Nanoseconds() * clock_rate_ghz_);
     }
   }
