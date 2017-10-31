@@ -158,9 +158,12 @@ def _assert_nan(test_case, actual):
   test_case.assertTrue(math.isnan(actual), 'Expected NAN, got %s.' % actual)
 
 
-def _assert_local_variables(test_case, expected):
+def _assert_metric_variables(test_case, expected):
   test_case.assertEquals(
       set(expected), set(v.name for v in variables.local_variables()))
+  test_case.assertEquals(
+      set(expected),
+      set(v.name for v in ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
 
 
 def _test_values(shape):
@@ -174,7 +177,7 @@ class MeanTest(test.TestCase):
 
   def testVars(self):
     metrics.mean(array_ops.ones([4, 3]))
-    _assert_local_variables(self, ('mean/count:0', 'mean/total:0'))
+    _assert_metric_variables(self, ('mean/count:0', 'mean/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -340,8 +343,8 @@ class MeanTensorTest(test.TestCase):
 
   def testVars(self):
     metrics.mean_tensor(array_ops.ones([4, 3]))
-    _assert_local_variables(self, ('mean/total_tensor:0',
-                                   'mean/count_tensor:0'))
+    _assert_metric_variables(self,
+                             ('mean/total_tensor:0', 'mean/count_tensor:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -506,8 +509,8 @@ class AccuracyTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         name='my_accuracy')
-    _assert_local_variables(self, ('my_accuracy/count:0',
-                                   'my_accuracy/total:0'))
+    _assert_metric_variables(self,
+                             ('my_accuracy/count:0', 'my_accuracy/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -690,8 +693,8 @@ class PrecisionTest(test.TestCase):
   def testVars(self):
     metrics.precision(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('precision/false_positives/count:0',
-                                   'precision/true_positives/count:0'))
+    _assert_metric_variables(self, ('precision/false_positives/count:0',
+                                    'precision/true_positives/count:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -876,8 +879,9 @@ class RecallTest(test.TestCase):
   def testVars(self):
     metrics.recall(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('recall/false_negatives/count:0',
-                                   'recall/true_positives/count:0'))
+    _assert_metric_variables(
+        self,
+        ('recall/false_negatives/count:0', 'recall/true_positives/count:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -999,9 +1003,9 @@ class AUCTest(test.TestCase):
   def testVars(self):
     metrics.auc(predictions=array_ops.ones((10, 1)),
                 labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self,
-                            ('auc/true_positives:0', 'auc/false_negatives:0',
-                             'auc/false_positives:0', 'auc/true_negatives:0'))
+    _assert_metric_variables(self,
+                             ('auc/true_positives:0', 'auc/false_negatives:0',
+                              'auc/false_positives:0', 'auc/true_negatives:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1256,11 +1260,11 @@ class SpecificityAtSensitivityTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         sensitivity=0.7)
-    _assert_local_variables(self,
-                            ('specificity_at_sensitivity/true_positives:0',
-                             'specificity_at_sensitivity/false_negatives:0',
-                             'specificity_at_sensitivity/false_positives:0',
-                             'specificity_at_sensitivity/true_negatives:0'))
+    _assert_metric_variables(self,
+                             ('specificity_at_sensitivity/true_positives:0',
+                              'specificity_at_sensitivity/false_negatives:0',
+                              'specificity_at_sensitivity/false_positives:0',
+                              'specificity_at_sensitivity/true_negatives:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1393,11 +1397,11 @@ class SensitivityAtSpecificityTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         specificity=0.7)
-    _assert_local_variables(self,
-                            ('sensitivity_at_specificity/true_positives:0',
-                             'sensitivity_at_specificity/false_negatives:0',
-                             'sensitivity_at_specificity/false_positives:0',
-                             'sensitivity_at_specificity/true_negatives:0'))
+    _assert_metric_variables(self,
+                             ('sensitivity_at_specificity/true_positives:0',
+                              'sensitivity_at_specificity/false_negatives:0',
+                              'sensitivity_at_specificity/false_positives:0',
+                              'sensitivity_at_specificity/true_negatives:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -1512,9 +1516,10 @@ class PrecisionRecallThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0, 0.5, 1.0])
-    _assert_local_variables(self, (
+    _assert_metric_variables(self, (
         'precision_at_thresholds/true_positives:0',
-        'precision_at_thresholds/false_positives:0',))
+        'precision_at_thresholds/false_positives:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2640,8 +2645,8 @@ class MeanAbsoluteErrorTest(test.TestCase):
   def testVars(self):
     metrics.mean_absolute_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('mean_absolute_error/count:0',
-                                   'mean_absolute_error/total:0'))
+    _assert_metric_variables(
+        self, ('mean_absolute_error/count:0', 'mean_absolute_error/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2701,8 +2706,8 @@ class MeanRelativeErrorTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         normalizer=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('mean_relative_error/count:0',
-                                   'mean_relative_error/total:0'))
+    _assert_metric_variables(
+        self, ('mean_relative_error/count:0', 'mean_relative_error/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2784,8 +2789,8 @@ class MeanSquaredErrorTest(test.TestCase):
   def testVars(self):
     metrics.mean_squared_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('mean_squared_error/count:0',
-                                   'mean_squared_error/total:0'))
+    _assert_metric_variables(
+        self, ('mean_squared_error/count:0', 'mean_squared_error/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -2960,8 +2965,9 @@ class RootMeanSquaredErrorTest(test.TestCase):
   def testVars(self):
     metrics.root_mean_squared_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
-    _assert_local_variables(self, ('root_mean_squared_error/count:0',
-                                   'root_mean_squared_error/total:0'))
+    _assert_metric_variables(
+        self,
+        ('root_mean_squared_error/count:0', 'root_mean_squared_error/total:0'))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3054,9 +3060,10 @@ class MeanCosineDistanceTest(test.TestCase):
         predictions=array_ops.ones((10, 3)),
         labels=array_ops.ones((10, 3)),
         dim=1)
-    _assert_local_variables(self, (
+    _assert_metric_variables(self, (
         'mean_cosine_distance/count:0',
-        'mean_cosine_distance/total:0',))
+        'mean_cosine_distance/total:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3191,9 +3198,10 @@ class PcntBelowThreshTest(test.TestCase):
 
   def testVars(self):
     metrics.percentage_below(values=array_ops.ones((10,)), threshold=2)
-    _assert_local_variables(self, (
+    _assert_metric_variables(self, (
         'percentage_below_threshold/count:0',
-        'percentage_below_threshold/total:0',))
+        'percentage_below_threshold/total:0',
+    ))
 
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
@@ -3263,7 +3271,7 @@ class MeanIOUTest(test.TestCase):
         predictions=array_ops.ones([10, 1]),
         labels=array_ops.ones([10, 1]),
         num_classes=2)
-    _assert_local_variables(self, ('mean_iou/total_confusion_matrix:0',))
+    _assert_metric_variables(self, ('mean_iou/total_confusion_matrix:0',))
 
   def testMetricsCollections(self):
     my_collection_name = '__metrics__'
@@ -3566,7 +3574,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
         predictions=array_ops.ones([10, 1]),
         labels=array_ops.ones([10, 1]),
         num_classes=2)
-    _assert_local_variables(self, ('mean_accuracy/total_confusion_matrix:0',))
+    _assert_metric_variables(self, ('mean_accuracy/total_confusion_matrix:0',))
 
   def testMetricsCollections(self):
     my_collection_name = '__metrics__'
@@ -3806,7 +3814,7 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0.15, 0.5, 0.85])
-    _assert_local_variables(self, ('false_negatives/false_negatives:0',))
+    _assert_metric_variables(self, ('false_negatives/false_negatives:0',))
 
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
@@ -3855,7 +3863,7 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0.15, 0.5, 0.85])
-    _assert_local_variables(self, ('false_positives/false_positives:0',))
+    _assert_metric_variables(self, ('false_positives/false_positives:0',))
 
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
@@ -3906,7 +3914,7 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0.15, 0.5, 0.85])
-    _assert_local_variables(self, ('true_negatives/true_negatives:0',))
+    _assert_metric_variables(self, ('true_negatives/true_negatives:0',))
 
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
@@ -3955,7 +3963,7 @@ class TruePositivesAtThresholdsTest(test.TestCase):
         predictions=array_ops.ones((10, 1)),
         labels=array_ops.ones((10, 1)),
         thresholds=[0.15, 0.5, 0.85])
-    _assert_local_variables(self, ('true_positives/true_positives:0',))
+    _assert_metric_variables(self, ('true_positives/true_positives:0',))
 
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),

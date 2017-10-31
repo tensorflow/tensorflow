@@ -4897,6 +4897,9 @@ class GraphKeys(object):
   # Key to collect local variables that are local to the machine and are not
   # saved/restored.
   LOCAL_VARIABLES = "local_variables"
+  # Key to collect local variables which are used to accumulate interal state
+  # to be used in tf.metrics.*.
+  METRIC_VARIABLES = "metric_variables"
   # Key to collect model variables defined by layers.
   MODEL_VARIABLES = "model_variables"
   # Key to collect Variable objects that will be trained by the
@@ -4961,6 +4964,7 @@ class GraphKeys(object):
   _VARIABLE_COLLECTIONS = [
       GLOBAL_VARIABLES,
       LOCAL_VARIABLES,
+      METRIC_VARIABLES,
       MODEL_VARIABLES,
       TRAINABLE_VARIABLES,
       MOVING_AVERAGE_VARIABLES,

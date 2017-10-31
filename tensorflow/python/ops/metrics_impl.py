@@ -35,8 +35,8 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
 
 
-def _local_variable(initial_value, validate_shape=True, name=None):
-  """Create variable and add it to `GraphKeys.LOCAL_VARIABLES` collection.
+def metric_variable(initial_value, validate_shape=True, name=None):
+  """Create variable in `GraphKeys.(LOCAL|METRIC_VARIABLES`) collections.
 
   Args:
     initial_value: See variables.Variable.__init__.
@@ -46,9 +46,13 @@ def _local_variable(initial_value, validate_shape=True, name=None):
     New variable.
   """
   return variable_scope.variable(
-      initial_value, trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      validate_shape=validate_shape, name=name)
+      initial_value,
+      trainable=False,
+      collections=[
+          ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
+      ],
+      validate_shape=validate_shape,
+      name=name)
 
 
 def _remove_squeezable_dimensions(predictions, labels, weights):
@@ -176,31 +180,6 @@ def _maybe_expand_labels(labels, predictions):
         lambda: labels)
 
 
-def _create_local(name, shape, collections=None, validate_shape=True,
-                  dtype=dtypes.float32):
-  """Creates a new local variable.
-
-  Args:
-    name: The name of the new or existing variable.
-    shape: Shape of the new or existing variable.
-    collections: A list of collection names to which the Variable will be added.
-    validate_shape: Whether to validate the shape of the variable.
-    dtype: Data type of the variables.
-
-  Returns:
-    The created variable.
-  """
-  # Make sure local variables are added to tf.GraphKeys.LOCAL_VARIABLES
-  collections = list(collections or [])
-  collections += [ops.GraphKeys.LOCAL_VARIABLES]
-  return variable_scope.variable(
-      lambda: array_ops.zeros(shape, dtype=dtype),
-      name=name,
-      trainable=False,
-      collections=collections,
-      validate_shape=validate_shape)
-
-
 def _safe_div(numerator, denominator, name):
   """Divides two values, returning 0 if the denominator is <= 0.
 
@@ -264,10 +243,9 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
     update_op: An operation that increments the confusion matrix.
   """
   # Local variable to accumulate the predictions in the confusion matrix.
-  total_cm = _create_local(
-      'total_confusion_matrix',
-      shape=[num_classes, num_classes],
-      dtype=dtypes.float64)
+  total_cm = metric_variable(
+      array_ops.zeros([num_classes, num_classes], dtype=dtypes.float64),
+      name='total_confusion_matrix')
 
   # Cast the type to int64 required by confusion_matrix_ops.
   predictions = math_ops.to_int64(predictions)
@@ -337,8 +315,10 @@ def mean(values, weights=None, metrics_collections=None,
   with variable_scope.variable_scope(name, 'mean', (values, weights)):
     values = math_ops.to_float(values)
 
-    total = _create_local('total', shape=[])
-    count = _create_local('count', shape=[])
+    total = metric_variable(
+        array_ops.zeros([], dtype=dtypes.float32), name='total')
+    count = metric_variable(
+        array_ops.zeros([], dtype=dtypes.float32), name='count')
 
     if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
@@ -535,7 +515,9 @@ def _confusion_matrix_at_thresholds(
   update_ops = {}
 
   if 'tp' in includes:
-    true_p = _create_local('true_positives', shape=[num_thresholds])
+    true_p = metric_variable(
+        array_ops.zeros([num_thresholds], dtype=dtypes.float32),
+        name='true_positives')
     is_true_positive = math_ops.to_float(
         math_ops.logical_and(label_is_pos, pred_is_pos))
     if weights_tiled is not None:
@@ -545,7 +527,9 @@ def _confusion_matrix_at_thresholds(
     values['tp'] = true_p
 
   if 'fn' in includes:
-    false_n = _create_local('false_negatives', shape=[num_thresholds])
+    false_n = metric_variable(
+        array_ops.zeros([num_thresholds], dtype=dtypes.float32),
+        name='false_negatives')
     is_false_negative = math_ops.to_float(
         math_ops.logical_and(label_is_pos, pred_is_neg))
     if weights_tiled is not None:
@@ -555,7 +539,9 @@ def _confusion_matrix_at_thresholds(
     values['fn'] = false_n
 
   if 'tn' in includes:
-    true_n = _create_local('true_negatives', shape=[num_thresholds])
+    true_n = metric_variable(
+        array_ops.zeros([num_thresholds], dtype=dtypes.float32),
+        name='true_negatives')
     is_true_negative = math_ops.to_float(
         math_ops.logical_and(label_is_neg, pred_is_neg))
     if weights_tiled is not None:
@@ -565,7 +551,9 @@ def _confusion_matrix_at_thresholds(
     values['tn'] = true_n
 
   if 'fp' in includes:
-    false_p = _create_local('false_positives', shape=[num_thresholds])
+    false_p = metric_variable(
+        array_ops.zeros([num_thresholds], dtype=dtypes.float32),
+        name='false_positives')
     is_false_positive = math_ops.to_float(
         math_ops.logical_and(label_is_neg, pred_is_pos))
     if weights_tiled is not None:
@@ -1194,8 +1182,12 @@ def mean_tensor(values, weights=None, metrics_collections=None,
 
   with variable_scope.variable_scope(name, 'mean', (values, weights)):
     values = math_ops.to_float(values)
-    total = _create_local('total_tensor', shape=values.get_shape())
-    count = _create_local('count_tensor', shape=values.get_shape())
+    total = metric_variable(
+        array_ops.zeros(values.get_shape(), dtype=dtypes.float32),
+        name='total_tensor')
+    count = metric_variable(
+        array_ops.zeros(values.get_shape(), dtype=dtypes.float32),
+        name='count_tensor')
 
     num_values = array_ops.ones_like(values)
     if weights is not None:
@@ -1308,7 +1300,8 @@ def _count_condition(values, weights=None, metrics_collections=None,
       or tuple.
   """
   check_ops.assert_type(values, dtypes.bool)
-  count = _create_local('count', shape=[])
+  count = metric_variable(
+      array_ops.zeros([], dtype=dtypes.float32), name='count')
 
   values = math_ops.to_float(values)
   if weights is not None:
@@ -2089,7 +2082,7 @@ def _streaming_sparse_true_positive_at_k(labels,
         weights=weights)
     batch_total_tp = math_ops.to_double(math_ops.reduce_sum(tp))
 
-    var = _local_variable(array_ops.zeros([], dtype=dtypes.float64), name=scope)
+    var = metric_variable(array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_tp, name='update')
 
 
@@ -2185,7 +2178,7 @@ def _streaming_sparse_false_negative_at_k(labels,
         weights=weights)
     batch_total_fn = math_ops.to_double(math_ops.reduce_sum(fn))
 
-    var = _local_variable(array_ops.zeros([], dtype=dtypes.float64), name=scope)
+    var = metric_variable(array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_fn, name='update')
 
 
@@ -2836,7 +2829,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
       # - For the unweighted case, this is just the number of rows.
       # - For the weighted case, it's the sum of the weights broadcast across
       #   `average_precision` rows.
-      max_var = _local_variable(
+      max_var = metric_variable(
           array_ops.zeros([], dtype=dtypes.float64), name=max_scope)
       if weights is None:
         batch_max = math_ops.to_double(
@@ -2845,7 +2838,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
         batch_max = math_ops.reduce_sum(weights, name='batch_max')
       max_update = state_ops.assign_add(max_var, batch_max, name='update')
     with ops.name_scope(None, 'total', (average_precision,)) as total_scope:
-      total_var = _local_variable(
+      total_var = metric_variable(
           array_ops.zeros([], dtype=dtypes.float64), name=total_scope)
       batch_total = math_ops.reduce_sum(average_precision, name='batch_total')
       total_update = state_ops.assign_add(total_var, batch_total, name='update')
@@ -3032,7 +3025,7 @@ def _streaming_sparse_false_positive_at_k(labels,
         weights=weights)
     batch_total_fp = math_ops.to_double(math_ops.reduce_sum(fp))
 
-    var = _local_variable(array_ops.zeros([], dtype=dtypes.float64), name=scope)
+    var = metric_variable(array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_fp, name='update')
 
 

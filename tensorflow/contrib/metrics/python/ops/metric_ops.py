@@ -57,34 +57,6 @@ def _safe_div(numerator, denominator, name):
       name=name)
 
 
-def _create_local(name,
-                  shape,
-                  collections=None,
-                  validate_shape=True,
-                  dtype=dtypes.float32):
-  """Creates a new local variable.
-
-  Args:
-    name: The name of the new or existing variable.
-    shape: Shape of the new or existing variable.
-    collections: A list of collection names to which the Variable will be added.
-    validate_shape: Whether to validate the shape of the variable.
-    dtype: Data type of the variables.
-
-  Returns:
-    The created variable.
-  """
-  # Make sure local variables are added to tf.GraphKeys.LOCAL_VARIABLES
-  collections = list(collections or [])
-  collections += [ops.GraphKeys.LOCAL_VARIABLES]
-  return variable_scope.variable(
-      initial_value=array_ops.zeros(shape, dtype=dtype),
-      name=name,
-      trainable=False,
-      collections=collections,
-      validate_shape=validate_shape)
-
-
 # TODO(ptucker): Move this somewhere common, to share with ops/losses/losses.py.
 def _assert_weights_rank(weights, values):
   """`weights` rank must be either `0`, or the same as 'values'."""
@@ -120,7 +92,8 @@ def _count_condition(values,
       or tuple.
   """
   check_ops.assert_type(values, dtypes.bool)
-  count_ = _create_local('count', shape=[])
+  count_ = metrics_impl.metric_variable(
+      array_ops.zeros([], dtype=dtypes.float32), name='count')
 
   values = math_ops.to_float(values)
   if weights is not None:
@@ -942,7 +915,9 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   update_ops = {}
 
   if 'tp' in includes:
-    true_positives = _create_local('true_positives', shape=[num_thresholds])
+    true_positives = metrics_impl.metric_variable(
+        array_ops.zeros([num_thresholds], dtype=dtypes.float32),
+        name='true_positives')
     is_true_positive = math_ops.to_float(
         math_ops.logical_and(label_is_pos, pred_is_pos))
     if weights_tiled is not None:
@@ -953,7 +928,9 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
     values['tp'] = true_positives
 
   if 'fn' in includes:
-    false_negatives = _create_local('false_negatives', shape=[num_thresholds])
+    false_negatives = metrics_impl.metric_variable(
+        array_ops.zeros([num_thresholds], dtype=dtypes.float32),
+        name='false_negatives')
     is_false_negative = math_ops.to_float(
         math_ops.logical_and(label_is_pos, pred_is_neg))
     if weights_tiled is not None:
@@ -964,7 +941,9 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
     values['fn'] = false_negatives
 
   if 'tn' in includes:
-    true_negatives = _create_local('true_negatives', shape=[num_thresholds])
+    true_negatives = metrics_impl.metric_variable(
+        array_ops.zeros([num_thresholds], dtype=dtypes.float32),
+        name='true_negatives')
     is_true_negative = math_ops.to_float(
         math_ops.logical_and(label_is_neg, pred_is_neg))
     if weights_tiled is not None:
@@ -975,7 +954,9 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
     values['tn'] = true_negatives
 
   if 'fp' in includes:
-    false_positives = _create_local('false_positives', shape=[num_thresholds])
+    false_positives = metrics_impl.metric_variable(
+        array_ops.zeros([num_thresholds], dtype=dtypes.float32),
+        name='false_positives')
     is_false_positive = math_ops.to_float(
         math_ops.logical_and(label_is_neg, pred_is_pos))
     if weights_tiled is not None:
@@ -1335,10 +1316,10 @@ def streaming_precision_recall_at_equal_thresholds(predictions,
         math_ops.floor(predictions * (num_thresholds - 1)), dtypes.int32)
 
     with ops.name_scope('variables'):
-      tp_buckets_v = _create_local(
-          'tp_buckets', shape=[num_thresholds], dtype=dtype)
-      fp_buckets_v = _create_local(
-          'fp_buckets', shape=[num_thresholds], dtype=dtype)
+      tp_buckets_v = metrics_impl.metric_variable(
+          array_ops.zeros([num_thresholds], dtype=dtype), name='tp_buckets')
+      fp_buckets_v = metrics_impl.metric_variable(
+          array_ops.zeros([num_thresholds], dtype=dtype), name='fp_buckets')
 
     with ops.name_scope('update_op'):
       update_tp = state_ops.scatter_add(
@@ -2601,10 +2582,15 @@ def streaming_covariance(predictions,
     predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
         predictions, labels, weights)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    count_ = _create_local('count', [])
-    mean_prediction = _create_local('mean_prediction', [])
-    mean_label = _create_local('mean_label', [])
-    comoment = _create_local('comoment', [])  # C_A in update equation
+    count_ = metrics_impl.metric_variable(
+        array_ops.zeros([], dtype=dtypes.float32), name='count')
+    mean_prediction = metrics_impl.metric_variable(
+        array_ops.zeros([], dtype=dtypes.float32), name='mean_prediction')
+    mean_label = metrics_impl.metric_variable(
+        array_ops.zeros([], dtype=dtypes.float32), name='mean_label')
+    comoment = metrics_impl.metric_variable(  # C_A in update equation
+        array_ops.zeros([], dtype=dtypes.float32),
+        name='comoment')
 
     if weights is None:
       batch_count = math_ops.to_float(array_ops.size(labels))  # n_B in eqn
@@ -3024,9 +3010,12 @@ def streaming_concat(values,
     # applied to contiguous slices
     init_size = 0 if max_size is None else max_size
     init_shape = [init_size] + fixed_shape
-    array = _create_local(
-        'array', shape=init_shape, validate_shape=False, dtype=values.dtype)
-    size = _create_local('size', shape=[], dtype=dtypes.int32)
+    array = metrics_impl.metric_variable(
+        array_ops.zeros(init_shape, dtype=values.dtype),
+        validate_shape=False,
+        name='array')
+    size = metrics_impl.metric_variable(
+        array_ops.zeros([], dtype=dtypes.int32), name='size')
 
     perm = [0 if n == axis else n + 1 if n < axis else n for n in range(ndim)]
     valid_array = array[:size]
@@ -3160,7 +3149,8 @@ def count(values,
   """
 
   with variable_scope.variable_scope(name, 'count', (values, weights)):
-    count_ = _create_local('count', shape=[])
+    count_ = metrics_impl.metric_variable(
+        array_ops.zeros([], dtype=dtypes.float32), name='count')
 
     if weights is None:
       num_values = math_ops.to_float(array_ops.size(values))
