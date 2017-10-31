@@ -652,10 +652,10 @@ class ConvKFCBasicFBTest(test.TestCase):
         params = array_ops.constant(params)
       inputs = random_ops.random_normal((2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
-                                [1, 1, 1], 'SAME')
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, [1, 1, 1], 'SAME')
+      block.register_additional_minibatch(inputs, outputs)
 
-      self.assertAllEqual(outputs, block.tensors_to_compute_grads())
+      self.assertAllEqual([outputs], block.tensors_to_compute_grads())
 
   def testConvKFCBasicFBInitParamsParamsTuple(self):
     self._testConvKFCBasicFBInitParams([np.array([1., 2.]), np.array(3.)])
@@ -669,10 +669,11 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = random_ops.random_normal((2, 2, 2, 2))
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
-                                (1, 1, 1, 1), 'SAME')
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
+                                'SAME')
+      block.register_additional_minibatch(inputs, outputs)
       grads = outputs**2
-      block.instantiate_factors((grads,), 0.5)
+      block.instantiate_factors(([grads],), 0.5)
 
       # Make sure our inverse is something other than the identity.
       sess.run(tf_variables.global_variables_initializer())
@@ -694,11 +695,12 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = random_ops.random_normal((2, 2, 2, 2))
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
-                                (1, 1, 1, 1), 'SAME')
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
+                                'SAME')
+      block.register_additional_minibatch(inputs, outputs)
       self.assertFalse(block._has_bias)
       grads = outputs**2
-      block.instantiate_factors((grads,), 0.5)
+      block.instantiate_factors(([grads],), 0.5)
 
       # Make sure our inverse is something other than the identity.
       sess.run(tf_variables.global_variables_initializer())
@@ -716,11 +718,12 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = [random_ops.random_normal((2, 2, 2, 2))]
       inputs = random_ops.random_normal((2, 2, 2, 2))
       outputs = random_ops.random_normal((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
-                                (1, 1, 1, 1), 'SAME')
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
+                                'SAME')
+      block.register_additional_minibatch(inputs, outputs)
       self.assertTrue(block._has_bias)
       grads = outputs**2
-      block.instantiate_factors((grads,), 0.5)
+      block.instantiate_factors(([grads],), 0.5)
 
       # Make sure our inverse is something other than the identity.
       sess.run(tf_variables.global_variables_initializer())
@@ -738,11 +741,12 @@ class ConvKFCBasicFBTest(test.TestCase):
       params = array_ops.zeros((2, 2, 2, 2))
       inputs = array_ops.zeros((2, 2, 2, 2))
       outputs = array_ops.zeros((2, 2, 2, 2))
-      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, inputs, outputs,
-                                (1, 1, 1, 1), 'SAME')
+      block = fb.ConvKFCBasicFB(lc.LayerCollection(), params, (1, 1, 1, 1),
+                                'SAME')
+      block.register_additional_minibatch(inputs, outputs)
       grads = outputs**2
       damping = 0.  # This test is only valid without damping.
-      block.instantiate_factors((grads,), damping)
+      block.instantiate_factors(([grads],), damping)
 
       sess.run(state_ops.assign(block._input_factor._cov, _make_psd(8)))
       sess.run(state_ops.assign(block._output_factor._cov, _make_psd(2)))

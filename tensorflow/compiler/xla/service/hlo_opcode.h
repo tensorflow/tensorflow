@@ -61,7 +61,6 @@ enum class HloOpcode {
   kGetTupleElement,
   kGt,
   kImag,
-  kIndex,
   kInfeed,
   kIsFinite,
   kLe,

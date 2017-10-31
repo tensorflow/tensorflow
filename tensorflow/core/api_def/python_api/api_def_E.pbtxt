@@ -1,8 +1,16 @@
 op {
+  graph_op_name: "EditDistance"
+  visibility: HIDDEN
+}
+op {
   graph_op_name: "Elu"
   endpoint {
     name: "nn.elu"
   }
+}
+op {
+  graph_op_name: "EluGrad"
+  visibility: HIDDEN
 }
 op {
   graph_op_name: "EncodeJpeg"
@@ -15,6 +23,14 @@ op {
   endpoint {
     name: "image.encode_png"
   }
+}
+op {
+  graph_op_name: "Exit"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ExpandDims"
+  visibility: HIDDEN
 }
 op {
   graph_op_name: "ExtractGlimpse"

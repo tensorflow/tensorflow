@@ -18,18 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import tempfile
 
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.summary import summary_ops
-from tensorflow.core.util import event_pb2
+from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.training import training_util
 
 
@@ -63,15 +60,9 @@ class MetricsTest(test.TestCase):
         name="t0").as_default(), summary_ops.always_record_summaries():
       m.result()  # As a side-effect will write summaries.
 
-    self.assertTrue(gfile.Exists(logdir))
-    files = gfile.ListDirectory(logdir)
-    self.assertEqual(len(files), 1)
-    records = list(
-        tf_record.tf_record_iterator(os.path.join(logdir, files[0])))
-    self.assertEqual(len(records), 2)
-    event = event_pb2.Event()
-    event.ParseFromString(records[1])
-    self.assertEqual(event.summary.value[0].simple_value, 37.0)
+    events = summary_test_util.events_from_file(logdir)
+    self.assertEqual(len(events), 2)
+    self.assertEqual(events[1].summary.value[0].simple_value, 37.0)
 
   def testWeightedMean(self):
     m = metrics.Mean()
@@ -121,9 +112,10 @@ class MetricsTest(test.TestCase):
     # accidentally share state.
     m1 = metrics.Mean()
     m1(0)
-    with self.assertRaises(ValueError):
-      m2 = metrics.Mean()
-      m2(2)
+    m2 = metrics.Mean()
+    m2(2)
+    self.assertAllEqual(0.0, m1.result())
+    self.assertAllEqual(2.0, m2.result())
 
   def testNamesWithSpaces(self):
     # Verify two metrics with the same class and name don't

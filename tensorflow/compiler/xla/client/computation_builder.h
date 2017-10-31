@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -41,6 +42,58 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+
+class ShardingBuilder {
+ public:
+  // A shaped array used to describe the assignment of tiles to devices.
+  using TileAssignment = Array<int64>;
+
+  // Creates a replicated sharding - replicate a tensor on every device.
+  static OpSharding Replicate() {
+    OpSharding result;
+    result.set_type(OpSharding::Type::OpSharding_Type_REPLICATED);
+    return result;
+  }
+  // Creates a sharding that assigns a tensor to just one device.
+  static OpSharding AssignDevice(int device) {
+    OpSharding result;
+    result.set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+    result.add_tile_assignment_dimensions(1);
+    result.add_tile_assignment_devices(device);
+    return result;
+  }
+  // Creates a tiled sharding with the given tile shape and assignment of tiles
+  // to devices.
+  static OpSharding Tile(Shape tile_shape,
+                         const TileAssignment& tile_assignment) {
+    OpSharding result;
+    result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    for (int64 dim : tile_assignment.dimensions()) {
+      result.add_tile_assignment_dimensions(dim);
+    }
+    for (uint32 device : tile_assignment) {
+      result.add_tile_assignment_devices(device);
+    }
+    return result;
+  }
+  // Creates a sharding in one dimension, with the given tile shape which must
+  // be rank 1 and using devices 0..num_tiles.
+  static OpSharding Tile1D(Shape tile_shape, int64 num_tiles) {
+    OpSharding result;
+    result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+
+    CHECK_EQ(ShapeUtil::Rank(tile_shape), 1);
+    std::vector<int64> dimensions(1, num_tiles);
+    auto& tile_dimension = (*tile_shape.mutable_dimensions())[0];
+    tile_dimension = CeilOfRatio(static_cast<int64>(tile_dimension), num_tiles);
+    *result.mutable_tile_shape() = tile_shape;
+    result.add_tile_assignment_dimensions(num_tiles);
+    for (int64 i = 0; i < num_tiles; ++i) {
+      result.add_tile_assignment_devices(i);
+    }
+    return result;
+  }
+};
 
 // Wraps an XLA client with a convenient interface for building up
 // computations. Any errors encountered in building up the computation are
@@ -78,11 +131,11 @@ class ComputationBuilder {
 
   // Sets an OpDeviceAssignment that will be attached to all instructions
   // until cleared.
-  void SetDeviceAssignment(const OpDeviceAssignment& assignment);
+  void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
 
   // Clears the device assignment. Ops will be placed according to the default
   // placement policy.
-  void ClearDeviceAssignment();
+  void ClearSharding() { sharding_ = tensorflow::gtl::nullopt; }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -894,8 +947,9 @@ class ComputationBuilder {
   // throughout the TensorFlow op kernel implementations).
   OpMetadata metadata_;
 
-  // Device assignment for the operator.
-  OpDeviceAssignment device_assignment_;
+  // Sharding for this operator. This is structured as a "model"-like operation,
+  // in order to simplify client code, similar to metadata_.
+  tensorflow::gtl::optional<OpSharding> sharding_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationBuilder);
 };

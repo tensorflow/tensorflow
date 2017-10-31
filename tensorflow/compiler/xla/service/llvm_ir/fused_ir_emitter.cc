@@ -72,8 +72,8 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleConstant(HloInstruction* constant,
-                                      const Literal& literal) {
+Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
+  const Literal& literal = constant->literal();
   llvm::Constant* initializer =
       llvm_ir::ConvertLiteralToIrConstant(literal, module_);
   llvm::GlobalVariable* global = new llvm::GlobalVariable(
@@ -88,9 +88,10 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant,
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element,
-                                             HloInstruction* operand) {
+Status FusedIrEmitter::HandleGetTupleElement(
+    HloInstruction* get_tuple_element) {
   // Lookup ir value for 'operand'.
+  auto operand = get_tuple_element->operand(0);
   auto it = gte_values_.find(operand);
   if (it == gte_values_.end()) {
     return Unimplemented(
@@ -128,9 +129,8 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
+  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
   std::vector<llvm::Type*> operand_elemental_ir_types;
   for (HloInstruction* operand : operands) {
     operand_elemental_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(

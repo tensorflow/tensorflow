@@ -29,6 +29,186 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+namespace {
+
+static bool IsInvolution(const NodeDef& node) {
+  const std::unordered_set<string> involution_ops = {"Conj", "Reciprocal",
+                                                     "Neg", "LogicalNot"};
+  return involution_ops.count(node.op()) > 0;
+}
+
+bool AreInversePermutations(gtl::ArraySlice<int32> a,
+                            gtl::ArraySlice<int32> b) {
+  if (a.size() != b.size()) {
+    return false;
+  }
+  for (int i = 0; i < a.size(); ++i) {
+    if (a[b[i]] != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Extract int32 values from a Const op to `int32_values`. Returns true if
+// succeeds.
+bool Int32ValuesFromNode(const NodeDef& node, std::vector<int>* int32_values) {
+  if (node.op() != "Const") {
+    return false;
+  }
+
+  if (node.attr().at("dtype").type() != DT_INT32) {
+    return false;
+  }
+
+  // TensorProto represents the content of the tensor in either <type>_val or
+  // tensor_content.
+  const TensorProto& tensor = node.attr().at("value").tensor();
+  if (tensor.int_val_size() > 0 && tensor.has_tensor_shape()) {
+    // When tensor_shape is set, theoretically the representation of the data
+    // could be compressed. So, before copying int_val to the returned vector,
+    // make sure no compression happens.
+    const TensorShapeProto& shape = tensor.tensor_shape();
+    if (shape.dim_size() == 1 && shape.dim(0).size() == tensor.int_val_size()) {
+      int32_values->insert(int32_values->end(), tensor.int_val().begin(),
+                           tensor.int_val().end());
+    }
+    return true;
+  }
+
+  const auto tensor_content_size = tensor.tensor_content().size();
+  if (tensor_content_size > 0) {
+    CHECK_EQ(0, tensor_content_size % sizeof(int32))
+        << "tensor_content_size (" << tensor_content_size
+        << ") is not a multiple of " << sizeof(int32);
+    int32_values->resize(tensor_content_size / sizeof(int32));
+    port::CopyToArray(tensor.tensor_content(),
+                      reinterpret_cast<char*>(int32_values->data()));
+    return true;
+  }
+
+  return false;
+}
+
+bool SimplyReordersData(const NodeDef& node) {
+  return node.op() == "Transpose";
+}
+
+// Returns the data type in attribute `attr_name` of `node`. If that attribute
+// doesn't exist, returns DT_INVALID.
+DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name) {
+  if (!node.attr().count(attr_name)) {
+    return DT_INVALID;
+  }
+  const auto& attr = node.attr().at(attr_name);
+  if (attr.value_case() != AttrValue::kType) {
+    return DT_INVALID;
+  }
+  return attr.type();
+}
+
+bool IsCommutative(const OpDef& op, const NodeDef& input1) {
+  if (op.name() == "Add") {
+    // Workaround for "Add" not being marked is_commutative and is_aggregate.
+    // (See cl/173915048).
+    const auto type = GetDataTypeFromAttr(input1, "T");
+    return type != DT_INVALID && type != DT_STRING;
+  }
+  return op.is_commutative();
+}
+
+void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
+  (*node->mutable_attr())[attr_name].set_type(dtype);
+}
+
+string SourceDataTypeAttrName(const NodeDef& node) {
+  if (node.op() == "Bitcast") {
+    return "T";
+  } else if (node.op() == "Cast") {
+    return "SrcT";
+  } else {
+    LOG(FATAL) << "SourceDataTypeAttrName not implemented for op " << node.op();
+  }
+}
+
+string DestinationDataTypeAttrName(const NodeDef& node) {
+  if (node.op() == "Bitcast") {
+    return "type";
+  } else if (node.op() == "Cast") {
+    return "DstT";
+  } else {
+    LOG(FATAL) << "DestinationDataTypeAttrName not implemented for op "
+               << node.op();
+  }
+}
+
+DataType GetSourceDataType(const NodeDef& node) {
+  return GetDataTypeFromAttr(node, SourceDataTypeAttrName(node));
+}
+
+DataType GetDestinationDataType(const NodeDef& node) {
+  return GetDataTypeFromAttr(node, DestinationDataTypeAttrName(node));
+}
+
+void SetSourceDataType(DataType dtype, NodeDef* node) {
+  SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
+}
+
+bool IsNumberType(DataType dtype) {
+  DataTypeVector number_types = NumberTypes();
+  return std::find(number_types.begin(), number_types.end(), dtype) !=
+         number_types.end();
+}
+
+const char kOutputShapesAttr[] = "_output_shapes";
+
+// Returns whether `reshape` is an identity op. The tensor that `reshape`
+// reshapes is the `output_pos`-th output of node `input`.
+bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
+                       const int output_pos) {
+  if (!reshape.attr().count(kOutputShapesAttr) ||
+      !input.attr().count(kOutputShapesAttr)) {
+    return false;
+  }
+
+  PartialTensorShape src_shape(
+      input.attr().at(kOutputShapesAttr).list().shape(output_pos));
+  PartialTensorShape dst_shape(
+      reshape.attr().at(kOutputShapesAttr).list().shape(0));
+  if (src_shape.unknown_rank() || dst_shape.unknown_rank()) {
+    return false;
+  }
+
+  if (!dst_shape.IsCompatibleWith(src_shape)) {
+    return false;
+  }
+
+  // Returns false when src_shape or dst_shape has >=2 dimensions with unknown
+  // sizes.
+  auto num_unknown_dim_sizes = [](const PartialTensorShape& partial_shape) {
+    auto dim_sizes = partial_shape.dim_sizes();
+    return std::count(dim_sizes.begin(), dim_sizes.end(), -1);
+  };
+  int src_num_unknown_dim_sizes = num_unknown_dim_sizes(src_shape);
+  int dst_num_unknown_dim_sizes = num_unknown_dim_sizes(dst_shape);
+  if (src_num_unknown_dim_sizes > 1 || dst_num_unknown_dim_sizes > 1) {
+    return false;
+  }
+
+  // Now, src_shape and dst_shape have at most one dimension with unknown
+  // sizes, and are compatible. Therefore, the reshape is a no-op when
+  //
+  // 1. at least one of them is fully-defined, or
+  // 2. both are partially defined and the -1 appears on the same dimension,
+  //    i.e., IsIdenticalTo returns true.
+  if (src_num_unknown_dim_sizes == 1 && dst_num_unknown_dim_sizes == 1) {
+    return dst_shape.IsIdenticalTo(src_shape);
+  }
+
+  return true;
+}
+
+}  // namespace
 
 class UniqueNodes {
  public:
@@ -86,7 +266,7 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   // Compare inputs.
   const OpDef* op_def = nullptr;
   Status status = OpRegistry::Global()->LookUpOpDef(node1.op(), &op_def);
-  const bool is_commutative = status.ok() && op_def->is_commutative();
+  const bool is_commutative = status.ok() && IsCommutative(*op_def, node1);
   if (is_commutative) {
     std::vector<string> inputs1(node1.input().begin(), node1.input().end());
     std::vector<string> inputs2(node2.input().begin(), node2.input().end());
@@ -102,7 +282,6 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
       if (IsControlInput(node1.input(index))) {
         ctrl_inputs1.push_back(node1.input(index));
         ctrl_inputs2.push_back(node2.input(index));
-
       } else {
         regular_inputs1.push_back(node1.input(index));
         regular_inputs2.push_back(node2.input(index));
@@ -218,177 +397,23 @@ void ArithmeticOptimizer::DedupComputations(GraphDef* optimized_graph) const {
   }
 }
 
-static bool AreInversePermutations(gtl::ArraySlice<int32> a,
-                                   gtl::ArraySlice<int32> b) {
-  if (a.size() != b.size()) {
-    return false;
-  }
-  for (int i = 0; i < a.size(); ++i) {
-    if (a[b[i]] != i) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Extract int32 values from a Const op to `int32_values`. Returns true if
-// succeeds.
-static bool Int32ValuesFromNode(const NodeDef& node,
-                                std::vector<int>* int32_values) {
-  if (node.op() != "Const") {
-    return false;
-  }
-
-  if (node.attr().at("dtype").type() != DT_INT32) {
-    return false;
-  }
-
-  // TensorProto represents the content of the tensor in either <type>_val or
-  // tensor_content.
-  const TensorProto& tensor = node.attr().at("value").tensor();
-  if (tensor.int_val_size() > 0 && tensor.has_tensor_shape()) {
-    // When tensor_shape is set, theoretically the representation of the data
-    // could be compressed. So, before copying int_val to the returned vector,
-    // make sure no compression happens.
-    const TensorShapeProto& shape = tensor.tensor_shape();
-    if (shape.dim_size() == 1 && shape.dim(0).size() == tensor.int_val_size()) {
-      int32_values->insert(int32_values->end(), tensor.int_val().begin(),
-                           tensor.int_val().end());
-    }
-    return true;
-  }
-
-  const auto tensor_content_size = tensor.tensor_content().size();
-  if (tensor_content_size > 0) {
-    CHECK_EQ(0, tensor_content_size % sizeof(int32))
-        << "tensor_content_size (" << tensor_content_size
-        << ") is not a multiple of " << sizeof(int32);
-    int32_values->resize(tensor_content_size / sizeof(int32));
-    port::CopyToArray(tensor.tensor_content(),
-                      reinterpret_cast<char*>(int32_values->data()));
-    return true;
-  }
-
-  return false;
-}
-
-static bool SimplyReordersData(const NodeDef& node) {
-  return node.op() == "Transpose";
-}
-
-// Returns the data type in attribute `attr_name` of `node`. If that attribute
-// doesn't exist, returns DT_INVALID.
-static DataType GetDataTypeFromAttr(const NodeDef& node,
-                                    const string& attr_name) {
-  if (!node.attr().count(attr_name)) {
-    return DT_INVALID;
-  }
-  const auto& attr = node.attr().at(attr_name);
-  if (attr.value_case() != AttrValue::kType) {
-    return DT_INVALID;
-  }
-  return attr.type();
-}
-
-static void SetDataTypeToAttr(DataType dtype, const string& attr_name,
-                              NodeDef* node) {
-  (*node->mutable_attr())[attr_name].set_type(dtype);
-}
-
-static string SourceDataTypeAttrName(const NodeDef& node) {
-  if (node.op() == "Bitcast") {
-    return "T";
-  } else if (node.op() == "Cast") {
-    return "SrcT";
-  } else {
-    LOG(FATAL) << "SourceDataTypeAttrName not implemented for op " << node.op();
-  }
-}
-
-static string DestinationDataTypeAttrName(const NodeDef& node) {
-  if (node.op() == "Bitcast") {
-    return "type";
-  } else if (node.op() == "Cast") {
-    return "DstT";
-  } else {
-    LOG(FATAL) << "DestinationDataTypeAttrName not implemented for op "
-               << node.op();
-  }
-}
-
-static DataType GetSourceDataType(const NodeDef& node) {
-  return GetDataTypeFromAttr(node, SourceDataTypeAttrName(node));
-}
-
-static DataType GetDestinationDataType(const NodeDef& node) {
-  return GetDataTypeFromAttr(node, DestinationDataTypeAttrName(node));
-}
-
-static void SetSourceDataType(DataType dtype, NodeDef* node) {
-  SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
-}
-
-static bool IsNumberType(DataType dtype) {
-  DataTypeVector number_types = NumberTypes();
-  return std::find(number_types.begin(), number_types.end(), dtype) !=
-         number_types.end();
-}
-
-const char kOutputShapesAttr[] = "_output_shapes";
-
-// Returns whether `reshape` is an identity op. The tensor that `reshape`
-// reshapes is the `output_pos`-th output of node `input`.
-static bool ReshapeIsIdentity(const NodeDef& reshape, const NodeDef& input,
-                              const int output_pos) {
-  if (!reshape.attr().count(kOutputShapesAttr) ||
-      !input.attr().count(kOutputShapesAttr)) {
-    return false;
-  }
-
-  PartialTensorShape src_shape(
-      input.attr().at(kOutputShapesAttr).list().shape(output_pos));
-  PartialTensorShape dst_shape(
-      reshape.attr().at(kOutputShapesAttr).list().shape(0));
-  if (src_shape.unknown_rank() || dst_shape.unknown_rank()) {
-    return false;
-  }
-
-  if (!dst_shape.IsCompatibleWith(src_shape)) {
-    return false;
-  }
-
-  // Returns false when src_shape or dst_shape has >=2 dimensions with unknown
-  // sizes.
-  auto num_unknown_dim_sizes = [](const PartialTensorShape& partial_shape) {
-    auto dim_sizes = partial_shape.dim_sizes();
-    return std::count(dim_sizes.begin(), dim_sizes.end(), -1);
-  };
-  int src_num_unknown_dim_sizes = num_unknown_dim_sizes(src_shape);
-  int dst_num_unknown_dim_sizes = num_unknown_dim_sizes(dst_shape);
-  if (src_num_unknown_dim_sizes > 1 || dst_num_unknown_dim_sizes > 1) {
-    return false;
-  }
-
-  // Now, src_shape and dst_shape have at most one dimension with unknown
-  // sizes, and are compatible. Therefore, the reshape is a no-op when
-  //
-  // 1. at least one of them is fully-defined, or
-  // 2. both are partially defined and the -1 appears on the same dimension,
-  //    i.e., IsIdenticalTo returns true.
-  if (src_num_unknown_dim_sizes == 1 && dst_num_unknown_dim_sizes == 1) {
-    return dst_shape.IsIdenticalTo(src_shape);
-  }
-
-  return true;
-}
-
 string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
     const NodeDef* node, GraphDef* graph_def, NodeMap* node_map,
     std::vector<const NodeDef*>* new_nodes) const {
-  // Remove inverse transposes.
-  if (node->op() == "Transpose") {
+  // Remove involutions applied twice.
+  if (IsInvolution(*node)) {
+    // An involution is a function f(x) that is its own inverse,
+    // i.e. f(f(x)) = x.
     const NodeDef* input = node_map->GetNode(node->input(0));
-    if (input->op() == "Transpose") {
+    if (input->op() == node->op()) {
+      return input->input(0);
+    }
+  }
+
+  // Remove inverse transposes.
+  if (node->op() == "Transpose" || node->op() == "ConjugateTranspose") {
+    const NodeDef* input = node_map->GetNode(node->input(0));
+    if (input->op() == node->op()) {
       const NodeDef* node_perm = node_map->GetNode(node->input(1));
       const NodeDef* input_perm = node_map->GetNode(input->input(1));
       std::vector<int> node_perm_values;

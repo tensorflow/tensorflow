@@ -245,28 +245,22 @@ Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
   return IrEmitter::DefaultAction(hlo);
 }
 
-Status IrEmitterUnnested::HandleDot(HloInstruction* dot,
-                                    HloInstruction* lhs_instruction,
-                                    HloInstruction* rhs_instruction) {
+Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
   if (ImplementedAsGemm(*dot)) {
     thunk_sequence_->emplace_back(BuildGemmThunk(dot));
     return Status::OK();
   }
   thunk_sequence_->emplace_back(BuildKernelThunk(dot));
-  return IrEmitter::HandleDot(dot, lhs_instruction, rhs_instruction);
+  return IrEmitter::HandleDot(dot);
 }
 
-Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution,
-                                            HloInstruction* lhs_instruction,
-                                            HloInstruction* rhs_instruction,
-                                            const Window& window) {
+Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
   if (ImplementedAsDnnConvolution(*convolution)) {
     thunk_sequence_->emplace_back(BuildConvolutionThunk(convolution));
     return Status::OK();
   }
   thunk_sequence_->emplace_back(BuildKernelThunk(convolution));
-  return IrEmitter::HandleConvolution(convolution, lhs_instruction,
-                                      rhs_instruction, window);
+  return IrEmitter::HandleConvolution(convolution);
 }
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
@@ -1234,10 +1228,11 @@ Status IrEmitterUnnested::EmitReductionToVector(
   }
 }
 
-Status IrEmitterUnnested::HandleReduce(
-    HloInstruction* reduce, HloInstruction* input, HloInstruction* init_value,
-    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
-    HloComputation* reducer) {
+Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
+  auto input = reduce->operand(0);
+  auto init_value = reduce->operand(1);
+  tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce(reduce->dimensions());
+  HloComputation* reducer = reduce->to_apply();
   // HandleReduce specializes reduction from a multi-dimensional array to a 1D
   // array. The specialized version requires an initializer thunk that
   // initializes the output array to the initial value of the reduce.
@@ -1265,13 +1260,11 @@ Status IrEmitterUnnested::HandleReduce(
   }
 
   thunk_sequence_->emplace_back(BuildKernelThunk(reduce));
-  return IrEmitter::HandleReduce(reduce, input, init_value,
-                                 dimensions_to_reduce, reducer);
+  return IrEmitter::HandleReduce(reduce);
 }
 
-Status IrEmitterUnnested::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
+  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
   bool all_tuple_elements_have_buffer = std::all_of(
       operands.begin(), operands.end(), [this](HloInstruction* tuple_element) {
         return ir_emitter_context_->buffer_assignment().HasTopLevelAllocation(
@@ -1296,11 +1289,10 @@ Status IrEmitterUnnested::HandleTuple(
     return Status::OK();
   }
   thunk_sequence_->emplace_back(BuildKernelThunk(tuple));
-  return IrEmitter::HandleTuple(tuple, operands);
+  return IrEmitter::HandleTuple(tuple);
 }
 
-Status IrEmitterUnnested::HandleGetTupleElement(
-    HloInstruction* get_tuple_element, HloInstruction* operand) {
+Status IrEmitterUnnested::HandleGetTupleElement(HloInstruction*) {
   // GetTupleElement IR is emitted in the IR context of the user instruction,
   // and so we do not build a kernel for GetTupleElement instructions.
   return Status::OK();
@@ -1525,18 +1517,14 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleRng(HloInstruction* random,
-                                    RandomDistribution distribution) {
+Status IrEmitterUnnested::HandleRng(HloInstruction* random) {
   thunk_sequence_->push_back(BuildKernelThunk(random));
-  return IrEmitter::HandleRng(random, distribution);
+  return IrEmitter::HandleRng(random);
 }
 
-Status IrEmitterUnnested::HandleSelect(HloInstruction* select,
-                                       HloInstruction* pred,
-                                       HloInstruction* on_true,
-                                       HloInstruction* on_false) {
+Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
   thunk_sequence_->push_back(BuildKernelThunk(select));
-  return IrEmitter::HandleSelect(select, pred, on_true, on_false);
+  return IrEmitter::HandleSelect(select);
 }
 
 Status IrEmitterUnnested::HandleInfeed(HloInstruction* infeed) {

@@ -1164,7 +1164,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
-    case HloOpcode::kIndex:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
@@ -1212,6 +1211,9 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(
     }
   }
   clone->set_parent(parent_);
+  if (has_sharding()) {
+    clone->set_sharding(sharding());
+  }
   return clone;
 }
 
@@ -1548,7 +1550,6 @@ bool HloInstruction::IdenticalSlowPath(
       return dimensions() == other.dimensions();
 
     // These opcodes are not yet supported.
-    case HloOpcode::kIndex:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
@@ -1889,8 +1890,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   if (opcode() == HloOpcode::kGetTupleElement) {
     extra.push_back(StrCat("index=", tuple_index()));
   }
-  if (device_assignment_.has_device()) {
-    extra.push_back(StrCat("device=", device_assignment_.device()));
+  if (has_sharding()) {
+    extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
   if (!control_successors_.empty()) {
     extra.push_back(StrCat(
@@ -2128,9 +2129,9 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
 Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
-      return visitor->HandleAbs(this, operands_[0]);
+      return visitor->HandleAbs(this);
     case HloOpcode::kAtan2:
-      return visitor->HandleAtan2(this, operands_[0], operands_[1]);
+      return visitor->HandleAtan2(this);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
     case HloOpcode::kBatchNormTraining:
@@ -2140,11 +2141,11 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kBatchNormGrad:
       return visitor->HandleBatchNormGrad(this);
     case HloOpcode::kSign:
-      return visitor->HandleSign(this, operands_[0]);
+      return visitor->HandleSign(this);
     case HloOpcode::kConstant:
-      return visitor->HandleConstant(this, *literal_);
+      return visitor->HandleConstant(this);
     case HloOpcode::kGetTupleElement:
-      return visitor->HandleGetTupleElement(this, operands_[0]);
+      return visitor->HandleGetTupleElement(this);
     case HloOpcode::kParameter:
       return visitor->HandleParameter(this);
     case HloOpcode::kEq:
@@ -2153,91 +2154,85 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kLe:
     case HloOpcode::kLt:
     case HloOpcode::kNe:
-      return visitor->HandleCompare(this, opcode_, operands_[0], operands_[1]);
+      return visitor->HandleCompare(this);
     case HloOpcode::kComplex:
-      return visitor->HandleComplex(this, operands_[0], operands_[1]);
+      return visitor->HandleComplex(this);
     case HloOpcode::kAdd:
-      return visitor->HandleAdd(this, operands_[0], operands_[1]);
+      return visitor->HandleAdd(this);
     case HloOpcode::kDivide:
-      return visitor->HandleDivide(this, operands_[0], operands_[1]);
+      return visitor->HandleDivide(this);
     case HloOpcode::kSubtract:
-      return visitor->HandleSubtract(this, operands_[0], operands_[1]);
+      return visitor->HandleSubtract(this);
     case HloOpcode::kMaximum:
       return visitor->HandleMaximum(this);
     case HloOpcode::kMinimum:
       return visitor->HandleMinimum(this);
     case HloOpcode::kAnd:
-      return visitor->HandleAnd(this, operands_[0], operands_[1]);
+      return visitor->HandleAnd(this);
     case HloOpcode::kOr:
-      return visitor->HandleOr(this, operands_[0], operands_[1]);
+      return visitor->HandleOr(this);
     case HloOpcode::kShiftLeft:
-      return visitor->HandleShiftLeft(this, operands_[0], operands_[1]);
+      return visitor->HandleShiftLeft(this);
     case HloOpcode::kShiftRightArithmetic:
-      return visitor->HandleShiftRightArithmetic(this, operands_[0],
-                                                 operands_[1]);
+      return visitor->HandleShiftRightArithmetic(this);
     case HloOpcode::kShiftRightLogical:
-      return visitor->HandleShiftRightLogical(this, operands_[0], operands_[1]);
+      return visitor->HandleShiftRightLogical(this);
     case HloOpcode::kConcatenate:
-      return visitor->HandleConcatenate(this, operands_);
+      return visitor->HandleConcatenate(this);
     case HloOpcode::kConvert:
       return visitor->HandleConvert(this);
     case HloOpcode::kCopy:
       return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:
-      return visitor->HandleMultiply(this, operands_[0], operands_[1]);
+      return visitor->HandleMultiply(this);
     case HloOpcode::kDot:
-      return visitor->HandleDot(this, operands_[0], operands_[1]);
+      return visitor->HandleDot(this);
     case HloOpcode::kPower:
-      return visitor->HandlePower(this, operands_[0], operands_[1]);
+      return visitor->HandlePower(this);
     case HloOpcode::kRemainder:
-      return visitor->HandleRemainder(this, operands_[0], operands_[1]);
+      return visitor->HandleRemainder(this);
     case HloOpcode::kSelect:
-      return visitor->HandleSelect(this, operands_[0], operands_[1],
-                                   operands_[2]);
+      return visitor->HandleSelect(this);
     case HloOpcode::kConvolution:
-      return visitor->HandleConvolution(this, operands_[0], operands_[1],
-                                        window());
+      return visitor->HandleConvolution(this);
     case HloOpcode::kCrossReplicaSum:
       return visitor->HandleCrossReplicaSum(this);
     case HloOpcode::kTuple:
-      return visitor->HandleTuple(this, operands_);
+      return visitor->HandleTuple(this);
     case HloOpcode::kMap:
-      return visitor->HandleMap(this, operands_, to_apply(), {});
+      return visitor->HandleMap(this);
     case HloOpcode::kClamp:
-      return visitor->HandleClamp(this, operands_[0], operands_[1],
-                                  operands_[2]);
+      return visitor->HandleClamp(this);
     case HloOpcode::kReduce:
-      return visitor->HandleReduce(this, operands_[0], operands_[1],
-                                   dimensions_, to_apply());
+      return visitor->HandleReduce(this);
     case HloOpcode::kReduceWindow:
-      return visitor->HandleReduceWindow(this, operands_[0], window(),
-                                         to_apply());
+      return visitor->HandleReduceWindow(this);
     case HloOpcode::kSelectAndScatter:
       return visitor->HandleSelectAndScatter(this);
     case HloOpcode::kNegate:
-      return visitor->HandleNegate(this, operands_[0]);
+      return visitor->HandleNegate(this);
     case HloOpcode::kExp:
-      return visitor->HandleExp(this, operands_[0]);
+      return visitor->HandleExp(this);
     case HloOpcode::kFloor:
-      return visitor->HandleFloor(this, operands_[0]);
+      return visitor->HandleFloor(this);
     case HloOpcode::kCeil:
-      return visitor->HandleCeil(this, operands_[0]);
+      return visitor->HandleCeil(this);
     case HloOpcode::kLog:
-      return visitor->HandleLog(this, operands_[0]);
+      return visitor->HandleLog(this);
     case HloOpcode::kTanh:
-      return visitor->HandleTanh(this, operands_[0]);
+      return visitor->HandleTanh(this);
     case HloOpcode::kCos:
-      return visitor->HandleCos(this, operands_[0]);
+      return visitor->HandleCos(this);
     case HloOpcode::kSin:
-      return visitor->HandleSin(this, operands_[0]);
+      return visitor->HandleSin(this);
     case HloOpcode::kReal:
-      return visitor->HandleReal(this, operands_[0]);
+      return visitor->HandleReal(this);
     case HloOpcode::kImag:
-      return visitor->HandleImag(this, operands_[0]);
+      return visitor->HandleImag(this);
     case HloOpcode::kIsFinite:
-      return visitor->HandleIsFinite(this, operands_[0]);
+      return visitor->HandleIsFinite(this);
     case HloOpcode::kNot:
-      return visitor->HandleNot(this, operands_[0]);
+      return visitor->HandleNot(this);
     case HloOpcode::kBitcast:
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
@@ -2249,24 +2244,23 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kTranspose:
       return visitor->HandleTranspose(this);
     case HloOpcode::kReverse:
-      return visitor->HandleReverse(this, operands_[0]);
+      return visitor->HandleReverse(this);
     case HloOpcode::kReducePrecision:
       return visitor->HandleReducePrecision(this);
     case HloOpcode::kSlice:
-      return visitor->HandleSlice(this, operands_[0]);
+      return visitor->HandleSlice(this);
     case HloOpcode::kDynamicSlice:
-      return visitor->HandleDynamicSlice(this, operands_[0], operands_[1]);
+      return visitor->HandleDynamicSlice(this);
     case HloOpcode::kDynamicUpdateSlice:
-      return visitor->HandleDynamicUpdateSlice(this, operands_[0], operands_[1],
-                                               operands_[2]);
+      return visitor->HandleDynamicUpdateSlice(this);
     case HloOpcode::kSort:
-      return visitor->HandleSort(this, operands_[0]);
+      return visitor->HandleSort(this);
     case HloOpcode::kInfeed:
       return visitor->HandleInfeed(this);
     case HloOpcode::kOutfeed:
       return visitor->HandleOutfeed(this);
     case HloOpcode::kRng:
-      return visitor->HandleRng(this, distribution_);
+      return visitor->HandleRng(this);
     case HloOpcode::kWhile:
       return visitor->HandleWhile(this);
     case HloOpcode::kFusion:
@@ -2274,14 +2268,13 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kCall:
       return visitor->HandleCall(this);
     case HloOpcode::kCustomCall:
-      return visitor->HandleCustomCall(this, operands_, custom_call_target_);
+      return visitor->HandleCustomCall(this);
     case HloOpcode::kSend:
       return visitor->HandleSend(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
 
     // These opcodes are not handled here.
-    case HloOpcode::kIndex:
     case HloOpcode::kTrace:
       break;
   }

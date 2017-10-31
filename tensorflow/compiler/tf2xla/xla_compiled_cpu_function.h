@@ -56,7 +56,7 @@ class XlaCompiledCpuFunction {
       const void** args, void** temps)>;
 
   // StaticData represents the state necessary to run an XLA-compiled
-  // function. For JIT this is backed by data in XlaCompiledCpuFunctionJit; for
+  // function. For JIT this is backed by data in XlaJitCompiledCpuFunction; for
   // AOT this is backed by data compiled into the object file.
   struct StaticData {
     // The raw function to call.
