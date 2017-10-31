@@ -92,10 +92,9 @@ class SummaryWriter(object):
 
   def __init__(self, resource):
     self._resource = resource
-
-  def __del__(self):
     if context.in_eager_mode():
-      resource_variable_ops.destroy_resource_op(self._resource)
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          handle=self._resource, handle_device="cpu:0")
 
   def set_as_default(self):
     context.context().summary_writer_resource = self._resource

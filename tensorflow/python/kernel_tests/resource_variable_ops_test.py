@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -37,6 +39,12 @@ from tensorflow.python.platform import test
 
 
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
+
+  def tearDown(self):
+    gc.collect()
+    # This will only contain uncollectable garbage, i.e. reference cycles
+    # involving objects with __del__ defined.
+    self.assertEqual(0, len(gc.garbage))
 
   def testHandleDtypeShapeMatch(self):
     with self.test_session():
@@ -477,10 +485,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       var = resource_variable_ops.ResourceVariable(initial_value=1.0,
                                                    name="var8")
-      var.__del__()
+      var_handle = var._handle
+      del var
       with self.assertRaisesRegexp(errors.NotFoundError,
                                    r"Resource .* does not exist."):
-        resource_variable_ops.destroy_resource_op(var._handle,
+        resource_variable_ops.destroy_resource_op(var_handle,
                                                   ignore_lookup_error=False)
 
   def testScatterUpdate(self):

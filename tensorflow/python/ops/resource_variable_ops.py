@@ -77,6 +77,45 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   return handle
 
 
+class EagerResourceDeleter(object):
+  """An object which cleans up a resource handle.
+
+  An alternative to defining a __del__ method on an object. The intended use is
+  that ResourceVariables or other objects with resource handles will maintain a
+  single reference to this object. When the parent object is collected, this
+  object will be too. Even if the parent object is part of a reference cycle,
+  the cycle will be collectable.
+  """
+
+  def __init__(self, handle, handle_device):
+    self._handle = handle
+    self._handle_device = handle_device
+
+  def __del__(self):
+    # Resources follow object-identity when executing eagerly, so it is safe to
+    # delete the resource we have a handle to. Each Graph has a unique container
+    # name, which prevents resource sharing.
+    try:
+      # This resource was created in eager mode. However, this destructor may be
+      # running in graph mode (especially during unit tests). To clean up
+      # successfully, we switch back into eager mode temporarily.
+      with context.eager_mode():
+        with ops.device(self._handle_device):
+          gen_resource_variable_ops.destroy_resource_op(
+              self._handle, ignore_lookup_error=True)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+            # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+            # been unloaded. Will catch other module unloads as well.
+
+
 def shape_safe_assign_variable_handle(handle, shape, value, name=None):
   """Helper that checks shape compatibility and assigns variable."""
   value_tensor = ops.convert_to_tensor(value)
@@ -415,6 +454,15 @@ class ResourceVariable(variables.Variable):
           ops.add_to_collections(collections, self)
         elif ops.GraphKeys.GLOBAL_STEP in collections:
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, self)
+    if not self._in_graph_mode:
+      # After the handle has been created, set up a way to clean it up when
+      # executing eagerly. We'll hold the only reference to the deleter, so that
+      # when this object is garbage collected the deleter will be too. This
+      # means ResourceVariables can be part of reference cycles without those
+      # cycles being uncollectable, and means that no __del__ will be defined at
+      # all in graph mode.
+      self._handle_deleter = EagerResourceDeleter(
+          handle=self._handle, handle_device=self._handle_device)
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""
@@ -453,39 +501,6 @@ class ResourceVariable(variables.Variable):
     self._graph_element = self.value()
     self._constraint = None
   # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
-
-  def __del__(self):
-    if not self._in_graph_mode:
-      # There is only one ResourceVariable object for each underlying resource
-      # (cached in the Graph's VariableStore when created with get_variable), so
-      # it is safe to delete the resource we have a handle to. Each Graph has a
-      # unique container name in Eager, which prevents resource sharing.
-      #
-      # The Graph's VariableStore contains strong references to ResourceVariable
-      # objects created with get_variable, so this destructor will only be
-      # callled once the Graph is garbage collected for those objects. However,
-      # explicitly created ResourceVariables (e.g. through tfe.Variable) may be
-      # collected earlier.
-      try:
-        # We have checked that this ResourceVariable was created in Eager
-        # mode. However, this destructor may be running in graph mode
-        # (especially during unit tests). To clean up successfully, we switch
-        # back into Eager temporarily.
-        with context.eager_mode():
-          with ops.device(self._handle_device):
-            gen_resource_variable_ops.destroy_resource_op(
-                self._handle, ignore_lookup_error=True)
-      except TypeError:
-        # Suppress some exceptions, mainly for the case when we're running on
-        # module deletion. Things that can go wrong include the context module
-        # already being unloaded, self._handle._handle_data no longer being
-        # valid, and so on. Printing warnings in these cases is silly
-        # (exceptions raised from __del__ are printed as warnings to stderr).
-        pass  # 'NoneType' object is not callable when the handle has been
-              # partially unloaded.
-      except AttributeError:
-        pass  # 'NoneType' object has no attribute 'eager_mode' when context has
-              # been unloaded. Will catch other module unloads as well.
 
   def __nonzero__(self):
     return self.__bool__()
