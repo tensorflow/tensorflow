@@ -30,6 +30,7 @@ py_library(
         "//tensorflow/python:function",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
@@ -77,9 +78,9 @@ py_test(
     deps = [
         ":nn_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:nn",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:gradient_checker",
+        "//third_party/py/numpy",
     ],
 )
 

@@ -706,6 +706,9 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
       metadata, fusion->fused_expression_root()->metadata()));
   EXPECT_TRUE(protobuf_util::ProtobufEquals(
       metadata, fusion->fused_expression_root()->operand(0)->metadata()));
+
+  auto cloned = fusion->CloneWithNewOperands(fusion->shape(), {});
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
 }
 
 TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
@@ -727,6 +730,23 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
 
   EXPECT_TRUE(ShapeUtil::Equal(clone01->outfeed_shape(), shape01));
   EXPECT_TRUE(ShapeUtil::Equal(clone10->outfeed_shape(), shape10));
+}
+
+TEST_F(HloInstructionTest, PreserveTupleShapeThroughClone) {
+  HloComputation::Builder builder(TestName());
+  auto* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  auto* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({constant, constant}));
+  *ShapeUtil::GetMutableSubshape(tuple->mutable_shape(), {0})
+       ->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
+  *ShapeUtil::GetMutableSubshape(tuple->mutable_shape(), {1})
+       ->mutable_layout() = LayoutUtil::MakeLayout({1, 0});
+  auto tuple_clone = tuple->Clone();
+  EXPECT_TRUE(ShapeUtil::Equal(tuple_clone->shape(), tuple->shape()));
 }
 
 TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
@@ -1183,13 +1203,13 @@ TEST_F(HloInstructionTest, Stringification) {
 
   EXPECT_EQ(fusion->ToString(false, false),
             "%fusion = f32[5,20]{1,0} fusion:kTransposeDot(f32[5,10]{1,0} %x, "
-            "f32[20,10]{1,0} %y), calls=fused_computation");
+            "f32[20,10]{1,0} %y), calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));
   EXPECT_EQ(loop->ToString(false, false),
             "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
-            "condition=TransposeDot, body=TransposeDot");
+            "condition=%TransposeDot, body=%TransposeDot");
 }
 
 }  // namespace

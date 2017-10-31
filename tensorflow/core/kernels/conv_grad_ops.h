@@ -212,6 +212,7 @@ struct ConvBackpropSpatialDimension {
   int64 filter_size;
   int64 output_size;
   int64 stride;
+  int64 dilation;
   int64 expanded_output_size;
 
   // Number of padding elements to be added before/after this dimension of
@@ -242,6 +243,13 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
                                      Padding padding, TensorFormat data_format,
                                      ConvBackpropDimensions* dims);
 
+// The V2 version computes the same outputs with arbitrary dilation rate.
+// TODO(b/67112639): Merge V2 versions and the original versions eventually.
+Status ConvBackpropComputeDimensionsV2(
+    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
+    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
+    const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
+    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_GRAD_OPS_H_

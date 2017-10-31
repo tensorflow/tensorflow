@@ -58,9 +58,6 @@ void UnaryVariantOpRegistry::RegisterShapeFn(const string& type_name,
 Status GetUnaryVariantShape(const Tensor& variant_tensor, TensorShape* shape) {
   CHECK_EQ(variant_tensor.dtype(), DT_VARIANT);
   CHECK_EQ(variant_tensor.dims(), 0);
-  // Use a mutable Variant because shape_fn will first call
-  // MaybeDecodeAndGet, which in turn may mutate the underlying object
-  // (if a Decode is called).
   const Variant& v = variant_tensor.scalar<Variant>()();
   UnaryVariantOpRegistry::VariantShapeFn* shape_fn =
       UnaryVariantOpRegistry::Global()->GetShapeFn(v.TypeName());
@@ -143,6 +140,44 @@ REGISTER_VARIANT_DECODE_TYPE(bool);
 REGISTER_VARIANT_DECODE_TYPE(double);
 
 #undef REGISTER_VARIANT_DECODE_TYPE
+
+UnaryVariantOpRegistry::AsyncVariantDeviceCopyFn*
+UnaryVariantOpRegistry::GetDeviceCopyFn(
+    const VariantDeviceCopyDirection direction, StringPiece type_name) {
+  auto found = device_copy_fns.find(std::make_pair(direction, type_name));
+  if (found == device_copy_fns.end()) return nullptr;
+  return &found->second;
+}
+
+void UnaryVariantOpRegistry::RegisterDeviceCopyFn(
+    const VariantDeviceCopyDirection direction, const string& type_name,
+    const AsyncVariantDeviceCopyFn& device_copy_fn) {
+  CHECK(!type_name.empty()) << "Need a valid name for UnaryVariantDeviceCopy";
+  AsyncVariantDeviceCopyFn* existing = GetDeviceCopyFn(direction, type_name);
+  CHECK_EQ(existing, nullptr)
+      << "UnaryVariantDeviceCopy for direction: " << direction
+      << " and type_name: " << type_name << " already registered";
+  device_copy_fns.insert(
+      std::pair<std::pair<VariantDeviceCopyDirection, StringPiece>,
+                AsyncVariantDeviceCopyFn>(
+          std::make_pair(direction, GetPersistentStringPiece(type_name)),
+          device_copy_fn));
+}
+
+Status VariantDeviceCopy(
+    const VariantDeviceCopyDirection direction, const Variant& from,
+    Variant* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy_fn) {
+  UnaryVariantOpRegistry::AsyncVariantDeviceCopyFn* device_copy_fn =
+      UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(direction,
+                                                        from.TypeName());
+  if (device_copy_fn == nullptr) {
+    return errors::Internal(
+        "No unary variant device copy function found for direction: ",
+        direction, " and Variant type_name: ", from.TypeName());
+  }
+  return (*device_copy_fn)(from, to, copy_fn);
+}
 
 // Special casing UnaryOpFn per op and per device.
 UnaryVariantOpRegistry::VariantUnaryOpFn* UnaryVariantOpRegistry::GetUnaryOpFn(

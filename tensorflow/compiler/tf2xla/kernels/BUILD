@@ -5,7 +5,6 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load("//tensorflow/compiler/xla:xla.bzl", "export_dynamic_linkopts")
 
 tf_kernel_library(
     name = "xla_ops",
@@ -83,6 +82,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:sendrecv_ops",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
@@ -132,8 +132,6 @@ tf_kernel_library(
     name = "xla_cpu_only_ops",
     srcs = ["index_ops_cpu.cc"],
     deps = [
-        ":gather_op_kernel_float_int32",
-        ":gather_op_kernel_float_int64",
         ":index_ops_kernel_argmax_float_1d",
         ":index_ops_kernel_argmax_float_2d",
         "//tensorflow/compiler/tf2xla:common",
@@ -150,38 +148,11 @@ tf_kernel_library(
 )
 
 cc_library(
-    name = "gather_op_kernel_float_int32",
-    srcs = ["gather_op_kernel_float_int32.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/kernels:gather_functor_hdr",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "gather_op_kernel_float_int64",
-    srcs = ["gather_op_kernel_float_int64.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/kernels:gather_functor_hdr",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
@@ -193,6 +164,7 @@ cc_library(
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],

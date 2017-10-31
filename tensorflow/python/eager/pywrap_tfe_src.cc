@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tfe.h"
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/eager/tape.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -342,6 +343,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
   if (TF_GetCode(out_status) == TF_OK) {
     SetOpAttrs(ctx, op, attrs, out_status);
   }
+  Py_BEGIN_ALLOW_THREADS;
   if (TF_GetCode(out_status) == TF_OK) {
     int num_outputs = outputs->size();
     TFE_Execute(op, outputs->data(), &num_outputs, out_status);
@@ -354,6 +356,7 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                      .c_str());
   }
   TFE_DeleteOp(op);
+  Py_END_ALLOW_THREADS;
 }
 
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e) {
@@ -435,4 +438,218 @@ void TFE_DeleteContextCapsule(PyObject* context) {
       reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
   TFE_DeleteContext(ctx, status);
   TF_DeleteStatus(status);
+}
+
+typedef struct {
+  PyObject_HEAD
+      /* Type-specific fields go here. */
+      tensorflow::eager::GradientTape* tape;
+} TFE_Py_Tape;
+
+static void TFE_Py_Tape_Delete(PyObject* tape) {
+  delete reinterpret_cast<TFE_Py_Tape*>(tape)->tape;
+  Py_TYPE(tape)->tp_free(tape);
+}
+
+static PyTypeObject TFE_Py_Tape_Type = {
+    PyVarObject_HEAD_INIT(nullptr, 0) "tfe.Tape", /* tp_name */
+    sizeof(TFE_Py_Tape),                          /* tp_basicsize */
+    0,                                            /* tp_itemsize */
+    &TFE_Py_Tape_Delete,                          /* tp_dealloc */
+    nullptr,                                      /* tp_print */
+    nullptr,                                      /* tp_getattr */
+    nullptr,                                      /* tp_setattr */
+    nullptr,                                      /* tp_reserved */
+    nullptr,                                      /* tp_repr */
+    nullptr,                                      /* tp_as_number */
+    nullptr,                                      /* tp_as_sequence */
+    nullptr,                                      /* tp_as_mapping */
+    nullptr,                                      /* tp_hash  */
+    nullptr,                                      /* tp_call */
+    nullptr,                                      /* tp_str */
+    nullptr,                                      /* tp_getattro */
+    nullptr,                                      /* tp_setattro */
+    nullptr,                                      /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,                           /* tp_flags */
+    "TFE_Py_Tape objects",                        /* tp_doc */
+};
+
+PyObject* TFE_Py_NewTape() {
+  TFE_Py_Tape_Type.tp_new = PyType_GenericNew;
+  if (PyType_Ready(&TFE_Py_Tape_Type) < 0) return nullptr;
+  TFE_Py_Tape* tape = PyObject_NEW(TFE_Py_Tape, &TFE_Py_Tape_Type);
+  tape->tape = new tensorflow::eager::GradientTape();
+  return reinterpret_cast<PyObject*>(tape);
+}
+
+static tensorflow::int64 MakeInt(PyObject* integer) {
+#if PY_MAJOR_VERSION >= 3
+  return PyLong_AsLong(integer);
+#else
+  return PyInt_AsLong(integer);
+#endif
+}
+
+static std::vector<tensorflow::int64> MakeIntList(PyObject* list) {
+  if (list == Py_None) {
+    return {};
+  }
+  PyObject* seq = PySequence_Fast(list, "expected a sequence");
+  if (seq == nullptr) {
+    return {};
+  }
+  int len = PySequence_Size(list);
+  std::vector<tensorflow::int64> tensor_ids;
+  tensor_ids.reserve(len);
+  for (int i = 0; i < len; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(seq, i);
+    if (PyLong_Check(item)) {
+      tensorflow::int64 id = MakeInt(item);
+      tensor_ids.push_back(id);
+    } else {
+      tensor_ids.push_back(-1);
+    }
+  }
+  Py_DECREF(seq);
+  return tensor_ids;
+}
+
+PyObject* TFE_Py_TapeShouldRecord(PyObject* py_tape, PyObject* tensors) {
+  TFE_Py_Tape* tape = reinterpret_cast<TFE_Py_Tape*>(py_tape);
+  return PyBool_FromLong(tape->tape->ShouldRecord(MakeIntList(tensors)));
+}
+
+void TFE_Py_TapeWatch(PyObject* tape, tensorflow::int64 tensor_id) {
+  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->Watch(tensor_id);
+}
+
+// TODO(apassos) have a fast path for eager tensors here which gets information
+// from the handle instead of from the python object, and use this only for the
+// case of graph tensors.
+static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
+  PyObject* id_field = PyObject_GetAttrString(tensor, "_id");
+  tensorflow::int64 id = MakeInt(id_field);
+  Py_DECREF(id_field);
+  if (PyErr_Occurred() != nullptr) {
+    return tensorflow::eager::TapeTensor{
+        id, static_cast<tensorflow::DataType>(0), tensorflow::TensorShape({})};
+  }
+  PyObject* dtype_object = PyObject_GetAttrString(tensor, "dtype");
+  PyObject* dtype_enum = PyObject_GetAttrString(dtype_object, "_type_enum");
+  Py_DECREF(dtype_object);
+  tensorflow::DataType dtype =
+      static_cast<tensorflow::DataType>(MakeInt(dtype_enum));
+  Py_DECREF(dtype_enum);
+  if (PyErr_Occurred() != nullptr) {
+    return tensorflow::eager::TapeTensor{id, dtype,
+                                         tensorflow::TensorShape({})};
+  }
+  static char _shape_tuple[] = "_shape_tuple";
+  PyObject* shape_tuple = PyObject_CallMethod(tensor, _shape_tuple, nullptr);
+  if (PyErr_Occurred() != nullptr) {
+    return tensorflow::eager::TapeTensor{id, dtype,
+                                         tensorflow::TensorShape({})};
+  }
+  auto l = MakeIntList(shape_tuple);
+  Py_DECREF(shape_tuple);
+  // Replace -1, which represents accidental Nones which can occur in graph mode
+  // and can cause errors in shape cosntruction with 0s.
+  for (auto& c : l) {
+    if (c < 0) {
+      c = 0;
+    }
+  }
+  tensorflow::TensorShape shape(l);
+  return tensorflow::eager::TapeTensor{id, dtype, shape};
+}
+
+void TFE_Py_TapeRecordOperation(PyObject* tape, PyObject* op_type,
+                                PyObject* output_tensors,
+                                PyObject* input_tensor_ids,
+                                PyObject* backward_function) {
+  std::vector<tensorflow::int64> input_ids = MakeIntList(input_tensor_ids);
+  std::vector<tensorflow::eager::TapeTensor> output_info;
+  PyObject* seq = PySequence_Fast(output_tensors,
+                                  "expected a sequence of integer tensor ids");
+  int len = PySequence_Size(output_tensors);
+  output_info.reserve(len);
+  for (int i = 0; i < len; ++i) {
+    output_info.push_back(
+        TapeTensorFromTensor(PySequence_Fast_GET_ITEM(seq, i)));
+    if (PyErr_Occurred() != nullptr) {
+      Py_DECREF(seq);
+      return;
+    }
+  }
+  Py_DECREF(seq);
+  Py_INCREF(backward_function);
+  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->RecordOperation(
+      PyBytes_AsString(op_type), output_info, input_ids, backward_function,
+      [backward_function]() { Py_DECREF(backward_function); });
+}
+
+void TFE_Py_TapeDeleteTrace(PyObject* tape, tensorflow::int64 tensor_id) {
+  reinterpret_cast<TFE_Py_Tape*>(tape)->tape->DeleteTrace(tensor_id);
+}
+
+// TODO(apassos) when backprop.py moves to C most of this exporting logic can
+// disappear.
+PyObject* TFE_Py_TapeExport(PyObject* tape) {
+  std::pair<tensorflow::eager::TensorTape, tensorflow::eager::OpTape> exported =
+      reinterpret_cast<TFE_Py_Tape*>(tape)->tape->Export();
+  PyObject* tensor_tape = PyDict_New();
+  for (const auto& pair : exported.first) {
+    PyObject* tid = PyLong_FromLong(pair.first);
+    PyObject* opid = PyLong_FromLong(pair.second);
+    PyDict_SetItem(tensor_tape, tid, opid);
+    Py_DECREF(tid);
+    Py_DECREF(opid);
+  }
+
+  PyObject* op_tape = PyDict_New();
+  for (const auto& pair : exported.second) {
+    PyObject* opid = PyLong_FromLong(pair.first);
+    const auto& entry = pair.second;
+    PyObject* op_type = PyBytes_FromString(entry.op_type.c_str());
+    PyObject* output_ids = PyList_New(entry.output_tensor_info.size());
+    for (int i = 0; i < entry.output_tensor_info.size(); ++i) {
+      PyObject* tid = PyLong_FromLong(entry.output_tensor_info[i].id);
+      PyList_SET_ITEM(output_ids, i, tid);
+    }
+    PyObject* input_ids = PyList_New(entry.input_tensor_id.size());
+    for (int i = 0; i < entry.input_tensor_id.size(); ++i) {
+      PyObject* tid = PyLong_FromLong(entry.input_tensor_id[i]);
+      PyList_SET_ITEM(input_ids, i, tid);
+    }
+    PyObject* backward_function =
+        reinterpret_cast<PyObject*>(entry.backward_function);
+    PyObject* output_shape_and_dtype =
+        PyList_New(entry.output_tensor_info.size());
+    for (int i = 0; i < entry.output_tensor_info.size(); ++i) {
+      const tensorflow::TensorShape& shape = entry.output_tensor_info[i].shape;
+      PyObject* shape_list = PyList_New(shape.dims());
+      for (int j = 0; j < shape.dims(); ++j) {
+        PyList_SET_ITEM(shape_list, j, PyLong_FromLong(shape.dim_size(j)));
+      }
+      PyObject* type_enum = PyLong_FromLong(entry.output_tensor_info[i].dtype);
+      PyObject* tuple = PyTuple_Pack(2, shape_list, type_enum);
+      Py_DECREF(shape_list);
+      Py_DECREF(type_enum);
+      PyList_SET_ITEM(output_shape_and_dtype, i, tuple);
+    }
+    PyObject* opinfo = PyTuple_Pack(5, op_type, output_ids, input_ids,
+                                    backward_function, output_shape_and_dtype);
+    Py_DECREF(op_type);
+    Py_DECREF(output_ids);
+    Py_DECREF(input_ids);
+    Py_DECREF(backward_function);
+    Py_DECREF(output_shape_and_dtype);
+    PyDict_SetItem(op_tape, opid, opinfo);
+    Py_DECREF(opid);
+    Py_DECREF(opinfo);
+  }
+  PyObject* retval = PyTuple_Pack(2, tensor_tape, op_tape);
+  Py_DECREF(tensor_tape);
+  Py_DECREF(op_tape);
+  return retval;
 }

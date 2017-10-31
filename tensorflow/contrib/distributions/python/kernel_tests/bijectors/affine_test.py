@@ -829,6 +829,15 @@ class AffineBijectorTest(test.TestCase):
         x=np.array(
             [1., 2], dtype=np.float32))
 
+  def testScalarEventIdentityScale(self):
+    with self.test_session() as sess:
+      doubler = Affine(
+          scale_identity_multiplier=2.,
+          event_ndims=0)
+      doubler2 = doubler.inverse_log_det_jacobian(2.)
+      doubler2_ildj_ = sess.run([doubler2])
+      self.assertAllClose([-np.log(2.)], doubler2_ildj_)
+
 
 if __name__ == "__main__":
   test.main()

@@ -31,10 +31,23 @@ cc_library(
 )
 
 py_library(
+    name = "tpu_test_util",
+    srcs = [
+        "python/tpu/test_util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_lib",
+        ":tpu_py",
+    ],
+)
+
+py_library(
     name = "tpu_estimator",
     srcs = [
         "python/tpu/tpu_config.py",
         "python/tpu/tpu_estimator.py",
+        "python/tpu/util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

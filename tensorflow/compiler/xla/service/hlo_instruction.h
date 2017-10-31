@@ -72,6 +72,23 @@ class HloInstruction {
   };
 
   ~HloInstruction();
+
+  // Creates an instruction from the given proto. Arguments:
+  //
+  //   module: the module which will contain the instruction. The newly created
+  //     instruction is *not* added to the module or any computation, however.
+  //   proto: the proto to convert from.
+  //   instruction_map: a map from instruction name to HloInstruction*. This map
+  //     must contain all operands of the newly constructed instruction.
+  //   computation_map: a map from computation name to HloComputation*. This map
+  //     must contain all computations which the newly constructed instruction
+  //     calls. If the instruction is a fusion instruction, then the fusion
+  //     computation is added to this map and the module.
+  static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
+      HloModule* module, const HloInstructionProto& proto,
+      const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
+      tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map);
+
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
                                                          const Shape& shape,
@@ -507,6 +524,26 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kGetTupleElement
   int64 tuple_index() const;
+
+  // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
+  // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
+  // (possibly nested) tuple indices used on the path from ancestor to 'hlo'.
+  std::pair<const HloInstruction*, ShapeIndex> LatestNonGteAncestorAndIndex()
+      const;
+
+  std::pair<HloInstruction*, ShapeIndex> LatestNonGteAncestorAndIndex() {
+    auto rv =
+        const_cast<const HloInstruction*>(this)->LatestNonGteAncestorAndIndex();
+    return {const_cast<HloInstruction*>(rv.first), rv.second};
+  }
+
+  // Same as LatestNonGteAncestorAndIndex, but just returns the HloInstruction.
+  const HloInstruction* LatestNonGteAncestor() const;
+
+  HloInstruction* LatestNonGteAncestor() {
+    return const_cast<HloInstruction*>(
+        const_cast<const HloInstruction*>(this)->LatestNonGteAncestor());
+  }
 
   // Gets/sets the to_apply HloComputation for Call, Map, Reduce, etc.
   // The setter should only be called by HloModule or HloComputation methods.
@@ -1055,7 +1092,7 @@ class HloInstruction {
   std::unique_ptr<Literal> literal_;
 
   // Constant index, only present for kGetTupleElement.
-  int64 tuple_index_ = 0;
+  int64 tuple_index_ = -1;
 
   // Dimensions present for some operations that require reshaping or
   // broadcasting, including Reshape, Reduce, ReduceWindow, and Reverse.
@@ -1073,8 +1110,8 @@ class HloInstruction {
   std::vector<int64> slice_strides_;
 
   // The bit sizes for a reduce-precision operation.
-  int32 exponent_bits_;
-  int32 mantissa_bits_;
+  int32 exponent_bits_ = 0;
+  int32 mantissa_bits_ = 0;
 
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).
@@ -1124,11 +1161,11 @@ class HloInstruction {
 
   // A small float number added to the variance to avoid divide-by-zero error.
   // Only present for kBatchNormTraining.
-  float epsilon_;
+  float epsilon_ = 0.0f;
 
   // An integer value representing the index of the feature dimension.
   // Only present for kBatchNormTraining.
-  int64 feature_index_;
+  int64 feature_index_ = -1;
 
   // Represents a unique identifier for each Send/Recv instruction pair.
   // Only present for kSend or kRecv.
@@ -1154,6 +1191,8 @@ class HloInstruction {
 };
 
 string ToString(HloInstruction::FusionKind kind);
+StatusOr<HloInstruction::FusionKind> StringToFusionKind(
+    const string& kind_name);
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 

@@ -45,7 +45,8 @@ static Status StatelessShape(shape_inference::InferenceContext* context) {
       .SetShapeFn(StatelessShape)
 
 // This op is exposed through contrib/stateless only.  The interface may change.
-REGISTER_STATELESS_OP("StatelessRandomUniform").Doc(R"doc(
+REGISTER_STATELESS_OP("StatelessRandomUniform")
+    .Doc(R"doc(
 Outputs deterministic pseudorandom random values from a uniform distribution.
 
 The generated values follow a uniform distribution in the range `[0, 1)`. The
@@ -60,7 +61,8 @@ output: Random values with specified shape.
 )doc");
 
 // This op is exposed through contrib/stateless only.  The interface may change.
-REGISTER_STATELESS_OP("StatelessRandomNormal").Doc(R"doc(
+REGISTER_STATELESS_OP("StatelessRandomNormal")
+    .Doc(R"doc(
 Outputs deterministic pseudorandom values from a normal distribution.
 
 The generated values will have mean 0 and standard deviation 1.
@@ -74,7 +76,8 @@ output: Random values with specified shape.
 )doc");
 
 // This op is exposed through contrib/stateless only.  The interface may change.
-REGISTER_STATELESS_OP("StatelessTruncatedNormal").Doc(R"doc(
+REGISTER_STATELESS_OP("StatelessTruncatedNormal")
+    .Doc(R"doc(
 Outputs deterministic pseudorandom values from a truncated normal distribution.
 
 The generated values follow a normal distribution with mean 0 and standard

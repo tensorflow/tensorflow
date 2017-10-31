@@ -84,6 +84,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -101,23 +102,6 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("out_type"),
-                        ShapeOp<int64>);
-
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("Shape")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("input")
-                            .HostMemory("output")
-                            .TypeConstraint<Variant>("T")
-                            .TypeConstraint<int32>("out_type"),
-                        ShapeOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("Shape")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("input")
-                            .HostMemory("output")
-                            .TypeConstraint<Variant>("T")
                             .TypeConstraint<int64>("out_type"),
                         ShapeOp<int64>);
 
@@ -245,6 +229,7 @@ REGISTER_KERNEL_BUILDER(Name("Rank")
                               .HostMemory("output"),     \
                           RankOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32 and bool.
@@ -264,14 +249,6 @@ REGISTER_KERNEL_BUILDER(Name("Rank")
                             .HostMemory("output"),
                         RankOp);
 
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("Rank")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        RankOp);
 #endif  // GOOGLE_CUDA
 
 // Size ------------------------------------------
@@ -302,6 +279,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                           SizeOp<int64>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -322,22 +300,6 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                             .HostMemory("output"),
                         SizeOp<int64>);
 
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("Size")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .TypeConstraint<int32>("out_type")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        SizeOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("Size")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .TypeConstraint<int64>("out_type")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        SizeOp<int64>);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL

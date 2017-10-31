@@ -97,11 +97,15 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   TF_RETURN_IF_ERROR(ConvertGraphDefToXla(graph_def, config, client,
                                           &computation,
                                           &compile_result->has_context_arg));
-  if (!flags.debug_dir.empty()) {
+  if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::SessionModule> module,
                         computation.Snapshot());
-    string file = io::JoinPath(flags.debug_dir, "tfcompile_xla_module.pb");
-    TF_RETURN_IF_ERROR(WriteBinaryProto(Env::Default(), file, *module));
+    // Serialize the SessionModule deterministically so that all the outputs of
+    // a tf_library genrule are deterministic.
+    string proto;
+    TF_RET_CHECK(SerializeToStringDeterministic(*module, &proto));
+    TF_RETURN_IF_ERROR(
+        WriteStringToFile(Env::Default(), flags.out_session_module, proto));
   }
   xla::cpu::CpuAotCompilationOptions aot_opts(
       flags.target_triple, flags.target_cpu, flags.target_features,

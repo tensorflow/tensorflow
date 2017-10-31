@@ -112,7 +112,7 @@ TEST_F(ClusterFunctionLibraryRuntimeTest, ConstructFunctionGraph) {
 node {
   name: "_recv_x_0"
   op: "_Recv"
-  device: "/job:a/replica:0/task:0/cpu:0"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
     key: "client_terminated"
     value {
@@ -122,13 +122,13 @@ node {
   attr {
     key: "recv_device"
     value {
-      s: "/job:a/replica:0/task:0/cpu:0"
+      s: "/job:a/replica:0/task:0/device:CPU:0"
     }
   }
   attr {
     key: "send_device"
     value {
-      s: "/job:a/replica:0/task:0/cpu:0"
+      s: "/job:a/replica:0/task:0/device:CPU:0"
     }
   }
   attr {
@@ -154,7 +154,7 @@ node {
   name: "XTimesTwo"
   op: "XTimesTwo"
   input: "_recv_x_0"
-  device: "/job:a/replica:0/task:0/cpu:0"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
     key: "T"
     value {
@@ -164,7 +164,7 @@ node {
   attr {
     key: "_target"
     value {
-      s: "/job:a/replica:0/task:0/cpu:0"
+      s: "/job:a/replica:0/task:0/device:CPU:0"
     }
   }
 }
@@ -172,7 +172,7 @@ node {
   name: "_send_y_0"
   op: "_Send"
   input: "XTimesTwo"
-  device: "/job:a/replica:0/task:0/cpu:0"
+  device: "/job:a/replica:0/task:0/device:CPU:0"
   attr {
     key: "T"
     value {
@@ -188,13 +188,13 @@ node {
   attr {
     key: "recv_device"
     value {
-      s: "/job:a/replica:0/task:0/cpu:0"
+      s: "/job:a/replica:0/task:0/device:CPU:0"
     }
   }
   attr {
     key: "send_device"
     value {
-      s: "/job:a/replica:0/task:0/cpu:0"
+      s: "/job:a/replica:0/task:0/device:CPU:0"
     }
   }
   attr {
@@ -214,7 +214,11 @@ node {
   TF_EXPECT_GRAPH_EQ(expected, actual);
 }
 
-TEST_F(ClusterFunctionLibraryRuntimeTest, InstantiateAndRun) {
+// Disabling the following two tests since there seem to be some issues with
+// GRPC bringing up multiple processes as sub-processes.
+// More info at: https://github.com/grpc/grpc/issues/10142.
+// TODO(rohanj): Enable tests when the grpc bug is fixed.
+TEST_F(ClusterFunctionLibraryRuntimeTest, DISABLED_InstantiateAndRun) {
   FunctionDefLibrary proto;
   *(proto.add_function()) = test::function::XTimesTwoInt32();
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
@@ -227,7 +231,8 @@ TEST_F(ClusterFunctionLibraryRuntimeTest, InstantiateAndRun) {
   test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({2, 4, 6, 8}));
 }
 
-TEST_F(ClusterFunctionLibraryRuntimeTest, InstantiateAndRunAttrSubstitution) {
+TEST_F(ClusterFunctionLibraryRuntimeTest,
+       DISABLED_InstantiateAndRunAttrSubstitution) {
   FunctionDefLibrary proto;
   *(proto.add_function()) = test::function::XTimesTwo();
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);

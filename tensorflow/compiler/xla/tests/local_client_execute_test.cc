@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
@@ -814,7 +815,7 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
   test_to_device_and_back(*Literal::CreateR0<bool>(true));
   test_to_device_and_back(*Literal::CreateR1<float>({1.0, 42.0, 744.4}));
   test_to_device_and_back(
-      *Literal::CreateR2<double>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
+      *Literal::CreateR2<float>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
   test_to_device_and_back(*Literal::CreateR2<int32>({{2, 1}, {4444, 56}}));
 
   // Null shape (empty tuple).
@@ -833,6 +834,55 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
                            Literal::CreateR0<float>(123456.0).get()})
            .get(),
        Literal::CreateR0<bool>(false).get()}));
+}
+
+XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
+  // Test copying Literals to the device as ShapedBuffers, then copying them
+  // back again to Literals for 64-bit values.
+  auto test_to_device_and_back = [this](const Literal& literal) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto shaped_buffer,
+        local_client_->LiteralToShapedBuffer(
+            literal, local_client_->default_device_ordinal(), allocator_));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto transferred_literal,
+        local_client_->ShapedBufferToLiteral(*shaped_buffer));
+    EXPECT_EQ(literal, *transferred_literal);
+  };
+
+  test_to_device_and_back(
+      *Literal::CreateR2<double>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
+  test_to_device_and_back(*Literal::CreateR2<int64>({{2, 1}, {4444, 56}}));
+  test_to_device_and_back(
+      *Literal::CreateR2<uint64>({{20000000000ULL, 1}, {4444, 56}}));
+  test_to_device_and_back(
+      *Literal::MakeTuple({Literal::CreateR1<double>({1.0, -42.0}).get(),
+                           Literal::CreateR0<int64>(123456789000LL).get()}));
+}
+
+// TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
+// 2017-10-18.
+XLA_TEST_F(LocalClientExecuteTest,
+           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(InfeedOutfeedTest))) {
+  ComputationBuilder builder(local_client_, TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {3});
+  auto in = builder.Infeed(shape);
+  auto constant = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f});
+  auto sum = builder.Add(in, constant);
+  builder.Outfeed(sum, shape, /*outfeed_config=*/"");
+
+  std::unique_ptr<tensorflow::Thread> thread(
+      tensorflow::Env::Default()->StartThread(
+          tensorflow::ThreadOptions(), "execute_thread",
+          [&] { ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {}); }));
+
+  ASSERT_IS_OK(local_client_->TransferToInfeed(
+      *Literal::CreateR1<float>({-5.0, 123.0, 42.0})));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
+                          local_client_->TransferFromOutfeed(&shape));
+
+  LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, *result);
 }
 
 // Benchmark that measures the overhead of the LocalClient API when running a

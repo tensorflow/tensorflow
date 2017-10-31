@@ -91,10 +91,9 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           (parent->NumElements() / parent->dim_size(0))) {
         TensorShape chip_shape = parent->shape();
         chip_shape.RemoveDim(0);
-        return errors::Internal(
+        return errors::InvalidArgument(
             "HandleElementToSlice Cannot copy slice: number of elements does "
-            "not "
-            "match.  Shapes are: [element]: ",
+            "not match. Shapes are: [element]: ",
             element.shape().DebugString(),
             ", [parent slice]: ", chip_shape.DebugString());
       }
@@ -182,7 +181,6 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 i_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 

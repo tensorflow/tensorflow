@@ -45,6 +45,7 @@ tf_cc_test(
     srcs = ["framework/gradients_test.cc"],
     deps = [
         ":cc_ops",
+        ":client_session",
         ":grad_op_registry",
         ":grad_ops",
         ":gradients",

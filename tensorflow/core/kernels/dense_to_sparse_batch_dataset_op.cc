@@ -50,11 +50,9 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(row_shape_t->shape()),
                 errors::InvalidArgument("row_shape must be a vector"));
     PartialTensorShape row_shape;
-    OP_REQUIRES_OK(ctx,
-                   PartialTensorShape::MakePartialShape(
-                       row_shape_t->vec<int64>().data(),
-                       row_shape_t->NumElements(),
-                       &row_shape));
+    OP_REQUIRES_OK(ctx, PartialTensorShape::MakePartialShape(
+                            row_shape_t->vec<int64>().data(),
+                            row_shape_t->NumElements(), &row_shape));
 
     *output = nullptr;
 
@@ -174,10 +172,11 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
               for (int j = 0; j < row_ndims; ++j) {
                 // Take the maximum in the dimension if -1 is given.
                 if (row_shape.dim_size(j) == -1) {
-                  dense_shape_vec(j + 1) = std::max(
-                      batch_element_tuple[0].dim_size(j),
-                      dense_shape_vec(j + 1));
-                } else if (batch_element_tuple[0].dim_size(j) > row_shape.dim_size(j)) {
+                  dense_shape_vec(j + 1) =
+                      std::max(batch_element_tuple[0].dim_size(j),
+                               dense_shape_vec(j + 1));
+                } else if (batch_element_tuple[0].dim_size(j) >
+                           row_shape.dim_size(j)) {
                   return errors::DataLoss(
                       "Input element had shape (",
                       batch_element_tuple[0].shape().DebugString(),
@@ -246,7 +245,6 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 i_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 

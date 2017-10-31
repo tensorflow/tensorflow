@@ -347,7 +347,7 @@ def get_run_start_intro(run_call_count,
 
   out = debugger_cli_common.RichTextLines(_HORIZONTAL_BAR)
   if is_callable_runner:
-    out.append("Running a runner returned by Session.make_callabe()")
+    out.append("Running a runner returned by Session.make_callable()")
   else:
     out.append("Session.run() call #%d:" % run_call_count)
     out.append("")

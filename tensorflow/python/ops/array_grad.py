@@ -79,15 +79,16 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
 
   def _ExtractInputShapes(inputs):
     """Extract the shapes of a set of input tensors."""
+    if not context.in_graph_mode():
+      return array_ops.shape_n(inputs)
     sizes = []
     fully_known = True
     for x in inputs:
       input_shape = array_ops.shape(x)
-      if context.in_graph_mode():
-        if not isinstance(input_shape,
-                          ops.Tensor) or input_shape.op.type != "Const":
-          fully_known = False
-          break
+      if not isinstance(input_shape,
+                        ops.Tensor) or input_shape.op.type != "Const":
+        fully_known = False
+        break
       sizes.append(input_shape)
 
     if fully_known:
@@ -396,7 +397,7 @@ def _GatherV2Grad(op, grad):
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
     if context.in_eager_mode():
-      params_tail_shape = params_shape.as_cpu_tensor()[1:]
+      params_tail_shape = params_shape.cpu()[1:]
     else:
       params_tail_shape = params_shape[1:]
     values_shape = array_ops.concat([indices_size, params_tail_shape], 0)

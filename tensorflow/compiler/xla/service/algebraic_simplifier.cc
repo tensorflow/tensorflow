@@ -98,11 +98,11 @@ bool ReshapeIsBitcast(
 HloComputation* CreateScalarBinaryComputation(HloModule* module,
                                               PrimitiveType primitive_type,
                                               HloOpcode opcode) {
-  HloComputation::Builder b("scalar computation");
+  HloComputation::Builder b("scalar_computation");
   auto scalar_lhs = b.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {}), "scalar lhs"));
+      0, ShapeUtil::MakeShape(F32, {}), "scalar_lhs"));
   auto scalar_rhs = b.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {}), "scalar rhs"));
+      1, ShapeUtil::MakeShape(F32, {}), "scalar_rhs"));
   auto scalar_op = b.AddInstruction(
       HloInstruction::CreateBinary(ShapeUtil::MakeShape(primitive_type, {}),
                                    opcode, scalar_lhs, scalar_rhs));
@@ -140,6 +140,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleCopy(HloInstruction* copy) override;
 
   Status HandleConvert(HloInstruction* convert) override;
+
+  Status HandleReal(HloInstruction* real, HloInstruction* operand) override;
+  Status HandleImag(HloInstruction* imag, HloInstruction* operand) override;
 
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
@@ -201,17 +204,18 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   static bool Run(
       HloComputation* computation, bool is_layout_sensitive,
       AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-      bool enable_dot_simplification);
+      bool enable_dot_simplification, bool enable_conv_simplification);
 
  private:
   explicit AlgebraicSimplifierVisitor(
       HloComputation* computation, bool is_layout_sensitive,
       AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-      bool enable_dot_simplification)
+      bool enable_dot_simplification, bool enable_conv_simplification)
       : computation_(computation),
         is_layout_sensitive_(is_layout_sensitive),
         valid_bitcast_callback_(std::move(valid_bitcast_callback)),
-        enable_dot_simplification_(enable_dot_simplification) {}
+        enable_dot_simplification_(enable_dot_simplification),
+        enable_conv_simplification_(enable_conv_simplification) {}
 
   // Convenience method for replacing an instruction with a bitcast.
   void ReplaceWithBitcast(HloInstruction* instruction);
@@ -287,15 +291,18 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   // Disable dot simplication on platforms where it causes a slowdown.
   bool enable_dot_simplification_;
+
+  // Disable convolution simplication on platforms where it causes a slowdown.
+  bool enable_conv_simplification_;
 };
 
 bool AlgebraicSimplifierVisitor::Run(
     HloComputation* computation, bool is_layout_sensitive,
     AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-    bool enable_dot_simplification) {
-  AlgebraicSimplifierVisitor visitor(computation, is_layout_sensitive,
-                                     std::move(valid_bitcast_callback),
-                                     enable_dot_simplification);
+    bool enable_dot_simplification, bool enable_conv_simplification) {
+  AlgebraicSimplifierVisitor visitor(
+      computation, is_layout_sensitive, std::move(valid_bitcast_callback),
+      enable_dot_simplification, enable_conv_simplification);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -519,11 +526,16 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
   // A/pow(B,C) => A*pow(B,-C)
   if (rhs->opcode() == HloOpcode::kPower) {
     VLOG(10) << "transform [A/pow(B,C) => A*pow(B,-C)]: " << divide->ToString();
+    // The output shape of the created negate operator should be the same as the
+    // input.
+    const Shape& negate_shape = rhs->operand(1)->shape();
     HloInstruction* negate =
         computation_->AddInstruction(HloInstruction::CreateUnary(
-            divide->shape(), HloOpcode::kNegate, rhs->mutable_operand(1)));
+            negate_shape, HloOpcode::kNegate, rhs->mutable_operand(1)));
+    // And the power operator should retain the output shape of the old one.
+    const Shape& new_power_shape = rhs->shape();
     HloInstruction* new_power = computation_->AddInstruction(
-        HloInstruction::CreateBinary(divide->shape(), HloOpcode::kPower,
+        HloInstruction::CreateBinary(new_power_shape, HloOpcode::kPower,
                                      rhs->mutable_operand(0), negate));
     return ReplaceWithNewInstruction(
         divide, HloInstruction::CreateBinary(
@@ -912,9 +924,10 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // A Broadcast that feeds a unary element-wise operation can sink the
   // broadcast after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
-      changed_,
+      bool sink_succeeded,
       TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(broadcast));
-  if (changed_) {
+  changed_ |= sink_succeeded;
+  if (sink_succeeded) {
     return Status::OK();
   }
 
@@ -953,6 +966,24 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   PrimitiveType dest_type = convert->shape().element_type();
   if (src_type == dest_type) {
     return ReplaceInstruction(convert, convert->mutable_operand(0));
+  }
+  return Status::OK();
+}
+
+// Real(Complex(r, i)) -> r
+Status AlgebraicSimplifierVisitor::HandleReal(HloInstruction* real,
+                                              HloInstruction* operand) {
+  if (operand->opcode() == HloOpcode::kComplex) {
+    return ReplaceInstruction(real, operand->mutable_operand(0));
+  }
+  return Status::OK();
+}
+
+// Imag(Complex(r, i)) -> i
+Status AlgebraicSimplifierVisitor::HandleImag(HloInstruction* imag,
+                                              HloInstruction* operand) {
+  if (operand->opcode() == HloOpcode::kComplex) {
+    return ReplaceInstruction(imag, operand->mutable_operand(1));
   }
   return Status::OK();
 }
@@ -1217,9 +1248,10 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   // A Reshape that feeds a unary element-wise operation can sink the
   // reshape after the unary element-wise operation.
   TF_ASSIGN_OR_RETURN(
-      changed_,
+      bool sink_succeeded,
       TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(reshape));
-  if (changed_) {
+  changed_ |= sink_succeeded;
+  if (sink_succeeded) {
     return Status::OK();
   }
 
@@ -1262,6 +1294,11 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
     return ReplaceInstruction(dynamic_slice, operand);
   }
+  // DynamicSlice where operand has the same size as the output and
+  // start_indices are all zero is simply equal to operand.
+  if (IsAll(start_indices, 0) && SameShape(operand, dynamic_slice)) {
+    return ReplaceInstruction(dynamic_slice, operand);
+  }
   return Status::OK();
 }
 
@@ -1280,8 +1317,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // not to affect the visible behavior of this op even when the indices are out
   // of range.  Currently dynamic-update-slice wraps out-of-range indices, so
   // we can only remove the op if its indices never wrap.)
-  if (start_indices->IsConstant() && start_indices->literal().IsAll(0) &&
-      ShapeUtil::Compatible(dynamic_update_slice->shape(), update->shape())) {
+  if (IsAll(start_indices, 0) && SameShape(dynamic_update_slice, update)) {
     return ReplaceInstruction(dynamic_update_slice, update);
   }
   return Status::OK();
@@ -1453,6 +1489,9 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
 Status AlgebraicSimplifierVisitor::HandleConvolution(
     HloInstruction* convolution, HloInstruction* lhs, HloInstruction* rhs,
     const Window& window) {
+  if (!enable_conv_simplification_) {
+    return Status::OK();
+  }
   // HandleConvolution tries to replace a convolution with a DOT instruction.
   //
   // Only add when bitcasts can be used:
@@ -1505,7 +1544,10 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   // still convert Conv into more efficient Matmul with operand transposition
   // (such as the transposition flags in cuBLAS SGEMM).
   if (!LayoutUtil::Equal(input_shape.layout(), convolution_shape.layout()) ||
-      input_shape.layout().minor_to_major(0) != dnums.feature_dimension() ||
+      input_shape.layout().minor_to_major(0) !=
+          dnums.input_feature_dimension() ||
+      convolution_shape.layout().minor_to_major(0) !=
+          dnums.output_feature_dimension() ||
       // The input feature dimension should come later in the minor-to-major
       // order.
       (PositionInContainer(filter_shape.layout().minor_to_major(),
@@ -1524,14 +1566,14 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
 
   // Replace it with a dot, with bitcasts around it to get the right shape.
   const int64 input_channels =
-      input_shape.dimensions(dnums.feature_dimension());
+      input_shape.dimensions(dnums.input_feature_dimension());
   const int64 output_channels =
       filter_shape.dimensions(dnums.kernel_output_feature_dimension());
 
   // Computes the product of the non-feature dimensions.
   int64 conv_width = 1;
   for (int i = 0; i < input_shape.dimensions_size(); ++i) {
-    if (i != dnums.feature_dimension()) {
+    if (i != dnums.input_feature_dimension()) {
       conv_width *= input_shape.dimensions(i);
     }
   }
@@ -1782,7 +1824,7 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
 
 // Tries to determine the number of times the given loop executes.  Currently
 // simply returns 0, 1, or "can't tell" (nullopt).
-static optional<int64> GetLoopTripCount(const HloInstruction* while_op) {
+static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
   VLOG(2) << "Getting trip count for loop " << while_op->ToString();
 
@@ -1803,15 +1845,10 @@ static optional<int64> GetLoopTripCount(const HloInstruction* while_op) {
   // compute how many times the loop executes.  Start by computing the induction
   // variable's initial value.
   HloEvaluator evaluator;
-  auto* while_init = while_op->operand(0);
-  auto* indvar_init = while_init->operand(*indvar_tuple_idx);
-  // TODO(b/67157142): This should not be redundant, remove this when the
-  // underlying issue has been addressed.
-  if (!hlo_query::AllOperandsAreConstants(*indvar_init)) {
-    return nullopt;
-  }
+  auto* while_init = while_op->mutable_operand(0);
+  auto* indvar_init = while_init->mutable_operand(*indvar_tuple_idx);
   StatusOr<std::unique_ptr<Literal>> indvar_init_result =
-      evaluator.Evaluate(indvar_init->Clone().get());
+      evaluator.Evaluate(indvar_init);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init: "
             << indvar_init_result.status();
@@ -1925,7 +1962,7 @@ Status AlgebraicSimplifierVisitor::HandleWhile(HloInstruction* while_op) {
     return Status::OK();
   }
 
-  // Remove while loops with static trip count of 1.
+  // Remove while loops with static trip count of 0.
   optional<int64> trip_count = GetLoopTripCount(while_op);
   if (trip_count && *trip_count == 0) {
     // The loop never executes, so the value of the loop is the value of its
@@ -1940,8 +1977,10 @@ Status AlgebraicSimplifierVisitor::HandleWhile(HloInstruction* while_op) {
     changed_ = true;
     return Status::OK();
   }
+
+  // Transform while loops with static trip count of 1 into a call op, then
+  // inline the call.
   if (trip_count && *trip_count == 1) {
-    // Transform the while loop into a call op, then inline the call.
     auto computation = while_op->parent();
     auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
         while_op->shape(), while_op->operands(), while_op->while_body()));
@@ -1958,9 +1997,9 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (AlgebraicSimplifierVisitor::Run(comp, is_layout_sensitive_,
-                                        valid_bitcast_callback_,
-                                        enable_dot_simplification_)) {
+    if (AlgebraicSimplifierVisitor::Run(
+            comp, is_layout_sensitive_, valid_bitcast_callback_,
+            enable_dot_simplification_, enable_conv_simplification_)) {
       changed = true;
     }
   }

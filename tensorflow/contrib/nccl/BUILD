@@ -71,10 +71,15 @@ tf_kernel_library(
         "kernels/nccl_manager.cc",
         "kernels/nccl_manager.h",
         "kernels/nccl_ops.cc",
+        "kernels/nccl_rewrite.cc",
     ],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:stream_executor",
         "@nccl_archive//:nccl",
     ],
     alwayslink = 1,
@@ -110,7 +115,11 @@ tf_custom_op_py_library(
     deps = [
         ":nccl_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:device",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
     ],
 )
 

@@ -175,10 +175,15 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
   TF_RETURN_IF_ERROR(ValidateExecutionOptions(arguments, options, *backend_));
 
   ExecutableRunOptions actual_options = options;
+
+  Backend::StreamPtr stream;
   if (options.stream() == nullptr) {
+    // NB!  The lifetime of `stream` needs to match the lifetime of
+    // `actual_options` (otherwise we will end up using a returned stream in
+    // ExecuteOnStreamWrapper), which is why it isn't declared in the inner "if"
+    // scope.
     TF_ASSIGN_OR_RETURN(
-        Backend::StreamPtr stream,
-        BorrowStreamForDevice(options.device_ordinal(), backend_));
+        stream, BorrowStreamForDevice(options.device_ordinal(), backend_));
     actual_options.set_stream(stream.get());
   }
   if (options.allocator() == nullptr) {
@@ -283,11 +288,10 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   int device_ordinal = options.device_ordinal() == -1
                            ? default_device_ordinal()
                            : options.device_ordinal();
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      local_service_->CompileExecutable(computation.handle(), argument_layouts,
-                                        options.result_layout(), device_ordinal,
-                                        options.has_hybrid_result()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      local_service_->CompileExecutable(
+                          computation.handle(), argument_layouts,
+                          options.result_layout(), device_ordinal));
   return WrapUnique(new LocalExecutable(std::move(executable),
                                         local_service_->mutable_backend(),
                                         device_ordinal, options));

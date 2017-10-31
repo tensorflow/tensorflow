@@ -349,7 +349,14 @@ def _SeluGradGrad(op, grad):
 
 @ops.RegisterGradient("Relu6")
 def _Relu6Grad(op, grad):
-  return gen_nn_ops._relu6_grad(grad, op.inputs[0])
+  return gen_nn_ops._relu6_grad(grad, op.outputs[0])  # pylint: disable=protected-access
+
+
+@ops.RegisterGradient("Relu6Grad")
+def _Relu6GradGrad(op, grad):
+  x = op.inputs[1]
+  return (gen_nn_ops._relu6_grad(grad, x), array_ops.zeros(
+      shape=array_ops.shape(x), dtype=x.dtype))
 
 
 @ops.RegisterGradient("Elu")
@@ -460,16 +467,25 @@ def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
 
 @ops.RegisterGradient("Conv2D")
 def _Conv2DGrad(op, grad):
-  return [nn_ops.conv2d_backprop_input(
-      array_ops.shape(op.inputs[0]), op.inputs[1], grad, op.get_attr("strides"),
-      op.get_attr("padding"), op.get_attr("use_cudnn_on_gpu"),
-      op.get_attr("data_format")),
+  strides = op.get_attr("strides")
+  padding = op.get_attr("padding")
+  use_cudnn_on_gpu = op.get_attr("use_cudnn_on_gpu")
+  data_format = op.get_attr("data_format")
+  shape_0, shape_1 = array_ops.shape_n([op.inputs[0], op.inputs[1]])
+  return [nn_ops.conv2d_backprop_input(shape_0,
+                                       op.inputs[1],
+                                       grad,
+                                       strides,
+                                       padding,
+                                       use_cudnn_on_gpu,
+                                       data_format),
           nn_ops.conv2d_backprop_filter(op.inputs[0],
-                                        array_ops.shape(op.inputs[1]), grad,
-                                        op.get_attr("strides"),
-                                        op.get_attr("padding"),
-                                        op.get_attr("use_cudnn_on_gpu"),
-                                        op.get_attr("data_format"))]
+                                        shape_1,
+                                        grad,
+                                        strides,
+                                        padding,
+                                        use_cudnn_on_gpu,
+                                        data_format)]
 
 
 @ops.RegisterGradient("DepthwiseConv2dNative")
@@ -925,3 +941,32 @@ def _TopKGrad(op, grad, _):
                                  validate_indices=False),
       in_shape), array_ops.zeros(
           [], dtype=dtypes.int32)]
+
+
+@ops.RegisterGradient("NthElement")
+def _NthElementGrad(op, grad):
+  """Return the gradients for NthElement.
+
+  Args:
+    op: The NthElementOp for which we need to generate gradients.
+    grad: Tensor. The gradients passed to the NthElementOp
+
+  Returns:
+    A list of two tensors, the first being the gradient w.r.t. the input,
+    the second being the gradient w.r.t. the N (None).
+  """
+  input = op.inputs[0]
+  output = op.outputs[0]
+
+  # Compute the number of elements which equal to output in each reduction
+  # dimension. If there are multiple elements then the gradient will be
+  # divided between them.
+  indicators = math_ops.cast(
+      math_ops.equal(array_ops.expand_dims(output, -1), input),
+      grad.dtype)
+
+  grad = array_ops.expand_dims(grad, -1)
+  num_selected = array_ops.expand_dims(
+      math_ops.reduce_sum(indicators, -1), -1)
+
+  return [math_ops.div(indicators, num_selected) * grad, None]

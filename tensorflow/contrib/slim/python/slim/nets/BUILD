@@ -287,25 +287,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "resnet_is_training_test",
-    size = "medium",
-    srcs = ["resnet_is_training_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":resnet_utils",
-        ":resnet_v1",
-        ":resnet_v2",
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_library(
     name = "vgg",
     srcs = ["vgg.py"],

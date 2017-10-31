@@ -305,6 +305,62 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
     Assign(d, out, in.unaryExpr(Unary(scalar.data())));
   }
 
+  void BCast(const CPUDevice& dev,
+             typename TTypes<typename Functor::out_type, NDIMS>::Tensor out,
+             typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in0,
+             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast0,
+             typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in1,
+             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
+             bool* error) {
+    typename Functor::func func;
+    if (AllOne<NDIMS>(bcast0) && AllOne<NDIMS>(bcast1)) {
+      Assign(dev, out, in0.binaryExpr(in1, func));
+    } else if (AllOne<NDIMS>(bcast0)) {
+      auto rhs = in1.broadcast(bcast1);
+      Assign(dev, out, in0.binaryExpr(rhs, func));
+    } else if (AllOne<NDIMS>(bcast1)) {
+      auto lhs = in0.broadcast(bcast0);
+      Assign(dev, out, lhs.binaryExpr(in1, func));
+    } else {
+      auto lhs = in0.broadcast(bcast0);
+      auto rhs = in1.broadcast(bcast1);
+      Assign(dev, out, lhs.binaryExpr(rhs, func));
+    }
+  }
+};
+
+// Partial specialization of BinaryFunctor<Device=CPUDevice, Functor, 2>
+// for functors with with no error checking.
+template <typename Functor>
+struct BinaryFunctor<CPUDevice, Functor, 2, false> {
+  enum { NDIMS = 2 };
+
+  void operator()(const CPUDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in0,
+                  typename Functor::tin_type in1, bool* error) {
+    Assign(d, out, in0.binaryExpr(in1, typename Functor::func()));
+  }
+
+  void Left(const CPUDevice& d, typename Functor::tout_type out,
+            typename Functor::tscalar_type scalar,
+            typename Functor::tin_type in, bool* error) {
+    typedef typename Functor::out_type Tout;
+    typedef typename Functor::in_type Tin;
+    typedef typename Functor::func Binary;
+    typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
+    Assign(d, out, in.unaryExpr(Unary(scalar.data())));
+  }
+
+  void Right(const CPUDevice& d, typename Functor::tout_type out,
+             typename Functor::tin_type in,
+             typename Functor::tscalar_type scalar, bool* error) {
+    typedef typename Functor::out_type Tout;
+    typedef typename Functor::in_type Tin;
+    typedef typename Functor::func Binary;
+    typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
+    Assign(d, out, in.unaryExpr(Unary(scalar.data())));
+  }
+
 #if !defined(EIGEN_HAS_INDEX_LIST)
   inline Eigen::DSizes<int, 2> NByOne(int n) {
     return Eigen::DSizes<int, 2>(n, 1);
@@ -334,8 +390,7 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
              bool* error) {
     typedef typename Functor::in_type T;
     typename Functor::func func;
-    if ((NDIMS == 2) && Functor::use_bcast_optimization &&
-        use_bcast_optimization<T>::value) {
+    if (Functor::use_bcast_optimization && use_bcast_optimization<T>::value) {
       // Optimize for speed by using Eigen::type2index and avoid
       // .broadcast() when we know its a no-op.
       //
@@ -410,7 +465,7 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
       }
     }
 
-    // Fallback path. Always work and probably slower.
+    // Fallback path. Always works and probably slower.
     auto lhs = in0.broadcast(bcast0);
     auto rhs = in1.broadcast(bcast1);
     Assign(dev, out, lhs.binaryExpr(rhs, func));

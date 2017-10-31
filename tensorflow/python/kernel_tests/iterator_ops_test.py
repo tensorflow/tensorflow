@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
@@ -239,7 +241,7 @@ class IteratorTest(test.TestCase):
       # functions in this graph, to ensure that we are not
       # accidentally redefining functions with the same names in the
       # new graph.
-      iterator = dataset_ops.Iterator.from_structure(
+      iterator = iterator_ops.Iterator.from_structure(
           shared_name="shared_iterator",
           output_types=(dtypes.int64, dtypes.int64, dtypes.float64),
           output_shapes=([], [3], []))
@@ -269,8 +271,8 @@ class IteratorTest(test.TestCase):
         constant_op.constant([1, 2, 3]))
     dataset_4 = dataset_ops.Dataset.from_tensors(
         constant_op.constant([4, 5, 6, 7]))
-    iterator = dataset_ops.Iterator.from_structure(dataset_3.output_types,
-                                                   [None])
+    iterator = iterator_ops.Iterator.from_structure(dataset_3.output_types,
+                                                    [None])
 
     dataset_3_init_op = iterator.make_initializer(dataset_3)
     dataset_4_init_op = iterator.make_initializer(dataset_4)
@@ -306,12 +308,12 @@ class IteratorTest(test.TestCase):
   def testReinitializableIteratorStaticErrors(self):
     # Non-matching structure for types and shapes.
     with self.assertRaises(TypeError):
-      iterator = dataset_ops.Iterator.from_structure((dtypes.int64,
-                                                      dtypes.float64), [None])
+      iterator = iterator_ops.Iterator.from_structure((dtypes.int64,
+                                                       dtypes.float64), [None])
 
     # Test validation of dataset argument.
-    iterator = dataset_ops.Iterator.from_structure((dtypes.int64,
-                                                    dtypes.float64))
+    iterator = iterator_ops.Iterator.from_structure((dtypes.int64,
+                                                     dtypes.float64))
 
     # Incompatible structure.
     with self.assertRaises(ValueError):
@@ -328,7 +330,7 @@ class IteratorTest(test.TestCase):
                   [4., 5., 6., 7.], dtype=dtypes.float32))))
 
     # Incompatible shapes.
-    iterator = dataset_ops.Iterator.from_structure(
+    iterator = iterator_ops.Iterator.from_structure(
         (dtypes.int64, dtypes.float64), ([None], []))
     with self.assertRaises(TypeError):
       iterator.make_initializer(
@@ -344,7 +346,7 @@ class IteratorTest(test.TestCase):
     iterator_4 = dataset_4.make_one_shot_iterator()
 
     handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
-    feedable_iterator = dataset_ops.Iterator.from_string_handle(
+    feedable_iterator = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
     next_element = feedable_iterator.get_next()
 
@@ -391,11 +393,11 @@ class IteratorTest(test.TestCase):
 
     handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
 
-    feedable_int_scalar = dataset_ops.Iterator.from_string_handle(
+    feedable_int_scalar = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dtypes.int32, [])
-    feedable_int_vector = dataset_ops.Iterator.from_string_handle(
+    feedable_int_vector = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dtypes.int32, [None])
-    feedable_int_any = dataset_ops.Iterator.from_string_handle(
+    feedable_int_any = iterator_ops.Iterator.from_string_handle(
         handle_placeholder, dtypes.int32)
 
     with self.test_session() as sess:
@@ -435,7 +437,7 @@ class IteratorTest(test.TestCase):
 
     @function.Defun(dtypes.string)
     def _remote_fn(h):
-      remote_iterator = dataset_ops.Iterator.from_string_handle(
+      remote_iterator = iterator_ops.Iterator.from_string_handle(
           h, dataset_3.output_types, dataset_3.output_shapes)
       return remote_iterator.get_next()
 
@@ -495,7 +497,7 @@ class IteratorTest(test.TestCase):
     @function.Defun(dtypes.uint8)
     def _remote_fn(h):
       handle = script_ops.py_func(_encode_raw, [h], dtypes.string)
-      remote_iterator = dataset_ops.Iterator.from_string_handle(
+      remote_iterator = iterator_ops.Iterator.from_string_handle(
           handle, dataset_3.output_types, dataset_3.output_shapes)
       return remote_iterator.get_next()
 
@@ -537,8 +539,22 @@ class IteratorTest(test.TestCase):
 
   def testIncorrectIteratorRestore(self):
 
-    def _iterator_checkpoint_prefix():
+    def _path():
       return os.path.join(self.get_temp_dir(), "iterator")
+
+    def _save_op(iterator_resource):
+      iterator_state_variant = gen_dataset_ops.serialize_iterator(
+          iterator_resource)
+      save_op = io_ops.write_file(
+          _path(), parsing_ops.serialize_tensor(iterator_state_variant))
+      return save_op
+
+    def _restore_op(iterator_resource):
+      iterator_state_variant = parsing_ops.parse_tensor(
+          io_ops.read_file(_path()), dtypes.variant)
+      restore_op = gen_dataset_ops.deserialize_iterator(iterator_resource,
+                                                        iterator_state_variant)
+      return restore_op
 
     def _build_range_dataset_graph():
       start = 1
@@ -547,22 +563,18 @@ class IteratorTest(test.TestCase):
                                            stop).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = _iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = _save_op(iterator._iterator_resource)
+      restore_op = _restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     def _build_reader_dataset_graph():
       filenames = ["test"]  # Does not exist but we don't care in this test.
-      path = _iterator_checkpoint_prefix()
       iterator = readers.FixedLengthRecordDataset(
           filenames, 1, 0, 0).make_initializable_iterator()
       init_op = iterator.initializer
       get_next_op = iterator.get_next()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = _save_op(iterator._iterator_resource)
+      restore_op = _restore_op(iterator._iterator_resource)
       return init_op, get_next_op, save_op, restore_op
 
     # Saving iterator for RangeDataset graph.

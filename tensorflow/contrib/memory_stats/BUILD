@@ -63,6 +63,8 @@ tf_custom_op_py_library(
     deps = [
         ":memory_stats_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
