@@ -52,9 +52,6 @@ class HloInstruction;
 // "unimplemented" error status.
 //
 // Note: this may change to an iterator in the future for flexibility purposes.
-//
-// TODO(b/26548304): Stop passing in information about the visited
-// instruction that is accessible from the instruction object itself.
 class DfsHloVisitor {
  public:
   DfsHloVisitor() {}
@@ -110,8 +107,7 @@ class DfsHloVisitor {
   virtual Status HandleAbs(HloInstruction* abs) {
     return HandleElementwiseUnary(abs);
   }
-  virtual Status HandleAtan2(HloInstruction* atan2, HloInstruction* y,
-                             HloInstruction* x) {
+  virtual Status HandleAtan2(HloInstruction* atan2) {
     return HandleElementwiseBinary(atan2);
   }
   virtual Status HandleRound(HloInstruction* round) {

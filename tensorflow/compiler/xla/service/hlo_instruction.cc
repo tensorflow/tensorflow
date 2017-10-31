@@ -2131,7 +2131,7 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this);
     case HloOpcode::kAtan2:
-      return visitor->HandleAtan2(this, operands_[0], operands_[1]);
+      return visitor->HandleAtan2(this);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
     case HloOpcode::kBatchNormTraining:
