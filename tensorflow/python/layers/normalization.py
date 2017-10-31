@@ -729,16 +729,7 @@ def batch_normalization(inputs,
 
   Raises:
     ValueError: if eager execution is enabled.
-
-  @compatibility(eager)
-  Not compatible with eager execution. Use `tf.layers.BatchNormalization`
-  instead.
-  @end_compatibility
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.BactchNormalization instead.')
   layer = BatchNormalization(
       axis=axis,
       momentum=momentum,

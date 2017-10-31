@@ -244,6 +244,7 @@ TensorSummaryV2
 Abs
 AccumulateNV2
 AddN
+AddV2
 All
 Any
 BatchMatMul

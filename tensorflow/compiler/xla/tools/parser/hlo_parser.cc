@@ -49,6 +49,7 @@ class HloParser {
   bool ParseInstructionList(HloComputation::Builder* builder,
                             string* root_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
+  bool ParseSharding(HloInstruction* instruction);
   bool ParseLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
   bool ParseOperands(std::vector<HloInstruction*>* operands);
   // Fill parsed operands into 'operands' and expect a certain number of
@@ -404,24 +405,149 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kBatchNormGrad:
-    case HloOpcode::kIndex:
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
   }
-  // Parse "device=".
+  // Parse "sharding=".
   if (lexer_.GetKind() == TokKind::kComma) {
-    int64 device;
-    if (!ParseExtraAttribute(&device, /*expected_attribute=*/"device")) {
+    if (!ParseSharding(instruction)) {
       return false;
     }
-    OpDeviceAssignment assignment;
-    assignment.set_has_device(true);
-    assignment.set_device(device);
-    instruction->set_device_assignment(assignment);
   }
 
   return AddInstruction(name, instruction);
+}
+
+// ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape? ('devices=' ('['
+// dims ']')* device_list)? '}' dims ::= int_list device_list ::= int_list
+bool HloParser::ParseSharding(HloInstruction* instruction) {
+  if (!ParseToken(TokKind::kComma,
+                  "expects ',' in front of an extra attribute")) {
+    return false;
+  }
+  string attribute_name;
+  if (!ParseAttributeName(&attribute_name) || attribute_name != "sharding") {
+    return TokenError("expects attribute name: sharding");
+  }
+
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start sharding attribute")) {
+    return false;
+  }
+
+  bool maximal = false;
+  bool replicated = false;
+  std::vector<int64> devices;
+  std::vector<int64> tile_assignment_dimensions;
+  Shape tile_shape;
+  while (lexer_.GetKind() != TokKind::kRbrace) {
+    switch (lexer_.GetKind()) {
+      case TokKind::kw_maximal:
+        maximal = true;
+        lexer_.Lex();
+        break;
+      case TokKind::kw_replicated:
+        replicated = true;
+        lexer_.Lex();
+        break;
+      case TokKind::kAttributeName: {
+        if (lexer_.GetStrVal() == "device") {
+          if (lexer_.Lex() != TokKind::kInt) {
+            return TokenError("device= attribute must be an integer");
+          }
+          devices = {lexer_.GetInt64Val()};
+          lexer_.Lex();
+        } else if (lexer_.GetStrVal() == "devices") {
+          lexer_.Lex();
+          if (!ParseToken(TokKind::kLsquare,
+                          "expected '[' to start sharding devices shape")) {
+            return false;
+          }
+
+          do {
+            int64 dim;
+            if (!ParseInt64(&dim)) {
+              return false;
+            }
+            tile_assignment_dimensions.push_back(dim);
+          } while (EatIfPresent(TokKind::kComma));
+
+          if (!ParseToken(TokKind::kRsquare,
+                          "expected ']' to start sharding devices shape")) {
+            return false;
+          }
+          do {
+            int64 device;
+            if (!ParseInt64(&device)) {
+              return false;
+            }
+            devices.push_back(device);
+          } while (EatIfPresent(TokKind::kComma));
+        } else {
+          return TokenError(
+              "unknown attribute in sharding: expected device= or devices=");
+        }
+        break;
+      }
+      case TokKind::kShape:
+        tile_shape = lexer_.GetShapeVal();
+        lexer_.Lex();
+        break;
+      case TokKind::kRbrace:
+        break;
+      default:
+        return TokenError("unexpected token");
+    }
+  }
+
+  OpSharding sharding;
+  if (replicated) {
+    if (!devices.empty()) {
+      return TokenError(
+          "replicated shardings should not have any devices assigned");
+    }
+    if (!ShapeUtil::Equal(tile_shape, Shape())) {
+      return TokenError(
+          "replicated shardings should not have any tile shape set");
+    }
+    sharding.set_type(OpSharding::Type::OpSharding_Type_REPLICATED);
+  } else if (maximal) {
+    if (devices.size() != 1) {
+      return TokenError(
+          "maximal shardings should have exactly one device assigned");
+    }
+    if (!ShapeUtil::Equal(tile_shape, Shape())) {
+      return TokenError("maximal shardings should not have any tile shape set");
+    }
+    sharding.set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+    sharding.add_tile_assignment_devices(devices[0]);
+  } else {
+    if (devices.size() <= 1) {
+      return TokenError(
+          "non-maximal shardings must have more than one device assigned");
+    }
+    if (ShapeUtil::Equal(tile_shape, Shape())) {
+      return TokenError("non-maximal shardings should have a tile shape set");
+    }
+    if (tile_assignment_dimensions.empty()) {
+      return TokenError(
+          "non-maximal shardings must have a tile assignment list including "
+          "dimensions");
+    }
+    sharding.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    *sharding.mutable_tile_shape() = tile_shape;
+    for (int64 dim : tile_assignment_dimensions) {
+      sharding.add_tile_assignment_dimensions(dim);
+    }
+    for (int64 device : devices) {
+      sharding.add_tile_assignment_devices(device);
+    }
+  }
+
+  instruction->set_sharding(HloSharding::FromProto(sharding).ValueOrDie());
+  lexer_.Lex();
+  return true;
 }
 
 bool HloParser::ParseLiteral(std::unique_ptr<Literal>* literal,

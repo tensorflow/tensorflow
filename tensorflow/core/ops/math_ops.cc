@@ -578,7 +578,6 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
   Input("x: T").Input("y: T").Output("z: T").Attr( \
       "T: {half, float, double, int32, int64, complex64, complex128}")
 
-// TODO(mrry): Restore `SetIsCommutative()` for non-string types.
 REGISTER_OP("Add")
     .Input("x: T")
     .Input("y: T")
@@ -587,6 +586,25 @@ REGISTER_OP("Add")
         "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
         "complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Returns x + y element-wise.
+
+*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+)doc");
+
+// TODO(rmlarsen): Add a Python wrapper that swiches non-string instances to
+// use AddV2 (b/68646025).
+REGISTER_OP("AddV2")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr(
+        "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
+        "complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetIsAggregate()
+    .SetIsCommutative()
     .Doc(R"doc(
 Returns x + y element-wise.
 

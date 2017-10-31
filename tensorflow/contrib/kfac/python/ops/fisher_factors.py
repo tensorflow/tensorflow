@@ -609,9 +609,28 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
 
 
 class ConvInputKroneckerFactor(InverseProvidingFactor):
-  """Kronecker factor for the input side of a convolutional layer."""
+  r"""Kronecker factor for the input side of a convolutional layer.
+
+  Estimates E[ a a^T ] where a is the inputs to a convolutional layer given
+  example x. Expectation is taken over all examples and locations.
+
+  Equivalent to \Omega in https://arxiv.org/abs/1602.01407 for details. See
+  Section 3.1 Estimating the factors.
+  """
 
   def __init__(self, inputs, filter_shape, strides, padding, has_bias=False):
+    """Initializes ConvInputKroneckerFactor.
+
+    Args:
+      inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
+        to layer.
+      filter_shape: 1-D Tensor of length 4. Contains [kernel_height,
+        kernel_width, in_channels, out_channels].
+      strides: 1-D Tensor of length 4. Contains [batch_stride, height_stride,
+        width_stride, in_channel_stride].
+      padding: str. Padding method for layer. "SAME" or "VALID".
+      has_bias: bool. If True, append 1 to in_channel.
+    """
     self._filter_shape = filter_shape
     self._strides = strides
     self._padding = padding
@@ -659,9 +678,23 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
 
 
 class ConvOutputKroneckerFactor(InverseProvidingFactor):
-  """Kronecker factor for the output side of a convolutional layer."""
+  r"""Kronecker factor for the output side of a convolutional layer.
+
+  Estimates E[ ds ds^T ] where s is the preactivations of a convolutional layer
+  given example x and ds = (d / d s) log(p(y|x, w)). Expectation is taken over
+  all examples and locations.
+
+  Equivalent to \Gamma in https://arxiv.org/abs/1602.01407 for details. See
+  Section 3.1 Estimating the factors.
+  """
 
   def __init__(self, outputs_grads):
+    """Initializes ConvOutputKroneckerFactor.
+
+    Args:
+      outputs_grads: list of Tensors. Each Tensor is of shape
+        [batch_size, height, width, out_channels].
+    """
     self._out_channels = outputs_grads[0].shape.as_list()[3]
     self._outputs_grads = outputs_grads
     super(ConvOutputKroneckerFactor, self).__init__()

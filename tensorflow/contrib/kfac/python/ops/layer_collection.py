@@ -311,17 +311,66 @@ class LayerCollection(object):
 
     block.register_additional_minibatch(inputs, outputs)
 
-  def register_conv2d(self, params, strides, padding, inputs, outputs,
-                      approx=APPROX_KRONECKER_NAME):
+  def register_conv2d(self,
+                      params,
+                      strides,
+                      padding,
+                      inputs,
+                      outputs,
+                      approx=APPROX_KRONECKER_NAME,
+                      reuse=VARIABLE_SCOPE):
+    """Registers a convolutional layer.
 
-    if approx == APPROX_KRONECKER_NAME:
-      self.register_block(params,
-                          fb.ConvKFCBasicFB(self, params, inputs, outputs,
-                                            strides, padding))
-    elif approx == APPROX_DIAGONAL_NAME:
-      block = fb.ConvDiagonalFB(self, params, strides, padding)
-      block.register_additional_minibatch(inputs, outputs)
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [kernel_height,
+        kernel_width, in_channels, out_channels].  Bias should have shape
+        [out_channels].
+      strides: 1-D Tensor of length 4. Strides for convolution kernel.
+      padding: string. see tf.nn.conv2d for valid values.
+      inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
+        to layer.
+      outputs: Tensor of shape [batch_size, height, width, out_channels].
+        Preactivations produced by layer.
+      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    approx_to_block_types = {
+        APPROX_KRONECKER_NAME: fb.ConvKFCBasicFB,
+        APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
+    }
+
+    if approx not in approx_to_block_types:
+      raise ValueError("Bad value {} for approx.".format(approx))
+
+    block_type = approx_to_block_types[approx]
+
+    if reuse == VARIABLE_SCOPE:
+      reuse = variable_scope.get_variable_scope().reuse
+
+    if reuse:
+      block = self.fisher_blocks.get(params, None)
+      if block is None:
+        raise KeyError(
+            "Reuse requested but no FisherBlock found for params {}.".format(
+                params))
+      if not isinstance(block, block_type):
+        raise ValueError(
+            "Requested block of type {} but block of type {} already exists "
+            "for params {}.".format(block_type, type(block), params))
+
+    else:
+      block = block_type(self, params, strides, padding)
       self.register_block(params, block)
+
+    block.register_additional_minibatch(inputs, outputs)
 
   def register_generic(self, params, batch_size, approx=APPROX_DIAGONAL_NAME):
     params = params if isinstance(params, (tuple, list)) else (params,)
