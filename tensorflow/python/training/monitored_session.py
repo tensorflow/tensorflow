@@ -496,7 +496,6 @@ class _MonitoredSession(object):
       self._sess = _RecoverableSession(self._coordinated_creator)
     else:
       self._sess = self._coordinated_creator.create_session()
-    self._stop_requested_in_step_fn = False
 
   @property
   def graph(self):
@@ -576,11 +575,12 @@ class _MonitoredSession(object):
           ' `self` and `step_context` arguments if it\'s an instance'
           ' method. Got {} instead.'.format(step_fn_arguments))
 
-    try:
-      return step_fn(_MonitoredSession.StepContext(self._tf_sess(), self.run))
-    except StopIteration:
-      self._stop_requested_in_step_fn = True
-      raise
+    # `self._sess` is either `_RecoverableSession` or a `_CoordinatedSession`.
+    # Setting `run_with_hooks` to `None` will cause `run_with_hooks` to be
+    # `_CoordinatedSession.run` downstream in either case. This allows
+    # `_PREEMPTION_ERRORS` to propage from within `step_fn` to
+    # `_RecoverableSession.run_step_fn`.
+    return self._sess.run_step_fn(step_fn, self._tf_sess(), run_with_hooks=None)
 
   class StepContext(object):
     """Control flow instrument for the `step_fn` from `run_step_fn()`.
@@ -620,8 +620,7 @@ class _MonitoredSession(object):
       raise StopIteration('step_fn has requested the iterations to stop.')
 
   def should_stop(self):
-    return (self._sess is None or self._sess.should_stop() or
-            self._stop_requested_in_step_fn)
+    return self._sess is None or self._sess.should_stop()
 
   def close(self):
     self._close_internal()
@@ -924,6 +923,13 @@ class _WrappedSession(object):
   def run(self, *args, **kwargs):
     return self._sess.run(*args, **kwargs)
 
+  def run_step_fn(self, step_fn, raw_session, run_with_hooks):
+    # `_RecoverableSession` sets `run_with_hooks` to `_CoordinatedSession.run`.
+    # It is `None` when called from `_CoordinatedSession`. In that case
+    # `self.run` is `_CoordinatedSession.run`.
+    run_with_hooks = run_with_hooks or self.run
+    return step_fn(_MonitoredSession.StepContext(raw_session, run_with_hooks))
+
 
 class _RecoverableSession(_WrappedSession):
   """A wrapped session that recreates a session upon certain kinds of errors.
@@ -988,6 +994,22 @@ class _RecoverableSession(_WrappedSession):
                               feed_dict=feed_dict,
                               options=options,
                               run_metadata=run_metadata)
+      except _PREEMPTION_ERRORS as e:
+        logging.info('An error was raised. This may be due to a preemption in '
+                     'a connected worker or parameter server. The current '
+                     'session will be closed and a new session will be '
+                     'created. Error: %s', e)
+        self.close()
+        self._sess = None
+
+  def run_step_fn(self, step_fn, raw_session, run_with_hooks):
+    while True:
+      try:
+        if not self._sess:
+          self._sess = self._create_session()
+
+        run_with_hooks = self._sess.run
+        return self._sess.run_step_fn(step_fn, raw_session, run_with_hooks)
       except _PREEMPTION_ERRORS as e:
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
