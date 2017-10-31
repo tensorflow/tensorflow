@@ -319,9 +319,6 @@ class GPUTracerImpl : public GPUTracer,
     // We don't do anything with 'TraceMe' regions yet.
     return nullptr;
   }
-  Tracer *StartTracing(StringPiece label) {
-    return StartTracing(label, /*is_expensive=*/true);
-  }
 
  protected:
   // This callback is used exclusively by CUPTIManager.
