@@ -288,6 +288,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Make a dummy rule that we can chaqnge "default" in select statements to.
+# to disable dependencies in copybara.
+config_setting(
+    name = "dummy_disabled_internal",
+    values = {"define": "with_dummy_disabled_internal=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
