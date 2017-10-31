@@ -363,6 +363,7 @@ filegroup(
         "//tensorflow/contrib/crf:all_files",
         "//tensorflow/contrib/cudnn_rnn:all_files",
         "//tensorflow/contrib/data:all_files",
+        "//tensorflow/contrib/data/kernels:all_files",
         "//tensorflow/contrib/data/python/kernel_tests:all_files",
         "//tensorflow/contrib/data/python/ops:all_files",
         "//tensorflow/contrib/decision_trees/proto:all_files",

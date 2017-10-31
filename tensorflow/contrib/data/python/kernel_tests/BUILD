@@ -416,6 +416,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "prefetching_ops_test",
+    size = "small",
+    srcs = ["prefetching_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:prefetching_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
