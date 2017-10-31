@@ -95,8 +95,6 @@ string HloOpcodeString(HloOpcode opcode) {
       return "greater-than";
     case HloOpcode::kImag:
       return "imag";
-    case HloOpcode::kIndex:
-      return "index";
     case HloOpcode::kInfeed:
       return "infeed";
     case HloOpcode::kIsFinite:
@@ -218,7 +216,6 @@ StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
        {"greater-than-or-equal-to", HloOpcode::kGe},
        {"get-tuple-element", HloOpcode::kGetTupleElement},
        {"greater-than", HloOpcode::kGt},
-       {"index", HloOpcode::kIndex},
        {"infeed", HloOpcode::kInfeed},
        {"is-finite", HloOpcode::kIsFinite},
        {"less-than-or-equal-to", HloOpcode::kLe},

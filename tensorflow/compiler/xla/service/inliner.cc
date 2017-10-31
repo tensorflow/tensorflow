@@ -71,7 +71,6 @@ Status InlinerVisitor::HandleMap(HloInstruction* map) {
   // profitability model for inlining is defined.
   if (hlo_query::AllOperandsAreParameters(root)) {
     if (root.opcode() == HloOpcode::kFusion ||
-        root.opcode() == HloOpcode::kIndex ||
         root.opcode() == HloOpcode::kParameter ||
         root.opcode() == HloOpcode::kTrace) {
       // Cloning not supported for these instructions.

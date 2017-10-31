@@ -700,14 +700,6 @@ enum BinaryOperation {
   // Dot product, matrix multiply.
   BINOP_DOT = 12;
 
-  // Indexes into the LHS with the RHS.
-  //
-  // If the RHS is higher-rank, this is a gather operation.
-  //
-  // Note: currently out of bounds indices may crash the underlying XLA
-  // machine.
-  BINOP_INDEX = 13;
-
   // Element-wise maximum.
   BINOP_MAX = 14;
 

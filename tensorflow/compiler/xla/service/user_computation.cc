@@ -96,8 +96,6 @@ HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
       return HloOpcode::kAdd;
     case BINOP_SUB:
       return HloOpcode::kSubtract;
-    case BINOP_INDEX:
-      return HloOpcode::kIndex;
     case BINOP_DIV:
       return HloOpcode::kDivide;
     case BINOP_EQ:

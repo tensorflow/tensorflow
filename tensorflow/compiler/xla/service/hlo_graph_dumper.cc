@@ -849,7 +849,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGe:
     case HloOpcode::kGt:
     case HloOpcode::kImag:
-    case HloOpcode::kIndex:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
