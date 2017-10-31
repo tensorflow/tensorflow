@@ -41,7 +41,7 @@ class PTBTest(tf.test.TestCase):
       inputs = np.ones(inputs_ph.shape.as_list(), dtype=np.int64)
       labels = np.ones(labels_ph.shape.as_list(), dtype=np.int64)
 
-      model = rnn_ptb.small_model(tf.test.is_gpu_available())
+      model = rnn_ptb.test_model(tf.test.is_gpu_available())
       optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
       loss = rnn_ptb.loss_fn(model, inputs_ph, labels_ph, training=True)
       grads = rnn_ptb.clip_gradients(optimizer.compute_gradients(loss), 0.25)

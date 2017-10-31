@@ -273,6 +273,17 @@ def large_model(use_cudnn_rnn):
       use_cudnn_rnn=use_cudnn_rnn)
 
 
+def test_model(use_cudnn_rnn):
+  """Returns a tiny PTBModel for unit tests."""
+  return PTBModel(
+      vocab_size=100,
+      embedding_dim=20,
+      hidden_dim=20,
+      num_layers=2,
+      dropout_ratio=0.,
+      use_cudnn_rnn=use_cudnn_rnn)
+
+
 def main(_):
   tfe.enable_eager_execution()
 

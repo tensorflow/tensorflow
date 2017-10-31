@@ -35,7 +35,7 @@ def device():
 class PTBTest(tf.test.TestCase):
 
   def testTrain(self):
-    model = rnn_ptb.small_model(tfe.num_gpus() > 0)
+    model = rnn_ptb.test_model(tfe.num_gpus() > 0)
     sequence_length = 35
     data = np.ones([4 * sequence_length, 20], dtype=np.int64)
     with tf.device(device()):
@@ -45,7 +45,7 @@ class PTBTest(tf.test.TestCase):
       rnn_ptb.train(model, optimizer, data, sequence_length, 0.25)
 
   def testApply(self):
-    model = rnn_ptb.small_model(tfe.num_gpus() > 0)
+    model = rnn_ptb.test_model(tfe.num_gpus() > 0)
     with tf.device(device()):
       model(tf.ones([35, 20], dtype=tf.int64), training=False)
 
