@@ -43,11 +43,7 @@ class InlinerVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* function,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
+  Status HandleMap(HloInstruction* map) override;
 
   // Runs the visitor on a computation.
   StatusOr<bool> Run(HloComputation* computation);
@@ -67,10 +63,8 @@ StatusOr<bool> InlinerVisitor::Run(HloComputation* computation) {
   return changed_;
 }
 
-Status InlinerVisitor::HandleMap(
-    HloInstruction* map, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* function,
-    tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/) {
+Status InlinerVisitor::HandleMap(HloInstruction* map) {
+  HloComputation* function = map->to_apply();
   HloInstruction& root = *function->root_instruction();
   // TODO(b/29249531): Add DCE pass to remove unused HloComputations.
   // Only inlining functions that are simply a single operation until a better
@@ -91,7 +85,7 @@ Status InlinerVisitor::HandleMap(
     if (root.opcode() != HloOpcode::kConstant) {
       std::vector<HloInstruction*> params;
       for (int64 o = 0; o < root.operands().size(); o++) {
-        params.push_back(operands[root.operand(o)->parameter_number()]);
+        params.push_back(map->operands()[root.operand(o)->parameter_number()]);
       }
       HloInstruction* placed_instruction = computation_->AddInstruction(
           root.CloneWithNewOperands(map->shape(), params));

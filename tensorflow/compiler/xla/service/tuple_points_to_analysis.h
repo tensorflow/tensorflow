@@ -247,16 +247,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status VerifyBuffer(const LogicalBuffer& buffer) const;
 
   Status DefaultAction(HloInstruction* hlo_instruction) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleCopy(HloInstruction* copy) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
+  Status HandleSelect(HloInstruction* select) override;
 
   string ToString() const;
 
