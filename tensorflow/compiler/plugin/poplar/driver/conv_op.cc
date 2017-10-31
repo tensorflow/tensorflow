@@ -186,9 +186,9 @@ ShuffleConvolutionInput(const HloInstruction* inst,
 
   std::vector<unsigned int> shuffle(4);
   shuffle[d.input_batch_dimension()] = 0;
-  shuffle[d.spatial_dimensions(0)] = 1;
-  shuffle[d.spatial_dimensions(1)] = 2;
-  shuffle[d.input_feature_dimension()] = 3;
+  shuffle[d.input_feature_dimension()] = 1;
+  shuffle[d.spatial_dimensions(0)] = 2;
+  shuffle[d.spatial_dimensions(1)] = 3;
 
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
@@ -199,10 +199,10 @@ ShuffleConvolutionWeights(const HloInstruction* inst,
   const ConvolutionDimensionNumbers& d(inst->convolution_dimension_numbers());
 
   std::vector<unsigned int> shuffle(4);
-  shuffle[d.kernel_spatial_dimensions(0)] = 0;
-  shuffle[d.kernel_spatial_dimensions(1)] = 1;
-  shuffle[d.kernel_output_feature_dimension()] = 2;
-  shuffle[d.kernel_input_feature_dimension()] = 3;
+  shuffle[d.kernel_output_feature_dimension()] = 0;
+  shuffle[d.kernel_input_feature_dimension()] = 1;
+  shuffle[d.kernel_spatial_dimensions(0)] = 2;
+  shuffle[d.kernel_spatial_dimensions(1)] = 3;
 
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
@@ -243,9 +243,9 @@ CreateConv2D(poplar::Graph &graph,
 
   std::vector<unsigned int> shuffle(4);
   shuffle[0] = d.input_batch_dimension();
-  shuffle[1] = d.spatial_dimensions(0);
-  shuffle[2] = d.spatial_dimensions(1);
-  shuffle[3] = d.input_feature_dimension();
+  shuffle[1] = d.input_feature_dimension();
+  shuffle[2] = d.spatial_dimensions(0);
+  shuffle[3] = d.spatial_dimensions(1);
 
   if (!is_identity_shuffle(shuffle)) {
     in = in.dimShuffle(shuffle);
@@ -255,10 +255,10 @@ CreateConv2D(poplar::Graph &graph,
     in = conv_in;
   }
 
-  shuffle[0] = d.kernel_spatial_dimensions(0);
-  shuffle[1] = d.kernel_spatial_dimensions(1);
-  shuffle[2] = d.kernel_output_feature_dimension();
-  shuffle[3] = d.kernel_input_feature_dimension();
+  shuffle[0] = d.kernel_output_feature_dimension();
+  shuffle[1] = d.kernel_input_feature_dimension();
+  shuffle[2] = d.kernel_spatial_dimensions(0);
+  shuffle[3] = d.kernel_spatial_dimensions(1);
 
   if (!is_identity_shuffle(shuffle)) {
     kernel = kernel.dimShuffle(shuffle);
@@ -276,9 +276,9 @@ CreateConv2D(poplar::Graph &graph,
                                             false, prog, inst->name(), opts);
 
   shuffle[d.output_batch_dimension()] = 0;
-  shuffle[d.spatial_dimensions(0)] = 1;
-  shuffle[d.spatial_dimensions(1)] = 2;
-  shuffle[d.output_feature_dimension()] = 3;
+  shuffle[d.output_feature_dimension()] = 1;
+  shuffle[d.spatial_dimensions(0)] = 2;
+  shuffle[d.spatial_dimensions(1)] = 3;
 
   if (!is_identity_shuffle(shuffle)) {
     out = out.dimShuffle(shuffle);
@@ -392,44 +392,44 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
 
   std::vector<unsigned int> shuffle(4);
   shuffle[0] = d.input_batch_dimension();
-  shuffle[1] = d.spatial_dimensions(0);
-  shuffle[2] = d.spatial_dimensions(1);
-  shuffle[3] = d.input_feature_dimension();
+  shuffle[1] = d.input_feature_dimension();
+  shuffle[2] = d.spatial_dimensions(0);
+  shuffle[3] = d.spatial_dimensions(1);
 
   if (!is_identity_shuffle(shuffle)) {
     in = in.dimShuffle(shuffle);
     auto name = port::StrCat(root->name(), "_input_copy");
-    poplar::Tensor conv_in = popconv::createInput(graph, params, name, opts);
+    auto conv_in = popconv::createInput(graph, params, name, opts);
     prog.add(poplar::program::Copy(in, conv_in));
     in = conv_in;
   }
 
-  shuffle[0] = d.kernel_spatial_dimensions(0);
-  shuffle[1] = d.kernel_spatial_dimensions(1);
-  shuffle[2] = d.kernel_output_feature_dimension();
-  shuffle[3] = d.kernel_input_feature_dimension();
+  shuffle[0] = d.kernel_output_feature_dimension();
+  shuffle[1] = d.kernel_input_feature_dimension();
+  shuffle[2] = d.kernel_spatial_dimensions(0);
+  shuffle[3] = d.kernel_spatial_dimensions(1);
 
   if (!is_identity_shuffle(shuffle)) {
     kernel = kernel.dimShuffle(shuffle);
     kernel = AddGroupsDimensionToWeights(kernel);
-    kernel = kernel.dimShuffle({4, 1, 2, 3, 0});
+    kernel = kernel.dimShuffle({2, 1, 0, 3, 4});
     auto name = port::StrCat(root->name(), "_weights_copy");
-    poplar::Tensor conv_kernel = popconv::createWeights(graph, params, name, opts);
+    auto conv_kernel = popconv::createWeights(graph, params, name, opts);
     prog.add(poplar::program::Copy(kernel, conv_kernel));
     kernel = conv_kernel;
   } else {
     kernel = AddGroupsDimensionToWeights(kernel);
-    kernel = kernel.dimShuffle({4, 1, 2, 3, 0});
+    kernel = kernel.dimShuffle({2, 1, 0, 3, 4});
   }
 
   // Add the convolution
-  poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
-                                            false, prog, inst->name(), opts);
+  auto out = popconv::convolution(graph, in, kernel, params, false, prog,
+                                  inst->name(), opts);
 
   shuffle[d.output_batch_dimension()] = 0;
-  shuffle[d.spatial_dimensions(0)] = 1;
-  shuffle[d.spatial_dimensions(1)] = 2;
-  shuffle[d.output_feature_dimension()] = 3;
+  shuffle[d.output_feature_dimension()] = 1;
+  shuffle[d.spatial_dimensions(0)] = 2;
+  shuffle[d.spatial_dimensions(1)] = 3;
 
   if (!is_identity_shuffle(shuffle)) {
     out = out.dimShuffle(shuffle);
@@ -470,18 +470,18 @@ Create2DConvWithReverse(poplar::Graph &graph,
 
   std::vector<unsigned int> shuffle(4);
   shuffle[0] = d.input_batch_dimension();
-  shuffle[1] = d.spatial_dimensions(0);
-  shuffle[2] = d.spatial_dimensions(1);
-  shuffle[3] = d.input_feature_dimension();
+  shuffle[1] = d.input_feature_dimension();
+  shuffle[2] = d.spatial_dimensions(0);
+  shuffle[3] = d.spatial_dimensions(1);
 
   if (!is_identity_shuffle(shuffle)) {
     in = in.dimShuffle(shuffle);
   }
 
-  shuffle[0] = d.kernel_spatial_dimensions(0);
-  shuffle[1] = d.kernel_spatial_dimensions(1);
-  shuffle[2] = d.kernel_input_feature_dimension();
-  shuffle[3] = d.kernel_output_feature_dimension();
+  shuffle[0] = d.kernel_input_feature_dimension();
+  shuffle[1] = d.kernel_output_feature_dimension();
+  shuffle[2] = d.kernel_spatial_dimensions(0);
+  shuffle[3] = d.kernel_spatial_dimensions(1);
 
   if (!is_identity_shuffle(shuffle)) {
     kernel = kernel.dimShuffle(shuffle);
@@ -493,9 +493,9 @@ Create2DConvWithReverse(poplar::Graph &graph,
                                             true, prog, conv->name(), opts);
 
   shuffle[d.output_batch_dimension()] = 0;
-  shuffle[d.spatial_dimensions(0)] = 1;
-  shuffle[d.spatial_dimensions(1)] = 2;
-  shuffle[d.output_feature_dimension()] = 3;
+  shuffle[d.output_feature_dimension()] = 1;
+  shuffle[d.spatial_dimensions(0)] = 2;
+  shuffle[d.spatial_dimensions(1)] = 3;
 
   if (!is_identity_shuffle(shuffle)) {
     out = out.dimShuffle(shuffle);
