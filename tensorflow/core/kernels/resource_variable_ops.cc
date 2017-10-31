@@ -569,9 +569,11 @@ class ResourceScatterUpdateOp : public OpKernel {
   REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
 
 // TODO(apassos) add the other types here.
-#define REGISTER_SCATTER_ARITHEMTIC(type, dev)             \
-  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd", \
-                          scatter_op::UpdateOp::ADD);
+#define REGISTER_SCATTER_ARITHEMTIC(type, dev)                \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd",    \
+                          scatter_op::UpdateOp::ADD);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterUpdate", \
+                          scatter_op::UpdateOp::ASSIGN);
 
 // Registers CPU kernels.
 #define REGISTER_SCATTER_ARITHEMTIC_CPU(type) \

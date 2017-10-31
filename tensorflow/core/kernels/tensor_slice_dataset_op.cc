@@ -50,14 +50,14 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
           errors::InvalidArgument(
               "All components must have the same size in the 0th dimension"));
     }
-    *output = new Dataset(std::move(components));
+    *output = new Dataset(ctx, std::move(components));
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    explicit Dataset(std::vector<Tensor> tensors)
-        : tensors_(std::move(tensors)) {
+    explicit Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
+        : GraphDatasetBase(ctx), tensors_(std::move(tensors)) {
       for (const Tensor& t : tensors_) {
         dtypes_.push_back(t.dtype());
         gtl::InlinedVector<int64, 4> partial_dim_sizes;
@@ -82,6 +82,21 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
     }
 
     string DebugString() override { return "TensorSliceDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      std::vector<NodeBuilder::NodeOut> components;
+      components.reserve(tensors_.size());
+      for (const Tensor& t : tensors_) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        components.emplace_back(node);
+      }
+      TF_RETURN_IF_ERROR(
+          b->AddDatasetWithInputAsList(this, components, output));
+      return Status::OK();
+    }
 
    private:
     template <typename T>
@@ -148,10 +163,24 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
+        return Status::OK();
+      }
+
      private:
       mutex mu_;
-      int i_ GUARDED_BY(mu_);
-      const int n_;
+      int64 i_ GUARDED_BY(mu_);
+      const int64 n_;
     };
 
     const std::vector<Tensor> tensors_;

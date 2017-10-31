@@ -164,6 +164,10 @@ class ShapeRefiner {
     function_library_ = lib;
   }
 
+  bool function_shape_inference_supported() const {
+    return function_library_ != nullptr;
+  }
+
   // Call this to keep nested shapes information for user-defined functions:
   // nested inferences will be available on the ExtendedInferenceContext for
   // each function node, forming a tree of shape inferences corresponding to the

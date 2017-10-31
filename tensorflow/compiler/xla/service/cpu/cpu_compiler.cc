@@ -222,14 +222,9 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   }
 
   // Skip constants, there is nothing to profile.
-  Status HandleConstant(HloInstruction* /*constant*/,
-                        const Literal& /*literal*/) override {
-    return Status::OK();
-  }
+  Status HandleConstant(HloInstruction*) override { return Status::OK(); }
   // Skip parameters, they are a simple load.
-  Status HandleParameter(HloInstruction* /*parameter*/) override {
-    return Status::OK();
-  }
+  Status HandleParameter(HloInstruction*) override { return Status::OK(); }
   // It is important to recurse for "while" or else we risk overly coarse
   // profiling information.
   Status HandleWhile(HloInstruction* xla_while) override {

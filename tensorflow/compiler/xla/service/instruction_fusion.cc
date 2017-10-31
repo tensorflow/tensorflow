@@ -99,7 +99,6 @@ namespace xla {
     case HloOpcode::kDot:
     case HloOpcode::kExp:
     case HloOpcode::kFusion:
-    case HloOpcode::kIndex:
     case HloOpcode::kLog:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
