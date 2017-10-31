@@ -19192,10 +19192,6 @@ func Abs(scope *Scope, x tf.Output) (y tf.Output) {
 type RandomPoissonAttr func(optionalAttr)
 
 // RandomPoissonSeed sets the optional seed attribute to value.
-//
-// value: If either `seed` or `seed2` are set to be non-zero, the random number
-// generator is seeded by the given seed.  Otherwise, it is seeded by a
-// random seed.
 // If not specified, defaults to 0
 func RandomPoissonSeed(value int64) RandomPoissonAttr {
 	return func(m optionalAttr) {
@@ -19204,8 +19200,6 @@ func RandomPoissonSeed(value int64) RandomPoissonAttr {
 }
 
 // RandomPoissonSeed2 sets the optional seed2 attribute to value.
-//
-// value: A second seed to avoid seed collision.
 // If not specified, defaults to 0
 func RandomPoissonSeed2(value int64) RandomPoissonAttr {
 	return func(m optionalAttr) {
@@ -19213,28 +19207,9 @@ func RandomPoissonSeed2(value int64) RandomPoissonAttr {
 	}
 }
 
-// Outputs random values from the Poisson distribution(s) described by rate.
+// Use RandomPoissonV2 instead.
 //
-// This op uses two algorithms, depending on rate. If rate >= 10, then
-// the algorithm by Hormann is used to acquire samples via
-// transformation-rejection.
-// See http://www.sciencedirect.com/science/article/pii/0167668793909974.
-//
-// Otherwise, Knuth's algorithm is used to acquire samples via multiplying uniform
-// random variables.
-// See Donald E. Knuth (1969). Seminumerical Algorithms. The Art of Computer
-// Programming, Volume 2. Addison Wesley
-//
-// Arguments:
-//	shape: 1-D integer tensor. Shape of independent samples to draw from each
-// distribution described by the shape parameters given in rate.
-//	rate: A tensor in which each scalar is a "rate" parameter describing the
-// associated poisson distribution.
-//
-// Returns A tensor with shape `shape + shape(rate)`. Each slice
-// `[:, ..., :, i0, i1, ...iN]` contains the samples drawn for
-// `rate[i0, i1, ...iN]`. The dtype of the output matches the dtype of
-// rate.
+// DEPRECATED at GraphDef version 25: Replaced by RandomPoissonV2
 func RandomPoisson(scope *Scope, shape tf.Output, rate tf.Output, optional ...RandomPoissonAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
