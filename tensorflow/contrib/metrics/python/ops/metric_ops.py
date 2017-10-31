@@ -448,7 +448,8 @@ def streaming_mean_tensor(values,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None, "Please switch to tf.metrics.accuracy. Note that the order "
+    "of the inputs of labels and predictions have been switched.")
 def streaming_accuracy(predictions,
                        labels,
                        weights=None,
@@ -1122,7 +1123,8 @@ def streaming_curve_points(labels=None,
 
     return points, update_op
 
-
+@deprecated(None, "Please switch to tf.metrics.auc. Note that the order of "
+    "the inputs of labels and predictions have been switched.")
 def streaming_auc(predictions,
                   labels,
                   weights=None,
@@ -1507,7 +1509,9 @@ def streaming_sensitivity_at_specificity(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(
+    None, "Please switch to tf.metrics.precision_at_thresholds. Note that the "
+    "order of of the inputs of labels and predictions have been switched.")
 def streaming_precision_at_thresholds(predictions,
                                       labels,
                                       thresholds,
@@ -1566,7 +1570,9 @@ def streaming_precision_at_thresholds(predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(
+    None, "Please switch to tf.metrics.recall_at_thresholds. Note that the "
+    "order of of the inputs of labels and predictions have been switched.")
 def streaming_recall_at_thresholds(predictions,
                                    labels,
                                    thresholds,
@@ -1776,8 +1782,8 @@ def _at_k_name(name, k=None, class_id=None):
   return name
 
 
-@deprecated('2016-11-08', 'Please use `streaming_sparse_recall_at_k`, '
-            'and reshape labels from [batch_size] to [batch_size, 1].')
+@deprecated("2016-11-08", "Please use `streaming_sparse_recall_at_k`, "
+            "and reshape labels from [batch_size] to [batch_size, 1].")
 def streaming_recall_at_k(predictions,
                           labels,
                           k,
@@ -2307,7 +2313,7 @@ def streaming_sparse_average_precision_at_top_k(top_k_predictions,
       updates_collections=updates_collections,
       name=name)
 
-
+@deprecated(None, "Please switch to tf.metrics.mean.")
 def streaming_mean_absolute_error(predictions,
                                   labels,
                                   weights=None,
