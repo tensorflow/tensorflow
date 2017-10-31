@@ -40,6 +40,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 
+#if defined(__APPLE__)
+static void sincos()  __attribute__((weakref ("__sincos")));
+static void sincosf() __attribute__((weakref ("__sincosf")));
+#endif
+
 namespace xla {
 namespace cpu {
 namespace {
