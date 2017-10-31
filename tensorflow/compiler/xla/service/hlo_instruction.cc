@@ -2514,33 +2514,7 @@ std::vector<int64> HloInstruction::OperandIndices(
 }
 
 bool HloInstruction::IsElementwiseBinary() const {
-  switch (opcode_) {
-    // Binary elementwise operations. If you update this, please update
-    // IsElementwise() accordingly.
-    case HloOpcode::kAdd:
-    case HloOpcode::kComplex:
-    case HloOpcode::kDivide:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kMaximum:
-    case HloOpcode::kMinimum:
-    case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
-    case HloOpcode::kPower:
-    case HloOpcode::kRemainder:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kAnd:
-    case HloOpcode::kOr:
-    case HloOpcode::kShiftLeft:
-    case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kShiftRightLogical:
-      return true;
-    default:
-      return false;
-  }
+  return IsElementwise() && operand_count() == 2;
 }
 
 bool HloInstruction::IsElementwise() const {
@@ -2551,7 +2525,6 @@ bool HloInstruction::IsElementwise() const {
 
     // Unary elementwise operations.
     case HloOpcode::kAbs:
-    case HloOpcode::kAtan2:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
@@ -2569,11 +2542,12 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kTanh:
+      CHECK_EQ(1, operand_count());
       return true;
 
     // Binary elementwise operations, the same as in IsElementwiseBinary().
-    // If you update this, please update IsElementwiseBinary() accordingly.
     case HloOpcode::kAdd:
+    case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
@@ -2593,6 +2567,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+      CHECK_EQ(2, operand_count());
       return true;
 
     // Ternary elementwise operations.
