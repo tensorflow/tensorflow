@@ -849,7 +849,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGe:
     case HloOpcode::kGt:
     case HloOpcode::kImag:
-    case HloOpcode::kIndex:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
@@ -1039,8 +1038,8 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   if (!opcode_specific_info.empty()) {
     lines.push_back(opcode_specific_info);
   }
-  if (instr->device_assignment().has_device()) {
-    lines.push_back(StrCat("device=", instr->device_assignment().device()));
+  if (instr->has_sharding()) {
+    lines.push_back(StrCat("sharding=", instr->sharding().ToString()));
   }
   // Show the shape and layout of the instruction, unless it's an inlined fusion
   // node -- there the shape and layout is present in the output node.

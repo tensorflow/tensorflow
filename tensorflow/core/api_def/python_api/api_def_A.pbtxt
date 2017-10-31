@@ -1,0 +1,56 @@
+op {
+  graph_op_name: "Abs"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AddManySparseToTensorsMap"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AddN"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AddSparseToTensorsMap"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AdjustContrastv2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "All"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AllCandidateSampler"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Any"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Assert"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AudioSummary"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AudioSummaryV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AvgPool"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AvgPool3DGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "AvgPoolGrad"
+  visibility: HIDDEN
+}

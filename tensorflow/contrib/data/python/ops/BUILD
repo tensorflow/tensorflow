@@ -4,6 +4,13 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
+)
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
 py_library(
     name = "dataset_ops",
     srcs = [
@@ -80,6 +87,44 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "prefetching_ops",
+    out = "gen_prefetching_ops.py",
+    deps = ["//tensorflow/contrib/data:prefetching_ops_op_lib"],
+)
+
+tf_kernel_library(
+    name = "prefetching_ops_kernels",
+    deps = [
+        "//tensorflow/contrib/data/kernels:prefetching_kernels",
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+tf_custom_op_py_library(
+    name = "prefetching_py",
+    srcs = ["prefetching_ops.py"],
+    dso = ["//tensorflow/contrib/data:_prefetching_ops.so"],
+    kernels = [
+        ":prefetching_ops_kernels",
+        "//tensorflow/contrib/data:prefetching_ops_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":prefetching_ops",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
 )
 

@@ -59,15 +59,15 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override {
+  Status HandleConstant(HloInstruction* constant) override {
     EXPECT_EQ(0, count_.count(constant));
     count_[constant] = GetCountsForNode(constant);
     return Status::OK();
   }
 
-  Status HandleAdd(HloInstruction* add, HloInstruction* lhs,
-                   HloInstruction* rhs) override {
+  Status HandleAdd(HloInstruction* add) override {
+    auto lhs = add->operand(0);
+    auto rhs = add->operand(1);
     EXPECT_EQ(0, count_.count(add));
     EXPECT_GT(count_.count(lhs), 0);
     EXPECT_GT(count_.count(rhs), 0);
@@ -75,32 +75,26 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleNegate(HloInstruction* negate,
-                      HloInstruction* operand) override {
+  Status HandleNegate(HloInstruction* negate) override {
+    auto operand = negate->operand(0);
     EXPECT_EQ(0, count_.count(negate));
     EXPECT_GT(count_.count(operand), 0);
     count_[negate] = GetCountsForNode(negate);
     return Status::OK();
   }
 
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* /*function*/,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/)
-      override {
+  Status HandleMap(HloInstruction* map) override {
     EXPECT_EQ(0, count_.count(map));
-    for (HloInstruction* arg : operands) {
+    for (HloInstruction* arg : map->operands()) {
       EXPECT_GT(count_.count(arg), 0);
     }
     count_[map] = GetCountsForNode(map);
     return Status::OK();
   }
 
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override {
+  Status HandleReduce(HloInstruction* reduce) override {
+    auto arg = reduce->operand(0);
+    auto init_value = reduce->operand(1);
     EXPECT_EQ(0, count_.count(reduce));
     EXPECT_GT(count_.count(arg), 0);
     EXPECT_GT(count_.count(init_value), 0);

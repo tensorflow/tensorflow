@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "GenerateVocabRemapping"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "GetSessionHandle"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "GetSessionHandleV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "GetSessionTensor"
+  visibility: HIDDEN
+}

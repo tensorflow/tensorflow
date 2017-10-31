@@ -77,6 +77,60 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ("c1", new_add.input(1));
 }
 
+TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c1 = ops::Const(s.WithOpName("c1"), {1.0f, 2.0f}, {1, 2});
+  Output c2 = ops::Const(s.WithOpName("c2"), {3.0f, 4.0f}, {1, 2});
+  Output add1 = ops::Add(s.WithOpName("add1"), c1, c2);
+  Output add2 = ops::Add(s.WithOpName("add2"), c2, c1);
+  Output add3 = ops::Add(s.WithOpName("add3"), add1, add2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(4, output.node_size());
+  const NodeDef& new_c1 = output.node(0);
+  EXPECT_EQ("c1", new_c1.name());
+  const NodeDef& new_c2 = output.node(1);
+  EXPECT_EQ("c2", new_c2.name());
+  const NodeDef& new_add1 = output.node(2);
+  EXPECT_EQ("add1", new_add1.name());
+  EXPECT_EQ(2, new_add1.input_size());
+  EXPECT_EQ("c1", new_add1.input(0));
+  EXPECT_EQ("c2", new_add1.input(1));
+  const NodeDef& new_add3 = output.node(3);
+  EXPECT_EQ("add3", new_add3.name());
+  EXPECT_EQ(2, new_add3.input_size());
+  EXPECT_EQ("add1", new_add3.input(0));
+  EXPECT_EQ("add1", new_add3.input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsReal) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  Output neg1 = ops::Neg(s.WithOpName("neg1"), c);
+  Output neg2 = ops::Neg(s.WithOpName("neg2"), neg1);
+  Output recip1 = ops::Reciprocal(s.WithOpName("recip1"), neg2);
+  Output recip2 = ops::Reciprocal(s.WithOpName("recip2"), recip1);
+  Output id = ops::Identity(s.WithOpName("id"), recip2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, output.node_size());
+  EXPECT_EQ("c", output.node(1).input(0));
+  EXPECT_EQ("c", output.node(3).input(0));
+  EXPECT_EQ("c", output.node(5).input(0));
+}
+
 TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs =

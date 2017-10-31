@@ -56,7 +56,6 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
   HloInstruction* root =
       root_instruction ? root_instruction : last_added_instruction_;
   CHECK_NE(nullptr, root);
-
   return WrapUnique(new HloComputation(name_, parameter_count, &instructions_,
                                        root, fusion_instruction_));
 }
@@ -735,6 +734,10 @@ std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix) {
     }
 
     new_instr = instr->CloneWithNewOperands(instr->shape(), new_operands);
+    new_instr->set_metadata(instr->metadata());
+    if (instr->has_sharding()) {
+      new_instr->set_sharding(instr->sharding());
+    }
     InsertOrDie(&clone_map, instr, new_instr.get());
     instructions.push_back(std::move(new_instr));
   }

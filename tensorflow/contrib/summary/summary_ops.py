@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.contrib.summary import gen_summary_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -90,10 +92,9 @@ class SummaryWriter(object):
 
   def __init__(self, resource):
     self._resource = resource
-
-  def __del__(self):
     if context.in_eager_mode():
-      resource_variable_ops.destroy_resource_op(self._resource)
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          handle=self._resource, handle_device="cpu:0")
 
   def set_as_default(self):
     context.context().summary_writer_resource = self._resource
@@ -272,3 +273,8 @@ def audio(name, tensor, sample_rate, max_outputs, family=None):
         name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
+
+
+def eval_dir(model_dir, name=None):
+  """Construct a logdir for an eval summary writer."""
+  return os.path.join(model_dir, "eval" if not name else "eval_" + name)
