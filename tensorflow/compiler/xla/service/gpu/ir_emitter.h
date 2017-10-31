@@ -162,6 +162,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   }
 
   IrEmitterContext* ir_emitter_context_;
+  llvm::Module* module_;
 
   // The following fields track the IR emission state. According to LLVM memory
   // management rules, their memory is owned by the module.

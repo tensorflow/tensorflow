@@ -77,7 +77,13 @@ class BatchMatMulOp : public XlaOpKernel {
     xla::ComputationBuilder* builder = ctx->builder();
 
     xla::ComputationDataHandle x_handle = ctx->Input(0);
+    if (BaseType(input_type(0)) == DT_COMPLEX64 && adj_x_) {
+      x_handle = builder->Conj(x_handle);
+    }
     xla::ComputationDataHandle y_handle = ctx->Input(1);
+    if (BaseType(input_type(1)) == DT_COMPLEX64 && adj_y_) {
+      y_handle = builder->Conj(y_handle);
+    }
 
     // Reshape input tensors into 3D tensors by flattening the batch
     // dimensions. This makes it easier to unroll the batch dimension.

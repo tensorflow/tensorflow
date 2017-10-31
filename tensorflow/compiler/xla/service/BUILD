@@ -1073,6 +1073,33 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "defuser",
+    srcs = ["defuser.cc"],
+    hdrs = ["defuser.h"],
+    deps = [
+        ":call_graph",
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "defuser_test",
+    srcs = ["defuser_test.cc"],
+    deps = [
+        ":defuser",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+    ],
+)
+
+cc_library(
     name = "tuple_simplifier",
     srcs = ["tuple_simplifier.cc"],
     hdrs = ["tuple_simplifier.h"],

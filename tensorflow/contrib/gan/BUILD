@@ -202,6 +202,7 @@ py_library(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
     ],
 )
@@ -234,6 +235,7 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
     ],
 )
@@ -267,7 +269,10 @@ py_library(
         "python/features/python/clip_weights_impl.py",
     ],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/contrib/opt:opt_py"],
+    deps = [
+        "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_test(

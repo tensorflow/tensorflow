@@ -361,8 +361,9 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
     ComputationBuilder* builder, const Array2D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR2FromArray2D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -384,8 +385,9 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
     ComputationBuilder* builder, const Array3D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR3FromArray3D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
@@ -407,8 +409,9 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
     ComputationBuilder* builder, const Array4D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
-                    std::is_same<NativeT, double>::value,
-                "Floating point type required when specifying an ErrorSpec");
+                    std::is_same<NativeT, double>::value ||
+                    std::is_same<NativeT, complex64>::value,
+                "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
       Literal::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,

@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -67,6 +68,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       variable = resource_variable_ops.ResourceVariable(1.0, name="eager-init")
       self.assertAllEqual(variable.numpy(), 1.0)
       self.assertAllEqual(variable.initialized_value().numpy(), 1.0)
+
+  def testEagerBool(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(False, name="bool_test")
+      self.assertAllEqual(bool(v), False)
 
   def testAssignVariableDtypeMismatchEager(self):
     with context.eager_mode():
@@ -178,6 +184,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(v.handle.op.colocation_groups(),
                        v.initializer.inputs[1].op.colocation_groups())
 
+  def testHandleNumpy(self):
+    with context.eager_mode():
+      with self.assertRaises(ValueError):
+        resource_variable_ops.ResourceVariable(
+            1.0, name="handle-numpy").handle.numpy()
+
+  def testCountUpTo(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(0, name="upto")
+      self.assertAllEqual(v.count_up_to(1), 0)
+      with self.assertRaises(errors.OutOfRangeError):
+        v.count_up_to(1)
+
+  def testCountUpToFunction(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(0, name="upto")
+      self.assertAllEqual(state_ops.count_up_to(v, 1), 0)
+      with self.assertRaises(errors.OutOfRangeError):
+        state_ops.count_up_to(v, 1)
+
   @test_util.run_in_graph_and_eager_modes()
   def testInitFnDtype(self):
     v = resource_variable_ops.ResourceVariable(
@@ -279,8 +305,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with variable_scope.variable_scope("foo"):
         var = variable_scope.get_variable("x", shape=[1, 1],
                                           dtype=dtypes.float32)
-        assign = var.assign(np.zeros(shape=[2, 2]))
-        self.evaluate(assign)
+        with self.assertRaisesRegexp(ValueError,
+                                     "Shapes.*and.*are incompatible"):
+          assign = var.assign(np.zeros(shape=[2, 2]))
+          self.evaluate(assign)
 
   def testDtypeAfterFromProto(self):
     v = resource_variable_ops.ResourceVariable(2.0)

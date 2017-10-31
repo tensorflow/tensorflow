@@ -532,6 +532,9 @@ class HParams(object):
     """
     return {n: getattr(self, n) for n in self._hparam_types.keys()}
 
+  def __contains__(self, key):
+    return key in self._hparam_types
+
   def __str__(self):
     return str(sorted(self.values().items()))
 

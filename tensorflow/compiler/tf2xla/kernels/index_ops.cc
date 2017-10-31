@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -82,16 +83,24 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
   std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
   std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
   // Compute a mask that has 1s for elements equal to the maximum.
-  xla::ComputationDataHandle mask = b->ConvertElementType(
+  xla::ComputationDataHandle partial_mask = b->ConvertElementType(
       b->Eq(input, input_max, broadcast_dims), xla_index_type);
 
-  // Multiply by the vector [0, 1, 2, ...] to convert each 1 into its index.
-  // TODO(phawkins): add a bitwise And operator to HLO, use a bitwise and
-  // instead of a multiplication here.
+  // In order to make identity elements for a bitwise And, we:
+  //   Left shift the 1 to the leftmost bit, yielding 0x10...0
+  //   Arithmetic right shift the 1 back to the rightmost bit, yielding 0xFF...F
+  int32 bits_in_type =
+      xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_index_type) * 8 - 1;
+  xla::ComputationDataHandle shift_amount =
+      XlaHelpers::IntegerLiteral(b, index_type, bits_in_type);
+  xla::ComputationDataHandle full_mask = b->ShiftRightArithmetic(
+      b->ShiftLeft(partial_mask, shift_amount), shift_amount);
+
+  // And with the vector [0, 1, 2, ...] to convert each 0xFF...F into its index.
   xla::ComputationDataHandle iota;
   OP_REQUIRES_OK(ctx, XlaHelpers::Iota(b, index_type, axis_size, &iota));
   xla::ComputationDataHandle product =
-      b->Mul(mask, iota, /*broadcast_dimensions=*/{axis});
+      b->And(full_mask, iota, /*broadcast_dimensions=*/{axis});
 
   // If there are multiple maximum elements, choose the one with the highest
   // index.

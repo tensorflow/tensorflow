@@ -18,6 +18,8 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 To use, at program startup, call `tfe.enable_eager_execution()`.
 
+@@metrics
+
 @@list_devices
 @@num_gpus
 
@@ -49,6 +51,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@SummaryWriter
 @@restore_variables_on_create
 @@Variable
+@@get_optimizer_variables
 
 @@in_eager_mode
 @@in_graph_mode
@@ -68,8 +71,10 @@ from __future__ import print_function
 
 # pylint:disable=g-bad-import-order,g-import-not-at-top,unused-import
 #
+from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
+from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
 from tensorflow.contrib.eager.python.summary_writer import SummaryWriter

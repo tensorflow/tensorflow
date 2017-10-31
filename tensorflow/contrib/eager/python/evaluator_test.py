@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.eager.python import evaluator
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 
 
@@ -40,7 +41,7 @@ class SimpleEvaluator(evaluator.Evaluator):
 
   def __init__(self, model):
     super(SimpleEvaluator, self).__init__(model)
-    self.mean = self.add_metric(metrics.Mean("mean"))
+    self.mean = self.track_metric(metrics.Mean("mean"))
 
   def call(self, eval_data):
     self.mean(eval_data)
@@ -50,8 +51,8 @@ class DelegatingEvaluator(evaluator.Evaluator):
 
   def __init__(self, model):
     super(DelegatingEvaluator, self).__init__(model)
-    self.sub = self.add_evaluator("inner", SimpleEvaluator(model))
-    self.mean = self.add_metric(metrics.Mean("outer-mean"))
+    self.sub = self.track_evaluator("inner", SimpleEvaluator(model))
+    self.mean = self.track_metric(metrics.Mean("outer-mean"))
 
   def call(self, eval_data):
     # Keys here come from PrefixLModel, which adds "l_".
@@ -88,12 +89,21 @@ class EvaluatorTest(test.TestCase):
       prefix_count[p] = prefix_count.get(p, 0) + 1
     self.assertEqual({"outer_mean": 2, "mean": 2}, prefix_count)
 
-  def testDataset(self):
+  def testDatasetEager(self):
     e = SimpleEvaluator(IdentityModel())
     ds = dataset_ops.Dataset.from_tensor_slices([3.0, 5.0, 7.0, 9.0])
     results = e.evaluate_on_dataset(ds)
     self.assertEqual(set(["mean"]), set(results.keys()))
     self.assertEqual(6.0, results["mean"].numpy())
+
+  def testDatasetGraph(self):
+    with context.graph_mode(), self.test_session():
+      e = SimpleEvaluator(IdentityModel())
+      ds = dataset_ops.Dataset.from_tensor_slices([3.0, 5.0, 7.0, 9.0])
+      init_op, call_op, results_op = e.evaluate_on_dataset(ds)
+      results = e.run_evaluation(init_op, call_op, results_op)
+      self.assertEqual(set(["mean"]), set(results.keys()))
+      self.assertEqual(6.0, results["mean"])
 
   def testModelProperty(self):
     m = IdentityModel()
@@ -102,8 +112,34 @@ class EvaluatorTest(test.TestCase):
 
   def testMetricsProperty(self):
     e = DelegatingEvaluator(PrefixLModel())
-    names = set([m.name for m in e.metrics])
-    self.assertEqual(set(["outer-mean", "mean"]), names)
+    names = set([(p, m.name) for p, m in e.metrics])
+    self.assertEqual(set([("", "outer-mean"), ("inner/", "mean")]), names)
+
+  def testSharedMetric(self):
+
+    class MetricArgEvaluator(evaluator.Evaluator):
+
+      def __init__(self, model, m):
+        super(MetricArgEvaluator, self).__init__(model)
+        self.m = self.track_metric(m)
+
+    metric = metrics.Mean("mean")
+    model = IdentityModel()
+    e = MetricArgEvaluator(model, metric)
+    with self.assertRaisesRegexp(ValueError, "already added"):
+      MetricArgEvaluator(model, metric)
+    del e
+
+  def testMetricTrackedTwice(self):
+
+    class MetricTwiceEvaluator(evaluator.Evaluator):
+
+      def __init__(self, model):
+        super(MetricTwiceEvaluator, self).__init__(model)
+        self.m = self.track_metric(metrics.Mean("mean"))
+        self.track_metric(self.m)  # okay to track same metric again
+
+    MetricTwiceEvaluator(IdentityModel())
 
 
 class SparseSoftmaxEvaluatorTest(test.TestCase):
@@ -115,8 +151,8 @@ class SparseSoftmaxEvaluatorTest(test.TestCase):
        e.label_key: [1, 2, 3],
        e.predicted_class_key: [1, 1, 3]})
     results = e.all_metric_results()
-    self.assertEqual(set(["Avg_Loss", "Accuracy"]), set(results.keys()))
-    self.assertEqual(2.0, results["Avg_Loss"].numpy())
+    self.assertEqual(set(["Avg Loss", "Accuracy"]), set(results.keys()))
+    self.assertEqual(2.0, results["Avg Loss"].numpy())
     self.assertEqual(0.75, results["Accuracy"].numpy())
 
 

@@ -80,7 +80,7 @@ py_library(
         "//tensorflow/contrib/staging",
         "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",
         "//tensorflow/contrib/stateless",
-        "//tensorflow/contrib/summary:summary_ops",
+        "//tensorflow/contrib/summary:summary",
         "//tensorflow/contrib/tensor_forest:init_py",
         "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
@@ -88,8 +88,10 @@ py_library(
         "//tensorflow/contrib/tfprof",
         "//tensorflow/contrib/timeseries",
         "//tensorflow/contrib/tpu",
+        "//tensorflow/contrib/tpu:tpu_py",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:util",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_py"]),
 )
 
