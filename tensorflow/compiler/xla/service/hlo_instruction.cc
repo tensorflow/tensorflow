@@ -1774,11 +1774,12 @@ string HloInstruction::ExtendedOpcodeStr() const {
   return opc_name;
 }
 
-string HloInstruction::ToString(bool compact_operands,
-                                bool include_metadata) const {
+string HloInstruction::ToString(bool compact_operands, bool include_metadata,
+                                bool include_large_constants) const {
   string result =
       StrCat(name(), " = ", ShapeUtil::HumanStringWithLayout(shape()), " ",
-             ExtendedOpcodeStr(), "(", OperandsToString(compact_operands), ")");
+             ExtendedOpcodeStr(), "(",
+             OperandsToString(compact_operands, include_large_constants), ")");
   for (const string& extra : ExtraAttributesToString()) {
     StrAppend(&result, ", ", extra);
   }
@@ -1790,11 +1791,14 @@ string HloInstruction::ToString(bool compact_operands,
   return result;
 }
 
-string HloInstruction::OperandsToString(bool compact) const {
+string HloInstruction::OperandsToString(bool compact,
+                                        bool include_large_constants) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
-    if (!ShapeUtil::IsTuple(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) {
+    // TODO(b/68775903) Also dump large constants for tuples.
+    if (!ShapeUtil::IsTuple(shape()) &&
+        (ShapeUtil::ElementsIn(shape()) <= 10 || include_large_constants)) {
       // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
       string tmp = literal().ToString();

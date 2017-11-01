@@ -367,7 +367,8 @@ std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   return post_order;
 }
 
-string HloComputation::ToString(int nested_level) const {
+string HloComputation::ToString(int nested_level,
+                                bool include_large_constants) const {
   std::ostringstream s;
   for (int i = 0; i < nested_level; i++) {
     s << "    ";
@@ -379,10 +380,14 @@ string HloComputation::ToString(int nested_level) const {
       s << "    ";
     }
     s << "  " << (instruction == root_instruction_ ? "ROOT " : "")
-      << instruction->ToString() << "\n";
+      << instruction->ToString(
+             /*compact_operands=*/false,
+             /*include_metadata=*/true,
+             /*include_large_constants=*/include_large_constants)
+      << "\n";
     if (instruction->opcode() == HloOpcode::kFusion) {
       s << instruction->fused_instructions_computation()->ToString(
-               nested_level + 1)
+               nested_level + 1, include_large_constants)
         << "\n";
     }
   }

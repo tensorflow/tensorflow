@@ -588,13 +588,13 @@ class HloInstruction {
   string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
-  string ToString(bool compact_operands = false,
-                  bool include_metadata = true) const;
+  string ToString(bool compact_operands = false, bool include_metadata = true,
+                  bool include_large_constants = false) const;
 
   // Components of the ToString() representation:
 
   // Returns a string representation of the operand list.
-  string OperandsToString(bool compact) const;
+  string OperandsToString(bool compact, bool include_large_constants) const;
 
   // Returns string representation of op-specific attributes.
   std::vector<string> ExtraAttributesToString() const;
