@@ -30,7 +30,8 @@ using tensorflow::strings::StrCat;
 // Parser for the HloModule::ToString() format text.
 class HloParser {
  public:
-  explicit HloParser(StringPiece str) : lexer_(str) {}
+  explicit HloParser(StringPiece str, const HloModuleConfig& config)
+      : lexer_(str), config_(config) {}
 
   // Runs the parser. Returns false if an error occurred.
   bool Run();
@@ -93,6 +94,7 @@ class HloParser {
 
   HloLexer lexer_;
   std::unique_ptr<HloModule> module_;
+  const HloModuleConfig config_;
   std::vector<string> error_;
 };
 
@@ -120,7 +122,7 @@ bool HloParser::ParseHloModule() {
     return false;
   }
 
-  module_ = MakeUnique<HloModule>(name);
+  module_ = MakeUnique<HloModule>(name, config_);
 
   return ParseComputations();
 }
@@ -816,12 +818,18 @@ bool HloParser::AddComputation(const string& name,
 
 }  // namespace
 
-StatusOr<std::unique_ptr<HloModule>> Parse(StringPiece str) {
-  HloParser parser(str);
+StatusOr<std::unique_ptr<HloModule>> Parse(StringPiece str,
+                                           const HloModuleConfig& config) {
+  HloParser parser(str, config);
   if (!parser.Run()) {
     return InvalidArgument("Syntax error: %s", parser.GetError().c_str());
   }
   return parser.ConsumeHloModule();
+}
+
+StatusOr<std::unique_ptr<HloModule>> Parse(StringPiece str) {
+  HloModuleConfig config;
+  return Parse(str, config);
 }
 
 }  // namespace tools
