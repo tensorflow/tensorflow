@@ -33,7 +33,7 @@ const int tf_cxx11_abi_flag() {
 #ifdef _GLIBCXX_USE_CXX11_ABI
   return _GLIBCXX_USE_CXX11_ABI;
 #else
-  return -1;
+  return 0;
 #endif
 }
 EOF

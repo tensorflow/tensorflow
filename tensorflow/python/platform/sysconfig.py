@@ -64,8 +64,7 @@ def get_compile_flags():
   flags = []
   flags.append('-I%s' % get_include())
   flags.append('-I%s/external/nsync/public' % get_include())
-  if _CXX11_ABI_FLAG != -1:
-    flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % _CXX11_ABI_FLAG)
+  flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % _CXX11_ABI_FLAG)
   return flags
 
 
