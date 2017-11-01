@@ -64,7 +64,7 @@ The following snippet demonstrates creating a few rank 0 variables:
 mammal = tf.Variable("Elephant", tf.string)
 ignition = tf.Variable(451, tf.int16)
 floating = tf.Variable(3.14159265359, tf.float64)
-its_complicated = tf.Variable((12.3, -4.85), tf.complex64)
+its_complicated = tf.Variable(12.3 - 4.85j, tf.complex64)
 ```
 
 Note: A string is treated as a single item in TensorFlow, not as a sequence of
@@ -79,7 +79,7 @@ initial value. For example:
 mystr = tf.Variable(["Hello"], tf.string)
 cool_numbers  = tf.Variable([3.14159, 2.71828], tf.float32)
 first_primes = tf.Variable([2, 3, 5, 7, 11], tf.int32)
-its_very_complicated = tf.Variable([(12.3, -4.85), (7.5, -6.23)], tf.complex64)
+its_very_complicated = tf.Variable([12.3 - 4.85j, 7.5 - 6.23j], tf.complex64)
 ```
 
 
