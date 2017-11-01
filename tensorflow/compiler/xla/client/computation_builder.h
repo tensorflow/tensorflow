@@ -129,13 +129,17 @@ class ComputationBuilder {
     metadata_.Clear();
   }
 
-  // Sets an OpDeviceAssignment that will be attached to all instructions
-  // until cleared.
+  // Sets an OpSharding that will be attached to all instructions until cleared.
   void SetSharding(const OpSharding& sharding) { sharding_ = sharding; }
 
-  // Clears the device assignment. Ops will be placed according to the default
-  // placement policy.
+  // Clears the sharding. Ops will be sharded according to the default placement
+  // policy.
   void ClearSharding() { sharding_ = tensorflow::gtl::nullopt; }
+
+  // Returns the OpSharding that will be attached to all instructions.
+  const tensorflow::gtl::optional<OpSharding>& sharding() const {
+    return sharding_;
+  }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -1037,6 +1041,33 @@ ComputationDataHandle ComputationBuilder::ConstantR4FromArray4D(
     const Array4D<NativeT>& values) {
   return ConstantFromArray(values);
 }
+
+// RAII-style object: sets the current sharding assignment in builder on
+// construction, and sets back to the previous assignment on destruction.
+class ScopedShardingAssignment {
+ public:
+  ScopedShardingAssignment(xla::ComputationBuilder* builder,
+                           tensorflow::gtl::optional<OpSharding> sharding)
+      : builder_(builder), prev_sharding_(builder->sharding()) {
+    SetSharding(sharding);
+  }
+
+  ~ScopedShardingAssignment() { SetSharding(prev_sharding_); }
+
+ private:
+  void SetSharding(const tensorflow::gtl::optional<OpSharding>& sharding) {
+    if (sharding.has_value()) {
+      builder_->SetSharding(sharding.value());
+    } else {
+      builder_->ClearSharding();
+    }
+  }
+
+  xla::ComputationBuilder* const builder_;
+  tensorflow::gtl::optional<OpSharding> prev_sharding_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedShardingAssignment);
+};
 
 }  // namespace xla
 
