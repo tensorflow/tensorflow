@@ -71,7 +71,7 @@ class _SavedModelExporter(Exporter):
 
   def __init__(self,
                name,
-               serving_input_fn,
+               serving_input_receiver_fn,
                assets_extra=None,
                as_text=False):
     """Create an `Exporter` to use with `tf.estimator.EvalSpec`.
@@ -79,8 +79,8 @@ class _SavedModelExporter(Exporter):
     Args:
       name: unique name of this `Exporter` that is going to be used in the
         export path.
-      serving_input_fn: a function that takes no arguments and returns an
-        `ServingInputReceiver`.
+      serving_input_receiver_fn: a function that takes no arguments and returns
+        a `ServingInputReceiver`.
       assets_extra: An optional dict specifying how to populate the assets.extra
         directory within the exported SavedModel.  Each key should give the
         destination path (including the filename) relative to the assets.extra
@@ -95,7 +95,7 @@ class _SavedModelExporter(Exporter):
       ValueError: if any arguments is invalid.
     """
     self._name = name
-    self._serving_input_fn = serving_input_fn
+    self._serving_input_receiver_fn = serving_input_receiver_fn
     self._assets_extra = assets_extra
     self._as_text = as_text
 
@@ -109,7 +109,7 @@ class _SavedModelExporter(Exporter):
 
     export_result = estimator.export_savedmodel(
         export_path,
-        self._serving_input_fn,
+        self._serving_input_receiver_fn,
         assets_extra=self._assets_extra,
         as_text=self._as_text,
         checkpoint_path=checkpoint_path)
@@ -125,7 +125,7 @@ class FinalExporter(Exporter):
 
   def __init__(self,
                name,
-               serving_input_fn,
+               serving_input_receiver_fn,
                assets_extra=None,
                as_text=False):
     """Create an `Exporter` to use with `tf.estimator.EvalSpec`.
@@ -133,8 +133,8 @@ class FinalExporter(Exporter):
     Args:
       name: unique name of this `Exporter` that is going to be used in the
         export path.
-      serving_input_fn: a function that takes no arguments and returns an
-        `ServingInputReceiver`.
+      serving_input_receiver_fn: a function that takes no arguments and returns
+        a `ServingInputReceiver`.
       assets_extra: An optional dict specifying how to populate the assets.extra
         directory within the exported SavedModel.  Each key should give the
         destination path (including the filename) relative to the assets.extra
@@ -148,7 +148,8 @@ class FinalExporter(Exporter):
     Raises:
       ValueError: if any arguments is invalid.
     """
-    self._saved_model_exporter = _SavedModelExporter(name, serving_input_fn,
+    self._saved_model_exporter = _SavedModelExporter(name,
+                                                     serving_input_receiver_fn,
                                                      assets_extra, as_text)
 
   @property
@@ -175,7 +176,7 @@ class LatestExporter(Exporter):
 
   def __init__(self,
                name,
-               serving_input_fn,
+               serving_input_receiver_fn,
                assets_extra=None,
                as_text=False,
                exports_to_keep=5):
@@ -184,8 +185,8 @@ class LatestExporter(Exporter):
     Args:
       name: unique name of this `Exporter` that is going to be used in the
         export path.
-      serving_input_fn: a function that takes no arguments and returns an
-        `ServingInputReceiver`.
+      serving_input_receiver_fn: a function that takes no arguments and returns
+        a `ServingInputReceiver`.
       assets_extra: An optional dict specifying how to populate the assets.extra
         directory within the exported SavedModel.  Each key should give the
         destination path (including the filename) relative to the assets.extra
@@ -202,7 +203,8 @@ class LatestExporter(Exporter):
     Raises:
       ValueError: if any arguments is invalid.
     """
-    self._saved_model_exporter = _SavedModelExporter(name, serving_input_fn,
+    self._saved_model_exporter = _SavedModelExporter(name,
+                                                     serving_input_receiver_fn,
                                                      assets_extra, as_text)
     self._exports_to_keep = exports_to_keep
     if exports_to_keep is not None and exports_to_keep <= 0:

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import poisson as poisson_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -29,7 +30,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import categorical as categorical_lib
 from tensorflow.python.ops.distributions import distribution as distribution_lib
-from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [
@@ -55,8 +55,10 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
   ```
 
   where `lambda(z) = exp(sqrt(2) scale z + loc)` and the `prob,grid` terms
-  are from [Gauss--Hermite quadrature](
-  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature). Note that
+  are from [numerical quadrature](
+  https://en.wikipedia.org/wiki/Numerical_integration) (default:
+  [Gauss--Hermite quadrature](
+  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature)). Note that
   the second line made the substitution:
   `z(l) = (log(l) - loc) / (sqrt(2) scale)` which implies `lambda(z)` [above]
   and `dl = sqrt(2) scale lambda(z) dz`
@@ -65,8 +67,11 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
   Poisson rate parameter. Unfortunately, the non-approximate distribution lacks
   an analytical probability density function (pdf). Therefore the
   `PoissonLogNormalQuadratureCompound` class implements an approximation based
-  on [Gauss-Hermite quadrature](
-  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature).
+  on [numerical quadrature](
+  https://en.wikipedia.org/wiki/Numerical_integration) (default:
+  [Gauss--Hermite quadrature](
+  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature)).
+
   Note: although the `PoissonLogNormalQuadratureCompound` is approximately the
   Poisson-LogNormal compound distribution, it is itself a valid distribution.
   Viz., it possesses a `sample`, `log_prob`, `mean`, `variance`, etc. which are
@@ -76,9 +81,11 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
 
   The `PoissonLogNormalQuadratureCompound` approximates a Poisson-LogNormal
   [compound distribution](
-  https://en.wikipedia.org/wiki/Compound_probability_distribution).
-  Using variable-substitution and [Gauss-Hermite quadrature](
-  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature) we can
+  https://en.wikipedia.org/wiki/Compound_probability_distribution). Using
+  variable-substitution and [numerical quadrature](
+  https://en.wikipedia.org/wiki/Numerical_integration) (default:
+  [Gauss--Hermite quadrature](
+  https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature)) we can
   redefine the distribution to be a parameter-less convex combination of `deg`
   different Poisson samples.
 
@@ -93,7 +100,7 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
           : d=0, ..., deg-1 }
   ```
 
-  where, [`grid, w = numpy.polynomial.hermite.hermgauss(deg)`](
+  where, [e.g., `grid, w = numpy.polynomial.hermite.hermgauss(deg)`](
   https://docs.scipy.org/doc/numpy-1.10.0/reference/generated/numpy.polynomial.hermite.hermgauss.html)
   and `prob = w / sqrt(pi)`.
 
@@ -106,14 +113,15 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
   pln = ds.PoissonLogNormalQuadratureCompound(
       loc=[0., -0.5],
       scale=1.,
-      quadrature_polynomial_degree=10,
+      quadrature_grid_and_probs=(
+        np.polynomial.hermite.hermgauss(deg=10)),
       validate_args=True)
   """
 
   def __init__(self,
                loc,
                scale,
-               quadrature_polynomial_degree=8,
+               quadrature_grid_and_probs=None,
                validate_args=False,
                allow_nan_stats=True,
                name="PoissonLogNormalQuadratureCompound"):
@@ -124,8 +132,10 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
         the LogNormal prior.
       scale: `float`-like (batch of) scalar `Tensor`; the scale parameter of
         the LogNormal prior.
-      quadrature_polynomial_degree: Python `int`-like scalar.
-        Default value: 8.
+      quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
+        representing the sample points and the corresponding (possibly
+        normalized) weight.  When `None`, defaults to:
+        `np.polynomial.hermite.hermgauss(deg=8)`.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
@@ -153,18 +163,14 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
             "loc.dtype(\"{}\") does not match scale.dtype(\"{}\")".format(
                 loc.dtype.name, scale.dtype.name))
 
-      self._degree = quadrature_polynomial_degree
-
-      grid, prob = np.polynomial.hermite.hermgauss(
-          deg=quadrature_polynomial_degree)
-
-      # It should be that `sum(prob) == sqrt(pi)`, but self-normalization is
-      # more numerically stable.
-      prob = prob.astype(dtype.as_numpy_dtype)
-      prob /= np.linalg.norm(prob, ord=1)
+      grid, probs = distribution_util.process_quadrature_grid_and_probs(
+          quadrature_grid_and_probs, dtype, validate_args)
+      self._quadrature_grid = grid
+      self._quadrature_probs = probs
+      self._quadrature_size = distribution_util.dimension_size(probs, axis=0)
 
       self._mixture_distribution = categorical_lib.Categorical(
-          logits=np.log(prob),
+          logits=math_ops.log(self._quadrature_probs),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats)
 
@@ -210,9 +216,14 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
     return self._scale
 
   @property
-  def quadrature_polynomial_degree(self):
-    """Polynomial largest exponent used for Gauss-Hermite quadrature."""
-    return self._degree
+  def quadrature_grid(self):
+    """Quadrature grid points."""
+    return self._quadrature_grid
+
+  @property
+  def quadrature_probs(self):
+    """Quadrature normalized weights."""
+    return self._quadrature_probs
 
   def _batch_shape_tensor(self):
     return array_ops.broadcast_dynamic_shape(
@@ -242,10 +253,10 @@ class PoissonLogNormalQuadratureCompound(distribution_lib.Distribution):
                 [batch_size])),
         seed=distribution_util.gen_new_seed(
             seed, "poisson_lognormal_quadrature_compound"))
-    # Stride `quadrature_polynomial_degree` for `batch_size` number of times.
+    # Stride `quadrature_size` for `batch_size` number of times.
     offset = math_ops.range(start=0,
-                            limit=batch_size * self._degree,
-                            delta=self._degree,
+                            limit=batch_size * self._quadrature_size,
+                            delta=self._quadrature_size,
                             dtype=ids.dtype)
     ids += offset
     rate = array_ops.gather(

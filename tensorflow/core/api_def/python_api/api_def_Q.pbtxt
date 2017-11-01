@@ -1,0 +1,83 @@
+op {
+  graph_op_name: "Qr"
+  endpoint {
+    name: "linalg.qr"
+  }
+  endpoint {
+    name: "qr"
+  }
+}
+op {
+  graph_op_name: "QuantizedAvgPool"
+  endpoint {
+    name: "nn.quantized_avg_pool"
+  }
+}
+op {
+  graph_op_name: "QuantizedMaxPool"
+  endpoint {
+    name: "nn.quantized_max_pool"
+  }
+}
+op {
+  graph_op_name: "QuantizedReluX"
+  endpoint {
+    name: "nn.quantized_relu_x"
+  }
+}
+op {
+  graph_op_name: "QueueClose"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueCloseV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueDequeue"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueDequeueMany"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueDequeueManyV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueDequeueUpTo"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueDequeueUpToV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueDequeueV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueEnqueue"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueEnqueueMany"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueEnqueueManyV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueEnqueueV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueSize"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "QueueSizeV2"
+  visibility: HIDDEN
+}

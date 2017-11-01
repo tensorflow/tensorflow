@@ -199,6 +199,12 @@ Node* BiasAdd(Graph* g, Node* value, Node* bias);
 // Add a Conv2D node in "g".
 Node* Conv2D(Graph* g, Node* in0, Node* in1);
 
+// Add a Diag node in "g".
+Node* Diag(Graph* g, Node* in, DataType type);
+
+// Add a DiagPart node in "g".
+Node* DiagPart(Graph* g, Node* in, DataType type);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow

@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "Variable"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "VariableV2"
+  visibility: HIDDEN
+}

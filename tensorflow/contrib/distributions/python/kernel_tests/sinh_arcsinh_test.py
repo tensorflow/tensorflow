@@ -200,6 +200,22 @@ class SinhArcsinhTest(test.TestCase):
       sasnorm_samps = sess.run(sasnorm.sample(10000, seed=4))
       np.testing.assert_array_less(loc, sasnorm_samps.mean(axis=0))
 
+  def test_pdf_reflected_for_negative_skewness(self):
+    with self.test_session() as sess:
+      sas_pos_skew = ds.SinhArcsinh(
+          loc=0.,
+          scale=1.,
+          skewness=2.,
+          validate_args=True)
+      sas_neg_skew = ds.SinhArcsinh(
+          loc=0.,
+          scale=1.,
+          skewness=-2.,
+          validate_args=True)
+      x = np.linspace(-2, 2, num=5).astype(np.float32)
+      self.assertAllClose(
+          *sess.run([sas_pos_skew.prob(x), sas_neg_skew.prob(x[::-1])]))
+
 
 if __name__ == "__main__":
   test.main()

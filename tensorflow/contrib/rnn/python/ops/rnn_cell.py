@@ -525,7 +525,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       self._state_tuple_type = collections.namedtuple(
           "GridLSTMStateTuple", state_names.strip(","))
       self._state_size = self._state_tuple_type(
-              *([num_units, num_units] * self._total_blocks))
+          *([num_units, num_units] * self._total_blocks))
     else:
       self._state_tuple_type = None
       self._state_size = num_units * self._total_blocks * 2
@@ -2082,9 +2082,11 @@ def _conv(args,
   shape_length = len(shapes[0])
   for shape in shapes:
     if len(shape) not in [3,4,5]:
-      raise ValueError("Conv Linear expects 3D, 4D or 5D arguments: %s" % str(shapes))
+      raise ValueError("Conv Linear expects 3D, 4D "
+                       "or 5D arguments: %s" % str(shapes))
     if len(shape) != len(shapes[0]):
-      raise ValueError("Conv Linear expects all args to be of same Dimension: %s" % str(shapes))
+      raise ValueError("Conv Linear expects all args "
+                       "to be of same Dimension: %s" % str(shapes))
     else:
       total_arg_size_depth += shape[-1]
   dtype = [a.dtype for a in args][0]
@@ -2102,7 +2104,7 @@ def _conv(args,
 
   # Now the computation.
   kernel = vs.get_variable(
-      "kernel", 
+      "kernel",
       filter_size + [total_arg_size_depth, num_features],
       dtype=dtype)
   if len(args) == 1:

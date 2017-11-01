@@ -25,7 +25,6 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-
 // Return in <out> the result of making the end of <s> a square matrix.
 Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
                              ShapeHandle* out) {

@@ -51,6 +51,15 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
       self.assertEqual((3, 2), transposed.get_shape())
       self.assertAllEqual(expected_transposed, transposed.eval())
 
+  def testConjugate(self):
+    m = [[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j, 6 + 6j]]
+    expected_transposed = [[1 - 1j, 4 - 4j], [2 - 2j, 5 - 5j], [3 - 3j, 6 - 6j]]
+    with self.test_session():
+      matrix = ops.convert_to_tensor(m)
+      transposed = array_ops.matrix_transpose(matrix, conjugate=True)
+      self.assertEqual((3, 2), transposed.get_shape())
+      self.assertAllEqual(expected_transposed, transposed.eval())
+
   def testBatchMatrix(self):
     matrix_0 = [[1, 2, 3], [4, 5, 6]]
     matrix_0_t = [[1, 4], [2, 5], [3, 6]]

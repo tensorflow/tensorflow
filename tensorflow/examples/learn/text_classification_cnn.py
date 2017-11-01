@@ -22,7 +22,6 @@ import sys
 
 import numpy as np
 import pandas
-from sklearn import metrics
 import tensorflow as tf
 
 FLAGS = None
@@ -134,23 +133,15 @@ def main(unused_argv):
       shuffle=True)
   classifier.train(input_fn=train_input_fn, steps=100)
 
-  # Predict.
+  # Evaluate.
   test_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={WORDS_FEATURE: x_test},
       y=y_test,
       num_epochs=1,
       shuffle=False)
-  predictions = classifier.predict(input_fn=test_input_fn)
-  y_predicted = np.array(list(p['class'] for p in predictions))
-  y_predicted = y_predicted.reshape(np.array(y_test).shape)
 
-  # Score with sklearn.
-  score = metrics.accuracy_score(y_test, y_predicted)
-  print('Accuracy (sklearn): {0:f}'.format(score))
-
-  # Score with tensorflow.
   scores = classifier.evaluate(input_fn=test_input_fn)
-  print('Accuracy (tensorflow): {0:f}'.format(scores['accuracy']))
+  print('Accuracy: {0:f}'.format(scores['accuracy']))
 
 
 if __name__ == '__main__':

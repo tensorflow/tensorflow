@@ -35,6 +35,7 @@ class ShapeInferenceTest : public ::testing::Test {
   // Some handy scalar shapes.
   const Shape s32_ = ShapeUtil::MakeShape(S32, {});
   const Shape f32_ = ShapeUtil::MakeShape(F32, {});
+  const Shape f64_ = ShapeUtil::MakeShape(F64, {});
   const Shape pred_ = ShapeUtil::MakeShape(PRED, {});
 
   // Some handy vector and matrix shapes of F32 type.
@@ -251,6 +252,44 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
                    .ok());
 }
 
+TEST_F(ShapeInferenceTest, Complex) {
+  auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
+                           const tensorflow::gtl::ArraySlice<int64>& bcast) {
+    return ShapeInference::InferBinaryOpShape(BinaryOperation::BINOP_COMPLEX,
+                                              lhs, rhs, bcast);
+  };
+  // Inputs must be FP.
+  ASSERT_FALSE(complex_shape(s32_, s32_, {}).ok());
+  ASSERT_FALSE(complex_shape(pred_, pred_, {}).ok());
+  // Component types must match.
+  ASSERT_FALSE(complex_shape(f32_, f64_, {}).ok());
+  // Only F32->C64 supported.
+  ASSERT_FALSE(complex_shape(f64_, f64_, {}).ok());
+  // Validate correct uses.
+  Shape c64_32 = ShapeUtil::MakeShape(C64, {32});
+  TF_ASSERT_OK_AND_ASSIGN(Shape result, complex_shape(f32_, f32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, ShapeUtil::MakeShape(C64, {})));
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(vector_32_, f32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32));
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(f32_, vector_32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32));
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(vector_32_, f32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32));
+
+  Shape c64_32_64 = ShapeUtil::MakeShape(C64, {32, 64});
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          complex_shape(vector_64_, matrix_32_64_, {1}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          complex_shape(matrix_32_64_, vector_64_, {1}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+  TF_ASSERT_OK_AND_ASSIGN(result,
+                          complex_shape(matrix_32_64_, matrix_32_64_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+  TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(matrix_32_64_, f32_, {}));
+  ASSERT_TRUE(ShapeUtil::Equal(result, c64_32_64));
+}
+
 TEST_F(ShapeInferenceTest, VariadicOpTuplify) {
   StatusOr<Shape> result = ShapeInference::InferVariadicOpShape(
       VariadicOperation::VAROP_TUPLE, {&s32_, &f32_});
@@ -352,8 +391,10 @@ TEST_F(ShapeInferenceTest, Convolve) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 3, 4});
-  dnums.set_batch_dimension(0);
-  dnums.set_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_output_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -392,8 +433,10 @@ TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 103, 4});
-  dnums.set_batch_dimension(0);
-  dnums.set_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_output_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -433,8 +476,10 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
 
   // Dimension order: batch, feature, x0, x1
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {10, 11, 3, 4});
-  dnums.set_batch_dimension(0);
-  dnums.set_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_output_feature_dimension(1);
   dnums.add_spatial_dimensions(2);
   dnums.add_spatial_dimensions(3);
 
@@ -475,8 +520,10 @@ TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {12, 11, 3, 2});
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_batch_dimension(3);
-  dnums.set_feature_dimension(2);
+  dnums.set_input_batch_dimension(3);
+  dnums.set_output_batch_dimension(3);
+  dnums.set_input_feature_dimension(2);
+  dnums.set_output_feature_dimension(2);
   dnums.add_spatial_dimensions(0);
   dnums.add_spatial_dimensions(1);
   dnums.set_kernel_input_feature_dimension(0);  // duplicated with kernel_x0

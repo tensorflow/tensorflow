@@ -9,7 +9,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'serving_input_fn\', \'assets_extra\', \'as_text\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'self\', \'name\', \'serving_input_receiver_fn\', \'assets_extra\', \'as_text\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "export"

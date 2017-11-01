@@ -179,8 +179,10 @@ class ConvOp : public XlaOpKernel {
 
     xla::ConvolutionDimensionNumbers dims;
     std::vector<int64> window_strides;
-    dims.set_batch_dimension(GetTensorBatchDimIndex(num_dims(), data_format_));
-    dims.set_feature_dimension(feature_dim);
+    dims.set_input_batch_dimension(batch_dim);
+    dims.set_output_batch_dimension(batch_dim);
+    dims.set_input_feature_dimension(feature_dim);
+    dims.set_output_feature_dimension(feature_dim);
     for (int i = 0; i < num_spatial_dims_; ++i) {
       int input_dim = GetTensorSpatialDimIndex(num_dims(), data_format_, i);
       dims.add_spatial_dimensions(input_dim);
@@ -285,8 +287,10 @@ class ConvBackpropInputOp : public XlaOpKernel {
     // comment at the top of conv_grad_ops.h for details.
 
     xla::ConvolutionDimensionNumbers dnums;
-    dnums.set_batch_dimension(batch_dim);
-    dnums.set_feature_dimension(feature_dim);
+    dnums.set_input_batch_dimension(batch_dim);
+    dnums.set_output_batch_dimension(batch_dim);
+    dnums.set_input_feature_dimension(feature_dim);
+    dnums.set_output_feature_dimension(feature_dim);
 
     // TF filter shape is [ H, W, ..., inC, outC ]
     // Transpose the input and output features for computing the gradient.
@@ -419,8 +423,10 @@ class ConvBackpropFilterOp : public XlaOpKernel {
     // Each spatial entry has size in_depth * batch
 
     // Swap n_dim and c_dim in the activations.
-    dnums.set_batch_dimension(c_dim);
-    dnums.set_feature_dimension(n_dim);
+    dnums.set_input_batch_dimension(c_dim);
+    dnums.set_output_batch_dimension(c_dim);
+    dnums.set_input_feature_dimension(n_dim);
+    dnums.set_output_feature_dimension(n_dim);
 
     // The gradients become the RHS of the convolution.
     // The gradients have shape [batch, out_rows, out_cols, ..., out_depth]

@@ -190,13 +190,17 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
         tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)
         # (complex) Eigenvectors are only unique up to an arbitrary phase
         # We normalize the vectors such that the first component has phase 0.
-        reference = tf_v / linalg_ops.norm(
-            tf_v[..., 0:1, :], axis=-1, keep_dims=True)
-        tf_v *= math_ops.conj(reference)
+        top_rows = tf_v[..., 0:1, :]
+        if tf_a.dtype.is_complex:
+          angle = -math_ops.angle(top_rows)
+          phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
+        else:
+          phase = math_ops.sign(top_rows)
+        tf_v *= phase
         outputs = [tf_e, tf_v]
       else:
         tf_e = linalg_ops.self_adjoint_eigvals(tf_a)
-        outputs = [tf_e,]
+        outputs = [tf_e]
       for b in outputs:
         x_init = np.random.uniform(
             low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)

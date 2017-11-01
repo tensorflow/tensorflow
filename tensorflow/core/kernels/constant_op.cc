@@ -54,7 +54,17 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
                               DataTypeString(ctx->output_type(0)), ")"));
 }
 
-void ConstantOp::Compute(OpKernelContext* ctx) { ctx->set_output(0, tensor_); }
+void ConstantOp::Compute(OpKernelContext* ctx) {
+  ctx->set_output(0, tensor_);
+  if (TF_PREDICT_FALSE(ctx->track_allocations())) {
+    AllocatorAttributes attr;
+    if (ctx->allocate_on_host(attr)) {
+      ctx->record_host_persistent_memory_allocation(tensor_.AllocatedBytes());
+    } else {
+      ctx->record_device_persistent_memory_allocation(tensor_.AllocatedBytes());
+    }
+  }
+}
 
 ConstantOp::~ConstantOp() {}
 
@@ -323,19 +333,12 @@ REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL(int64, GPU);
+REGISTER_KERNEL(Variant, GPU);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         ZerosLikeOp<CPUDevice, int32>);
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("ZerosLike")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .HostMemory("x")
-                            .HostMemory("y"),
-                        ZerosLikeOp<GPUDevice, Variant>);
 #endif  // GOOGLE_CUDA
 
 #undef REGISTER_KERNEL

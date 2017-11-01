@@ -14,6 +14,35 @@ py_library(
 )
 
 py_library(
+    name = "graph_matcher",
+    srcs = [
+        "python/graph_matcher.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_test(
+    name = "graph_matcher_test",
+    size = "small",
+    srcs = ["python/graph_matcher_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":graph_matcher",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
     name = "input_to_ops",
     srcs = ["python/input_to_ops.py"],
     srcs_version = "PY2AND3",
@@ -43,9 +72,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":common",
+        ":graph_matcher",
         ":input_to_ops",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
@@ -147,10 +178,11 @@ py_test(
 
 py_test(
     name = "quantize_parameterized_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/quantize_parameterized_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":fold_batch_norms",
         ":quantize",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
@@ -177,6 +209,7 @@ py_library(
         ":fold_batch_norms",
         ":quantize",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
 )
@@ -188,9 +221,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":quantize_graph",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],

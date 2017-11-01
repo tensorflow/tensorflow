@@ -262,8 +262,8 @@ class UserComputation {
                        const OpMetadata& metadata);
 
   // Sets the device assignment on the Hlo instruction referenced by 'handle'.
-  Status SetOpDeviceAssignment(const ComputationDataHandle& handle,
-                               const OpDeviceAssignment& device_assignment);
+  Status SetOpSharding(const ComputationDataHandle& handle,
+                       const OpSharding& sharding);
 
   // Builds a HLO computation from the UserComputation. The parameter "resolver"
   // is a function which returns a pointer to the HloComputation corresponding

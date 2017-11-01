@@ -1,6 +1,6 @@
 # Importing Data
 
-The `Dataset` API enables you to build complex input pipelines from
+The @{tf.data.Dataset$`Dataset`} API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
 aggregate data from files in a distributed file system, apply random
 perturbations to each image, and merge randomly selected images into a batch
@@ -44,7 +44,7 @@ To start an input pipeline, you must define a *source*. For example, to
 construct a `Dataset` from some tensors in memory, you can use
 `tf.data.Dataset.from_tensors()` or
 `tf.data.Dataset.from_tensor_slices()`. Alternatively, if your input
-data are on disk in the recommend TFRecord format, you can construct a
+data are on disk in the recommended TFRecord format, you can construct a
 `tf.data.TFRecordDataset`.
 
 Once you have a `Dataset` object, you can *transform* it into a new `Dataset` by
