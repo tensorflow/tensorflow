@@ -309,8 +309,7 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(y.eval(), 6.)
       self.assertAllClose(dx.eval(), 2.)
 
-  def testZNoDepOnY(self):
-
+  def _testZNoDepOnY(self, use_const_grad_ys):
     @function.Defun(dtypes.float32, dtypes.float32)
     def Foo(x, y):  # pylint: disable=unused-argument
       return x * 2
@@ -320,11 +319,21 @@ class FunctionTest(test.TestCase):
       x = constant_op.constant(1.0)
       y = constant_op.constant(2.0)
       z = Foo(x, y)
-      dx, dy = gradients_impl.gradients([z], [x, y])
+      if use_const_grad_ys:
+        dx, dy = gradients_impl.gradients([z], [x, y], grad_ys=[1.0])
+      else:
+        dx, dy = gradients_impl.gradients([z], [x, y])
       with session.Session() as sess:
         dx_val, dy_val = sess.run([dx, dy])
         self.assertEqual([2.0], dx_val)
         self.assertEqual([0.0], dy_val)
+
+  def testZNoDepOnY(self):
+    self._testZNoDepOnY(False)
+
+  def testZNoDepOnYConstGradYs(self):
+    # Tests for constant folding of grad_ys
+    self._testZNoDepOnY(True)
 
   def testDefineFunctionNoArgs(self):
 
@@ -854,6 +863,24 @@ class FunctionTest(test.TestCase):
         [s, u, v],
         [result])
     self.assertEqual(len(f.signature.input_arg), 3)
+
+  def testGradientWithIntegerFunctionArgument(self):
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def Foo(t, x):
+      return x[t]
+
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(dtypes.float32)
+      t = constant_op.constant(0, dtypes.int32)
+      out = Foo(t, inp)
+      dinp, = gradients_impl.gradients(out, [inp])
+
+    x = np.zeros((2,)).astype(np.float32)
+    with session.Session(graph=g) as sess:
+      self.assertAllClose(
+          np.array([1.0, 0.0]).astype(np.float32),
+          sess.run(dinp, {inp: x}))
 
 
 @test_util.with_c_api

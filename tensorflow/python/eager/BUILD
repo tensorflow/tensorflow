@@ -93,7 +93,6 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -123,10 +122,12 @@ cuda_py_test(
         ":core",
         ":execute",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -150,9 +151,9 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
         ":core",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
     ],
 )
 
@@ -390,14 +391,14 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "ops_test",
     srcs = ["ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":context",
         ":execute",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
@@ -408,7 +409,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
-        "//third_party/py/numpy",
+        "//tensorflow/python:tensor_shape",
     ],
 )
 

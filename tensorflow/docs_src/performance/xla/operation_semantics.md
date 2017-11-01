@@ -328,9 +328,9 @@ placed between each of the entries in that dimension, increasing the size of the
 array. The holes are filled with a no-op value, which for convolution means
 zeroes.
 
-Dilation of the rhs is also called atrous convolution. For more details, see the
-@{tf.nn.atrous_conv2d}. Dilation of the lhs is
-also called deconvolution.
+Dilation of the rhs is also called atrous convolution. For more details, see
+@{tf.nn.atrous_conv2d}. Dilation of the lhs is also called transposed
+convolution. For more details, see @{tf.nn.conv2d_transpose}.
 
 The output shape has these dimensions, in this order:
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.estimator import model_fn
+from tensorflow.python.estimator import util
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
@@ -33,7 +34,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
+
+_DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
 def multi_class_head(n_classes,
@@ -59,7 +63,7 @@ def multi_class_head(n_classes,
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for multi class classification.
@@ -98,7 +102,7 @@ def binary_classification_head(
       `label_vocabulary`. Also there will be errors if vocabulary is not
       provided and labels are string.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for binary classification.
@@ -129,7 +133,7 @@ def regression_head(weight_column=None,
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for linear regression.
@@ -144,6 +148,7 @@ def multi_label_head(n_classes,
                      weight_column=None,
                      thresholds=None,
                      label_vocabulary=None,
+                     loss_fn=None,
                      name=None):
   """Creates a `_Head` for multi-label classification.
 
@@ -154,6 +159,12 @@ def multi_label_head(n_classes,
   Uses `sigmoid_cross_entropy` loss averaged over classes. Expects labels as a
   multi-hot tensor of shape `[batch_size, n_classes]`, or as an integer
   `SparseTensor` of class indices.
+
+  Also supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
+  `(labels, logits, features)` as arguments and returns unreduced loss with
+  shape `[batch_size, 1]`. `loss_fn` must support indicator `labels` with shape
+  `[batch_size, n_classes]`. Namely, the head applies `label_vocabulary` to the
+  input labels before passing them to `loss_fn`.
 
   Args:
     n_classes: Number of classes, must be greater than 1 (for 1 class, use
@@ -171,8 +182,9 @@ def multi_label_head(n_classes,
       [0, n_classes) or multi-hot Tensor. If given, labels must be SparseTensor
       string type and have any value in `label_vocabulary`. Also there will be
       errors if vocabulary is not provided and labels are string.
+    loss_fn: Optional loss function.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for multi-label classification.
@@ -198,9 +210,11 @@ def multi_label_head(n_classes,
       raise ValueError(
           'Length of label_vocabulary must be n_classes ({}). '
           'Given: {}'.format(n_classes, len(label_vocabulary)))
+  if loss_fn:
+    _validate_loss_fn_args(loss_fn)
   return _MultiLabelHead(
       n_classes=n_classes, weight_column=weight_column, thresholds=thresholds,
-      label_vocabulary=label_vocabulary, name=name)
+      label_vocabulary=label_vocabulary, loss_fn=loss_fn, name=name)
 
 
 class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
@@ -211,11 +225,13 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                weight_column=None,
                thresholds=None,
                label_vocabulary=None,
+               loss_fn=None,
                name=None):
     self._n_classes = n_classes
     self._weight_column = weight_column
     self._thresholds = thresholds
     self._label_vocabulary = label_vocabulary
+    self._loss_fn = loss_fn
     self._name = name
 
   @property
@@ -260,11 +276,19 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
 
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
-    del mode, features  # Unused for this head.
+    del mode  # Unused for this head.
     processed_labels = self._process_labels(labels)
-    unweighted_loss = losses.sigmoid_cross_entropy(
-        multi_class_labels=processed_labels, logits=logits,
-        reduction=losses.Reduction.NONE)
+    if self._loss_fn:
+      unweighted_loss = _call_loss_fn(
+          loss_fn=self._loss_fn, labels=processed_labels, logits=logits,
+          features=features)
+    else:
+      unweighted_loss = losses.sigmoid_cross_entropy(
+          multi_class_labels=processed_labels, logits=logits,
+          reduction=losses.Reduction.NONE)
+      # Averages loss over classes.
+      unweighted_loss = math_ops.reduce_mean(
+          unweighted_loss, axis=-1, keep_dims=True)
     return head_lib.LossAndLabels(
         unweighted_loss=unweighted_loss,
         processed_labels=processed_labels)
@@ -272,7 +296,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       logits = head_lib._check_logits(logits, self.logits_dimension)  # pylint:disable=protected-access
 
       # Predict.
@@ -284,22 +308,25 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
             pred_keys.PROBABILITIES: probabilities,
         }
       if mode == model_fn.ModeKeys.PREDICT:
+        classifier_output = head_lib._classification_output(  # pylint:disable=protected-access
+            scores=probabilities, n_classes=self._n_classes,
+            label_vocabulary=self._label_vocabulary)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
-                '': export_output.ClassificationOutput(scores=probabilities)
+                _DEFAULT_SERVING_KEY: classifier_output,
+                head_lib._CLASSIFY_SERVING_KEY: classifier_output,  # pylint:disable=protected-access
+                head_lib._PREDICT_SERVING_KEY: (  # pylint:disable=protected-access
+                    export_output.PredictOutput(predictions))
             })
 
       # Eval.
       unweighted_loss, processed_labels = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
-      # Averages loss over classes.
-      per_example_loss = math_ops.reduce_mean(
-          unweighted_loss, axis=-1, keep_dims=True)
       weights = head_lib._weights(features, self._weight_column)  # pylint:disable=protected-access
       training_loss = losses.compute_weighted_loss(
-          per_example_loss, weights=weights, reduction=losses.Reduction.SUM)
+          unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
@@ -309,7 +336,7 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                 labels=processed_labels,
                 probabilities=probabilities,
                 weights=weights,
-                per_example_loss=per_example_loss))
+                unweighted_loss=unweighted_loss))
 
       # Train.
       if train_op_fn is None:
@@ -330,16 +357,16 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         loss=training_loss,
         train_op=train_op_fn(training_loss))
 
-  def _eval_metric_ops(self, labels, probabilities, weights, per_example_loss):
+  def _eval_metric_ops(self, labels, probabilities, weights, unweighted_loss):
     """Returns a dict of metrics for eval_metric_ops."""
     with ops.name_scope(
-        None, 'metrics', [labels, probabilities, weights, per_example_loss]):
+        None, 'metrics', [labels, probabilities, weights, unweighted_loss]):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
           head_lib._summary_key(self._name, keys.LOSS_MEAN):  # pylint:disable=protected-access
               metrics_lib.mean(
-                  per_example_loss, weights=weights, name=keys.LOSS_MEAN),
+                  unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
           head_lib._summary_key(self._name, keys.AUC):  # pylint:disable=protected-access
               metrics_lib.auc(
                   labels=labels, predictions=probabilities, weights=weights,
@@ -377,3 +404,53 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                 threshold=threshold,
                 name=recall_key))
     return metric_ops
+
+
+def _validate_loss_fn_args(loss_fn):
+  """Validates loss_fn arguments.
+
+  Required arguments: labels, logits.
+  Optional arguments: features.
+
+  Args:
+    loss_fn: The loss function.
+  Raises:
+    ValueError: If the signature is unexpected.
+  """
+  loss_fn_args = util.fn_args(loss_fn)
+  for required_arg in ['labels', 'logits']:
+    if required_arg not in loss_fn_args:
+      raise ValueError(
+          'loss_fn must contain argument: {}. '
+          'Given arguments: {}'.format(required_arg, loss_fn_args))
+  invalid_args = list(set(loss_fn_args) - set(['labels', 'logits', 'features']))
+  if invalid_args:
+    raise ValueError('loss_fn has unexpected args: {}'.format(invalid_args))
+
+
+def _call_loss_fn(loss_fn, labels, logits, features):
+  """Calls loss_fn and checks the returned shape.
+
+  Args:
+    loss_fn: The loss function.
+    labels: Processed labels Tensor.
+    logits: Logits Tensor of shape [batch_size, logits_dimension].
+    features: Features dict.
+  Returns:
+    Loss Tensor with shape [batch_size, 1].
+  """
+  loss_fn_args = util.fn_args(loss_fn)
+  kwargs = {}
+  if 'features' in loss_fn_args:
+    kwargs['features'] = features
+  unweighted_loss = loss_fn(labels=labels, logits=logits, **kwargs)
+  batch_size = array_ops.shape(logits)[0]
+  loss_shape = array_ops.shape(unweighted_loss)
+  check_shape_op = control_flow_ops.Assert(
+      math_ops.reduce_all(math_ops.equal(loss_shape, [batch_size, 1])),
+      data=[
+          'loss_fn must return Tensor of shape [batch_size, 1]. Given: ',
+          loss_shape])
+  with ops.control_dependencies([check_shape_op]):
+    return array_ops.identity(unweighted_loss)
+

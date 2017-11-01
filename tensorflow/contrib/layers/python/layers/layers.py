@@ -463,7 +463,8 @@ def batch_norm(inputs,
                scope=None,
                renorm=False,
                renorm_clipping=None,
-               renorm_decay=0.99):
+               renorm_decay=0.99,
+               adjustment=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -546,6 +547,17 @@ def batch_norm(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `decay` is still applied
       to get the means and variances for inference.
+    adjustment: A function taking the `Tensor` containing the (dynamic) shape of
+      the input tensor and returning a pair (scale, bias) to apply to the
+      normalized values (before gamma and beta), only during training. For
+      example,
+        `adjustment = lambda shape: (
+          tf.random_uniform(shape[-1:], 0.93, 1.07),
+          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+      will scale the normalized value by up to 7% up or down, then shift the
+      result by up to 0.1 (with independent scaling and bias for each feature
+      but shared across all examples), and finally apply gamma and/or beta. If
+      `None`, no adjustment is applied.
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -569,7 +581,10 @@ def batch_norm(inputs,
   #   implementation in normalization_layers.BatchNormalization.
   inputs = ops.convert_to_tensor(inputs)
   rank = inputs.get_shape().ndims
-  possible_to_fuse = batch_weights is None and not renorm and rank in [2, 4]
+  possible_to_fuse = (batch_weights is None and
+                      not renorm and
+                      rank in [2, 4] and
+                      adjustment is None)
   if fused and possible_to_fuse and (
       zero_debias_moving_mean or rank == 2 or
       updates_collections is not ops.GraphKeys.UPDATE_OPS):
@@ -636,6 +651,7 @@ def batch_norm(inputs,
           renorm=renorm,
           renorm_clipping=renorm_clipping,
           renorm_momentum=renorm_decay,
+          adjustment=adjustment,
           name=sc.name,
           _scope=sc,
           _reuse=reuse,
@@ -1251,7 +1267,7 @@ def convolution2d_transpose(
 
     # Add variables to collections.
     _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
@@ -1360,7 +1376,7 @@ def convolution3d_transpose(
 
     # Add variables to collections.
     _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
@@ -2506,7 +2522,7 @@ def separable_convolution2d(
                                    variables_collections, 'weights')
       _add_variable_to_collections(layer.pointwise_kernel,
                                    variables_collections, 'weights')
-      if layer.bias:
+      if layer.bias is not None:
         _add_variable_to_collections(layer.bias,
                                      variables_collections, 'biases')
 

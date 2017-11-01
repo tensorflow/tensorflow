@@ -1415,9 +1415,9 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
   // proto in the above switch statement.
   TF_ASSIGN_OR_RETURN(ComputationDataHandle handle, handle_status);
   TF_RETURN_IF_ERROR(computation->SetOpMetadata(handle, arg->metadata()));
-  TF_RETURN_IF_ERROR(
-      computation->SetOpDeviceAssignment(handle, arg->device_assignment()));
-
+  if (arg->has_sharding()) {
+    TF_RETURN_IF_ERROR(computation->SetOpSharding(handle, arg->sharding()));
+  }
   return tensorflow::Status::OK();
 }
 

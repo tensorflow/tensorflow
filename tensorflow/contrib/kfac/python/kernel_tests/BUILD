@@ -13,6 +13,8 @@ py_test(
     deps = [
         "//tensorflow/contrib/kfac/python/ops:fisher_estimator",
         "//tensorflow/contrib/kfac/python/ops:layer_collection",
+        "//tensorflow/contrib/kfac/python/ops:utils",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -124,6 +126,20 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+    ],
+)
+
+py_test(
+    name = "loss_functions_test",
+    srcs = ["loss_functions_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/kfac/python/ops:loss_functions",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//third_party/py/numpy",
     ],
 )
 

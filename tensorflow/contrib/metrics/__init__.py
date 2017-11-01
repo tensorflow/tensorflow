@@ -65,6 +65,7 @@ See the @{$python/contrib.metrics} guide.
 @@set_intersection
 @@set_size
 @@set_union
+@@count
 
 """
 from __future__ import absolute_import
@@ -78,6 +79,7 @@ from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_map
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metrics
+from tensorflow.contrib.metrics.python.ops.metric_ops import count
 from tensorflow.contrib.metrics.python.ops.metric_ops import sparse_recall_at_top_k
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc

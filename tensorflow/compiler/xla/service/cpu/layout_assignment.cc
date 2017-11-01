@@ -108,21 +108,26 @@ Status CpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(col_major_shape(rhs_shape), dot, 1));
     } else if (PotentiallyImplementedAsEigenDot(*instruction)) {
       const HloInstruction* dot = instruction;
-      const HloInstruction* lhs_instruction = dot->operand(0);
-      const HloInstruction* rhs_instruction = dot->operand(1);
-
       // In order to implement `dot` with Eigen dot, the layouts of the lhs,
       // rhs, and output need to be row-major.
       //
       // These constraints are not hard constraints. Ideally, we should decide
       // which layouts to choose according to some cost model.
       Shape output_shape(row_major_shape(dot->shape()));
+
+      const HloInstruction* lhs_instruction = dot->operand(0);
       Shape lhs_shape(row_major_shape(lhs_instruction->shape()));
-      Shape rhs_shape(row_major_shape(rhs_instruction->shape()));
+      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(lhs_shape, dot, 0));
+
+      // dot is a kDot or a kTransposeDot fusion node.  In the latter case, if
+      // it represents X @ X, it may have just one operand.
+      if (dot->operand_count() > 1) {
+        const HloInstruction* rhs_instruction = dot->operand(1);
+        Shape rhs_shape(row_major_shape(rhs_instruction->shape()));
+        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, dot, 1));
+      }
 
       // Set layouts of the instructions' shapes.
-      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(lhs_shape, dot, 0));
-      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, dot, 1));
       TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(output_shape, dot));
     } else {
       for (int64 operand_no = 0; operand_no < instruction->operand_count();

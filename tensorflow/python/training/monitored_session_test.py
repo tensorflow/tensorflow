@@ -33,10 +33,12 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -1448,6 +1450,170 @@ class MonitoredSessionTest(test.TestCase):
     with self.assertRaisesRegexp(RuntimeError, 'Session is already closed'):
       with monitored_session.MonitoredSession() as session:
         session.close()
+
+  def test_step_fn_example(self):
+    with ops.Graph().as_default():
+      c = array_ops.placeholder(dtypes.float32)
+      v = array_ops.identity(c)
+
+      def step_fn(step_context):
+        value = step_context.run_with_hooks(fetches=v, feed_dict={c: 3.2})
+        return value
+
+      with monitored_session.MonitoredSession() as session:
+        self.assertNear(3.2, session.run_step_fn(step_fn), 0.1)
+
+  def test_step_function_stops(self):
+    with ops.Graph().as_default():
+
+      def step_fn(step_context):
+        step_context.request_stop()
+
+      with monitored_session.MonitoredSession() as session:
+        self.assertEqual(None, session.run_step_fn(step_fn))
+        self.assertTrue(session.should_stop())
+
+  def test_step_request_stop_without_a_with_block(self):
+    with ops.Graph().as_default():
+
+      def step_fn(step_context):
+        step_context.request_stop()
+
+      session = monitored_session.MonitoredSession()
+      try:
+        self.assertEqual(None, session.run_step_fn(step_fn))
+      except StopIteration:
+        pass
+      self.assertTrue(session.should_stop())
+
+  def test_step_request_stop_in_a_loop(self):
+    with ops.Graph().as_default():
+      def step_fn(step_context):
+        step_context.request_stop()
+
+      with monitored_session.MonitoredSession() as session:
+        while not session.should_stop():
+          _ = session.run_step_fn(step_fn)
+          self.fail('An exception should be raised on the line above.')
+
+  def test_step_request_stop_with_returning_a_type(self):
+    with ops.Graph().as_default():
+
+      def step_fn(step_context):
+        del step_context
+        return 'a type'
+
+      with monitored_session.MonitoredSession() as session:
+        self.assertEqual('a type', session.run_step_fn(step_fn))
+
+  def test_step_with_extra_arguments(self):
+    with ops.Graph().as_default():
+
+      def step_fn(step_context, extra_foo):
+        del step_context, extra_foo
+
+      with monitored_session.MonitoredSession() as session:
+        with self.assertRaisesRegexp(
+            ValueError,
+            '`step_fn` may either have one `step_context` argument'):
+          self.assertEqual(None, session.run_step_fn(step_fn))
+
+  def test_step_fn_belongs_to_a_class(self):
+    with ops.Graph().as_default():
+      c = array_ops.placeholder(dtypes.float32)
+      v = array_ops.identity(c)
+
+      class Model(object):
+
+        def step_fn(self, step_context):
+          value = step_context.run_with_hooks(fetches=v, feed_dict={c: 3.2})
+          return value
+
+      with monitored_session.MonitoredSession() as session:
+        model = Model()
+        self.assertNear(3.2, session.run_step_fn(model.step_fn), 0.1)
+
+  def test_step_fn_belongs_to_a_class_and_has_extra_methods(self):
+    with ops.Graph().as_default():
+
+      class Model(object):
+
+        def step_fn(self, step_context, extra_foo):
+          del step_context, extra_foo
+
+      with monitored_session.MonitoredSession() as session:
+        with self.assertRaisesRegexp(
+            ValueError,
+            '`step_fn` may either have one `step_context` argument'):
+          model = Model()
+          self.assertEqual(None, session.run_step_fn(model.step_fn))
+
+  def test_step_fn_with_hooks(self):
+    with ops.Graph().as_default():
+      var = resource_variable_ops.ResourceVariable(0.0)
+
+      # This test higlights the interaction of hooks with
+      # `Monitoredsession.run_step_fn`.  The order of execution of operations
+      # below is:
+      #   0.  stage_0
+      #   1.  stage_1_0 or stage_1_1 in an undefined order
+      #   2.  stage_2
+
+      stage_0 = state_ops.assign_add(var, 0.3)
+      stage_1_0 = state_ops.assign_add(var, 0.7)
+      # The order of `stage_1_0` and `stage_1_1` is undefined by
+      # `MonitoredSession`, but we should be able to assert when both of them
+      # are complete.  To obtain a consistent result of adding two different
+      # constants to `var`, we rely on a control dependency and
+      # `ResourceVariable`.  Otherwise, it is possible that one of the
+      # additions overwites the result of the other addition.
+      with ops.control_dependencies([stage_1_0]):
+        stage_1_1 = state_ops.assign_add(var, 0.5)
+      stage_2 = state_ops.assign_add(var, 1.1)
+
+      class Hook(session_run_hook.SessionRunHook):
+
+        def __init__(self, testing):
+          self._testing = testing
+
+        def before_run(self, run_context):
+          return session_run_hook.SessionRunArgs(fetches=stage_1_0)
+
+        def after_run(self, run_context, run_values):
+          self._testing.assertNear(0.3 + 0.5 + 0.7,
+                                   run_context.session.run(var), 0.1)
+          self._testing.assertNear(0.3 + 0.5 + 0.7 + 1.1,
+                                   run_context.session.run(stage_2), 0.1)
+
+      def step_fn(step_context):
+        self.assertNear(0.3, step_context.session.run(stage_0), 0.1)
+        return step_context.run_with_hooks(fetches=stage_1_1)
+
+      with monitored_session.MonitoredSession(hooks=[Hook(self)]) as session:
+        self.assertEqual(0.3 + 0.5 + 0.7, session.run_step_fn(step_fn))
+
+  def test_step_fn_with_hooks_and_request_stop(self):
+    with ops.Graph().as_default():
+      trace_the_hook = {'before_run': False, 'after_run': False}
+
+      class Hook(session_run_hook.SessionRunHook):
+
+        def before_run(self, run_context):
+          trace_the_hook['before_run'] = True
+
+        def after_run(self, run_context, run_values):
+          trace_the_hook['after_run'] = True
+
+      def step_fn(step_context):
+        step_context.request_stop()
+
+      with monitored_session.MonitoredSession(hooks=[Hook()]) as session:
+        self.assertEqual(None, session.run_step_fn(step_fn))
+        self.assertTrue(session.should_stop())
+        # `step_context.request_stop()` in a step_fn interrupts the flow of
+        # running the hooks.
+        self.assertFalse(trace_the_hook['before_run'])
+        self.assertFalse(trace_the_hook['after_run'])
 
 
 class SingularMonitoredSessionTest(test.TestCase):

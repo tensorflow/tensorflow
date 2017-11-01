@@ -1,0 +1,74 @@
+op {
+  graph_op_name: "DebugGradientIdentity"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "DecodeAndCropJpeg"
+  endpoint {
+    name: "image.decode_and_crop_jpeg"
+  }
+}
+op {
+  graph_op_name: "DecodeBmp"
+  endpoint {
+    name: "image.decode_bmp"
+  }
+}
+op {
+  graph_op_name: "DecodeCSV"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "DecodeGif"
+  endpoint {
+    name: "image.decode_gif"
+  }
+}
+op {
+  graph_op_name: "DecodeJpeg"
+  endpoint {
+    name: "image.decode_jpeg"
+  }
+}
+op {
+  graph_op_name: "DecodePng"
+  endpoint {
+    name: "image.decode_png"
+  }
+}
+op {
+  graph_op_name: "DeleteSessionTensor"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "DepthwiseConv2dNative"
+  endpoint {
+    name: "nn.depthwise_conv2d_native"
+  }
+}
+op {
+  graph_op_name: "DepthwiseConv2dNativeBackpropFilter"
+  endpoint {
+    name: "nn.depthwise_conv2d_native_backprop_filter"
+  }
+}
+op {
+  graph_op_name: "DepthwiseConv2dNativeBackpropInput"
+  endpoint {
+    name: "nn.depthwise_conv2d_native_backprop_input"
+  }
+}
+op {
+  graph_op_name: "DeserializeManySparse"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "DestroyTemporaryVariable"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "DrawBoundingBoxes"
+  endpoint {
+    name: "image.draw_bounding_boxes"
+  }
+}

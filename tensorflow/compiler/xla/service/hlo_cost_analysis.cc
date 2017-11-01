@@ -126,16 +126,11 @@ Status HloCostAnalysis::HandleElementwiseBinary(HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleCompare(HloInstruction* compare, HloOpcode opcode,
-                                      HloInstruction* lhs,
-                                      HloInstruction* rhs) {
+Status HloCostAnalysis::HandleCompare(HloInstruction* compare) {
   return HandleElementwiseOp(compare);
 }
 
-Status HloCostAnalysis::HandleClamp(HloInstruction* clamp,
-                                    HloInstruction* min_instruction,
-                                    HloInstruction* arg_instruction,
-                                    HloInstruction* max_instruction) {
+Status HloCostAnalysis::HandleClamp(HloInstruction* clamp) {
   return HandleElementwiseOp(clamp);
 }
 
@@ -143,57 +138,38 @@ Status HloCostAnalysis::HandleReducePrecision(HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleParameter(HloInstruction* parameter) {
+Status HloCostAnalysis::HandleParameter(HloInstruction*) {
   current_properties_[kBytesAccessedKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConstant(HloInstruction* constant,
-                                       const Literal& literal) {
+Status HloCostAnalysis::HandleConstant(HloInstruction*) {
   current_properties_[kBytesAccessedKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleGetTupleElement(HloInstruction* get_tuple_element,
-                                              HloInstruction* operand) {
+Status HloCostAnalysis::HandleGetTupleElement(HloInstruction*) {
   // GetTupleElement forwards a pointer and does not touch each element in the
   // output.
   current_properties_[kBytesAccessedKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSelect(HloInstruction* select,
-                                     HloInstruction* pred,
-                                     HloInstruction* on_true,
-                                     HloInstruction* on_false) {
+Status HloCostAnalysis::HandleSelect(HloInstruction*) { return Status::OK(); }
+
+Status HloCostAnalysis::HandleReverse(HloInstruction*) { return Status::OK(); }
+
+Status HloCostAnalysis::HandleSlice(HloInstruction*) { return Status::OK(); }
+
+Status HloCostAnalysis::HandleDynamicSlice(HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleReverse(HloInstruction* reverse,
-                                      HloInstruction* operand_instruction) {
+Status HloCostAnalysis::HandleDynamicUpdateSlice(HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSlice(HloInstruction* slice,
-                                    HloInstruction* operand_instruction) {
-  return Status::OK();
-}
-
-Status HloCostAnalysis::HandleDynamicSlice(HloInstruction* dynamic_slice,
-                                           HloInstruction* operand,
-                                           HloInstruction* start_indices) {
-  return Status::OK();
-}
-
-Status HloCostAnalysis::HandleDynamicUpdateSlice(
-    HloInstruction* dynamic_update, HloInstruction* operand,
-    HloInstruction* update, HloInstruction* start_indices) {
-  return Status::OK();
-}
-
-Status HloCostAnalysis::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status HloCostAnalysis::HandleTuple(HloInstruction* tuple) {
   // The tuple instruction only gathers pointers from inputs (it doesn't iterate
   // through them). The memory touched is then only the size of the output
   // index table of the tuple.
@@ -202,9 +178,7 @@ Status HloCostAnalysis::HandleTuple(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConcatenate(
-    HloInstruction* concatenate,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status HloCostAnalysis::HandleConcatenate(HloInstruction*) {
   return Status::OK();
 }
 
@@ -212,15 +186,11 @@ Status HloCostAnalysis::HandleConvert(HloInstruction* convert) {
   return HandleElementwiseOp(convert);
 }
 
-Status HloCostAnalysis::HandleCopy(HloInstruction* copy) {
-  return Status::OK();
-}
+Status HloCostAnalysis::HandleCopy(HloInstruction*) { return Status::OK(); }
 
-Status HloCostAnalysis::HandleDot(HloInstruction* dot,
-                                  HloInstruction* lhs_instruction,
-                                  HloInstruction* rhs_instruction) {
-  const Shape& lhs_shape = lhs_instruction->shape();
-  const Shape& rhs_shape = rhs_instruction->shape();
+Status HloCostAnalysis::HandleDot(HloInstruction* dot) {
+  const Shape& lhs_shape = dot->operand(0)->shape();
+  const Shape& rhs_shape = dot->operand(1)->shape();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
   int64 reduction_width = lhs_shape.dimensions(ShapeUtil::Rank(lhs_shape) - 1);
@@ -240,21 +210,14 @@ Status HloCostAnalysis::HandleDot(HloInstruction* dot,
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleInfeed(HloInstruction* infeed) {
-  return Status::OK();
-}
+Status HloCostAnalysis::HandleInfeed(HloInstruction*) { return Status::OK(); }
 
-Status HloCostAnalysis::HandleOutfeed(HloInstruction* outfeed) {
-  return Status::OK();
-}
+Status HloCostAnalysis::HandleOutfeed(HloInstruction*) { return Status::OK(); }
 
-Status HloCostAnalysis::HandleMap(
-    HloInstruction* map, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* function,
-    tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/) {
+Status HloCostAnalysis::HandleMap(HloInstruction* map) {
   // Compute properties of the mapped function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
-                      ProcessSubcomputation(function));
+                      ProcessSubcomputation(map->to_apply()));
 
   // Compute the cost of all elements for this Map operation.
   const int64 element_count = ShapeUtil::ElementsIn(map->shape());
@@ -266,9 +229,9 @@ Status HloCostAnalysis::HandleMap(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleReduce(
-    HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function) {
+Status HloCostAnalysis::HandleReduce(HloInstruction* reduce) {
+  auto arg = reduce->operand(0);
+  HloComputation* function = reduce->to_apply();
   // Compute the cost of the user function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(function));
@@ -284,10 +247,9 @@ Status HloCostAnalysis::HandleReduce(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleReduceWindow(HloInstruction* reduce_window,
-                                           HloInstruction* operand,
-                                           const Window& window,
-                                           HloComputation* function) {
+Status HloCostAnalysis::HandleReduceWindow(HloInstruction* reduce_window) {
+  const Window& window = reduce_window->window();
+  auto function = reduce_window->to_apply();
   // Compute the properties of the reduction function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(function));
@@ -342,55 +304,45 @@ Status HloCostAnalysis::HandleSelectAndScatter(HloInstruction* instruction) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBitcast(HloInstruction* bitcast) {
+Status HloCostAnalysis::HandleBitcast(HloInstruction*) {
   // A bitcast does no computation and touches no memory.
   current_properties_[kBytesAccessedKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBroadcast(HloInstruction* broadcast) {
+Status HloCostAnalysis::HandleBroadcast(HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandlePad(HloInstruction* pad) { return Status::OK(); }
+Status HloCostAnalysis::HandlePad(HloInstruction*) { return Status::OK(); }
 
-Status HloCostAnalysis::HandleSend(HloInstruction* send) {
-  return Status::OK();
-}
+Status HloCostAnalysis::HandleSend(HloInstruction*) { return Status::OK(); }
 
-Status HloCostAnalysis::HandleRecv(HloInstruction* recv) {
-  return Status::OK();
-}
+Status HloCostAnalysis::HandleRecv(HloInstruction*) { return Status::OK(); }
 
-Status HloCostAnalysis::HandleReshape(HloInstruction* reshape) {
-  return Status::OK();
-}
+Status HloCostAnalysis::HandleReshape(HloInstruction*) { return Status::OK(); }
 
-Status HloCostAnalysis::HandleBatchNormTraining(
-    HloInstruction* batch_norm_training) {
+Status HloCostAnalysis::HandleBatchNormTraining(HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBatchNormInference(
-    HloInstruction* batch_norm_inference) {
+Status HloCostAnalysis::HandleBatchNormInference(HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-inference.
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction* batch_norm_grad) {
+Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-grad.
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleTranspose(HloInstruction* transpose) {
+Status HloCostAnalysis::HandleTranspose(HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConvolution(HloInstruction* convolution,
-                                          HloInstruction* lhs_instruction,
-                                          HloInstruction* rhs_instruction,
-                                          const Window& window) {
+Status HloCostAnalysis::HandleConvolution(HloInstruction* convolution) {
+  auto rhs_instruction = convolution->operand(1);
   const auto& dnums = convolution->convolution_dimension_numbers();
   const int64 output_features =
       convolution->shape().dimensions(dnums.output_feature_dimension());
@@ -398,7 +350,9 @@ Status HloCostAnalysis::HandleConvolution(HloInstruction* convolution,
   // For each output element, we do one fma per element in the kernel at some
   // given output feature index.
   const int64 fmas_per_output_element =
-      ShapeUtil::ElementsIn(rhs_instruction->shape()) / output_features;
+      output_features > 0
+          ? ShapeUtil::ElementsIn(rhs_instruction->shape()) / output_features
+          : 0;
   const int64 output_elements = ShapeUtil::ElementsIn(convolution->shape());
   current_properties_[kFlopsKey] =
       output_elements * fmas_per_output_element * kFmaFlops;
@@ -415,8 +369,7 @@ Status HloCostAnalysis::HandleCrossReplicaSum(HloInstruction* crs) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleRng(HloInstruction* random,
-                                  RandomDistribution distribution) {
+Status HloCostAnalysis::HandleRng(HloInstruction* random) {
   // TODO(b/26346211): Implement better estimates for the RNG cost, since the
   // cost changes with the implementation and the distribution. For now, assume
   // the cost of each RNG is same as a transcendental operation.
@@ -460,18 +413,14 @@ Status HloCostAnalysis::HandleCall(HloInstruction* call) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCustomCall(
-    HloInstruction* custom_call,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece custom_call_target) {
+Status HloCostAnalysis::HandleCustomCall(HloInstruction*) {
   return Unimplemented("Custom-call is not implemented for HLO cost analysis.");
 }
 
-Status HloCostAnalysis::HandleSort(HloInstruction* sort,
-                                   HloInstruction* operand_instruction) {
+Status HloCostAnalysis::HandleSort(HloInstruction* sort) {
   // This assumes a comparison based N*log(N) algorithm. As for all ops, the
   // actual properties of the op depend on the backend implementation.
-  int64 elements = ShapeUtil::ElementsIn(operand_instruction->shape());
+  int64 elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
   current_properties_[kFlopsKey] = elements * tensorflow::Log2Ceiling(elements);
   return Status::OK();
 }
@@ -500,9 +449,7 @@ Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::FinishVisit(HloInstruction* root) {
-  return Status::OK();
-}
+Status HloCostAnalysis::FinishVisit(HloInstruction*) { return Status::OK(); }
 
 float HloCostAnalysis::flop_count() const {
   return GetProperty(kFlopsKey, properties_sum_);

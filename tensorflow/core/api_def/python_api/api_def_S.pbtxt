@@ -1,0 +1,252 @@
+op {
+  graph_op_name: "SampleDistortedBoundingBox"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SampleDistortedBoundingBoxV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Save"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SaveSlices"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ScalarSummary"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SdcaFprint"
+  endpoint {
+    name: "train.sdca_fprint"
+  }
+}
+op {
+  graph_op_name: "SdcaOptimizer"
+  endpoint {
+    name: "train.sdca_optimizer"
+  }
+}
+op {
+  graph_op_name: "SdcaShrinkL1"
+  endpoint {
+    name: "train.sdca_shrink_l1"
+  }
+}
+op {
+  graph_op_name: "Select"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SelfAdjointEig"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SelfAdjointEigV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Selu"
+  endpoint {
+    name: "nn.selu"
+  }
+}
+op {
+  graph_op_name: "SeluGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SerializeManySparse"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SerializeSparse"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ShardedFilename"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ShardedFilespec"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Sigmoid"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SigmoidGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Skipgram"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Slice"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Softmax"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SoftmaxCrossEntropyWithLogits"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Softplus"
+  endpoint {
+    name: "nn.softplus"
+  }
+}
+op {
+  graph_op_name: "SoftplusGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Softsign"
+  endpoint {
+    name: "nn.softsign"
+  }
+}
+op {
+  graph_op_name: "SoftsignGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SpaceToBatch"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseAdd"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseAddGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseConcat"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseCross"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseFillEmptyRows"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseFillEmptyRowsGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseMatMul"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseReorder"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseReshape"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseSoftmaxCrossEntropyWithLogits"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseSplit"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseTensorDenseAdd"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseTensorDenseMatMul"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SparseToDense"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Split"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SplitV"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SqrtGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Squeeze"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Stack"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "StackClose"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "StackCloseV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "StackPop"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "StackPopV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "StackPush"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "StackPushV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "StackV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "StringSplit"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Sub"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Sum"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Svd"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Switch"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "SymbolicGradient"
+  visibility: HIDDEN
+}

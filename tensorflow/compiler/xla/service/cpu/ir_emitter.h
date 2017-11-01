@@ -154,62 +154,36 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo) override;
 
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override;
+  Status HandleConstant(HloInstruction* constant) override;
   Status HandleCopy(HloInstruction* copy) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
-                   HloInstruction* rhs) override;
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
-                           HloInstruction* rhs, const Window& window) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleSelect(HloInstruction* select) override;
+  Status HandleDot(HloInstruction* dot) override;
+  Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
+  Status HandleSort(HloInstruction* sort) override;
   Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override;
-  Status HandleReduceWindow(HloInstruction* reduce_window,
-                            HloInstruction* operand, const Window& window,
-                            HloComputation* function) override;
+  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleReduceWindow(HloInstruction* reduce_window) override;
   Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override;
   Status HandleSend(HloInstruction* send) override;
-  Status HandleSlice(HloInstruction* slice,
-                     HloInstruction* /*operand*/) override;
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* /*operand*/,
-                            HloInstruction* /*start_indices*/) override;
-  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
-                                  HloInstruction* /*operand*/,
-                                  HloInstruction* /*update*/,
-                                  HloInstruction* /*start_indices*/) override;
+  Status HandleSlice(HloInstruction* slice) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
+  Status HandleDynamicUpdateSlice(
+      HloInstruction* dynamic_update_slice) override;
   Status HandleRecv(HloInstruction* recv) override;
   Status HandlePad(HloInstruction* pad) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* function,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleMap(HloInstruction* map) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction* custom_call,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleWhile(HloInstruction* xla_while) override;
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleConcatenate(HloInstruction* concatenate) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -248,6 +222,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Convenience function to get the IR type matching the given shape.
   llvm::Type* IrShapeType(const Shape& shape);
+
+  // Returns an array of compute function parameter types.
+  std::vector<llvm::Type*> GetComputeFunctionParams();
 
   // Get the llvm::Value* that represents the "retval" argument of the
   // computation function being emitted by this emitter.
@@ -322,6 +299,18 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       llvm::Function* function, const Shape& return_shape, int64 element_count,
       tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
       tensorflow::StringPiece name);
+
+  // Returns an array of compute function call arguments.
+  std::vector<llvm::Value*> GetArrayFunctionCallArguments(
+      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+      llvm::Value* return_value_buffer, tensorflow::StringPiece name);
+
+  // Emits a call to a runtime fork/join function which dispatches parallel
+  // calls to 'parallel_function' (and joins threads before returning).
+  Status EmitParallelForkJoin(
+      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+      llvm::Value* output_address, HloComputation* computation,
+      llvm::Function* parallel_function);
 
   // Verifies that the element types of all of the given operand instructions
   // match and are of one of the given supported types.
@@ -595,12 +584,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // address.
   Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                            llvm::Value* program_buffer_address);
-
-  // Returns true if the current function being emitted is called in a
-  // parallel context (returns false otherwise).
-  bool IsParallelContext() {
-    return parallel_cpu_backend_ && is_top_level_computation_;
-  }
 
   const HloModuleConfig& hlo_module_config_;
 

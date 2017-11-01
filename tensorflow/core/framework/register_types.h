@@ -87,7 +87,7 @@ limitations under the License.
 
 #elif defined(__ANDROID_TYPES_FULL__)
 
-// Only half, float, int32, int64, and quantized types are supported.
+// Only half, float, int32, int64, bool, and quantized types are supported.
 #define TF_CALL_float(m) m(float)
 #define TF_CALL_double(m)
 #define TF_CALL_int32(m) m(::tensorflow::int32)
@@ -117,7 +117,7 @@ limitations under the License.
 
 #else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
 
-// Only float and int32 are supported.
+// Only float, int32, and bool are supported.
 #define TF_CALL_float(m) m(float)
 #define TF_CALL_double(m)
 #define TF_CALL_int32(m) m(::tensorflow::int32)

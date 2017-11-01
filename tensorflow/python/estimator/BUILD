@@ -146,6 +146,7 @@ py_test(
     srcs = ["training_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":dnn",
         ":estimator",
@@ -542,7 +543,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:nn",
-        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:summary",

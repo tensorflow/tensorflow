@@ -20,6 +20,7 @@ limitations under the License.
 #include <stack>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -54,6 +55,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kExp;
     case UNOP_FLOOR:
       return HloOpcode::kFloor;
+    case UNOP_IMAG:
+      return HloOpcode::kImag;
     case UNOP_IS_FINITE:
       return HloOpcode::kIsFinite;
     case UNOP_LOG:
@@ -62,6 +65,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kNot;
     case UNOP_NEGATE:
       return HloOpcode::kNegate;
+    case UNOP_REAL:
+      return HloOpcode::kReal;
     case UNOP_ROUND_NEAREST_AFZ:
       return HloOpcode::kRoundNearestAfz;
     case UNOP_SIGN:
@@ -79,6 +84,10 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
 
 HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
   switch (binop) {
+    case BINOP_ATAN2:
+      return HloOpcode::kAtan2;
+    case BINOP_COMPLEX:
+      return HloOpcode::kComplex;
     case BINOP_DOT:
       return HloOpcode::kDot;
     case BINOP_MUL:
@@ -87,8 +96,6 @@ HloOpcode BinaryOperationToHloOpcode(BinaryOperation binop) {
       return HloOpcode::kAdd;
     case BINOP_SUB:
       return HloOpcode::kSubtract;
-    case BINOP_INDEX:
-      return HloOpcode::kIndex;
     case BINOP_DIV:
       return HloOpcode::kDivide;
     case BINOP_EQ:
@@ -132,8 +139,6 @@ HloOpcode TernaryOperationToHloOpcode(TernaryOperation triop) {
       return HloOpcode::kClamp;
     case TRIOP_SELECT:
       return HloOpcode::kSelect;
-    case TRIOP_UPDATE:
-      return HloOpcode::kUpdate;
     default:
       LOG(FATAL) << "unhandled operation " << triop;
   }
@@ -1308,20 +1313,19 @@ Status UserComputation::SetOpMetadata(const ComputationDataHandle& handle,
   return Status::OK();
 }
 
-Status UserComputation::SetOpDeviceAssignment(
-    const ComputationDataHandle& handle,
-    const OpDeviceAssignment& device_assignment) {
+Status UserComputation::SetOpSharding(const ComputationDataHandle& handle,
+                                      const OpSharding& sharding) {
   tensorflow::mutex_lock lock(mutex_);
 
   int64 handle_value = handle.handle();
   if (session_computation_.requests().count(handle_value) == 0) {
-    return InvalidArgument("Invalid handle in SetOpDeviceAssignment (%lld)",
+    return InvalidArgument("Invalid handle in SetOpSharding (%lld)",
                            handle_value);
   }
   *session_computation_.mutable_requests()
        ->at(handle_value)
        .mutable_request()
-       ->mutable_device_assignment() = device_assignment;
+       ->mutable_sharding() = sharding;
   return Status::OK();
 }
 
@@ -1843,10 +1847,17 @@ UserComputation::GetEmbeddedComputations(
   XLA_VLOG_LINES(3, session_computation_.DebugString());
 
   std::vector<VersionedComputationHandle> computations;
+  std::vector<int64> sorted_handles;
   for (const auto& handle_request : session_computation_.requests()) {
-    int64 handle_value = handle_request.first;
+    sorted_handles.push_back(handle_request.first);
+  }
+  std::sort(sorted_handles.begin(), sorted_handles.end());
+  for (int64 handle : sorted_handles) {
+    const auto& handle_request = session_computation_.requests().find(handle);
+    CHECK(handle_request != session_computation_.requests().end());
+    int64 handle_value = handle_request->first;
     if (handle_value <= version) {
-      const OperationRequest& request = handle_request.second;
+      const OperationRequest& request = handle_request->second;
       switch (request.request().op_case()) {
         case OpRequest::kCallRequest: {
           CHECK_EQ(1, request.embedded_computation_versions_size());
@@ -2504,7 +2515,9 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
   if (ShapeUtil::IsScalar(operand->shape())) {
     HloInstruction* broadcast = hlo_builder_.AddInstruction(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
-    broadcast->set_device_assignment(operand->device_assignment());
+    if (operand->has_sharding()) {
+      broadcast->set_sharding(operand->sharding());
+    }
     return broadcast;
   }
   // Do explicit broadcast for degenerate broadcast.
@@ -2522,12 +2535,16 @@ HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
           ShapeUtil::MakeShape(operand->shape().element_type(),
                                reshaped_dimensions),
           operand));
-  reshaped_operand->set_device_assignment(operand->device_assignment());
+  if (operand->has_sharding()) {
+    reshaped_operand->set_sharding(operand->sharding());
+  }
   // Broadcast 'reshape' up to the larger size.
   HloInstruction* broadcast =
       hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
           broadcast_shape, reshaped_operand, broadcast_dimensions));
-  broadcast->set_device_assignment(operand->device_assignment());
+  if (operand->has_sharding()) {
+    broadcast->set_sharding(operand->sharding());
+  }
   return broadcast;
 }
 
@@ -2542,8 +2559,11 @@ void ComputationLowerer::Visit(
     HloInstruction* hlo_instruction =
         hlo_builder_.AddInstruction(std::move(instruction));
     hlo_instruction->set_metadata(request.request().metadata());
-    hlo_instruction->set_device_assignment(
-        request.request().device_assignment());
+    if (request.request().has_sharding()) {
+      OpSharding op_sharding = request.request().sharding();
+      hlo_instruction->set_sharding(
+          HloSharding::FromProto(op_sharding).ValueOrDie());
+    }
     return hlo_instruction;
   };
   auto lookup_instruction = [&](const ComputationDataHandle& handle) {
