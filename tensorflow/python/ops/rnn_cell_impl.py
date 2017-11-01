@@ -284,71 +284,6 @@ class BasicRNNCell(RNNCell):
     output = self._activation(self._linear([inputs, state]))
     return output, output
 
-class SRUCell(RNNCell):
-  """Training RNNs as Fast as CNNs (cf. https://arxiv.org/abs/1709.02755).
-
-  Args:
-    num_units: int, The number of units in the SRU cell.
-    activation: Nonlinearity to use.  Default: `tanh`.
-    reuse: (optional) Python boolean describing whether to reuse variables
-     in an existing scope.  If not `True`, and the existing scope already has
-     the given variables, an error is raised.
-    kernel_initializer: (optional) The initializer to use for the weight and
-    projection matrices.
-    bias_initializer: (optional) The initializer to use for the bias.
-  """
-
-  def __init__(self,
-               num_units,
-               activation=None,
-               reuse=None,
-               kernel_initializer=None,
-               bias_initializer=None):
-    super(SRUCell, self).__init__(_reuse=reuse)
-    self._num_units = num_units
-    self._activation = activation or math_ops.tanh
-    self._kernel_initializer = kernel_initializer
-    self._bias_initializer = bias_initializer
-    self._gate_linear = None
-
-  @property
-  def state_size(self):
-    return self._num_units
-
-  @property
-  def output_size(self):
-    return self._num_units
-
-  def call(self, inputs, state):
-    """Gated recurrent unit (SRU) with nunits cells."""
-    if self._gate_linear is None:
-      self._gate_linear = _Linear(
-          [inputs],
-          3 * self._num_units,
-          False,
-          kernel_initializer=self._kernel_initializer)
-
-    value = self._gate_linear([inputs])
-    x_bar, f_intermediate, r_intermediate = \
-      array_ops.split(value=value, num_or_size_splits=3, axis=1)
-
-    if self._bias_initializer is None:
-      self._bias_initializer = init_ops.constant_initializer(0.0, \
-        dtype=inputs.dtype)
-    _biases = vs.get_variable(
-        _BIAS_VARIABLE_NAME, [2 * self._num_units],
-        dtype=inputs.dtype,
-        initializer=self._bias_initializer)
-
-    f_r = math_ops.sigmoid(nn_ops.bias_add(array_ops.concat([f_intermediate, \
-      r_intermediate], 1), _biases))
-    f, r = array_ops.split(value=f_r, num_or_size_splits=2, axis=1)
-
-    c = f * state + (1.0 - f) * x_bar
-    h = r * self._activation(c) + (1.0 - r) * inputs
-
-    return h, c
-
 class _LayerRNNCell(RNNCell):
   """Subclass of RNNCells that act like proper `tf.Layer` objects.
 
@@ -387,6 +322,78 @@ class _LayerRNNCell(RNNCell):
     # method.  See the class docstring for more details.
     return base_layer.Layer.__call__(self, inputs, state, scope=scope)
 
+
+class SRUCell(_LayerRNNCell):
+  """Training RNNs as Fast as CNNs (cf. https://arxiv.org/abs/1709.02755).
+
+  Args:
+    num_units: int, The number of units in the SRU cell.
+    activation: Nonlinearity to use.  Default: `tanh`.
+    reuse: (optional) Python boolean describing whether to reuse variables
+     in an existing scope.  If not `True`, and the existing scope already has
+     the given variables, an error is raised.
+    kernel_initializer: (optional) The initializer to use for the weight and
+    projection matrices.
+    bias_initializer: (optional) The initializer to use for the bias.
+  """
+
+  def __init__(self,
+               num_units,
+               activation=None,
+               reuse=None,
+               kernel_initializer=None,
+               bias_initializer=None):
+    super(SRUCell, self).__init__(_reuse=reuse)
+    self._num_units = num_units
+    self._activation = activation or math_ops.tanh
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+    self._gate_linear = None
+
+  @property
+  def state_size(self):
+    return self._num_units
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def build(self, inputs_shape):
+    if inputs_shape[1].value is None:
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                       % inputs_shape)
+
+    input_depth = inputs_shape[1].value
+    self._kernel = self.add_variable(
+        _WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth, 3 * self._num_units],
+        initializer=self._kernel_initializer)
+
+    bias_initializer = self._bias_initializer or \
+                       init_ops.constant_initializer(0.0, dtype=self.dtype)
+
+    self._bias = self.add_variable(
+        _BIAS_VARIABLE_NAME,
+        shape=[2 * self._num_units],
+        initializer=bias_initializer)
+
+    self._built = True
+
+  def call(self, inputs, state):
+    """Simple recurrent unit (SRU) with nunits cells."""
+
+    U = math_ops.matmul(inputs, self._kernel)
+    x_bar, f_intermediate, r_intermediate = \
+      array_ops.split(value=U, num_or_size_splits=3, axis=1)
+
+    f_r = math_ops.sigmoid(nn_ops.bias_add(array_ops.concat([f_intermediate, \
+      r_intermediate], 1), self._bias))
+    f, r = array_ops.split(value=f_r, num_or_size_splits=2, axis=1)
+
+    c = f * state + (1.0 - f) * x_bar
+    h = r * self._activation(c) + (1.0 - r) * inputs
+
+    return h, c
 
 class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
