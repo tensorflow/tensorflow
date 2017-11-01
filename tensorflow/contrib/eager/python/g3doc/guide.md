@@ -704,7 +704,7 @@ with tfe.restore_variables_on_create(
                                     net(inp).numpy()))
       all_variables = (
           net.variables
-          + tfe.get_optimizer_variables(optimizer)
+          + optimizer.variables()
           + [global_step])
       # Save the checkpoint.
       tfe.Saver(all_variables).save(checkpoint_prefix, global_step=global_step)
