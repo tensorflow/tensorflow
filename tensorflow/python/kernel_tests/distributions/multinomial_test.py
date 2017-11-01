@@ -291,7 +291,7 @@ class MultinomialTest(test.TestCase):
       dist = multinomial.Multinomial(
           total_count=[7., 6., 5.],
           logits=math_ops.log(2. * self._rng.rand(4, 3, 2).astype(np.float32)))
-      n = int(3e3)
+      n = int(3e4)
       x = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(x, 0)
       # Cyclically rotate event dims left.
