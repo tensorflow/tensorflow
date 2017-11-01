@@ -47,4 +47,4 @@ ExternalProject_Add(snappy
 )
 
 # actually enables snappy in the source code
-add_definitions(-DSNAPPY)
+add_definitions(-DTF_USE_SNAPPY)

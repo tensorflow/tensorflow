@@ -1374,6 +1374,25 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     y = image_ops.pad_to_bounding_box(image, 0, 0, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
+  def testInt64(self):
+    x = [1, 2, 3,
+         4, 5, 6,
+         7, 8, 9]
+    x_shape = [3, 3, 1]
+
+    y = [0, 0, 0,
+         1, 2, 3,
+         4, 5, 6,
+         7, 8, 9]
+    y_shape = [4, 3, 1]
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    i = constant_op.constant([1, 0, 4, 3], dtype=dtypes.int64)
+    y_tf = image_ops.pad_to_bounding_box(x, i[0], i[1], i[2], i[3])
+    with self.test_session(use_gpu=True):
+      self.assertAllClose(y, y_tf.eval())
+
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
@@ -2434,8 +2453,12 @@ class JpegTest(test_util.TensorFlowTestCase):
         y, x, h, w = crop_window
         image1_crop = image_ops.crop_to_bounding_box(image1, y, x, h, w)
 
-        # Combined crop+decode.
+        # Combined decode+crop.
         image2 = image_ops.decode_and_crop_jpeg(jpeg0, crop_window)
+
+        # Combined decode+crop should have the same shape inference
+        self.assertAllEqual(image1_crop.get_shape().as_list(),
+                            image2.get_shape().as_list())
 
         # CropAndDecode should be equal to DecodeJpeg+Crop.
         image1_crop, image2 = sess.run([image1_crop, image2])

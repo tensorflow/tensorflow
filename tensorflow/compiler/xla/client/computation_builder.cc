@@ -663,7 +663,7 @@ bool ComputationBuilder::VerifyConvolution(
     return false;
   }
   int num_dims = ShapeUtil::Rank(lhs_shape);
-  if (num_dims < 3) {
+  if (num_dims < 2) {
     NoteError(InvalidArgument(
         "Convolution expects argument arrays with >= 3 dimensions. "
         "Got: %s and %s",
@@ -913,6 +913,17 @@ ComputationDataHandle ComputationBuilder::CustomCall(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::Complex(
+    const ComputationDataHandle& real, const ComputationDataHandle& imag,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_COMPLEX, real, imag, broadcast_dimensions);
+}
+
+ComputationDataHandle ComputationBuilder::Conj(
+    const ComputationDataHandle& operand) {
+  return Complex(Real(operand), Neg(Imag(operand)));
+}
+
 ComputationDataHandle ComputationBuilder::Add(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
@@ -995,6 +1006,12 @@ ComputationDataHandle ComputationBuilder::Abs(
   return UnaryOp(UNOP_ABS, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Atan2(
+    const ComputationDataHandle& y, const ComputationDataHandle& x,
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return BinaryOp(BINOP_ATAN2, y, x, broadcast_dimensions);
+}
+
 ComputationDataHandle ComputationBuilder::Exp(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_EXP, operand);
@@ -1038,6 +1055,16 @@ ComputationDataHandle ComputationBuilder::Sin(
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Real(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_REAL, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Imag(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_IMAG, operand);
 }
 
 ComputationDataHandle ComputationBuilder::IsFinite(
@@ -1767,14 +1794,9 @@ StatusOr<Computation> ComputationBuilder::Build() {
 
 void ComputationBuilder::AddCommonFieldsToOpRequest(OpRequest* request) const {
   *request->mutable_metadata() = metadata_;
-  *request->mutable_device_assignment() = device_assignment_;
-}
-
-void ComputationBuilder::ClearDeviceAssignment() { device_assignment_.Clear(); }
-
-void ComputationBuilder::SetDeviceAssignment(
-    const OpDeviceAssignment& assignment) {
-  device_assignment_ = assignment;
+  if (sharding_) {
+    *request->mutable_sharding() = *sharding_;
+  }
 }
 
 /* static */ ConvolutionDimensionNumbers

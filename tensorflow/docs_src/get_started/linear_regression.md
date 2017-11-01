@@ -4,32 +4,28 @@ This unit provides the following short examples demonstrating how
 to implement regression in Estimators:
 
 <table>
-  <tr> <th>Example</th> <th>Data Set</th> <th>Demonstrates How To...</th></tr>
+  <tr> <th>Example</th> <th>Demonstrates How To...</th></tr>
 
   <tr>
     <td><a href="https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/linear_regression.py">linear_regression.py</a></td>
-    <td>[imports85](https://archive.ics.uci.edu/ml/datasets/automobile)</td>
     <td>Use the @{tf.estimator.LinearRegressor} Estimator to train a
         regression model on numeric data.</td>
   </tr>
 
   <tr>
     <td><a href="https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/linear_regression_categorical.py">linear_regression_categorical.py</a></td>
-    <td>[imports85](https://archive.ics.uci.edu/ml/datasets/automobile)</td>
     <td>Use the @{tf.estimator.LinearRegressor} Estimator to train a
         regression model on categorical data.</td>
   </tr>
 
   <tr>
     <td><a href="https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/dnn_regression.py">dnn_regression.py</a></td>
-    <td>[imports85](https://archive.ics.uci.edu/ml/datasets/automobile)</td>
     <td>Use the @{tf.estimator.DNNRegressor} Estimator to train a
         regression model on discrete data with a deep neural network.</td>
   </tr>
 
   <tr>
     <td><a href="https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/custom_regression.py">custom_regression.py</a></td>
-    <td>[imports85](https://archive.ics.uci.edu/ml/datasets/automobile)</td>
     <td>Use @{tf.estimator.Estimator} to train a customized dnn
         regression model.</td>
   </tr>
@@ -96,7 +92,7 @@ During training, all three programs output the following information:
 For example, here's some possible output for the `linear_regressor.py`
 program:
 
-```bsh
+``` None
 INFO:tensorflow:Saving checkpoints for 1 into /tmp/tmpAObiz9/model.ckpt.
 INFO:tensorflow:loss = 161.308, step = 1
 INFO:tensorflow:global_step/sec: 1557.24

@@ -897,8 +897,8 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
+        "no_oss",  # Test flaky due to port collisions.
         "no_windows",
-        "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
         "oss_serial",
     ],

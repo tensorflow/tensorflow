@@ -41,6 +41,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -1354,9 +1355,32 @@ class LinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       price1_var = get_linear_model_column_var(price1)
       price2_var = get_linear_model_column_var(price2)
-      self.assertEqual(cols_to_vars['bias'], bias)
+      self.assertAllEqual(cols_to_vars['bias'], [bias])
       self.assertAllEqual(cols_to_vars[price1], [price1_var])
       self.assertAllEqual(cols_to_vars[price2], [price2_var])
+
+  def test_fills_cols_to_vars_partitioned_variables(self):
+    price1 = fc.numeric_column('price1', shape=2)
+    price2 = fc.numeric_column('price2', shape=3)
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[1., 2.], [6., 7.]],
+          'price2': [[3., 4., 5.], [8., 9., 10.]]
+      }
+      cols_to_vars = {}
+      with variable_scope.variable_scope(
+          'linear',
+          partitioner=partitioned_variables.fixed_size_partitioner(2, axis=0)):
+        fc.linear_model(features, [price1, price2], cols_to_vars=cols_to_vars)
+      with _initialized_session():
+        self.assertEqual([0.], cols_to_vars['bias'][0].eval())
+        # Partitioning shards the [2, 1] price1 var into 2 [1, 1] Variables.
+        self.assertAllEqual([[0.]], cols_to_vars[price1][0].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price1][1].eval())
+        # Partitioning shards the [3, 1] price2 var into a [2, 1] Variable and
+        # a [1, 1] Variable.
+        self.assertAllEqual([[0.], [0.]], cols_to_vars[price2][0].eval())
+        self.assertAllEqual([[0.]], cols_to_vars[price2][1].eval())
 
   def test_dense_collection(self):
     price = fc.numeric_column('price')
@@ -1761,9 +1785,38 @@ class InputLayerTest(test.TestCase):
       self.assertEqual(0, len(cols_to_vars[price1]))
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
-      for var in cols_to_vars[some_embedding_column]:
-        self.assertIsInstance(var, variables_lib.Variable)
-        self.assertAllEqual(var.shape, [5, 10])
+      self.assertIsInstance(cols_to_vars[some_embedding_column][0],
+                            variables_lib.Variable)
+      self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [5, 10])
+
+  def test_fills_cols_to_vars_partitioned_variables(self):
+    price1 = fc.numeric_column('price1')
+    dense_feature = fc.numeric_column('dense_feature')
+    dense_feature_bucketized = fc.bucketized_column(
+        dense_feature, boundaries=[0.])
+    some_sparse_column = fc.categorical_column_with_hash_bucket(
+        'sparse_feature', hash_bucket_size=5)
+    some_embedding_column = fc.embedding_column(
+        some_sparse_column, dimension=10)
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[3.], [4.]],
+          'dense_feature': [[-1.], [4.]],
+          'sparse_feature': [['a'], ['x']],
+      }
+      cols_to_vars = {}
+      all_cols = [price1, dense_feature_bucketized, some_embedding_column]
+      with variable_scope.variable_scope(
+          'input_from_feature_columns',
+          partitioner=partitioned_variables.fixed_size_partitioner(3, axis=0)):
+        fc.input_layer(features, all_cols, cols_to_vars=cols_to_vars)
+      self.assertItemsEqual(list(cols_to_vars.keys()), all_cols)
+      self.assertEqual(0, len(cols_to_vars[price1]))
+      self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
+      self.assertEqual(3, len(cols_to_vars[some_embedding_column]))
+      self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [2, 10])
+      self.assertAllEqual(cols_to_vars[some_embedding_column][1].shape, [2, 10])
+      self.assertAllEqual(cols_to_vars[some_embedding_column][2].shape, [1, 10])
 
   def test_column_order(self):
     price_a = fc.numeric_column('price_a')

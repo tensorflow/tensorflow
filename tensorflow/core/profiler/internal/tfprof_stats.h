@@ -66,6 +66,9 @@ class TFStats {
   }
   const std::set<int64>& steps() const { return steps_; }
   bool has_code_traces() const { return has_code_traces_; }
+  double run_coverage() const {
+    return covered_nodes_.size() / (nodes_map_.size() + 1e-10);
+  }
 
   void BuildView(const string& cmd);
   void BuildAllViews();
@@ -104,13 +107,16 @@ class TFStats {
   std::unique_ptr<TFCode> code_view_;
   std::unique_ptr<TFOp> op_view_;
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader_;
-  // Store TFGraphNode instead of TFGraphNode* to avoid large number of
-  // dynamic alloc.
+  // TODO(xpan): Store TFGraphNode instead of TFGraphNode* to avoid large
+  // number of dynamic alloc.
+  // Maps from graph node name to TFGraphNode.
   std::map<string, std::unique_ptr<TFGraphNode>> nodes_map_;
   GraphNodeProto empty_graph_node_;
   MultiGraphNodeProto empty_multi_graph_node_;
 
   std::map<int64, string> id_to_string_;
+  // Graph nodes covered by RunMetdata, that is traced with run time stats.
+  std::set<int64> covered_nodes_;
 };
 
 }  // namespace tfprof

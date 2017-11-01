@@ -19,19 +19,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-namespace {
 bool CountAsAcceleratorTime(const string& device) {
   return device.find("stream:all") != device.npos;
 }
-
 bool CountAsCPUTime(const string& device) {
   return RE2::FullMatch(device,
                         ".*/(device:gpu|gpu|device:cpu|cpu|device:sycl):\\d+");
 }
-
 bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
 
-}  // namespace
 // Notes about start and end time from the NodeExecStats proto:
 // For GPU, there is no difference between op_end_rel_micros and
 // all_end_rel_micros. All are kernel times.
@@ -89,16 +85,28 @@ void ExecStep::AddMemoryStats(const string& dev,
   }
   exec_.set_memory_intialized(true);
 
+  int accelerator_allocator_cnt = 0;
   for (const auto& mem : step_stat.memory()) {
     // TODO(xpan): Fix this hack. Currently the allocator name seems quite
     // ad-hoc.
     if (mem.allocator_name().find("GPU") == mem.allocator_name().npos) {
       continue;
     }
+    ++accelerator_allocator_cnt;
     exec_.set_allocator_bytes_in_use(
         std::max(static_cast<int64>(exec_.allocator_bytes_in_use()),
                  static_cast<int64>(mem.allocator_bytes_in_use())));
+    Allocation allocation;
+    for (const auto& alloc : mem.allocation_records()) {
+      allocation.add_allocation_records()->MergeFrom(alloc);
+    }
+    allocations_.push_back(allocation);
   }
+  if (accelerator_allocator_cnt > 1) {
+    fprintf(stderr, "found %d gpu allocator for 1 node\n",
+            accelerator_allocator_cnt);
+  }
+
   int64 total_output_bytes = 0;
   for (const auto& output : step_stat.output()) {
     if (output.has_tensor_description() &&

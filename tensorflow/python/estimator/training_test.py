@@ -1569,7 +1569,7 @@ class TrainAndEvaluateIntegrationTest(test.TestCase):
     serving_input_receiver_fn = (
         export_lib.build_parsing_serving_input_receiver_fn(feature_spec))
     return exporter_lib.LatestExporter(
-        name, serving_input_fn=serving_input_receiver_fn)
+        name, serving_input_receiver_fn=serving_input_receiver_fn)
 
   def _extract_loss_and_global_step(self, event_folder):
     """Returns the loss and global step in last event."""

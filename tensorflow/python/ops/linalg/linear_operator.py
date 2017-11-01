@@ -693,8 +693,8 @@ class LinearOperator(object):
     if self._can_use_cholesky():
       diag = array_ops.matrix_diag_part(self._get_cached_chol())
       return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
-    abs_det = math_ops.abs(self.determinant())
-    return math_ops.log(abs_det)
+    _, log_abs_det = linalg.slogdet(self._matrix)
+    return log_abs_det
 
   def log_abs_determinant(self, name="log_abs_det"):
     """Log absolute value of determinant for every batch member.

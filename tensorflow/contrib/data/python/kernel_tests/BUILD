@@ -74,9 +74,12 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
@@ -93,6 +96,7 @@ py_test(
     ],
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -104,6 +108,7 @@ py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
@@ -138,6 +143,29 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "interleave_dataset_op_test",
+    size = "small",
+    srcs = ["interleave_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # b/67958761
+    ],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:transformation_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -185,6 +213,7 @@ py_test(
         "//tensorflow/python:function",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:script_ops",
@@ -217,6 +246,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -224,6 +254,7 @@ py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:lookup_ops",
@@ -231,6 +262,7 @@ py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//third_party/py/numpy",
@@ -244,6 +276,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -252,8 +285,11 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
@@ -265,6 +301,7 @@ py_test(
     srcs = ["reader_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/contrib/data/python/ops:readers",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -274,9 +311,11 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
@@ -294,11 +333,8 @@ py_test(
         "//tensorflow/contrib/data/python/ops:transformation_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -348,26 +384,6 @@ py_test(
 )
 
 py_test(
-    name = "sloppy_transformation_dataset_op_test",
-    size = "small",
-    srcs = ["sloppy_transformation_dataset_op_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "sql_dataset_op_test",
     size = "small",
     srcs = ["sql_dataset_op_test.py"],
@@ -388,11 +404,30 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "prefetching_ops_test",
+    size = "small",
+    srcs = ["prefetching_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:prefetching_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
     ],
 )
 

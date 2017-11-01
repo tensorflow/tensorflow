@@ -86,9 +86,9 @@ py_test(
     ],
     deps = [
         ":opt_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -119,13 +119,13 @@ py_test(
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -139,11 +139,16 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+    ],
+    tags = [
+        "no_oss",  # Flaky due to port collisions
     ],
 )
 

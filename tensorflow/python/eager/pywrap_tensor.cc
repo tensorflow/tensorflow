@@ -377,6 +377,15 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   return shape;
 }
 
+// Getter for `_rank`.
+static PyObject* EagerTensor_rank(EagerTensor* self) {
+#if PY_MAJOR_VERSION < 3
+  return PyInt_FromLong(TFE_TensorHandleNumDims(self->handle));
+#else
+  return PyLong_FromLong(TFE_TensorHandleNumDims(self->handle));
+#endif
+}
+
 static PyObject* EagerTensor_tensor_handle(EagerTensor* self, void* unused) {
   Py_INCREF(self->handle_data);
   return self->handle_data;
@@ -470,6 +479,7 @@ static PyMethodDef EagerTensor_methods[] = {
      PyDoc_STR("_datatype_enum")},
     {"_shape_tuple", (PyCFunction)EagerTensor_shape_tuple, METH_NOARGS,
      PyDoc_STR("_shape_tuple")},
+    {"_rank", (PyCFunction)EagerTensor_rank, METH_NOARGS, PyDoc_STR("_rank")},
     {"_copy_to_device", (PyCFunction)EagerTensor_copy_to_device,
      METH_VARARGS | METH_KEYWORDS, PyDoc_STR("_copy_to_device")},
     {nullptr, nullptr},

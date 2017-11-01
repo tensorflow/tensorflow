@@ -120,7 +120,14 @@ def _initial_gradients(vspace, target, output_gradients, tensor_usage_counts):
 
 VSpace = collections.namedtuple(
     "VSpace",
-    ["add_new_grads_fn", "aggregate_fn", "tensor_id", "zeros", "ones_like"])
+    ["aggregate_fn", "num_elements_fn", "tensor_id", "zeros", "ones_like"])
+
+
+# If over MIN_AGGREGATE_COUNT gradients are accumulated and the total
+# memory consumption is over MIN_AGGREGATE_BYTES, do an early aggregation
+# so as to release the gradient tensor to save memory.
+_MIN_AGGREGATE_COUNT = 4
+_MIN_AGGREGATE_BYTES = 128 * 1024 * 1024
 
 
 def imperative_grad(
@@ -193,14 +200,22 @@ def imperative_grad(
     in_gradients = op_trace.backward_function(*(out_gradients))
     for i, t in enumerate(op_trace.input_ids):
       if in_gradients[i] is not None:
-        vspace.add_new_grads_fn(gradients, gradients_size, t, in_gradients[i])
+        t_grads = gradients.setdefault(t, [])
+        t_grads.append(in_gradients[i])
+        if len(t_grads) >= _MIN_AGGREGATE_COUNT:
+          if t not in gradients_size:
+            gradients_size[t] = vspace.num_elements_fn(t_grads[-1])
+          size = gradients_size[t]
+
+          if len(t_grads) * size * 4 > _MIN_AGGREGATE_BYTES:
+            t_grads[:] = [vspace.aggregate_fn(t_grads)]
       if tensor_usage_counts.get(t, 0) > 0:
         tensor_usage_counts[t] -= 1
         if (t in tensor_to_op
             and tensor_usage_counts[t] == 0
             and t not in id_sources):
           in_op = tensor_to_op[t]
-          if in_op is None:
+          if in_op is None or in_op == -1:
             continue
           if op_missing_tensor.get(in_op, 0) > 0:
             op_missing_tensor[in_op] -= 1

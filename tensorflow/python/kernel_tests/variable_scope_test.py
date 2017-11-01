@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+
 import numpy
 
 from tensorflow.python.eager import context
@@ -39,7 +41,12 @@ from tensorflow.python.platform import test
 
 class VariableScopeTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  def tearDown(self):
+    gc.collect()
+    # This will only contain uncollectable garbage, i.e. reference cycles
+    # involving objects with __del__ defined.
+    self.assertEqual(0, len(gc.garbage))
+
   def testGetVar(self):
     vs = variable_scope._get_default_variable_store()
     v = vs.get_variable("v", [1])
@@ -52,7 +59,6 @@ class VariableScopeTest(test.TestCase):
     v1 = vs.get_variable("v", [1], use_resource=True)
     self.assertTrue(isinstance(v1, resource_variable_ops.ResourceVariable))
 
-  @test_util.run_in_graph_and_eager_modes()
   def testNameExists(self):
     vs = variable_scope._get_default_variable_store()
     # No check by default, so we can both create and get existing names.
@@ -60,17 +66,15 @@ class VariableScopeTest(test.TestCase):
     v1 = vs.get_variable("v", [1])
     self.assertEqual(v, v1)
 
-    if context.in_graph_mode():
-      # When reuse is False, we fail when variables are already there.
-      vs.get_variable("w", [1], reuse=False)  # That's ok.
-      with self.assertRaises(ValueError):
-        vs.get_variable("v", [1], reuse=False)  # That fails.
-      # When reuse is True, we fail when variables are new.
-      vs.get_variable("v", [1], reuse=True)  # That's ok.
-      with self.assertRaises(ValueError):
-        vs.get_variable("u", [1], reuse=True)  # That fails.
+    # When reuse is False, we fail when variables are already there.
+    vs.get_variable("w", [1], reuse=False)  # That's ok.
+    with self.assertRaises(ValueError):
+      vs.get_variable("v", [1], reuse=False)  # That fails.
+    # When reuse is True, we fail when variables are new.
+    vs.get_variable("v", [1], reuse=True)  # That's ok.
+    with self.assertRaises(ValueError):
+      vs.get_variable("u", [1], reuse=True)  # That fails.
 
-  @test_util.run_in_graph_and_eager_modes()
   def testNamelessStore(self):
     vs = variable_scope._get_default_variable_store()
     vs.get_variable("v1", [2])
@@ -224,10 +228,12 @@ class VariableScopeTest(test.TestCase):
         self.assertAllClose(self.evaluate(losses[1]), 0.4)
         self.assertAllClose(self.evaluate(losses[2]), 0.5)
       with variable_scope.variable_scope("foo", reuse=True):
-        v = variable_scope.get_variable("v",
-                                        [])  # "v" is alredy there, reused
-        losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
-        self.assertEqual(3, len(losses))  # No new loss added.
+        # reuse=True is for now only supported when eager execution is disabled.
+        if context.in_graph_mode():
+          v = variable_scope.get_variable("v",
+                                          [])  # "v" is alredy there, reused
+          losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
+          self.assertEqual(3, len(losses))  # No new loss added.
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitializeFromValue(self):
@@ -439,20 +445,20 @@ class VariableScopeTest(test.TestCase):
       with variable_scope.variable_scope(vs, reuse=False) as jump_no_reuse:
         self.assertFalse(jump_no_reuse.reuse)
 
-  @test_util.run_in_graph_and_eager_modes()
   def testVarScopeGetOrCreateReuse(self):
-    def test_value(value):
-      x = constant_op.constant(value)
-      with variable_scope.variable_scope("testVarScopeGetOrCreateReuse_bar",
-                                         reuse=variable_scope.AUTO_REUSE):
-        _ = state_ops.assign(variable_scope.get_variable("var", []), x)
-      with variable_scope.variable_scope("testVarScopeGetOrCreateReuse_bar",
-                                         reuse=variable_scope.AUTO_REUSE):
-        _ = variable_scope.get_variable("var", [])
-      self.assertEqual(value, self.evaluate(x))
-    test_value(42.)  # Variable is created.
-    test_value(13.)  # Variable is reused hereafter.
-    test_value(17.)
+    with self.test_session():
+      def test_value(value):
+        x = constant_op.constant(value)
+        with variable_scope.variable_scope("testVarScopeGetOrCreateReuse_bar",
+                                           reuse=variable_scope.AUTO_REUSE):
+          _ = state_ops.assign(variable_scope.get_variable("var", []), x)
+        with variable_scope.variable_scope("testVarScopeGetOrCreateReuse_bar",
+                                           reuse=variable_scope.AUTO_REUSE):
+          _ = variable_scope.get_variable("var", [])
+        self.assertEqual(value, x.eval())
+      test_value(42.)  # Variable is created.
+      test_value(13.)  # Variable is reused hereafter.
+      test_value(17.)
 
   def testVarOpScope(self):
     with self.test_session():
@@ -745,9 +751,10 @@ class VariableScopeTest(test.TestCase):
                        ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
     # Check that local variable respects `reuse`.
-    with variable_scope.variable_scope(outer, "default", reuse=True):
-      self.assertEqual(
-          variable_scope.get_local_variable("w", []).name, "outer/w:0")
+    if context.in_graph_mode():
+      with variable_scope.variable_scope(outer, "default", reuse=True):
+        self.assertEqual(
+            variable_scope.get_local_variable("w", []).name, "outer/w:0")
 
   def testGetVarWithDevice(self):
     g = ops.Graph()

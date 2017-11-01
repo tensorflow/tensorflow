@@ -453,7 +453,36 @@ REGISTER_OP("DecodeAndCropJpeg")
     .Attr("acceptable_fraction: float = 1.0")
     .Attr("dct_method: string = ''")
     .Output("image: uint8")
-    .SetShapeFn(DecodeImageShapeFn)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      DimensionHandle channels_dim = c->UnknownDim();
+      DimensionHandle h = c->UnknownDim();
+      DimensionHandle w = c->UnknownDim();
+
+      int32 channels;
+      TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
+      if (channels != 0) {
+        if (channels < 0) {
+          return errors::InvalidArgument("channels must be non-negative, got ",
+                                         channels);
+        }
+        channels_dim = c->MakeDim(channels);
+      }
+
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(unused, 0), 4, &unused_dim));
+
+      const Tensor* crop_window = c->input_tensor(1);
+      if (crop_window != nullptr) {
+        auto crop_window_vec = crop_window->vec<int32>();
+        h = c->MakeDim(crop_window_vec(2));
+        w = c->MakeDim(crop_window_vec(3));
+      }
+      c->set_output(0, c->MakeShape({h, w, channels_dim}));
+      return Status::OK();
+    })
     .Doc(strings::StrCat(R"doc(
 Decode and Crop a JPEG-encoded image to a uint8 tensor.
 )doc",
@@ -896,27 +925,27 @@ use_image_if_no_bounding_boxes: Controls behavior if no bounding boxes supplied.
 )doc");
 
 REGISTER_OP("SampleDistortedBoundingBoxV2")
-  .Input("image_size: T")
-  .Input("bounding_boxes: float")
-  .Input("min_object_covered: float")
-  .Output("begin: T")
-  .Output("size: T")
-  .Output("bboxes: float")
-  .Attr("T: {uint8, int8, int16, int32, int64}")
-  .Attr("seed: int = 0")
-  .Attr("seed2: int = 0")
-  .Attr("aspect_ratio_range: list(float) = [0.75, 1.33]")
-  .Attr("area_range: list(float) = [0.05, 1.0]")
-  .Attr("max_attempts: int = 100")
-  .Attr("use_image_if_no_bounding_boxes: bool = false")
-  .SetIsStateful()
-  .SetShapeFn([](InferenceContext* c) {
-    c->set_output(0, c->Vector(3));
-    c->set_output(1, c->Vector(3));
-    c->set_output(2, c->MakeShape({1, 1, 4}));
-    return Status::OK();
-  })
-  .Doc(R"doc(
+    .Input("image_size: T")
+    .Input("bounding_boxes: float")
+    .Input("min_object_covered: float")
+    .Output("begin: T")
+    .Output("size: T")
+    .Output("bboxes: float")
+    .Attr("T: {uint8, int8, int16, int32, int64}")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("aspect_ratio_range: list(float) = [0.75, 1.33]")
+    .Attr("area_range: list(float) = [0.05, 1.0]")
+    .Attr("max_attempts: int = 100")
+    .Attr("use_image_if_no_bounding_boxes: bool = false")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(3));
+      c->set_output(1, c->Vector(3));
+      c->set_output(2, c->MakeShape({1, 1, 4}));
+      return Status::OK();
+    })
+    .Doc(R"doc(
 Generate a single randomly distorted bounding box for an image.
 
 Bounding box annotations are often supplied in addition to ground-truth labels
@@ -1068,7 +1097,7 @@ REGISTER_OP("CropAndResize")
     .Input("box_ind: int32")
     .Input("crop_size: int32")
     .Output("crops: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .Attr("extrapolation_value: float = 0")
     .SetShapeFn([](InferenceContext* c) {
@@ -1175,7 +1204,7 @@ REGISTER_OP("CropAndResizeGradBoxes")
     .Input("boxes: float")
     .Input("box_ind: int32")
     .Output("output: float")
-    .Attr("T: {uint8, int8, int16, int32, int64, half, float, double}")
+    .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
     .Attr("method: {'bilinear'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(2));
@@ -1207,16 +1236,16 @@ method: A string specifying the interpolation method. Only 'bilinear' is
 // --------------------------------------------------------------------------
 
 REGISTER_OP("NonMaxSuppression")
-  .Input("boxes: float")
-  .Input("scores: float")
-  .Input("max_output_size: int32")
-  .Output("selected_indices: int32")
-  .Attr("iou_threshold: float = 0.5")
-  .SetShapeFn([](InferenceContext* c) {
+    .Input("boxes: float")
+    .Input("scores: float")
+    .Input("max_output_size: int32")
+    .Output("selected_indices: int32")
+    .Attr("iou_threshold: float = 0.5")
+    .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(c->UnknownDim()));
       return Status::OK();
     })
-  .Doc(R"doc(
+    .Doc(R"doc(
 Greedily selects a subset of bounding boxes in descending order of score,
 pruning away boxes that have high intersection-over-union (IOU) overlap
 with previously selected boxes.  Bounding boxes are supplied as

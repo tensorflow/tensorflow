@@ -25,6 +25,7 @@ import re
 import sys
 import threading
 
+import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -32,6 +33,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import context
@@ -45,6 +47,7 @@ from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
+from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
@@ -380,6 +383,14 @@ class Tensor(_TensorLike):
       return None
     return tuple(shape)
 
+  def _rank(self):
+    """Integer rank of this Tensor, if known, else None.
+
+    Returns:
+      Integer rank or None
+    """
+    return self._shape.ndims
+
   def get_shape(self):
     """Alias of Tensor.shape."""
     return self.shape
@@ -605,9 +616,6 @@ class _EagerTensorBase(Tensor):
   def numpy(self):
     """Returns a numpy array with the same contents as the Tensor.
 
-    The contents of the Tensor must be backed by host memory. The
-    as_cpu_tensor() method can be used ensure that this is true.
-
     TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
     buffer but instead always explicitly copy? Note that currently it may or may
     not copy based on whether the numpy data is properly aligned or not.
@@ -615,11 +623,36 @@ class _EagerTensorBase(Tensor):
     Returns:
       A numpy array that may share memory with the Tensor object. Any changes
       to one may be reflected in the other.
+
+    Raises:
+      ValueError: if the type of this Tensor is not representable in numpy.
     """
-    return self.as_cpu_tensor()._numpy()  # pylint: disable=protected-access
+    if self.dtype == dtypes.resource:
+      raise ValueError("Resource handles are not convertible to numpy.")
+    return self.cpu()._numpy()  # pylint: disable=protected-access
+
+  # __int__ and  __float__ may copy the tensor to CPU and
+  # only work for scalars; values are cast as per numpy.
+  def __int__(self):
+    return int(self.numpy())
+
+  def __float__(self):
+    return float(self.numpy())
+
+  def __array__(self):
+    return np.array(self.numpy())
 
   def _numpy(self):
     raise NotImplementedError()
+
+  def __copy__(self):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    return self
+
+  def __deepcopy__(self, memo):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    del memo
+    return self
 
   def _datatype_enum(self):
     raise NotImplementedError()
@@ -636,6 +669,18 @@ class _EagerTensorBase(Tensor):
 
     Returns:
       tuple with the shape.
+    """
+    raise NotImplementedError()
+
+  def _rank(self):
+    """Integer rank of this Tensor.
+
+    Unlike regular Tensors, the rank is always known for EagerTensors.
+
+    This is more performant than len(self._shape_tuple())
+
+    Returns:
+      Integer rank
     """
     raise NotImplementedError()
 
@@ -698,11 +743,11 @@ class _EagerTensorBase(Tensor):
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
 
-  def as_cpu_tensor(self):
+  def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
 
-  def as_gpu_tensor(self, gpu_index=0):
+  def gpu(self, gpu_index=0):
     """A copy of this Tensor with contents backed by memory on the GPU.
 
     Arguments:
@@ -722,30 +767,33 @@ class _EagerTensorBase(Tensor):
     if self.dtype != dtypes.bool:
       raise ValueError(
           "Non-boolean tensor %s cannot be converted to boolean." % repr(self))
-    return bool(self.as_cpu_tensor().numpy())
+    return bool(self.cpu().numpy())
 
   def __nonzero__(self):
     return self.__bool__()
 
+  def set_shape(self, shape):
+    if not self.shape.is_compatible_with(shape):
+      raise ValueError(
+          "EagerTensor's shape %s is not compatible with supplied shape %s" %
+          (self.shape, shape))
+
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
-    raise NotImplementedError("op not supported for Eager Tensors.")
+    raise AttributeError("op not supported for Eager Tensors.")
 
   @property
   def graph(self):
-    raise NotImplementedError("graph not supported for Eager Tensors.")
+    raise AttributeError("graph not supported for Eager Tensors.")
 
   @property
   def name(self):
-    raise NotImplementedError("name not supported for Eager Tensors.")
-
-  def set_shape(self, shape):
-    raise NotImplementedError("set_shape not supported for Eager Tensors.")
+    raise AttributeError("name not supported for Eager Tensors.")
 
   @property
   def value_index(self):
-    raise NotImplementedError("value_index not supported for Eager Tensors.")
+    raise AttributeError("value_index not supported for Eager Tensors.")
 
   def consumers(self):
     raise NotImplementedError("consumers not supported for Eager Tensors.")
@@ -1978,7 +2026,19 @@ class Operation(object):
       protocol buffer.
     """
     # pylint: enable=line-too-long
-    return self._op_def
+    if self._c_op:
+      with errors.raise_exception_on_not_ok_status() as status:
+        with c_api_util.tf_buffer() as buf:
+          # pylint: disable=protected-access
+          c_api.TF_GraphGetOpDef(self._graph._c_graph,
+                                 compat.as_bytes(self.type), buf, status)
+          # pylint: enable=protected-access
+          data = c_api.TF_GetBuffer(buf)
+      op_def = op_def_pb2.OpDef()
+      op_def.ParseFromString(compat.as_bytes(data))
+      return op_def
+    else:
+      return self._op_def
 
   @property
   def traceback(self):
@@ -2497,7 +2557,14 @@ class Graph(object):
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
     # Resource container.
-    self._container = ""
+    if context.in_graph_mode():
+      self._container_prefix = ""
+    else:
+      # In Eager mode, isolate resources (particularly ResourceVariables) in
+      # Graphs by default. This prevents unintended variable sharing. Graph mode
+      # gets this kind of isolation from Sessions.
+      self._container_prefix = "eager-execution-%d/" % (uid(),)
+    self._container = self._container_prefix
     self._registered_ops = op_def_registry.get_registered_ops()
 
     # TODO(skyewm): fold as much of the above as possible into the C
@@ -2646,7 +2713,16 @@ class Graph(object):
       A `VersionDef`.
     """
     # pylint: enable=line-too-long
-    return self._graph_def_versions
+    if self._c_graph:
+      with errors.raise_exception_on_not_ok_status() as status:
+        with c_api_util.tf_buffer() as buf:
+          c_api.TF_GraphVersions(self._c_graph, buf, status)
+          data = c_api.TF_GetBuffer(buf)
+      version_def = versions_pb2.VersionDef()
+      version_def.ParseFromString(compat.as_bytes(data))
+      return version_def
+    else:
+      return self._graph_def_versions
 
   @property
   def seed(self):
@@ -3809,7 +3885,7 @@ class Graph(object):
     """
     original_container = self._container
     try:
-      self._container = container_name
+      self._container = self._container_prefix + container_name
       yield self._container
     finally:
       self._container = original_container
@@ -4263,11 +4339,18 @@ def device(device_name_or_function):
   Returns:
     A context manager that specifies the default device to use for newly
     created ops.
+
+  Raises:
+    RuntimeError: If eager execution is enabled and a function is passed in.
   """
   if context.in_graph_mode():
     return get_default_graph().device(device_name_or_function)
   else:
     # TODO(agarwal): support device functions in EAGER mode.
+    if callable(device_name_or_function):
+      raise RuntimeError(
+          "tf.device does not support functions when eager execution "
+          "is enabled.")
     return context.device(device_name_or_function)
 
 
@@ -4534,6 +4617,91 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 _default_graph_stack = _DefaultGraphStack()
 
 
+def enable_eager_execution(config=None, device_policy=None):
+  """Enables, for the rest of the lifetime of this program, eager execution.
+
+  If not called immediately on startup risks creating breakage and bugs.
+
+  Example:
+  ```python
+  tfe.enable_eager_execution()
+
+  # After eager execution is enabled, operations are executed as they are
+  # defined and `Tensor`s hold concrete values, which can be accessed as
+  # `numpy.ndarray`s through the `numpy()` method.
+  assert tf.multiply(6, 7).numpy() == 42
+  ```
+
+  Args:
+    config: (Optional.) A `ConfigProto` protocol buffer with configuration
+     options for the Context. Note that a lot of these options may be
+     currently unimplemented or irrelevant when eager execution is enabled.
+    device_policy: (Optional.) What policy to use when trying to run an
+     operation on a device with inputs which are not on that device.
+     Valid values:
+       tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
+         correct.
+       tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+         right device but raises a warning.
+       tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+         hide performance problems.
+
+  Raises:
+    ValueError: If trying to create a context after using graph operations
+     or if trying to create a context with nontrivial options which differ
+     from those of the existing context.
+  """
+  # pylint: disable=protected-access
+  if context._default_mode == context.GRAPH_MODE:
+    graph_mode_has_been_used = (
+        _default_session_stack.stack or
+        _default_graph_stack._global_default_graph is not None)
+    if graph_mode_has_been_used:
+      raise ValueError(
+          "tfe.enable_eager_execution has to be called at program startup.")
+  context._default_mode = context.EAGER_MODE
+  if context._context is None:
+    context._context = context.Context(config=config,
+                                       device_policy=device_policy)
+  elif ((config is not None and config is not context._context._config)
+        or (device_policy is not None
+            and device_policy is not context._context._device_policy)):
+    raise ValueError("Trying to change the options of an active eager"
+                     " execution. Context config: %s, specified config:"
+                     " %s. Context device policy: %s; specified device"
+                     " policy: %s." % (config, context._context._config,
+                                       device_policy,
+                                       context._context._device_policy))
+
+
+def eager_run(main=None, argv=None):
+  """Runs the program with an optional main function and argv list.
+
+  The program will run with eager execution enabled.
+
+  Example:
+  ```python
+  import tensorflow as tf
+  # Import subject to future changes:
+  from tensorflow.contrib.eager.python import tfe
+
+  def main(_):
+    u = tf.constant(6.0)
+    v = tf.constant(7.0)
+    print(u * v)
+
+  if __name__ == "__main__":
+    tfe.run()
+  ```
+
+  Args:
+    main: the main function to run.
+    argv: the arguments to pass to it.
+  """
+  enable_eager_execution()
+  app.run(main, argv)
+
+
 def reset_default_graph():
   """Clears the default graph stack and resets the global default graph.
 
@@ -4568,6 +4736,24 @@ def get_default_graph():
     The default `Graph` being used in the current thread.
   """
   return _default_graph_stack.get_default()
+
+
+def get_name_scope():
+  """Returns the current name scope in the default_graph.
+
+  For example:
+
+  ```python
+  with tf.name_scope('scope1'):
+    with tf.name_scope('scope2'):
+      print(tf.get_name_scope())
+  ```
+  would print the string `scope1/scope2`.
+
+  Returns:
+    A string representing the current name scope.
+  """
+  return get_default_graph().get_name_scope()
 
 
 def _assert_same_graph(original_item, item):
@@ -4788,9 +4974,10 @@ class GraphKeys(object):
 
   @decorator_utils.classproperty
   def VARIABLES(cls):  # pylint: disable=no-self-argument
-    logging.warning("VARIABLES collection name is deprecated, "
-                    "please use GLOBAL_VARIABLES instead; "
-                    "VARIABLES will be removed after 2017-03-02.")
+    logging.log_first_n(logging.WARN,
+                        "VARIABLES collection name is deprecated, please use "
+                        "GLOBAL_VARIABLES instead; VARIABLES will be removed "
+                        "after 2017-03-02.", 1)
     return cls.GLOBAL_VARIABLES
 
 
@@ -4804,6 +4991,10 @@ def add_to_collection(name, value):
     name: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
     value: The value to add to the collection.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
 
@@ -4818,6 +5009,10 @@ def add_to_collections(names, value):
     names: The key for the collections. The `GraphKeys` class
       contains many standard names for collections.
     value: The value to add to the collections.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
 
@@ -4837,6 +5032,10 @@ def get_collection_ref(key):
     list if no value has been added to that collection.  Note that this returns
     the collection list itself, which can be modified in place to change the
     collection.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   return get_default_graph().get_collection_ref(key)
 
@@ -4861,6 +5060,10 @@ def get_collection(key, scope=None):
     an empty list if no value has been added to that collection. The
     list contains the values in the order under which they were
     collected.
+
+  @compatibility(eager)
+  Collections are not supported when eager execution is enabled.
+  @end_compatibility
   """
   return get_default_graph().get_collection(key, scope)
 
@@ -4894,6 +5097,10 @@ class name_scope(object):  # pylint: disable=invalid-name
       return foo_op(..., name=scope)
   ```
   """
+
+  @property
+  def name(self):
+    return self._name
 
   def __init__(self, name, default_name=None, values=None):
     """Initialize the context manager.

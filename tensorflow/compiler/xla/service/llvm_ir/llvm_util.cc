@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
@@ -37,6 +38,19 @@ limitations under the License.
 
 namespace xla {
 namespace llvm_ir {
+
+namespace {
+
+// Note, this function is only useful in an insertion context; in a global
+// (e.g. constants) context it will CHECK fail.
+llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* ir_builder) {
+  auto block = CHECK_NOTNULL(ir_builder->GetInsertBlock());
+  auto fn = CHECK_NOTNULL(block->getParent());
+  auto module = CHECK_NOTNULL(fn->getParent());
+  return module;
+}
+
+}  // namespace
 
 string AsString(const std::string& str) {
   return string(str.data(), str.length());
@@ -63,7 +77,7 @@ llvm::Value* EmitCallToIntrinsic(
   for (auto type : overloaded_types) {
     types.push_back(type);
   }
-  llvm::Module* module = ir_builder->GetInsertBlock()->getParent()->getParent();
+  llvm::Module* module = ModuleFromIRBuilder(ir_builder);
   llvm::Function* intrinsic =
       llvm::Intrinsic::getDeclaration(module, intrinsic_id, types);
   std::vector<llvm::Value*> operands_vec;
@@ -119,38 +133,53 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::IRBuilder<>* ir_builder) {
+                                  llvm::Module* module) {
   switch (element_type) {
     case PRED:
     case S8:
     case U8:
-      return ir_builder->getInt8Ty();
+      return llvm::Type::getInt8Ty(module->getContext());
     case S16:
     case U16:
-      return ir_builder->getInt16Ty();
+      return llvm::Type::getInt16Ty(module->getContext());
     case S32:
     case U32:
-      return ir_builder->getInt32Ty();
+      return llvm::Type::getInt32Ty(module->getContext());
     case S64:
     case U64:
-      return ir_builder->getInt64Ty();
+      return llvm::Type::getInt64Ty(module->getContext());
     case F32:
-      return ir_builder->getFloatTy();
+      return llvm::Type::getFloatTy(module->getContext());
     case F64:
-      return ir_builder->getDoubleTy();
+      return llvm::Type::getDoubleTy(module->getContext());
+    case C64: {
+      auto cplx_t = module->getTypeByName("complex64");
+      if (cplx_t == nullptr) {
+        // C++ standard dictates the memory layout of std::complex is contiguous
+        // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
+        // If z is an lvalue expression of type cv std::complex<T> then the
+        // expression reinterpret_cast<cv T(&)[2]>(z) shall be well-formed,
+        // reinterpret_cast<cv T(&)[2]>(z)[0] shall designate the real part of
+        // z, and reinterpret_cast<cv T(&)[2]>(z)[1] shall designate the
+        // imaginary part of z.
+        return llvm::StructType::create(
+            "complex64", llvm::Type::getFloatTy(module->getContext()),
+            llvm::Type::getFloatTy(module->getContext()));
+      }
+      return cplx_t;
+    }
     // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE:
-      return ir_builder->getInt8PtrTy();
+      return llvm::Type::getInt8PtrTy(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
 }
 
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder) {
-  llvm::Type* result_type =
-      PrimitiveTypeToIrType(shape.element_type(), ir_builder);
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
+  llvm::Type* result_type = PrimitiveTypeToIrType(shape.element_type(), module);
   if (ShapeUtil::IsTuple(shape)) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
@@ -197,10 +226,10 @@ namespace {
 // value down to zero).
 llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
                                   std::vector<int64>* multi_index,
-                                  llvm::IRBuilder<>* ir_builder) {
+                                  llvm::Module* module) {
   const Shape& shape = literal.shape();
   llvm::Type* ir_element_type =
-      llvm_ir::PrimitiveTypeToIrType(shape.element_type(), ir_builder);
+      llvm_ir::PrimitiveTypeToIrType(shape.element_type(), module);
   if (dimension_index == -1) {
     // Base case of the recursion. Index into the data field of the protobuf
     // with the multi index.
@@ -238,6 +267,16 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
         value = llvm::ConstantFP::get(ir_element_type,
                                       literal.Get<double>(*multi_index));
         break;
+      case C64: {
+        complex64 x = literal.Get<complex64>(*multi_index);
+        value = llvm::ConstantStruct::get(
+            static_cast<llvm::StructType*>(ir_element_type),
+            llvm::ConstantFP::get(llvm_ir::PrimitiveTypeToIrType(F32, module),
+                                  x.real()),
+            llvm::ConstantFP::get(llvm_ir::PrimitiveTypeToIrType(F32, module),
+                                  x.imag()));
+        break;
+      }
       default:
         LOG(FATAL) << "unsupported type " << shape.element_type();
     }
@@ -256,8 +295,8 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
   std::vector<llvm::Constant*> elements;
   for (int64 i = 0; i < shape.dimensions(dimension); ++i) {
     (*multi_index)[dimension] = i;
-    elements.push_back(LiteralToConstant(literal, dimension_index - 1,
-                                         multi_index, ir_builder));
+    elements.push_back(
+        LiteralToConstant(literal, dimension_index - 1, multi_index, module));
   }
 
   llvm::Type* element_type;
@@ -279,11 +318,11 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
 }  // namespace
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
-                                           llvm::IRBuilder<>* ir_builder) {
+                                           llvm::Module* module) {
   std::vector<int64> multi_index(ShapeUtil::Rank(literal.shape()), 0);
   llvm::Constant* value = LiteralToConstant(
       literal, /*dimension_index=*/ShapeUtil::Rank(literal.shape()) - 1,
-      &multi_index, ir_builder);
+      &multi_index, module);
   return value;
 }
 
@@ -380,7 +419,8 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.
   return ir_builder->CreateZExt(
-      comparison_result, llvm_ir::PrimitiveTypeToIrType(PRED, ir_builder));
+      comparison_result,
+      llvm_ir::PrimitiveTypeToIrType(PRED, ModuleFromIRBuilder(ir_builder)));
 }
 
 // Internal helper that is called from emitted code to log an int64 value with a

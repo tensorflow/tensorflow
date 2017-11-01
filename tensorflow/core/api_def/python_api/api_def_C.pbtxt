@@ -1,0 +1,59 @@
+op {
+  graph_op_name: "CTCBeamSearchDecoder"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "CTCGreedyDecoder"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "CTCLoss"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Cholesky"
+  endpoint {
+    name: "cholesky"
+  }
+  endpoint {
+    name: "linalg.cholesky"
+  }
+}
+op {
+  graph_op_name: "Complex"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ComplexAbs"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ComputeAccidentalHits"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Concat"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ConcatOffset"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ConcatV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Conj"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Const"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "CropAndResize"
+  endpoint {
+    name: "image.crop_and_resize"
+  }
+}

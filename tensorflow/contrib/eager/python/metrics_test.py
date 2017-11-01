@@ -18,8 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 from tensorflow.contrib.eager.python import metrics
+from tensorflow.contrib.summary import summary_ops
+from tensorflow.contrib.summary import summary_test_util
+from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.training import training_util
 
 
 class MetricsTest(test.TestCase):
@@ -30,12 +38,45 @@ class MetricsTest(test.TestCase):
     m(1000)
     m([10000.0, 100000.0])
     self.assertEqual(111111.0/6, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
+
+  def testInitVariables(self):
+    m = metrics.Mean()
+    m([1, 10, 100, 1000])
+    m([10000.0, 100000.0])
+    self.assertEqual(111111.0/6, m.result().numpy())
+    m.init_variables()
+    m(7)
+    self.assertEqual(7.0, m.result().numpy())
+
+  def testWriteSummaries(self):
+    m = metrics.Mean()
+    m([1, 10, 100])
+    training_util.get_or_create_global_step()
+    logdir = tempfile.mkdtemp()
+    with summary_ops.create_summary_file_writer(
+        logdir, max_queue=0,
+        name="t0").as_default(), summary_ops.always_record_summaries():
+      m.result()  # As a side-effect will write summaries.
+
+    events = summary_test_util.events_from_file(logdir)
+    self.assertEqual(len(events), 2)
+    self.assertEqual(events[1].summary.value[0].simple_value, 37.0)
 
   def testWeightedMean(self):
     m = metrics.Mean()
     m([1, 100, 100000], weights=[1, 0.2, 0.3])
     m([500000, 5000, 500])  # weights of 1 each
     self.assertNear(535521/4.5, m.result().numpy(), 0.001)
+
+  def testMeanDtype(self):
+    # Can override default dtype of float64.
+    m = metrics.Mean(dtype=dtypes.float32)
+    m([0, 2])
+    self.assertEqual(1, m.result().numpy())
+    self.assertEqual(dtypes.float32, m.dtype)
+    self.assertEqual(dtypes.float32, m.result().dtype)
 
   def testAccuracy(self):
     m = metrics.Accuracy()
@@ -45,6 +86,8 @@ class MetricsTest(test.TestCase):
     m([6], [6])  # 1 correct
     m([7], [2])  # 0 correct
     self.assertEqual(3.0/8, m.result().numpy())
+    self.assertEqual(dtypes.float64, m.dtype)
+    self.assertEqual(dtypes.float64, m.result().dtype)
 
   def testWeightedAccuracy(self):
     m = metrics.Accuracy()
@@ -55,6 +98,58 @@ class MetricsTest(test.TestCase):
     m([6], [6])  # 1 correct, weight 1
     m([7], [2])  # 0 correct, weight 1
     self.assertEqual(2.5/5, m.result().numpy())
+
+  def testAccuracyDtype(self):
+    # Can override default dtype of float64.
+    m = metrics.Accuracy(dtype=dtypes.float32)
+    m([0, 0], [0, 1])
+    self.assertEqual(0.5, m.result().numpy())
+    self.assertEqual(dtypes.float32, m.dtype)
+    self.assertEqual(dtypes.float32, m.result().dtype)
+
+  def testTwoMeans(self):
+    # Verify two metrics with the same class and name don't
+    # accidentally share state.
+    m1 = metrics.Mean()
+    m1(0)
+    m2 = metrics.Mean()
+    m2(2)
+    self.assertAllEqual(0.0, m1.result())
+    self.assertAllEqual(2.0, m2.result())
+
+  def testNamesWithSpaces(self):
+    # Verify two metrics with the same class and name don't
+    # accidentally share state.
+    m1 = metrics.Mean("has space")
+    m1(0)
+    self.assertEqual(m1.name, "has space")
+    self.assertEqual(m1.numer.name, "has_space/numer:0")
+
+  def testGraph(self):
+    with context.graph_mode(), self.test_session() as sess:
+      m = metrics.Mean()
+      p = array_ops.placeholder(dtypes.float32)
+      accumulate = m(p)
+      init_op = m.init_variables()
+      init_op.run()
+      sess.run(accumulate, feed_dict={p: [1, 10, 100]})
+      sess.run(accumulate, feed_dict={p: 1000})
+      sess.run(accumulate, feed_dict={p: [10000, 100000]})
+      self.assertAllEqual(m.result().eval(), 111111.0/6)
+      # Second init resets all the variables.
+      init_op.run()
+      sess.run(accumulate, feed_dict={p: 7})
+      self.assertAllEqual(m.result().eval(), 7)
+
+  def testTwoMeansGraph(self):
+    # Verify two metrics with the same class and name don't
+    # accidentally share state.
+    with context.graph_mode():
+      m1 = metrics.Mean()
+      m1(0)
+      with self.assertRaises(ValueError):
+        m2 = metrics.Mean()
+        m2(2)
 
 
 if __name__ == "__main__":

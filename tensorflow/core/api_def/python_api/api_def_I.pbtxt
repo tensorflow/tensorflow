@@ -1,0 +1,55 @@
+op {
+  graph_op_name: "IFFT"
+  endpoint {
+    name: "ifft"
+  }
+  endpoint {
+    name: "spectral.ifft"
+  }
+}
+op {
+  graph_op_name: "IdentityReader"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "IdentityReaderV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ImageSummary"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "InTopK"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "InTopKV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "InitializeTable"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "InitializeTableFromTextFile"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "InitializeTableFromTextFileV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "InitializeTableV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "InvGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Invert"
+  endpoint {
+    name: "bitwise.invert"
+  }
+}

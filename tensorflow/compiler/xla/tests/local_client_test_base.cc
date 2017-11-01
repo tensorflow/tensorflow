@@ -90,6 +90,9 @@ int64 TestAllocator::deallocation_count(int device_ordinal) const {
 
 /* static */ TestAllocator* LocalClientTestBase::GetOrCreateAllocator(
     perftools::gputools::Platform* platform) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  tensorflow::mutex_lock lock(mu);
+
   if (allocator_ == nullptr) {
     allocator_ = new TestAllocator(
         platform == nullptr ? PlatformUtil::GetDefaultPlatform().ValueOrDie()

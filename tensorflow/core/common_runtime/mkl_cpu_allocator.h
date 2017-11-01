@@ -51,7 +51,7 @@ class MklCPUAllocator : public Allocator {
   // Constructor and other standard functions
 
   /// Environment variable that user can set to upper bound on memory allocation
-  static constexpr const char kMaxLimitStr[] = "TF_MKL_ALLOC_MAX_BYTES";
+  static constexpr const char* kMaxLimitStr = "TF_MKL_ALLOC_MAX_BYTES";
 
   /// Default upper limit on allocator size - 64GB
   static const size_t kDefaultMaxLimit = 64LL << 30;
@@ -146,7 +146,7 @@ class MklCPUAllocator : public Allocator {
   static const bool kAllowGrowth = true;
 
   /// Name
-  static constexpr const char kName[] = "mklcpu";
+  static constexpr const char* kName = "mklcpu";
 
   /// The alignment that we need for the allocations
   static const size_t kAlignment = 64;

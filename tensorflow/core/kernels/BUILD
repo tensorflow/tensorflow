@@ -1098,7 +1098,7 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         ":bounds_check",
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
 )
@@ -1691,6 +1691,21 @@ tf_cc_tests(
     ],
 )
 
+tf_kernel_library(
+    name = "eye_functor",
+    hdrs = ["eye_functor.h"],
+    gpu_srcs = [
+        "eye_functor_gpu.cu.cc",
+        "eye_functor.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 0,
+)
+
 cc_library(
     name = "fifo_queue",
     srcs = ["fifo_queue.cc"],
@@ -2255,10 +2270,6 @@ tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
     hdrs = ["cuda_solvers.h"],
-    gpu_srcs = [
-        "cuda_solvers.h",
-        "cuda_solvers_gpu.cu.cc",
-    ],
     # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
@@ -2328,7 +2339,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([":eye_functor"]),
 )
 
 tf_kernel_library(
@@ -2356,6 +2367,7 @@ tf_kernel_library(
     prefix = "qr_op",
     deps = LINALG_DEPS + if_cuda([
         ":cwise_op",
+        ":eye_functor",
         ":matrix_band_part_op",
     ]),
 )
@@ -2499,6 +2511,7 @@ cc_library(
         ":cross_op",
         ":cwise_op",
         ":fft_ops",
+        ":histogram_op",
         ":matmul_op",
         ":population_count_op",
         ":reduction_ops",
@@ -2633,6 +2646,24 @@ tf_kernel_library(
     name = "sequence_ops",
     prefix = "sequence_ops",
     deps = MATH_DEPS,
+)
+
+tf_cc_test(
+    name = "sequence_ops_test",
+    size = "small",
+    srcs = ["sequence_ops_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sequence_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cuda_cc_test(
@@ -2893,6 +2924,24 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "diag_op_test",
+    size = "small",
+    srcs = ["diag_op_test.cc"],
+    deps = [
+        ":diag_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # conv_grad_ops currently has to be built with conv_ops*.
 # TODO(josh11b, zhengxq): put these a separate libraries in ":nn" below once
 # conv_ops_gpu.h has be separated into its own library.
@@ -2993,6 +3042,7 @@ cc_library(
         ":in_topk_op",
         ":l2loss_op",
         ":lrn_op",
+        ":nth_element_op",
         ":relu_op",
         ":softmax_op",
         ":softplus_op",
@@ -3080,6 +3130,12 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "nth_element_op",
+    prefix = "nth_element_op",
+    deps = NN_DEPS,
+)
+
+tf_kernel_library(
     name = "xent_op",
     prefix = "xent_op",
     deps = NN_DEPS,
@@ -3094,6 +3150,17 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
     ],
+)
+
+tf_kernel_library(
+    name = "histogram_op",
+    prefix = "histogram_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
+    ] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -3763,7 +3830,7 @@ STATE_DEPS = [
 tf_kernel_library(
     name = "count_up_to_op",
     prefix = "count_up_to_op",
-    deps = STATE_DEPS,
+    deps = STATE_DEPS + [":variable_ops"],
 )
 
 tf_kernel_library(
@@ -4512,6 +4579,7 @@ filegroup(
         "cwise_op_greater_equal.cc",
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
+        "cwise_op_left_shift.cc",
         "cwise_op_less.cc",
         "cwise_op_less_equal.cc",
         "cwise_op_log.cc",
@@ -4525,6 +4593,7 @@ filegroup(
         "cwise_op_neg.cc",
         "cwise_op_pow.cc",
         "cwise_op_reciprocal.cc",
+        "cwise_op_right_shift.cc",
         "cwise_op_round.cc",
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
@@ -4812,6 +4881,7 @@ tf_kernel_library(
     deps = [
         ":concat_lib_hdrs",
         ":conv_ops",
+        ":cwise_op",
         ":eigen_helpers",
         ":image_resizer_state",
         ":ops_util",
@@ -5671,7 +5741,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -5855,8 +5924,8 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "sloppy_interleave_dataset_op",
-    srcs = ["sloppy_interleave_dataset_op.cc"],
+    name = "parallel_interleave_dataset_op",
+    srcs = ["parallel_interleave_dataset_op.cc"],
     deps = [
         ":captured_function",
         ":dataset",
@@ -6060,6 +6129,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -6092,6 +6162,7 @@ tf_kernel_library(
         ":map_and_batch_dataset_op",
         ":map_dataset_op",
         ":padded_batch_dataset_op",
+        ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",
         ":range_dataset_op",
@@ -6100,7 +6171,6 @@ tf_kernel_library(
         ":scan_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
-        ":sloppy_interleave_dataset_op",
         ":sparse_tensor_slice_dataset_op",
         ":sql_dataset_ops",
         ":take_dataset_op",

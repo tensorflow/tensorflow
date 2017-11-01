@@ -1,13 +1,6 @@
 # -*- Python -*-
 
 
-# Given a source file, generate a test name.
-# i.e. "common_runtime/direct_session_test.cc" becomes
-#      "common_runtime_direct_session_test"
-def src_to_test_name(src):
-  return src.replace("/", "_").split(".")[0]
-
-
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -16,15 +9,29 @@ load(
     "tf_sycl_tests_tags",
     "tf_additional_xla_deps_py",
     "if_static",)
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "cuda_default_copts")
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "if_cuda",
+    "cuda_default_copts",)
 
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",)
 
+def register_extension_info(**kwargs):
+    pass
+
+
+# Given a source file, generate a test name.
+# i.e. "common_runtime/direct_session_test.cc" becomes
+#      "common_runtime_direct_session_test"
+def src_to_test_name(src):
+  return src.replace("/", "_").split(".")[0]
+
 
 def full_path(relative_paths):
   return [PACKAGE_NAME + "/" + relative for relative in relative_paths]
+
 
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
@@ -290,6 +297,11 @@ def tf_cc_binary(name,
       linkopts=linkopts + _rpath_linkopts(name),
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_cc_binary",
+    label_regex_for_dep="{extension_name}.*")
+
+
 def tf_gen_op_wrapper_cc(name,
                          out_ops_file,
                          pkg="",
@@ -551,6 +563,10 @@ def tf_cc_test(name,
       nocopts=nocopts,
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_cc_test",
+    label_regex_for_dep="{extension_name}.*")
+
 
 # Part of the testing workflow requires a distinguishable name for the build
 # rules that involve a GPU, even if otherwise identical to the base rule.
@@ -793,6 +809,11 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
       copts=copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
       **kwargs)
 
+register_extension_info(
+    extension_name="tf_cuda_library",
+    label_regex_for_dep="{extension_name}")
+
+
 
 def tf_kernel_library(name,
                       prefix=None,
@@ -861,6 +882,10 @@ def tf_kernel_library(name,
       alwayslink=alwayslink,
       deps=deps,
       **kwargs)
+
+register_extension_info(
+    extension_name="tf_kernel_library",
+    label_regex_for_dep="{extension_name}(_gpu)?")
 
 
 def tf_mkl_kernel_library(name,
@@ -1165,6 +1190,10 @@ def tf_custom_op_py_library(name,
       visibility=visibility,
       deps=deps,)
 
+register_extension_info(
+    extension_name="tf_custom_op_py_library",
+    label_regex_for_dep="{extension_name}")
+
 
 def tf_extension_linkopts():
   return []  # No extension link opts
@@ -1250,6 +1279,10 @@ def py_test(deps=[], **kwargs):
       }),
       **kwargs)
 
+register_extension_info(
+    extension_name="py_test",
+    label_regex_for_dep="{extension_name}")
+
 
 def tf_py_test(name,
                srcs,
@@ -1284,6 +1317,10 @@ def tf_py_test(name,
       flaky=flaky,
       srcs_version="PY2AND3")
 
+register_extension_info(
+    extension_name="tf_py_test",
+    label_regex_map={"deps": "additional_deps:{extension_name}"})
+
 
 def cuda_py_test(name,
                  srcs,
@@ -1310,6 +1347,10 @@ def cuda_py_test(name,
       flaky=flaky,
       xla_enabled=xla_enabled)
 
+register_extension_info(
+    extension_name="cuda_py_test",
+    label_regex_map={"additional_deps": "additional_deps:{extension_name}"})
+
 
 def sycl_py_test(name,
                  srcs,
@@ -1335,6 +1376,10 @@ def sycl_py_test(name,
       additional_deps=additional_deps,
       flaky=flaky,
       xla_enabled=xla_enabled)
+
+register_extension_info(
+    extension_name="sycl_py_test",
+    label_regex_map={"additional_deps": "additional_deps:{extension_name}"})
 
 
 def py_tests(name,
