@@ -421,6 +421,64 @@ TEST_F(ConstantFoldingTest, ShapeMaterializationEmptyFetch) {
   EXPECT_EQ(3, found);
 }
 
+TEST_F(ConstantFoldingTest, ShapeMaterializationShapeN) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output v1 = ops::Variable(scope.WithOpName("v1"), {3, -1}, DT_FLOAT);
+  Output v2 = ops::Variable(scope.WithOpName("v2"), {}, DT_FLOAT);
+  Output v3 = ops::Variable(scope.WithOpName("v3"), {4, 6}, DT_FLOAT);
+  auto s = ops::ShapeN(scope.WithOpName("s"), {v1, v2, v3});
+  Output i1a = ops::Identity(scope.WithOpName("i1a"), s[0]);
+  Output i1b = ops::Identity(scope.WithOpName("i1b"), s[0]);
+  Output i2a = ops::Identity(scope.WithOpName("i2a"), s[1]);
+  Output i2b = ops::Identity(scope.WithOpName("i2b"), s[1]);
+  Output i2c = ops::Identity(scope.WithOpName("i2c"), s[1]);
+  Output i3a = ops::Identity(scope.WithOpName("i3a"), s[2]);
+  Output i3b = ops::Identity(scope.WithOpName("i3b"), s[2]);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold(nullptr /* cpu_device */);
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  int found = 0;
+  for (const auto& node : output.node()) {
+    EXPECT_NE(AddPrefixToNodeName("s-0", kConstantFoldingConst), node.name());
+    EXPECT_NE(AddPrefixToNodeName("s-1", kConstantFoldingConst), node.name());
+    if (node.name() == "i1a" || node.name() == "i1b") {
+      ++found;
+      EXPECT_EQ("s", node.input(0));
+    }
+    if (node.name() == "i2a" || node.name() == "i2b" || node.name() == "i2c") {
+      ++found;
+      EXPECT_EQ("s:1", node.input(0));
+    }
+    if (node.name() == "i3a" || node.name() == "i3b") {
+      ++found;
+      EXPECT_EQ(AddPrefixToNodeName("s-2", kConstantFoldingConst),
+                node.input(0));
+    }
+    if (node.name() == "s") {
+      ++found;
+      EXPECT_EQ("ShapeN", node.op());
+      EXPECT_EQ("v1", node.input(0));
+      EXPECT_EQ("v2", node.input(1));
+      EXPECT_EQ("v3", node.input(2));
+    }
+    if (node.name() == AddPrefixToNodeName("s-2", kConstantFoldingConst)) {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ("^s", node.input(0));
+      Tensor value;
+      CHECK(value.FromProto(node.attr().at("value").tensor()));
+      EXPECT_EQ(4, value.flat<int>()(0));
+      EXPECT_EQ(6, value.flat<int>()(1));
+    }
+  }
+  EXPECT_EQ(9, found);
+}
+
 TEST_F(ConstantFoldingTest, SwitchNodesEmptyFetch) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
