@@ -2143,7 +2143,7 @@ def sparse_recall_at_top_k(labels,
   default_name = _at_k_name('recall', class_id=class_id)
   with ops.name_scope(name, default_name,
                       (top_k_predictions, labels, weights)) as name_scope:
-    return metrics_impl._sparse_recall_at_top_k(  # pylint: disable=protected-access
+    return metrics_impl.recall_at_top_k(
         labels=labels,
         predictions_idx=top_k_predictions,
         class_id=class_id,

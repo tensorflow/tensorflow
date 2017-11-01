@@ -2246,10 +2246,8 @@ def recall_at_k(labels,
   with ops.name_scope(
       name, _at_k_name('recall', k, class_id=class_id),
       (predictions, labels, weights)) as scope:
-    labels = _maybe_expand_labels(labels, predictions)
-
     _, top_k_idx = nn.top_k(predictions, k)
-    return _sparse_recall_at_top_k(
+    return recall_at_top_k(
         labels=labels,
         predictions_idx=top_k_idx,
         k=k,
@@ -2260,14 +2258,14 @@ def recall_at_k(labels,
         name=scope)
 
 
-def _sparse_recall_at_top_k(labels,
-                            predictions_idx,
-                            k=None,
-                            class_id=None,
-                            weights=None,
-                            metrics_collections=None,
-                            updates_collections=None,
-                            name=None):
+def recall_at_top_k(labels,
+                    predictions_idx,
+                    k=None,
+                    class_id=None,
+                    weights=None,
+                    metrics_collections=None,
+                    updates_collections=None,
+                    name=None):
   """Computes recall@k of top-k predictions with respect to sparse labels.
 
   Differs from `recall_at_k` in that predictions must be in the form of top `k`
@@ -2287,7 +2285,7 @@ def _sparse_recall_at_top_k(labels,
       Commonly, N=1 and predictions has shape [batch size, k]. The final
       dimension contains the top `k` predicted class indices. [D1, ... DN] must
       match `labels`.
-    k: Integer, k for @k metric.
+    k: Integer, k for @k metric. Only used for the default op name.
     class_id: Integer class ID for which we want binary metrics. This should be
       in range [0, num_classes), where num_classes is the last dimension of
       `predictions`. If class_id is outside this range, the method returns NAN.
@@ -2316,6 +2314,7 @@ def _sparse_recall_at_top_k(labels,
   with ops.name_scope(name,
                       _at_k_name('recall', k, class_id=class_id),
                       (predictions_idx, labels, weights)) as scope:
+    labels = _maybe_expand_labels(labels, predictions_idx)
     top_k_idx = math_ops.to_int64(predictions_idx)
     tp, tp_update = _streaming_sparse_true_positive_at_k(
         predictions_idx=top_k_idx, labels=labels, k=k, class_id=class_id,
