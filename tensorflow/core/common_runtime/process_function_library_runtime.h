@@ -153,12 +153,13 @@ class ProcessFunctionLibraryRuntime {
         : target_device(target_device), local_handle(local_handle) {}
   };
 
+  const DeviceMgr* const device_mgr_;
   const FunctionLibraryDefinition* lib_def_;
   // Holds all the function invocations here.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
       GUARDED_BY(mu_);
   std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
-  std::unordered_map<string, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
+  std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
   DistributedFunctionLibraryRuntime* const parent_;
 };
 

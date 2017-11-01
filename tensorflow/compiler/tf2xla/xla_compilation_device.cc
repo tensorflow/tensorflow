@@ -78,7 +78,8 @@ XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
     : LocalDevice(
           options,
           Device::BuildDeviceAttributes(
-              "", type, Bytes(256 << 20), DeviceLocality(),
+              strings::StrCat("/device:", type.type(), ":0"), type,
+              Bytes(256 << 20), DeviceLocality(),
               strings::StrCat("device: XLA compilation device ", type.type()))),
       allocator_(new XlaCompilationAllocator()) {}
 

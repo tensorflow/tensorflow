@@ -411,7 +411,11 @@ bool FunctionLibraryRuntimeImpl::IsLocalTarget(const AttrSlice& attrs) {
   if (device_ == nullptr) return true;
   string target = ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
   if (target.empty()) return true;
-  return target == device_->name();
+  Device* target_device;
+  if (!device_mgr_->LookupDevice(target, &target_device).ok()) {
+    return false;
+  }
+  return target_device == device_;
 }
 
 AttrValueMap FunctionLibraryRuntimeImpl::FixAttrs(const AttrSlice& attrs) {
