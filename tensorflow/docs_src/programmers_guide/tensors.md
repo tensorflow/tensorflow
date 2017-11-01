@@ -29,8 +29,8 @@ Some types of tensors are special, and these will be covered in other
 units of the Programmer's guide. The main ones are:
 
   * `tf.Variable`
-  * `tf.Constant`
-  * `tf.Placeholder`
+  * `tf.constant`
+  * `tf.placeholder`
   * `tf.SparseTensor`
 
 With the exception of `tf.Variable`, the value of a tensor is immutable, which
@@ -275,8 +275,8 @@ Graphs and Sessions for more information).
 
 Sometimes it is not possible to evaluate a `tf.Tensor` with no context because
 its value might depend on dynamic information that is not available. For
-example, tensors that depend on `Placeholder`s can't be evaluated without
-providing a value for the `Placeholder`.
+example, tensors that depend on `placeholder`s can't be evaluated without
+providing a value for the `placeholder`.
 
 ``` python
 p = tf.placeholder(tf.float32)
