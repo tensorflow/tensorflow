@@ -2008,7 +2008,7 @@ def layer_norm(inputs,
 
   Given a tensor `inputs` of rank `R`, moments are calculated and normalization
   is performed over axes `begin_norm_axis ... R - 1`.  Scaling and centering,
-  if requested, is performed over axes `begin_shift_axis .. R - 1`.
+  if requested, is performed over axes `begin_params_axis .. R - 1`.
 
   By default, `begin_norm_axis = 1` and `begin_params_axis = -1`,
   meaning that normalization is performed over all but the first axis
