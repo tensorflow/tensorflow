@@ -148,6 +148,49 @@ class DynamicPartitionTest(test.TestCase):
             self.assertEqual(grads[1], None)  # Partitions has no gradients
             self.assertAllEqual(7 * data, sess.run(grads[0]))
 
+  def testEmptyParts(self):
+    data_list = [1, 2, 3, 4]
+    indices_list = [1, 3, 1, 3]
+    with self.test_session(use_gpu=True) as sess:
+      data = constant_op.constant(data_list, dtype=dtypes.float32)
+      indices = constant_op.constant(indices_list, dtype=dtypes.int32)
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=4)
+      partition_vals = sess.run(partitions)
+
+    self.assertAllEqual([], partition_vals[0])
+    self.assertAllEqual([1, 3], partition_vals[1])
+    self.assertAllEqual([], partition_vals[2])
+    self.assertAllEqual([2, 4], partition_vals[3])
+
+  def testEmptyDataTwoDimensional(self):
+    data_list = [[], []]
+    indices_list = [0, 1]
+    with self.test_session(use_gpu=True) as sess:
+      data = constant_op.constant(data_list, dtype=dtypes.float32)
+      indices = constant_op.constant(indices_list, dtype=dtypes.int32)
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=3)
+      partition_vals = sess.run(partitions)
+
+    self.assertAllEqual([[]], partition_vals[0])
+    self.assertAllEqual([[]], partition_vals[1])
+    self.assertAllEqual(np.array([], dtype=np.float).reshape(0, 0),
+                        partition_vals[2])
+
+  def testEmptyPartitions(self):
+    data_list = []
+    indices_list = []
+    with self.test_session(use_gpu=True) as sess:
+      data = constant_op.constant(data_list, dtype=dtypes.float32)
+      indices = constant_op.constant(indices_list, dtype=dtypes.int32)
+      partitions = data_flow_ops.dynamic_partition(
+          data, indices, num_partitions=2)
+      partition_vals = sess.run(partitions)
+
+    self.assertAllEqual([], partition_vals[0])
+    self.assertAllEqual([], partition_vals[1])
+
   def testErrorIndexOutOfRange(self):
     with self.test_session() as sess:
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],

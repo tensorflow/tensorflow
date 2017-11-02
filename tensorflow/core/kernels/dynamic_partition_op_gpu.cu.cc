@@ -145,6 +145,8 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
  public:
   explicit DynamicPartitionOpGPU(OpKernelConstruction* c) : AsyncOpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("num_partitions", &num_partitions_));
+    OP_REQUIRES(c, num_partitions_ >= 1,
+                errors::InvalidArgument("num_partitions must be at least 1"));
   }
 
   void AllocateTempSpace(OpKernelContext* c, int32 N, Tensor* indices_in,
@@ -191,6 +193,25 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
         done);
 
     Tensor partition_count;
+
+    // We must handle the case of empty partitions separately,
+    // because kernels don't work with 0-sized tensors.
+    if (partitions.NumElements() == 0) {
+      AllocatorAttributes alloc_attr;
+      alloc_attr.set_on_host(true);
+      OP_REQUIRES_OK_ASYNC(
+          c, c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
+                              &partition_count, alloc_attr),
+          done);
+      auto e_part_count = partition_count.flat<int32>();
+      for (int i = 0; i < num_partitions_; i++) e_part_count(i) = 0;
+      OpOutputList outputs;
+      this->AllocateOutputs(c, &data, &partitions, &partition_count, &outputs,
+                            done);
+      if (c->status().ok()) done();
+      return;
+    }
+
     // Prepare for counting.
     OP_REQUIRES_OK_ASYNC(
         c, c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
@@ -330,8 +351,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
       int32 indices_size = outs[p]->dim_size(0);
       int64 out_size = outs[p]->NumElements();
       T* out_base = outs[p]->flat<T>().data();
-      CallGatherKernel<T>(device, data_base, ind_base, out_base, N,
-                          indices_size, slice_size, out_size);
+      if (out_size > 0)
+        CallGatherKernel<T>(device, data_base, ind_base, out_base, N,
+                            indices_size, slice_size, out_size);
       ind_base += indices_size;
     }
   }
