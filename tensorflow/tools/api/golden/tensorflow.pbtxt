@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "CXX11_ABI_FLAG"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "ConditionalAccumulator"
     mtype: "<type \'type\'>"
   }

@@ -224,10 +224,13 @@ TEST_F(UserComputationTest, CheckImplicitBroadcastToExplicitBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle b_handle,
                           computation.AddParameterInstruction(b_request));
 
-  OpDeviceAssignment assignment;
-  assignment.set_has_device(true);
-  assignment.set_device(7);
-  TF_EXPECT_OK(computation.SetOpDeviceAssignment(b_handle, assignment));
+  const int64 kDevice = 7;
+  OpSharding sharding;
+  sharding.set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+  sharding.add_tile_assignment_dimensions(1);
+  sharding.add_tile_assignment_devices(kDevice);
+
+  TF_EXPECT_OK(computation.SetOpSharding(b_handle, sharding));
 
   BinaryOpRequest add;
   add.set_binop(BINOP_ADD);
@@ -260,12 +263,10 @@ TEST_F(UserComputationTest, CheckImplicitBroadcastToExplicitBroadcast) {
 
   const HloInstruction* broadcast =
       hlo_computation->root_instruction()->operand(1);
-  EXPECT_TRUE(broadcast->device_assignment().has_device());
-  EXPECT_EQ(assignment.device(), broadcast->device_assignment().device());
+  EXPECT_TRUE(broadcast->has_sharding());
 
   const HloInstruction* reshape = broadcast->operand(0);
-  EXPECT_TRUE(reshape->device_assignment().has_device());
-  EXPECT_EQ(assignment.device(), reshape->device_assignment().device());
+  EXPECT_TRUE(reshape->has_sharding());
 }
 
 TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {

@@ -1011,7 +1011,7 @@ def index_table_from_tensor(vocabulary_list,
 
   Args:
     vocabulary_list: A 1-D `Tensor` that specifies the mapping of keys to
-      indices. Thetype of this object must be castable to `dtype`.
+      indices. The type of this object must be castable to `dtype`.
     num_oov_buckets: The number of out-of-vocabulary buckets.
     default_value: The value to use for out-of-vocabulary feature values.
       Defaults to -1.

@@ -329,72 +329,82 @@ class LayerCollectionTest(test.TestCase):
       single_loss = sess.run(lc.total_loss())
       self.assertAlmostEqual(7.6983433, single_loss)
 
+  def ensureLayerReuseWorks(self, register_fn):
+    """Ensure the 'reuse' keyword argument function as intended.
+
+    Args:
+      register_fn: function for registering a layer. Arguments are
+        layer_collection, reuse, and approx.
+    """
+    # Fails on second if reuse=False.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc)
+    with self.assertRaises(ValueError):
+      register_fn(lc, reuse=False)
+
+    # Succeeds on second if reuse=True.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc)
+    register_fn(lc, reuse=True)
+
+    # Fails on second if reuse=VARIABLE_SCOPE and no variable reuse.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc)
+    with self.assertRaises(ValueError):
+      register_fn(lc, reuse=layer_collection.VARIABLE_SCOPE)
+
+    # Succeeds on second if reuse=VARIABLE_SCOPE and variable reuse.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc)
+    with variable_scope.variable_scope(
+        variable_scope.get_variable_scope(), reuse=True):
+      register_fn(lc, reuse=layer_collection.VARIABLE_SCOPE)
+
+    # Fails if block type changes.
+    lc = layer_collection.LayerCollection()
+    register_fn(lc, approx=layer_collection.APPROX_KRONECKER_NAME)
+    with self.assertRaises(ValueError):
+      register_fn(lc, approx=layer_collection.APPROX_DIAGONAL_NAME, reuse=True)
+
+    # Fails if reuse requested but no FisherBlock exists.
+    lc = layer_collection.LayerCollection()
+    with self.assertRaises(KeyError):
+      register_fn(lc, reuse=True)
+
   def testRegisterFullyConnectedReuse(self):
-    """Ensure the 'reuse' keyword argument function as intended."""
+    """Ensure the 'reuse' works with register_fully_connected."""
     with ops.Graph().as_default():
-      inputs = [
-          array_ops.ones([2, 10]),  #
-          array_ops.zeros([5, 10])
-      ]
-      outputs = [
-          array_ops.zeros([2, 5]),  #
-          array_ops.ones([5, 5])
-      ]
+      inputs = array_ops.ones([2, 10])
+      outputs = array_ops.zeros([2, 5])
       params = (
           variable_scope.get_variable('w', [10, 5]),  #
           variable_scope.get_variable('b', [5]))
 
-      # Fails on second if reuse=False.
-      lc = layer_collection.LayerCollection()
-      lc.register_fully_connected(params, inputs[0], outputs[0])
-      with self.assertRaises(ValueError):
-        lc.register_fully_connected(params, inputs[1], outputs[1], reuse=False)
-
-      # Succeeds on second if reuse=True.
-      lc = layer_collection.LayerCollection()
-      lc.register_fully_connected(params, inputs[0], outputs[0])
-      lc.register_fully_connected(params, inputs[1], outputs[1], reuse=True)
-
-      # Fails on second if reuse=VARIABLE_SCOPE and no variable reuse.
-      lc = layer_collection.LayerCollection()
-      lc.register_fully_connected(params, inputs[0], outputs[0])
-      with self.assertRaises(ValueError):
+      def register_fn(lc, **kwargs):
         lc.register_fully_connected(
-            params,
-            inputs[1],
-            outputs[1],
-            reuse=layer_collection.VARIABLE_SCOPE)
+            params=params, inputs=inputs, outputs=outputs, **kwargs)
 
-      # Succeeds on second if reuse=VARIABLE_SCOPE and variable reuse.
-      lc = layer_collection.LayerCollection()
-      lc.register_fully_connected(params, inputs[0], outputs[0])
-      with variable_scope.variable_scope(
-          variable_scope.get_variable_scope(), reuse=True):
-        lc.register_fully_connected(
-            params,
-            inputs[1],
-            outputs[1],
-            reuse=layer_collection.VARIABLE_SCOPE)
+      self.ensureLayerReuseWorks(register_fn)
 
-      # Fails if block type changes.
-      lc = layer_collection.LayerCollection()
-      lc.register_fully_connected(
-          params,
-          inputs[0],
-          outputs[0],
-          approx=layer_collection.APPROX_KRONECKER_NAME)
-      with self.assertRaises(ValueError):
-        lc.register_fully_connected(
-            params,
-            inputs[1],
-            outputs[1],
-            approx=layer_collection.APPROX_DIAGONAL_NAME,
-            reuse=True)
+  def testRegisterConv2dReuse(self):
+    """Ensure the 'reuse' works with register_conv2d."""
+    with ops.Graph().as_default():
+      inputs = array_ops.ones([2, 5, 5, 10])
+      outputs = array_ops.zeros([2, 5, 5, 3])
+      params = (
+          variable_scope.get_variable('w', [1, 1, 10, 3]),  #
+          variable_scope.get_variable('b', [3]))
 
-      # Fails if reuse requested but no FisherBlock exists.
-      lc = layer_collection.LayerCollection()
-      with self.assertRaises(KeyError):
-        lc.register_fully_connected(params, inputs[0], outputs[0], reuse=True)
+      def register_fn(lc, **kwargs):
+        lc.register_conv2d(
+            params=params,
+            strides=[1, 1, 1, 1],
+            padding='SAME',
+            inputs=inputs,
+            outputs=outputs,
+            **kwargs)
+
+      self.ensureLayerReuseWorks(register_fn)
 
   def testMakeOrGetFactor(self):
     with ops.Graph().as_default():

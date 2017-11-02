@@ -1267,7 +1267,7 @@ def convolution2d_transpose(
 
     # Add variables to collections.
     _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
@@ -1376,7 +1376,7 @@ def convolution3d_transpose(
 
     # Add variables to collections.
     _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias:
+    if layer.bias is not None:
       _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
     if normalizer_fn is not None:
@@ -2008,7 +2008,7 @@ def layer_norm(inputs,
 
   Given a tensor `inputs` of rank `R`, moments are calculated and normalization
   is performed over axes `begin_norm_axis ... R - 1`.  Scaling and centering,
-  if requested, is performed over axes `begin_shift_axis .. R - 1`.
+  if requested, is performed over axes `begin_params_axis .. R - 1`.
 
   By default, `begin_norm_axis = 1` and `begin_params_axis = -1`,
   meaning that normalization is performed over all but the first axis
@@ -2522,7 +2522,7 @@ def separable_convolution2d(
                                    variables_collections, 'weights')
       _add_variable_to_collections(layer.pointwise_kernel,
                                    variables_collections, 'weights')
-      if layer.bias:
+      if layer.bias is not None:
         _add_variable_to_collections(layer.bias,
                                      variables_collections, 'biases')
 

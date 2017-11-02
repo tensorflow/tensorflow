@@ -703,6 +703,36 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape_WithTwoNodesShareSameOutput) {
   EXPECT_EQ("float: [128,256]", PropToString(prop));
 }
 
+TEST_F(GraphPropertiesTest, FunctionStaticShapeInference) {
+  // Test graph produced in python using:
+  /*
+    @function.Defun(*[tf.float32] * 2, noinline=True)
+    def MyAdd(x, y):
+      return tf.add(x,y)
+
+    with tf.Graph().as_default():
+      x = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      y = tf.constant(2.0, shape=[1, 2], dtype=tf.float32)
+      z = MyAdd(x, y)
+      z = MyAdd(x, z)
+  */
+  // Check that the shape of the second MyAdd node propagates
+  // correctly.
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "simple_function.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+  const auto props = properties.GetOutputProperties("MyAdd_55e046a8_1");
+  const OpInfo::TensorProperties& prop = props[0];
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_FALSE(prop.shape().unknown_rank());
+  EXPECT_EQ(2, prop.shape().dim_size());
+  EXPECT_EQ(1, prop.shape().dim(0).size());
+  EXPECT_EQ(2, prop.shape().dim(1).size());
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

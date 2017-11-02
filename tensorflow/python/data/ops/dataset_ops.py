@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -80,7 +81,14 @@ class Dataset(object):
 
     Returns:
       An `Iterator` over the elements of this dataset.
+
+    Raises:
+      RuntimeError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "dataset.make_initializable_iterator is not supported when eager "
+          "execution is enabled.")
     if shared_name is None:
       shared_name = ""
     iterator_resource = gen_dataset_ops.iterator(
@@ -102,7 +110,14 @@ class Dataset(object):
 
     Returns:
       An `Iterator` over the elements of this dataset.
+
+    Raises:
+      RuntimeError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "dataset.make_one_shot_iterator is not supported when eager "
+          "execution is enabled.")
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
     @function.Defun(capture_by_value=True)

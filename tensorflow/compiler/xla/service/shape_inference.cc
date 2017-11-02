@@ -97,8 +97,6 @@ BinaryOperation OpcodeToBinaryOperation(HloOpcode opcode) {
       return BINOP_ADD;
     case HloOpcode::kSubtract:
       return BINOP_SUB;
-    case HloOpcode::kIndex:
-      return BINOP_INDEX;
     case HloOpcode::kDivide:
       return BINOP_DIV;
     case HloOpcode::kEq:
@@ -830,17 +828,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                                                         broadcast_dimensions));
       return ShapeUtil::ChangeElementType(shape, PRED);
     }
-    case BINOP_INDEX:
-      if (ShapeUtil::Rank(lhs) > 0 && ShapeUtil::Rank(rhs) == 0) {
-        tensorflow::gtl::ArraySlice<int64> dimensions =
-            AsInt64Slice(lhs.dimensions());
-        dimensions.pop_front();
-        return ShapeUtil::MakeShape(lhs.element_type(), dimensions);
-      }
-      return Unimplemented("cannot infer shape for operation: %s <%s> %s",
-                           ShapeUtil::HumanString(lhs).c_str(),
-                           BinaryOperation_Name(operation).c_str(),
-                           ShapeUtil::HumanString(rhs).c_str());
     default:
       return Unimplemented(
           "not yet implemented; infer binary op shape: %s; lhs: %s; rhs: %s",
