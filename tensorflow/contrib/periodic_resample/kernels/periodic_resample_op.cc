@@ -15,7 +15,7 @@
 // =============================================================================
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/contrib/periodic_resample/core/kernels/periodic_resample_op.h"
+#include "tensorflow/contrib/periodic_resample/kernels/periodic_resample_op.h"
 
 namespace tensorflow {
 

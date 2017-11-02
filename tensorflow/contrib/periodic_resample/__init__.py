@@ -19,11 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.periodic_resample.python.ops.periodic_resample_op import _periodic_resample_op
+from tensorflow.contrib.periodic_resample.python.ops.periodic_resample_op import periodic_resample
 from tensorflow.python.util.all_util import remove_undocumented
-
-periodic_resample =\
-    _periodic_resample_op.periodic_resample
 
 _allowed_symbols = ["periodic_resample"]
 

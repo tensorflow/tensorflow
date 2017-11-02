@@ -9,6 +9,7 @@ load(
     "tf_gen_op_libs",
     "tf_py_test",
     "tf_custom_op_library",
+    "tf_custom_op_py_library",
     "tf_gen_op_wrapper_py",
 )
 
@@ -32,6 +33,31 @@ tf_custom_op_library(
     ],
 )
 
+tf_gen_op_libs(
+    op_lib_names = ["array_ops"],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_periodic_resample_op_py",
+    out = "python/ops/gen_periodic_resample_op.py",
+    deps = [":array_ops_op_lib"],
+)
+
+tf_custom_op_py_library(
+    name = "periodic_resample_op_py",
+    srcs = ["python/ops/periodic_resample_op.py"],
+    dso = ["python/ops/_periodic_resample_op.so"],
+    kernels = [
+        ":array_ops_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gen_periodic_resample_op_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
 py_library(
     name = "init_py",
     srcs = [
@@ -44,12 +70,12 @@ py_library(
     ],
 )
 
-py_library(
-    name = "periodic_resample_op_py",
-    srcs = ["python/ops/periodic_resample_op.py"],
-    data = ["python/ops/_periodic_resample_op.so"],
-    srcs_version = "PY2AND3",
-)
+# py_library(
+#     name = "periodic_resample_op_py",
+#     srcs = ["python/ops/periodic_resample_op.py"],
+#     data = ["python/ops/_periodic_resample_op.so"],
+#     srcs_version = "PY2AND3",
+# )
 
 filegroup(
     name = "all_files",
@@ -67,12 +93,12 @@ filegroup(
     name = "custom_op_sources",
     srcs = glob(
         [
-            "core/ops/*.cc",
-            "core/kernels/*.cc",
+            "ops/*.cc",
+            "kernels/*.cc",
         ],
         exclude = [
-            "core/ops/*_test.cc",
-            "core/kernels/*_test.cc",
+            "ops/*_test.cc",
+            "kernels/*_test.cc",
         ],
     ),
 )
@@ -81,8 +107,8 @@ filegroup(
     name = "custom_op_headers",
     srcs = glob(
         [
-            "core/kernels/*.h",
-            "core/ops/*.h",
+            "kernels/*.h",
+            "ops/*.h",
         ],
     ),
 )
