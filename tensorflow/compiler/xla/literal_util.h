@@ -159,6 +159,10 @@ class Literal {
   const std::vector<double>& f64s() const { return f64s_; }
   std::vector<double>* mutable_f64s() { return &f64s_; }
 
+  int c64s_size() const { return c64s().size(); }
+  const std::vector<complex64>& c64s() const { return c64s_; }
+  std::vector<complex64>* mutable_c64s() { return &c64s_; }
+
   int tuple_literals_size() const { return tuple_literals().size(); }
   const Literal& tuple_literals(int i) const { return tuple_literals_[i]; }
   Literal* add_tuple_literals() {
@@ -334,6 +338,11 @@ class Literal {
   // WithLayout use the default XLA layout for the literal's linear
   // representation in memory.
   template <typename NativeT>
+  static std::unique_ptr<Literal> CreateFromArray(const Array<NativeT>& values);
+  template <typename NativeT>
+  static std::unique_ptr<Literal> CreateFromArrayWithLayout(
+      const Array<NativeT>& values, const Layout& layout);
+  template <typename NativeT>
   static std::unique_ptr<Literal> CreateR2FromArray2D(
       const Array2D<NativeT>& values);
   template <typename NativeT>
@@ -481,6 +490,11 @@ class Literal {
       std::initializer_list<std::initializer_list<NativeT>> values,
       const Layout& layout);
   template <typename NativeT>
+  void PopulateFromArray(const Array<NativeT>& values);
+  template <typename NativeT>
+  void PopulateFromArrayWithLayout(const Array<NativeT>& values,
+                                   const Layout& layout);
+  template <typename NativeT>
   void PopulateR2FromArray2D(const Array2D<NativeT>& values);
   template <typename NativeT>
   void PopulateR2FromArray2DWithLayout(const Array2D<NativeT>& values,
@@ -550,6 +564,17 @@ class Literal {
   // e.g. -0.5.
   bool IsAllFloat(float value) const;
 
+  // Like IsAll(const Literal&, int8), except we check whether the literal is
+  // equal to a particular complex number.
+  //
+  // If the literal is not a complex value, this always returns false.
+  //
+  // This casts value to the type of literal, then compares using ==.  The usual
+  // admonishments about floating-point equality checks apply.  We expect you to
+  // use this to check for complex values that can be expressed precisely as
+  // float pairs e.g. (-0.5, 1.0).
+  bool IsAllComplex(complex64 value) const;
+
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array.
   bool IsZero(tensorflow::gtl::ArraySlice<int64> indices) const;
@@ -600,6 +625,7 @@ class Literal {
   std::vector<half> f16s_;
   std::vector<float> f32s_;
   std::vector<double> f64s_;
+  std::vector<complex64> c64s_;
   std::vector<Literal> tuple_literals_;
 };
 
@@ -649,6 +675,10 @@ template <>
 tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const;
 
 template <>
+tensorflow::gtl::ArraySlice<complex64> Literal::GetArraySlice<complex64>()
+    const;
+
+template <>
 tensorflow::gtl::MutableArraySlice<bool> Literal::GetMutableArraySlice();
 
 template <>
@@ -685,6 +715,9 @@ template <>
 tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice();
 
 template <>
+tensorflow::gtl::MutableArraySlice<complex64> Literal::GetMutableArraySlice();
+
+template <>
 void Literal::Resize<bool>(int64 num_elements, bool value);
 
 template <>
@@ -713,6 +746,9 @@ void Literal::Resize<double>(int64 num_elements, double value);
 
 template <>
 void Literal::Resize<half>(int64 num_elements, half value);
+
+template <>
+void Literal::Resize<complex64>(int64 num_elements, complex64 value);
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR0(NativeT value) {
@@ -816,33 +852,42 @@ template <typename NativeT>
 }
 
 template <typename NativeT>
+/* static */ std::unique_ptr<Literal> Literal::CreateFromArrayWithLayout(
+    const Array<NativeT>& values, const Layout& layout) {
+  auto literal = MakeUnique<Literal>();
+  literal->PopulateFromArrayWithLayout(values, layout);
+  return literal;
+}
+
+template <typename NativeT>
+/* static */ std::unique_ptr<Literal> Literal::CreateFromArray(
+    const Array<NativeT>& values) {
+  return CreateFromArrayWithLayout(
+      values, LayoutUtil::GetDefaultLayoutForRank(values.num_dimensions()));
+}
+
+template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
-  auto literal = MakeUnique<Literal>();
-  literal->PopulateR2FromArray2DWithLayout(values, layout);
-  return literal;
+  return CreateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return CreateR2FromArray2DWithLayout(values,
-                                       LayoutUtil::GetDefaultLayoutForR2());
+  return CreateFromArray(values);
 }
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
-  auto literal = MakeUnique<Literal>();
-  literal->PopulateR3FromArray3DWithLayout(values, layout);
-  return literal;
+  return CreateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR3FromArray3D(
     const Array3D<NativeT>& values) {
-  return CreateR3FromArray3DWithLayout(values,
-                                       LayoutUtil::GetDefaultLayoutForR3());
+  return CreateFromArray(values);
 }
 
 template <typename NativeT>
@@ -901,16 +946,13 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR4FromArray4D(
     const Array4D<NativeT>& values) {
-  return CreateR4FromArray4DWithLayout(values,
-                                       LayoutUtil::GetDefaultLayoutForR4());
+  return CreateFromArray(values);
 }
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> Literal::CreateR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
-  auto literal = MakeUnique<Literal>();
-  literal->PopulateR4FromArray4DWithLayout(values, layout);
-  return literal;
+  return CreateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
@@ -1070,82 +1112,53 @@ void Literal::PopulateR2(
 }
 
 template <typename NativeT>
+void Literal::PopulateFromArrayWithLayout(const Array<NativeT>& values,
+                                          const Layout& layout) {
+  *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
+      primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
+      AsInt64Slice(layout.minor_to_major()));
+  Reserve(values.num_elements());
+  values.Each([this](tensorflow::gtl::ArraySlice<int64> indices,
+                     NativeT value) { this->Set(indices, value); });
+}
+
+template <typename NativeT>
+void Literal::PopulateFromArray(const Array<NativeT>& values) {
+  PopulateFromArrayWithLayout(
+      values, LayoutUtil::GetDefaultLayoutForRank(values.num_dimensions()));
+}
+
+template <typename NativeT>
 void Literal::PopulateR2FromArray2DWithLayout(const Array2D<NativeT>& values,
                                               const Layout& layout) {
-  *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(),
-      {values.height(), values.width()}, AsInt64Slice(layout.minor_to_major()));
-
-  const int64 dim1_size = values.width();
-  const int64 dim0_size = values.height();
-  CHECK_EQ(dim0_size, shape().dimensions(0));
-  CHECK_EQ(dim1_size, shape().dimensions(1));
-  Reserve(dim1_size * dim0_size);
-  for (int64 dim0 = 0; dim0 < dim0_size; ++dim0) {
-    for (int64 dim1 = 0; dim1 < dim1_size; ++dim1) {
-      Set({dim0, dim1}, values(dim0, dim1));
-    }
-  }
+  PopulateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 void Literal::PopulateR2FromArray2D(const Array2D<NativeT>& values) {
-  PopulateR2FromArray2DWithLayout(values, LayoutUtil::GetDefaultLayoutForR2());
+  PopulateFromArray(values);
 }
 
 template <typename NativeT>
 void Literal::PopulateR3FromArray3DWithLayout(const Array3D<NativeT>& values,
                                               const Layout& layout) {
-  *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(),
-      {values.n1(), values.n2(), values.n3()},
-      AsInt64Slice(layout.minor_to_major()));
-
-  CHECK_EQ(values.n1(), shape().dimensions(0));
-  CHECK_EQ(values.n2(), shape().dimensions(1));
-  CHECK_EQ(values.n3(), shape().dimensions(2));
-  Reserve(values.n1() * values.n2() * values.n3());
-  for (int64 dim0 = 0; dim0 < values.n1(); ++dim0) {
-    for (int64 dim1 = 0; dim1 < values.n2(); ++dim1) {
-      for (int64 dim2 = 0; dim2 < values.n3(); ++dim2) {
-        Set({dim0, dim1, dim2}, values(dim0, dim1, dim2));
-      }
-    }
-  }
+  PopulateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 void Literal::PopulateR3FromArray3D(const Array3D<NativeT>& values) {
-  PopulateR3FromArray3DWithLayout(values, LayoutUtil::GetDefaultLayoutForR3());
+  PopulateFromArray(values);
 }
 
 template <typename NativeT>
 void Literal::PopulateR4FromArray4DWithLayout(const Array4D<NativeT>& values,
                                               const Layout& layout) {
-  *mutable_shape() = ShapeUtil::MakeShapeWithLayout(
-      primitive_util::NativeToPrimitiveType<NativeT>(),
-      {values.planes(), values.depth(), values.height(), values.width()},
-      AsInt64Slice(layout.minor_to_major()));
-
-  CHECK_EQ(values.n1(), shape().dimensions(0));
-  CHECK_EQ(values.n2(), shape().dimensions(1));
-  CHECK_EQ(values.n3(), shape().dimensions(2));
-  CHECK_EQ(values.n4(), shape().dimensions(3));
-  Reserve(values.n1() * values.n2() * values.n3() * values.n4());
-  for (int64 dim0 = 0; dim0 < values.n1(); ++dim0) {
-    for (int64 dim1 = 0; dim1 < values.n2(); ++dim1) {
-      for (int64 dim2 = 0; dim2 < values.n3(); ++dim2) {
-        for (int64 dim3 = 0; dim3 < values.n4(); ++dim3) {
-          Set({dim0, dim1, dim2, dim3}, values(dim0, dim1, dim2, dim3));
-        }
-      }
-    }
-  }
+  PopulateFromArrayWithLayout(values, layout);
 }
 
 template <typename NativeT>
 void Literal::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
-  PopulateR4FromArray4DWithLayout(values, LayoutUtil::GetDefaultLayoutForR4());
+  PopulateFromArray(values);
 }
 
 template <typename NativeT, typename FnType>

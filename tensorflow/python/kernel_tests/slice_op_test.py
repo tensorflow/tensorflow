@@ -241,6 +241,18 @@ class SliceTest(test.TestCase):
     self.assertAllEqual(slice_val, expected_val)
     self.assertEqual(expected_val.shape, slice_t.get_shape())
 
+  def testPartialShapeInference(self):
+    z = array_ops.zeros((1, 2, 3))
+    self.assertAllEqual(z.get_shape().as_list(), [1, 2, 3])
+
+    m1 = array_ops.slice(z, [0, 0, 0], [-1, -1, -1])
+    self.assertAllEqual(m1.get_shape().as_list(), [1, 2, 3])
+
+    m2 = array_ops.slice(z, [0, 0, 0], [constant_op.constant(1) + 0, 2, -1])
+    self.assertAllEqual(m2.get_shape().as_list(), [None, 2, None])
+
+>>>>>>> upstream/master
+
   def _testGradientSlice(self, input_shape, slice_begin, slice_size):
     with self.test_session(use_gpu=True):
       num_inputs = np.prod(input_shape)

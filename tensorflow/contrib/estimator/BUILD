@@ -50,7 +50,10 @@ py_test(
     size = "small",
     srcs = ["python/estimator/dnn_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
     deps = [
         ":dnn",
         ":head",
@@ -79,7 +82,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:util",
@@ -89,7 +91,7 @@ py_library(
 
 py_test(
     name = "extenders_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/extenders_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -131,7 +133,9 @@ py_library(
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/estimator:util",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 
@@ -146,9 +150,11 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
@@ -183,7 +189,8 @@ py_test(
     deps = [
         ":logit_fns",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:session",
         "//tensorflow/python/estimator:model_fn",
     ],
 )

@@ -32,6 +32,11 @@ class HParamsTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Unknown hyperparameter'):
       hparams.parse('xyz=123')
 
+  def testContains(self):
+    hparams = hparam.HParams(foo=1)
+    self.assertTrue('foo' in hparams)
+    self.assertFalse('bar' in hparams)
+
   def testSomeValues(self):
     hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6')
     self.assertDictEqual({'aaa': 1, 'b': 2.0, 'c_c': 'relu6'}, hparams.values())
@@ -93,11 +98,11 @@ class HParamsTest(test.TestCase):
 
   def testSetFromMap(self):
     hparams = hparam.HParams(a=1, b=2.0, c='tanh')
-    hparams.set_from_map({'a': -2, 'c': 'identity'})
+    hparams.override_from_dict({'a': -2, 'c': 'identity'})
     self.assertDictEqual({'a': -2, 'c': 'identity', 'b': 2.0}, hparams.values())
 
     hparams = hparam.HParams(x=1, b=2.0, d=[0.5])
-    hparams.set_from_map({'d': [0.1, 0.2, 0.3]})
+    hparams.override_from_dict({'d': [0.1, 0.2, 0.3]})
     self.assertDictEqual({'d': [0.1, 0.2, 0.3], 'x': 1, 'b': 2.0},
                          hparams.values())
 

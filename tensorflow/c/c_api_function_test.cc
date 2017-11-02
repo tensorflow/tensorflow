@@ -1465,5 +1465,26 @@ TEST_F(CApiFunctionTest, AppendHash) {
   ASSERT_EQ(string("func_name_base_qaJ8jA8UmGY"), fdef.signature().name());
 }
 
+TEST_F(CApiFunctionTest, GetOpDef) {
+  DefineFunction(func_name_, &func_);
+  TF_GraphCopyFunction(host_graph_, func_, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Test we can retrieve function OpDef from graph
+  TF_Buffer* buffer = TF_NewBuffer();
+  TF_GraphGetOpDef(host_graph_, func_name_, buffer, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Sanity check returned OpDef
+  string data(static_cast<const char*>(buffer->data), buffer->length);
+  OpDef op_def;
+  op_def.ParseFromString(data);
+  EXPECT_EQ(op_def.name(), func_name_);
+  EXPECT_EQ(op_def.input_arg_size(), 1);
+  EXPECT_EQ(op_def.output_arg_size(), 1);
+
+  TF_DeleteBuffer(buffer);
+}
+
 }  // namespace
 }  // namespace tensorflow

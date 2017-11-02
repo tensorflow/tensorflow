@@ -385,7 +385,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       reset_op = state_ops.assign(
           opaque_params,
           array_ops.zeros(array_ops.shape(opaque_params), dtype=dtype))
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(use_gpu=True, graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         val = saver.save(sess, save_path)
@@ -436,7 +436,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       save_path = os.path.join(self.get_temp_dir(),
                                "save-restore-variable-test2")
       saver = saver_lib.Saver()
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(use_gpu=True, graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         val = saver.save(sess, save_path)
@@ -484,7 +484,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
           array_ops.zeros(
               array_ops.shape(rnn.trainable_variables[0]), dtype=dtype))
 
-      # Passing graph explictly, otherwise an old sess would be reused.
+      # Passing graph explicitly, otherwise an old sess would be reused.
       with self.test_session(use_gpu=True, graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         inputs, initial_state = model.SynthesizeInput(seq_length, batch_size)

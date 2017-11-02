@@ -480,6 +480,24 @@ Node* Conv2D(Graph* g, Node* in0, Node* in1) {
   return ret;
 }
 
+Node* Diag(Graph* g, Node* in, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Diag")
+                  .Input(in)
+                  .Attr("T", type)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* DiagPart(Graph* g, Node* in, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "DiagPart")
+                  .Input(in)
+                  .Attr("T", type)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 void ToGraphDef(Graph* g, GraphDef* gdef) { g->ToGraphDef(gdef); }
 
 }  // end namespace graph

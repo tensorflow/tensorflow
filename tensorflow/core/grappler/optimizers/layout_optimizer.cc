@@ -54,6 +54,7 @@ std::set<string> GetOpsFormatSupported() {
                                            "BiasAddGrad",
                                            "FusedBatchNorm",
                                            "FusedBatchNormGrad",
+                                           "FusedConv2DBiasActivation",
                                            "MaxPool",
                                            "MaxPoolGrad"};
   return ops_format_supported;

@@ -280,6 +280,16 @@ class Template(object):
         return result
 
   @property
+  def name(self):
+    """Returns the name given to this Template."""
+    return self._name
+
+  @property
+  def func(self):
+    """Returns the func given to this Template."""
+    return self._func
+
+  @property
   def variable_scope(self):
     """Returns the variable scope object created by this Template."""
     return self._variable_scope

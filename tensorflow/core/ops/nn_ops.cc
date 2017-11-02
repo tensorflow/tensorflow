@@ -1851,7 +1851,8 @@ REGISTER_OP("Relu6Grad")
 Computes rectified linear 6 gradients for a Relu6 operation.
 
 gradients: The backpropagated gradients to the corresponding Relu6 operation.
-features: The features passed as input to the corresponding Relu6 operation.
+features: The features passed as input to the corresponding Relu6 operation, or
+  its output; using either one produces the same result.
 backprops: The gradients:
   `gradients * (features > 0) * (features < 6)`.
 )doc");
@@ -2175,9 +2176,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -2255,6 +2256,56 @@ sorted: If true the resulting `k` elements will be sorted by the values in
   descending order.
 values: The `k` largest elements along each last dimensional slice.
 indices: The indices of `values` within the last dimension of `input`.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("NthElement")
+    .Input("input: T")
+    .Input("n: int32")
+    .Output("values: T")
+    .Attr("reverse: bool = false")
+    .Attr("T: realnumbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+
+      // Get the n value from input tensor, and make sure which is a scalar.
+      DimensionHandle n_dim;
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &n_dim));
+
+      // The last dimension of input tensor must be greater than N.
+      DimensionHandle last_dim = c->Dim(input, -1);
+      if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
+          c->Value(last_dim) <= c->Value(n_dim)) {
+        return errors::InvalidArgument("Input must have last dimension > n = ",
+                                       c->Value(n_dim), " but is ",
+                                       c->Value(last_dim));
+      }
+
+      // Reduce last_dim for output tensor
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Finds values of the `n`-th order statistic for the last dmension.
+
+If the input is a vector (rank-1), finds the entries which is the nth-smallest
+value in the vector and outputs their values as scalar tensor.
+
+For matrices (resp. higher rank input), computes the entries which is the
+nth-smallest value in each row (resp. vector along the last dimension). Thus,
+
+    values.shape = input.shape[:-1]
+
+input: 1-D or higher with last dimension at least `n+1`.
+n: 0-D. Position of sorted vector to select along the last dimension (along
+  each row for matrices). Valid range of n is `[0, input.shape[:-1])`
+reverse: When set to True, find the nth-largest value in the vector and vice
+  versa.
+values: The `n`-th order statistic along each last dimensional slice.
 )doc");
 
 // --------------------------------------------------------------------------

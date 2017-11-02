@@ -65,28 +65,5 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     """
     return init_ops.truncated_normal_initializer(stddev=stddev)
 
-  def _AssertInputOpsAre(self, op, in_op_names):
-    """Asserts that all inputs to op come from in_op_names (disregarding order).
-
-    Args:
-      op: Operation to check inputs for.
-      in_op_names: List of strings, operations where all op's inputs should
-        come from.
-    """
-    expected_inputs = [in_op_name + ':0' for in_op_name in in_op_names]
-    self.assertItemsEqual([t.name for t in op.inputs], expected_inputs)
-
-  def _AssertOutputGoesToOps(self, op, graph, out_op_names):
-    """Asserts that outputs from op go to out_op_names (and perhaps others).
-
-    Args:
-      op: Operation to check outputs for.
-      graph: Graph where output operations are located.
-      out_op_names: List of strings, operations where op's outputs should go.
-    """
-    for out_op_name in out_op_names:
-      out_op = graph.get_operation_by_name(out_op_name)
-      self.assertIn(op.outputs[0].name, [str(t.name) for t in out_op.inputs])
-
 if __name__ == '__main__':
   googletest.main()

@@ -1,6 +1,6 @@
 FROM ubuntu:14.04
 
-MAINTAINER Jonathan Hseu <jhseu@google.com>
+LABEL maintainer="Jonathan Hseu <jhseu@google.com>"
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/

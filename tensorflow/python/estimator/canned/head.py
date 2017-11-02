@@ -40,7 +40,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import losses
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
 
@@ -188,9 +187,6 @@ class _Head(object):
 def _maybe_expand_dim(tensor):
   """Expand the dim of `tensor` with static rank 1."""
   with ops.name_scope(None, 'maybe_expand_dim', (tensor,)):
-    tensor = sparse_tensor.convert_to_tensor_or_sparse_tensor(tensor)
-    if isinstance(tensor, sparse_tensor.SparseTensor):
-      raise ValueError('SparseTensor labels are not supported.')
     static_shape = tensor.shape
     if static_shape is None:
       return tensor
@@ -199,12 +195,27 @@ def _maybe_expand_dim(tensor):
             else tensor)
 
 
-def _check_labels(labels, expected_labels_dimension):
-  """Check labels type and shape."""
+def _check_and_reshape_dense_labels(labels, expected_labels_dimension):
+  """Checks dense labels type and shape and reshapes to 2D Tensor."""
+  if labels is None:
+    raise ValueError(
+        'You must provide a labels Tensor. Given: None. '
+        'Suggested troubleshooting steps: Check that your data contain '
+        'your label feature. Check that your input_fn properly parses and '
+        'returns labels.')
   with ops.name_scope(None, 'labels', (labels,)) as scope:
     labels = sparse_tensor.convert_to_tensor_or_sparse_tensor(labels)
     if isinstance(labels, sparse_tensor.SparseTensor):
-      raise ValueError('SparseTensor labels are not supported.')
+      raise ValueError(
+          'SparseTensor labels are not supported. '
+          'labels must be a Tensor of shape [batch_size, %s]. '
+          'Suggested Fix (1): Check the label feature in your data. '
+          'Each example must contain %s value(s). If not, your choice of label '
+          'was probably incorrect. '
+          'Suggested Fix (2): In your input_fn, use '
+          'tf.sparse_tensor_to_dense() to turn labels into a Tensor.'
+          '' % (expected_labels_dimension, expected_labels_dimension))
+    labels = _maybe_expand_dim(labels)
     labels_shape = array_ops.shape(labels)
     err_msg = 'labels shape must be [batch_size, {}]'.format(
         expected_labels_dimension)
@@ -257,6 +268,21 @@ def _indicator_labels_mean(labels, weights=None, name=None):
     return metrics_lib.mean(labels, weights=weights, name=scope)
 
 
+def _classification_output(scores, n_classes, label_vocabulary=None):
+  batch_size = array_ops.shape(scores)[0]
+  if label_vocabulary:
+    export_class_list = label_vocabulary
+  else:
+    export_class_list = string_ops.as_string(math_ops.range(n_classes))
+  export_output_classes = array_ops.tile(
+      input=array_ops.expand_dims(input=export_class_list, axis=0),
+      multiples=[batch_size, 1])
+  return export_output.ClassificationOutput(
+      scores=scores,
+      # `ClassificationOutput` requires string classes.
+      classes=export_output_classes)
+
+
 def _accuracy_baseline(labels_mean):
   """Return accuracy baseline based on labels mean.
 
@@ -287,9 +313,6 @@ def _predictions_mean(predictions, weights=None, name=None):
 def _auc(labels, predictions, weights=None, curve='ROC', name=None):
   with ops.name_scope(name, 'auc', (predictions, labels, weights)) as scope:
     predictions = math_ops.to_float(predictions, name='predictions')
-    if labels.dtype.base_dtype != dtypes.bool:
-      logging.warning('Casting %s labels to bool.', labels.dtype)
-      labels = math_ops.cast(labels, dtypes.bool)
     if weights is not None:
       weights = weights_broadcast_ops.broadcast_weights(weights, predictions)
     return metrics_lib.auc(
@@ -343,13 +366,13 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
       `tf.feature_column.numeric_column` defining feature column representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
-    label_vocabulary: A list of strings represents possible label values. If it
-      is not given, that means labels are already encoded as integer within
-      [0, n_classes). If given, labels must be string type and have any value in
-      `label_vocabulary`. Also there will be errors if vocabulary is not
-      provided and labels are string.
+    label_vocabulary: A list or tuple of strings representing possible label
+      values. If it is not given, that means labels are already encoded as an
+      integer within [0, n_classes). If given, labels must be of string type and
+      have any value in `label_vocabulary`. Note that errors will be raised if
+      `label_vocabulary` is not provided but labels are strings.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for multi class classification.
@@ -359,8 +382,9 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
   """
   if label_vocabulary is not None and not isinstance(label_vocabulary,
                                                      (list, tuple)):
-    raise ValueError('label_vocabulary should be a list. Given type: {}'.format(
-        type(label_vocabulary)))
+    raise ValueError(
+        'label_vocabulary should be a list or a tuple. Given type: {}'.format(
+            type(label_vocabulary)))
 
   return _MultiClassHeadWithSoftmaxCrossEntropyLoss(n_classes, weight_column,
                                                     label_vocabulary, name)
@@ -389,12 +413,11 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def logits_dimension(self):
     return self._n_classes
 
-  def _eval_metric_ops(self, labels, probabilities, logits,
-                       class_ids, weights, unweighted_loss):
+  def _eval_metric_ops(self, labels, class_ids, weights, unweighted_loss):
     """Returns the Eval metric ops."""
     with ops.name_scope(
         None, 'metrics',
-        (labels, probabilities, logits, class_ids, weights, unweighted_loss)):
+        (labels, class_ids, weights, unweighted_loss)):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
@@ -415,8 +438,8 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
     """Converts labels to integer id space."""
     if self._label_vocabulary is None:
       if not labels.dtype.is_integer:
-        raise ValueError('Labels dtype should be integer '
-                         'Instead got %s.' % labels.dtype)
+        raise ValueError('Labels dtype should be integer. Instead got {}.'.
+                         format(labels.dtype))
       label_ids = labels
     else:
       if labels.dtype != dtypes.string:
@@ -430,7 +453,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode, features  # Unused for this head.
-    label_ids = self._label_ids(_check_labels(_maybe_expand_dim(labels), 1))
+    label_ids = self._label_ids(_check_and_reshape_dense_labels(labels, 1))
     unweighted_loss = losses.sparse_softmax_cross_entropy(
         labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
     # Restore the squeezed dim, so unweighted_loss matches the weights shape.
@@ -441,7 +464,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       logits = _check_logits(logits, self.logits_dimension)
 
       # Predict.
@@ -467,18 +490,9 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
             pred_keys.CLASSES: classes,
         }
       if mode == model_fn.ModeKeys.PREDICT:
-        batch_size = array_ops.shape(probabilities)[0]
-        export_class_list = self._label_vocabulary
-        if not export_class_list:
-          export_class_list = string_ops.as_string(
-              math_ops.range(self._n_classes))
-        export_output_classes = array_ops.tile(
-            input=array_ops.expand_dims(input=export_class_list, axis=0),
-            multiples=[batch_size, 1])
-        classifier_output = export_output.ClassificationOutput(
-            scores=probabilities,
-            # `ClassificationOutput` requires string classes.
-            classes=export_output_classes)
+        classifier_output = _classification_output(
+            scores=probabilities, n_classes=self._n_classes,
+            label_vocabulary=self._label_vocabulary)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
@@ -501,15 +515,13 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
             loss=training_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=label_ids,
-                probabilities=probabilities,
-                logits=logits,
                 class_ids=class_ids,
                 unweighted_loss=unweighted_loss,
                 weights=weights))
 
       # Train.
       if train_op_fn is None:
-        raise ValueError('train_op_fn can not be None.')
+        raise ValueError('train_op_fn cannot be None.')
     with ops.name_scope(''):
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS),
@@ -544,13 +556,13 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
       generated for each threshold value. This threshold is applied to the
       logistic values to determine the binary classification (i.e., above the
       threshold is `true`, below is `false`.
-    label_vocabulary: A list of strings represents possible label values. If it
-      is not given, that means labels are already encoded within [0, 1]. If
-      given, labels must be string type and have any value in
-      `label_vocabulary`. Also there will be errors if vocabulary is not
-      provided and labels are string.
+    label_vocabulary: A list or tuple of strings representing possible label
+      values. If it is not given, that means labels are already encoded within
+      [0, 1]. If given, labels must be string type and have any value in
+      `label_vocabulary`. Note that errors will be raised if `label_vocabulary`
+      is not provided but labels are strings.
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `Head` for binary classification.
@@ -561,12 +573,13 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
   thresholds = tuple(thresholds) if thresholds else tuple()
   if label_vocabulary is not None and not isinstance(label_vocabulary,
                                                      (list, tuple)):
-    raise ValueError('label_vocabulary should be a list. Given type: {}'.format(
-        type(label_vocabulary)))
+    raise ValueError(
+        'label_vocabulary should be a list or tuple. Given type: {}'.format(
+            type(label_vocabulary)))
 
   for threshold in thresholds:
     if (threshold <= 0.0) or (threshold >= 1.0):
-      raise ValueError('thresholds not in (0, 1): %s.' % (thresholds,))
+      raise ValueError('thresholds not in (0, 1): {}.'.format((thresholds,)))
   return _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(
       weight_column=weight_column,
       thresholds=thresholds,
@@ -599,12 +612,12 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                        labels,
                        logits,
                        logistic,
-                       scores,
                        class_ids,
                        unweighted_loss,
                        weights=None):
-    with ops.name_scope(None, 'metrics', (labels, logits, logistic, scores,
-                                          class_ids, unweighted_loss, weights)):
+    with ops.name_scope(
+        None, 'metrics',
+        (labels, logits, logistic, class_ids, unweighted_loss, weights)):
       keys = metric_keys.MetricKeys
       labels_mean = _indicator_labels_mean(
           labels=labels, weights=weights, name=keys.LABEL_MEAN)
@@ -674,7 +687,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode, features  # Unused for this head.
-    labels = _check_labels(_maybe_expand_dim(labels), self.logits_dimension)
+    labels = _check_and_reshape_dense_labels(labels, self.logits_dimension)
     if self._label_vocabulary is not None:
       labels = lookup_ops.index_table_from_tensor(
           vocabulary_list=tuple(self._label_vocabulary),
@@ -690,14 +703,15 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
     # Predict.
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       with ops.name_scope(None, 'predictions', (logits,)):
         pred_keys = prediction_keys.PredictionKeys
         logits = _check_logits(logits, self.logits_dimension)
         logistic = math_ops.sigmoid(logits, name=pred_keys.LOGISTIC)
         two_class_logits = array_ops.concat(
             (array_ops.zeros_like(logits), logits), 1, name='two_class_logits')
-        scores = nn.softmax(two_class_logits, name=pred_keys.PROBABILITIES)
+        probabilities = nn.softmax(
+            two_class_logits, name=pred_keys.PROBABILITIES)
         class_ids = array_ops.reshape(
             math_ops.argmax(two_class_logits, axis=1), (-1, 1), name='classes')
         if self._label_vocabulary:
@@ -710,22 +724,14 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         predictions = {
             pred_keys.LOGITS: logits,
             pred_keys.LOGISTIC: logistic,
-            pred_keys.PROBABILITIES: scores,
+            pred_keys.PROBABILITIES: probabilities,
             pred_keys.CLASS_IDS: class_ids,
             pred_keys.CLASSES: classes,
         }
       if mode == model_fn.ModeKeys.PREDICT:
-        batch_size = array_ops.shape(logistic)[0]
-        export_class_list = self._label_vocabulary
-        if not export_class_list:
-          export_class_list = string_ops.as_string([0, 1])
-        export_output_classes = array_ops.tile(
-            input=array_ops.expand_dims(input=export_class_list, axis=0),
-            multiples=[batch_size, 1])
-        classifier_output = export_output.ClassificationOutput(
-            scores=scores,
-            # `ClassificationOutput` requires string classes.
-            classes=export_output_classes)
+        classifier_output = _classification_output(
+            scores=probabilities, n_classes=2,
+            label_vocabulary=self._label_vocabulary)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
@@ -752,7 +758,6 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                 labels=processed_labels,
                 logits=logits,
                 logistic=logistic,
-                scores=scores,
                 class_ids=class_ids,
                 unweighted_loss=unweighted_loss,
                 weights=weights))
@@ -790,7 +795,7 @@ def _regression_head_with_mean_squared_error_loss(weight_column=None,
       of the last dimension of the labels `Tensor` (typically, this has shape
       `[batch_size, label_dimension]`).
     name: name of the head. If provided, summary and metrics keys will be
-      suffixed by `"/" + name`.
+      suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
   Returns:
     An instance of `_Head` for linear regression.
@@ -823,8 +828,8 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
     del mode, features  # Unused for this head.
-    labels = _check_labels(
-        _maybe_expand_dim(math_ops.to_float(labels)), self._logits_dimension)
+    labels = _check_and_reshape_dense_labels(labels, self._logits_dimension)
+    labels = math_ops.to_float(labels)
     return LossAndLabels(
         unweighted_loss=losses.mean_squared_error(
             labels=labels, predictions=logits, reduction=losses.Reduction.NONE),
@@ -834,7 +839,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
     # Predict.
-    with ops.name_scope('head'):
+    with ops.name_scope(self._name, 'head'):
       logits = _check_logits(logits, self._logits_dimension)
       predictions = {prediction_keys.PredictionKeys.PREDICTIONS: logits}
       if mode == model_fn.ModeKeys.PREDICT:

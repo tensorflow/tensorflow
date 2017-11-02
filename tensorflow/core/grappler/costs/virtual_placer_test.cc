@@ -53,6 +53,61 @@ TEST(VirtualPlacerTest, LocalDevices) {
             placer.get_canonical_device_name(node));
 }
 
+TEST(VirtualPlacerTest, ShortNames) {
+  // Create a virtual cluster with a local CPU and a local GPU
+  std::unordered_map<string, DeviceProperties> devices;
+  DeviceProperties cpu_device;
+  cpu_device.set_type("CPU");
+  devices["/CPU:0"] = cpu_device;
+  DeviceProperties gpu_device;
+  gpu_device.set_type("GPU");
+  devices["/GPU:0"] = gpu_device;
+  VirtualCluster cluster(devices);
+  VirtualPlacer placer(&cluster);
+
+  NodeDef node;
+  node.set_op("Conv2D");
+  // node.device() is empty, but GPU is default device if there is.
+  EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/GPU:0", placer.get_canonical_device_name(node));
+
+  node.set_device("CPU");
+  EXPECT_EQ("CPU", placer.get_device(node).type());
+  EXPECT_EQ("/CPU:0", placer.get_canonical_device_name(node));
+
+  node.set_device("GPU:0");
+  EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/GPU:0", placer.get_canonical_device_name(node));
+}
+
+TEST(VirtualPlacerTest, PlacementOnNonDefaultDevice) {
+  // Create a virtual cluster with a CPU and a device:TPU
+  // Test that placement on TPU works
+  // In contrast with GPU, TPU is not selected as default device at the moment.
+
+  std::unordered_map<string, DeviceProperties> devices;
+  DeviceProperties cpu_device;
+  cpu_device.set_type("CPU");
+  devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
+  DeviceProperties tpu_device;
+  tpu_device.set_type("TPU");
+  devices["/job:localhost/replica:0/task:0/device:TPU:0"] = tpu_device;
+  VirtualCluster cluster(devices);
+  VirtualPlacer placer(&cluster);
+
+  NodeDef node;
+  node.set_op("Conv2D");
+  // node.device() is empty, and CPU is default device.
+  EXPECT_EQ("CPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:localhost/replica:0/task:0/cpu:0",
+            placer.get_canonical_device_name(node));
+
+  node.set_device("/device:TPU:0");
+  EXPECT_EQ("TPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:localhost/replica:0/task:0/device:TPU:0",
+            placer.get_canonical_device_name(node));
+}
+
 TEST(VirtualPlacerTest, EmptyJobName) {
   // Virtual placer choose job name from the devices in cluster if a device name
   // of an op is empty. In case there are more than one kind of job name

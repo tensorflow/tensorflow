@@ -89,6 +89,7 @@ tf_py_test(
         "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
     ],
     data = [
@@ -105,6 +106,7 @@ tf_py_test(
         "@six_archive//:six",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
     ],
     data = [

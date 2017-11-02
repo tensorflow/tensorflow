@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -103,7 +104,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
-    xx = math_ops.matmul(math_ops.conj(x), x, transpose_a=True)
+    xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
     if is_single:
       tol = 1e-5
@@ -140,15 +141,55 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       x_reshape = np.reshape(x_np, (-1, x_np.shape[-2], x_np.shape[-1]))
       for i in range(new_first_dim):
         if full_matrices_:
-          np_q_reshape[i,:,:], _ = \
-                np.linalg.qr(x_reshape[i,:,:], mode="complete")
+          np_q_reshape[i, :, :], _ = np.linalg.qr(
+              x_reshape[i, :, :], mode="complete")
         else:
-          np_q_reshape[i,:,:], _ = \
-                np.linalg.qr(x_reshape[i,:,:], mode="reduced")
+          np_q_reshape[i, :, :], _ = np.linalg.qr(
+              x_reshape[i, :, :], mode="reduced")
       np_q = np.reshape(np_q_reshape, q_dims)
       CompareOrthogonal(self, np_q, q_tf_val, min(shape_[-2:]))
       CheckApproximation(self, x_np, q_tf_val, r_tf_val)
       CheckUnitary(self, q_tf_val)
+
+  return Test
+
+
+class QrGradOpTest(test.TestCase):
+  pass
+
+
+def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
+
+  def Test(self):
+    np.random.seed(42)
+    a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    if dtype_ in [np.complex64, np.complex128]:
+      a += 1j * np.random.uniform(
+          low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    # Optimal stepsize for central difference is O(epsilon^{1/3}).
+    epsilon = np.finfo(dtype_).eps
+    delta = 0.1 * epsilon**(1.0 / 3.0)
+    if dtype_ in [np.float32, np.complex64]:
+      tol = 3e-2
+    else:
+      tol = 1e-6
+    with self.test_session(use_gpu=True):
+      tf_a = constant_op.constant(a)
+      tf_b = linalg_ops.qr(tf_a, full_matrices=full_matrices_)
+      for b in tf_b:
+        x_init = np.random.uniform(
+            low=-1.0, high=1.0, size=shape_).astype(dtype_)
+        if dtype_ in [np.complex64, np.complex128]:
+          x_init += 1j * np.random.uniform(
+              low=-1.0, high=1.0, size=shape_).astype(dtype_)
+        theoretical, numerical = gradient_checker.compute_gradient(
+            tf_a,
+            tf_a.get_shape().as_list(),
+            b,
+            b.get_shape().as_list(),
+            x_init_value=x_init,
+            delta=delta)
+        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
 
@@ -168,4 +209,21 @@ if __name__ == "__main__":
               _AddTest(QrOpTest, "Qr", name,
                        _GetQrOpTest(dtype, shape, full_matrices,
                                     use_static_shape))
+
+  # TODO(pfau): Get working with complex types.
+  # TODO(pfau): Get working with full_matrices when rows != cols
+  # TODO(pfau): Get working when rows < cols
+  # TODO(pfau): Get working with shapeholders (dynamic shapes)
+  for full_matrices in False, True:
+    for dtype in np.float32, np.float64:
+      for rows in 1, 2, 5, 10:
+        for cols in 1, 2, 5, 10:
+          if rows == cols or (not full_matrices and rows > cols):
+            for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
+              shape = batch_dims + (rows, cols)
+              name = "%s_%s_full_%s" % (dtype.__name__,
+                                        "_".join(map(str, shape)),
+                                        full_matrices)
+              _AddTest(QrGradOpTest, "QrGrad", name,
+                       _GetQrGradOpTest(dtype, shape, full_matrices))
   test.main()

@@ -1183,7 +1183,7 @@ def decode_csv(records, record_defaults, field_delim=",",
       Each string is a record/row in the csv and all records should have
       the same format.
     record_defaults: A list of `Tensor` objects with specific types.
-      Acceptable types are `float32`, `int32`, `int64`, `string`.
+      Acceptable types are `float32`, `float64`, `int32`, `int64`, `string`.
       One tensor per column of the input record, with either a
       scalar default value for that column or empty if the column is required.
     field_delim: An optional `string`. Defaults to `","`.
