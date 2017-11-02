@@ -92,6 +92,8 @@ class MaskedBasicLSTMCell(tf_rnn.BasicLSTMCell):
     # Call the build method of the parent class.
     super(MaskedBasicLSTMCell, self).build(inputs_shape)
 
+    self.built = False
+
     input_depth = inputs_shape[1].value
     h_depth = self._num_units
     self._mask = self.add_variable(
@@ -116,6 +118,8 @@ class MaskedBasicLSTMCell(tf_rnn.BasicLSTMCell):
                             self._masked_kernel)
       ops.add_to_collection(core_layers.THRESHOLD_COLLECTION, self._threshold)
       ops.add_to_collection(core_layers.WEIGHT_COLLECTION, self._kernel)
+
+    self.built = True
 
   def call(self, inputs, state):
     """Long short-term memory cell (LSTM) with masks for pruning.
@@ -237,6 +241,8 @@ class MaskedLSTMCell(tf_rnn.LSTMCell):
     # Call the build method of the parent class.
     super(MaskedLSTMCell, self).build(inputs_shape)
 
+    self.built = False
+
     input_depth = inputs_shape[1].value
     h_depth = self._num_units
     self._mask = self.add_variable(
@@ -261,6 +267,8 @@ class MaskedLSTMCell(tf_rnn.LSTMCell):
                             self._masked_kernel)
       ops.add_to_collection(core_layers.THRESHOLD_COLLECTION, self._threshold)
       ops.add_to_collection(core_layers.WEIGHT_COLLECTION, self._kernel)
+
+    self.built = True
 
   def call(self, inputs, state):
     """Run one step of LSTM.
