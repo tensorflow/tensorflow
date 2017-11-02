@@ -1495,7 +1495,8 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   Args:
     tensor: A `Tensor`.
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
-    `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
+      `int8`, `uint8`, `int16`, `uint16`, int32`, `int64`,
+      `complex64`, `complex128` or `bool`.
     name: A name for the operation (optional).
     optimize: if true, attempt to statically determine the shape of 'tensor'
     and encode it as a constant.
@@ -1546,8 +1547,8 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
   Args:
     tensor: A `Tensor`.
     dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
-      `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, `complex128` or
-      `bool`.
+      `int8`, `uint8`, `int16`, `uint16`, int32`, `int64`,
+      `complex64`, `complex128` or `bool`.
     name: A name for the operation (optional).
     optimize: if true, attempt to statically determine the shape of 'tensor'
     and encode it as a constant.
