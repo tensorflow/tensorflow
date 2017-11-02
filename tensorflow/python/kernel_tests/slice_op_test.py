@@ -251,8 +251,6 @@ class SliceTest(test.TestCase):
     m2 = array_ops.slice(z, [0, 0, 0], [constant_op.constant(1) + 0, 2, -1])
     self.assertAllEqual(m2.get_shape().as_list(), [None, 2, None])
 
->>>>>>> upstream/master
-
   def _testGradientSlice(self, input_shape, slice_begin, slice_size):
     with self.test_session(use_gpu=True):
       num_inputs = np.prod(input_shape)
