@@ -121,6 +121,7 @@ cc_library(
     deps = [
         ":driver",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework_headers_lib",
     ],
     linkopts = [
