@@ -336,8 +336,8 @@ def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
-  This operation returns an integer representing the number of elements in
-  `input`.
+  Returns a 0-D `Tensor` representing the number of elements in `input`
+  of type `out_type`. Defaults to tf.int32.
 
   For example:
 
@@ -349,11 +349,15 @@ def size(input, name=None, out_type=dtypes.int32):
   Args:
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
-    out_type: (Optional) The specified output type of the operation
-      (`int32` or `int64`). Defaults to tf.int32.
+    out_type: (Optional) The specified non-quantized numeric output type
+      of the operation. Defaults to `tf.int32`.
 
   Returns:
-    A `Tensor` of type `out_type`. Defaults to tf.int32.
+    A `Tensor` of type `out_type`. Defaults to `tf.int32`.
+    
+  @compatibility(numpy)
+  Equivalent to np.size()
+  @end_compatibility
   """
   return size_internal(input, name, optimize=True, out_type=out_type)
 
@@ -366,11 +370,11 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
     optimize: if true, encode the size as a constant when possible.
-    out_type: (Optional) The specified output type of the operation
-      (`int32` or `int64`). Defaults to tf.int32.
+    out_type: (Optional) The specified non-quantized numeric output type
+      of the operation. Defaults to `tf.int32`.
 
   Returns:
-    A `Tensor` of type `out_type`.
+    A `Tensor` of type `out_type`. Defaults to `tf.int32`.
   """
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,

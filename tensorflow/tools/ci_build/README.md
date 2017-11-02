@@ -50,7 +50,7 @@ and tests. Click on **Details** to see the results from Jenkins or the internal
 CI system.
 
 Results from Jenkins are displayed in the Jenkins UI. For more information,
-see the [Jenkns documentation](https://jenkins.io/doc/).
+see the [Jenkins documentation](https://jenkins.io/doc/).
 
 Results from the internal CI system are displayed in the Build Status UI. In
 this UI, to see the logs for a failed build:

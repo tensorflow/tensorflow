@@ -20,7 +20,6 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Machine Learning with TensorFlow (Book & Code)](http://tensorflowbook.com)
 * [@jtoy's awesome "Awesome TensorFlow" list of awesome things](https://github.com/jtoy/awesome-tensorflow)
 * [TensorFlow tutorials](https://github.com/pkmital/tensorflow_tutorials)
-* [Scikit Flow - Simplified Interface for TensorFlow](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/learn/python/learn)
 * [Caffe to TensorFlow model converter](https://github.com/ethereon/caffe-tensorflow)
 * [Bitfusion's` GPU-enabled AWS EC2 TensorFlow AMI](https://github.com/bitfusionio/amis/tree/master/awsmrkt-bfboost-ubuntu14-cuda75-tensorflow) ([Launch AMI](https://aws.amazon.com/marketplace/pp/B01EYKBEQ0))
 * [Rust language bindings](https://github.com/google/tensorflow-rust)

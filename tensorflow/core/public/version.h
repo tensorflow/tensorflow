@@ -24,7 +24,7 @@ limitations under the License.
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
-#define TF_VERSION_SUFFIX "-rc0"
+#define TF_VERSION_SUFFIX "-rc1"
 
 #define TF_STR_HELPER(x) #x
 #define TF_STR(x) TF_STR_HELPER(x)
@@ -117,5 +117,7 @@ extern const char* tf_compiler_version();
 // The git commit designator when tensorflow was built
 // If no git repository, this will be "internal".
 extern const char* tf_git_version();
+// Value of the _GLIBCXX_USE_CXX11_ABI flag, or 0 if it's not set.
+extern const int tf_cxx11_abi_flag();
 
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

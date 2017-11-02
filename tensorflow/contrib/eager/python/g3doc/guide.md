@@ -68,9 +68,9 @@ enabled.
 A significant fraction of the [TensorFlow
 API](https://www.tensorflow.org/api_docs/python/) consists of numerical
 operations:
-[arithmetic operations](https://www.tensorflow.org/api_docs/python/tf/matmul),
-[matrix operations](https://www.tensorflow.org/api_docs/python/tf/matmul),
-[linear algebra operations](https://www.tensorflow.org/api_docs/python/tf/linalg),
+[arithmetic operations](https://www.tensorflow.org/api_guides/python/math_ops#Arithmetic_Operators),
+[matrix operations](https://www.tensorflow.org/api_guides/python/math_ops#Matrix_Math_Functions),
+[linear algebra operations](https://www.tensorflow.org/versions/master/api_docs/python/tf/linalg),
 etc.
 
 With eager execution enabled, these operations consume and return
@@ -746,7 +746,7 @@ during graph construction.
 
 `tf.summary` operations are *not* compatible with eager execution, but an
 equivalent alternative exists in
-[`tf.contrib.summary`](https://www.tensorflow.org/versions/master/api_guides/python/tf/contrib/summary/)
+[`tf.contrib.summary`](https://www.tensorflow.org/versions/master/api_docs/python/tf/contrib/summary)
 that is compatible with both eager execution and graph construction.
 
 During model construction simply insert summary operations like
@@ -887,7 +887,7 @@ Some differences worth noting:
 
 Please give eager execution a spin. This feature is in early stages and is
 evolving, so we welcome your feedback via issues on GitHub (see [known
-issues](https://github.com/tensorflow/tensorflow/labels/eager)).
+issues](https://github.com/tensorflow/tensorflow/labels/comp:eager)).
 
 You may want to browse through some sample code, including benchmarks for some:
 

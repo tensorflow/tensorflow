@@ -590,7 +590,7 @@ class _VariableStore(object):
     if reuse is True:
       raise ValueError("PartitionedVariable %s does not exist, or was not "
                        "created with tf.get_variable(). Did you mean to set "
-                       "reuse=None in VarScope?" % name)
+                       "reuse=False or reuse=tf.AUTO_REUSE in VarScope?" % name)
 
     slice_dim, slice_shape = _compute_slice_dim_and_shape(
         shape.as_list(), partitions)
