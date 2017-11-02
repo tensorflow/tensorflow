@@ -184,7 +184,7 @@ $$\text{softmax}(evidence) = \text{normalize}(\exp(evidence))$$
 
 If you expand that equation out, you get:
 
-$$\text{softmax}(evidence)_i = \frac{\exp(evidence_i)}{\sum_j \exp(evidence_j)}$$
+$$\text{softmax}(evidence)_i = \frac{\exp(evidence_i)}{\sum_{j=1}^{10} \exp(evidence_j)}$$
 
 But it's often more helpful to think of softmax the first way: exponentiating
 its inputs and then normalizing them.  The exponentiation means that one more
