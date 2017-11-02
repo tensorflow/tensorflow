@@ -306,6 +306,32 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_array_ops.shape(input, name=name, out_type=out_type)
 
 
+def shape_n(input, out_type=dtypes.int32, name=None):
+  # pylint: disable=redefined-builtin
+  """Returns shape of tensors.
+
+  Args:
+    input: A list of at least 1 `Tensor` object with the same type.
+    out_type: The specified output type of the operation
+      (`int32` or `int64`). Defaults to `tf.int32`(optional).
+    name: A name for the operation (optional).
+
+  Returns:
+    A list with the same length as `input` of `Tensor` objects with
+      type `out_type`.
+  """
+
+  output = gen_array_ops.shape_n(input, out_type=out_type, name=name)
+  if context.in_graph_mode():
+    for i, input_tensor in enumerate(input):
+      input_tensor = ops.convert_to_tensor(input_tensor)
+      input_shape = input_tensor.get_shape()
+      if input_shape.is_fully_defined():
+        output[i] = constant(
+            input_shape.as_list(), dtype=out_type, name=name)
+  return output
+
+
 def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
