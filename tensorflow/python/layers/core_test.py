@@ -23,6 +23,7 @@ import collections
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -203,21 +204,15 @@ class DenseTest(test.TestCase):
     self.assertEqual(len(loss_keys), 1)
     self.assertListEqual(dense.losses, loss_keys)
 
-  @test_util.run_in_graph_and_eager_modes()
   def testFunctionalDense(self):
-    inputs = random_ops.random_uniform((5, 3), seed=1)
-    outputs = core_layers.dense(
-        inputs, 2, activation=nn_ops.relu, name='my_dense')
-    if context.in_graph_mode():
+    with self.test_session():
+      inputs = random_ops.random_uniform((5, 3), seed=1)
+      outputs = core_layers.dense(
+          inputs, 2, activation=nn_ops.relu, name='my_dense')
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
       self.assertEqual(outputs.op.name, 'my_dense/Relu')
-    else:
-      self.assertEqual(
-          len(_get_variable_dict_from_varstore().values()), 2)
-    self.assertEqual(outputs.get_shape().as_list(), [5, 2])
 
-  @test_util.run_in_graph_and_eager_modes()
   def testFunctionalDenseTwice(self):
     inputs = random_ops.random_uniform((5, 3), seed=1)
     core_layers.dense(inputs, 2)
@@ -249,25 +244,38 @@ class DenseTest(test.TestCase):
         vars2 = variables.trainable_variables()
       self.assertEqual(vars1, vars2)
 
-  @test_util.run_in_graph_and_eager_modes()
   def testFunctionalDenseInitializerFromScope(self):
     with variable_scope.variable_scope(
-        'scope', initializer=init_ops.ones_initializer()):
+        'scope', initializer=init_ops.ones_initializer()), self.test_session():
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2)
-      self.evaluate(variables.global_variables_initializer())
+      variables.global_variables_initializer().run()
       weights = _get_variable_dict_from_varstore()
       self.assertEqual(len(weights), 2)
       # Check that the matrix weights got initialized to ones (from scope).
-      self.assertAllClose(
-          self.evaluate(weights['scope/dense/kernel'].read_value()),
-          np.ones((3, 2)))
+      self.assertAllClose(weights['scope/dense/kernel'].read_value().eval(),
+                          np.ones((3, 2)))
       # Check that the bias still got initialized to zeros.
-      self.assertAllClose(
-          self.evaluate(weights['scope/dense/bias'].read_value()),
-          np.zeros((2)))
+      self.assertAllClose(weights['scope/dense/bias'].read_value().eval(),
+                          np.zeros((2)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  def testEagerExecution(self):
+    with context.eager_mode():
+      container = variable_scope.EagerVariableStore()
+      x = constant_op.constant([[2.0]])
+      with container.as_default():
+        y = core_layers.dense(
+            x, 1, name='my_dense',
+            kernel_initializer=init_ops.ones_initializer())
+      self.assertAllEqual(y, [[2.0]])
+      self.assertEqual(len(container.variables()), 2)
+      # Recreate the layer to test reuse.
+      with container.as_default():
+        core_layers.dense(
+            x, 1, name='my_dense',
+            kernel_initializer=init_ops.ones_initializer())
+      self.assertEqual(len(container.variables()), 2)
+
   def testFunctionalDenseWithCustomGetter(self):
     called = [0]
 
@@ -280,26 +288,26 @@ class DenseTest(test.TestCase):
       core_layers.dense(inputs, 2)
     self.assertEqual(called[0], 2)
 
-  @test_util.run_in_graph_and_eager_modes()
   def testFunctionalDenseInScope(self):
-    with variable_scope.variable_scope('test'):
-      inputs = random_ops.random_uniform((5, 3), seed=1)
-      core_layers.dense(inputs, 2, name='my_dense')
-      var_dict = _get_variable_dict_from_varstore()
-      var_key = 'test/my_dense/kernel'
-      self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
-    with variable_scope.variable_scope('test1') as scope:
-      inputs = random_ops.random_uniform((5, 3), seed=1)
-      core_layers.dense(inputs, 2, name=scope)
-      var_dict = _get_variable_dict_from_varstore()
-      var_key = 'test1/kernel'
-      self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
-    with variable_scope.variable_scope('test2'):
-      inputs = random_ops.random_uniform((5, 3), seed=1)
-      core_layers.dense(inputs, 2)
-      var_dict = _get_variable_dict_from_varstore()
-      var_key = 'test2/dense/kernel'
-      self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
+    with self.test_session():
+      with variable_scope.variable_scope('test'):
+        inputs = random_ops.random_uniform((5, 3), seed=1)
+        core_layers.dense(inputs, 2, name='my_dense')
+        var_dict = _get_variable_dict_from_varstore()
+        var_key = 'test/my_dense/kernel'
+        self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
+      with variable_scope.variable_scope('test1') as scope:
+        inputs = random_ops.random_uniform((5, 3), seed=1)
+        core_layers.dense(inputs, 2, name=scope)
+        var_dict = _get_variable_dict_from_varstore()
+        var_key = 'test1/kernel'
+        self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
+      with variable_scope.variable_scope('test2'):
+        inputs = random_ops.random_uniform((5, 3), seed=1)
+        core_layers.dense(inputs, 2)
+        var_dict = _get_variable_dict_from_varstore()
+        var_key = 'test2/dense/kernel'
+        self.assertEqual(var_dict[var_key].name, '%s:0' % var_key)
 
   @test_util.run_in_graph_and_eager_modes()
   def testComputeOutputShape(self):
@@ -389,17 +397,16 @@ class DropoutTest(test.TestCase):
     self.assertAlmostEqual(0., np_output.min())
     self.assertAllClose(np_output[:, 0, :], np_output[:, 1, :])
 
-  @test_util.run_in_graph_and_eager_modes()
   def testFunctionalDropout(self):
-    inputs = array_ops.ones((5, 5))
-    dropped = core_layers.dropout(inputs, 0.5, training=True, seed=1)
-    if context.in_graph_mode():
-      self.evaluate(variables.global_variables_initializer())
-    np_output = self.evaluate(dropped)
-    self.assertAlmostEqual(0., np_output.min())
-    dropped = core_layers.dropout(inputs, 0.5, training=False, seed=1)
-    np_output = self.evaluate(dropped)
-    self.assertAllClose(np.ones((5, 5)), np_output)
+    with self.test_session():
+      inputs = array_ops.ones((5, 5))
+      dropped = core_layers.dropout(inputs, 0.5, training=True, seed=1)
+      variables.global_variables_initializer().run()
+      np_output = self.evaluate(dropped)
+      self.assertAlmostEqual(0., np_output.min())
+      dropped = core_layers.dropout(inputs, 0.5, training=False, seed=1)
+      np_output = self.evaluate(dropped)
+      self.assertAllClose(np.ones((5, 5)), np_output)
 
   def testDynamicRate(self):
     with self.test_session() as sess:

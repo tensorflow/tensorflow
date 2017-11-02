@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -713,6 +714,26 @@ class HloInstruction {
     fusion_kind_ = kind;
   }
 
+  // Returns the sharding applied to this operator.
+  // REQUIRES: has_sharding() is true.
+  const HloSharding& sharding() const {
+    CHECK(has_sharding());
+    return *sharding_;
+  }
+  // Returns the sharding applied to this operator, or default_ if none exists.
+  const HloSharding& sharding_or_default(const HloSharding& default_) const {
+    return sharding_ ? *sharding_ : default_;
+  }
+  // Sets the sharding of this operator. Should only be called by HloModule or
+  // HloComputation methods.
+  void set_sharding(const HloSharding& sharding) {
+    sharding_ = MakeUnique<HloSharding>(sharding);
+  }
+  // Remove any sharding from this operator.
+  void clear_sharding() { sharding_ = nullptr; }
+  // Return true if this operator has a sharding assigned.
+  bool has_sharding() const { return sharding_ != nullptr; }
+
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
   //
@@ -984,14 +1005,6 @@ class HloInstruction {
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
 
-  // Gets/sets the device assignment.
-  const OpDeviceAssignment& device_assignment() const {
-    return device_assignment_;
-  }
-  void set_device_assignment(const OpDeviceAssignment& device_assignment) {
-    device_assignment_ = device_assignment;
-  }
-
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
 
@@ -1124,6 +1137,9 @@ class HloInstruction {
   // The type of the fusion. Used by kFusion only.
   FusionKind fusion_kind_;
 
+  // The sharding, if one exists.
+  std::unique_ptr<HloSharding> sharding_;
+
   // For parameter instructions this field holds the parameter number.
   int64 parameter_number_ = 0;
   string parameter_name_;
@@ -1183,9 +1199,6 @@ class HloInstruction {
   // The number of partitions per outer dimension (listed in order from
   // outer-most dimension first).
   std::vector<int64> outer_dimension_partitions_;
-
-  // Device assignment for the instruction.
-  OpDeviceAssignment device_assignment_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };

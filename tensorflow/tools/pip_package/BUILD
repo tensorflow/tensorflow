@@ -85,6 +85,7 @@ py_binary(
         "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/tools:tools_pip",
         "//tensorflow/python/eager:eager_pip",
+        "//tensorflow/contrib/summary:summary_test_util",
         # These targets don't build on Windows yet. Exclude them for now.
         # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
@@ -152,6 +153,7 @@ sh_binary(
             "//tensorflow:tensorflow_py",
             "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
             "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
+            "//tensorflow/contrib/eager/python/examples:examples_pip",
             "//tensorflow/contrib/gan:gan",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
             "//tensorflow/contrib/keras:keras",
@@ -166,6 +168,7 @@ sh_binary(
             "//tensorflow/contrib/slim/python/slim/data:data_pip",
             "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
             "//tensorflow/contrib/specs:specs",
+            "//tensorflow/contrib/summary:summary_test_util",
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
             "//tensorflow/contrib/timeseries:timeseries_pip",

@@ -195,9 +195,12 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
 
 Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
+  FunctionLibraryDefinition function_library(graph.op_registry(),
+                                             item_.graph.library());
   ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   shape_refiner.set_disable_constant_propagation(true);
+  shape_refiner.set_function_library_for_shape_inference(&function_library);
   ImportGraphDefOptions options;
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);

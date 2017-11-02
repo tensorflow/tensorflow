@@ -18,6 +18,8 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 To use, at program startup, call `tfe.enable_eager_execution()`.
 
+@@metrics
+
 @@list_devices
 @@num_gpus
 
@@ -46,9 +48,10 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@Iterator
 @@Network
 @@Saver
-@@SummaryWriter
 @@restore_variables_on_create
 @@Variable
+@@get_optimizer_variables
+@@EagerVariableStore
 
 @@in_eager_mode
 @@in_graph_mode
@@ -68,11 +71,12 @@ from __future__ import print_function
 
 # pylint:disable=g-bad-import-order,g-import-not-at-top,unused-import
 #
+from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
+from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
-from tensorflow.contrib.eager.python.summary_writer import SummaryWriter
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import function
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_EXPLICIT
@@ -95,6 +99,7 @@ from tensorflow.python.framework.ops import eager_run as run
 from tensorflow.python.framework.test_util import IsolateTest
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
+from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.util.all_util import remove_undocumented
 
 defun = function.defun

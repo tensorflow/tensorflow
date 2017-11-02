@@ -74,7 +74,6 @@ HLO_MATCHER(Fusion);
 HLO_MATCHER(Ge);
 HLO_MATCHER(GetTupleElement);
 HLO_MATCHER(Gt);
-HLO_MATCHER(Index);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
 HLO_MATCHER(Le);
@@ -115,7 +114,6 @@ HLO_MATCHER(Tanh);
 HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
-HLO_MATCHER(Update);
 HLO_MATCHER(While);
 #undef HLO_MATCHER
 }  // namespace opcode_matchers

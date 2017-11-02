@@ -72,6 +72,7 @@ _ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 _CONVERT_FROM_MULTILINE_SCRIPT = 'tensorflow/tools/api/tests/convert_from_multiline'
 _BASE_API_DIR = 'tensorflow/core/api_def/base_api'
 _PYTHON_API_DIR = 'tensorflow/core/api_def/python_api'
+_HIDDEN_OPS_FILE = 'tensorflow/python/ops/hidden_ops.txt'
 
 
 def _KeyToFilePath(key):
@@ -119,6 +120,21 @@ def _IsGenModule(module_name):
     return False
   module_name_split = module_name.split('.')
   return module_name_split[-1].startswith('gen_')
+
+
+def _GetHiddenOps():
+  hidden_ops_file = file_io.FileIO(_HIDDEN_OPS_FILE, 'r')
+  hidden_ops = set()
+  for line in hidden_ops_file:
+    line = line.strip()
+    if not line:
+      continue
+    if line[0] == '#':  # comment line
+      continue
+    # If line is of the form "op_name # comment", only keep the op_name.
+    line_split = line.split('#')
+    hidden_ops.add(line_split[0].strip())
+  return hidden_ops
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -325,9 +341,29 @@ class ApiDefTest(test.TestCase):
         text_format.Merge(
             file_io.read_file_to_string(base_api_file), api_defs)
         for api_def in api_defs.op:
-          lower_case_name = self._GenerateLowerCaseOpName(api_def.graph_op_name)
-          name_to_base_api_def[lower_case_name] = api_def
+          name_to_base_api_def[api_def.graph_op_name] = api_def
     return name_to_base_api_def
+
+  def _AddHiddenOpOverrides(self, name_to_base_api_def, api_def_map):
+    """Adds ApiDef overrides to api_def_map for hidden Python ops.
+
+    Args:
+      name_to_base_api_def: Map from op name to base api_def_pb2.ApiDef.
+      api_def_map: Map from first op name character (in caps) to
+        api_def_pb2.ApiDefs for Python API overrides.
+    """
+    hidden_ops = _GetHiddenOps()
+    for hidden_op in hidden_ops:
+      if hidden_op not in name_to_base_api_def:
+        logging.warning('Unexpected hidden op name: %s' % hidden_op)
+        continue
+
+      base_api_def = name_to_base_api_def[hidden_op]
+      if base_api_def.visibility != api_def_pb2.ApiDef.HIDDEN:
+        api_def = api_def_pb2.ApiDef()
+        api_def.graph_op_name = base_api_def.graph_op_name
+        api_def.visibility = api_def_pb2.ApiDef.HIDDEN
+        api_def_map[api_def.graph_op_name[0].upper()].op.extend([api_def])
 
   @unittest.skipUnless(
       sys.version_info.major == 2 and os.uname()[0] == 'Linux',
@@ -335,6 +371,9 @@ class ApiDefTest(test.TestCase):
   def testAPIDefCompatibility(self):
     # Get base ApiDef
     name_to_base_api_def = self._GetBaseApiMap()
+    snake_to_camel_graph_op_names = {
+        self._GenerateLowerCaseOpName(name): name
+        for name in name_to_base_api_def.keys()}
     # Extract Python API
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
@@ -357,7 +396,7 @@ class ApiDefTest(test.TestCase):
         # Check if object is defined in gen_* module. That is,
         # the object has been generated from OpDef.
         if hasattr(obj, '__module__') and _IsGenModule(obj.__module__):
-          if obj.__name__ not in name_to_base_api_def:
+          if obj.__name__ not in snake_to_camel_graph_op_names:
             # Symbol might be defined only in Python and not generated from
             # C++ api.
             continue
@@ -368,11 +407,14 @@ class ApiDefTest(test.TestCase):
 
     # Generate Python ApiDef overrides.
     for op, endpoint_names in op_to_endpoint_name.items():
+      graph_op_name = snake_to_camel_graph_op_names[op.__name__]
       api_def = self._CreatePythonApiDef(
-          name_to_base_api_def[op.__name__], endpoint_names)
+          name_to_base_api_def[graph_op_name], endpoint_names)
       if api_def:
-        api_defs = api_def_map[op.__name__[0].upper()]
+        api_defs = api_def_map[graph_op_name[0].upper()]
         api_defs.op.extend([api_def])
+
+    self._AddHiddenOpOverrides(name_to_base_api_def, api_def_map)
 
     for key in _ALPHABET:
       # Get new ApiDef for the given key.

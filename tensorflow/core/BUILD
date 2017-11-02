@@ -163,6 +163,7 @@ CORE_PROTO_SRCS = [
     "framework/function.proto",
     "framework/graph.proto",
     "framework/graph_transfer_info.proto",
+    "framework/iterator.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
     "framework/node_def.proto",
@@ -2697,6 +2698,7 @@ tf_cc_test_mkl(
     srcs = [
         "graph/mkl_layout_pass_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
+        "util/mkl_util_test.cc",
     ],
     linkstatic = 1,
     deps = [

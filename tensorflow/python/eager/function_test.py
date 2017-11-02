@@ -86,6 +86,27 @@ class FunctionTest(test.TestCase):
       op = call()
       self.assertAllEqual(sess.run(op), 2.0)
 
+  def testGraphModeManyFunctions(self):
+    with context.graph_mode(), self.test_session():
+
+      @function.defun
+      def f(x):
+        return x * x
+
+      @function.defun
+      def g(x):
+        return f(x) + 1
+
+      self.assertAllEqual(g(constant_op.constant(2.0)).eval(), 5.0)
+
+  def testDict(self):
+
+    @function.defun
+    def f(x):
+      return {'name': x + 1}
+
+    self.assertAllEqual(f(constant_op.constant(1.0))['name'], 2.0)
+
   def testTensorConversionWithDefun(self):
 
     @function.defun
@@ -125,7 +146,7 @@ class FunctionTest(test.TestCase):
             'v', initializer=constant_op.constant(1.0))
         return x * constant_op.constant(2.0)
       with self.assertRaisesRegexp(ValueError,
-                                   'no trainable variables were accessed'):
+                                   'No trainable variables were accessed'):
         backprop.implicit_val_and_grad(f)()
 
   def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):

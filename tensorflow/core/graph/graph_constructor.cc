@@ -90,7 +90,7 @@ class GraphConstructor {
     bool skip_mapped_nodes;
     std::vector<string> control_dependencies;
     std::vector<TensorId> return_tensors;
-    std::vector<StringPiece> return_nodes;
+    std::vector<string> return_nodes;
 
     // TODO(ashankar): This bool exists to separate out functionality required
     // to make ImportGraphDef a close equivalent of Python's import_graph_def
@@ -846,9 +846,10 @@ Status GraphConstructor::Convert() {
       }
     }
 
-    // TODO(skyewm): remove conditional when b/35715995 ("Functions lack shape
-    // inference") is resolved.
-    if (g_->flib_def().Find(node_def->name()) == nullptr) {
+    // Function shape inference is supported on an opt-in basis per
+    // ShapeRefiner.
+    if (refiner_->function_shape_inference_supported() ||
+        g_->flib_def().Find(node_def->name()) == nullptr) {
       TF_RETURN_IF_ERROR(ValidateShape(node));
     }
 

@@ -76,10 +76,10 @@ string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
 
 port::StatusOr<DriverVersion> StringToDriverVersion(const string &value) {
   std::vector<string> pieces = port::Split(value, '.');
-  if (pieces.size() != 2 && pieces.size() != 3) {
+  if (pieces.size() < 2 || pieces.size() > 4) {
     return port::Status{
         port::error::INVALID_ARGUMENT,
-        port::Printf("expected %%d.%%d or %%d.%%d.%%d form for driver version; got \"%s\"",
+        port::Printf("expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form for driver version; got \"%s\"",
                      value.c_str())};
   }
 

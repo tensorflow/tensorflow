@@ -219,10 +219,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSort:
@@ -241,26 +243,28 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   // Only certain opcodes are supported with CreateBinary: opcodes of binary
   // instructions with no auxiliary fields.
   switch (opcode) {
-    case (HloOpcode::kAdd):
-    case (HloOpcode::kDivide):
-    case (HloOpcode::kDot):
-    case (HloOpcode::kEq):
-    case (HloOpcode::kGe):
-    case (HloOpcode::kGt):
-    case (HloOpcode::kLe):
-    case (HloOpcode::kLt):
-    case (HloOpcode::kMaximum):
-    case (HloOpcode::kMinimum):
-    case (HloOpcode::kMultiply):
-    case (HloOpcode::kNe):
-    case (HloOpcode::kPower):
-    case (HloOpcode::kRemainder):
-    case (HloOpcode::kSubtract):
-    case (HloOpcode::kAnd):
-    case (HloOpcode::kOr):
-    case (HloOpcode::kShiftLeft):
-    case (HloOpcode::kShiftRightArithmetic):
-    case (HloOpcode::kShiftRightLogical):
+    case HloOpcode::kAdd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kDivide:
+    case HloOpcode::kComplex:
+    case HloOpcode::kDot:
+    case HloOpcode::kEq:
+    case HloOpcode::kGe:
+    case HloOpcode::kGt:
+    case HloOpcode::kLe:
+    case HloOpcode::kLt:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNe:
+    case HloOpcode::kPower:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
       break;
     default:
       LOG(FATAL) << "Invalid binary instruction opcode "
@@ -716,10 +720,12 @@ void HloInstruction::MergeFusionInstructionIntoMultiOutput(
 
   // Fuse the root instruction and generate multiple outputs.
   FuseInstructionIntoMultiOutput(unfused_root);
+  TF_CHECK_OK(unfused_root->parent()->RemoveInstruction(unfused_root));
   // The rest instructions are of normal fusing.
   for (int64 i = 1; i < unfused_instructions.size(); i++) {
     auto instruction = unfused_instructions[i];
     FuseInstruction(instruction);
+    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
 }
 
@@ -976,11 +982,13 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReal:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSort:
@@ -990,6 +998,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     // Binary ops.
     case HloOpcode::kAdd:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
     case HloOpcode::kSubtract:
@@ -1154,8 +1164,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
-    case HloOpcode::kUpdate:
-    case HloOpcode::kIndex:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
@@ -1203,6 +1211,9 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(
     }
   }
   clone->set_parent(parent_);
+  if (has_sharding()) {
+    clone->set_sharding(sharding());
+  }
   return clone;
 }
 
@@ -1402,10 +1413,12 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kAtan2:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kAdd:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kComplex:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kCrossReplicaSum:
@@ -1416,6 +1429,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kFloor:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLog:
@@ -1429,6 +1443,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
     case HloOpcode::kPower:
+    case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
@@ -1535,11 +1550,9 @@ bool HloInstruction::IdenticalSlowPath(
       return dimensions() == other.dimensions();
 
     // These opcodes are not yet supported.
-    case HloOpcode::kIndex:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kSort:
-    case HloOpcode::kUpdate:
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
       return false;
@@ -1853,16 +1866,20 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
   }
 
   if (opcode() == HloOpcode::kWhile) {
-    extra.push_back(StrCat("condition=", while_condition()->name()));
-    extra.push_back(StrCat("body=", while_body()->name()));
+    extra.push_back(StrCat("condition=%", while_condition()->name()));
+    extra.push_back(StrCat("body=%", while_body()->name()));
   } else if (opcode() == HloOpcode::kSelectAndScatter) {
-    extra.push_back(StrCat("select=", select()->name()));
-    extra.push_back(StrCat("scatter=", scatter()->name()));
+    extra.push_back(StrCat("select=%", select()->name()));
+    extra.push_back(StrCat("scatter=%", scatter()->name()));
+  } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
+             opcode() == HloOpcode::kReduceWindow ||
+             opcode() == HloOpcode::kReduce) {
+    extra.push_back(StrCat("to_apply=%", to_apply()->name()));
   } else if (!called_computations().empty()) {
     extra.push_back(StrCat(
         "calls=", Join(called_computations(), ", ",
                        [](string* out, const HloComputation* computation) {
-                         StrAppend(out, computation->name());
+                         StrAppend(out, "%", computation->name());
                        })));
   }
 
@@ -1872,6 +1889,9 @@ std::vector<string> HloInstruction::ExtraAttributesToString() const {
 
   if (opcode() == HloOpcode::kGetTupleElement) {
     extra.push_back(StrCat("index=", tuple_index()));
+  }
+  if (has_sharding()) {
+    extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
   if (!control_successors_.empty()) {
     extra.push_back(StrCat(
@@ -2109,7 +2129,9 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
 Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
-      return visitor->HandleAbs(this, operands_[0]);
+      return visitor->HandleAbs(this);
+    case HloOpcode::kAtan2:
+      return visitor->HandleAtan2(this);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
     case HloOpcode::kBatchNormTraining:
@@ -2119,11 +2141,11 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kBatchNormGrad:
       return visitor->HandleBatchNormGrad(this);
     case HloOpcode::kSign:
-      return visitor->HandleSign(this, operands_[0]);
+      return visitor->HandleSign(this);
     case HloOpcode::kConstant:
-      return visitor->HandleConstant(this, *literal_);
+      return visitor->HandleConstant(this);
     case HloOpcode::kGetTupleElement:
-      return visitor->HandleGetTupleElement(this, operands_[0]);
+      return visitor->HandleGetTupleElement(this);
     case HloOpcode::kParameter:
       return visitor->HandleParameter(this);
     case HloOpcode::kEq:
@@ -2132,85 +2154,85 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kLe:
     case HloOpcode::kLt:
     case HloOpcode::kNe:
-      return visitor->HandleCompare(this, opcode_, operands_[0], operands_[1]);
+      return visitor->HandleCompare(this);
+    case HloOpcode::kComplex:
+      return visitor->HandleComplex(this);
     case HloOpcode::kAdd:
-      return visitor->HandleAdd(this, operands_[0], operands_[1]);
+      return visitor->HandleAdd(this);
     case HloOpcode::kDivide:
-      return visitor->HandleDivide(this, operands_[0], operands_[1]);
+      return visitor->HandleDivide(this);
     case HloOpcode::kSubtract:
-      return visitor->HandleSubtract(this, operands_[0], operands_[1]);
+      return visitor->HandleSubtract(this);
     case HloOpcode::kMaximum:
       return visitor->HandleMaximum(this);
     case HloOpcode::kMinimum:
       return visitor->HandleMinimum(this);
     case HloOpcode::kAnd:
-      return visitor->HandleAnd(this, operands_[0], operands_[1]);
+      return visitor->HandleAnd(this);
     case HloOpcode::kOr:
-      return visitor->HandleOr(this, operands_[0], operands_[1]);
+      return visitor->HandleOr(this);
     case HloOpcode::kShiftLeft:
-      return visitor->HandleShiftLeft(this, operands_[0], operands_[1]);
+      return visitor->HandleShiftLeft(this);
     case HloOpcode::kShiftRightArithmetic:
-      return visitor->HandleShiftRightArithmetic(this, operands_[0],
-                                                 operands_[1]);
+      return visitor->HandleShiftRightArithmetic(this);
     case HloOpcode::kShiftRightLogical:
-      return visitor->HandleShiftRightLogical(this, operands_[0], operands_[1]);
+      return visitor->HandleShiftRightLogical(this);
     case HloOpcode::kConcatenate:
-      return visitor->HandleConcatenate(this, operands_);
+      return visitor->HandleConcatenate(this);
     case HloOpcode::kConvert:
       return visitor->HandleConvert(this);
     case HloOpcode::kCopy:
       return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:
-      return visitor->HandleMultiply(this, operands_[0], operands_[1]);
+      return visitor->HandleMultiply(this);
     case HloOpcode::kDot:
-      return visitor->HandleDot(this, operands_[0], operands_[1]);
+      return visitor->HandleDot(this);
     case HloOpcode::kPower:
-      return visitor->HandlePower(this, operands_[0], operands_[1]);
+      return visitor->HandlePower(this);
     case HloOpcode::kRemainder:
-      return visitor->HandleRemainder(this, operands_[0], operands_[1]);
+      return visitor->HandleRemainder(this);
     case HloOpcode::kSelect:
-      return visitor->HandleSelect(this, operands_[0], operands_[1],
-                                   operands_[2]);
+      return visitor->HandleSelect(this);
     case HloOpcode::kConvolution:
-      return visitor->HandleConvolution(this, operands_[0], operands_[1],
-                                        window());
+      return visitor->HandleConvolution(this);
     case HloOpcode::kCrossReplicaSum:
       return visitor->HandleCrossReplicaSum(this);
     case HloOpcode::kTuple:
-      return visitor->HandleTuple(this, operands_);
+      return visitor->HandleTuple(this);
     case HloOpcode::kMap:
-      return visitor->HandleMap(this, operands_, to_apply(), {});
+      return visitor->HandleMap(this);
     case HloOpcode::kClamp:
-      return visitor->HandleClamp(this, operands_[0], operands_[1],
-                                  operands_[2]);
+      return visitor->HandleClamp(this);
     case HloOpcode::kReduce:
-      return visitor->HandleReduce(this, operands_[0], operands_[1],
-                                   dimensions_, to_apply());
+      return visitor->HandleReduce(this);
     case HloOpcode::kReduceWindow:
-      return visitor->HandleReduceWindow(this, operands_[0], window(),
-                                         to_apply());
+      return visitor->HandleReduceWindow(this);
     case HloOpcode::kSelectAndScatter:
       return visitor->HandleSelectAndScatter(this);
     case HloOpcode::kNegate:
-      return visitor->HandleNegate(this, operands_[0]);
+      return visitor->HandleNegate(this);
     case HloOpcode::kExp:
-      return visitor->HandleExp(this, operands_[0]);
+      return visitor->HandleExp(this);
     case HloOpcode::kFloor:
-      return visitor->HandleFloor(this, operands_[0]);
+      return visitor->HandleFloor(this);
     case HloOpcode::kCeil:
-      return visitor->HandleCeil(this, operands_[0]);
+      return visitor->HandleCeil(this);
     case HloOpcode::kLog:
-      return visitor->HandleLog(this, operands_[0]);
+      return visitor->HandleLog(this);
     case HloOpcode::kTanh:
-      return visitor->HandleTanh(this, operands_[0]);
+      return visitor->HandleTanh(this);
     case HloOpcode::kCos:
-      return visitor->HandleCos(this, operands_[0]);
+      return visitor->HandleCos(this);
     case HloOpcode::kSin:
-      return visitor->HandleSin(this, operands_[0]);
+      return visitor->HandleSin(this);
+    case HloOpcode::kReal:
+      return visitor->HandleReal(this);
+    case HloOpcode::kImag:
+      return visitor->HandleImag(this);
     case HloOpcode::kIsFinite:
-      return visitor->HandleIsFinite(this, operands_[0]);
+      return visitor->HandleIsFinite(this);
     case HloOpcode::kNot:
-      return visitor->HandleNot(this, operands_[0]);
+      return visitor->HandleNot(this);
     case HloOpcode::kBitcast:
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
@@ -2222,24 +2244,23 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kTranspose:
       return visitor->HandleTranspose(this);
     case HloOpcode::kReverse:
-      return visitor->HandleReverse(this, operands_[0]);
+      return visitor->HandleReverse(this);
     case HloOpcode::kReducePrecision:
       return visitor->HandleReducePrecision(this);
     case HloOpcode::kSlice:
-      return visitor->HandleSlice(this, operands_[0]);
+      return visitor->HandleSlice(this);
     case HloOpcode::kDynamicSlice:
-      return visitor->HandleDynamicSlice(this, operands_[0], operands_[1]);
+      return visitor->HandleDynamicSlice(this);
     case HloOpcode::kDynamicUpdateSlice:
-      return visitor->HandleDynamicUpdateSlice(this, operands_[0], operands_[1],
-                                               operands_[2]);
+      return visitor->HandleDynamicUpdateSlice(this);
     case HloOpcode::kSort:
-      return visitor->HandleSort(this, operands_[0]);
+      return visitor->HandleSort(this);
     case HloOpcode::kInfeed:
       return visitor->HandleInfeed(this);
     case HloOpcode::kOutfeed:
       return visitor->HandleOutfeed(this);
     case HloOpcode::kRng:
-      return visitor->HandleRng(this, distribution_);
+      return visitor->HandleRng(this);
     case HloOpcode::kWhile:
       return visitor->HandleWhile(this);
     case HloOpcode::kFusion:
@@ -2247,16 +2268,14 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kCall:
       return visitor->HandleCall(this);
     case HloOpcode::kCustomCall:
-      return visitor->HandleCustomCall(this, operands_, custom_call_target_);
+      return visitor->HandleCustomCall(this);
     case HloOpcode::kSend:
       return visitor->HandleSend(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
 
     // These opcodes are not handled here.
-    case HloOpcode::kIndex:
     case HloOpcode::kTrace:
-    case HloOpcode::kUpdate:
       break;
   }
   return Unimplemented("unhandled HloOpcode for DfsHloVisitor: %s",
@@ -2299,7 +2318,7 @@ static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
   //
   // We need to keep track of both the id and the instruction because
   // instructions can get deleted while they are on the stack, so we
-  // can't always use the (potentiall dead) instruction object to grab
+  // can't always use the (potentially dead) instruction object to grab
   // its id.
   DFSStack dfs_stack;
   dfs_stack.emplace_back(root->unique_id(), root);
@@ -2499,6 +2518,7 @@ bool HloInstruction::IsElementwiseBinary() const {
     // Binary elementwise operations. If you update this, please update
     // IsElementwise() accordingly.
     case HloOpcode::kAdd:
+    case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kGe:
@@ -2531,6 +2551,7 @@ bool HloInstruction::IsElementwise() const {
 
     // Unary elementwise operations.
     case HloOpcode::kAbs:
+    case HloOpcode::kAtan2:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
@@ -2538,10 +2559,12 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -2551,6 +2574,7 @@ bool HloInstruction::IsElementwise() const {
     // Binary elementwise operations, the same as in IsElementwiseBinary().
     // If you update this, please update IsElementwiseBinary() accordingly.
     case HloOpcode::kAdd:
+    case HloOpcode::kComplex:
     case HloOpcode::kDivide:
     case HloOpcode::kEq:
     case HloOpcode::kGe:
@@ -2659,10 +2683,10 @@ class HloInstruction::FusionReusesParamElements {
  public:
   using UseKind = HloInstruction::UseKind;
 
-  // We could rather iterate backwards thru fused_instructions_ here, as it is
-  // in reverse postorder, and compute whether each fused instruction reuses
-  // the value of this parameter, which would save stack space but not allow
-  // us to finish early if we find a reuse.
+  // We could rather iterate backwards through fused_instructions_ here, as it
+  // is in reverse postorder, and compute whether each fused instruction reuses
+  // the value of this parameter, which would save stack space but not allow us
+  // to finish early if we find a reuse.
   static UseKind Compute(int64 i, const HloInstruction& hlo) {
     tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> memoization_cache;
     return ComputeInternal(i, hlo, &memoization_cache);

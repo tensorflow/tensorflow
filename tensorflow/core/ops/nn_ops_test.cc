@@ -95,14 +95,13 @@ TEST(NNOpsTest, NthElement_ShapeFn) {
   INFER_OK(op, "[?,3,?,21];[]", "[d0_0,d0_1,d0_2]");
 
   INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[]");
-  INFER_ERROR("Input must have last dimension > n = 20 but is 1", op,
-              "[1];[]");
+  INFER_ERROR("Input must have last dimension > n = 20 but is 1", op, "[1];[]");
   INFER_ERROR("Input must have last dimension > n = 20 but is 20", op,
               "[1,2,3,20];[]");
   n_t = test::AsScalar<int32>(-1);
   INFER_ERROR(
-     "Dimension size, given by scalar input 1, must be non-negative but is -1",
-     op, "[1,2,3,4];[]");
+      "Dimension size, given by scalar input 1, must be non-negative but is -1",
+      op, "[1,2,3,4];[]");
 }
 
 TEST(NNOpsTest, BatchNormWithGlobalNormalization_ShapeFn) {
@@ -386,9 +385,8 @@ TEST(NNOpsTest, Dilation2DBackpropFilter_ShapeFn) {
 }
 
 TEST(NNOpsTest, MergeBothInputs_ShapeFn) {
-  for (const char* op_name :
-       {"ReluGrad", "Relu6Grad", "EluGrad", "SeluGrad", "SoftplusGrad",
-        "SoftsignGrad"}) {
+  for (const char* op_name : {"ReluGrad", "Relu6Grad", "EluGrad", "SeluGrad",
+                              "SoftplusGrad", "SoftsignGrad"}) {
     ShapeInferenceTestOp op(op_name);
 
     INFER_OK(op, "?;?", "in0|in1");

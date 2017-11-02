@@ -251,9 +251,13 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
       `t1_axis_labels`.
   """
   if len(t0_axis_labels) != len(t0.get_shape()):
-    raise ValueError()
+    raise ValueError(
+        'Tensor t0 of rank %d does not match einsum reduction of length %d' %
+        (len(t0.get_shape()), len(t0_axis_labels)))
   if len(t1_axis_labels) != len(t1.get_shape()):
-    raise ValueError()
+    raise ValueError(
+        'Tensor t1 of rank %d does not match einsum reduction of length %d' %
+        (len(t1.get_shape()), len(t1_axis_labels)))
 
   # This function computes the result of a two-argument einsum() using batch
   # matrix multiplication.  This involves

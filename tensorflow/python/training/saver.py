@@ -164,6 +164,7 @@ class BaseSaverBuilder(object):
 
     def __init__(self, var, slice_spec, name):
       self._var_device = var.device
+      self._var_shape = var.shape
       if isinstance(var, ops.Tensor):
         self.handle_op = var.op.inputs[0]
         tensor = var
@@ -194,8 +195,8 @@ class BaseSaverBuilder(object):
       # Copy the restored tensor to the variable's device.
       with ops.device(self._var_device):
         restored_tensor = array_ops.identity(restored_tensor)
-      return resource_variable_ops.assign_variable_op(
-          self.handle_op, restored_tensor)
+      return resource_variable_ops.shape_safe_assign_variable_handle(
+          self.handle_op, self._var_shape, restored_tensor)
 
   def __init__(self, write_version=saver_pb2.SaverDef.V2):
     self._write_version = write_version
@@ -1197,15 +1198,22 @@ class Saver(object):
     Raises:
       TypeError: If `var_list` is invalid.
       ValueError: If any of the keys or values in `var_list` are not unique.
+      RuntimeError: If eager execution is enabled and`var_list` does not specify
+        a list of varialbes to save.
+
+    @compatibility(eager)
+    When eager execution is enabled, `var_list` must specify a `list` or `dict`
+    of variables to save. Otherwise, a `RuntimeError` will be raised.
+    @end_compatibility
     """
     if defer_build and var_list:
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
           "Either set defer_build=False or var_list=None.")
     if context.in_eager_mode() and var_list is None:
-      raise ValueError(
-          "When eager execution is enabled, `var_list` must specify a list of "
-          "variables to save")
+      raise RuntimeError(
+          "When eager execution is enabled, `var_list` must specify a list or "
+          "dict of variables to save")
     self._var_list = var_list
     self._reshape = reshape
     self._sharded = sharded
@@ -1230,7 +1238,7 @@ class Saver(object):
 
   def build(self):
     if context.in_eager_mode():
-      raise ValueError("Use save/restore instead of build in eager mode.")
+      raise RuntimeError("Use save/restore instead of build in eager mode.")
     self._build(self._filename, build_save=True, build_restore=True)
 
   def _build_eager(self, checkpoint_path, build_save, build_restore):
@@ -1502,18 +1510,17 @@ class Saver(object):
     It requires a session in which the graph was launched.  The variables to
     save must also have been initialized.
 
-    The method returns the path of the newly created checkpoint file.  This
-    path can be passed directly to a call to `restore()`.
+    The method returns the path prefix of the newly created checkpoint files.
+    This string can be passed directly to a call to `restore()`.
 
     Args:
-      sess: A Session to use to save the variables. None in eager mode.
-      save_path: String.  Path to the checkpoint filename.  If the saver is
-        `sharded`, this is the prefix of the sharded checkpoint filename.
+      sess: A Session to use to save the variables.
+      save_path: String.  Prefix of filenames created for the checkpoint.
       global_step: If provided the global step number is appended to
-        `save_path` to create the checkpoint filename. The optional argument
+        `save_path` to create the checkpoint filenames. The optional argument
         can be a `Tensor`, a `Tensor` name or an integer.
       latest_filename: Optional name for the protocol buffer file that will
-        contains the list of most recent checkpoint filenames.  That file,
+        contains the list of most recent checkpoints.  That file,
         kept in the same directory as the checkpoint files, is automatically
         managed by the saver to keep track of recent checkpoints.  Defaults to
         'checkpoint'.
@@ -1524,7 +1531,7 @@ class Saver(object):
         `CheckpointStateProto`.
 
     Returns:
-      A string: path at which the variables were saved.  If the saver is
+      A string: path prefix used for the checkpoint files.  If the saver is
         sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
         is the number of shards created.
       If the saver is empty, returns None.
@@ -1801,11 +1808,19 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
 
     A None value is returned if no variables exist in the `MetaGraphDef`
     (i.e., there are no variables to restore).
+
+  Raises:
+    RuntimeError: If called with eager execution enabled.
+
+  @compatibility(eager)
+  Exporting/importing meta graphs is not supported. No graph exists when eager
+  execution is enabled.
+  @end_compatibility
   """  # pylint: disable=g-doc-exception
   if context.in_eager_mode():
-    raise ValueError("Exporting/importing meta graphs is not supported when "
-                     "eager execution is enabled. No graph exists when eager "
-                     "execution is enabled.")
+    raise RuntimeError("Exporting/importing meta graphs is not supported when "
+                       "eager execution is enabled. No graph exists when eager "
+                       "execution is enabled.")
   if not isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
     meta_graph_def = meta_graph.read_meta_graph_file(meta_graph_or_file)
   else:
@@ -1871,11 +1886,17 @@ def export_meta_graph(filename=None,
 
   Raises:
     ValueError: When the `GraphDef` is larger than 2GB.
+    RuntimeError: If called with eager execution enabled.
+
+  @compatibility(eager)
+  Exporting/importing meta graphs is not supported. No graph exists when eager
+  execution is enabled.
+  @end_compatibility
   """
   if context.in_eager_mode():
-    raise ValueError("Exporting/importing meta graphs is not supported when "
-                     "eager execution is enabled. No graph exists when eager "
-                     "execution is enabled.")
+    raise RuntimeError("Exporting/importing meta graphs is not supported when "
+                       "eager execution is enabled. No graph exists when eager "
+                       "execution is enabled.")
   meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
       filename=filename,
       meta_info_def=meta_info_def,

@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
@@ -538,8 +539,22 @@ class IteratorTest(test.TestCase):
 
   def testIncorrectIteratorRestore(self):
 
-    def _iterator_checkpoint_prefix():
+    def _path():
       return os.path.join(self.get_temp_dir(), "iterator")
+
+    def _save_op(iterator_resource):
+      iterator_state_variant = gen_dataset_ops.serialize_iterator(
+          iterator_resource)
+      save_op = io_ops.write_file(
+          _path(), parsing_ops.serialize_tensor(iterator_state_variant))
+      return save_op
+
+    def _restore_op(iterator_resource):
+      iterator_state_variant = parsing_ops.parse_tensor(
+          io_ops.read_file(_path()), dtypes.variant)
+      restore_op = gen_dataset_ops.deserialize_iterator(iterator_resource,
+                                                        iterator_state_variant)
+      return restore_op
 
     def _build_range_dataset_graph():
       start = 1
@@ -548,22 +563,18 @@ class IteratorTest(test.TestCase):
                                            stop).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = _iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = _save_op(iterator._iterator_resource)
+      restore_op = _restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     def _build_reader_dataset_graph():
       filenames = ["test"]  # Does not exist but we don't care in this test.
-      path = _iterator_checkpoint_prefix()
       iterator = readers.FixedLengthRecordDataset(
           filenames, 1, 0, 0).make_initializable_iterator()
       init_op = iterator.initializer
       get_next_op = iterator.get_next()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = _save_op(iterator._iterator_resource)
+      restore_op = _restore_op(iterator._iterator_resource)
       return init_op, get_next_op, save_op, restore_op
 
     # Saving iterator for RangeDataset graph.

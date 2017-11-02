@@ -35,6 +35,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
@@ -322,12 +323,18 @@ def implicit_val_and_grad(f):
   ```
 
   Args:
-    f: The function to be differentiated.
+   f: function to be differentiated. If `f` returns a scalar, this scalar will
+     be differentiated. If `f` returns a tensor or list of tensors, by default
+     a scalar will be computed by adding all their values to produce a single
+     scalar.
 
   Returns:
     A function which, when called, returns a tuple pair.
     Its first element is the value to which the function evaluates.
     Its second element is list of (gradient, variable) pairs.
+
+  Raises:
+    ValueError: if `f` returns None.
   """
   # TODO(cais): Remove calls to tf.constant() once the gradients functions
   # accept lists and np.ndarrays.
@@ -335,15 +342,22 @@ def implicit_val_and_grad(f):
   def grad_fn(*args):
     """Computes the gradient of the wrapped function."""
     tape.push_new_tape()
-    end_node = f(*args)
-    variables = tape.top_tape_watched_variables()
+    try:
+      end_node = f(*args)
+      if end_node is None:
+        raise ValueError("Cannot differentiate a function that returns None; "
+                         "did you forget to return a value from {}?".format(
+                             f.__name__))
+      variables = tape.top_tape_watched_variables()
+    finally:
+      popped_tape = tape.pop_tape()
     sources = [x.handle for x in variables]
 
     if not sources:
-      raise ValueError("no trainable variables were accessed while the "
+      raise ValueError("No trainable variables were accessed while the "
                        "function was being computed.")
     grad = imperative_grad.imperative_grad(_default_vspace,
-                                           tape.pop_tape(),
+                                           popped_tape,
                                            nest.flatten(end_node),
                                            sources)
     return end_node, list(zip(grad, variables))
@@ -381,7 +395,10 @@ def implicit_grad(f):
   ```
 
   Args:
-    f: The function to be differentiated.
+   f: function to be differentiated. If `f` returns a scalar, this scalar will
+     be differentiated. If `f` returns a tensor or list of tensors, by default
+     a scalar will be computed by adding all their values to produce a single
+     scalar.
 
   Returns:
     A function which, when called, returns a list of (gradient, variable) pairs.
@@ -397,7 +414,18 @@ def implicit_grad(f):
 
 
 def _get_arg_spec(f, params, param_args):
-  args = tf_inspect.getargspec(f).args
+  """The positions of the parameters of f to be differentiated in param_args."""
+  try:
+    args = tf_inspect.getargspec(f).args
+  except TypeError as e:
+    # TypeError can happen when f is a callable object.
+    if params is None:
+      return range(len(param_args))
+    elif all(isinstance(x, int) for x in params):
+      return params
+    raise ValueError("Either callable provided is not a function or could not "
+                     "inspect its arguments by name: %s. Original error: %s"
+                     % (f, e))
   if params is None:
     if not args:
       return range(len(param_args))
@@ -453,7 +481,12 @@ def gradients_function(f, params=None):
   ```
 
   Args:
-   f: function to be differentiated.
+   f: function to be differentiated. If `f` returns a scalar, this scalar will
+     be differentiated. If `f` returns a tensor or list of tensors, by default
+     a scalar will be computed by adding all their values to produce a single
+     scalar. If desired, the tensors can be elementwise multiplied by the
+     tensors passed as the `dy` keyword argument to the returned gradient
+     function.
    params: list of parameter names of f or list of integers indexing the
      parameters with respect to which we'll differentiate. Passing None
      differentiates with respect to all parameters.
@@ -545,7 +578,12 @@ def val_and_grad_function(f, params=None):
   ```
 
   Args:
-   f: function to be differentiated.
+   f: function to be differentiated. If `f` returns a scalar, this scalar will
+     be differentiated. If `f` returns a tensor or list of tensors, by default
+     a scalar will be computed by adding all their values to produce a single
+     scalar. If desired, the tensors can be elementwise multiplied by the
+     tensors passed as the `dy` keyword argument to the returned gradient
+     function.
    params: list of parameter names of f or list of integers indexing the
      parameters with respect to which we'll differentiate. Passing `None`
      differentiates with respect to all parameters.
@@ -561,25 +599,12 @@ def val_and_grad_function(f, params=None):
 
   def decorated(*args, **kwds):
     """Computes the value and gradient of the decorated function."""
-    parameter_positions = _get_arg_spec(f, params, args)
     dy = kwds.pop("dy", None)
-    if dy is not None:
-      dy = ops.convert_to_tensor(dy)
-    assert not kwds, "The gradient function can't take keyword arguments."
-    tape.push_new_tape()
-    sources = []
-    args = [
-        ops.convert_to_tensor(args[i]) if i in parameter_positions else args[i]
-        for i in range(len(args))
-    ]
-    args = _ensure_unique_tensor_objects(parameter_positions, args)
-    for i in parameter_positions:
-      sources.append(args[i])
-      tape.watch(args[i])
-    result = f(*args)
-    return result, imperative_grad.imperative_grad(
-        _default_vspace, tape.pop_tape(), nest.flatten(result), sources,
-        output_gradients=nest.flatten(dy) if dy is not None else None)
+    if kwds:
+      raise ValueError("Functions to be differentiated cannot "
+                       "receive keyword arguments.")
+    val, vjp = make_vjp(f, params)(*args, **kwds)
+    return val, vjp(dy=dy)
 
   return decorated
 
@@ -612,6 +637,8 @@ def make_vjp(f, params=None):
     # result is 9.0
     vjp()  # the vjp function rturns 6.0
 
+  Raises:
+    ValueError: if `f` returns None.
   """
 
   def decorated(*args, **kwds):
@@ -619,21 +646,33 @@ def make_vjp(f, params=None):
     parameter_positions = _get_arg_spec(f, params, args)
     assert not kwds, "The gradient function can't take keyword arguments."
     tape.push_new_tape()
-    sources = []
-    args = [
-        ops.convert_to_tensor(args[i]) if i in parameter_positions else args[i]
-        for i in range(len(args))
-    ]
-    args = _ensure_unique_tensor_objects(parameter_positions, args)
-    for i in parameter_positions:
-      sources.append(args[i])
-      tape.watch(args[i])
-    result = f(*args)
-    t = tape.pop_tape()
+    try:
+      sources = []
+      args = [
+          ops.convert_to_tensor(args[i])
+          if i in parameter_positions else args[i]
+          for i in range(len(args))
+      ]
+      args = _ensure_unique_tensor_objects(parameter_positions, args)
+      for i in parameter_positions:
+        sources.append(args[i])
+        tape.watch(args[i])
+        result = f(*args)
+        if result is None:
+          raise ValueError("Cannot differentiate a function that returns None; "
+                           "did you forget to return a value from {}?".format(
+                               f.__name__))
+        flat_result = nest.flatten(result)
+        flat_result = [gen_array_ops.identity(x) for x in flat_result]
+        result = nest.pack_sequence_as(result, flat_result)
+    finally:
+      t = tape.pop_tape()
     def vjp(dy=None):
+      if dy is not None:
+        dy = [ops.convert_to_tensor(x) for x in nest.flatten(dy)]
       return imperative_grad.imperative_grad(
           _default_vspace, t, nest.flatten(result), sources,
-          output_gradients=nest.flatten(dy) if dy is not None else None)
+          output_gradients=dy)
     return result, vjp
 
   return decorated
@@ -693,7 +732,7 @@ _default_vspace = imperative_grad.VSpace(
     aggregate_fn=_aggregate_grads,
     tensor_id=ops.tensor_id,
     zeros=array_ops.zeros,
-    ones_like=array_ops.ones_like)
+    ones_like=lambda x: ops.convert_to_tensor(array_ops.ones_like(x)))
 
 
 class GradientTape(object):

@@ -208,6 +208,7 @@ class _VariableStore(object):
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
     self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
     self.variable_scopes_count = {}  # Count re-used variable scopes.
+    self._store_eager_variables = False
 
   def open_variable_scope(self, scope_name):
     if scope_name in self.variable_scopes_count:
@@ -259,8 +260,8 @@ class _VariableStore(object):
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
       reuse: a Boolean, None, or tf.AUTO_REUSE. Controls reuse or creation
-        of variables. In Eager mode, this argument is always forced to be
-        tf.AUTO_REUSE.
+        of variables. When eager execution is enabled  this argument is always
+        forced to be False.
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
       collections: List of graph collections keys to add the `Variable` to.
@@ -279,7 +280,8 @@ class _VariableStore(object):
       use_resource: If False, creates a regular Variable. If True, creates
         instead an experimental ResourceVariable which has well-defined
         semantics. Defaults to False (will later change to True).
-        In Eager mode, this argument is always forced to be true.
+        When eager execution is enabled this argument is always forced to be
+        true.
       custom_getter: Callable that takes as a first argument the true getter,
         and allows overwriting the internal get_variable method.
         The signature of `custom_getter` should match that of this method,
@@ -308,13 +310,21 @@ class _VariableStore(object):
       ValueError: when creating a new variable and shape is not declared,
         when reusing a variable and specifying a conflicting shape,
         or when violating reuse during variable creation.
+      RuntimeError: when eager execution is enabled and not called from an
+        EagerVariableStore.
     """
     if custom_getter is not None and not callable(custom_getter):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
     if context.in_eager_mode():
-      reuse = AUTO_REUSE
+      if not self._store_eager_variables and reuse:
+        raise RuntimeError(
+            "When eager execution is enabled variable reuse is only supported"
+            " when an EagerVariableStore is active. See the documentation on"
+            " EagerVariableStore for example usage.")
+      if self._store_eager_variables:
+        reuse = AUTO_REUSE
       use_resource = True
 
     # If a *_ref type is passed in an error would be triggered further down the
@@ -506,7 +516,7 @@ class _VariableStore(object):
     """
     if context.in_eager_mode():
       raise NotImplementedError("Partitioned variables are not yet supported "
-                                "in Eager mode.")
+                                "when eager execution is enabled.")
 
     initializing_from_value = initializer is not None and isinstance(
         initializer, ops.Tensor)
@@ -580,7 +590,7 @@ class _VariableStore(object):
     if reuse is True:
       raise ValueError("PartitionedVariable %s does not exist, or was not "
                        "created with tf.get_variable(). Did you mean to set "
-                       "reuse=None in VarScope?" % name)
+                       "reuse=False or reuse=tf.AUTO_REUSE in VarScope?" % name)
 
     slice_dim, slice_shape = _compute_slice_dim_and_shape(
         shape.as_list(), partitions)
@@ -710,15 +720,6 @@ class _VariableStore(object):
     Raises:
       ValueError: See documentation of get_variable above.
     """
-    # Fast-path for get_variable in eager mode when the variable already
-    # exists. Note this skips error validation code, so mismatched shapes and
-    # dtypes will be caught when the variable is used instead of when the call
-    # to get_variable happens.
-    if context.in_eager_mode():
-      v = self._vars.get(name, None)
-      if v is not None:
-        return v
-
     # Set to true if initializer is a constant.
     initializing_from_value = False
     if initializer is not None and not callable(initializer):
@@ -803,7 +804,10 @@ class _VariableStore(object):
           dtype=variable_dtype,
           validate_shape=validate_shape,
           constraint=constraint)
-    self._vars[name] = v
+    if context.in_graph_mode() or self._store_eager_variables:
+      # In eager mode we do not want to keep default references to Variable
+      # objects as this will prevent their memory from being released.
+      self._vars[name] = v
     logging.vlog(1, "Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
 
@@ -875,8 +879,8 @@ class VariableScope(object):
     initializer: default initializer passed to get_variable.
     regularizer: default regularizer passed to get_variable.
     reuse: Boolean, None, or tf.AUTO_REUSE, setting the reuse in
-      get_variable. In Eager mode, this argument is always forced to be
-      tf.AUTO_REUSE.
+      get_variable. When eager execution is enabled this argument is always
+      forced to be False.
     caching_device: string, callable, or None: the caching device passed to
       get_variable.
     partitioner: callable or `None`: the partitioner passed to `get_variable`.
@@ -885,8 +889,8 @@ class VariableScope(object):
     dtype: default type passed to get_variable (defaults to DT_FLOAT).
     use_resource: if False, create a normal Variable; if True create an
       experimental ResourceVariable with well-defined semantics. Defaults
-      to False (will later change to True). In Eager mode, this argument is
-      always forced to be True.
+      to False (will later change to True). When eager execution is enabled
+      this argument is always forced to be True.
     constraint: An optional projection function to be applied to the variable
       after being updated by an `Optimizer` (e.g. used to implement norm
       constraints or value constraints for layer weights). The function must
@@ -923,10 +927,10 @@ class VariableScope(object):
     if context.in_eager_mode():
       if self._caching_device is not None:
         raise NotImplementedError("Caching devices is not yet supported "
-                                  "in Eager mode.")
+                                  "when eager execution is enabled.")
       if self._partitioner is not None:
         raise NotImplementedError("Partitioned variables are not yet supported "
-                                  "in Eager mode.")
+                                  "when eager execution is enabled.")
       self._reuse = AUTO_REUSE
       self._use_resource = True
 
@@ -989,7 +993,8 @@ class VariableScope(object):
   def set_use_resource(self, use_resource):
     """Sets whether to use ResourceVariables for this scope."""
     if context.in_eager_mode() and not use_resource:
-      raise ValueError("In eager mode, use_resource cannot be set to false.")
+      raise ValueError("When eager execution is enabled, "
+                       "use_resource cannot be set to false.")
     self._use_resource = use_resource
 
   def set_regularizer(self, regularizer):
@@ -1000,14 +1005,14 @@ class VariableScope(object):
     """Set caching_device for this scope."""
     if context.in_eager_mode():
       raise NotImplementedError("Caching devices are not yet supported "
-                                "in Eager mode.")
+                                "when eager execution is enabled.")
     self._caching_device = caching_device
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
     if partitioner and context.in_eager_mode():
       raise NotImplementedError("Partitioned variables are not yet supported "
-                                "in Eager mode.")
+                                "when eager execution is enabled.")
     self._partitioner = partitioner
 
   def set_custom_getter(self, custom_getter):
@@ -1062,7 +1067,7 @@ class VariableScope(object):
       if use_resource is None:
         use_resource = self._use_resource
     else:
-      reuse = AUTO_REUSE
+      reuse = False
       use_resource = True
 
     full_name = self.name + "/" + name if self.name else name
@@ -1108,7 +1113,7 @@ class VariableScope(object):
     """Gets an existing variable with this name or create a new one."""
     if context.in_eager_mode():
       raise NotImplementedError("Partitioned variables are not yet supported "
-                                "in Eager mode.")
+                                "when eager execution is enabled.")
     if initializer is None:
       initializer = self._initializer
     if regularizer is None:
@@ -1179,6 +1184,48 @@ def _get_default_variable_store():
   store = _VariableStore()
   ops.add_to_collection(_VARSTORE_KEY, store)
   return store
+
+
+@tf_contextlib.contextmanager
+def with_variable_store(store):
+  store_collection = ops.get_collection_ref(_VARSTORE_KEY)
+  old = list(store_collection)
+  store_collection[:] = [store]
+  try:
+    yield
+  finally:
+    store_collection[:] = old
+
+
+class EagerVariableStore(object):
+  """Wrapper allowing functional layers to be used with eager execution.
+
+  When eager execution is enabled Variables get deleted when they go out of
+  scope, and are not stored in global collections by default. A lot of code
+  (mostly the functional layers in tf.layers) assumes that variables are kept in
+  a global list.
+
+  EagerVariableStore can be used in conjunction with this code to make it
+  eager-friendly. For example, to create a dense layer, use:
+
+  ```
+    container = tfe.EagerVariableStore()
+    for input in dataset_iterator:
+      with container.as_default():
+        x = tf.layers.dense(input, name="l1")
+    print(container.variables)  # Should print the variables used in the layer.
+  ```
+  """
+
+  def __init__(self):
+    self._store = _VariableStore()
+    self._store._store_eager_variables = True  # pylint: disable=protected-access
+
+  def as_default(self):
+    return with_variable_store(self._store)
+
+  def variables(self):
+    return self._store._vars.values()  # pylint: disable=protected-access
 
 
 def get_variable(name,
@@ -1259,8 +1306,8 @@ Args:
       must be known.
   use_resource: If False, creates a regular Variable. If true, creates an
     experimental ResourceVariable instead with well-defined semantics.
-    Defaults to False (will later change to True). In Eager mode, this argument
-    is always forced to be True.
+    Defaults to False (will later change to True). When eager execution is
+    enabled this argument is always forced to be True.
   custom_getter: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,
@@ -1721,14 +1768,14 @@ class variable_scope(object):  # pylint: disable=invalid-name
       reuse: `True`, None, or tf.AUTO_REUSE; if `True`, we go into reuse mode
         for this scope as well as all sub-scopes; if tf.AUTO_REUSE, we create
         variables if they do not exist, and return them otherwise; if None, we
-        inherit the parent scope's reuse flag. In Eager mode, this argument is
-        always forced to be tf.AUTO_REUSE.
+        inherit the parent scope's reuse flag. When eager execution is enabled,
+        this argument is always forced to be tf.AUTO_REUSE.
       dtype: type of variables created in this scope (defaults to the type
         in the passed scope, or inherited from parent scope).
       use_resource: If False, all variables will be regular Variables. If True,
         experimental ResourceVariables with well-defined semantics will be used
-        instead. Defaults to False (will later change to True). In Eager mode,
-        this argument is always forced to be True.
+        instead. Defaults to False (will later change to True). When eager
+        execution is enabled this argument is always forced to be True.
       constraint: An optional projection function to be applied to the variable
         after being updated by an `Optimizer` (e.g. used to implement norm
         constraints or value constraints for layer weights). The function must
@@ -1935,8 +1982,8 @@ def variable(initial_value=None,
         caching_device=caching_device, name=name, dtype=dtype)
   elif not use_resource and context.in_eager_mode():
     raise RuntimeError(
-        "VariableScope should use resource variable in Eager mode, but "
-        "use_resource is False."
+        "VariableScope should use resource variable when eager execution is"
+        " enabled, but use_resource is False."
     )
   else:
     return variables.Variable(

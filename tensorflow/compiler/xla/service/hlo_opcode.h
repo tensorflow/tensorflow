@@ -31,6 +31,7 @@ namespace xla {
 enum class HloOpcode {
   kAbs,
   kAdd,
+  kAtan2,
   kBatchNormGrad,
   kBatchNormInference,
   kBatchNormTraining,
@@ -39,6 +40,7 @@ enum class HloOpcode {
   kCall,
   kCeil,
   kClamp,
+  kComplex,
   kConcatenate,
   kConstant,
   kConvert,
@@ -58,7 +60,7 @@ enum class HloOpcode {
   kGe,
   kGetTupleElement,
   kGt,
-  kIndex,
+  kImag,
   kInfeed,
   kIsFinite,
   kLe,
@@ -77,6 +79,7 @@ enum class HloOpcode {
   kPad,
   kParameter,
   kPower,
+  kReal,
   kRecv,
   kReduce,
   kReducePrecision,
@@ -101,7 +104,6 @@ enum class HloOpcode {
   kTrace,
   kTranspose,
   kTuple,
-  kUpdate,
   kWhile,
 };
 

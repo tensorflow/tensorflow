@@ -66,6 +66,7 @@ See the @{$python/array_ops} guide.
 @@one_hot
 @@sequence_mask
 @@dequantize
+@@quantize
 @@quantize_v2
 @@quantized_concat
 @@setdiff1d
@@ -309,8 +310,8 @@ def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
-  This operation returns an integer representing the number of elements in
-  `input`.
+  Returns a 0-D `Tensor` representing the number of elements in `input`
+  of type `out_type`. Defaults to tf.int32.
 
   For example:
 
@@ -322,11 +323,15 @@ def size(input, name=None, out_type=dtypes.int32):
   Args:
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
-    out_type: (Optional) The specified output type of the operation
-      (`int32` or `int64`). Defaults to tf.int32.
+    out_type: (Optional) The specified non-quantized numeric output type
+      of the operation. Defaults to `tf.int32`.
 
   Returns:
-    A `Tensor` of type `out_type`. Defaults to tf.int32.
+    A `Tensor` of type `out_type`. Defaults to `tf.int32`.
+    
+  @compatibility(numpy)
+  Equivalent to np.size()
+  @end_compatibility
   """
   return size_internal(input, name, optimize=True, out_type=out_type)
 
@@ -339,11 +344,11 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
     optimize: if true, encode the size as a constant when possible.
-    out_type: (Optional) The specified output type of the operation
-      (`int32` or `int64`). Defaults to tf.int32.
+    out_type: (Optional) The specified non-quantized numeric output type
+      of the operation. Defaults to `tf.int32`.
 
   Returns:
-    A `Tensor` of type `out_type`.
+    A `Tensor` of type `out_type`. Defaults to `tf.int32`.
   """
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
@@ -2466,14 +2471,9 @@ def where(condition, x=None, y=None, name=None):
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:
-      # Temporarily create an old style WhereOp nodedef + Operation without the
-      # attribute "T".
-      # TODO(b/67720963): Roll this back when the issue is resolved.
-      condition = gen_math_ops.cast(condition, dtypes.bool)
-      output = gen_array_ops.where(input=condition, name=name)
-      if context.in_graph_mode():
-        output.op._node_def.attr.clear()
-      return output
+      condition = ops.convert_to_tensor(
+          condition, preferred_dtype=dtypes.bool, name="condition")
+      return gen_array_ops.where(input=condition, name=name)
   elif x is not None and y is not None:
     return gen_math_ops._select(condition=condition, t=x, e=y, name=name)
   else:
@@ -2526,3 +2526,49 @@ def gather(params, indices, validate_indices=None, name=None, axis=0):
 
 
 gather.__doc__ = gen_array_ops.gather_v2.__doc__
+
+
+# Define quantize_v2 here in order to make name the second-to-last attribute,
+# because round_mode was added later.
+@deprecation.deprecated(
+    "2017-10-25",
+    "`tf.quantize_v2` is deprecated, please use `tf.quantize` instead.")
+def quantize_v2(input,  # pylint: disable=redefined-builtin
+                min_range,
+                max_range,
+                T,
+                mode="MIN_COMBINED",
+                name=None,
+                round_mode="HALF_AWAY_FROM_ZERO"):
+  return gen_array_ops.quantize_v2(input,
+                                   min_range,
+                                   max_range,
+                                   T=T,
+                                   mode=mode,
+                                   name=name,
+                                   round_mode=round_mode)
+
+
+quantize_v2.__doc__ = """Please use `tf.quantize` instead."""
+
+
+# We want to expose tf.quantize instead of tf.quantize_v2; we can deprecate
+# tf.quantize_v2 in next version of TensorFlow.
+def quantize(input,  # pylint: disable=redefined-builtin
+             min_range,
+             max_range,
+             T,
+             mode="MIN_COMBINED",
+             round_mode="HALF_AWAY_FROM_ZERO",
+             name=None):
+  return gen_array_ops.quantize_v2(
+      input,
+      min_range,
+      max_range,
+      T,
+      mode=mode,
+      round_mode=round_mode,
+      name=name)
+
+
+quantize.__doc__ = gen_array_ops.quantize_v2.__doc__

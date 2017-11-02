@@ -4,3 +4,15 @@ op {
     name: "image.hsv_to_rgb"
   }
 }
+op {
+  graph_op_name: "HashTable"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "HashTableV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "HistogramSummary"
+  visibility: HIDDEN
+}

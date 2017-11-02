@@ -665,7 +665,6 @@ class ScopedPoolingDescriptor {
       LOG(FATAL) << "could not create cudnn pooling descriptor: "
                  << ToString(status);
     }
-
     const std::vector<int64> strides64 = pooling_descriptor.strides();
     const std::vector<int64> padding64 = pooling_descriptor.padding();
     const std::vector<int64> shape64 = pooling_descriptor.window();
@@ -680,14 +679,14 @@ class ScopedPoolingDescriptor {
                    &CheckedNarrowing<int64, int>);
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64, int>);
+    bool propagate_nans = pooling_descriptor.propagate_nans();
     status = wrap::cudnnSetPoolingNdDescriptor(
         parent_, handle_,
         (pooling_descriptor.mode() == dnn::PoolingMode::kMaximum
              ? CUDNN_POOLING_MAX
              : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING),
 #if CUDNN_VERSION >= 5000
-        // Always propagate nans.
-        CUDNN_PROPAGATE_NAN,
+        propagate_nans ? CUDNN_PROPAGATE_NAN : CUDNN_NOT_PROPAGATE_NAN,
 #endif
         nd, shape.data(), padding.data(), strides.data());
     if (status != CUDNN_STATUS_SUCCESS) {

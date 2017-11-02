@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -51,10 +52,14 @@ def _local_variable(initial_value, validate_shape=True, name=None):
 
 
 def _remove_squeezable_dimensions(predictions, labels, weights):
-  """Internal version of `remove_squeezable_dimensions` which handles weights.
+  """Squeeze or expand last dim if needed.
 
-  Squeezes `predictions` and `labels` if their rank differs by 1.
-  Squeezes `weights` if its rank is 1 more than the new rank of `predictions`
+  Squeezes last dim of `predictions` or `labels` if their rank differs by 1
+  (using confusion_matrix.remove_squeezable_dimensions).
+  Squeezes or expands last dim of `weights` if its rank differs by 1 from the
+  new rank of `predictions`.
+
+  If `weights` is scalar, it is kept scalar.
 
   This will use static shape if available. Otherwise, it will add graph
   operations, which could result in a performance hit.
@@ -62,12 +67,12 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
   Args:
     predictions: Predicted values, a `Tensor` of arbitrary dimensions.
     labels: Optional label `Tensor` whose dimensions match `predictions`.
-    weights: Optional weight `Tensor`. It will be squeezed if its rank is 1
-      more than the new rank of `predictions`
+    weights: Optional weight scalar or `Tensor` whose dimensions match
+      `predictions`.
 
   Returns:
-    Tuple of `predictions`, `labels` and `weights`, possibly with the last
-    dimension squeezed.
+    Tuple of `predictions`, `labels` and `weights`. Each of them possibly has
+    the last dimension squeezed, `weights` could be extended by one dimension.
   """
   predictions = ops.convert_to_tensor(predictions)
   if labels is not None:
@@ -323,7 +328,12 @@ def mean(values, weights=None, metrics_collections=None,
     ValueError: If `weights` is not `None` and its shape doesn't match `values`,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.mean is not supported when eager execution '
+                       'is enabled.')
+
   with variable_scope.variable_scope(name, 'mean', (values, weights)):
     values = math_ops.to_float(values)
 
@@ -399,7 +409,12 @@ def accuracy(labels, predictions, weights=None, metrics_collections=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.accuracy is not supported when eager '
+                       'execution is enabled.')
+
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
@@ -626,7 +641,12 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.auc is not supported when eager execution '
+                       'is enabled.')
+
   with variable_scope.variable_scope(
       name, 'auc', (labels, predictions, weights)):
     if curve != 'ROC' and curve != 'PR':
@@ -732,7 +752,12 @@ def mean_absolute_error(labels, predictions, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.mean_absolute_error is not supported '
+                       'when eager execution is enabled.')
+
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
   absolute_errors = math_ops.abs(predictions - labels)
@@ -783,7 +808,12 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.mean_cosine_distance is not supported when '
+                       'eager execution is enabled.')
+
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
   radial_diffs = math_ops.multiply(predictions, labels)
@@ -851,7 +881,12 @@ def mean_per_class_accuracy(labels,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.mean_per_class_accuracy is not supported '
+                       'when eager execution is enabled.')
+
   with variable_scope.variable_scope(name, 'mean_accuracy',
                                      (predictions, labels, weights)):
     # Check if shape is compatible.
@@ -934,7 +969,12 @@ def mean_iou(labels,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.mean_iou is not supported when '
+                       'eager execution is enabled.')
+
   with variable_scope.variable_scope(
       name, 'mean_iou', (predictions, labels, weights)):
     # Check if shape is compatible.
@@ -1027,7 +1067,12 @@ def mean_relative_error(labels, predictions, normalizer, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.mean_relative_error is not supported when '
+                       'eager execution is enabled.')
+
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
 
@@ -1087,7 +1132,12 @@ def mean_squared_error(labels, predictions, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.mean_squared_error is not supported when '
+                       'eager execution is enabled.')
+
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
   squared_error = math_ops.square(labels - predictions)
@@ -1136,7 +1186,12 @@ def mean_tensor(values, weights=None, metrics_collections=None,
     ValueError: If `weights` is not `None` and its shape doesn't match `values`,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.mean_tensor is not supported when '
+                       'eager execution is enabled.')
+
   with variable_scope.variable_scope(name, 'mean', (values, weights)):
     values = math_ops.to_float(values)
     total = _create_local('total_tensor', shape=values.get_shape())
@@ -1213,7 +1268,12 @@ def percentage_below(values, threshold, weights=None,
     ValueError: If `weights` is not `None` and its shape doesn't match `values`,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.percentage_below is not supported when '
+                       'eager execution is enabled.')
+
   is_below_threshold = math_ops.to_float(math_ops.less(values, threshold))
   return mean(is_below_threshold,
               weights,
@@ -1299,7 +1359,12 @@ def false_negatives(labels, predictions, weights=None,
     ValueError: If `weights` is not `None` and its shape doesn't match `values`,
       or if either `metrics_collections` or `updates_collections` are not a list
       or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.false_negatives is not supported when '
+                       'eager execution is enabled.')
+
   with variable_scope.variable_scope(
       name, 'false_negatives', (predictions, labels, weights)):
 
@@ -1346,7 +1411,12 @@ def false_negatives_at_thresholds(labels, predictions, thresholds, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.false_negatives_at_thresholds is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(name, 'false_negatives',
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -1392,7 +1462,12 @@ def false_positives(labels, predictions, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.false_positives is not supported when '
+                       'eager execution is enabled.')
+
   with variable_scope.variable_scope(
       name, 'false_positives', (predictions, labels, weights)):
 
@@ -1439,7 +1514,12 @@ def false_positives_at_thresholds(labels, predictions, thresholds, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.false_positives_at_thresholds is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(name, 'false_positives',
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -1487,7 +1567,12 @@ def true_negatives_at_thresholds(labels, predictions, thresholds, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.true_negatives_at_thresholds is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(name, 'true_negatives',
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -1533,7 +1618,12 @@ def true_positives(labels, predictions, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.true_positives is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(
       name, 'true_positives', (predictions, labels, weights)):
 
@@ -1580,7 +1670,12 @@ def true_positives_at_thresholds(labels, predictions, thresholds, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.true_positives_at_thresholds is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(name, 'true_positives',
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -1639,7 +1734,12 @@ def precision(labels, predictions, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.precision is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(
       name, 'precision', (predictions, labels, weights)):
 
@@ -1721,7 +1821,12 @@ def precision_at_thresholds(labels, predictions, thresholds,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.precision_at_thresholds is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(name, 'precision_at_thresholds',
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -1787,7 +1892,12 @@ def recall(labels, predictions, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.recall is not supported is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(
       name, 'recall', (predictions, labels, weights)):
     predictions, labels, weights = _remove_squeezable_dimensions(
@@ -2151,7 +2261,12 @@ def recall_at_k(labels,
     ValueError: If `weights` is not `None` and its shape doesn't match
     `predictions`, or if either `metrics_collections` or `updates_collections`
     are not a list or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.recall_at_k is not '
+                       'supported when eager execution is enabled.')
+
   with ops.name_scope(
       name, _at_k_name('recall', k, class_id=class_id),
       (predictions, labels, weights)) as scope:
@@ -2286,7 +2401,12 @@ def recall_at_thresholds(labels, predictions, thresholds,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.recall_at_thresholds is not '
+                       'supported when eager execution is enabled.')
+
   with variable_scope.variable_scope(name, 'recall_at_thresholds',
                                      (predictions, labels, weights)):
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -2354,7 +2474,12 @@ def root_mean_squared_error(labels, predictions, weights=None,
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.root_mean_squared_error is not '
+                       'supported when eager execution is enabled.')
+
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
   mse, update_mse_op = mean_squared_error(
@@ -2424,7 +2549,12 @@ def sensitivity_at_specificity(
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       `specificity` is not between 0 and 1, or if either `metrics_collections`
       or `updates_collections` are not a list or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.sensitivity_at_specificity is not '
+                       'supported when eager execution is enabled.')
+
   if specificity < 0 or specificity > 1:
     raise ValueError('`specificity` must be in the range [0, 1].')
 
@@ -2789,7 +2919,12 @@ def sparse_average_precision_at_k(labels,
 
   Raises:
     ValueError: if k is invalid.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.sparse_average_precision_at_k is not '
+                       'supported when eager execution is enabled.')
+
   if k < 1:
     raise ValueError('Invalid k=%s.' % k)
   with ops.name_scope(
@@ -2901,14 +3036,14 @@ def _streaming_sparse_false_positive_at_k(labels,
     return var, state_ops.assign_add(var, batch_total_fp, name='update')
 
 
-def _sparse_precision_at_top_k(labels,
-                               predictions_idx,
-                               k=None,
-                               class_id=None,
-                               weights=None,
-                               metrics_collections=None,
-                               updates_collections=None,
-                               name=None):
+def precision_at_top_k(labels,
+                       predictions_idx,
+                       k=None,
+                       class_id=None,
+                       weights=None,
+                       metrics_collections=None,
+                       updates_collections=None,
+                       name=None):
   """Computes precision@k of the predictions with respect to sparse labels.
 
   Differs from `sparse_precision_at_k` in that predictions must be in the form
@@ -2927,7 +3062,7 @@ def _sparse_precision_at_top_k(labels,
       N >= 1. Commonly, N=1 and predictions has shape [batch size, k].
       The final dimension contains the top `k` predicted class indices.
       [D1, ... DN] must match `labels`.
-    k: Integer, k for @k metric.
+    k: Integer, k for @k metric. Only used for the default op name.
     class_id: Integer class ID for which we want binary metrics. This should be
       in range [0, num_classes], where num_classes is the last dimension of
       `predictions`. If `class_id` is outside this range, the method returns
@@ -2953,9 +3088,15 @@ def _sparse_precision_at_top_k(labels,
     ValueError: If `weights` is not `None` and its shape doesn't match
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.precision_at_top_k is not '
+                       'supported when eager execution is enabled.')
+
   with ops.name_scope(name, _at_k_name('precision', k, class_id=class_id),
                       (predictions_idx, labels, weights)) as scope:
+    labels = _maybe_expand_labels(labels, predictions_idx)
     top_k_idx = math_ops.to_int64(predictions_idx)
     tp, tp_update = _streaming_sparse_true_positive_at_k(
         predictions_idx=top_k_idx, labels=labels, k=k, class_id=class_id,
@@ -3047,13 +3188,16 @@ def sparse_precision_at_k(labels,
     ValueError: If `weights` is not `None` and its shape doesn't match
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.sparse_precision_at_k is not '
+                       'supported when eager execution is enabled.')
+
   with ops.name_scope(name, _at_k_name('precision', k, class_id=class_id),
                       (predictions, labels, weights)) as scope:
-    labels = _maybe_expand_labels(labels, predictions)
-
     _, top_k_idx = nn.top_k(predictions, k)
-    return _sparse_precision_at_top_k(
+    return precision_at_top_k(
         labels=labels,
         predictions_idx=top_k_idx,
         k=k,
@@ -3115,7 +3259,12 @@ def specificity_at_sensitivity(
       `weights` is not `None` and its shape doesn't match `predictions`, or if
       `sensitivity` is not between 0 and 1, or if either `metrics_collections`
       or `updates_collections` are not a list or tuple.
+    RuntimeError: If eager execution is enabled.
   """
+  if context.in_eager_mode():
+    raise RuntimeError('tf.metrics.specificity_at_sensitivity is not '
+                       'supported when eager execution is enabled.')
+
   if sensitivity < 0 or sensitivity > 1:
     raise ValueError('`sensitivity` must be in the range [0, 1].')
 
