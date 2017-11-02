@@ -1841,7 +1841,9 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
         logits=logits_placeholder,
         labels=labels_placeholder)[0]
     with self.test_session():
-      with self.assertRaisesRegexp(errors.OpError, 'labels shape'):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[expected_labels_shape: \] \[2 3\] \[labels_shape: \] \[2 1\]'):
         weighted_sum_loss.eval({
             labels_placeholder: values_1d,
             logits_placeholder: values_3d
@@ -1891,7 +1893,9 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
         logits=logits_placeholder,
         labels=labels_placeholder)[0]
     with self.test_session():
-      with self.assertRaisesRegexp(errors.OpError, 'labels shape'):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[expected_labels_shape: \] \[2 3\] \[labels_shape: \] \[2 1\]'):
         weighted_sum_loss.eval({
             labels_placeholder: values_1d,
             logits_placeholder: values_3d
@@ -2591,6 +2595,125 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
       expected_losses = np.array((100, .1, 1.5))
       self.assertAllClose(expected_losses, [r[0] for r in results])
       self.assertAllClose(expected_losses * -7., [r[1] for r in results])
+
+  def test_multi_dim_weighted_train_create_loss(self):
+    """Logits, labels of shape [2, 2, 3], weight shape [2, 2]."""
+    label_dimension = 3
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        weight_column='label_weights', label_dimension=label_dimension)
+    logits = np.array([[[00., 01., 02.], [10., 11., 12.]],
+                       [[20., 21., 22.], [30., 31., 32.]]])
+    labels = np.array([[[01., 02., 03.], [12., 13., 14.]],
+                       [[23., 24., 25.], [34., 35., 36.]]])
+    weights = np.array([[1., 1.5], [2., 2.5]])
+    expected_weighted_sum_loss = np.sum(
+        np.array([[[1. * x for x in [1., 1., 1.]],
+                   [1.5 * x for x in [4., 4., 4.]]],
+                  [[2. * x for x in [9., 9., 9.]],
+                   [2.5 * x for x in [16., 16., 16.]]]]))
+    # Weights are expanded to [2, 2, label_dimension].
+    expected_example_weight_sum = np.sum(weights) * label_dimension
+    # Create loss.
+    weighted_sum_loss, example_weight_sum, _ = head.create_loss(
+        features={'label_weights': weights},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels)
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      self.assertAllClose(expected_weighted_sum_loss, weighted_sum_loss.eval())
+      self.assertAllClose(
+          expected_example_weight_sum, example_weight_sum.eval())
+
+  def test_multi_dim_weighted_train(self):
+    """Logits, labels of shape [2, 2, 3], weight shape [2, 2]."""
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        weight_column='label_weights', label_dimension=3)
+    logits = np.array([[[00., 01., 02.], [10., 11., 12.]],
+                       [[20., 21., 22.], [30., 31., 32.]]])
+    labels = np.array([[[01., 02., 03.], [12., 13., 14.]],
+                       [[23., 24., 25.], [34., 35., 36.]]])
+    expected_train_result = b'my_train_op'
+    features = {
+        'label_weights': np.array([[1., 1.5], [2., 2.5]]),
+    }
+    # loss = 1*3*1^2 + 1.5*3*2^2 + 2*3*3^2 +2.5*3*4^2 = 195
+    expected_loss = 195.
+    # Create estimator spec.
+    def _train_op_fn(loss):
+      with ops.control_dependencies((check_ops.assert_equal(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss),
+          name='assert_loss'),)):
+        return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      self.assertAllClose(expected_loss, spec.loss.eval())
+
+  def test_multi_dim_train_weights_wrong_inner_dim(self):
+    """Logits, labels of shape [2, 2, 3], weight shape [2, 1]."""
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        weight_column='label_weights', label_dimension=3)
+    logits = np.array([[[00., 01., 02.], [10., 11., 12.]],
+                       [[20., 21., 22.], [30., 31., 32.]]])
+    labels = np.array([[[01., 02., 03.], [12., 13., 14.]],
+                       [[23., 24., 25.], [34., 35., 36.]]])
+    features = {
+        'label_weights': np.array([[1.], [2]]),
+    }
+    def _no_op_train_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_no_op_train_fn)
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[logits_shape: \] \[2 2 3\] \[weights_shape: \] \[2 1\]'):
+        spec.loss.eval()
+
+  def test_multi_dim_train_weights_wrong_outer_dim(self):
+    """Logits, labels of shape [2, 2, 3], weight shape [2, 2, 2]."""
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        weight_column='label_weights', label_dimension=3)
+    logits = np.array([[[00., 01., 02.], [10., 11., 12.]],
+                       [[20., 21., 22.], [30., 31., 32.]]])
+    labels = np.array([[[01., 02., 03.], [12., 13., 14.]],
+                       [[23., 24., 25.], [34., 35., 36.]]])
+    weights_placeholder = array_ops.placeholder(dtype=dtypes.float32)
+    features = {
+        'label_weights': weights_placeholder,
+    }
+    def _no_op_train_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_no_op_train_fn)
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[logits_shape: \]\s\[2 2 3\]\s\[weights_shape: \]\s\[2 2 2\]'):
+        spec.loss.eval({
+            weights_placeholder: np.array([[[1., 1.1], [1.5, 1.6]],
+                                           [[2., 2.1], [2.5, 2.6]]])})
 
 
 if __name__ == '__main__':
