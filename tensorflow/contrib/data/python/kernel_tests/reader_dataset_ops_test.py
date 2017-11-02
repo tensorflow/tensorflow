@@ -21,6 +21,7 @@ import gzip
 import os
 import zlib
 
+from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
@@ -36,6 +37,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import compat
 
 
@@ -162,6 +164,277 @@ class TextLineDatasetTest(test.TestCase):
           self.assertEqual(self._lineText(j, i), sess.run(iterator.get_next()))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(iterator.get_next())
+
+  def _ckpt_path(self):
+    return os.path.join(self.get_temp_dir(), "iterator")
+
+  def _latest_ckpt(self):
+    return saver_lib.latest_checkpoint(self.get_temp_dir())
+
+  def _save(self, saver, sess):
+    saver.save(sess, self._ckpt_path())
+
+  def _restore(self, saver, sess):
+    saver.restore(sess, self._latest_ckpt())
+
+  def _import_meta_graph(self):
+    meta_file_path = self._ckpt_path() + ".meta"
+    return saver_lib.import_meta_graph(meta_file_path)
+
+  def _build_graph(self,
+                   test_filenames,
+                   compression_type=None,
+                   build_saveable=True):
+    ds = readers.TextLineDataset(
+        test_filenames, compression_type=compression_type, buffer_size=10)
+    iterator = ds.make_initializable_iterator()
+    if build_saveable:
+      saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+    ops.add_to_collection("iterator_ops", init_op)
+    ops.add_to_collection("iterator_ops", get_next)
+    saver = saver_lib.Saver(allow_empty=True)
+    return init_op, get_next, saver
+
+  def _testReadWithBreaks(self, breaks, num_files=5, lines_per_file=5):
+    """Tests reading from input pipeline with regular breaks.
+
+    At each break point the iterator state gets saved using Saver and reloaded
+    in a new Graph and session.
+
+    Args:
+      breaks: List of counts of records after reading which iterator state is
+        checkpointed. Must to in non-decreasing order.
+      num_files: Total number of files.
+      lines_per_file: Total number of lines per file.
+    """
+    compression_types = [None, "GZIP", "ZLIB"]
+    for compression_type in compression_types:
+      test_filenames = self._createFiles(
+          num_files,
+          lines_per_file,
+          crlf=True,
+          compression_type=compression_type)
+
+      # Collect ground truth.
+      total_records = num_files * lines_per_file
+      expected_records = []
+      with ops.Graph().as_default() as g:
+        init_op, get_next, saver = self._build_graph(
+            test_filenames, compression_type=compression_type)
+        with self.test_session(graph=g) as sess:
+          sess.run(init_op)
+          for _ in range(total_records):
+            expected_records.append(sess.run(get_next))
+          with self.assertRaises(errors.OutOfRangeError):
+            sess.run(get_next)
+
+      # Simulate run with breaks.
+      actual_records = []
+      next_record_index = 0
+      load_from_ckpt = False
+      breaks.append(total_records)
+      for break_index in breaks:
+        with ops.Graph().as_default() as g:
+          if not load_from_ckpt:
+            init_op, get_next, saver = self._build_graph(
+                test_filenames, compression_type=compression_type)
+          else:
+            saver = self._import_meta_graph()
+            init_op, get_next = ops.get_collection("iterator_ops")
+
+          with self.test_session(graph=g) as sess:
+            if not load_from_ckpt:
+              sess.run(init_op)
+            else:
+              self._restore(saver, sess)
+            while next_record_index != break_index:
+              actual_records.append(sess.run(get_next))
+              next_record_index += 1
+            if break_index == total_records:
+              with self.assertRaises(errors.OutOfRangeError):
+                sess.run(get_next)
+            self._save(saver, sess)
+            load_from_ckpt = True
+      self.assertEqual(actual_records, expected_records)
+
+  def testSaveAtFileBoundary(self):
+    self._testReadWithBreaks([10])
+
+  def testSaveWithinFile(self):
+    self._testReadWithBreaks([12])
+
+  def testSaveUnusedIterator(self):
+    self._testReadWithBreaks([0])
+
+  def testSaveRestoreIdempotence(self):
+    # Attempt to save an iterator immediately after it has been
+    # restored.
+    self._testReadWithBreaks([0, 0])
+    self._testReadWithBreaks([10, 10])
+    self._testReadWithBreaks([12, 12])
+
+  def testMultipleBreaks(self):
+    self._testReadWithBreaks([0, 4, 20])
+
+  def testRestoreExhaustedIterator(self):
+    num_files = 2
+    lines_per_file = 5
+    test_filenames = self._createFiles(num_files, lines_per_file, crlf=True)
+
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = self._build_graph(test_filenames)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(num_files * lines_per_file):
+          sess.run(get_next)
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+        self._save(saver, sess)
+
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        saver = self._import_meta_graph()
+        self._restore(saver, sess)
+        _, get_next = ops.get_collection("iterator_ops")
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testInitThenRestore(self):
+    num_files = 5
+    lines_per_file = 5
+    total_records = num_files * lines_per_file
+    break_record = 8
+    test_filenames = self._createFiles(num_files, lines_per_file, crlf=True)
+
+    expected_records = []
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = self._build_graph(test_filenames)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_record):
+          sess.run(get_next)
+        self._save(saver, sess)
+        for _ in range(total_records - break_record):
+          expected_records.append(sess.run(get_next))
+
+    actual_records = []
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        saver = self._import_meta_graph()
+        init_op, get_next = ops.get_collection("iterator_ops")
+        sess.run(init_op)
+        self._restore(saver, sess)
+        for _ in range(total_records - break_record):
+          actual_records.append(sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+    self.assertEqual(actual_records, expected_records)
+
+  def testRestoreInModifiedGraph(self):
+    num_files = 5
+    lines_per_file = 5
+    total_records = num_files * lines_per_file
+    break_record = 8
+    test_filenames = self._createFiles(num_files, lines_per_file, crlf=True)
+
+    expected_records = []
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = self._build_graph(test_filenames)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_record):
+          sess.run(get_next)
+        self._save(saver, sess)
+        for _ in range(total_records - break_record):
+          expected_records.append(sess.run(get_next))
+
+    actual_records = []
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        init_op, get_next, saver = self._build_graph(
+            test_filenames, compression_type="GZIP")
+        self._restore(saver, sess)
+        for _ in range(total_records - break_record):
+          actual_records.append(sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+    self.assertEqual(actual_records, expected_records)
+
+  def testRestoreInModifiedGraphThenInit(self):
+    num_files = 5
+    lines_per_file = 5
+    total_records = num_files * lines_per_file
+    break_record = 8
+    test_filenames = self._createFiles(num_files, lines_per_file, crlf=True)
+
+    expected_records = []
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = self._build_graph(test_filenames)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_record):
+          expected_records.append(sess.run(get_next))
+        self._save(saver, sess)
+        for _ in range(total_records - break_record):
+          expected_records.append(sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+    # Test that calling the init_op overrides the restored iterator. The
+    # iterator for the old graph was build to read uncompressed files and
+    # would fail when trying to read the new files.
+    actual_records = []
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        test_filenames = self._createFiles(
+            num_files, lines_per_file, crlf=True, compression_type="GZIP")
+        init_op, get_next, saver = self._build_graph(
+            test_filenames, compression_type="GZIP")
+        self._restore(saver, sess)
+        sess.run(init_op)
+        for _ in range(total_records):
+          actual_records.append(sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+    self.assertEqual(actual_records, expected_records)
+
+  def testDoNotRestoreIterator(self):
+    num_files = 5
+    lines_per_file = 5
+    total_records = num_files * lines_per_file
+    break_record = 8
+    test_filenames = self._createFiles(num_files, lines_per_file, crlf=True)
+
+    expected_records = []
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = self._build_graph(test_filenames)
+      with self.test_session(graph=g) as sess:
+        sess.run(init_op)
+        for _ in range(break_record):
+          expected_records.append(sess.run(get_next))
+        self._save(saver, sess)
+        for _ in range(total_records - break_record):
+          expected_records.append(sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+    actual_records = []
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g) as sess:
+        init_op, get_next, saver = self._build_graph(
+            test_filenames, build_saveable=False)
+        self._restore(saver, sess)
+        with self.assertRaises(errors.FailedPreconditionError):
+          sess.run(get_next)
+        sess.run(init_op)
+        for _ in range(total_records):
+          actual_records.append(sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+    self.assertEqual(actual_records, expected_records)
 
 
 class FixedLengthRecordReaderTest(test.TestCase):

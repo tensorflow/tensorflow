@@ -44,6 +44,8 @@ enum class TokKind {
   kw_ROOT,
   kw_true,
   kw_false,
+  kw_maximal,
+  kw_replicated,
 
   // Typed tokens.
   kName,           // %foo

@@ -1,4 +1,8 @@
 op {
+  graph_op_name: "DebugGradientIdentity"
+  visibility: HIDDEN
+}
+op {
   graph_op_name: "DecodeAndCropJpeg"
   endpoint {
     name: "image.decode_and_crop_jpeg"
@@ -9,6 +13,10 @@ op {
   endpoint {
     name: "image.decode_bmp"
   }
+}
+op {
+  graph_op_name: "DecodeCSV"
+  visibility: HIDDEN
 }
 op {
   graph_op_name: "DecodeGif"
@@ -29,6 +37,10 @@ op {
   }
 }
 op {
+  graph_op_name: "DeleteSessionTensor"
+  visibility: HIDDEN
+}
+op {
   graph_op_name: "DepthwiseConv2dNative"
   endpoint {
     name: "nn.depthwise_conv2d_native"
@@ -45,6 +57,14 @@ op {
   endpoint {
     name: "nn.depthwise_conv2d_native_backprop_input"
   }
+}
+op {
+  graph_op_name: "DeserializeManySparse"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "DestroyTemporaryVariable"
+  visibility: HIDDEN
 }
 op {
   graph_op_name: "DrawBoundingBoxes"

@@ -235,10 +235,6 @@ def dense(
   Raises:
     ValueError: if eager execution is enabled.
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.Dense instead.')
   layer = Dense(units,
                 activation=activation,
                 use_bias=use_bias,
@@ -344,10 +340,6 @@ def dropout(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.Dropout instead.')
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
 

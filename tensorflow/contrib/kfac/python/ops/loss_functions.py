@@ -42,8 +42,14 @@ class LossFunction(object):
   use this class.  It depends on the use case.
   """
 
-  def __init__(self, targets=None):
-    self._targets = targets
+  @abc.abstractproperty
+  def targets(self):
+    """The targets being predicted by the model.
+
+    Returns:
+      None or Tensor of appropriate shape for calling self._evaluate() on.
+    """
+    pass
 
   @abc.abstractproperty
   def inputs(self):
@@ -51,16 +57,25 @@ class LossFunction(object):
     pass
 
   def evaluate(self):
-    """Evaluate the loss function."""
-    if self._targets is not None:
+    """Evaluate the loss function on the targets."""
+    if self.targets is not None:
       # We treat the targets as "constant".  It's only the inputs that get
       # "back-propped" through.
-      return self._evaluate(array_ops.stop_gradient(self._targets))
+      return self._evaluate(array_ops.stop_gradient(self.targets))
     else:
       raise Exception("Cannot evaluate losses with unspecified targets.")
 
   @abc.abstractmethod
   def _evaluate(self, targets):
+    """Evaluates the log probability of the targets.
+
+    Args:
+      targets: Tensor that distribution can calculate log_prob() of.
+
+    Returns:
+      log probability of each target, summed across all targets.
+    """
+
     pass
 
   @abc.abstractmethod
@@ -166,9 +181,9 @@ class LossFunction(object):
 class NegativeLogProbLoss(LossFunction):
   """Abstract base class for loss functions that are negative log probs."""
 
-  def __init__(self, targets=None, seed=None):
+  def __init__(self, seed=None):
     self._default_seed = seed
-    super(NegativeLogProbLoss, self).__init__(targets=targets)
+    super(NegativeLogProbLoss, self).__init__()
 
   @property
   def inputs(self):
@@ -176,6 +191,7 @@ class NegativeLogProbLoss(LossFunction):
 
   @abc.abstractproperty
   def params(self):
+    """Parameters to the underlying distribution."""
     pass
 
   @abc.abstractmethod
@@ -281,9 +297,18 @@ class NegativeLogProbLoss(LossFunction):
 
   @abc.abstractmethod
   def sample(self, seed):
+    """Sample 'targets' from the underlying distribution."""
     pass
 
   def evaluate_on_sample(self, seed=None):
+    """Evaluates the log probability on a random sample.
+
+    Args:
+      seed: int or None. Random seed for this draw from the distribution.
+
+    Returns:
+      Log probability of sampled targets, summed across examples.
+    """
     if seed is None:
       seed = self._default_seed
     # We treat the targets as "constant".  It's only the inputs that get
@@ -328,16 +353,19 @@ class NaturalParamsNegativeLogProbLoss(NegativeLogProbLoss):
 class DistributionNegativeLogProbLoss(NegativeLogProbLoss):
   """Base class for neg log prob losses that use the TF Distribution classes."""
 
-  def __init__(self, dist, targets=None, seed=None):
-    self._dist = dist
-    super(DistributionNegativeLogProbLoss, self).__init__(
-        targets=targets, seed=seed)
+  def __init__(self, seed=None):
+    super(DistributionNegativeLogProbLoss, self).__init__(seed=seed)
+
+  @abc.abstractproperty
+  def dist(self):
+    """The underlying tf.distributions.Distribution."""
+    pass
 
   def _evaluate(self, targets):
-    return -math_ops.reduce_sum(self._dist.log_prob(targets))
+    return -math_ops.reduce_sum(self.dist.log_prob(targets))
 
   def sample(self, seed):
-    return self._dist.sample(seed=seed)
+    return self.dist.sample(seed=seed)
 
 
 class NormalMeanNegativeLogProbLoss(DistributionNegativeLogProbLoss,
@@ -355,11 +383,18 @@ class NormalMeanNegativeLogProbLoss(DistributionNegativeLogProbLoss,
   """
 
   def __init__(self, mean, var=0.5, targets=None, seed=None):
-    dist = normal.Normal(loc=mean, scale=var**0.5)
     self._mean = mean
     self._var = var
-    super(NormalMeanNegativeLogProbLoss, self).__init__(
-        dist, targets=targets, seed=seed)
+    self._targets = targets
+    super(NormalMeanNegativeLogProbLoss, self).__init__(seed=seed)
+
+  @property
+  def targets(self):
+    return self._targets
+
+  @property
+  def dist(self):
+    return normal.Normal(loc=self._mean, scale=math_ops.sqrt(self._var))
 
   @property
   def params(self):
@@ -416,10 +451,16 @@ class NormalMeanVarianceNegativeLogProbLoss(DistributionNegativeLogProbLoss):
     self._mean = mean
     self._variance = variance
     self._scale = math_ops.sqrt(variance)
-    dist = normal.Normal(loc=self._mean, scale=self._scale)
-    super(NormalMeanVarianceNegativeLogProbLoss, self).__init__(dist,
-                                                                targets=targets,
-                                                                seed=seed)
+    self._targets = targets
+    super(NormalMeanVarianceNegativeLogProbLoss, self).__init__(seed=seed)
+
+  @property
+  def targets(self):
+    return self._targets
+
+  @property
+  def dist(self):
+    return normal.Normal(loc=self._mean, scale=self._scale)
 
   @property
   def params(self):
@@ -534,12 +575,53 @@ class CategoricalLogitsNegativeLogProbLoss(DistributionNegativeLogProbLoss,
   """
 
   def __init__(self, logits, targets=None, seed=None):
-    dist = categorical.Categorical(logits=logits)
-    self._logits = logits
-    self._probs = dist.probs
-    self._sqrt_probs = math_ops.sqrt(self._probs)
-    super(CategoricalLogitsNegativeLogProbLoss, self).__init__(
-        dist, targets=targets, seed=seed)
+    """Instantiates a CategoricalLogitsNegativeLogProbLoss.
+
+    Args:
+      logits: Tensor of shape [batch_size, output_size]. Parameters for
+        underlying distribution.
+      targets: None or Tensor of shape [output_size]. Each elements contains an
+        index in [0, output_size).
+      seed: int or None. Default random seed when sampling.
+    """
+    self._logits_components = []
+    self._targets_components = []
+    self.register_additional_minibatch(logits, targets=targets)
+    super(CategoricalLogitsNegativeLogProbLoss, self).__init__(seed=seed)
+
+  def register_additional_minibatch(self, logits, targets=None):
+    """Register an additiona minibatch's worth of parameters.
+
+    Args:
+      logits: Tensor of shape [batch_size, output_size]. Parameters for
+        underlying distribution.
+      targets: None or Tensor of shape [batch_size, output_size].  Each row must
+        be a one-hot vector.
+    """
+    self._logits_components.append(logits)
+    self._targets_components.append(targets)
+
+  @property
+  def _logits(self):
+    return array_ops.concat(self._logits_components, axis=0)
+
+  @property
+  def targets(self):
+    if all(target is None for target in self._targets_components):
+      return None
+    return array_ops.concat(self._targets_components, axis=0)
+
+  @property
+  def dist(self):
+    return categorical.Categorical(logits=self._logits)
+
+  @property
+  def _probs(self):
+    return self.dist.probs
+
+  @property
+  def _sqrt_probs(self):
+    return math_ops.sqrt(self._probs)
 
   @property
   def params(self):
@@ -595,12 +677,21 @@ class MultiBernoulliNegativeLogProbLoss(DistributionNegativeLogProbLoss,
   """
 
   def __init__(self, logits, targets=None, seed=None):
-    dist = bernoulli.Bernoulli(logits=logits)
     self._logits = logits
-    self._probs = dist.probs
+    self._targets = targets
+    super(MultiBernoulliNegativeLogProbLoss, self).__init__(seed=seed)
 
-    super(MultiBernoulliNegativeLogProbLoss, self).__init__(
-        dist, targets=targets, seed=seed)
+  @property
+  def targets(self):
+    return self._targets
+
+  @property
+  def dist(self):
+    return bernoulli.Bernoulli(logits=self._logits)
+
+  @property
+  def _probs(self):
+    return self.dist.probs
 
   @property
   def params(self):

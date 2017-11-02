@@ -87,33 +87,51 @@ class ExamplesIterable {
 
       // Get sparse float values per column.
       auto& sparse_float_features = example_.sparse_float_features;
-      sparse_float_features.clear();
       // Iterate through each sparse float feature column.
       for (size_t sparse_float_idx = 0;
            sparse_float_idx < iter_->sparse_float_column_iterables_.size();
            ++sparse_float_idx) {
+        // Clear info from a previous instance.
+        sparse_float_features[sparse_float_idx].Clear();
+
         // Get range for values tensor.
         const auto& row_range =
             (*sparse_float_column_iterators_[sparse_float_idx]);
         DCHECK_EQ(example_idx_, row_range.example_idx);
+
         // If the example has this feature column.
         if (row_range.start < row_range.end) {
-          // Retrieve original indices tensor.
-          const TTypes<int64>::ConstMatrix& indices =
-              iter_->sparse_float_column_iterables_[sparse_float_idx]
-                  .sparse_indices();
+          const int32 dimension =
+              iter_->sparse_float_dimensions_[sparse_float_idx];
+          sparse_float_features[sparse_float_idx].SetDimension(dimension);
+          if (dimension <= 1) {
+            // single dimensional sparse feature column.
+            DCHECK_EQ(1, row_range.end - row_range.start);
+            sparse_float_features[sparse_float_idx].Add(
+                0, iter_->sparse_float_column_values_[sparse_float_idx](
+                       row_range.start));
+          } else {
+            // Retrieve original indices tensor.
+            const TTypes<int64>::ConstMatrix& indices =
+                iter_->sparse_float_column_iterables_[sparse_float_idx]
+                    .sparse_indices();
 
-          // For each value.
-          for (int64 row_idx = row_range.start; row_idx < row_range.end;
-               ++row_idx) {
-            // Get the feature id for the feature column and the value.
-            const int32 feature_id = indices(row_idx, 1);
-            DCHECK_EQ(example_idx_, indices(row_idx, 0));
+            sparse_float_features[sparse_float_idx].Reserve(row_range.end -
+                                                            row_range.start);
 
-            // Save the value to our sparse matrix.
-            sparse_float_features.addElement(
-                sparse_float_idx, feature_id,
-                iter_->sparse_float_column_values_[sparse_float_idx](row_idx));
+            // For each value.
+            for (int64 row_idx = row_range.start; row_idx < row_range.end;
+                 ++row_idx) {
+              // Get the feature id for the feature column and the value.
+              const int32 feature_id = indices(row_idx, 1);
+              DCHECK_EQ(example_idx_, indices(row_idx, 0));
+
+              // Save the value to our sparse matrix.
+              sparse_float_features[sparse_float_idx].Add(
+                  feature_id,
+                  iter_->sparse_float_column_values_[sparse_float_idx](
+                      row_idx));
+            }
           }
         }
       }
@@ -172,6 +190,9 @@ class ExamplesIterable {
 
   // Sparse float column values.
   std::vector<TTypes<float>::ConstVec> sparse_float_column_values_;
+
+  // Dimensions for sparse float feature columns.
+  std::vector<int32> sparse_float_dimensions_;
 
   // Sparse int column iterables.
   std::vector<SparseColumnIterable> sparse_int_column_iterables_;

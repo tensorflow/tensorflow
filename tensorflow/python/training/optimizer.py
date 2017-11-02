@@ -397,6 +397,8 @@ class Optimizer(object):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
+      RuntimeError: If called with eager execution enabled and if `grad_loss`
+        is not `None` or `loss` is not callable.
 
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
@@ -411,11 +413,13 @@ class Optimizer(object):
     """
     if context.in_eager_mode():
       if grad_loss is not None:
-        raise ValueError("`grad_loss` argument to Optimizer.compute_gradients "
-                         "not supported when eager execution is enabled.")
+        raise RuntimeError(
+            "`grad_loss` argument to Optimizer.compute_gradients "
+            "not supported when eager execution is enabled.")
       if not callable(loss):
-        raise ValueError("`loss` passed to Optimizer.compute_gradients should "
-                         "be a function when eager execution is enabled.")
+        raise RuntimeError(
+            "`loss` passed to Optimizer.compute_gradients should "
+            "be a function when eager execution is enabled.")
       # TODO(agarwal): consider passing parameters to the `loss` function.
       if var_list is None:
         return backprop.implicit_grad(loss)()

@@ -99,6 +99,14 @@ class FunctionTest(test.TestCase):
 
       self.assertAllEqual(g(constant_op.constant(2.0)).eval(), 5.0)
 
+  def testDict(self):
+
+    @function.defun
+    def f(x):
+      return {'name': x + 1}
+
+    self.assertAllEqual(f(constant_op.constant(1.0))['name'], 2.0)
+
   def testTensorConversionWithDefun(self):
 
     @function.defun

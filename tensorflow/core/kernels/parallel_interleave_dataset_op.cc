@@ -17,11 +17,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/captured_function.h"
 #include "tensorflow/core/kernels/dataset_utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
-
-#include "tensorflow/core/kernels/captured_function.h"
 
 namespace tensorflow {
 
@@ -30,9 +29,9 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
+class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit SloppyInterleaveDatasetOp(OpKernelConstruction* ctx)
+  explicit ParallelInterleaveDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
         graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
@@ -62,13 +61,16 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, block_length > 0,
                 errors::InvalidArgument("`block_length` must be > 0"));
 
+    bool sloppy;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "sloppy", &sloppy));
+
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
                                                  std::move(other_arguments),
                                                  &captured_func));
 
     *output = new Dataset(input, std::move(captured_func), cycle_length,
-                          block_length, output_types_, output_shapes_);
+                          block_length, sloppy, output_types_, output_shapes_);
   }
 
  private:
@@ -76,12 +78,13 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
    public:
     Dataset(const DatasetBase* input,
             std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
-            int64 block_length, const DataTypeVector& output_types,
+            int64 block_length, bool sloppy, const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : input_(input),
           captured_func_(std::move(captured_func)),
           cycle_length_(cycle_length),
           block_length_(block_length),
+          sloppy_(sloppy),
           output_types_(output_types),
           output_shapes_(output_shapes) {
       input_->Ref();
@@ -91,8 +94,8 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIterator(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::SloppyInterleave")}));
+      return std::unique_ptr<IteratorBase>(new Iterator(
+          {this, strings::StrCat(prefix, "::ParallelInterleave")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -103,7 +106,7 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() override {
-      return "SloppyInterleaveDatasetOp::Dataset";
+      return "ParallelInterleaveDatasetOp::Dataset";
     }
 
    private:
@@ -131,16 +134,24 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(EnsureWorkerThreadsStarted(ctx));
-        // Search for available items, blocking if necessary.
+        const int64 num_workers = worker_threads_.size();
+        if (num_workers == 0) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
         while (!cancelled_) {
-          for (size_t i = 0; i < dataset()->cycle_length_; ++i) {
-            size_t index = (next_index_ + i) % dataset()->cycle_length_;
+          // Wait for an item to become available, blocking if necessary. If we
+          // are allowed to be sloppy, we can skip over input datasets that do
+          // not have an item readily available.
+          const int64 n = dataset()->sloppy_ ? num_workers : 1LL;
+          for (int64 i = 0; i < n; ++i) {
+            int64 index = (next_index_ + i) % num_workers;
             if (output_elements_[index].is_produced) {
               next_index_ = index;
               if (i == 0) {
                 block_count_++;
                 if (block_count_ == dataset()->block_length_) {
-                  next_index_ = (index + 1) % dataset()->cycle_length_;
+                  next_index_ = (index + 1) % num_workers;
                   block_count_ = 0;
                 }
               } else {
@@ -150,7 +161,7 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
               if (output_elements_[index].end_of_sequence) {
                 output_elements_[index].is_produced = false;
                 output_elements_[index].cond_var.notify_one();
-                next_index_ = (index + 1) % dataset()->cycle_length_;
+                next_index_ = (index + 1) % num_workers;
                 block_count_ = 0;
                 i = -1;  // Restart the inner loop
                 continue;
@@ -174,11 +185,21 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
             *end_of_sequence = true;
             return Status::OK();
           }
+
+          // If we are not allowed to be sloppy and
+          // `worker_threads_[next_index]` has finished, advance `next_index`.
+          if (!dataset()->sloppy_ && worker_threads_[next_index_].finished) {
+            next_index_ = (next_index_ + 1) % num_workers;
+            continue;
+          }
+
           // No values available; wait until woken up.
+          // TODO(jsimsa): Use slot-specific condition variable for
+          // coordination of elements consumption.
           cond_var_.wait(l);
         }
         return errors::Cancelled(
-            "SloppyInterleaveDatasetOp::Dataset::Iterator::GetNext");
+            "ParallelInterleaveDatasetOp::Dataset::Iterator::GetNext");
       }
 
      private:
@@ -201,6 +222,16 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
         condition_variable cond_var;
       };
 
+      struct ThreadStatus {
+        // The underlying thread uses `finished` to communicate to the producer
+        // that it has finished.
+        bool finished = false;
+        // The underlying thread object.
+        std::unique_ptr<Thread> thread;
+
+        explicit ThreadStatus(Thread* thread) : thread(thread) {}
+      };
+
       Status EnsureWorkerThreadsStarted(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (worker_threads_.empty()) {
@@ -220,11 +251,10 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<IteratorBase> itr;
             TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
                 ctx, args, i, dataset()->captured_func_.get(), prefix(), &itr));
-            worker_threads_.emplace_back(
-                std::unique_ptr<Thread>(ctx->env()->StartThread(
-                    {}, "worker_thread",
-                    std::bind(&Iterator::WorkerThread, this,
-                              new IteratorContext(*ctx), i, itr.release()))));
+            worker_threads_.emplace_back(ctx->env()->StartThread(
+                {}, "worker_thread",
+                std::bind(&Iterator::WorkerThread, this,
+                          new IteratorContext(*ctx), i, itr.release())));
             num_active_threads_ = i + 1;
           }
         }
@@ -264,6 +294,7 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
         std::unique_ptr<IteratorBase> out_iterator(out_iterator_ptr);
         auto cleanup = gtl::MakeCleanup([this, thread_index] {
           mutex_lock l(mu_);
+          worker_threads_[thread_index].finished = true;
           num_active_threads_--;
           cond_var_.notify_all();
         });
@@ -345,13 +376,14 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
       // Pointers to the worker threads. This must be last to ensure the
       // threads have exited before any other members are deallocated.
       // TODO(b/65178177): Avoid allocating additional threads.
-      std::vector<std::unique_ptr<Thread>> worker_threads_ GUARDED_BY(mu_);
+      std::vector<ThreadStatus> worker_threads_ GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const int64 cycle_length_;
     const int64 block_length_;
+    const bool sloppy_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
   };
@@ -362,8 +394,8 @@ class SloppyInterleaveDatasetOp : public UnaryDatasetOpKernel {
   NameAttrList func_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("SloppyInterleaveDataset").Device(DEVICE_CPU),
-                        SloppyInterleaveDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDataset").Device(DEVICE_CPU),
+                        ParallelInterleaveDatasetOp);
 
 }  // namespace
 

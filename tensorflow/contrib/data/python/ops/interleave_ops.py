@@ -23,14 +23,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util import deprecation
 
 
-class SloppyInterleaveDataset(dataset_ops.Dataset):
+class ParallelInterleaveDataset(dataset_ops.Dataset):
   """A `Dataset` that maps a function over its input and flattens the result."""
 
-  def __init__(self, input_dataset, map_func, cycle_length, block_length):
-    """See `tf.contrib.data.sloppy_interleave()` for details."""
-    super(SloppyInterleaveDataset, self).__init__()
+  def __init__(self, input_dataset, map_func, cycle_length, block_length,
+               sloppy):
+    """See `tf.contrib.data.parallel_interleave()` for details."""
+    super(ParallelInterleaveDataset, self).__init__()
     self._input_dataset = input_dataset
 
     @function.Defun(*nest.flatten(input_dataset.output_types))
@@ -62,13 +64,16 @@ class SloppyInterleaveDataset(dataset_ops.Dataset):
         cycle_length, dtype=dtypes.int64, name="cycle_length")
     self._block_length = ops.convert_to_tensor(
         block_length, dtype=dtypes.int64, name="block_length")
+    self._sloppy = ops.convert_to_tensor(
+        sloppy, dtype=dtypes.bool, name="sloppy")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.sloppy_interleave_dataset(
+    return gen_dataset_ops.parallel_interleave_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._map_func.captured_inputs,
         self._cycle_length,
         self._block_length,
+        self._sloppy,
         f=self._map_func,
         output_types=nest.flatten(self.output_types),
         output_shapes=nest.flatten(self.output_shapes))
@@ -82,6 +87,53 @@ class SloppyInterleaveDataset(dataset_ops.Dataset):
     return self._output_types
 
 
+def parallel_interleave(map_func, cycle_length, block_length=1, sloppy=False):
+  """A parallel version of the `Dataset.interleave()` transformation.
+
+  `parallel_interleave()` maps `map_func` across its input to produce nested
+  datasets, and outputs their elements interleaved. Unlike
+  @{tf.data.Dataset.interleave}, it gets elements from `cycle_length` nested
+  datasets in parallel, which increases the throughput, especially in the
+  presence of stragglers. Furthermore, the `sloppy` argument can be used to
+  improve performance, by relaxing the requirement that the outputs are produced
+  in a deterministic order, and allowing the implementation to skip over nested
+  datasets whose elements are not readily available when requested.
+
+  Example usage:
+
+  ```python
+  # Preprocess 4 files concurrently.
+  filenames = tf.data.Dataset.list_files("/path/to/data/train*.tfrecords")
+  dataset = filenames.apply(
+      tf.contrib.data.parallel_interleave(
+          lambda filename: tf.data.TFRecordDataset(filename),
+          cycle_length=4))
+  ```
+
+  WARNING: If `sloppy` is `True`, the order of produced elements is not
+  deterministic.
+
+  Args:
+    map_func: A function mapping a nested structure of tensors to a `Dataset`.
+    cycle_length: The number of threads to interleave from in parallel.
+    block_length: The number of consecutive elements to pull from a thread
+      before advancing to the next thread.
+    sloppy: If false, elements are produced in deterministic order. Otherwise,
+      the implementation is allowed, for the sake of expediency, to produce
+      elements in a non-deterministic order.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    @{tf.data.Dataset.apply}.
+  """
+  def _apply_fn(dataset):
+    return ParallelInterleaveDataset(
+        dataset, map_func, cycle_length, block_length, sloppy)
+  return _apply_fn
+
+
+@deprecation.deprecated(
+    None, "Use `tf.contrib.data.parallel_interleave(..., sloppy=True)`.")
 def sloppy_interleave(map_func, cycle_length, block_length=1):
   """A non-deterministic version of the `Dataset.interleave()` transformation.
 
@@ -132,6 +184,6 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
     @{tf.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
-    return SloppyInterleaveDataset(
-        dataset, map_func, cycle_length, block_length)
+    return ParallelInterleaveDataset(
+        dataset, map_func, cycle_length, block_length, sloppy=True)
   return _apply_fn

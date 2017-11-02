@@ -85,7 +85,7 @@ class ReadVariableOp : public OpKernel {
                 errors::NotFound(
                     "Error while reading resource variable ", handle.name(),
                     " from Container: ", handle.container(),
-                    ". This could mean that the variable was not initialized. ",
+                    ". This could mean that the variable was uninitialized. ",
                     status.ToString()));
 
     core::ScopedUnref s(variable);
@@ -464,7 +464,7 @@ class ResourceGatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 3>({1, N, out->NumElements() / N});
 
       functor::GatherFunctor<Device, T, Index> functor;
-      int64 bad_i = functor(c->eigen_device<Device>(), params_flat,
+      int64 bad_i = functor(c, params_flat,
                             indices_flat, out_flat);
 
       OP_REQUIRES(
@@ -569,9 +569,11 @@ class ResourceScatterUpdateOp : public OpKernel {
   REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
 
 // TODO(apassos) add the other types here.
-#define REGISTER_SCATTER_ARITHEMTIC(type, dev)             \
-  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd", \
-                          scatter_op::UpdateOp::ADD);
+#define REGISTER_SCATTER_ARITHEMTIC(type, dev)                \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd",    \
+                          scatter_op::UpdateOp::ADD);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterUpdate", \
+                          scatter_op::UpdateOp::ASSIGN);
 
 // Registers CPU kernels.
 #define REGISTER_SCATTER_ARITHEMTIC_CPU(type) \

@@ -21,7 +21,35 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
+
+# Linear algebra ops.
+band_part = array_ops.matrix_band_part
+cholesky = linalg_ops.cholesky
+cholesky_solve = linalg_ops.cholesky_solve
+det = linalg_ops.matrix_determinant
+# pylint: disable=protected-access
+slogdet = gen_linalg_ops._log_matrix_determinant
+# pylint: disable=protected-access
+diag = array_ops.matrix_diag
+diag_part = array_ops.matrix_diag_part
+eigh = linalg_ops.self_adjoint_eig
+eigvalsh = linalg_ops.self_adjoint_eigvals
+einsum = special_math_ops.einsum
+eye = linalg_ops.eye
+inv = linalg_ops.matrix_inverse
+lstsq = linalg_ops.matrix_solve_ls
+norm = linalg_ops.norm
+qr = linalg_ops.qr
+set_diag = array_ops.matrix_set_diag
+solve = linalg_ops.matrix_solve
+svd = linalg_ops.svd
+tensordot = math_ops.tensordot
+trace = math_ops.trace
+transpose = array_ops.matrix_transpose
+triangular_solve = linalg_ops.matrix_triangular_solve
 
 
 def logdet(matrix, name=None):

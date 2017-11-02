@@ -17,15 +17,16 @@ limitations under the License.
 
 #include <stddef.h>
 #include <memory>
+#include <utility>
 
 #include "sqlite3.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-namespace db {
 
 class SqliteStatement;
 
@@ -46,7 +47,7 @@ class Sqlite {
   /// `file::memory:` for testing.
   ///
   /// See https://sqlite.org/c3ref/open.html
-  static Status Open(const string& uri, std::unique_ptr<Sqlite>* db);
+  static xla::StatusOr<std::shared_ptr<Sqlite>> Open(const string& uri);
 
   /// \brief Makes tensorflow::Status for SQLite result code.
   ///
@@ -65,7 +66,7 @@ class Sqlite {
   /// \brief Frees underlying SQLite object.
   ///
   /// Unlike the destructor, all SqliteStatement objects must be closed
-  /// beforehand.
+  /// beforehand. This is a no-op if already closed
   Status Close();
 
   /// \brief Creates SQLite statement.
@@ -74,7 +75,7 @@ class Sqlite {
   /// failed. It is also possible to punt the error checking to after
   /// the values have been binded and Step() or ExecuteWriteQuery() is
   /// called.
-  std::unique_ptr<SqliteStatement> Prepare(const string& sql);
+  SqliteStatement Prepare(const string& sql);
 
  private:
   explicit Sqlite(sqlite3* db);
@@ -89,21 +90,34 @@ class Sqlite {
 /// Instances of this class are not thread safe.
 class SqliteStatement {
  public:
-  /// \brief Destroys object and finalizes statement if needed.
-  ~SqliteStatement();
+  /// \brief Constructs empty statement that should be assigned later.
+  SqliteStatement() : stmt_(nullptr), error_(SQLITE_OK) {}
+
+  /// \brief Empties object and finalizes statement if needed.
+  ~SqliteStatement() { CloseOrLog(); }
+
+  /// \brief Move constructor, after which <other> should not be used.
+  SqliteStatement(SqliteStatement&& other);
+
+  /// \brief Move assignment, after which <other> should not be used.
+  SqliteStatement& operator=(SqliteStatement&& other);
+
+  /// \brief Returns true if statement is not empty.
+  operator bool() const { return stmt_ != nullptr; }
 
   /// \brief Returns SQLite result code state.
   ///
   /// This will be SQLITE_OK unless an error happened. If multiple
   /// errors happened, only the first error code will be returned.
-  int error() { return error_; }
+  int error() const { return error_; }
 
   /// \brief Returns error() as a tensorflow::Status.
-  Status status() { return Sqlite::MakeStatus(error_); }
+  Status status() const;
 
   /// \brief Finalize statement object.
   ///
-  /// Please note that the destructor can also do this.
+  /// Please note that the destructor can also do this. This method is
+  /// a no-op if already closed.
   Status Close();
 
   /// \brief Executes query and/or fetches next row.
@@ -247,7 +261,12 @@ class SqliteStatement {
 
  private:
   friend Sqlite;
-  SqliteStatement(sqlite3_stmt* stmt, int error);  // takes ownership
+  SqliteStatement(sqlite3_stmt* stmt, int error,
+                  std::unique_ptr<string> prepare_error_sql)
+      : stmt_(stmt),
+        error_(error),
+        prepare_error_sql_(std::move(prepare_error_sql)) {}
+  void CloseOrLog();
 
   void Update(int rc) {
     if (TF_PREDICT_FALSE(rc != SQLITE_OK)) {
@@ -268,11 +287,31 @@ class SqliteStatement {
 
   sqlite3_stmt* stmt_;
   int error_;
+  std::unique_ptr<string> prepare_error_sql_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SqliteStatement);
 };
 
-}  // namespace db
+inline SqliteStatement::SqliteStatement(SqliteStatement&& other)
+    : stmt_(other.stmt_),
+      error_(other.error_),
+      prepare_error_sql_(std::move(other.prepare_error_sql_)) {
+  other.stmt_ = nullptr;
+  other.error_ = SQLITE_OK;
+}
+
+inline SqliteStatement& SqliteStatement::operator=(SqliteStatement&& other) {
+  if (&other != this) {
+    CloseOrLog();
+    stmt_ = other.stmt_;
+    error_ = other.error_;
+    prepare_error_sql_ = std::move(other.prepare_error_sql_);
+    other.stmt_ = nullptr;
+    other.error_ = SQLITE_OK;
+  }
+  return *this;
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_LIB_DB_SQLITE_H_

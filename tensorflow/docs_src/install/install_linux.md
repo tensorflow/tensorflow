@@ -1,8 +1,12 @@
 # Installing TensorFlow on Ubuntu
 
-This guide explains how to install TensorFlow on Ubuntu. These instructions
-might also work on other Linux variants, but we have only tested (and we
-only support) these instructions on Ubuntu 14.04 or higher.
+This guide explains how to install TensorFlow on Ubuntu. Although these
+instructions might also work on other Linux variants, we have only
+tested (and we only support) these instructions on machines meeting the
+following requirements:
+
+  * 64-bit desktops or laptops
+  * Ubuntu 14.04 or higher
 
 
 ## Determine which TensorFlow to install
@@ -77,22 +81,22 @@ TensorFlow with GPU support, but only if you do the following:
 You must pick the mechanism by which you install TensorFlow. The
 supported choices are as follows:
 
-  * [virtualenv](#InstallingVirtualenv)
+  * [Virtualenv](#InstallingVirtualenv)
   * ["native" pip](#InstallingNativePip)
   * [Docker](#InstallingDocker)
   * [Anaconda](#InstallingAnaconda)
   * installing from sources, which is documented in
     [a separate guide](https://www.tensorflow.org/install/install_sources).
 
-**We recommend the virtualenv installation.**
+**We recommend the Virtualenv installation.**
 [Virtualenv](https://virtualenv.pypa.io/en/stable/)
 is a virtual Python environment isolated from other Python development,
 incapable of interfering with or being affected by other Python programs
-on the same machine.  During the virtualenv installation process,
+on the same machine.  During the Virtualenv installation process,
 you will install not only TensorFlow but also all the packages that
 TensorFlow requires.  (This is actually pretty easy.)
 To start working with TensorFlow, you simply need to "activate" the
-virtual environment.  All in all, virtualenv provides a safe and
+virtual environment.  All in all, Virtualenv provides a safe and
 reliable mechanism for installing and running TensorFlow.
 
 Native pip installs TensorFlow directly on your system without going
@@ -121,30 +125,30 @@ Use that package at your own risk.
 
 
 <a name="InstallingVirtualenv"></a>
-## Installing with virtualenv
+## Installing with Virtualenv
 
 Take the following steps to install TensorFlow with Virtualenv:
 
-  1. Install pip and virtualenv by issuing one of the following commands:
+  1. Install pip and Virtualenv by issuing one of the following commands:
 
      <pre>$ <b>sudo apt-get install python-pip python-dev python-virtualenv</b> # for Python 2.7
-     $ <b>sudo apt-get install python3-pip python3-dev python-virtualenv</b> # for Python 3.n</pre>
+    $ <b>sudo apt-get install python3-pip python3-dev python-virtualenv</b> # for Python 3.n</pre>
 
-  2. Create a virtualenv environment by issuing one of the following commands:
+  2. Create a Virtualenv environment by issuing one of the following commands:
 
      <pre>$ <b>virtualenv --system-site-packages</b> <i>targetDirectory</i> # for Python 2.7
-     $ <b>virtualenv --system-site-packages -p python3</b> <i>targetDirectory</i> # for Python 3.n</pre>
+    $ <b>virtualenv --system-site-packages -p python3</b> <i>targetDirectory</i> # for Python 3.n</pre>
 
      where <code><em>targetDirectory</em></code> specifies the top of the
-     virtualenv tree.  Our instructions assume that
+     Virtualenv tree.  Our instructions assume that
      <code><em>targetDirectory</em></code> is `~/tensorflow`, but you may
      choose any directory.
 
-  3. Activate the virtualenv environment by issuing one of the following
+  3. Activate the Virtualenv environment by issuing one of the following
      commands:
 
      <pre>$ <b>source ~/tensorflow/bin/activate</b> # bash, sh, ksh, or zsh
-     $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh</pre>
+    $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh</pre>
 
      The preceding <tt>source</tt> command should change your prompt
      to the following:
@@ -156,22 +160,22 @@ Take the following steps to install TensorFlow with Virtualenv:
      <pre>(tensorflow)$ <b>easy_install -U pip</b></pre>
 
   5. Issue one of the following commands to install TensorFlow in the active
-     virtualenv environment:
+     Virtualenv environment:
 
      <pre>(tensorflow)$ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
-     (tensorflow)$ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
-     (tensorflow)$ <b>pip install --upgrade tensorflow-gpu</b>  # for Python 2.7 and GPU
-     (tensorflow)$ <b>pip3 install --upgrade tensorflow-gpu</b> # for Python 3.n and GPU</pre>
+    (tensorflow)$ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
+    (tensorflow)$ <b>pip install --upgrade tensorflow-gpu</b>  # for Python 2.7 and GPU
+    (tensorflow)$ <b>pip3 install --upgrade tensorflow-gpu</b> # for Python 3.n and GPU</pre>
 
-     If the preceding command succeeds, skip Step 6. If the preceding
+     If the above command succeeds, skip Step 6. If the preceding
      command fails, perform Step 6.
 
   6. (Optional) If Step 5 failed (typically because you invoked a pip version
-     lower than 8.1), install TensorFlow in the active virtualenv environment
+     lower than 8.1), install TensorFlow in the active Virtualenv environment
      by issuing a command of the following format:
 
      <pre>(tensorflow)$ <b>pip install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
-     (tensorflow)$ <b>pip3 install --upgrade</b> <i>tfBinaryURL</i>  # Python 3.n </pre>
+    (tensorflow)$ <b>pip3 install --upgrade</b> <i>tfBinaryURL</i>  # Python 3.n </pre>
 
      where <code><em>tfBinaryURL</em></code> identifies the URL of the
      TensorFlow Python package. The appropriate value of
@@ -181,10 +185,10 @@ Take the following steps to install TensorFlow with Virtualenv:
      [here](#the_url_of_the_tensorflow_python_package).  For example, if you
      are installing TensorFlow for Linux, Python 3.4, and CPU-only support,
      issue the following command to install TensorFlow in the active
-     virtualenv environment:
+     Virtualenv environment:
 
      <pre>(tensorflow)$ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc1-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common_installation_problems).
@@ -195,14 +199,14 @@ If you encounter installation problems, see
 After installing TensorFlow,
 [validate the installation](#ValidateYourInstallation).
 
-Note that you must activate the virtualenv environment each time you
-use TensorFlow. If the virtualenv environment is not currently active,
+Note that you must activate the Virtualenv environment each time you
+use TensorFlow. If the Virtualenv environment is not currently active,
 invoke one of the following commands:
 
-<pre>$ <b>source ~/tensorflow/bin/activate</b>      # bash, sh, ksh, or zsh
+<pre> $ <b>source ~/tensorflow/bin/activate</b>      # bash, sh, ksh, or zsh
 $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh</pre>
 
-When the virtualenv environment is active, you may run
+When the Virtualenv environment is active, you may run
 TensorFlow programs from this shell.  Your prompt will become
 the following to indicate that your tensorflow environment is active:
 
@@ -265,9 +269,9 @@ take the following steps:
   1. Install TensorFlow by invoking **one** of the following commands:
 
      <pre>$ <b>pip install tensorflow</b>      # Python 2.7; CPU support (no GPU support)
-     $ <b>pip3 install tensorflow</b>     # Python 3.n; CPU support (no GPU support)
-     $ <b>pip install tensorflow-gpu</b>  # Python 2.7;  GPU support
-     $ <b>pip3 install tensorflow-gpu</b> # Python 3.n; GPU support </pre>
+    $ <b>pip3 install tensorflow</b>     # Python 3.n; CPU support (no GPU support)
+    $ <b>pip install tensorflow-gpu</b>  # Python 2.7;  GPU support
+    $ <b>pip3 install tensorflow-gpu</b> # Python 3.n; GPU support </pre>
 
      If the preceding command runs to completion, you should now
      [validate your installation](#ValidateYourInstallation).
@@ -276,7 +280,7 @@ take the following steps:
      by issuing a command of the following format:
 
      <pre>$ <b>sudo pip  install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
-     $ <b>sudo pip3 install --upgrade</b> <i>tfBinaryURL</i>   # Python 3.n </pre>
+    $ <b>sudo pip3 install --upgrade</b> <i>tfBinaryURL</i>   # Python 3.n </pre>
 
      where <code><em>tfBinaryURL</em></code> identifies the URL of the
      TensorFlow Python package. The appropriate value of
@@ -289,7 +293,7 @@ take the following steps:
 
      <pre>
      $ <b>sudo pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc0-cp34-cp34m-linux_x86_64.whl</b>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc1-cp34-cp34m-linux_x86_64.whl</b>
      </pre>
 
      If this step fails, see
@@ -476,7 +480,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
 
      <pre>
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc1-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -490,11 +494,11 @@ To validate your TensorFlow installation, do the following:
 
 ### Prepare your environment
 
-If you installed on native pip, virtualenv, or Anaconda, then
+If you installed on native pip, Virtualenv, or Anaconda, then
 do the following:
 
   1. Start a terminal.
-  2. If you installed with virtualenv or Anaconda, activate your container.
+  2. If you installed with Virtualenv or Anaconda, activate your container.
   3. If you installed TensorFlow source code, navigate to any
      directory *except* one containing TensorFlow source code.
 
@@ -644,14 +648,14 @@ This section documents the relevant values for Linux installations.
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc0-cp27-none-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc1-cp27-none-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0rc0-cp27-none-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0rc1-cp27-none-linux_x86_64.whl
 </pre>
 
 Note that GPU support requires the NVIDIA hardware and software described in
@@ -663,14 +667,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc0-cp34-cp34m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc1-cp34-cp34m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0rc0-cp34-cp34m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0rc1-cp34-cp34m-linux_x86_64.whl
 </pre>
 
 Note that GPU support requires the NVIDIA hardware and software described in
@@ -682,14 +686,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc0-cp35-cp35m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc1-cp35-cp35m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0rc0-cp35-cp35m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0rc1-cp35-cp35m-linux_x86_64.whl
 </pre>
 
 
@@ -701,14 +705,14 @@ Note that GPU support requires the NVIDIA hardware and software described in
 CPU only:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc0-cp36-cp36m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.4.0rc1-cp36-cp36m-linux_x86_64.whl
 </pre>
 
 
 GPU support:
 
 <pre>
-https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0rc0-cp36-cp36m-linux_x86_64.whl
+https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.4.0rc1-cp36-cp36m-linux_x86_64.whl
 </pre>
 
 

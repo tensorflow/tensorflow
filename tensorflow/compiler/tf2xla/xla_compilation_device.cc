@@ -103,20 +103,17 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
       DeviceNameUtils::ParseFullName(op_kernel->requested_device(), &parsed),
       errors::Internal("Unable to parse device name: ",
                        op_kernel->requested_device()));
-  xla::OpDeviceAssignment assignment;
   // If no device ID assignment is found, XLA is free to use whatever device it
   // wants. In practice this usually has the effect of placing things on
   // device 0.
   if (parsed.has_id) {
-    assignment.set_has_device(true);
-    assignment.set_device(parsed.id);
+    b->SetSharding(xla::ShardingBuilder::AssignDevice(parsed.id));
   }
-  b->SetDeviceAssignment(assignment);
 
   op_kernel->Compute(context);
 
   b->ClearOpMetadata();
-  b->ClearDeviceAssignment();
+  b->ClearSharding();
   VLOG(4) << "Done";
 }
 

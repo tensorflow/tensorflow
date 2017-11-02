@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 from tensorflow.contrib.eager.python import tfe
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
@@ -24,7 +26,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numerics
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.summary import summary
+from tensorflow.python.summary.writer import writer
 
 
 class TFETest(test_util.TensorFlowTestCase):
@@ -38,6 +44,11 @@ class TFETest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r'indices = 7 is not in \[0, 3\)'):
       array_ops.gather([0, 1, 2], 7)
+
+  def testVariableError(self):
+    with self.assertRaisesRegexp(
+        RuntimeError, r'Variable not supported in Eager mode'):
+      variables.Variable(initial_value=1.0)
 
   def testGradients(self):
 
@@ -94,6 +105,35 @@ class TFETest(test_util.TensorFlowTestCase):
   def testNumGPUs(self):
     devices = tfe.list_devices()
     self.assertEqual(len(devices) - 1, tfe.num_gpus())
+
+  def testAddCheckNumericsOpsRaisesError(self):
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r'add_check_numerics_ops\(\) is not compatible with eager execution'):
+      numerics.add_check_numerics_ops()
+
+  def testClassicSummaryOpsErrorOut(self):
+    x = constant_op.constant(42)
+    x_summary = summary.scalar('x', x)
+    y = constant_op.constant([1, 3, 3, 7])
+    y_summary = summary.histogram('hist', y)
+
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r'Merging tf\.summary\.\* ops is not compatible with eager execution'):
+      summary.merge([x_summary, y_summary])
+
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r'Merging tf\.summary\.\* ops is not compatible with eager execution'):
+      summary.merge_all()
+
+  def testClassicSummaryFileWriterErrorsOut(self):
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r'tf\.summary\.FileWriter is not compatible with eager execution'):
+      writer.FileWriter(tempfile.mkdtemp())
+
 
 if __name__ == '__main__':
   tfe.enable_eager_execution()

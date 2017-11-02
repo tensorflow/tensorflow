@@ -455,6 +455,10 @@ class BasicLSTMCell(_LayerRNNCell):
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
+
+    # Inputs must be 2-dimensional.
+    self.input_spec = base_layer.InputSpec(ndim=2)
+
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
@@ -471,9 +475,6 @@ class BasicLSTMCell(_LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if inputs_shape.ndims != 2:
-      raise ValueError("Expected inputs.shape to be rank 2, saw shape: %s"
-                       % inputs_shape)
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
@@ -537,7 +538,7 @@ class BasicLSTMCell(_LayerRNNCell):
     return new_h, new_state
 
 
-class LSTMCell(RNNCell):
+class LSTMCell(_LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
@@ -564,7 +565,7 @@ class LSTMCell(RNNCell):
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=None, num_proj_shards=None,
                forget_bias=1.0, state_is_tuple=True,
-               activation=None, reuse=None):
+               activation=None, reuse=None, name=None):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -594,11 +595,14 @@ class LSTMCell(RNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+      name: String, the name of the layer. Layers with the same name will
+        share weights, but to avoid mistakes we require reuse=True in such
+        cases.
 
-      When restoring from CudnnLSTM-trained checkpoints, must use
-      CudnnCompatibleLSTMCell instead.
+      When restoring from CudnnLSTM-trained checkpoints, use
+      `CudnnCompatibleLSTMCell` instead.
     """
-    super(LSTMCell, self).__init__(_reuse=reuse)
+    super(LSTMCell, self).__init__(_reuse=reuse, name=name)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -607,6 +611,9 @@ class LSTMCell(RNNCell):
           "%s: The num_unit_shards and proj_unit_shards parameters are "
           "deprecated and will be removed in Jan 2017.  "
           "Use a variable scope with a partitioner instead.", self)
+
+    # Inputs must be 2-dimensional.
+    self.input_spec = base_layer.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes
@@ -630,12 +637,6 @@ class LSTMCell(RNNCell):
           LSTMStateTuple(num_units, num_units)
           if state_is_tuple else 2 * num_units)
       self._output_size = num_units
-    self._linear1 = None
-    self._linear2 = None
-    if self._use_peepholes:
-      self._w_f_diag = None
-      self._w_i_diag = None
-      self._w_o_diag = None
 
   @property
   def state_size(self):
@@ -644,6 +645,47 @@ class LSTMCell(RNNCell):
   @property
   def output_size(self):
     return self._output_size
+
+  def build(self, inputs_shape):
+    if inputs_shape[1].value is None:
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                       % inputs_shape)
+
+    input_depth = inputs_shape[1].value
+    h_depth = self._num_units if self._num_proj is None else self._num_proj
+    maybe_partitioner = (
+        partitioned_variables.fixed_size_partitioner(self._num_unit_shards)
+        if self._num_unit_shards is not None
+        else None)
+    self._kernel = self.add_variable(
+        _WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth + h_depth, 4 * self._num_units],
+        initializer=self._initializer,
+        partitioner=maybe_partitioner)
+    self._bias = self.add_variable(
+        _BIAS_VARIABLE_NAME,
+        shape=[4 * self._num_units],
+        initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
+    if self._use_peepholes:
+      self._w_f_diag = self.add_variable("w_f_diag", shape=[self._num_units],
+                                         initializer=self._initializer)
+      self._w_i_diag = self.add_variable("w_i_diag", shape=[self._num_units],
+                                         initializer=self._initializer)
+      self._w_o_diag = self.add_variable("w_o_diag", shape=[self._num_units],
+                                         initializer=self._initializer)
+
+    if self._num_proj is not None:
+      maybe_proj_partitioner = (
+          partitioned_variables.fixed_size_partitioner(self._num_proj_shards)
+          if self._num_proj_shards is not None
+          else None)
+      self._proj_kernel = self.add_variable(
+          "projection/%s" % _WEIGHTS_VARIABLE_NAME,
+          shape=[self._num_units, self._num_proj],
+          initializer=self._initializer,
+          partitioner=maybe_proj_partitioner)
+
+    self._built = True
 
   def call(self, inputs, state):
     """Run one step of LSTM.
@@ -679,37 +721,18 @@ class LSTMCell(RNNCell):
       c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
       m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
-    dtype = inputs.dtype
     input_size = inputs.get_shape().with_rank(2)[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
-    if self._linear1 is None:
-      scope = vs.get_variable_scope()
-      with vs.variable_scope(
-          scope, initializer=self._initializer) as unit_scope:
-        if self._num_unit_shards is not None:
-          unit_scope.set_partitioner(
-              partitioned_variables.fixed_size_partitioner(
-                  self._num_unit_shards))
-        self._linear1 = _Linear([inputs, m_prev], 4 * self._num_units, True)
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-    lstm_matrix = self._linear1([inputs, m_prev])
+    lstm_matrix = math_ops.matmul(
+        array_ops.concat([inputs, m_prev], 1), self._kernel)
+    lstm_matrix = nn_ops.bias_add(lstm_matrix, self._bias)
+
     i, j, f, o = array_ops.split(
         value=lstm_matrix, num_or_size_splits=4, axis=1)
     # Diagonal connections
-    if self._use_peepholes and self._w_f_diag is None:
-      scope = vs.get_variable_scope()
-      with vs.variable_scope(
-          scope, initializer=self._initializer) as unit_scope:
-        with vs.variable_scope(unit_scope):
-          self._w_f_diag = vs.get_variable(
-              "w_f_diag", shape=[self._num_units], dtype=dtype)
-          self._w_i_diag = vs.get_variable(
-              "w_i_diag", shape=[self._num_units], dtype=dtype)
-          self._w_o_diag = vs.get_variable(
-              "w_o_diag", shape=[self._num_units], dtype=dtype)
-
     if self._use_peepholes:
       c = (sigmoid(f + self._forget_bias + self._w_f_diag * c_prev) * c_prev +
            sigmoid(i + self._w_i_diag * c_prev) * self._activation(j))
@@ -727,16 +750,7 @@ class LSTMCell(RNNCell):
       m = sigmoid(o) * self._activation(c)
 
     if self._num_proj is not None:
-      if self._linear2 is None:
-        scope = vs.get_variable_scope()
-        with vs.variable_scope(scope, initializer=self._initializer):
-          with vs.variable_scope("projection") as proj_scope:
-            if self._num_proj_shards is not None:
-              proj_scope.set_partitioner(
-                  partitioned_variables.fixed_size_partitioner(
-                      self._num_proj_shards))
-            self._linear2 = _Linear(m, self._num_proj, False)
-      m = self._linear2(m)
+      m = math_ops.matmul(m, self._proj_kernel)
 
       if self._proj_clip is not None:
         # pylint: disable=invalid-unary-operand-type
