@@ -428,6 +428,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:resource_variable_ops",
     ],
 )
 
