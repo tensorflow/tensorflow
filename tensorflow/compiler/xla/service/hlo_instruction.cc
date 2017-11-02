@@ -1800,9 +1800,9 @@ string HloInstruction::OperandsToString(bool compact,
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
-    // TODO(b/68775903) Also dump large constants for tuples.
-    if (!ShapeUtil::IsTuple(shape()) &&
-        (ShapeUtil::ElementsIn(shape()) <= 10 || include_large_constants)) {
+    if ((!ShapeUtil::IsTuple(shape()) &&
+         ShapeUtil::ElementsIn(shape()) <= 10) ||
+        include_large_constants) {
       // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
       string tmp = literal().ToString();

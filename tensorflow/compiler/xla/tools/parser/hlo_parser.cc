@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 namespace tools {
@@ -25,7 +28,11 @@ namespace tools {
 namespace {
 
 using tensorflow::StringPiece;
+using tensorflow::strings::Printf;
+using tensorflow::strings::StrAppend;
 using tensorflow::strings::StrCat;
+
+const double kF16max = 65504;
 
 // Parser for the HloModule::ToString() format text.
 class HloParser {
@@ -52,8 +59,20 @@ class HloParser {
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
   bool ParseSharding(HloInstruction* instruction);
   bool ParseLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
+  bool ParseTupleLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
+  bool ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
+                            const Shape& shape);
+  // Sets the sub-value of literal at the given index to the given value. The
+  // literal's shape must have the default layout.
+  bool SetValueInLiteral(int64 value, int64 linear_index, Literal* literal);
+  bool SetValueInLiteral(double value, int64 linear_index, Literal* literal);
+  bool SetValueInLiteral(bool value, int64 linear_index, Literal* literal);
+  template <typename LiteralNativeT, typename ParsedElemT>
+  bool SetValueInLiteralHelper(ParsedElemT value, int64 linear_index,
+                               Literal* literal);
+
   bool ParseOperands(std::vector<HloInstruction*>* operands);
-  // Fill parsed operands into 'operands' and expect a certain number of
+  // Fills parsed operands into 'operands' and expects a certain number of
   // operands.
   bool ParseOperands(std::vector<HloInstruction*>* operands,
                      const int expected_size);
@@ -69,7 +88,7 @@ class HloParser {
   bool ParseShape(Shape* result);
   bool ParseOpcode(HloOpcode* result);
   bool ParseInt64(int64* result);
-  bool ParseDecimal(double* result);
+  bool ParseDouble(double* result);
   bool ParseBool(bool* result);
   bool ParseToken(TokKind kind, const string& msg);
 
@@ -79,6 +98,9 @@ class HloParser {
   // If the current token is 'kind', eats it (i.e. lexes the next token) and
   // returns true.
   bool EatIfPresent(TokKind kind);
+  // Parses a shape, and returns true if the result is compatible with the given
+  // shape.
+  bool EatShapeAndCheckCompatible(const Shape& shape);
 
   // Adds the instruction to the pool. Returns false and emits an error if the
   // instruction already exists.
@@ -99,8 +121,11 @@ class HloParser {
 };
 
 bool HloParser::TokenError(StringPiece msg) {
-  error_.push_back(
-      StrCat("was parsing \"", lexer_.GetCurrentLine(), "\"; ", msg));
+  const string error =
+      StrCat("was parsing \"", lexer_.GetCurrentLine(), "\"; token ",
+             TokKindToString(lexer_.GetKind()), "; ", msg);
+  VLOG(1) << "TokenError: " << error;
+  error_.push_back(error);
   return false;
 }
 
@@ -552,34 +577,297 @@ bool HloParser::ParseSharding(HloInstruction* instruction) {
   return true;
 }
 
-bool HloParser::ParseLiteral(std::unique_ptr<Literal>* literal,
-                             const Shape& shape) {
+bool HloParser::SetValueInLiteral(int64 value, int64 linear_index,
+                                  Literal* literal) {
+  const Shape& shape = literal->shape();
+  switch (shape.element_type()) {
+    case S8:
+      return SetValueInLiteralHelper<int8>(value, linear_index, literal);
+    case S16:
+      return SetValueInLiteralHelper<int16>(value, linear_index, literal);
+    case S32:
+      return SetValueInLiteralHelper<int32>(value, linear_index, literal);
+    case S64:
+      return SetValueInLiteralHelper<int64>(value, linear_index, literal);
+    case U8:
+      return SetValueInLiteralHelper<uint8>(value, linear_index, literal);
+    case U16:
+      return SetValueInLiteralHelper<uint8>(value, linear_index, literal);
+    case U32:
+      return SetValueInLiteralHelper<uint32>(value, linear_index, literal);
+    case U64:
+      return SetValueInLiteralHelper<uint64>(value, linear_index, literal);
+    default:
+      LOG(FATAL) << "unknown integral primitive type "
+                 << PrimitiveType_Name(shape.element_type());
+  }
+}
+
+bool HloParser::SetValueInLiteral(double value, int64 linear_index,
+                                  Literal* literal) {
+  const Shape& shape = literal->shape();
+  switch (shape.element_type()) {
+    case F16:
+      return SetValueInLiteralHelper<half>(value, linear_index, literal);
+    case F32:
+      return SetValueInLiteralHelper<float>(value, linear_index, literal);
+    case F64:
+      return SetValueInLiteralHelper<double>(value, linear_index, literal);
+    default:
+      LOG(FATAL) << "unknown floating point primitive type "
+                 << PrimitiveType_Name(shape.element_type());
+  }
+}
+
+bool HloParser::SetValueInLiteral(bool value, int64 linear_index,
+                                  Literal* literal) {
+  const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case PRED:
-      bool b;
-      if (!ParseBool(&b)) {
-        return false;
-      }
-      *literal = Literal::CreateR0<bool>(b);
-      return true;
-    case S32:
-      int64 i;
-      if (!ParseInt64(&i)) {
-        return false;
-      }
-      *literal = Literal::CreateR0<int32>(i);
-      return true;
-    case F32:
-      double d;
-      if (!ParseDecimal(&d)) {
-        return false;
-      }
-      *literal = Literal::CreateR0<float>(d);
-      return true;
+      return SetValueInLiteralHelper<bool>(value, linear_index, literal);
     default:
-      return TokenError(StrCat("unsupported constant in shape: ",
-                               ShapeUtil::HumanString(shape)));
+      LOG(FATAL) << PrimitiveType_Name(shape.element_type())
+                 << " is not PRED type";
   }
+}
+
+template <typename LiteralNativeT, typename ParsedElemT>
+bool HloParser::SetValueInLiteralHelper(ParsedElemT value, int64 linear_index,
+                                        Literal* literal) {
+  // Check that linear_index is in range.
+  if (linear_index >= ShapeUtil::ElementsIn(literal->shape())) {
+    return TokenError(
+        StrCat("trys to set value ", value, " to a literal in shape ",
+               ShapeUtil::HumanString(literal->shape()), " at linear index ",
+               linear_index, ", but the index is out of range"));
+  }
+
+  if (std::isnan(value) ||
+      (std::numeric_limits<ParsedElemT>::has_infinity &&
+       (std::numeric_limits<ParsedElemT>::infinity() == value ||
+        -std::numeric_limits<ParsedElemT>::infinity() == value))) {
+    // Skip range checking for non-finite value.
+  } else if (literal->shape().element_type() == F16) {
+    if (value > kF16max || value < -kF16max) {
+      return TokenError(StrCat(
+          "value ", value, " is out of range for literal's primitive type ",
+          PrimitiveType_Name(literal->shape().element_type())));
+    }
+  } else if (value > static_cast<ParsedElemT>(
+                         std::numeric_limits<LiteralNativeT>::max()) ||
+             value < static_cast<ParsedElemT>(
+                         std::numeric_limits<LiteralNativeT>::lowest())) {
+    // Value is out of range for LiteralNativeT.
+    return TokenError(StrCat(
+        "value ", value, " is out of range for literal's primitive type ",
+        PrimitiveType_Name(literal->shape().element_type())));
+  }
+
+  literal->GetMutableArraySlice<LiteralNativeT>().at(linear_index) =
+      static_cast<LiteralNativeT>(value);
+  return true;
+}
+
+bool HloParser::EatShapeAndCheckCompatible(const Shape& shape) {
+  Shape new_shape;
+  if (!ParseShape(&new_shape)) {
+    return TokenError(StrCat("expects shape ", ShapeUtil::HumanString(shape)));
+  }
+  if (!ShapeUtil::Compatible(shape, new_shape)) {
+    return TokenError(StrCat(
+        "expects shape ", ShapeUtil::HumanString(shape),
+        ", but sees a different shape: ", ShapeUtil::HumanString(new_shape)));
+  }
+  return true;
+}
+
+// literal
+//  ::= tuple
+//  ::= non_tuple
+bool HloParser::ParseLiteral(std::unique_ptr<Literal>* literal,
+                             const Shape& shape) {
+  return ShapeUtil::IsTuple(shape) ? ParseTupleLiteral(literal, shape)
+                                   : ParseNonTupleLiteral(literal, shape);
+}
+
+// tuple
+//  ::= shape '(' literal_list ')'
+// literal_list
+//  ::= /*empty*/
+//  ::= literal (',' literal)*
+bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
+                                  const Shape& shape) {
+  if (!EatShapeAndCheckCompatible(shape)) {
+    return TokenError(StrCat("expects tuple constant in shape ",
+                             ShapeUtil::HumanString(shape)));
+  }
+  if (!ParseToken(TokKind::kLparen, "expects '(' in front of tuple elements")) {
+    return false;
+  }
+  std::vector<std::unique_ptr<Literal>> elements(
+      ShapeUtil::TupleElementCount(shape));
+
+  if (lexer_.GetKind() == TokKind::kRparen) {
+    // empty
+  } else {
+    // literal, (',' literal)*
+    for (int i = 0; i < elements.size(); i++) {
+      if (i > 0) {
+        ParseToken(TokKind::kComma, "exepcts ',' to separate tuple elements");
+      }
+      if (!ParseLiteral(&elements[i],
+                        ShapeUtil::GetTupleElementShape(shape, i))) {
+        return TokenError(StrCat("expects the ", i, "th element"));
+      }
+    }
+  }
+  *literal = Literal::MakeTupleOwned(std::move(elements));
+  return ParseToken(TokKind::kRparen,
+                    StrCat("expects ')' at the end of the tuple with ",
+                           ShapeUtil::TupleElementCount(shape), "elements"));
+}
+
+// non_tuple
+//   ::= rank01
+//   ::= rank2345
+// rank2345 ::= shape nested_array
+bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
+                                     const Shape& shape) {
+  const int64 size = ShapeUtil::ElementsIn(shape);
+  if (size == 0) {
+    *literal = Literal::CreateFromShape(shape);
+    return true;
+  }
+
+  const int64 rank = ShapeUtil::Rank(shape);
+  if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
+    return false;
+  }
+
+  // Create a literal with the given shape in default layout.
+  *literal = Literal::CreateFromDimensions(shape.element_type(),
+                                           AsInt64Slice(shape.dimensions()));
+  int64 nest_level = 0;
+  int64 linear_index = 0;
+  // elems_seen_per_dim[i] is how many elements or sub-arrays we have seen for
+  // the dimension i. For example, to parse f32[2,3] {{1, 2, 3}, {4, 5, 6}},
+  // when we are parsing the 2nd '{' (right before '1'), we are seeing a
+  // sub-array of the dimension 0, so elems_seen_per_dim[0]++. When we are at
+  // the first '}' (right after '3'), it means the sub-array ends, and the
+  // sub-array is supposed to contain exactly 3 elements, so check if
+  // elems_seen_per_dim[1] is 3.
+  std::vector<int64> elems_seen_per_dim(rank);
+  auto get_index_str = [&elems_seen_per_dim](int dim) -> string {
+    std::vector<int64> elems_seen_until_dim(elems_seen_per_dim.begin(),
+                                            elems_seen_per_dim.begin() + dim);
+    return StrCat("[",
+                  tensorflow::str_util::Join(
+                      elems_seen_until_dim, ",",
+                      [](string* out, const int64& num_elems) {
+                        tensorflow::strings::StrAppend(out, num_elems - 1);
+                      }),
+                  "]");
+  };
+  do {
+    switch (lexer_.GetKind()) {
+      default:
+        return TokenError("unexpected token type in a literal");
+      case TokKind::kLbrace: {
+        nest_level++;
+        if (nest_level > rank) {
+          return TokenError(Printf(
+              "expects nested array in rank %lld, but sees larger", rank));
+        }
+        if (nest_level > 1) {
+          elems_seen_per_dim[nest_level - 2]++;
+          if (elems_seen_per_dim[nest_level - 2] >
+              shape.dimensions(nest_level - 2)) {
+            return TokenError(Printf(
+                "expects %lld elements in the %sth element, but sees more",
+                shape.dimensions(nest_level - 2),
+                get_index_str(nest_level - 2).c_str()));
+          }
+        }
+        lexer_.Lex();
+        break;
+      }
+      case TokKind::kRbrace: {
+        nest_level--;
+        if (elems_seen_per_dim[nest_level] != shape.dimensions(nest_level)) {
+          return TokenError(Printf(
+              "expects %lld elements in the %sth element, but sees %lld",
+              shape.dimensions(nest_level), get_index_str(nest_level).c_str(),
+              elems_seen_per_dim[nest_level]));
+        }
+        elems_seen_per_dim[nest_level] = 0;
+        lexer_.Lex();
+        break;
+      }
+      case TokKind::kComma:
+      case TokKind::kComment:
+        // Skip.
+        lexer_.Lex();
+        break;
+      case TokKind::kw_true:
+      case TokKind::kw_false:
+      case TokKind::kInt:
+      case TokKind::kDecimal:
+      case TokKind::kw_nan:
+      case TokKind::kw_inf:
+      case TokKind::kNegInf: {
+        if (rank > 0) {
+          if (nest_level != rank) {
+            return TokenError(
+                Printf("expects nested array in rank %lld, but sees %lld", rank,
+                       nest_level));
+          }
+          elems_seen_per_dim[rank - 1]++;
+          if (elems_seen_per_dim[rank - 1] > shape.dimensions(rank - 1)) {
+            return TokenError(
+                Printf("expects %lld elements on the minor-most dimension, but "
+                       "sees more",
+                       shape.dimensions(rank - 1)));
+          }
+        }
+        if (lexer_.GetKind() == TokKind::kw_true ||
+            lexer_.GetKind() == TokKind::kw_false) {
+          // TODO(congliu): bool type literals with rank >= 1 are actually
+          // printed in a compact form instead of "true" or "false". Fix that.
+          if (!SetValueInLiteral(lexer_.GetKind() == TokKind::kw_true,
+                                 linear_index++, literal->get())) {
+            return false;
+          }
+          lexer_.Lex();
+        } else if (primitive_util::IsIntegralType(shape.element_type())) {
+          int64 value;
+          if (!ParseInt64(&value)) {
+            return TokenError(StrCat("expects integer for primitive type: ",
+                                     PrimitiveType_Name(shape.element_type())));
+          }
+          if (!SetValueInLiteral(value, linear_index++, literal->get())) {
+            return false;
+          }
+        } else if (primitive_util::IsFloatingPointType(shape.element_type())) {
+          double value;
+          if (!ParseDouble(&value)) {
+            return TokenError(
+                StrCat("expect floating point value for primitive type: ",
+                       PrimitiveType_Name(shape.element_type())));
+          }
+          if (!SetValueInLiteral(value, linear_index++, literal->get())) {
+            return false;
+          }
+        } else {
+          return TokenError(StrCat("unsupported premitive type ",
+                                   PrimitiveType_Name(shape.element_type())));
+        }
+        break;
+      }
+    }  // end of switch
+  } while (nest_level > 0);
+
+  *literal = (*literal)->Relayout(shape.layout());
+  return true;
 }
 
 // operands ::= '(' operands1 ')'
@@ -757,13 +1045,22 @@ bool HloParser::ParseInt64(int64* result) {
   return true;
 }
 
-bool HloParser::ParseDecimal(double* result) {
+bool HloParser::ParseDouble(double* result) {
   switch (lexer_.GetKind()) {
     case TokKind::kDecimal:
       *result = lexer_.GetDecimalVal();
       break;
     case TokKind::kInt:
       *result = static_cast<double>(lexer_.GetInt64Val());
+      break;
+    case TokKind::kw_nan:
+      *result = std::numeric_limits<double>::quiet_NaN();
+      break;
+    case TokKind::kw_inf:
+      *result = std::numeric_limits<double>::infinity();
+      break;
+    case TokKind::kNegInf:
+      *result = -std::numeric_limits<double>::infinity();
       break;
     default:
       return TokenError("expects decimal or integer");
@@ -783,6 +1080,7 @@ bool HloParser::ParseBool(bool* result) {
 }
 
 bool HloParser::ParseToken(TokKind kind, const string& msg) {
+  VLOG(1) << "ParseToken " << TokKindToString(kind) << " " << msg;
   if (lexer_.GetKind() != kind) {
     return TokenError(msg);
   }

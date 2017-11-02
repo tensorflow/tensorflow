@@ -143,6 +143,8 @@ TokKind HloLexer::LexToken() {
         return TokKind::kLparen;
       case ')':
         return TokKind::kRparen;
+      case '/':
+        return LexComment();
     }
   }
 }
@@ -158,7 +160,7 @@ TokKind HloLexer::LexIdentifier() {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     // 'consumable' will be advanced iff its prefix matches the pattern.
     static LazyRE2 shape_pattern = {
-        R"(^(\w*\d*)\[([\d,]*)\](?:\s*{([\d,]*)})?)"};
+        R"(^(\w*\d*)\[([\d,]*)\](?:{([\d,]*)})?)"};
     if (RE2::Consume(&consumable, *shape_pattern)) {
       auto status_or_shape = ShapeUtil::ParseShapeString(
           StringPieceFromPointers(token_start_, consumable.begin()));
@@ -201,6 +203,8 @@ TokKind HloLexer::LexIdentifier() {
 
   KEYWORD(true);
   KEYWORD(false);
+  KEYWORD(inf);
+  KEYWORD(nan);
   KEYWORD(HloModule);
   KEYWORD(ENTRY);
   KEYWORD(ROOT);
@@ -236,10 +240,11 @@ TokKind HloLexer::LexPercent() {
   return TokKind::kError;
 }
 
-// Lex integer and floating-point values.
+// Lex integer and floating-point values, and -inf.
 // int             [-]?[0-9]+
 // fp with exp     [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
 // fp without exp  [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
+// negative inf    -inf
 TokKind HloLexer::LexDigitOrNegative() {
   auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
   static LazyRE2 float_pattern = {
@@ -259,6 +264,12 @@ TokKind HloLexer::LexDigitOrNegative() {
     return TokKind::kInt;
   }
 
+  static LazyRE2 neg_inf = {"-inf"};
+  if (RE2::Consume(&consumable, *neg_inf)) {
+    current_ptr_ = consumable.begin();
+    return TokKind::kNegInf;
+  }
+
   return TokKind::kError;
 }
 
@@ -275,6 +286,79 @@ StringPiece HloLexer::GetCurrentLine() const {
     end++;
   }
   return StringPieceFromPointers(start, end);
+}
+
+TokKind HloLexer::LexComment() {
+  auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+  static LazyRE2 comment_pattern = {R"(\/\*.*?\*\/)"};
+  if (RE2::Consume(&consumable, *comment_pattern)) {
+    current_ptr_ = consumable.begin();
+    return TokKind::kComment;
+  }
+  return TokKind::kError;
+}
+
+string TokKindToString(TokKind kind) {
+  switch (kind) {
+    case TokKind::kEof:
+      return "kEof";
+    case TokKind::kError:
+      return "kError";
+    case TokKind::kEqual:
+      return "kEqaul";
+    case TokKind::kComma:
+      return "kComma";
+    case TokKind::kColon:
+      return "kColon";
+    case TokKind::kLsquare:
+      return "kLsquare";
+    case TokKind::kRsquare:
+      return "kRsquare";
+    case TokKind::kLbrace:
+      return "kLbrace";
+    case TokKind::kRbrace:
+      return "kRbrace";
+    case TokKind::kLparen:
+      return "kLparen";
+    case TokKind::kRparen:
+      return "kRparen";
+    case TokKind::kArrow:
+      return "kArrow";
+    case TokKind::kComment:
+      return "kComment";
+    case TokKind::kw_HloModule:
+      return "kw_HloModule";
+    case TokKind::kw_ENTRY:
+      return "kw_ENTRY";
+    case TokKind::kw_ROOT:
+      return "kw_ROOT";
+    case TokKind::kw_true:
+      return "kw_true";
+    case TokKind::kw_false:
+      return "kw_false";
+    case TokKind::kw_maximal:
+      return "kw_maximal";
+    case TokKind::kw_replicated:
+      return "kw_replicated";
+    case TokKind::kw_nan:
+      return "kw_nan";
+    case TokKind::kw_inf:
+      return "kw_inf";
+    case TokKind::kNegInf:
+      return "kNegInf";
+    case TokKind::kName:
+      return "kName";
+    case TokKind::kAttributeName:
+      return "kAttributeName";
+    case TokKind::kShape:
+      return "kShape";
+    case TokKind::kOpcode:
+      return "kOpcode";
+    case TokKind::kInt:
+      return "kInt";
+    case TokKind::kDecimal:
+      return "kDecimal";
+  }
 }
 
 }  // namespace tools
