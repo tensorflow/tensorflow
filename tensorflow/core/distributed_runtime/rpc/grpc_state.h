@@ -114,8 +114,6 @@ class RPCState : public GrpcClientCQTag {
       if (s.ok() && failure_.load()) {
         s.Update(errors::Internal("callback error"));
       }
-      string str;
-      GrpcMaybeParseProto(response_buf_, &str);
       if (s.ok() && !GrpcMaybeParseProto(response_buf_, response_)) {
         s.Update(errors::Internal("could not parse rpc response"));
       }
