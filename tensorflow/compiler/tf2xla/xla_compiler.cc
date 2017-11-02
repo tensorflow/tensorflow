@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -185,6 +186,25 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
 
+  // _Arg and _Retval nodes don't exist in the stored subgraph for the function;
+  // they are added by the function body looked up.  Therefore, they don't have
+  // core assignments here.
+  // Attempt to assign a core to each _Retval and _Arg. Chooses the
+  // lowest-numbered core that consumes the argument. We choose the
+  // lowest-numbered core so the assignment is deterministic.
+  for (Node* n : graph->nodes()) {
+    if (StringPiece(n->type_string()) == "_Arg") {
+      TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/true));
+    }
+  }
+  // Do _Retval as a second loop, in case the retval's input is an _Arg (which
+  // may have gotten a device assignment from the first loop).
+  for (Node* n : graph->nodes()) {
+    if (StringPiece(n->type_string()) == "_Retval") {
+      TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/false));
+    }
+  }
+
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileFunction: "
             << dump_graph::DumpGraphToFile(
@@ -322,7 +342,6 @@ Status BuildArguments(const Graph& graph,
       if ((*arg_cores)[index] == -1 || core < (*arg_cores)[index]) {
         (*arg_cores)[index] = core;
       }
-      break;
     }
   }
 

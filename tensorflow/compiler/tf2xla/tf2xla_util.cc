@@ -19,7 +19,9 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 
+#include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -248,6 +251,34 @@ Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
 
 string TensorIdToString(const tf2xla::TensorId& id) {
   return strings::StrCat(id.node_name(), ":", id.output_index());
+}
+
+Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
+  int core = -1;
+  const Node* matching_node = nullptr;
+  for (const Edge* edge : (out_edges ? n->out_edges() : n->in_edges())) {
+    if (edge->IsControlEdge()) continue;
+    const Node* possible_match = out_edges ? edge->dst() : edge->src();
+    TF_ASSIGN_OR_RETURN(
+        tensorflow::gtl::optional<xla::OpSharding> sharding,
+        ParseShardingFromDevice(
+            *possible_match,
+            /*num_cores_per_replica=*/std::numeric_limits<int32>::max()));
+    if (sharding.has_value()) {
+      TF_RET_CHECK(sharding.value().type() ==
+                   xla::OpSharding::Type::OpSharding_Type_MAXIMAL);
+      const int core_annotation = sharding.value().tile_assignment_devices(0);
+      if (core == -1 || core > core_annotation) {
+        core = core_annotation;
+        matching_node = possible_match;
+      }
+    }
+  }
+  if (matching_node != nullptr) {
+    n->set_assigned_device_name(matching_node->assigned_device_name());
+    n->set_requested_device(matching_node->requested_device());
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow
