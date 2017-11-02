@@ -1538,7 +1538,8 @@ bool HloInstruction::IdenticalSlowPath(
                                            other.padding_config());
     case HloOpcode::kSlice:
       return slice_starts_ == other.slice_starts_ &&
-             slice_limits_ == other.slice_limits_;
+             slice_limits_ == other.slice_limits_ &&
+             slice_strides_ == other.slice_strides_;
     case HloOpcode::kDynamicSlice:
       return ShapeUtil::Compatible(shape(), other.shape()) &&
              dynamic_slice_sizes_ == other.dynamic_slice_sizes_;
