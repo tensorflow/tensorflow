@@ -109,7 +109,7 @@ newaxis = None
 
 # We override the 'slice' for the "slice" op, so we keep python's
 # existing 'slice' for later use in this module.
-_baseslice = slice
+_BaseSlice = slice
 
 
 def identity(input, name=None):  # pylint: disable=redefined-builtin
@@ -441,7 +441,7 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
-def _SliceHelper(tensor, slice_spec, var=None):
+def _slice_helper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
   This operation extracts the specified region from the tensor.
@@ -504,7 +504,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
   begin_mask, end_mask = 0, 0
   ellipsis_mask = 0
   for s in slice_spec:
-    if isinstance(s, _baseslice):
+    if isinstance(s, _BaseSlice):
       # python doesn't always use None when constructing ranges
       # for example a[:] gives slice(None,sys.maxsize,None)
       # whereas a[::1] gives slice(None,None,None)
@@ -571,7 +571,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
         name=name)
 
 
-# pylint: disable=undefined-variable,protected-access
+# pylint: disable=undefined-variable,protected-access,redefined-outer-name
 def slice(input_, begin, size, name=None):
   # pylint: disable=redefined-builtin
   """Extracts a slice from a tensor.
@@ -810,10 +810,10 @@ def _SliceHelperVar(var, slice_spec):
 
   """
 
-  return _SliceHelper(var._AsTensor(), slice_spec, var)
+  return _slice_helper(var._AsTensor(), slice_spec, var)
 
 
-ops.Tensor._override_operator("__getitem__", _SliceHelper)
+ops.Tensor._override_operator("__getitem__", _slice_helper)
 
 
 def parallel_stack(values, name="parallel_stack"):
@@ -1538,8 +1538,8 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
     # For now, variant types must be created via zeros_like; as we need to
     # pass the input variant object to the proper zeros callback.
 
-    if optimize and tensor.shape.is_fully_defined() and \
-        tensor.dtype != dtypes.variant:
+    if (optimize and tensor.shape.is_fully_defined() and
+        tensor.dtype != dtypes.variant):
       # We can produce a zeros tensor independent of the value of 'tensor',
       # since the shape is known statically.
       return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
@@ -1846,11 +1846,16 @@ def meshgrid(*args, **kwargs):
 
   Args:
     *args: `Tensor`s with rank 1.
-    indexing: Either 'xy' or 'ij' (optional, default: 'xy').
-    name: A name for the operation (optional).
+    **kwargs:
+      - indexing: Either 'xy' or 'ij' (optional, default: 'xy').
+      - name: A name for the operation (optional).
 
   Returns:
     outputs: A list of N `Tensor`s with rank N.
+
+  Raises:
+    TypeError: When no keyword arguments (kwargs) are passed.
+    ValueError: When indexing keyword argument is not one of `xy` or `ij`.
   """
 
   indexing = kwargs.pop("indexing", "xy")
@@ -1881,7 +1886,7 @@ def meshgrid(*args, **kwargs):
       output[1] = reshape(output[1], (-1, 1) + (1,) * (ndim - 2))
       shapes[0], shapes[1] = shapes[1], shapes[0]
 
-    # TODO: improve performance with a broadcast
+    # TODO(nolivia): improve performance with a broadcast
     mult_fact = ones(shapes, output_dtype)
     return [x * mult_fact for x in output]
 
@@ -1891,7 +1896,7 @@ SHRINK_AXIS = -2
 
 
 # PEP-8 naming
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name,redefined-outer-name
 def _compute_size_of_strided_dim(shrink, spec, size):
   """Computes the size of a single strided slice dimension."""
 
@@ -2272,6 +2277,7 @@ def one_hot(indices,
       != i`. (default: 0)
     axis: The axis to fill (default: -1, a new inner-most axis).
     dtype: The data type of the output tensor.
+    name: A name for the operation (optional).
 
   Returns:
     output: The one-hot tensor.
@@ -2286,19 +2292,19 @@ def one_hot(indices,
     on_exists = on_value is not None
     off_exists = off_value is not None
 
-    on_dtype = ops.convert_to_tensor(on_value).dtype.base_dtype if on_exists \
-                  else None
-    off_dtype = ops.convert_to_tensor(off_value).dtype.base_dtype if off_exists\
-                  else None
+    on_dtype = (ops.convert_to_tensor(on_value).dtype.base_dtype if on_exists
+                else None)
+    off_dtype = (ops.convert_to_tensor(off_value).dtype.base_dtype if off_exists
+                 else None)
 
     if on_exists or off_exists:
       if dtype is not None:
         # Ensure provided on_value and/or off_value match dtype
-        if (on_exists and on_dtype != dtype):
-          raise TypeError("dtype {0} of on_value does not match " \
+        if on_exists and on_dtype != dtype:
+          raise TypeError("dtype {0} of on_value does not match "
                           "dtype parameter {1}".format(on_dtype, dtype))
-        if (off_exists and off_dtype != dtype):
-          raise TypeError("dtype {0} of off_value does not match " \
+        if off_exists and off_dtype != dtype:
+          raise TypeError("dtype {0} of off_value does not match "
                           "dtype parameter {1}".format(off_dtype, dtype))
       else:
         # dtype not provided: automatically assign it
@@ -2317,7 +2323,7 @@ def one_hot(indices,
       off_dtype = dtype
 
     if on_dtype != off_dtype:
-      raise TypeError("dtype {0} of on_value does not match " \
+      raise TypeError("dtype {0} of on_value does not match "
                       "dtype {1} of off_value".format(on_dtype, off_dtype))
 
     return gen_array_ops._one_hot(indices, depth, on_value, off_value, axis,
