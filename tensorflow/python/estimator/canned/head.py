@@ -52,8 +52,12 @@ _REGRESS_SERVING_KEY = 'regression'
 _PREDICT_SERVING_KEY = 'predict'
 
 
-LossAndLabels = collections.namedtuple('LossAndLabels',
-                                       ['unweighted_loss', 'processed_labels'])
+# A LossSpec contains
+# * a scalar `Tensor` representing weighted, sum-reduced loss
+# * a scalar `Tensor` representing the sum of example weights
+# * possibly processed labels (e.g. vocabulary lookup, shape manipulation, etc)
+LossSpec = collections.namedtuple(
+    'LossSpec', ['weighted_sum_loss', 'example_weight_sum', 'processed_labels'])
 
 
 def _summary_key(head_name, val):
@@ -153,9 +157,13 @@ class _Head(object):
       labels: Labels `Tensor`, or `dict` of same.
 
     Returns:
-      A LossAndLabels that contains the `Tensor` representing the loss and
-      possibly processed labels (e.g. vocabulary lookup, shape manipulation,
-      etc.), to be extendable in the future.
+      A LossSpec that contains
+      * the scalar `Tensor` representing weighted, sum-reduced loss
+      * the scalar `Tensor` representing the sum of example weights
+      * possibly processed labels (e.g. vocabulary lookup, shape manipulation,
+        etc.)
+
+      To be extendable in the future.
     """
     raise NotImplementedError('Calling an abstract method.')
 
@@ -413,18 +421,25 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def logits_dimension(self):
     return self._n_classes
 
-  def _eval_metric_ops(self, labels, class_ids, weights, unweighted_loss):
+  def _eval_metric_ops(self, labels, class_ids, weights, weighted_sum_loss,
+                       example_weight_sum):
     """Returns the Eval metric ops."""
     with ops.name_scope(
         None, 'metrics',
-        (labels, class_ids, weights, unweighted_loss)):
+        (labels, class_ids, weights, weighted_sum_loss, example_weight_sum)):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
           # TODO(xiejw): Any other metrics?
           _summary_key(self._name, keys.LOSS_MEAN):
               metrics_lib.mean(
-                  unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
+                  # Both values and weights here are reduced, scalar Tensors.
+                  # values is the actual mean we want -- weights represents the
+                  # total weight of the batch and is needed to calculate
+                  # update_op over many batches.
+                  values=(weighted_sum_loss / example_weight_sum),
+                  weights=example_weight_sum,
+                  name=keys.LOSS_MEAN),
           _summary_key(self._name, keys.ACCURACY):
               metrics_lib.accuracy(
                   labels=labels,
@@ -452,13 +467,21 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
 
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
-    del mode, features  # Unused for this head.
+    del mode  # Unused for this head.
     label_ids = self._label_ids(_check_and_reshape_dense_labels(labels, 1))
     unweighted_loss = losses.sparse_softmax_cross_entropy(
         labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
     # Restore the squeezed dim, so unweighted_loss matches the weights shape.
-    return LossAndLabels(
-        unweighted_loss=array_ops.expand_dims(unweighted_loss, axis=(1,)),
+    unweighted_loss = array_ops.expand_dims(unweighted_loss, axis=(1,))
+    weights = _weights(features, self._weight_column)
+    weighted_sum_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
+    # _weights() can return 1.
+    example_weight_sum = math_ops.reduce_sum(
+        weights * array_ops.ones_like(unweighted_loss))
+    return LossSpec(
+        weighted_sum_loss=weighted_sum_loss,
+        example_weight_sum=example_weight_sum,
         processed_labels=label_ids)
 
   def create_estimator_spec(
@@ -502,22 +525,20 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
                 _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
             })
 
-      # Eval.
-      unweighted_loss, label_ids = self.create_loss(
+      weighted_sum_loss, example_weight_sum, label_ids = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
-      weights = _weights(features, self._weight_column)
-      training_loss = losses.compute_weighted_loss(
-          unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
+      # Eval.
       if mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=training_loss,
+            loss=weighted_sum_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=label_ids,
                 class_ids=class_ids,
-                unweighted_loss=unweighted_loss,
-                weights=weights))
+                weights=_weights(features, self._weight_column),
+                weighted_sum_loss=weighted_sum_loss,
+                example_weight_sum=example_weight_sum))
 
       # Train.
       if train_op_fn is None:
@@ -525,17 +546,15 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
     with ops.name_scope(''):
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          training_loss)
+          weighted_sum_loss)
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
-          losses.compute_weighted_loss(
-              unweighted_loss, weights=weights,
-              reduction=losses.Reduction.MEAN))
+          weighted_sum_loss / example_weight_sum)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=training_loss,
-        train_op=train_op_fn(training_loss))
+        loss=weighted_sum_loss,
+        train_op=train_op_fn(weighted_sum_loss))
 
 
 def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
@@ -608,16 +627,11 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
   def logits_dimension(self):
     return 1
 
-  def _eval_metric_ops(self,
-                       labels,
-                       logits,
-                       logistic,
-                       class_ids,
-                       unweighted_loss,
-                       weights=None):
-    with ops.name_scope(
-        None, 'metrics',
-        (labels, logits, logistic, class_ids, unweighted_loss, weights)):
+  def _eval_metric_ops(self, labels, logits, logistic, class_ids, weights,
+                       weighted_sum_loss, example_weight_sum):
+    with ops.name_scope(None, 'metrics',
+                        (labels, logits, logistic, class_ids, weights,
+                         weighted_sum_loss, example_weight_sum)):
       keys = metric_keys.MetricKeys
       labels_mean = _indicator_labels_mean(
           labels=labels, weights=weights, name=keys.LABEL_MEAN)
@@ -625,7 +639,13 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           # Estimator already adds a metric for loss.
           _summary_key(self._name, keys.LOSS_MEAN):
               metrics_lib.mean(
-                  unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
+                  # Both values and weights here are reduced, scalar Tensors.
+                  # values is the actual mean we want -- weights represents the
+                  # total weight of the batch and is needed to calculate
+                  # update_op over many batches.
+                  values=(weighted_sum_loss / example_weight_sum),
+                  weights=example_weight_sum,
+                  name=keys.LOSS_MEAN),
           _summary_key(self._name, keys.ACCURACY):
               metrics_lib.accuracy(
                   labels=labels,
@@ -686,7 +706,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
 
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
-    del mode, features  # Unused for this head.
+    del mode  # Unused for this head.
     labels = _check_and_reshape_dense_labels(labels, self.logits_dimension)
     if self._label_vocabulary is not None:
       labels = lookup_ops.index_table_from_tensor(
@@ -694,9 +714,17 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           name='class_id_lookup').lookup(labels)
     labels = math_ops.to_float(labels)
     labels = _assert_range(labels, 2)
-    return LossAndLabels(
-        unweighted_loss=nn.sigmoid_cross_entropy_with_logits(
-            labels=labels, logits=logits),
+    unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
+        labels=labels, logits=logits)
+    weights = _weights(features, self._weight_column)
+    weighted_sum_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
+    # _weights() can return 1.
+    example_weight_sum = math_ops.reduce_sum(
+        weights * array_ops.ones_like(unweighted_loss))
+    return LossSpec(
+        weighted_sum_loss=weighted_sum_loss,
+        example_weight_sum=example_weight_sum,
         processed_labels=labels)
 
   def create_estimator_spec(
@@ -743,24 +771,24 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                 _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
             })
 
+      (weighted_sum_loss, example_weight_sum,
+       processed_labels) = self.create_loss(
+           features=features, mode=mode, logits=logits, labels=labels)
+
       # Eval.
-      unweighted_loss, processed_labels = self.create_loss(
-          features=features, mode=mode, logits=logits, labels=labels)
-      weights = _weights(features, self._weight_column)
-      training_loss = losses.compute_weighted_loss(
-          unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=training_loss,
+            loss=weighted_sum_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=processed_labels,
                 logits=logits,
                 logistic=logistic,
                 class_ids=class_ids,
-                unweighted_loss=unweighted_loss,
-                weights=weights))
+                weights=_weights(features, self._weight_column),
+                weighted_sum_loss=weighted_sum_loss,
+                example_weight_sum=example_weight_sum))
 
       # Train.
       if train_op_fn is None:
@@ -768,17 +796,15 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
     with ops.name_scope(''):
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          training_loss)
+          weighted_sum_loss)
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
-          losses.compute_weighted_loss(
-              unweighted_loss, weights=weights,
-              reduction=losses.Reduction.MEAN))
+          weighted_sum_loss / example_weight_sum)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=training_loss,
-        train_op=train_op_fn(training_loss))
+        loss=weighted_sum_loss,
+        train_op=train_op_fn(weighted_sum_loss))
 
 
 def _regression_head_with_mean_squared_error_loss(weight_column=None,
@@ -827,12 +853,20 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
 
   def create_loss(self, features, mode, logits, labels):
     """See `Head`."""
-    del mode, features  # Unused for this head.
+    del mode  # Unused for this head.
     labels = _check_and_reshape_dense_labels(labels, self._logits_dimension)
     labels = math_ops.to_float(labels)
-    return LossAndLabels(
-        unweighted_loss=losses.mean_squared_error(
-            labels=labels, predictions=logits, reduction=losses.Reduction.NONE),
+    unweighted_loss = losses.mean_squared_error(
+        labels=labels, predictions=logits, reduction=losses.Reduction.NONE)
+    weights = _weights(features, self._weight_column)
+    weighted_sum_loss = losses.compute_weighted_loss(
+        unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
+    # _weights() can return 1.
+    example_weight_sum = math_ops.reduce_sum(
+        weights * array_ops.ones_like(unweighted_loss))
+    return LossSpec(
+        weighted_sum_loss=weighted_sum_loss,
+        example_weight_sum=example_weight_sum,
         processed_labels=labels)
 
   def create_estimator_spec(
@@ -853,22 +887,26 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
                 _PREDICT_SERVING_KEY: export_output.PredictOutput(predictions)
             })
 
-      # Eval.
-      unweighted_loss, _ = self.create_loss(
+      weighted_sum_loss, example_weight_sum, _ = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
-      weights = _weights(features, self._weight_column)
-      training_loss = losses.compute_weighted_loss(
-          unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
+
+      # Eval.
       if mode == model_fn.ModeKeys.EVAL:
         # Estimator already adds a metric for loss.
         eval_metric_ops = {
-            metric_keys.MetricKeys.LOSS_MEAN: metrics_lib.mean(
-                unweighted_loss, weights=weights)
+            metric_keys.MetricKeys.LOSS_MEAN:
+                metrics_lib.mean(
+                    # Both values and weights here are reduced, scalar Tensors.
+                    # values is the actual mean we want -- weights represents
+                    # the total weight of the batch and is needed to calculate
+                    # update_op over many batches.
+                    values=(weighted_sum_loss / example_weight_sum),
+                    weights=example_weight_sum)
         }
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=training_loss,
+            loss=weighted_sum_loss,
             eval_metric_ops=eval_metric_ops)
 
       # Train.
@@ -877,17 +915,15 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
     with ops.name_scope(''):
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          training_loss)
+          weighted_sum_loss)
       summary.scalar(
           _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
-          losses.compute_weighted_loss(
-              unweighted_loss, weights=weights,
-              reduction=losses.Reduction.MEAN))
+          weighted_sum_loss / example_weight_sum)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=training_loss,
-        train_op=train_op_fn(training_loss))
+        loss=weighted_sum_loss,
+        train_op=train_op_fn(weighted_sum_loss))
 
 
 def _assert_range(labels, n_classes):
