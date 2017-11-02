@@ -67,6 +67,30 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "graph_view",
+    srcs = ["graph_view.cc"],
+    hdrs = ["graph_view.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_view_test",
+    srcs = ["graph_view_test.cc"],
+    deps = [
+        ":graph_view",
+        ":grappler_item",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+cc_library(
     name = "grappler_item",
     srcs = [
         "grappler_item.cc",
