@@ -132,6 +132,7 @@ cc_library(
         "@local_config_poplar//poplar:poplar_lib",
     ],
     linkstatic=1,
+    alwayslink = True,
 )
 
 tf_cc_test(
