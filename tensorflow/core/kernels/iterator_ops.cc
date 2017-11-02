@@ -584,7 +584,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     return Status::OK();
   }
 
-  void ProduceOutput(OpKernelContext* ctx, DoneCallback done) {
+  void ProduceOutput(OpKernelContext* ctx, const DoneCallback& done) {
     Tensor* handle;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, TensorShape({}), &handle),
                          done);
