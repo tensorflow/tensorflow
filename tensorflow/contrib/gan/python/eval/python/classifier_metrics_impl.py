@@ -130,10 +130,10 @@ def preprocess_image(
   with ops.name_scope(scope, 'preprocess', [images, height, width]):
     if not images.dtype.is_floating:
       images = math_ops.to_float(images)
-    images = (images - 128.0) / 128.0
     if is_single:
       images = array_ops.expand_dims(images, axis=0)
     resized = image_ops.resize_bilinear(images, [height, width])
+    resized = (resized - 128.0) / 128.0
     if is_single:
       resized = array_ops.squeeze(resized, axis=0)
     return resized
