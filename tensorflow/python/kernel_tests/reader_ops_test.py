@@ -35,6 +35,9 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import input as input_lib
+from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.util import compat
 
 prefix_path = "tensorflow/core/lib"
@@ -1029,6 +1032,25 @@ class LMDBReaderTest(test.TestCase):
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
 
+  def testReadFromFileRepeatedly(self):
+    with self.test_session() as sess:
+      reader = io_ops.LMDBReader(name="test_read_from_file_repeated")
+      filename_queue = input_lib.string_input_producer([self.db_path],
+                                                       num_epochs=None)
+      key, value = reader.read(filename_queue)
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
+      # Iterate over the lmdb 3 times.
+      for i in range(3):
+        # Go over all 10 records each time.
+        for j in range(10):
+          k, v = sess.run([key, value])
+          self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(j)))
+          self.assertAllEqual(
+              compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + j))))
+      coord.request_stop()
+      coord.join(threads)
 
 if __name__ == "__main__":
   test.main()
