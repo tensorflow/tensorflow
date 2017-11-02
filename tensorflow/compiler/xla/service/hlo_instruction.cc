@@ -961,7 +961,8 @@ bool HloInstruction::HasSideEffect() const {
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) const {
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloModule* module) const {
   VLOG(3) << "CloneWithNewOperands:\n  " << ToString();
   VLOG(3) << "  new operands:";
   for (const HloInstruction* new_operand : new_operands) {
@@ -1131,7 +1132,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateConstant(literal_->CloneToUnique());
       break;
     case HloOpcode::kFusion:
-      clone = CloneFusionWithNewOperands(shape, new_operands);
+      clone = CloneFusionWithNewOperands(shape, new_operands, module);
       break;
     case HloOpcode::kParameter:
       clone = CreateParameter(parameter_number_, shape, parameter_name_);
@@ -1168,15 +1169,19 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
   clone->set_metadata(metadata_);
+  if (has_sharding()) {
+    clone->set_sharding(sharding());
+  }
+  clone->set_parent(parent_);
   return clone;
 }
 
 HloInstruction::~HloInstruction() {}
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone(
-    const string& suffix) const {
+std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix,
+                                                      HloModule* module) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewOperands(shape_, operands_);
+      CloneWithNewOperands(shape_, operands_, module);
   if (suffix.empty()) {
     clone->name_ = name();
   } else {
@@ -1210,16 +1215,12 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(
       }
     }
   }
-  clone->set_parent(parent_);
-  if (has_sharding()) {
-    clone->set_sharding(sharding());
-  }
   return clone;
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) const {
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloModule* module) const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(parent() != nullptr);
 
@@ -1236,7 +1237,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
   // fused instructions.
   for (HloInstruction* old_fused_parameter :
        fused_instructions_computation()->parameter_instructions()) {
-    new_fused_instructions.push_back(old_fused_parameter->Clone());
+    new_fused_instructions.push_back(
+        old_fused_parameter->Clone("clone", module));
     HloInstruction* new_fusion_parameter = new_fused_instructions.back().get();
     InsertOrDie(&old_to_new, old_fused_parameter, new_fusion_parameter);
   }
@@ -1255,7 +1257,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
     }
     new_fused_instructions.push_back(
         old_fused_instruction->CloneWithNewOperands(
-            old_fused_instruction->shape(), new_operands));
+            old_fused_instruction->shape(), new_operands, module));
     HloInstruction* new_fused_instruction = new_fused_instructions.back().get();
     new_fused_instruction->set_parent(parent_);
     InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
@@ -1271,12 +1273,13 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
        ++new_fused_instruction_iter) {
     computation_builder.AddInstruction(std::move(*new_fused_instruction_iter));
   }
+  if (module == nullptr) {
+    module = GetModule();
+  }
   auto fused_root_ = fused_expression_root();
   new_instruction->called_computations_.push_back(
-      CHECK_NOTNULL(GetModule())
-          ->AddEmbeddedComputation(
-              computation_builder.Build(FindOrDie(old_to_new, fused_root_))));
-  new_instruction->set_parent(parent_);
+      CHECK_NOTNULL(module)->AddEmbeddedComputation(
+          computation_builder.Build(FindOrDie(old_to_new, fused_root_))));
   return new_instruction;
 }
 

@@ -289,7 +289,11 @@ class HloComputation {
   Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
 
   // Returns a deep copy of this computation including all instructions.
-  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone");
+  // If the module pointer is not nullptr, it will be the module where
+  // the cloned computations will be added to (in order to support deep
+  // cloning).
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
+                                        HloModule* module = nullptr);
 
   // Returns true if the given instruction can be removed from the
   // computation. Instructions such as parameters and send/receive instructions

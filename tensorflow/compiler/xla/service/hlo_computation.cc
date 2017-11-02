@@ -724,7 +724,8 @@ Status HloComputation::Accept(
   return this->Accept(&visitor);
 }
 
-std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix) {
+std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix,
+                                                      HloModule* module) {
   VLOG(1) << "Cloning " << name() << " --> " << suffix << "\n";
   auto postorder = MakeInstructionPostOrder();
   std::unordered_map<HloInstruction*, HloInstruction*> clone_map;
@@ -737,12 +738,8 @@ std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix) {
       CHECK(new_operand != nullptr);
       new_operands.push_back(new_operand);
     }
-
-    new_instr = instr->CloneWithNewOperands(instr->shape(), new_operands);
-    new_instr->set_metadata(instr->metadata());
-    if (instr->has_sharding()) {
-      new_instr->set_sharding(instr->sharding());
-    }
+    new_instr =
+        instr->CloneWithNewOperands(instr->shape(), new_operands, module);
     InsertOrDie(&clone_map, instr, new_instr.get());
     instructions.push_back(std::move(new_instr));
   }

@@ -27,6 +27,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -870,12 +871,19 @@ class HloInstruction {
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
   // the instruction to form the name of the cloned instruction.
-  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone") const;
+  // If the module pointer is not nullptr, it will be the module where
+  // the cloned computations will be added to (in order to support deep
+  // cloning).
+  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone",
+                                        HloModule* module = nullptr) const;
 
   // Clones the HLO instruction as above but with new shape and operands.
+  // If the module pointer is not nullptr, it will be the module where
+  // the cloned computations will be added to (in order to support deep
+  // cloning).
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) const;
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloModule* module = nullptr) const;
 
   // Returns the computations this instruction directly calls (if any).
   const std::vector<HloComputation*>& called_computations() const {
@@ -1061,8 +1069,8 @@ class HloInstruction {
 
   // Clones a fusion instruction with a new shape and operands.
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(
-      const Shape& shape,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) const;
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      HloModule* module = nullptr) const;
 
   // Returns true if this instruction can legally have the dimensions field
   // set. Used for checking precondition of dimensions field accessors.
