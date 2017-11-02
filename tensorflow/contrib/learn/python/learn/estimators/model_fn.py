@@ -30,8 +30,8 @@ from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.python.estimator import model_fn as core_model_fn_lib
 from tensorflow.python.estimator.export import export_output as core_export_lib
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import framework_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -156,11 +156,11 @@ class ModelFnOps(
     else:
       if isinstance(predictions, dict):
         predictions = {
-            k: framework_lib.convert_to_tensor_or_sparse_tensor(v)
+            k: sparse_tensor.convert_to_tensor_or_sparse_tensor(v)
             for k, v in six.iteritems(predictions)
         }
       else:
-        predictions = framework_lib.convert_to_tensor_or_sparse_tensor(
+        predictions = sparse_tensor.convert_to_tensor_or_sparse_tensor(
             predictions)
 
     # Validate eval_metric_ops
