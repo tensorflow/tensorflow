@@ -97,6 +97,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::F64:
       literal = *xla::Literal::CreateR0<double>(value);
       break;
+    case xla::C64:
+      literal = *xla::Literal::CreateR0<complex64>(value);
+      break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
     case xla::S16:
@@ -131,6 +134,9 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
       break;
     case xla::F64:
       return b->ConstantR0<double>(value);
+      break;
+    case xla::C64:
+      return b->ConstantR0<complex64>(value);
       break;
     default:
       LOG(FATAL) << "unhandled element type " << type;

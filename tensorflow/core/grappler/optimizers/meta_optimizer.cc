@@ -46,7 +46,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(new MemoryOptimizer(RewriterConfig::MANUAL));
   }
   if (optimizer == "arithmetic") {
-    graph_optimizer.reset(new ArithmeticOptimizer());
+    graph_optimizer.reset(
+        new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
   }
   if (optimizer == "autoparallel") {
     graph_optimizer.reset(
@@ -67,8 +68,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           std::unique_ptr<GraphOptimizer>(new ConstantFolding(cpu_device_)));
     }
     if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
-      optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new ArithmeticOptimizer()));
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+          new ArithmeticOptimizer(cfg_.arithmetic_optimization())));
     }
     if (cfg_.optimize_tensor_layout()) {
       optimizers.push_back(

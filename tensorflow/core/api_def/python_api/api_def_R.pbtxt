@@ -1,0 +1,192 @@
+op {
+  graph_op_name: "RGBToHSV"
+  endpoint {
+    name: "image.rgb_to_hsv"
+  }
+}
+op {
+  graph_op_name: "RandomCrop"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RandomGamma"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RandomPoisson"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RandomShuffle"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RandomShuffleQueue"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RandomShuffleQueueV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RandomStandardNormal"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RandomUniform"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RandomUniformInt"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Range"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderNumRecordsProduced"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderNumRecordsProducedV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderNumWorkUnitsCompleted"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderNumWorkUnitsCompletedV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderRead"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderReadUpTo"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderReadUpToV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderReadV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderReset"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderResetV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderRestoreState"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderRestoreStateV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderSerializeState"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReaderSerializeStateV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RealDiv"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReciprocalGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RefExit"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RefIdentity"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RefMerge"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Relu"
+  endpoint {
+    name: "nn.relu"
+  }
+}
+op {
+  graph_op_name: "Relu6"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Relu6Grad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ReluGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ResizeArea"
+  endpoint {
+    name: "image.resize_area"
+  }
+}
+op {
+  graph_op_name: "ResizeBicubic"
+  endpoint {
+    name: "image.resize_bicubic"
+  }
+}
+op {
+  graph_op_name: "ResizeBicubicGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ResizeBilinear"
+  endpoint {
+    name: "image.resize_bilinear"
+  }
+}
+op {
+  graph_op_name: "ResizeBilinearGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "ResizeNearestNeighbor"
+  endpoint {
+    name: "image.resize_nearest_neighbor"
+  }
+}
+op {
+  graph_op_name: "ResizeNearestNeighborGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Restore"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RestoreSlice"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Reverse"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "RsqrtGrad"
+  visibility: HIDDEN
+}

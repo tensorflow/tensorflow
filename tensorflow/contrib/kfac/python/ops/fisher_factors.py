@@ -33,9 +33,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
 
-# TODO(someone): come up with a better mechanism to set these constants
-# externally. See b/67084987
-
 # Whether to initialize covariance estimators at a zero matrix (or the identity
 # matrix).
 INIT_COVARIANCES_AT_ZERO = False
@@ -51,6 +48,25 @@ EIGENVALUE_DECOMPOSITION_THRESHOLD = 2
 # be at least as large as this value before they are used to compute inverses or
 # matrix powers. Must be nonnegative.
 EIGENVALUE_CLIPPING_THRESHOLD = 0.0
+
+
+def set_global_constants(init_covariances_at_zero=None, zero_debias=None,
+                         eigenvalue_decomposition_threshold=None,
+                         eigenvalue_clipping_threshold=None):
+  """Sets various global constants used by the classes in this module."""
+  global INIT_COVARIANCES_AT_ZERO
+  global ZERO_DEBIAS
+  global EIGENVALUE_DECOMPOSITION_THRESHOLD
+  global EIGENVALUE_CLIPPING_THRESHOLD
+
+  if init_covariances_at_zero is not None:
+    INIT_COVARIANCES_AT_ZERO = init_covariances_at_zero
+  if zero_debias is not None:
+    ZERO_DEBIAS = zero_debias
+  if eigenvalue_decomposition_threshold is not None:
+    EIGENVALUE_DECOMPOSITION_THRESHOLD = eigenvalue_decomposition_threshold
+  if eigenvalue_clipping_threshold is not None:
+    EIGENVALUE_CLIPPING_THRESHOLD = eigenvalue_clipping_threshold
 
 
 def inverse_initializer(shape, dtype, partition_info=None):  # pylint: disable=unused-argument
@@ -412,11 +428,28 @@ class NaiveDiagonalFactor(DiagonalFactor):
 
 
 class FullyConnectedDiagonalFactor(DiagonalFactor):
-  """FisherFactor for a diagonal approx of a fully-connected layer's Fisher."""
+  r"""FisherFactor for a diagonal approx of a fully-connected layer's Fisher.
+
+  Given in = [batch_size, input_size] and out_grad = [batch_size, output_size],
+  approximates the covariance as,
+
+    Cov(in, out) = (1/batch_size) \sum_{i} outer(in[i], out_grad[i]) ** 2.0
+
+  where the square is taken element-wise.
+  """
 
   # TODO(jamesmartens): add units tests for this class
 
   def __init__(self, inputs, outputs_grads, has_bias=False):
+    """Instantiate FullyConnectedDiagonalFactor.
+
+    Args:
+      inputs: Tensor of shape [batch_size, input_size]. Inputs to fully
+        connected layer.
+      outputs_grads: List of Tensors of shape [batch_size, output_size].
+        Gradient of loss with respect to layer's preactivations.
+      has_bias: bool. If True, append '1' to each input.
+    """
     self._outputs_grads = outputs_grads
     self._batch_size = array_ops.shape(inputs)[0]
     self._orig_tensors_name = scope_string_from_params((inputs,) +
@@ -540,6 +573,14 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
   """
 
   def __init__(self, tensors, has_bias=False):
+    """Instantiate FullyConnectedKroneckerFactor.
+
+    Args:
+      tensors: List of Tensors of shape [batch_size, n]. Represents either a
+        layer's inputs or its output's gradients.
+      has_bias: bool. If True, assume this factor is for the layer's inputs and
+        append '1' to each row.
+    """
     # The tensor argument is either a tensor of input activations or a tensor of
     # output pre-activation gradients.
     self._has_bias = has_bias
@@ -568,9 +609,28 @@ class FullyConnectedKroneckerFactor(InverseProvidingFactor):
 
 
 class ConvInputKroneckerFactor(InverseProvidingFactor):
-  """Kronecker factor for the input side of a convolutional layer."""
+  r"""Kronecker factor for the input side of a convolutional layer.
+
+  Estimates E[ a a^T ] where a is the inputs to a convolutional layer given
+  example x. Expectation is taken over all examples and locations.
+
+  Equivalent to \Omega in https://arxiv.org/abs/1602.01407 for details. See
+  Section 3.1 Estimating the factors.
+  """
 
   def __init__(self, inputs, filter_shape, strides, padding, has_bias=False):
+    """Initializes ConvInputKroneckerFactor.
+
+    Args:
+      inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
+        to layer.
+      filter_shape: 1-D Tensor of length 4. Contains [kernel_height,
+        kernel_width, in_channels, out_channels].
+      strides: 1-D Tensor of length 4. Contains [batch_stride, height_stride,
+        width_stride, in_channel_stride].
+      padding: str. Padding method for layer. "SAME" or "VALID".
+      has_bias: bool. If True, append 1 to in_channel.
+    """
     self._filter_shape = filter_shape
     self._strides = strides
     self._padding = padding
@@ -618,9 +678,23 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
 
 
 class ConvOutputKroneckerFactor(InverseProvidingFactor):
-  """Kronecker factor for the output side of a convolutional layer."""
+  r"""Kronecker factor for the output side of a convolutional layer.
+
+  Estimates E[ ds ds^T ] where s is the preactivations of a convolutional layer
+  given example x and ds = (d / d s) log(p(y|x, w)). Expectation is taken over
+  all examples and locations.
+
+  Equivalent to \Gamma in https://arxiv.org/abs/1602.01407 for details. See
+  Section 3.1 Estimating the factors.
+  """
 
   def __init__(self, outputs_grads):
+    """Initializes ConvOutputKroneckerFactor.
+
+    Args:
+      outputs_grads: list of Tensors. Each Tensor is of shape
+        [batch_size, height, width, out_channels].
+    """
     self._out_channels = outputs_grads[0].shape.as_list()[3]
     self._outputs_grads = outputs_grads
     super(ConvOutputKroneckerFactor, self).__init__()

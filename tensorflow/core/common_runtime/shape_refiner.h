@@ -164,6 +164,10 @@ class ShapeRefiner {
     function_library_ = lib;
   }
 
+  bool function_shape_inference_supported() const {
+    return function_library_ != nullptr;
+  }
+
   // Call this to keep nested shapes information for user-defined functions:
   // nested inferences will be available on the ExtendedInferenceContext for
   // each function node, forming a tree of shape inferences corresponding to the
@@ -206,7 +210,7 @@ class ShapeRefiner {
   // - outer_context will contain output shapes inferred from input shapes
   // - outer_context will contain nested inferences collection, iff
   //   keep_nested_shapes is true
-  static Status InferShapesForFunction(
+  Status InferShapesForFunction(
       const tensorflow::FunctionLibraryDefinition& function_library,
       const tensorflow::FunctionDef& function_def, bool keep_nested_shapes,
       ExtendedInferenceContext* outer_context);

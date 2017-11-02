@@ -27,6 +27,8 @@ from __future__ import print_function
 from collections import defaultdict
 from collections import OrderedDict
 
+import six
+
 from tensorflow.contrib.kfac.python.ops import fisher_blocks as fb
 from tensorflow.contrib.kfac.python.ops import loss_functions as lf
 from tensorflow.contrib.kfac.python.ops import utils
@@ -37,9 +39,14 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
+# Names for various approximations that can be requested for Fisher blocks.
 APPROX_KRONECKER_NAME = "kron"
 APPROX_DIAGONAL_NAME = "diagonal"
 APPROX_FULL_NAME = "full"
+
+# Possible value for 'reuse' keyword argument. Sets 'reuse' to
+# tf.get_variable_scope().reuse.
+VARIABLE_SCOPE = "VARIABLE_SCOPE"
 
 # TODO(jamesmartens): need to add find_canonical_output back into this somewhere
 
@@ -55,6 +62,7 @@ class LayerParametersDict(OrderedDict):
     super(LayerParametersDict, self).__init__(*args, **kwargs)
 
   def __setitem__(self, key, value):
+    key = self._canonicalize_key(key)
     tensors = key if isinstance(key, (tuple, list)) else (key,)
     key_collisions = self._tensors.intersection(tensors)
     if key_collisions:
@@ -63,12 +71,26 @@ class LayerParametersDict(OrderedDict):
     super(LayerParametersDict, self).__setitem__(key, value)
 
   def __delitem__(self, key):
+    key = self._canonicalize_key(key)
     self._tensors.remove(key)
     super(LayerParametersDict, self).__delitem__(key)
 
+  def __getitem__(self, key):
+    key = self._canonicalize_key(key)
+    return super(LayerParametersDict, self).__getitem__(key)
 
-# TODO(duckworthd): add capability for LayerCollection to be "finalized"
-# and do this when it gets used by FisherEstimator / KfacOptimizer
+  def __contains__(self, key):
+    key = self._canonicalize_key(key)
+    return super(LayerParametersDict, self).__contains__(key)
+
+  def _canonicalize_key(self, key):
+    if isinstance(key, (list, tuple)):
+      return tuple(key)
+    return key
+
+
+# TODO(b/68034464): add capability for LayerCollection to be "finalized"
+# and do this when it gets used by FisherEstimator / KfacOptimizer.
 
 
 class LayerCollection(object):
@@ -94,13 +116,16 @@ class LayerCollection(object):
     self.fisher_factors = OrderedDict()
     self._generic_registrations = set()
     self._graph = graph or ops.get_default_graph()
-    self.losses = []
+    self._loss_dict = {}  # {str: LossFunction}
     self._subgraph = None
 
     with variable_scope.variable_scope(None, default_name=name) as scope:
       self._var_scope = scope.name
 
-  reset_internals = __init__
+  @property
+  def losses(self):
+    """LossFunctions registered with this LayerCollection."""
+    return list(self._loss_dict.values())
 
   def register_block(self, layer_key, fisher_block):
     """Validates and registers the layer_key associated with the fisher_block.
@@ -193,10 +218,10 @@ class LayerCollection(object):
   def get_use_count_map(self):
     """Returns a dict of variables to their number of registrations."""
     vars_to_uses = defaultdict(int)
-    for key in self.fisher_blocks.keys():
+    for key, block in six.iteritems(self.fisher_blocks):
       key = key if isinstance(key, (tuple, list)) else (key,)
       for k in key:
-        vars_to_uses[k] += 1
+        vars_to_uses[k] += block.num_registered_minibatches
     return vars_to_uses
 
   def get_blocks(self):
@@ -234,30 +259,118 @@ class LayerCollection(object):
                                params,
                                inputs,
                                outputs,
-                               approx=APPROX_KRONECKER_NAME):
-    has_bias = isinstance(params, (tuple, list))
-    if approx == APPROX_KRONECKER_NAME:
-      self.register_block(params,
-                          fb.FullyConnectedKFACBasicFB(self, inputs, outputs,
-                                                       has_bias))
-    elif approx == APPROX_DIAGONAL_NAME:
-      self.register_block(params,
-                          fb.FullyConnectedDiagonalFB(self, inputs, outputs,
-                                                      has_bias))
-    else:
+                               approx=APPROX_KRONECKER_NAME,
+                               reuse=VARIABLE_SCOPE):
+    """Registers a fully connnected layer.
+
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [input_size, output_size].
+        Bias should have shape [output_size].
+      inputs: Tensor of shape [batch_size, input_size]. Inputs to layer.
+      outputs: Tensor of shape [batch_size, output_size]. Preactivations
+        produced by layer.
+      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    approx_to_block_types = {
+        APPROX_KRONECKER_NAME: fb.FullyConnectedKFACBasicFB,
+        APPROX_DIAGONAL_NAME: fb.FullyConnectedDiagonalFB,
+    }
+
+    if approx not in approx_to_block_types:
       raise ValueError("Bad value {} for approx.".format(approx))
 
-  def register_conv2d(self, params, strides, padding, inputs, outputs,
-                      approx=APPROX_KRONECKER_NAME):
+    block_type = approx_to_block_types[approx]
+    has_bias = isinstance(params, (tuple, list))
 
-    if approx == APPROX_KRONECKER_NAME:
-      self.register_block(params,
-                          fb.ConvKFCBasicFB(self, params, inputs, outputs,
-                                            strides, padding))
-    elif approx == APPROX_DIAGONAL_NAME:
-      self.register_block(params,
-                          fb.ConvDiagonalFB(self, params, inputs, outputs,
-                                            strides, padding))
+    if reuse == VARIABLE_SCOPE:
+      reuse = variable_scope.get_variable_scope().reuse
+
+    if reuse:
+      block = self.fisher_blocks.get(params, None)
+      if block is None:
+        raise KeyError(
+            "Reuse requested but no FisherBlock found for params {}.".format(
+                params))
+      if not isinstance(block, block_type):
+        raise ValueError(
+            "Requested block of type {} but block of type {} already exists "
+            "for params {}.".format(block_type, type(block), params))
+
+    else:
+      block = block_type(self, has_bias)
+      self.register_block(params, block)
+
+    block.register_additional_minibatch(inputs, outputs)
+
+  def register_conv2d(self,
+                      params,
+                      strides,
+                      padding,
+                      inputs,
+                      outputs,
+                      approx=APPROX_KRONECKER_NAME,
+                      reuse=VARIABLE_SCOPE):
+    """Registers a convolutional layer.
+
+    Args:
+      params: Tensor or 2-tuple of Tensors corresponding to weight and bias of
+        this layer. Weight matrix should have shape [kernel_height,
+        kernel_width, in_channels, out_channels].  Bias should have shape
+        [out_channels].
+      strides: 1-D Tensor of length 4. Strides for convolution kernel.
+      padding: string. see tf.nn.conv2d for valid values.
+      inputs: Tensor of shape [batch_size, height, width, in_channels]. Inputs
+        to layer.
+      outputs: Tensor of shape [batch_size, height, width, out_channels].
+        Preactivations produced by layer.
+      approx: str. One of APPROX_KRONECKER_NAME or APPROX_DIAGONAL_NAME.
+      reuse: bool or str.  If True, reuse an existing FisherBlock. If False,
+        create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: For improper value to 'approx'.
+      KeyError: If reuse == True but no FisherBlock found for 'params'.
+      ValueError: If reuse == True and FisherBlock found but of the wrong type.
+    """
+    approx_to_block_types = {
+        APPROX_KRONECKER_NAME: fb.ConvKFCBasicFB,
+        APPROX_DIAGONAL_NAME: fb.ConvDiagonalFB,
+    }
+
+    if approx not in approx_to_block_types:
+      raise ValueError("Bad value {} for approx.".format(approx))
+
+    block_type = approx_to_block_types[approx]
+
+    if reuse == VARIABLE_SCOPE:
+      reuse = variable_scope.get_variable_scope().reuse
+
+    if reuse:
+      block = self.fisher_blocks.get(params, None)
+      if block is None:
+        raise KeyError(
+            "Reuse requested but no FisherBlock found for params {}.".format(
+                params))
+      if not isinstance(block, block_type):
+        raise ValueError(
+            "Requested block of type {} but block of type {} already exists "
+            "for params {}.".format(block_type, type(block), params))
+
+    else:
+      block = block_type(self, params, strides, padding)
+      self.register_block(params, block)
+
+    block.register_additional_minibatch(inputs, outputs)
 
   def register_generic(self, params, batch_size, approx=APPROX_DIAGONAL_NAME):
     params = params if isinstance(params, (tuple, list)) else (params,)
@@ -277,7 +390,9 @@ class LayerCollection(object):
   def register_categorical_predictive_distribution(self,
                                                    logits,
                                                    seed=None,
-                                                   targets=None):
+                                                   targets=None,
+                                                   name=None,
+                                                   reuse=VARIABLE_SCOPE):
     """Registers a categorical predictive distribution.
 
     Args:
@@ -288,16 +403,55 @@ class LayerCollection(object):
         total_loss() is required, for example, to estimate the
         "empirical Fisher" (instead of the true Fisher).
         (Default: None)
+      name: (OPTIONAL) str or None. Unique name for this loss function. If None,
+        a new name is generated. (Default: None)
+      reuse: (OPTIONAL) bool or str.  If True, reuse an existing FisherBlock.
+        If False, create a new FisherBlock.  If VARIABLE_SCOPE, use
+        tf.get_variable_scope().reuse.
+
+    Raises:
+      ValueError: If reuse=True and name != None.
+      ValueError: If reuse=True and seed != None.
+      KeyError: If reuse=True and no existing LossFunction with 'name' found.
+      KeyError: If reuse=False and existing LossFunction with 'name' found.
     """
-    loss = lf.CategoricalLogitsNegativeLogProbLoss(
-        logits, targets=targets, seed=seed)
-    self.losses.append(loss)
+    name = name or self._graph.unique_name(
+        "register_categorical_predictive_distribution")
+
+    if reuse == VARIABLE_SCOPE:
+      reuse = variable_scope.get_variable_scope().reuse
+
+    if reuse:
+      if name is None:
+        raise ValueError(
+            "If reuse is enabled, loss function's name must be set.")
+      if seed is not None:
+        raise ValueError(
+            "Seed can only be specified at LossFunction instantiation.")
+
+      loss = self._loss_dict.get(name, None)
+
+      if loss is None:
+        raise KeyError(
+            "Unable to find loss function named {}. Create a new LossFunction "
+            "with reuse=False.".format(name))
+
+      loss.register_additional_minibatch(logits, targets=targets)
+    else:
+      if name in self._loss_dict:
+        raise KeyError(
+            "Loss function named {} already exists. Set reuse=True to append "
+            "another minibatch.".format(name))
+      loss = lf.CategoricalLogitsNegativeLogProbLoss(
+          logits, targets=targets, seed=seed)
+      self._loss_dict[name] = loss
 
   def register_normal_predictive_distribution(self,
                                               mean,
                                               var=0.5,
                                               seed=None,
-                                              targets=None):
+                                              targets=None,
+                                              name=None):
     """Registers a normal predictive distribution.
 
     Args:
@@ -312,15 +466,23 @@ class LayerCollection(object):
         total_loss() is required, for example, to estimate the
         "empirical Fisher" (instead of the true Fisher).
         (Default: None)
+      name: (OPTIONAL) str or None. Unique name for this loss function. If None,
+        a new name is generated. (Default: None)
     """
+    name = name or self._graph.unique_name(
+        "register_normal_predictive_distribution")
+    if name in self._loss_dict:
+      raise NotImplementedError(
+          "Adding logits to an existing LossFunction not yet supported.")
     loss = lf.NormalMeanNegativeLogProbLoss(
         mean, var, targets=targets, seed=seed)
-    self.losses.append(loss)
+    self._loss_dict[name] = loss
 
   def register_multi_bernoulli_predictive_distribution(self,
                                                        logits,
                                                        seed=None,
-                                                       targets=None):
+                                                       targets=None,
+                                                       name=None):
     """Registers a multi-Bernoulli predictive distribution.
 
     Args:
@@ -331,12 +493,40 @@ class LayerCollection(object):
         total_loss() is required, for example, to estimate the
         "empirical Fisher" (instead of the true Fisher).
         (Default: None)
+      name: (OPTIONAL) str or None. Unique name for this loss function. If None,
+        a new name is generated. (Default: None)
     """
+    name = name or self._graph.unique_name(
+        "register_multi_bernoulli_predictive_distribution")
+    if name in self._loss_dict:
+      raise NotImplementedError(
+          "Adding logits to an existing LossFunction not yet supported.")
     loss = lf.MultiBernoulliNegativeLogProbLoss(
         logits, targets=targets, seed=seed)
-    self.losses.append(loss)
+    self._loss_dict[name] = loss
 
   def make_or_get_factor(self, cls, args):
+    """Insert 'cls(args)' into 'self.fisher_factors' if not already present.
+
+    Wraps constructor in 'tf.variable_scope()' to ensure variables constructed
+    in 'cls.__init__' are placed under this LayerCollection's scope.
+
+    Args:
+      cls: Class that implements FisherFactor.
+      args: Tuple of arguments to pass into 'cls's constructor. Must be
+        hashable.
+
+    Returns:
+      Instance of 'cls' found in self.fisher_factors.
+    """
+    try:
+      hash(args)
+    except TypeError:
+      raise TypeError((
+          "Unable to use (cls, args) = ({}, {}) as a key in "
+          "LayerCollection.fisher_factors. The pair cannot be hashed."
+      ).format(cls, args))
+
     with variable_scope.variable_scope(self._var_scope):
       return utils.setdefault(self.fisher_factors, (cls, args),
                               lambda: cls(*args))

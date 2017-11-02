@@ -180,33 +180,6 @@ TEST(TFCompileTest, Gather) {
     }
     EXPECT_EQ(gather_const.result0_data(), gather.results()[0]);
   }
-
-  // Bad indices returns an error.
-  {
-    const float params[4] = {1, 2, 3, 4};
-    std::copy(params + 0, params + 4, gather.arg0_data());
-    const int32 indices[2] = {1, 4};
-    std::copy(indices + 0, indices + 2, gather.arg1_data());
-    EXPECT_FALSE(gather.Run());
-    EXPECT_EQ(gather.error_msg(), "Invalid index for gather");
-  }
-
-  // Try a successful gather again, after the error, to ensure the error state
-  // is cleared.
-  {
-    const float params[4] = {1, 2, 3, 4};
-    std::copy(params + 0, params + 4, gather.arg0_data());
-    const int32 indices[2] = {1, 3};
-    std::copy(indices + 0, indices + 2, gather.arg1_data());
-    EXPECT_TRUE(gather.Run());
-    EXPECT_EQ(gather.error_msg(), "");
-    const float results[2] = {2, 4};
-    for (int i = 0; i < 2; ++i) {
-      EXPECT_EQ(gather.result0(i), results[i]);
-      EXPECT_EQ(gather.result0_data()[i], results[i]);
-    }
-    EXPECT_EQ(gather.result0_data(), gather.results()[0]);
-  }
 }
 
 TEST(TFCompileTest, MatMul2) {

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -74,6 +75,147 @@ TEST_F(ArithmeticOptimizerTest, OpDedupping) {
   EXPECT_EQ(2, new_add.input_size());
   EXPECT_EQ("c1", new_add.input(0));
   EXPECT_EQ("c1", new_add.input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c1 = ops::Const(s.WithOpName("c1"), {1.0f, 2.0f}, {1, 2});
+  Output c2 = ops::Const(s.WithOpName("c2"), {3.0f, 4.0f}, {1, 2});
+  Output add1 = ops::Add(s.WithOpName("add1"), c1, c2);
+  Output add2 = ops::Add(s.WithOpName("add2"), c2, c1);
+  Output add3 = ops::Add(s.WithOpName("add3"), add1, add2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(4, output.node_size());
+  const NodeDef& new_c1 = output.node(0);
+  EXPECT_EQ("c1", new_c1.name());
+  const NodeDef& new_c2 = output.node(1);
+  EXPECT_EQ("c2", new_c2.name());
+  const NodeDef& new_add1 = output.node(2);
+  EXPECT_EQ("add1", new_add1.name());
+  EXPECT_EQ(2, new_add1.input_size());
+  EXPECT_EQ("c1", new_add1.input(0));
+  EXPECT_EQ("c2", new_add1.input(1));
+  const NodeDef& new_add3 = output.node(3);
+  EXPECT_EQ("add3", new_add3.name());
+  EXPECT_EQ(2, new_add3.input_size());
+  EXPECT_EQ("add1", new_add3.input(0));
+  EXPECT_EQ("add1", new_add3.input(1));
+}
+
+TEST_F(ArithmeticOptimizerTest, SimplifyInvolutionsReal) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
+  Output neg1 = ops::Neg(s.WithOpName("neg1"), c);
+  Output neg2 = ops::Neg(s.WithOpName("neg2"), neg1);
+  Output recip1 = ops::Reciprocal(s.WithOpName("recip1"), neg2);
+  Output recip2 = ops::Reciprocal(s.WithOpName("recip2"), recip1);
+  Output id = ops::Identity(s.WithOpName("id"), recip2);
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ArithmeticOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, output.node_size());
+  EXPECT_EQ("c", output.node(1).input(0));
+  EXPECT_EQ("c", output.node(3).input(0));
+  EXPECT_EQ("c", output.node(5).input(0));
+}
+
+TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
+  Output inputs_shape = ops::Shape(s, inputs);
+  // The target shape of the reshape is the concatenation of `batch_size` and
+  // [3,28,28].
+  Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
+                                 ops::Const(s, {1}, {1}));
+  Output target_shape = ops::Concat(
+      s.WithOpName("target_shape"),
+      {batch_size, ops::Const(s, {3, 28, 28}, {3})}, ops::Const(s, {0}, {}));
+  Output reshape = ops::Reshape(s, inputs, target_shape);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
+                   .Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  for (const auto& node : output.node()) {
+    LOG(INFO) << node.DebugString();
+  }
+
+  EXPECT_EQ(0, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+}
+
+TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
+  // Reshape from [-1,3,28,28] to [8,-1,28,28] is not identity, because it can
+  // be from [4,3,28,28] to [8,6,28,28].
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
+  Output reshape = ops::Reshape(s, inputs, ops::Const(s, {8, -1, 28, 28}, {4}));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
+                   .Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  for (const auto& node : output.node()) {
+    LOG(INFO) << node.DebugString();
+  }
+
+  EXPECT_EQ(1, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
+}
+
+TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({4, 3}));
+  Output reshape = ops::Reshape(s, inputs, ops::Const(s, {-1, -1}, {2}));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
+                   .Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(1, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Reshape"; }));
 }
 
 TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
@@ -240,6 +382,31 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
   }
 }
 
+TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({2, 3}));
+  Output transpose1 = ops::Transpose(s, inputs, ops::Const(s, {1, 0}));
+  Output transpose2 = ops::Transpose(s, transpose1, ops::Const(s, {1, 0}));
+  Output outputs =
+      ops::Identity(s.WithOpName("outputs").WithControlDependencies(transpose2),
+                    ops::Const(s.WithOpName("outputs_const"), 1.0f));
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* outputs_node = node_map.GetNode("outputs");
+  EXPECT_EQ(2, outputs_node->input_size());
+  EXPECT_EQ(outputs_node->input(0), "outputs_const");
+  EXPECT_EQ(outputs_node->input(1), "^Placeholder");
+}
+
 TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output inputs_shape =
@@ -370,6 +537,119 @@ TEST_F(ArithmeticOptimizerTest, FoldMulToConv) {
   const NodeDef* folded_conv = node_map.GetNode(conv.node()->name());
   CHECK_EQ(inputs.node()->name(), NodeName(folded_conv->input(0)));
   CHECK_EQ(node_map.GetNode(NodeName(folded_conv->input(1)))->op(), "Mul");
+}
+
+TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
+  // This unit test exercises two optimizations, folding mul into conv, and
+  // reordering cast and transpose.
+  //
+  //   Conv2D(Transpose(Mul(Cast(I), S)), W)
+  //     =>
+  //   Conv2D(Transpose(Cast(I)), W*S)
+  //     =>
+  //   Conv2D(Cast(Transpose(I)), W*S)
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/gpu:0");
+  Output inputs =
+      ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({8, 28, 28, 3}));
+  Output cast = ops::Cast(s, inputs, DT_FLOAT);
+  Output mul = ops::Mul(s, cast, ops::Const(s, 1.0f / 255.0f));
+  Output transpose =
+      ops::Transpose(s, mul, ops::Const(s.WithOpName("perm"), {0, 3, 1, 2}));
+  Output weights = ops::Const(s.WithOpName("weights"),
+                              Input::Initializer(127.0f, {5, 5, 3, 16}));
+  Output conv = ops::Conv2D(s, transpose, weights, {1, 1, 1, 1}, "VALID",
+                            ops::Conv2D::DataFormat("NCHW"));
+  Output outputs = ops::Identity(s.WithOpName("outputs"), conv);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(
+      ConstantFolding(/*cpu_device=*/nullptr).Optimize(nullptr, item, &output));
+
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  const NodeDef* inputs_node = CHECK_NOTNULL(node_map.GetNode("Placeholder"));
+  const NodeDef* transpose_node =
+      CHECK_NOTNULL(node_map.GetNode("Transpose_uint8"));
+  const NodeDef* cast_node = CHECK_NOTNULL(node_map.GetNode("Cast_new"));
+  const NodeDef* weights_node =
+      CHECK_NOTNULL(node_map.GetNode("weights_scaled"));
+  const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
+
+  EXPECT_EQ(output.node_size(), 7);
+  EXPECT_EQ(transpose_node->input(0), inputs_node->name());
+  EXPECT_EQ(cast_node->input(0), transpose_node->name());
+  EXPECT_EQ(conv_node->input(0), cast_node->name());
+  EXPECT_EQ(conv_node->input(1), weights_node->name());
+}
+
+TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs =
+      ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({2, 3}));
+  Output bc1 = ops::Bitcast(s, inputs, DT_QINT8);
+  Output bc2 = ops::Bitcast(s, bc1, DT_INT8);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), bc2);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(1, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Bitcast"; }));
+}
+
+TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs = ops::Placeholder(s, DT_INT8, ops::Placeholder::Shape({2, 3}));
+  Output bc1 = ops::Bitcast(s, inputs, DT_QINT8);
+  Output bc2 = ops::Bitcast(s, bc1, DT_INT8);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), bc2);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(0, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Bitcast"; }));
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output inputs = ops::Placeholder(s, DT_INT8, ops::Placeholder::Shape({2, 3}));
+  Output cast = ops::Cast(s, inputs, DT_INT8);
+  Output outputs = ops::Identity(s.WithOpName("outputs"), cast);
+
+  GrapplerItem item;
+  item.fetch = {"outputs"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphDef output;
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+  item.graph = output;
+  TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(0, std::count_if(
+                   output.node().begin(), output.node().end(),
+                   [](const NodeDef& node) { return node.op() == "Cast"; }));
 }
 
 }  // namespace

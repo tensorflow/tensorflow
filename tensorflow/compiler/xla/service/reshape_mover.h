@@ -26,7 +26,7 @@ namespace xla {
 // them inputward also.
 class ReshapeMover : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "reshape-motion"; }
+  tensorflow::StringPiece name() const override { return "reshape-mover"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };

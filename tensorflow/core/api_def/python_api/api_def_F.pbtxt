@@ -1,0 +1,73 @@
+op {
+  graph_op_name: "FFT"
+  endpoint {
+    name: "fft"
+  }
+  endpoint {
+    name: "spectral.fft"
+  }
+}
+op {
+  graph_op_name: "FIFOQueue"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FIFOQueueV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "Fact"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FakeQueue"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FixedLengthRecordReader"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FixedLengthRecordReaderV2"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FixedUnigramCandidateSampler"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FloorDiv"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FloorMod"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FractionalAvgPool"
+  endpoint {
+    name: "nn.fractional_avg_pool"
+  }
+}
+op {
+  graph_op_name: "FractionalAvgPoolGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FractionalMaxPool"
+  endpoint {
+    name: "nn.fractional_max_pool"
+  }
+}
+op {
+  graph_op_name: "FractionalMaxPoolGrad"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FusedBatchNorm"
+  visibility: HIDDEN
+}
+op {
+  graph_op_name: "FusedBatchNormV2"
+  visibility: HIDDEN
+}

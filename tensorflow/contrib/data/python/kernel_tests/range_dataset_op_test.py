@@ -21,6 +21,7 @@ import os
 
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import enumerate_ops
+from tensorflow.contrib.data.python.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -29,9 +30,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.training import saver as saver_lib
 
 
 class RangeDatasetTest(test.TestCase):
@@ -193,6 +197,21 @@ class RangeDatasetTest(test.TestCase):
   def _iterator_checkpoint_prefix(self):
     return os.path.join(self.get_temp_dir(), "iterator")
 
+  def _save_op(self, iterator_resource):
+    iterator_state_variant = gen_dataset_ops.serialize_iterator(
+        iterator_resource)
+    save_op = io_ops.write_file(
+        self._iterator_checkpoint_prefix(),
+        parsing_ops.serialize_tensor(iterator_state_variant))
+    return save_op
+
+  def _restore_op(self, iterator_resource):
+    iterator_state_variant = parsing_ops.parse_tensor(
+        io_ops.read_file(self._iterator_checkpoint_prefix()), dtypes.variant)
+    restore_op = gen_dataset_ops.deserialize_iterator(iterator_resource,
+                                                      iterator_state_variant)
+    return restore_op
+
   def testSaveRestore(self):
 
     def _build_graph(start, stop):
@@ -200,10 +219,8 @@ class RangeDatasetTest(test.TestCase):
                                            stop).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     # Saving and restoring in different sessions.
@@ -244,16 +261,146 @@ class RangeDatasetTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
+  def testSaveRestoreUsingSaverFromMetaGraph(self):
+
+    def _build_graph(start, stop):
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      ops.add_to_collection("iterator_ops", init_op)
+      ops.add_to_collection("iterator_ops", get_next)
+      saveable_obj = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      # Add the SaveableObject to the `SAVEABLE_OBJECTS` collection
+      # so that it can be automatically picked up by the Saver.
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+      saver = saver_lib.Saver()
+      return init_op, get_next, saver
+
+    start = 2
+    stop = 10
+    break_point = 5
+    path = self._iterator_checkpoint_prefix()
+    meta_filename = path + ".meta"
+
+    # Execute input pipeline for a few steps and save iterator state.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        saver.save(sess, path)
+
+    # Build the saver from the MetaGraph using import_meta_graph and
+    # check that the iterator state is restored.
+    with ops.Graph().as_default() as g:
+      saver = saver_lib.import_meta_graph(meta_filename)
+      init_op, get_next = ops.get_collection("iterator_ops")
+      with self.test_session(graph=g) as sess:
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testSaveRestoreUsingBuiltSaver(self):
+
+    def _build_graph(start, stop):
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      ops.add_to_collection("iterator_ops", init_op)
+      ops.add_to_collection("iterator_ops", get_next)
+      # Add the SaveableObject to the `SAVEABLE_OBJECTS` collection
+      # so that it can be automatically picked up by the Saver.
+      saveable_obj = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+      saver = saver_lib.Saver()
+      return init_op, get_next, saver
+
+    start = 2
+    stop = 10
+    stop_new = 15
+    break_point = 5
+    path = self._iterator_checkpoint_prefix()
+
+    # Execute input pipeline for a few steps and save iterator state.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        saver.save(sess, path)
+
+    # Manually build a modified Graph and Saver instead of importing
+    # MetaGraph and verify that original iterator state gets restored.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop_new)
+      with self.test_session(graph=g) as sess:
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        for i in range(break_point, stop):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testSaveRestoreUsingSaverThenInit(self):
+
+    def _build_graph(start, stop):
+      iterator = dataset_ops.Dataset.range(start,
+                                           stop).make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      ops.add_to_collection("iterator_ops", init_op)
+      ops.add_to_collection("iterator_ops", get_next)
+      # Add the SaveableObject to the `SAVEABLE_OBJECTS` collection
+      # so that it can be automatically picked up by the Saver.
+      saveable_obj = contrib_iterator_ops.make_saveable_from_iterator(iterator)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+      saver = saver_lib.Saver()
+      return init_op, get_next, saver
+
+    start = 2
+    stop = 10
+    stop_new = 15
+    break_point = 5
+    path = self._iterator_checkpoint_prefix()
+
+    # Execute input pipeline for a few steps and save iterator state.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop)
+      with self.test_session(graph=g) as sess:
+        sess.run(variables.global_variables_initializer())
+        sess.run(init_op)
+        for i in range(start, break_point):
+          self.assertEqual(i, sess.run(get_next))
+        saver.save(sess, path)
+
+    # Restore iterator state call and then call init_op for the iterator and
+    # verify that the new iterator hides the restored iterator.
+    with ops.Graph().as_default() as g:
+      init_op, get_next, saver = _build_graph(start, stop_new)
+      with self.test_session(graph=g) as sess:
+        saver.restore(sess, saver_lib.latest_checkpoint(self.get_temp_dir()))
+        sess.run(init_op)
+        for i in range(start, stop_new):
+          self.assertEqual(i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
   def testRestoreWithoutBuildingDatasetGraph(self):
 
-    def _build_graph(start, stop, num_epochs, path):
+    def _build_graph(start, stop, num_epochs):
       dataset = dataset_ops.Dataset.range(start, stop).repeat(num_epochs)
       iterator = dataset.make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     # Saving and restoring in different sessions.
@@ -262,10 +409,8 @@ class RangeDatasetTest(test.TestCase):
     num_epochs = 5
     break_point = 5
     break_epoch = 3
-    path = self._iterator_checkpoint_prefix()
     with ops.Graph().as_default() as g:
-      init_op, get_next, save_op, _ = _build_graph(start, stop, num_epochs,
-                                                   path)
+      init_op, get_next, save_op, _ = _build_graph(start, stop, num_epochs)
       with self.test_session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
@@ -282,8 +427,7 @@ class RangeDatasetTest(test.TestCase):
       output_shapes = tensor_shape.scalar()
       iterator = iterator_ops.Iterator.from_structure(output_types,
                                                       output_shapes)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      restore_op = self._restore_op(iterator._iterator_resource)
       get_next = iterator.get_next()
       with self.test_session(graph=g) as sess:
         sess.run(restore_op)
@@ -302,10 +446,8 @@ class RangeDatasetTest(test.TestCase):
       iterator = dataset.make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     # Saving and restoring in different sessions.
@@ -343,10 +485,8 @@ class RangeDatasetTest(test.TestCase):
       iterator = dataset.make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     # Saving and restoring in different sessions.
@@ -379,10 +519,8 @@ class RangeDatasetTest(test.TestCase):
                                            stop).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     start = 2
@@ -424,10 +562,8 @@ class RangeDatasetTest(test.TestCase):
           start, stop).repeat(num_epochs).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     start = 2
@@ -471,10 +607,8 @@ class RangeDatasetTest(test.TestCase):
           start, stop).repeat(num_epochs).make_initializable_iterator()
       init_op = iterator.initializer
       get_next = iterator.get_next()
-      path = self._iterator_checkpoint_prefix()
-      save_op = gen_dataset_ops.save_iterator(iterator._iterator_resource, path)
-      restore_op = gen_dataset_ops.restore_iterator(iterator._iterator_resource,
-                                                    path)
+      save_op = self._save_op(iterator._iterator_resource)
+      restore_op = self._restore_op(iterator._iterator_resource)
       return init_op, get_next, save_op, restore_op
 
     start = 2

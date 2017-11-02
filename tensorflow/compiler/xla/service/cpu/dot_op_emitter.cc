@@ -63,7 +63,7 @@ DotOpEmitter::DotOpEmitter(const HloInstruction& dot, bool transpose_lhs,
     llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
     const HloModuleConfig& hlo_module_config) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(F32 == type || F64 == type);
+  TF_RET_CHECK(F32 == type || F64 == type || C64 == type);
   DotOpEmitter dot_emitter(dot, transpose_lhs, transpose_rhs, target_array,
                            lhs_array, rhs_array, executable_run_options_value,
                            ir_builder, hlo_module_config);
@@ -176,7 +176,7 @@ tensorflow::Status DotOpEmitter::Emit() {
   llvm::BasicBlock* preheader_bb = reduction_loop->GetPreheaderBasicBlock();
   ir_builder_->SetInsertPoint(preheader_bb->getTerminator());
 
-  ir_builder_->CreateStore(llvm::ConstantFP::get(accum_type, 0.0),
+  ir_builder_->CreateStore(llvm::Constant::getNullValue(accum_type),
                            accum_address);
 
   // Body basic block of reduction loop:
@@ -191,9 +191,29 @@ tensorflow::Status DotOpEmitter::Emit() {
   llvm::Value* rhs_element =
       rhs_array_.EmitReadArrayElement(rhs_index, ir_builder_);
 
-  llvm::Value* product = ir_builder_->CreateFMul(lhs_element, rhs_element);
   llvm::Value* accum = ir_builder_->CreateLoad(accum_address);
-  llvm::Value* updated_accum = ir_builder_->CreateFAdd(accum, product);
+  llvm::Value* updated_accum;
+  if (ShapeUtil::ElementIsComplex(lhs_shape)) {
+    auto real = [&](llvm::Value* x) {
+      return ir_builder_->CreateExtractValue(x, {0});
+    };
+    auto imag = [&](llvm::Value* x) {
+      return ir_builder_->CreateExtractValue(x, {1});
+    };
+    llvm::Value* product_real = ir_builder_->CreateFSub(
+        ir_builder_->CreateFMul(real(lhs_element), real(rhs_element)),
+        ir_builder_->CreateFMul(imag(lhs_element), imag(rhs_element)));
+    llvm::Value* product_imag = ir_builder_->CreateFAdd(
+        ir_builder_->CreateFMul(real(lhs_element), imag(rhs_element)),
+        ir_builder_->CreateFMul(imag(lhs_element), real(rhs_element)));
+    updated_accum = ir_builder_->CreateInsertValue(
+        accum, ir_builder_->CreateFAdd(real(accum), product_real), {0});
+    updated_accum = ir_builder_->CreateInsertValue(
+        updated_accum, ir_builder_->CreateFAdd(imag(accum), product_imag), {1});
+  } else {
+    llvm::Value* product = ir_builder_->CreateFMul(lhs_element, rhs_element);
+    updated_accum = ir_builder_->CreateFAdd(accum, product);
+  }
   ir_builder_->CreateStore(updated_accum, accum_address);
 
   // Exit basic block of reduction loop.
@@ -230,11 +250,28 @@ tensorflow::Status DotOpEmitter::Emit() {
 
 tensorflow::Status DotOpEmitter::EmitScalarDot() {
   // A scalar dot is just a scalar multiply.
+  llvm::Value* result;
   llvm::Value* lhs_value =
       lhs_array_.EmitReadArrayElement(/*index=*/{}, ir_builder_);
   llvm::Value* rhs_value =
       rhs_array_.EmitReadArrayElement(/*index=*/{}, ir_builder_);
-  llvm::Value* result = ir_builder_->CreateFMul(lhs_value, rhs_value);
+  if (ShapeUtil::ElementIsComplex(lhs_array_.GetShape())) {
+#define REAL(x) ir_builder_->CreateExtractValue(x, {0})
+#define IMAG(x) ir_builder_->CreateExtractValue(x, {1})
+    llvm::Value* real = ir_builder_->CreateFSub(
+        ir_builder_->CreateFMul(REAL(lhs_value), REAL(rhs_value)),
+        ir_builder_->CreateFMul(IMAG(lhs_value), IMAG(rhs_value)));
+    llvm::Value* imag = ir_builder_->CreateFAdd(
+        ir_builder_->CreateFMul(REAL(lhs_value), IMAG(rhs_value)),
+        ir_builder_->CreateFMul(IMAG(lhs_value), REAL(rhs_value)));
+#undef IMAG
+#undef REAL
+    result = llvm::ConstantAggregateZero::get(lhs_array_.GetElementLlvmType());
+    result = ir_builder_->CreateInsertValue(result, real, {0});
+    result = ir_builder_->CreateInsertValue(result, imag, {1});
+  } else {
+    result = ir_builder_->CreateFMul(lhs_value, rhs_value);
+  }
   target_array_.EmitWriteArrayElement(/*index=*/{}, result, ir_builder_);
   return tensorflow::Status::OK();
 }

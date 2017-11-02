@@ -1,6 +1,13 @@
 # Installing TensorFlow on Windows
 
-This guide explains how to install TensorFlow on Windows.
+This guide explains how to install TensorFlow on Windows. Although these
+instructions might also work on other Windows variants, we have only
+tested (and we only support) these instructions on machines meeting the
+following requirements:
+
+  * 64-bit, x86 desktops or laptops
+  * Windows 7 or later
+
 
 ## Determine which TensorFlow to install
 
@@ -105,7 +112,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
   2. Create a conda environment named <tt>tensorflow</tt>
      by invoking the following command:
 
-     <pre>C:\> <b>conda create -n tensorflow python=3.5</b> </pre>
+     <pre>C:\> <b>conda create -n tensorflow pip python=3.5</b> </pre>
 
   3. Activate the conda environment by issuing the following command:
 

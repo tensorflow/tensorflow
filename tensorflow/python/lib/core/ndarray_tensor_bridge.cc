@@ -120,6 +120,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_INT32:
       *out_pyarray_type = NPY_INT32;
       break;
+    case TF_UINT32:
+      *out_pyarray_type = NPY_UINT32;
+      break;
     case TF_UINT8:
       *out_pyarray_type = NPY_UINT8;
       break;
@@ -134,6 +137,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       break;
     case TF_INT64:
       *out_pyarray_type = NPY_INT64;
+      break;
+    case TF_UINT64:
+      *out_pyarray_type = NPY_UINT64;
       break;
     case TF_BOOL:
       *out_pyarray_type = NPY_BOOL;

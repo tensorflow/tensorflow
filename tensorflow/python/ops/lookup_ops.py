@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_lookup_ops
@@ -927,7 +928,11 @@ def index_table_from_file(vocabulary_file=None,
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
                      % num_oov_buckets)
   if vocab_size is not None and vocab_size < 1:
-    raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
+    vocab_file_value = vocabulary_file
+    if isinstance(vocabulary_file, ops.Tensor):
+      vocab_file_value = tensor_util.constant_value(vocabulary_file) or "?"
+    raise ValueError("vocab_size must be greater than 0, got %d. "
+                     "vocabulary_file: %s" % (vocab_size, vocab_file_value))
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
     raise TypeError("Only integer and string keys are supported.")
 
@@ -1006,7 +1011,7 @@ def index_table_from_tensor(vocabulary_list,
 
   Args:
     vocabulary_list: A 1-D `Tensor` that specifies the mapping of keys to
-      indices. Thetype of this object must be castable to `dtype`.
+      indices. The type of this object must be castable to `dtype`.
     num_oov_buckets: The number of out-of-vocabulary buckets.
     default_value: The value to use for out-of-vocabulary feature values.
       Defaults to -1.

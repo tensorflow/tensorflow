@@ -169,7 +169,7 @@ TEST_F(WhileTest, WhileWithPredicateResult) {
   {
     ComputationBuilder builder(client_, "body");
     auto prev = builder.Parameter(0, result_shape, "prev");
-    auto result = builder.LogicalOr(prev, builder.ConstantR0<bool>(true));
+    auto result = builder.Or(prev, builder.ConstantR0<bool>(true));
     body = builder.Build().ConsumeValueOrDie();
   }
 
@@ -437,7 +437,7 @@ TEST_F(WhileTest, WhileWithPredicateTupleResult) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     auto pred = builder.GetTupleElement(prev, 1);
-    auto new_pred = builder.LogicalOr(pred, builder.ConstantR0<bool>(true));
+    auto new_pred = builder.Or(pred, builder.ConstantR0<bool>(true));
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_pred});
     body = builder.Build().ConsumeValueOrDie();

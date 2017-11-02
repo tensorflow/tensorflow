@@ -1,6 +1,7 @@
 path: "tensorflow.nn.rnn_cell.BasicLSTMCell"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.BasicLSTMCell\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._LayerRNNCell\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<type \'object\'>"
@@ -90,7 +91,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'num_units\', \'forget_bias\', \'state_is_tuple\', \'activation\', \'reuse\'], varargs=None, keywords=None, defaults=[\'1.0\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'num_units\', \'forget_bias\', \'state_is_tuple\', \'activation\', \'reuse\', \'name\'], varargs=None, keywords=None, defaults=[\'1.0\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -102,7 +103,7 @@ tf_class {
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -110,7 +111,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'inputs_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
