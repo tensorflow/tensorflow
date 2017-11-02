@@ -100,8 +100,11 @@ ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
   resource_mgr_.reset(new ResourceMgr());
 }
 
-string ConstantFolding::AddControlDependency(const string& input_name) {
-  const NodeDef* node = node_map_->GetNode(input_name);
+// static
+string ConstantFolding::AddControlDependency(const string& input_name,
+                                             GraphDef* graph,
+                                             NodeMap* node_map) {
+  const NodeDef* node = node_map->GetNode(input_name);
   if (!IsSwitch(*node)) {
     return AsControlDependency(*node);
   } else {
@@ -111,7 +114,7 @@ string ConstantFolding::AddControlDependency(const string& input_name) {
     // dependency is only triggered when the corresponding output is triggered.
     // We start by looking for an identity node connected to the output of the
     // switch node, and use it to anchor the control dependency.
-    auto outputs = node_map_->GetOutputs(node->name());
+    auto outputs = node_map->GetOutputs(node->name());
     for (const NodeDef* node : outputs) {
       if (IsIdentity(*node)) {
         CHECK_EQ(1, node->input_size());
@@ -128,15 +131,15 @@ string ConstantFolding::AddControlDependency(const string& input_name) {
     ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
     const DataType output_type = node->attr().at("T").type();
 
-    NodeDef* added_node = graph_.add_node();
+    NodeDef* added_node = graph->add_node();
     added_node->set_name(ctrl_dep_name);
     added_node->set_op("Identity");
     added_node->set_device(node->device());
 
     (*added_node->mutable_attr())["T"].set_type(output_type);
     *added_node->add_input() = input_name;
-    node_map_->AddNode(added_node->name(), added_node);
-    node_map_->AddOutput(node->name(), added_node->name());
+    node_map->AddNode(added_node->name(), added_node);
+    node_map->AddOutput(node->name(), added_node->name());
     return AsControlDependency(*added_node);
   }
 }
@@ -233,7 +236,8 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
           // ensure that the constant value will only be run in the
           // cases where the shape/rank/size would have been run in
           // the original graph. Additional inputs are extra control
-          string ctrl_dep = AddControlDependency(node.input(0));
+          string ctrl_dep =
+              AddControlDependency(node.input(0), &graph_, node_map_.get());
           node.set_input(0, ctrl_dep);
           node_map_->AddOutput(NodeName(ctrl_dep), node.name());
         } else {
@@ -259,7 +263,8 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
                   // We add a control dependency to the original ShapeN node,
                   // so that the node will only be run if all inputs of the
                   // original ShapeN node are run.
-                  string ctrl_dep = AddControlDependency(node.name());
+                  string ctrl_dep = AddControlDependency(node.name(), &graph_,
+                                                         node_map_.get());
                   *added_node->add_input() = ctrl_dep;
                   node_map_->AddOutput(NodeName(ctrl_dep), added_node->name());
                 }
@@ -370,6 +375,7 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   return true;
 }
 
+// static
 NodeDef ConstantFolding::CreateNodeDef(const string& name,
                                        const TensorValue& tensor) {
   NodeDef node;
