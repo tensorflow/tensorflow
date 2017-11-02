@@ -39,13 +39,13 @@ class RPCState : public GrpcClientCQTag {
            const protobuf::Message& request, Response* response,
            StatusCallback done, CallOptions* call_opts)
       : RPCState(counter, stub, cq, method, request, response, std::move(done),
-                 call_opts, /*fail_fast=*/false) {}
+                 call_opts, /*fail_fast=*/false, /*timeout_in_ms=*/0) {}
 
   template <typename Request>
   RPCState(GrpcCounter* counter, ::grpc::GenericStub* stub,
            ::grpc::CompletionQueue* cq, const ::grpc::string& method,
            const Request& request, Response* response, StatusCallback done,
-           CallOptions* call_opts, bool fail_fast)
+           CallOptions* call_opts, bool fail_fast, int64 timeout_in_ms)
       : counter_(counter), call_opts_(call_opts), done_(std::move(done)) {
     // TODO(sanjay): The counter will no longer be needed once we
     // get a GenericStub API which allows us to manage an entire
@@ -53,6 +53,9 @@ class RPCState : public GrpcClientCQTag {
     counter_->Increment();
 
     context_.set_fail_fast(fail_fast);
+    if (timeout_in_ms > 0) {
+      context_.set_deadline(gpr_time_from_millis(timeout_in_ms, GPR_TIMESPAN));
+    }
 
     if (call_opts) {
       call_opts->SetCancelCallback([this]() { context_.TryCancel(); });
