@@ -1273,7 +1273,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Args:
     value: The `Tensor` to split.
     num_or_size_splits: Either a 0-D integer `Tensor` indicating the number of
-      splits along split_dim or a 1-D integer `Tensor` integer tensor containing
+      splits along split_dim or a 1-D integer `Tensor` containing
       the sizes of each output tensor along split_dim. If a scalar then it must
       evenly divide `value.shape[axis]`; otherwise the sum of sizes along the
       split dimension must match that of the `value`.
@@ -1293,21 +1293,21 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
     ValueError: If `num` is unspecified and cannot be inferred.
   """
   size_splits = ops.convert_to_tensor(num_or_size_splits)
-  if size_splits.get_shape().ndims == 0 and size_splits.dtype.is_integer:
+  if size_splits._rank() == 0 and size_splits.dtype.is_integer:
     return gen_array_ops._split(
         split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
-  else:
+
+  if num is None:
+    num = size_splits._shape_tuple()[0]
     if num is None:
-      size_splits_shape = size_splits.get_shape()
-      num = size_splits_shape.dims[0]
-      if num._value is None:
-        raise ValueError("Cannot infer num from shape %s" % num_or_size_splits)
-    return gen_array_ops._split_v(
-        value=value,
-        size_splits=size_splits,
-        split_dim=axis,
-        num_split=num,
-        name=name)
+      raise ValueError("Cannot infer num from shape %s" % num_or_size_splits)
+
+  return gen_array_ops._split_v(
+      value=value,
+      size_splits=size_splits,
+      split_dim=axis,
+      num_split=num,
+      name=name)
 
 
 def transpose(a, perm=None, name="transpose", conjugate=False):
