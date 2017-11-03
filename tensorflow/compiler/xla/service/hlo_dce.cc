@@ -37,6 +37,9 @@ namespace xla {
 StatusOr<bool> HloDCE::Run(HloModule* module) {
   bool changed = false;
 
+  VLOG(2) << "Before dce:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   for (auto* computation : module->MakeNonfusionComputations()) {
     std::unordered_set<HloInstruction*> live_instructions;
     TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
@@ -58,6 +61,8 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     }
 
     for (HloInstruction* dead_root : dead_roots) {
+      VLOG(1) << "Removing dead root " << dead_root->ToString()
+              << " and it's unused operands";
       TF_RETURN_IF_ERROR(
           computation->RemoveInstructionAndUnusedOperands(dead_root));
       changed = true;
@@ -86,6 +91,9 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
       changed = true;
     }
   }
+
+  VLOG(2) << "After dce:";
+  XLA_VLOG_LINES(2, module->ToString());
 
   return changed;
 }

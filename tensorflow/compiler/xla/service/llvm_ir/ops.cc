@@ -55,22 +55,34 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     // Calculate output_index, where we'll write the value from update.  For
     // each dimension,
     //
-    //   output_index[dim] = (start_index[dim] + update_index[dim]) % dim_size.
+    //   output_index[dim] = (start_index[dim] + update_index[dim])
     //
     IrArray::Index output_index(rank);
     for (int64 i = 0; i < rank; ++i) {
-      llvm::Value* dim_size = llvm::ConstantInt::get(
-          update_index[i]->getType(), output_shape.dimensions(i));
       llvm::Value* start_index0 = ir_builder->CreateZExtOrBitCast(
           start_index[i], update_index[i]->getType());
-      output_index[i] = ir_builder->CreateURem(
-          ir_builder->CreateAdd(start_index0, update_index[i]), dim_size);
+      output_index[i] = ir_builder->CreateAdd(start_index0, update_index[i]);
+    }
+
+    // Check if 'index' intersects start/end indices. If it does not (indices
+    // are out of bounds) then no update is performed.
+    llvm::Value* in_bounds = llvm::ConstantInt::get(ir_builder->getInt1Ty(), 1);
+    for (int64 i = 0; i < rank; ++i) {
+      llvm::Value* dim_size = llvm::ConstantInt::get(
+          output_index[i]->getType(), output_shape.dimensions(i));
+      in_bounds = ir_builder->CreateAnd(
+          in_bounds, ir_builder->CreateICmpSLT(output_index[i], dim_size),
+          "in_bounds");
     }
 
     // Do output[output_index] = update[update_index].
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
-    output_array.EmitWriteArrayElement(output_index, update_data, ir_builder);
+    llvm::Value* input_data =
+        output_array.EmitReadArrayElement(output_index, ir_builder);
+    llvm::Value* to_write_data =
+        ir_builder->CreateSelect(in_bounds, update_data, input_data);
+    output_array.EmitWriteArrayElement(output_index, to_write_data, ir_builder);
     return Status::OK();
   };
 

@@ -243,6 +243,81 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 
   std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx_;
 };
+
+// This copy insertion pass is a hack to address deficiencies in buffer
+// assignment. Buffer assignment uses TuplePointsToAnalysis which is
+// computation-scoped and thus has limited visibility across computation
+// boundaries. However, CopyInsertion uses module-scoped HloAliasAnalysis and
+// expects buffer assignment to have the same understanding of the graph. This
+// mismatch manifests in the parallel cpu backend, where the HLO outlining
+// results is a minefield of potential problems. This pass conservatively adds
+// copies to avoid any potential problems in buffer assignemnt.
+//
+// Technically these issues exist in all the backends. However, they only
+// manifest in the parallel cpu backend because of the outlining. Moving this
+// into the main copy insertion pass results in performance regressions n the
+// other backends.
+//
+// TODO(b/62548313): Remove this.
+class CpuParallelCopyInsertion : public HloPassInterface {
+ public:
+  tensorflow::StringPiece name() const override {
+    return "cpu-parallel-copy-insertion";
+  }
+
+  StatusOr<bool> Run(HloModule* module) override {
+    // Copy roots of all non-entry sequentially-called (eg, kCall, kWhile)
+    // computations.
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+    TF_RETURN_IF_ERROR(
+        call_graph->VisitNodes([module](const CallGraphNode& node) -> Status {
+          if (node.context() == CallContext::kSequential &&
+              !node.caller_callsites().empty()) {
+            TF_ASSIGN_OR_RETURN(HloInstruction * root_copy,
+                                node.computation()->DeepCopyInstruction(
+                                    node.computation()->root_instruction()));
+            node.computation()->set_root_instruction(root_copy);
+          }
+          return Status::OK();
+        }));
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                        HloDataflowAnalysis::Run(module));
+
+    // Add copies to the operand of dynamic update slices which have read-only
+    // values (constants and parameters). Buffer assignment which is based on
+    // computation-scoped tuple points-to analysis does not properly track these
+    // read-only values across kCall instructions. This can result in cases
+    // where a outlined computation parameter operand of a dynamic update slice
+    // aliases a constant or parameter in the entry computation and the dynamic
+    // update slice is attempted in-place.
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          HloInstruction* operand = instruction->mutable_operand(0);
+          for (const HloValue* value :
+               dataflow->GetValueSet(operand).values()) {
+            if (value->defining_instruction()->opcode() ==
+                    HloOpcode::kConstant ||
+                value->defining_instruction()->opcode() ==
+                    HloOpcode::kParameter) {
+              HloInstruction* operand_copy =
+                  instruction->parent()->AddInstruction(
+                      HloInstruction::CreateUnary(operand->shape(),
+                                                  HloOpcode::kCopy, operand));
+              TF_RETURN_IF_ERROR(
+                  operand->ReplaceUseWith(instruction, operand_copy));
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+};
+
 }  // namespace
 
 Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
@@ -331,15 +406,16 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   pipeline.AddPass<CopyInsertion>();
   if (options::CpuParallelBackendRequested(module->config())) {
     // Re-run the outlining, in case any copies were inserted into the entry
     // computation.
     pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
                                                  ShapeSizeBytesFunction());
+    pipeline.AddPass<CpuParallelCopyInsertion>();
   }
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(module).status();
 }
 

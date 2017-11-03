@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 GTEST_API_ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
@@ -30,5 +31,7 @@ GTEST_API_ int main(int argc, char** argv) {
     LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return 2;
   }
-  return RUN_ALL_TESTS();
+  int result = RUN_ALL_TESTS();
+  tensorflow::testing::RunBenchmarks();
+  return result;
 }

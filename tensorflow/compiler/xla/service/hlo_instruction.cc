@@ -51,7 +51,9 @@ using ::tensorflow::strings::StrCat;
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     HloModule* module, const HloInstructionProto& proto,
     const tensorflow::gtl::FlatMap<string, HloInstruction*>& instruction_map,
-    tensorflow::gtl::FlatMap<string, HloComputation*>* computation_map) {
+    const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
+    const std::function<void(std::unique_ptr<HloComputation>)>&
+        add_fused_computation) {
   TF_RET_CHECK(!proto.opcode().empty());
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
   TF_RET_CHECK(proto.has_shape());
@@ -77,19 +79,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     TF_RET_CHECK(!proto.fusion_kind().empty());
     TF_ASSIGN_OR_RETURN(instruction->fusion_kind_,
                         StringToFusionKind(proto.fusion_kind()));
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloComputation> fused_computation,
-        HloComputation::CreateFromProto(
-            module, proto.fused_instructions_computation(), computation_map,
-            /*fusion_instruction=*/instruction.get()));
-    instruction->called_computations_.push_back(
-        module->AddEmbeddedComputation(std::move(fused_computation)));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> fused_computation,
+                        HloComputation::CreateFromProto(
+                            module, proto.fused_instructions_computation(),
+                            computation_map, add_fused_computation,
+                            /*fusion_instruction=*/instruction.get()));
+    instruction->called_computations_.push_back(fused_computation.get());
+    add_fused_computation(std::move(fused_computation));
   } else {
     for (const string& computation_name : proto.called_computation_names()) {
-      TF_RET_CHECK(ContainsKey(*computation_map, computation_name))
+      TF_RET_CHECK(ContainsKey(computation_map, computation_name))
           << "No computation named " << computation_name;
       instruction->called_computations_.push_back(
-          computation_map->at(computation_name));
+          computation_map.at(computation_name));
     }
   }
 
@@ -2009,8 +2011,10 @@ string HloInstruction::ToCategory() const {
       bool saw_rank_1 = false;
       bool saw_higher_rank = false;
       for (const auto* operand : operands()) {
-        saw_rank_1 |= ShapeUtil::Rank(operand->shape()) == 1;
-        saw_higher_rank |= ShapeUtil::Rank(operand->shape()) > 1;
+        if (!ShapeUtil::IsTuple(operand->shape())) {
+          saw_rank_1 |= ShapeUtil::Rank(operand->shape()) == 1;
+          saw_higher_rank |= ShapeUtil::Rank(operand->shape()) > 1;
+        }
       }
       if (saw_rank_1 && saw_higher_rank) {
         return "rank-1-broadcast binary fusion";
@@ -2295,8 +2299,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
 template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
-using DFSStack =
-    tensorflow::gtl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
+using DFSStack = tensorflow::gtl::InlinedVector<
+    std::pair<HloInstruction::Id, HloInstruction*>, 16>;
 
 // Push "child" onto the dfs_stack if not already visited.  Returns false if a
 // cycle was detected, and true otherwise.
@@ -2304,7 +2308,7 @@ template <typename Visitor>
 inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
                          HloInstruction* child) {
   CHECK(child != nullptr);
-  const int id = child->unique_id();
+  const HloInstruction::Id id = child->unique_id();
   CHECK_GE(id, 0) << "instruction may not have a parent computation";
   switch (visitor->GetVisitState(id)) {
     case Visitor::kVisiting:
@@ -2321,8 +2325,8 @@ inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
 }
 
 using InternalCompareFunction =
-    std::function<bool(std::pair<int, const HloInstruction*>,
-                       std::pair<int, const HloInstruction*>)>;
+    std::function<bool(std::pair<HloInstruction::Id, const HloInstruction*>,
+                       std::pair<HloInstruction::Id, const HloInstruction*>)>;
 template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            const InternalCompareFunction* operand_order,
@@ -2341,7 +2345,7 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
   do {
     DCHECK(!dfs_stack.empty());
 
-    int current_id = dfs_stack.back().first;
+    HloInstruction::Id current_id = dfs_stack.back().first;
     HloInstruction* current_node = dfs_stack.back().second;
     CHECK_GE(current_id, 0) << current_id << ": " << current_node
                             << ": instruction may not have parent computation";
@@ -2420,13 +2424,13 @@ Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, const CompareFunction& operand_order,
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(" << name() << ")";
-  InternalCompareFunction func = [&operand_order](
-                                     std::pair<int, const HloInstruction*> a,
-                                     std::pair<int, const HloInstruction*> b) {
-    // Call the client's comparison function on the actual HloInstruction*
-    // objects (ignoring the internal ids we also have in our stack entries)
-    return operand_order(a.second, b.second);
-  };
+  InternalCompareFunction func =
+      [&operand_order](std::pair<HloInstruction::Id, const HloInstruction*> a,
+                       std::pair<HloInstruction::Id, const HloInstruction*> b) {
+        // Call the client's comparison function on the actual HloInstruction*
+        // objects (ignoring the internal ids we also have in our stack entries)
+        return operand_order(a.second, b.second);
+      };
   TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, &func,
                                   /*ignore_control_predecessors=*/false));
   if (call_finish_visit) {
