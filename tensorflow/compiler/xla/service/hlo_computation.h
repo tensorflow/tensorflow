@@ -298,6 +298,16 @@ class HloComputation {
   std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
                                         HloModule* module = nullptr);
 
+  // Like Clone(), but if an instruction is present in replacement_map, we use
+  // the map's value to replace that instruction in the cloned computation.
+  //
+  // If replacements maps a key to nullptr, we remove that instruction from the
+  // new computation.
+  std::unique_ptr<HloComputation> CloneWithReplacements(
+      std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+          replacements,
+      HloModule* module = nullptr, const string& suffix = "clone");
+
   // Returns true if the given instruction can be removed from the
   // computation. Instructions such as parameters and send/receive instructions
   // cannot be removed without violating invariants of the HLO computation or

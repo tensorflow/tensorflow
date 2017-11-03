@@ -738,38 +738,91 @@ Status HloComputation::Accept(
 
 std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix,
                                                       HloModule* module) {
+  return CloneWithReplacements(
+      /*replacements=*/std::unordered_map<const HloInstruction*,
+                                          std::unique_ptr<HloInstruction>>(),
+      module, suffix);
+}
+
+std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
+    std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+        replacements,
+    HloModule* module, const string& suffix) {
+  // Look up instr in the replacements map, and return either the replacement,
+  // or instr, if the replacement isn't present.
+  //
+  // Note: This can return null, indicating that instr should not be present in
+  // the new computation.
+  auto replace = [&](HloInstruction* instr) {
+    auto it = replacements.find(instr);
+    if (it == replacements.end()) {
+      return instr;
+    }
+    return it->second.get();
+  };
+
   VLOG(1) << "Cloning " << name() << " --> " << suffix << "\n";
-  auto postorder = MakeInstructionPostOrder();
+  std::vector<HloInstruction*> postorder;
+  for (HloInstruction* instr : MakeInstructionPostOrder()) {
+    if (HloInstruction* replacement = replace(instr)) {
+      postorder.push_back(replacement);
+    }
+  }
+
   std::unordered_map<HloInstruction*, HloInstruction*> clone_map;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
   std::unique_ptr<HloInstruction> new_instr = nullptr;
   for (auto instr : postorder) {
     std::vector<HloInstruction*> new_operands;
     for (auto operand : instr->operands()) {
-      HloInstruction* new_operand = FindOrDie(clone_map, operand);
-      CHECK(new_operand != nullptr);
-      new_operands.push_back(new_operand);
+      auto replaced_operand = replace(operand);
+      // If replaced_operand is null, that means 'replacements' asked us not to
+      // include operand in the new computation.  But we can't do that, because
+      // operand is used by instr.
+      CHECK_NE(replaced_operand, nullptr)
+          << "replacements map tried to eliminate a used instruction "
+          << operand->ToString() << ", used by " << instr->ToString();
+      new_operands.push_back(FindOrDie(clone_map, replaced_operand));
     }
     new_instr =
         instr->CloneWithNewOperands(instr->shape(), new_operands, module);
     InsertOrDie(&clone_map, instr, new_instr.get());
     instructions.push_back(std::move(new_instr));
   }
-  Builder builder(name() + suffix);
+  Builder builder(name() + "." + suffix);
   for (auto& instr : instructions) {
     builder.AddInstruction(std::move(instr));
   }
   auto result = builder.Build(
-      /*root_instruction=*/FindOrDie(clone_map, root_instruction()));
+      /*root_instruction=*/FindOrDie(clone_map, replace(root_instruction())));
 
   // Clone control dependencies.
   for (auto instr : postorder) {
     HloInstruction* new_instr = FindOrDie(clone_map, instr);
     for (auto successor : instr->control_successors()) {
-      TF_CHECK_OK(
-          new_instr->AddControlDependencyTo(FindOrDie(clone_map, successor)));
+      auto replaced_successor = replace(successor);
+
+      // successor may not be in clone_map, because it might have been
+      // removed by the replacements map.
+      if (replaced_successor == nullptr) {
+        continue;
+      }
+
+      TF_CHECK_OK(new_instr->AddControlDependencyTo(
+          FindOrDie(clone_map, replaced_successor)));
     }
   }
+
+  // We cloned the elements of 'replacements', so they're all going to be
+  // destroyed.  HloInstructions need to be detached from their operands before
+  // they're destroyed, otherwise they stick around in the operands' users lists
+  // and cause use-after-frees.
+  for (auto& kv : replacements) {
+    if (std::unique_ptr<HloInstruction>& new_instr = kv.second) {
+      new_instr->DetachFromOperands();
+    }
+  }
+
   return result;
 }
 

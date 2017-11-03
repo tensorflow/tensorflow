@@ -27,6 +27,8 @@ namespace xla {
 //  - A while loop with static trip count of 0 is deleted.
 //  - A while loops with static trip count of 1 is replaced by its body (sans
 //    loop).
+//  - Elements of a while loop's tuple that the loop doesn't use are removed
+//    from the tuple.
 //
 class WhileLoopSimplifier : public HloPassInterface {
  public:

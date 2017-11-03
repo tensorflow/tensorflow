@@ -101,7 +101,7 @@ TEST_F(HloModuleTest, CloneTest) {
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
        origin != post_order.end() && copied != post_order_copied.end();
        ++origin, ++copied) {
-    EXPECT_EQ((*origin)->name() + "copy", (*copied)->name());
+    EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
   }
 }
 
