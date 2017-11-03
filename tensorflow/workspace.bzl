@@ -403,6 +403,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@protobuf_archive//:protobuf",
   )
 
+  native.bind(
+      name = "protobuf_headers",
+      actual = "@protobuf_archive//:protobuf_headers",
+  )
+
   # We need to import the protobuf library under the names com_google_protobuf
   # and com_google_protobuf_cc to enable proto_library support in bazel.
   # Unfortunately there is no way to alias http_archives at the moment.
@@ -519,10 +524,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "grpc",
       urls = [
           # "https://mirror.bazel.build/github.com/grpc/grpc/archive/05547052d0394224515ac43364ce3a80467a5edc.tar.gz",
-          "https://github.com/grpc/grpc/archive/05547052d0394224515ac43364ce3a80467a5edc.tar.gz",
+          "https://github.com/vjpai/grpc/archive/dc7c50e6a442d3877d649b9277a56761a86f6b77.tar.gz",
       ],
-     sha256 = "7bc2669d891ed418522d860b0316701f36fbbfd2edda70ab51caeb1044d78252",
-     strip_prefix = "grpc-05547052d0394224515ac43364ce3a80467a5edc",
+     sha256 = "db8e7b671450cba4818c8b2ce195ef2f13bd53fdcb4f1a3e204e919061196510",
+     strip_prefix = "grpc-dc7c50e6a442d3877d649b9277a56761a86f6b77",
   )
 
   native.http_archive(
