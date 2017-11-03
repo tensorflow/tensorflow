@@ -154,7 +154,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "cudnn_rnn_test",
-    size = "large",
+    size = "enormous",
     srcs = ["python/kernel_tests/cudnn_rnn_test.py"],
     additional_deps = [
         ":cudnn_rnn_py",
