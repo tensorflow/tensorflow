@@ -41,8 +41,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 #if defined(__APPLE__)
-static void sincos()  __attribute__((weakref ("__sincos")));
-static void sincosf() __attribute__((weakref ("__sincosf")));
+static void sincos(double, double*, double*)  __attribute__((weakref ("__sincos")));
+static void sincosf(float, float*, float*) __attribute__((weakref ("__sincosf")));
 #endif
 
 namespace xla {
