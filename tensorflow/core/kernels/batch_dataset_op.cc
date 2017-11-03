@@ -38,14 +38,14 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
         ctx, batch_size > 0,
         errors::InvalidArgument("Batch size must be greater than zero."));
 
-    *output = new Dataset(batch_size, input);
+    *output = new Dataset(ctx, batch_size, input);
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(int64 batch_size, const DatasetBase* input)
-        : batch_size_(batch_size), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 batch_size, const DatasetBase* input)
+        : GraphDatasetBase(ctx), batch_size_(batch_size), input_(input) {
       input_->Ref();
 
       // NOTE(mrry): Currently we implement "batch up to" semantics. If
@@ -77,6 +77,18 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() override {
       return strings::StrCat("BatchDatasetOp(", batch_size_, ")::Dataset");
+    }
+
+   protected:
+    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(input_, &input_graph_node));
+      Node* batch_size = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this, {input_graph_node, batch_size}, output));
+      return Status::OK();
     }
 
    private:
@@ -176,6 +188,20 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           out_tensors->emplace_back(std::move(batch_component));
         }
         *end_of_sequence = false;
+        return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(OpKernelContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
         return Status::OK();
       }
 
