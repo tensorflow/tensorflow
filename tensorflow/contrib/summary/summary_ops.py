@@ -116,7 +116,7 @@ class SummaryWriter(object):
 
 def create_summary_file_writer(logdir,
                                max_queue=None,
-                               flush_secs=None,
+                               flush_millis=None,
                                filename_suffix=None,
                                name=None):
   """Creates a summary file writer in the current context.
@@ -128,7 +128,7 @@ def create_summary_file_writer(logdir,
      useful to use as a context manager.
     max_queue: the largest number of summaries to keep in a queue; will
      flush once the queue gets bigger than this.
-    flush_secs: the largest interval (in seconds) between flushes.
+    flush_millis: the largest interval between flushes.
     filename_suffix: optional suffix for the event file name.
     name: name for the summary writer.
 
@@ -141,8 +141,8 @@ def create_summary_file_writer(logdir,
   with ops.device("cpu:0"):
     if max_queue is None:
       max_queue = constant_op.constant(10)
-    if flush_secs is None:
-      flush_secs = constant_op.constant(120)
+    if flush_millis is None:
+      flush_millis = constant_op.constant(2 * 60 * 1000)
     if filename_suffix is None:
       filename_suffix = constant_op.constant("")
     resource = gen_summary_ops.summary_writer(shared_name=name)
@@ -150,8 +150,8 @@ def create_summary_file_writer(logdir,
     # consider calling session.run here.
     ops.add_to_collection(
         _SUMMARY_WRITER_INIT_COLLECTION_NAME,
-        gen_summary_ops.create_summary_file_writer(resource, logdir, max_queue,
-                                                   flush_secs, filename_suffix))
+        gen_summary_ops.create_summary_file_writer(
+            resource, logdir, max_queue, flush_millis, filename_suffix))
     return SummaryWriter(resource)
 
 
